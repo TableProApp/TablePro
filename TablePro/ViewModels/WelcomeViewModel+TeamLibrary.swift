@@ -27,21 +27,21 @@ extension WelcomeViewModel {
     }
 
     private func presentTeamLibrarySuccess(connectionCount: Int) {
-        let alert = NSAlert()
-        alert.messageText = String(localized: "Published to the team library")
-        alert.informativeText = String(
-            format: String(localized: "Your team can now see %d shared connections. Passwords were not included."),
-            connectionCount
+        AlertHelper.showInfoSheet(
+            title: String(localized: "Published to the team library"),
+            message: String(
+                format: String(localized: "Your team can now see %d shared connections. Passwords were not included."),
+                connectionCount
+            ),
+            window: nil
         )
-        alert.alertStyle = .informational
-        alert.runModal()
     }
 
     private func presentTeamLibraryError(_ error: Error) {
-        let alert = NSAlert()
-        alert.messageText = String(localized: "Couldn't publish to the team library")
-        alert.informativeText = error.localizedDescription
-        alert.alertStyle = .warning
-        alert.runModal()
+        AlertHelper.showErrorSheet(
+            title: String(localized: "Couldn't publish to the team library"),
+            message: error.localizedDescription,
+            window: nil
+        )
     }
 }

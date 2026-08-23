@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import Darwin
 import Foundation
 import TableProPluginKit
 import Testing
@@ -428,13 +429,278 @@ struct BeancountPluginDriverTests {
 
     // MARK: - Helpers
 
+    @Test(
+        "projects rich directives and posting-free transactions through rledger",
+        .enabled(if: RustledgerLocator.path != nil, "rledger executable unavailable")
+    )
+    func projectsRichDirectivesThroughRustledger() async throws {
+        try await Self.withRustledger {
+            try await Self.withRichDirectiveLedger { driver, ledger in
+                try await Self.expectRichDirectives(driver, ledger: ledger)
+            }
+        }
+    }
+
+    @Test(
+        "projects rich directives and posting-free transactions through Python Beancount",
+        .enabled(if: PythonBeancountLocator.path != nil, "Python Beancount unavailable")
+    )
+    func projectsRichDirectivesThroughPythonBeancount() async throws {
+        let python = try #require(PythonBeancountLocator.path)
+        try await Self.withEnvironment([
+            "TABLEPRO_BEANCOUNT_BACKEND": "python",
+            "TABLEPRO_BEANCOUNT_PYTHON": python
+        ]) {
+            try await Self.withRichDirectiveLedger { driver, ledger in
+                try await Self.expectRichDirectives(driver, ledger: ledger)
+            }
+        }
+    }
+
+    @Test(
+        "refreshes document diagnostics when an included document target changes",
+        .enabled(if: RustledgerLocator.path != nil, "rledger executable unavailable")
+    )
+    func refreshesDocumentDiagnostics() async throws {
+        try await Self.withRustledger {
+            let directory = try Self.makeTempDirectory()
+            defer { try? FileManager.default.removeItem(at: directory) }
+
+            let subdirectory = directory.appendingPathComponent("sub", isDirectory: true)
+            try FileManager.default.createDirectory(at: subdirectory, withIntermediateDirectories: true)
+            let included = subdirectory.appendingPathComponent("entries.beancount")
+            try """
+            2024-01-01 open Assets:Cash USD
+
+            2024-01-04 document Assets:Cash "receipt.pdf"
+            """.write(to: included, atomically: true, encoding: .utf8)
+
+            let ledger = directory.appendingPathComponent("main.beancount")
+            try "include \"sub/entries.beancount\"\n"
+                .write(to: ledger, atomically: true, encoding: .utf8)
+
+            let driver = BeancountPluginDriver(config: Self.config(ledger))
+            try await driver.connect()
+            defer { driver.disconnect() }
+
+            let accounts = try await driver.execute(query: "SELECT name FROM accounts")
+            #expect(accounts.rows.map { $0[0].asText } == ["Assets:Cash"])
+
+            var diagnostics = try await driver.execute(query: """
+                SELECT source_file, line, source_location FROM diagnostics
+                WHERE code = 'E8001' ORDER BY id
+                """)
+            #expect(diagnostics.rows.count == 1)
+            let diagnostic = try #require(diagnostics.rows.first)
+            let sourceFile = try #require(diagnostic[0].asText)
+            #expect(Self.canonicalPath(URL(fileURLWithPath: sourceFile)) == Self.canonicalPath(included))
+            #expect(diagnostic[1].asText == "3")
+            #expect(diagnostic[2].asText == "\(sourceFile):3")
+
+            let document = subdirectory.appendingPathComponent("receipt.pdf")
+            try Data("pdf".utf8).write(to: document)
+
+            diagnostics = try await driver.execute(query: """
+                SELECT source_file, line, source_location FROM diagnostics
+                WHERE code = 'E8001' ORDER BY id
+                """)
+            #expect(diagnostics.rows.isEmpty)
+
+            try FileManager.default.removeItem(at: document)
+
+            diagnostics = try await driver.execute(query: """
+                SELECT source_file, line, source_location FROM diagnostics
+                WHERE code = 'E8001' ORDER BY id
+                """)
+            #expect(diagnostics.rows.count == 1)
+            let returned = try #require(diagnostics.rows.first)
+            let returnedSourceFile = try #require(returned[0].asText)
+            #expect(Self.canonicalPath(URL(fileURLWithPath: returnedSourceFile)) == Self.canonicalPath(included))
+            #expect(returned[1].asText == "3")
+            #expect(returned[2].asText == "\(returnedSourceFile):3")
+        }
+    }
+
+    private static func withRichDirectiveLedger(
+        _ body: (BeancountPluginDriver, URL) async throws -> Void
+    ) async throws {
+        let directory = try Self.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        try Data("pdf".utf8).write(to: directory.appendingPathComponent("receipt.pdf"))
+
+        let ledger = directory.appendingPathComponent("main.beancount")
+        try """
+        2024-01-01 commodity USD
+          name: "US Dollar"
+
+        2024-01-01 open Assets:Cash USD
+        2024-01-01 open Expenses:Food USD
+
+        2024-01-02 event "location" "Taipei"
+
+        2024-01-03 note Assets:Cash "called the bank"
+
+        2024-01-04 document Assets:Cash "receipt.pdf"
+
+        2024-01-05 * "Cafe" "Coffee" #coffee #daily ^receipt-123
+          invoice: "INV-9"
+          verified: TRUE
+          Expenses:Food   3.00 USD
+            method: "card"
+          Assets:Cash
+
+        2024-01-06 * "Archive" "No postings" #empty ^standalone
+          reason: "record only"
+
+        2024-06-30 close Expenses:Food
+        """.write(to: ledger, atomically: true, encoding: .utf8)
+
+        let driver = BeancountPluginDriver(config: Self.config(ledger))
+        try await driver.connect()
+        defer { driver.disconnect() }
+
+        try await body(driver, ledger)
+    }
+
+    private static func expectRichDirectives(_ driver: BeancountPluginDriver, ledger: URL) async throws {
+        let commodities = try await driver.execute(query: "SELECT date, commodity FROM commodities")
+        #expect(commodities.rows.map { $0.map(\.asText) } == [["2024-01-01", "USD"]])
+
+        let events = try await driver.execute(query: "SELECT date, type, description FROM events")
+        #expect(events.rows.map { $0.map(\.asText) } == [["2024-01-02", "location", "Taipei"]])
+
+        let notes = try await driver.execute(query: "SELECT date, account, comment FROM notes")
+        #expect(notes.rows.map { $0.map(\.asText) } == [["2024-01-03", "Assets:Cash", "called the bank"]])
+
+        let closes = try await driver.execute(query: "SELECT date, account FROM closes")
+        #expect(closes.rows.map { $0.map(\.asText) } == [["2024-06-30", "Expenses:Food"]])
+
+        let documents = try await driver.execute(query: "SELECT date, account, path FROM documents")
+        #expect(documents.rows.count == 1)
+        let document = try #require(documents.rows.first)
+        #expect(document[0].asText == "2024-01-04")
+        #expect(document[1].asText == "Assets:Cash")
+        #expect(document[2].asText?.hasSuffix("receipt.pdf") == true)
+
+        let metadata = try await driver.execute(query: """
+            SELECT metadata.key, metadata.value
+            FROM transaction_metadata AS metadata
+            JOIN transactions ON transactions.id = metadata.transaction_id
+            WHERE transactions.narration = 'Coffee'
+            ORDER BY metadata.key
+            """)
+        #expect(metadata.rows.map { $0.map(\.asText) } == [["invoice", "INV-9"], ["verified", "TRUE"]])
+
+        let postingMetadata = try await driver.execute(query: """
+            SELECT metadata.key, metadata.value
+            FROM posting_metadata AS metadata
+            JOIN postings ON postings.id = metadata.posting_id
+            JOIN transactions ON transactions.id = postings.transaction_id
+            WHERE transactions.narration = 'Coffee'
+            """)
+        #expect(postingMetadata.rows.map { $0.map(\.asText) } == [["method", "card"]])
+
+        let tags = try await driver.execute(query: """
+            SELECT tags.tag
+            FROM transaction_tags AS tags
+            JOIN transactions ON transactions.id = tags.transaction_id
+            WHERE transactions.narration = 'Coffee'
+            ORDER BY tags.tag
+            """)
+        #expect(tags.rows.map { $0[0].asText } == ["coffee", "daily"])
+
+        let links = try await driver.execute(query: """
+            SELECT links.link
+            FROM transaction_links AS links
+            JOIN transactions ON transactions.id = links.transaction_id
+            WHERE transactions.narration = 'Coffee'
+            """)
+        #expect(links.rows.map { $0[0].asText } == ["receipt-123"])
+
+        let transactions = try await driver.execute(query: """
+            SELECT source_file, line, source_location FROM transactions WHERE narration = 'Coffee'
+            """)
+        #expect(transactions.rows.count == 1)
+        let transaction = try #require(transactions.rows.first)
+        #expect(transaction[0].asText?.hasSuffix(ledger.lastPathComponent) == true)
+        #expect(transaction[1].asText == "13")
+        #expect(transaction[2].asText?.hasSuffix("\(ledger.lastPathComponent):13") == true)
+
+        let postings = try await driver.execute(query: """
+            SELECT postings.line
+            FROM postings
+            JOIN transactions ON transactions.id = postings.transaction_id
+            WHERE transactions.narration = 'Coffee'
+            ORDER BY postings.id
+            """)
+        #expect(postings.rows.map { $0[0].asText } == ["16", "18"])
+
+        let postingFree = try await driver.execute(query: """
+            SELECT id, date, flag, payee, narration, source_file, line, source_location
+            FROM transactions WHERE narration = 'No postings'
+            """)
+        #expect(postingFree.rows.count == 1)
+        let transactionWithoutPostings = try #require(postingFree.rows.first)
+        #expect(transactionWithoutPostings[0].asText != nil)
+        #expect(transactionWithoutPostings.dropFirst().prefix(4).map(\.asText) == [
+            "2024-01-06",
+            "*",
+            "Archive",
+            "No postings"
+        ])
+        let sourceFile = try #require(transactionWithoutPostings[5].asText)
+        #expect(Self.canonicalPath(URL(fileURLWithPath: sourceFile)) == Self.canonicalPath(ledger))
+        #expect(transactionWithoutPostings[6].asText == "20")
+        #expect(transactionWithoutPostings[7].asText == "\(sourceFile):20")
+
+        let postingFreeMetadata = try await driver.execute(query: """
+            SELECT metadata.key, metadata.value
+            FROM transaction_metadata AS metadata
+            JOIN transactions ON transactions.id = metadata.transaction_id
+            WHERE transactions.narration = 'No postings'
+            ORDER BY metadata.key
+            """)
+        #expect(postingFreeMetadata.rows.map { $0.map(\.asText) } == [["reason", "record only"]])
+
+        let postingFreeTags = try await driver.execute(query: """
+            SELECT tags.tag
+            FROM transaction_tags AS tags
+            JOIN transactions ON transactions.id = tags.transaction_id
+            WHERE transactions.narration = 'No postings'
+            ORDER BY tags.tag
+            """)
+        #expect(postingFreeTags.rows.map { $0[0].asText } == ["empty"])
+
+        let postingFreeLinks = try await driver.execute(query: """
+            SELECT links.link
+            FROM transaction_links AS links
+            JOIN transactions ON transactions.id = links.transaction_id
+            WHERE transactions.narration = 'No postings'
+            ORDER BY links.link
+            """)
+        #expect(postingFreeLinks.rows.map { $0[0].asText } == ["standalone"])
+
+        let postingFreeCount = try await driver.execute(query: """
+            SELECT COUNT(postings.id)
+            FROM transactions
+            LEFT JOIN postings ON postings.transaction_id = transactions.id
+            WHERE transactions.narration = 'No postings'
+            GROUP BY transactions.id
+            """)
+        #expect(postingFreeCount.rows.first?.first?.asText == "0")
+    }
+
     private static func withRustledger(_ body: () async throws -> Void) async throws {
         let rledger = try #require(RustledgerLocator.path)
         try await withRustledgerEnvironment(rledger, body)
     }
 
     private static func withRustledgerEnvironment(_ path: String, _ body: () async throws -> Void) async throws {
-        try await withEnvironment(["TABLEPRO_RUSTLEDGER_BINARY": path], body)
+        try await withEnvironment([
+            "TABLEPRO_BEANCOUNT_BACKEND": "rledger",
+            "TABLEPRO_RUSTLEDGER_BINARY": path
+        ], body)
     }
 
     private static func withEnvironment(
@@ -459,6 +725,16 @@ struct BeancountPluginDriverTests {
 
     private static func config(_ ledger: URL) -> DriverConnectionConfig {
         DriverConnectionConfig(host: "", port: 0, username: "", password: "", database: ledger.path)
+    }
+
+    private static func canonicalPath(_ url: URL) -> String {
+        url.withUnsafeFileSystemRepresentation { fileSystemPath in
+            guard let fileSystemPath, let resolvedPath = realpath(fileSystemPath, nil) else {
+                return url.standardizedFileURL.path
+            }
+            defer { free(resolvedPath) }
+            return String(cString: resolvedPath)
+        }
     }
 
     private static func makeTempDirectory() throws -> URL {

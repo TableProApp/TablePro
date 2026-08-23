@@ -62,6 +62,12 @@ struct SQLCompletionProviderConcurrencyTests {
         #expect(rankedLabels.isSubset(of: filteredLabels))
     }
 
+    /// The point of the test is that `filterAndRank` reads no mutable state, which is what the
+    /// compiler cannot see from the provider's type alone.
+    private struct ConcurrentProvider: @unchecked Sendable {
+        let provider: SQLCompletionProvider
+    }
+
     @Test("filterAndRank is safe under concurrent invocations from a detached task")
     func filterAndRankConcurrent() async {
         let provider = makeProvider()
@@ -70,10 +76,11 @@ struct SQLCompletionProviderConcurrencyTests {
 
         let baseline = provider.filterAndRank(items, prefix: "sc", context: context)
 
+        let shared = ConcurrentProvider(provider: provider)
         await withTaskGroup(of: [SQLCompletionItem].self) { group in
             for _ in 0..<8 {
                 group.addTask {
-                    provider.filterAndRank(items, prefix: "sc", context: context)
+                    shared.provider.filterAndRank(items, prefix: "sc", context: context)
                 }
             }
             for await result in group {

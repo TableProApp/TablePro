@@ -77,7 +77,8 @@ struct QueryClassifierKeywordBoundaryTests {
     func writeDetectionAcrossWhitespace() {
         #expect(QueryClassifier.isWriteQuery("DELETE\nFROM users", databaseType: .mysql))
         #expect(QueryClassifier.isWriteQuery("INSERT\tINTO t VALUES (1)", databaseType: .postgresql))
-        #expect(!QueryClassifier.isWriteQuery("DELETED_ROWS", databaseType: .mysql))
+        #expect(QueryClassifier.classifyTier("DELETED_ROWS", databaseType: .mysql) != .destructive)
+        #expect(!QueryClassifier.isDangerousQuery("DELETED_ROWS", databaseType: .mysql))
     }
 
     @Test("isDangerousQuery detects destructive statements followed by newline")

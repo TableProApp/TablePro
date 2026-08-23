@@ -35,7 +35,7 @@ extension MainContentCoordinator {
         tabManager.mutate(at: tabIdx) { $0.display.resultSets.removeAll { $0.id == id } }
         if tabManager.tabs[tabIdx].display.activeResultSetId == id {
             let newActiveId = tabManager.tabs[tabIdx].display.resultSets.last?.id
-            switchActiveResultSet(to: newActiveId, in: tabId)
+            applyResultSetSwitch(to: newActiveId, in: tabId)
         }
         if tabManager.tabs[tabIdx].display.resultSets.isEmpty {
             setActiveTableRows(TableRows(), for: tabId)
@@ -61,7 +61,7 @@ extension MainContentCoordinator {
         let tabId = tabManager.tabs[tabIdx].id
 
         if let lastPinned = tabManager.tabs[tabIdx].display.resultSets.last(where: \.isPinned) {
-            switchActiveResultSet(to: lastPinned.id, in: tabId)
+            applyResultSetSwitch(to: lastPinned.id, in: tabId)
             tabManager.mutate(at: tabIdx) { $0.display.removeUnpinnedResults() }
             return
         }
@@ -86,12 +86,12 @@ extension MainContentCoordinator {
         guard !safeModeLevel.blocksAllWrites else { return }
 
         if tabManager.tabs.isEmpty {
-            tabManager.addCreateTableTab(databaseName: activeDatabaseName)
+            tabManager.addCreateTableTab(databaseName: browseDatabaseName)
         } else {
             let payload = EditorTabPayload(
                 connectionId: connection.id,
                 tabType: .createTable,
-                databaseName: activeDatabaseName
+                databaseName: browseDatabaseName
             )
             WindowManager.shared.openTab(payload: payload)
         }
@@ -109,7 +109,7 @@ extension MainContentCoordinator {
         let payload = EditorTabPayload(
             connectionId: connection.id,
             tabType: .query,
-            databaseName: activeDatabaseName,
+            databaseName: browseDatabaseName,
             initialQuery: template
         )
         WindowManager.shared.openTab(payload: payload)
@@ -118,7 +118,7 @@ extension MainContentCoordinator {
     func editViewDefinition(_ viewName: String) {
         Task {
             do {
-                let definition = try await DatabaseManager.shared.withMetadataDriver(connectionId: self.connection.id) { driver in
+                let definition = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: self.connection.id) { driver in
                     try await driver.fetchViewDefinition(view: viewName)
                 }
 
@@ -147,7 +147,13 @@ extension MainContentCoordinator {
     // MARK: - Export/Import
 
     func openExportDialog(preselectedTableNames: Set<String>? = nil) {
-        exportPreselectedTableNames = preselectedTableNames
+        exportPreselection = preselectedTableNames.map { .tables($0) }
+        activeSheet = .exportDialog
+    }
+
+    func openExportDialog(containers: [DatabaseContainerRef]) {
+        guard !containers.isEmpty else { return }
+        exportPreselection = .containers(containers)
         activeSheet = .exportDialog
     }
 
@@ -204,15 +210,43 @@ extension MainContentCoordinator {
         return driver.supportedMaintenanceOperations() ?? []
     }
 
-    func showMaintenanceSheet(operation: String, tableName: String) {
-        activeSheet = .maintenance(operation: operation, tableName: tableName)
+    func showMaintenanceSheet(
+        operation: String,
+        tableName: String,
+        database: String? = nil,
+        schema: String? = nil
+    ) {
+        activeSheet = .maintenance(
+            operation: operation, tableName: tableName, database: database, schema: schema
+        )
     }
 
-    func executeMaintenance(operation: String, tableName: String, options: [String: String]) {
+    /// Runs against the database the object it names lives in, on a scoped lease.
+    ///
+    /// A maintenance statement names its table and nothing else, so where it lands is decided
+    /// entirely by the connection's current database. Executing on the session driver directly left
+    /// that to chance: a cross-database tab pins the shared handle to its own database for the
+    /// length of its query and deliberately writes no session state back, so `OPTIMIZE TABLE
+    /// role_ability` could optimize the copy in another database while the sheet reported success.
+    /// Every other statement the user owns takes a scoped lease; this one now does too, which also
+    /// puts it behind the same gate rather than interleaving with a tab's work on one handle.
+    func executeMaintenance(
+        operation: String,
+        tableName: String,
+        options: [String: String],
+        database: String? = nil,
+        schema: String? = nil
+    ) {
         guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
         guard let statements = driver.maintenanceStatements(
             operation: operation, table: tableName, options: options
         ) else { return }
+        /// The object the user picked names its own database, and only a command that names none
+        /// falls back to where the browser is pointing. `resolvedScope` is what decides that, so a
+        /// schema is never carried across a database boundary.
+        guard let scope = services.databaseManager.resolvedScope(
+            database: database, schema: schema, for: connectionId
+        ) ?? browseScope else { return }
 
         Task { [weak self] in
             guard let self else { return }
@@ -239,8 +273,18 @@ extension MainContentCoordinator {
             }
             do {
                 var lastResult: QueryResult?
+                let route = DatabaseManager.shared.executionRoute(for: scope)
                 for sql in statements {
-                    lastResult = try await driver.execute(query: sql)
+                    /// `.protectedWrite`: a half-applied OPTIMIZE or REPAIR cannot be undone by
+                    /// retrying, so the lease is registered to mark the connection busy and is never
+                    /// reachable by Stop.
+                    lastResult = try await DatabaseManager.shared.withScopedDriver(
+                        scope: scope,
+                        route: route,
+                        cancellation: .protectedWrite
+                    ) { scopedDriver in
+                        try await scopedDriver.execute(query: sql)
+                    }
                 }
                 await AlertHelper.showInfoSheet(
                     title: String(format: String(localized: "%@ completed"), operation),

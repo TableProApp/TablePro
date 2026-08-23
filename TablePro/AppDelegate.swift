@@ -11,22 +11,36 @@ import UserNotifications
 
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "AppDelegate")
-    static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "AppDelegate")
+    nonisolated static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     private var hasRunPostLaunchActivation = false
-
-    private static var isUITesting: Bool {
-        ProcessInfo.processInfo.environment["TABLEPRO_UI_TESTING"] == "1"
-    }
 
     // MARK: - URL & File Open
 
     func applicationWillFinishLaunching(_ notification: Notification) {
+        AppSettingsStorage.shared.migrateStartupBehaviorToReopenLastIfNeeded()
+        AppSettingsStorage.shared.migrateJsonFieldHeightKeyIfNeeded()
+        AIProviderRegistration.registerAll()
+
+        /// Installed before any window exists, so the bar is correct from the first frame.
+        /// Nothing else owns it now that the app no longer runs a SwiftUI `App`.
+        MainMenuBuilder.install(keyboard: AppSettingsManager.shared.keyboard)
+
         _ = InspectorDocumentController()
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         PluginManager.shared.loadPlugins()
-        Task { await RegistryClient.shared.ensureManifest(.ifStale) }
+        /// The registry manifest only feeds the plugin-install UI, and fetching it is a network call
+        /// at launch. A sandboxed run has no user plugins directory to install into anyway.
+        if !AppStorageEnvironment.shared.isIsolated {
+            Task { await RegistryClient.shared.ensureManifest(.ifStale) }
+        }
+
+        Task { await QueryHistoryManager.shared.performStartupCleanup() }
+        Task { @MainActor in
+            let activeIds = Set(ConnectionStorage.shared.loadConnections().map(\.id))
+            await SQLFavoriteManager.shared.pruneOrphaned(activeConnectionIds: activeIds)
+        }
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -55,17 +69,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let appearanceSettings = AppSettingsManager.shared.appearance
         ThemeEngine.shared.updateAppearanceAndTheme(
-            mode: appearanceSettings.appearanceMode,
+            mode: ScreenshotEnvironment.appearanceMode ?? appearanceSettings.appearanceMode,
             lightThemeId: appearanceSettings.preferredLightThemeId,
             darkThemeId: appearanceSettings.preferredDarkThemeId
         )
 
         NSWindow.allowsAutomaticWindowTabbing = true
+        WindowOpener.shared.setWelcomePresenter { WelcomeWindowController.present() }
+        WindowOpener.shared.setConnectionFormPresenter { ConnectionFormWindowController.present($0) }
+        WindowOpener.shared.setIntegrationsActivityPresenter { IntegrationsActivityWindowController.present() }
+        WindowOpener.shared.setSettingsPresenter { SettingsWindowController.present(pane: $0) }
+        WindowOpener.shared.setCompareSyncPresenter { CompareSyncWindowController.present(prefillSource: $0) }
         KeyRepeatFilter.shared.install()
         let syncSettings = AppSettingsStorage.shared.loadSync()
         let passwordSyncExpected = syncSettings.enabled && syncSettings.syncConnections && syncSettings.syncPasswords
-        UserDefaults.standard.set(passwordSyncExpected, forKey: KeychainHelper.passwordSyncEnabledKey)
+        AppStorageEnvironment.shared.defaults.set(passwordSyncExpected, forKey: KeychainHelper.passwordSyncEnabledKey)
         DatabaseManager.shared.startObservingSystemEvents()
+        DatabaseManager.shared.tabStatePersister = SessionTabStatePersister()
 
         Task { await CloudflareTunnelManager.shared.sweepStalePidsIfNeeded() }
         Task { await CloudSQLProxyManager.shared.sweepStalePidsIfNeeded() }
@@ -73,6 +93,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         MemoryPressureAdvisor.startMonitoring()
         UNUserNotificationCenter.current().delegate = self
         PluginNotificationService.shared.setUp()
+        OperationCompletionReporter.shared.setUp()
         ChatToolBootstrap.register()
 
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -80,7 +101,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSWorkspace.didWakeNotification, object: nil
         )
 
-        if AppSettingsManager.shared.mcp.enabled {
+        if AppSettingsManager.shared.mcp.enabled, !AppStorageEnvironment.shared.isIsolated {
             Task {
                 await MCPServerManager.shared.start(port: UInt16(clamping: AppSettingsManager.shared.mcp.port))
             }
@@ -100,14 +121,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidBecomeActive(_ notification: Notification) {
         runPostLaunchActivationIfNeeded()
-        guard !Self.isUITesting else { return }
+        guard !AppStorageEnvironment.shared.isIsolated else { return }
         SyncCoordinator.shared.syncIfNeeded()
     }
 
     private func runPostLaunchActivationIfNeeded() {
         guard !hasRunPostLaunchActivation else { return }
         hasRunPostLaunchActivation = true
-        guard !Self.isUITesting else { return }
+        guard !AppStorageEnvironment.shared.isIsolated else { return }
 
         ConnectionStorage.shared.migratePluginSecureFieldsIfNeeded()
         AnalyticsService.shared.startPeriodicHeartbeat()
@@ -122,6 +143,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         true
+    }
+
+    /// Unhiding is the one way a window comes back without any window notification firing, and the
+    /// app reports every window it owns as invisible while it is hidden.
+    func applicationDidUnhide(_ notification: Notification) {
+        AppActivationPolicyController.shared.reevaluate()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -141,6 +168,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let hasUnsaved = MainContentCoordinator.hasAnyUnsavedChanges()
         if hasUnsaved {
+            /// Quitting can be asked for from outside the app, so this alert has to come forward on
+            /// its own: it blocks termination in a nested modal loop, and a background process has
+            /// no Dock icon to reach it by.
+            AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             let alert = NSAlert()
             alert.messageText = String(localized: "You have unsaved changes")
             alert.informativeText = String(localized: "Some tabs have unsaved edits. Quitting will discard these changes.")
@@ -176,11 +207,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         SQLFolderWatcher.shared.reload()
     }
 
-    @objc func showHelp(_ sender: Any?) {
-        if let url = URL(string: "https://docs.tablepro.app") {
-            NSWorkspace.shared.open(url)
-        }
-    }
 
     // MARK: - Window Notifications
 
@@ -188,18 +214,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let window = notification.object as? NSWindow else { return }
 
         let csvLogger = Logger(subsystem: "com.TablePro", category: "CSVInspector")
-        if AppLaunchCoordinator.isMainWindow(window) {
+        let isPrimary = AppLaunchCoordinator.isMainWindow(window)
+        if isPrimary {
             let remaining = NSApp.windows.filter {
                 $0 !== window && AppLaunchCoordinator.isMainWindow($0) && $0.isVisible
             }.count
             csvLogger.debug("AppDelegate.windowWillClose - main window '\(window.identifier?.rawValue ?? "nil", privacy: .public)' closing, remaining main windows=\(remaining, privacy: .public)")
-            if remaining == 0 {
+            if WelcomeVisibilityPolicy.shouldPresentWelcome(
+                closingWindowWasPrimary: isPrimary,
+                remainingVisiblePrimaryWindows: remaining,
+                sessionOrigin: AppActivationPolicyController.shared.origin
+            ) {
                 AppEvents.shared.mainWindowWillClose.send(())
                 WindowOpener.shared.openWelcome()
             }
         } else {
             csvLogger.debug("AppDelegate.windowWillClose - non-main window '\(window.identifier?.rawValue ?? "nil", privacy: .public)' closing")
         }
+        /// Any window, not only a primary one: a machine-started session can have nothing on screen
+        /// but a settings window, and closing it leaves the process with no user interface again.
+        AppActivationPolicyController.shared.reevaluate(excluding: window)
     }
 
     // MARK: - Dock Menu
@@ -252,25 +286,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WindowOpener.shared.openWelcome()
     }
 
-    @objc func newWindowForTab(_ sender: Any?) {
-        guard let keyWindow = NSApp.keyWindow,
-              let connectionId = MainActor.assumeIsolated({
-                  WindowLifecycleMonitor.shared.connectionId(forWindow: keyWindow)
-              })
-        else { return }
-
-        MainActor.assumeIsolated {
-            if let actions = MainContentCoordinator.allActiveCoordinators()
-                .first(where: { $0.connectionId == connectionId })?.commandActions {
-                actions.newTab()
-            } else {
-                WindowManager.shared.openTab(
-                    payload: EditorTabPayload(connectionId: connectionId, intent: .newEmptyTab)
-                )
-            }
-        }
-    }
-
     @objc func connectFromDock(_ sender: NSMenuItem) {
         guard let connectionId = sender.representedObject as? UUID else { return }
         Task {
@@ -284,17 +299,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+/// Carries a UserNotifications callback from the delegate thread to the main actor.
+/// UNUserNotificationCenter hands each one over exactly once and keeps no reference.
+private struct NotificationDelivery<Payload>: @unchecked Sendable {
+    let payload: Payload
+    let complete: () -> Void
+}
+
+private struct NotificationPresentationRequest: @unchecked Sendable {
+    let notification: UNNotification
+    let respond: (UNNotificationPresentationOptions) -> Void
+}
+
 extension AppDelegate: UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        guard notification.request.identifier.hasPrefix(PluginNotificationService.identifierPrefix) else {
-            completionHandler([])
-            return
+        let request = NotificationPresentationRequest(notification: notification, respond: completionHandler)
+        Task { @MainActor in
+            request.respond(NotificationRouter.shared.presentationOptions(for: request.notification))
         }
-        completionHandler([.banner])
     }
 
     nonisolated func userNotificationCenter(
@@ -302,16 +328,10 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        defer { completionHandler() }
-        guard response.notification.request.identifier.hasPrefix(PluginNotificationService.identifierPrefix) else {
-            return
-        }
-        let action = response.actionIdentifier
-        guard action == PluginNotificationService.openPluginSettingsActionId
-            || action == UNNotificationDefaultActionIdentifier
-        else { return }
+        let delivery = NotificationDelivery(payload: response, complete: completionHandler)
         Task { @MainActor in
-            WindowOpener.shared.openSettings(tab: .plugins)
+            defer { delivery.complete() }
+            NotificationRouter.shared.handle(delivery.payload)
         }
     }
 }

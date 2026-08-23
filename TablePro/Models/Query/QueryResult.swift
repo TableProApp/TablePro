@@ -100,6 +100,19 @@ struct TableInfo: Identifiable, Hashable, Sendable {
         case foreignTable = "FOREIGN TABLE"
         case systemTable = "SYSTEM TABLE"
         case partitionedTable = "PARTITIONED TABLE"
+        case externalTable = "EXTERNAL TABLE"
+
+        /// An external table lives in a catalog outside the database, has no
+        /// primary key and no row identifier to target, and rejects UPDATE and
+        /// DELETE, so the grid must not offer row editing for one.
+        var allowsRowEditing: Bool {
+            switch self {
+            case .view, .externalTable:
+                return false
+            case .table, .materializedView, .foreignTable, .systemTable, .partitionedTable:
+                return true
+            }
+        }
     }
 
     init(name: String, type: TableType, rowCount: Int?, schema: String? = nil, comment: String? = nil) {
@@ -133,6 +146,7 @@ struct ColumnInfo: Identifiable, Hashable {
     let charset: String?
     let collation: String?
     let comment: String?
+    let isGenerated: Bool
     let allowedValues: [String]?
 
     init(
@@ -145,6 +159,7 @@ struct ColumnInfo: Identifiable, Hashable {
         charset: String? = nil,
         collation: String? = nil,
         comment: String? = nil,
+        isGenerated: Bool = false,
         allowedValues: [String]? = nil
     ) {
         self.name = name
@@ -156,6 +171,7 @@ struct ColumnInfo: Identifiable, Hashable {
         self.charset = charset
         self.collation = collation
         self.comment = comment
+        self.isGenerated = isGenerated
         self.allowedValues = allowedValues
     }
 }
@@ -221,25 +237,53 @@ struct ForeignKeyInfo: Identifiable, Hashable {
 }
 
 struct TriggerInfo: Identifiable, Hashable {
-    var id: String { name }
     let name: String
     let timing: String
     let event: String
     let statement: String
     let enabled: Bool?
 
+    /// A trigger name is unique per table on PostgreSQL and Oracle, not per schema, so a
+    /// database-wide list keyed on the name alone loses one of any two tables that agree on it.
+    let table: String?
+    let schema: String?
+    let orientation: String?
+
+    /// The runnable CREATE TRIGGER text. `statement` is only the action body.
+    let definition: String?
+    let attributes: [ObjectAttribute]
+
+    var id: String {
+        [schema, table, name].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: ".")
+    }
+
     init(
         name: String,
         timing: String,
         event: String,
         statement: String,
-        enabled: Bool? = nil
+        enabled: Bool? = nil,
+        table: String? = nil,
+        schema: String? = nil,
+        orientation: String? = nil,
+        definition: String? = nil,
+        attributes: [ObjectAttribute] = []
     ) {
         self.name = name
         self.timing = timing
         self.event = event
         self.statement = statement
         self.enabled = enabled
+        self.table = table
+        self.schema = schema
+        self.orientation = orientation
+        self.definition = definition
+        self.attributes = attributes
+    }
+
+    var qualifiedName: String {
+        guard let table, !table.isEmpty else { return name }
+        return "\(table).\(name)"
     }
 }
 

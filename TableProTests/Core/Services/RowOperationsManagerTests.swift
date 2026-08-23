@@ -128,9 +128,12 @@ struct RowOperationsManagerTests {
             tableRows: &tableRows
         )
 
+        /// `.null`, not a Swift nil. A column with no default gets an explicit SQL NULL, which is
+        /// what `addNewRow` appends; an absent value and a NULL are different things to the
+        /// statement generator, and only one of them round-trips to the server.
         #expect(result != nil)
-        #expect(result?.values[1] == nil)
-        #expect(result?.values[2] == nil)
+        #expect(result?.values[1] == .null)
+        #expect(result?.values[2] == .null)
     }
 
     @Test("addNewRow records insertion in change manager")
@@ -150,7 +153,12 @@ struct RowOperationsManagerTests {
     }
 
     @Test("addNewRow increments change manager reload version")
-    func addNewRowIncrementsReloadVersion() {
+    /// `reloadVersion` is the signal that tells the grid to throw away what it is showing and fetch
+    /// again. It increments on `clearChanges`, `discardChanges` and `configureForTable`, and
+    /// deliberately not on recording an edit: a reload there would discard the very edit the user
+    /// just made. These asserted the opposite, which is why they sat in the quarantine file, so
+    /// each now pins the real contract from both sides.
+    func addNewRowDoesNotAskTheGridToReload() {
         let (manager, changeManager) = makeManager()
         var tableRows = makeTableRows(rowCount: 2)
         let versionBefore = changeManager.reloadVersion
@@ -161,7 +169,11 @@ struct RowOperationsManagerTests {
             tableRows: &tableRows
         )
 
-        #expect(changeManager.reloadVersion > versionBefore)
+        #expect(changeManager.reloadVersion == versionBefore)
+
+        changeManager.discardChanges()
+
+        #expect(changeManager.reloadVersion == versionBefore + 1)
     }
 
     @Test("multiple addNewRow calls append sequential rows")

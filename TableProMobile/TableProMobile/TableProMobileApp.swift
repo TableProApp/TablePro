@@ -40,6 +40,8 @@ struct TableProMobileApp: App {
                 }
             }
             .animation(.default, value: lockState.isLocked)
+            .hostKeyPrompt()
+            .entraSignInPrompt()
             .onOpenURL { url in
                 if url.isFileURL, url.pathExtension.lowercased() == "tablepro" {
                     appState.pendingImportURL = url
@@ -75,6 +77,7 @@ struct TableProMobileApp: App {
             lockState.handleScenePhase(phase)
             switch phase {
             case .active:
+                appState.backgroundRelease.cancelPreparation()
                 MemoryPressureMonitor.shared.start()
                 appState.retryLoadIfFailed()
                 if AppPreferences.isCloudSyncEnabled && appState.loadStatus == .ready {
@@ -94,13 +97,15 @@ struct TableProMobileApp: App {
                     heartbeatService = service
                     heartbeatTask = service.startPeriodicHeartbeat()
                 }
+            case .inactive:
+                appState.backgroundRelease.prepareForSuspension()
             case .background:
                 syncTask?.cancel()
                 syncTask = nil
                 heartbeatTask?.cancel()
                 heartbeatTask = nil
                 heartbeatService = nil
-                Task { await appState.connectionManager.disconnectAll() }
+                Task { await appState.backgroundRelease.releaseForSuspension() }
                 scheduleBackgroundSync()
             default:
                 break

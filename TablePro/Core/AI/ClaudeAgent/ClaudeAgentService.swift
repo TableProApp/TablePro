@@ -23,7 +23,7 @@ final class ClaudeAgentService {
 
     static let shared = ClaudeAgentService()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ClaudeAgentService")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ClaudeAgentService")
 
     private(set) var state: InstallState = .unknown
     private(set) var isRefreshing = false
@@ -66,7 +66,7 @@ final class ClaudeAgentService {
     var statusDescription: String {
         switch state {
         case .unknown:
-            return String(localized: "Checking for the Claude Code command line tool...")
+            return String(localized: "Checking for the Claude Code command line tool…")
         case .notInstalled:
             return String(localized: "Claude Code is not installed.")
         case .outdated(let version):

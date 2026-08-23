@@ -1,23 +1,14 @@
 import Foundation
-import os
 
 public struct SwitchDatabaseTool: MCPToolImplementation {
     public static let name = "switch_database"
-    public static let description = String(localized: "Switch the active database on a connection")
-    public static let inputSchema: JsonValue = .object([
-        "type": .string("object"),
-        "properties": .object([
-            "connection_id": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "UUID of the connection"))
-            ]),
-            "database": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "Database name to switch to"))
-            ])
-        ]),
-        "required": .array([.string("connection_id"), .string("database")])
-    ])
+    public static let title: String? = String(localized: "Switch Database")
+    public static let description = String(
+        localized: """
+        Move the connection's browse cursor to another database. This changes what the user sees in \
+        TablePro. To run one statement elsewhere, pass 'database' to that tool instead.
+        """
+    )
     public static let requiredScopes: Set<MCPScope> = [.toolsWrite]
     public static let annotations = MCPToolAnnotations(
         title: String(localized: "Switch Database"),
@@ -27,18 +18,33 @@ public struct SwitchDatabaseTool: MCPToolImplementation {
         openWorldHint: false
     )
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Tools")
+    public static let inputSchema = MCPToolSchema.object(
+        properties: [
+            "connection_id": MCPToolSchema.connectionId,
+            "database": MCPToolSchema.string(String(localized: "Database name to switch to"))
+        ],
+        required: ["connection_id", "database"]
+    )
+
+    public static let outputSchema: JsonValue? = MCPToolSchema.object(
+        properties: [
+            "status": MCPToolSchema.string(String(localized: "Always 'switched' on success")),
+            "connection_id": MCPToolSchema.string(String(localized: "Connection UUID")),
+            "current_database": MCPToolSchema.string(String(localized: "Database now selected"))
+        ],
+        required: ["status", "connection_id", "current_database"]
+    )
 
     public init() {}
 
-    public func call(
+    public func perform(
         arguments: JsonValue,
         context: MCPRequestContext,
         services: MCPToolServices
     ) async throws -> MCPToolCallResult {
+        try MCPArgumentDecoder.rejectUnknownKeys(arguments, allowed: ["connection_id", "database"])
         let connectionId = try MCPArgumentDecoder.requireUuid(arguments, key: "connection_id")
-        let database = try MCPArgumentDecoder.requireString(arguments, key: "database")
-        Self.logger.debug("switch_database tool invoked for connection \(connectionId.uuidString, privacy: .public)")
+        let database = try MCPArgumentDecoder.requireNonEmptyString(arguments, key: "database")
         let payload = try await services.connectionBridge.switchDatabase(
             connectionId: connectionId,
             database: database

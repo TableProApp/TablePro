@@ -43,7 +43,7 @@ public enum ConnectionExportError: LocalizedError {
 
 // MARK: - Export Envelope
 
-public struct ConnectionExportEnvelope: Codable {
+public struct ConnectionExportEnvelope: Codable, Sendable {
     public let formatVersion: Int
     public let exportedAt: Date
     public let appVersion: String
@@ -73,7 +73,7 @@ public struct ConnectionExportEnvelope: Codable {
 
 // MARK: - Exportable Connection
 
-public struct ExportableConnection: Codable {
+public struct ExportableConnection: Codable, Sendable {
     public let name: String
     public let host: String
     public let port: Int
@@ -150,11 +150,39 @@ public struct ExportableConnection: Codable {
 }
 
 public extension ExportableConnection {
-    static let importBlockedAdditionalFieldKeys: Set<String> = ["preConnectScript"]
+    static let importBlockedAdditionalFieldKeys: Set<String> = [
+        "preconnectscript",
+        "pretunnelhost",
+        "pretunnelport",
+        "promptforpassword",
+        "sslclientkeypassphrase",
+        "usepgpass",
+    ]
+
+    static let importBlockedAdditionalFieldPrefixes: Set<String> = ["aws"]
+
+    static func isImportBlockedAdditionalFieldKey(_ key: String) -> Bool {
+        let normalized = key.lowercased()
+        if importBlockedAdditionalFieldKeys.contains(normalized) { return true }
+        return importBlockedAdditionalFieldPrefixes.contains { normalized.hasPrefix($0) }
+    }
+
+    func withoutStartupCommands() -> ExportableConnection {
+        guard startupCommands != nil else { return self }
+        return ExportableConnection(
+            name: name, host: host, port: port, database: database,
+            username: username, type: type, sshConfig: sshConfig,
+            sslConfig: sslConfig, color: color, tagName: tagName, tagNames: tagNames,
+            groupName: groupName, sshProfileId: sshProfileId,
+            safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
+            additionalFields: additionalFields, redisDatabase: redisDatabase,
+            startupCommands: nil, localOnly: localOnly
+        )
+    }
 
     func sanitizedForImport() -> ExportableConnection {
         guard let additionalFields else { return self }
-        let allowed = additionalFields.filter { !Self.importBlockedAdditionalFieldKeys.contains($0.key) }
+        let allowed = additionalFields.filter { !Self.isImportBlockedAdditionalFieldKey($0.key) }
         guard allowed.count != additionalFields.count else { return self }
         return ExportableConnection(
             name: name, host: host, port: port, database: database,
@@ -170,7 +198,7 @@ public extension ExportableConnection {
 
 // MARK: - SSH Config
 
-public struct ExportableSSHConfig: Codable {
+public struct ExportableSSHConfig: Codable, Sendable {
     public let enabled: Bool
     public let host: String
     public let port: Int?
@@ -213,7 +241,7 @@ public struct ExportableSSHConfig: Codable {
     }
 }
 
-public struct ExportableJumpHost: Codable {
+public struct ExportableJumpHost: Codable, Sendable {
     public let host: String
     public let port: Int?
     public let username: String
@@ -231,7 +259,7 @@ public struct ExportableJumpHost: Codable {
 
 // MARK: - SSL Config
 
-public struct ExportableSSLConfig: Codable {
+public struct ExportableSSLConfig: Codable, Sendable {
     public let mode: String
     public let caCertificatePath: String?
     public let clientCertificatePath: String?
@@ -247,7 +275,7 @@ public struct ExportableSSLConfig: Codable {
 
 // MARK: - Group & Tag
 
-public struct ExportableGroup: Codable {
+public struct ExportableGroup: Codable, Sendable {
     public let name: String
     public let color: String?
 
@@ -257,7 +285,7 @@ public struct ExportableGroup: Codable {
     }
 }
 
-public struct ExportableTag: Codable {
+public struct ExportableTag: Codable, Sendable {
     public let name: String
     public let color: String?
 
@@ -269,7 +297,7 @@ public struct ExportableTag: Codable {
 
 // MARK: - Credentials
 
-public struct ExportableCredentials: Codable {
+public struct ExportableCredentials: Codable, Sendable {
     public let password: String?
     public let sshPassword: String?
     public let keyPassphrase: String?

@@ -286,22 +286,30 @@ public class TextViewController: NSViewController {
     /// - Parameter text: The new contents of the editor.
     public func setText(_ text: String) {
         self.textView.setText(text)
+        self.foldModel?.documentDidReplace()
         self.setUpHighlighter()
         self.gutterView.setNeedsDisplay(self.gutterView.frame)
     }
 
-    /// Release heavy resources (tree-sitter, highlighter, text storage) early,
-    /// without waiting for deinit. Call when the editor is no longer visible but
-    /// SwiftUI may keep the controller alive in @State.
+    /// Release the caches an editor can rebuild (tree-sitter, highlighter, coordinators, observers)
+    /// without waiting for deinit. Called from ``SourceEditor/dismantleNSViewController(_:coordinator:)``
+    /// when SwiftUI removes the editor for good.
+    ///
+    /// It frees caches only. The text storage is the document, not a cache, and nothing here
+    /// rebuilds it: `setUpHighlighter` and `setUpKeyBindings` run in `loadView` alone, so a
+    /// controller that survives this call has no highlighting and no key bindings for the rest of
+    /// its life. Discarding the text here blanked the editor whenever the call was reached on a
+    /// controller that came back.
     public func releaseHeavyState() {
+        foldModel?.destroy()
         if let highlighter {
             textView?.removeStorageDelegate(highlighter)
         }
         highlighter = nil
         treeSitterClient = nil
         highlightProviders.removeAll()
-        // Don't call textCoordinators.destroy() here — the caller (coordinator.destroy())
-        // is already a coordinator, so calling back into destroy() causes infinite recursion.
+        // Don't call textCoordinators.destroy() here. The caller may already be a coordinator,
+        // so calling back into destroy() causes infinite recursion.
         textCoordinators.removeAll()
         cancellables.forEach { $0.cancel() }
         cancellables.removeAll()
@@ -309,7 +317,6 @@ public class TextViewController: NSViewController {
             NSEvent.removeMonitor(localEventMonitor)
         }
         localEventMonitor = nil
-        textView?.setText("")
     }
 
     deinit {

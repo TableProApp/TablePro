@@ -111,7 +111,7 @@ internal struct CompareSyncScriptView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button(String(localized: "Copy")) { copyScript() }
-                Button(String(localized: "Save...")) { isExporting = true }
+                Button(String(localized: "Save…")) { isExporting = true }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)

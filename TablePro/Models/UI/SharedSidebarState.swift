@@ -52,7 +52,7 @@ final class SharedSidebarState {
 
     private func commitTableOpen(database: String?, schema: String?, name: String, isView: Bool) {
         QuickSwitcherFrecencyStore(connectionId: connectionId).recordAccess(
-            itemId: QuickSwitcherItem.tableItemId(name: name, isView: isView)
+            itemId: QuickSwitcherItem.tableItemId(name: name, schema: schema)
         )
         guard AppSettingsManager.shared.general.showRecentTables else { return }
         recentTables = RecentTablesStore.shared.record(
@@ -87,7 +87,7 @@ final class SharedSidebarState {
 
     var selectedSidebarTab: SidebarTab {
         didSet {
-            UserDefaults.standard.set(
+            AppStorageEnvironment.shared.defaults.set(
                 selectedSidebarTab.rawValue,
                 forKey: SidebarPersistenceKey.selectedTab(connectionId: connectionId)
             )
@@ -96,7 +96,7 @@ final class SharedSidebarState {
 
     var sidebarLayout: SidebarLayout {
         didSet {
-            UserDefaults.standard.set(
+            AppStorageEnvironment.shared.defaults.set(
                 sidebarLayout.rawValue,
                 forKey: SidebarPersistenceKey.layout(connectionId: connectionId)
             )
@@ -112,28 +112,37 @@ final class SharedSidebarState {
         }
     }
 
+    var favoriteDatabaseEnvironmentFilter: FavoriteDatabaseEnvironmentFilter {
+        didSet {
+            AppStorageEnvironment.shared.defaults.set(
+                favoriteDatabaseEnvironmentFilter.rawValue,
+                forKey: SidebarPersistenceKey.favoriteDatabaseEnvironmentFilter(connectionId: connectionId)
+            )
+        }
+    }
+
     var selectedFavorite: FavoriteSelection? {
         didSet {
             guard oldValue != selectedFavorite else { return }
             let key = SidebarPersistenceKey.selectedFavorite(connectionId: connectionId)
             if let rawValue = selectedFavorite?.rawValue {
-                UserDefaults.standard.set(rawValue, forKey: key)
+                AppStorageEnvironment.shared.defaults.set(rawValue, forKey: key)
             } else {
-                UserDefaults.standard.removeObject(forKey: key)
+                AppStorageEnvironment.shared.defaults.removeObject(forKey: key)
             }
         }
     }
 
     static var defaultLayout: SidebarLayout {
         get {
-            guard let raw = UserDefaults.standard.string(forKey: SidebarPersistenceKey.defaultLayout),
+            guard let raw = AppStorageEnvironment.shared.defaults.string(forKey: SidebarPersistenceKey.defaultLayout),
                   let layout = SidebarLayout(rawValue: raw) else {
                 return .flat
             }
             return layout
         }
         set {
-            UserDefaults.standard.set(newValue.rawValue, forKey: SidebarPersistenceKey.defaultLayout)
+            AppStorageEnvironment.shared.defaults.set(newValue.rawValue, forKey: SidebarPersistenceKey.defaultLayout)
         }
     }
 
@@ -142,21 +151,25 @@ final class SharedSidebarState {
     private init(connectionId: UUID) {
         self.connectionId = connectionId
         let key = SidebarPersistenceKey.selectedTab(connectionId: connectionId)
-        if let raw = UserDefaults.standard.string(forKey: key),
+        if let raw = AppStorageEnvironment.shared.defaults.string(forKey: key),
            let tab = SidebarTab(rawValue: raw) {
             self.selectedSidebarTab = tab
         } else {
             self.selectedSidebarTab = .tables
         }
         let layoutKey = SidebarPersistenceKey.layout(connectionId: connectionId)
-        if let raw = UserDefaults.standard.string(forKey: layoutKey),
+        if let raw = AppStorageEnvironment.shared.defaults.string(forKey: layoutKey),
            let layout = SidebarLayout(rawValue: raw) {
             self.sidebarLayout = layout
         } else {
             self.sidebarLayout = SharedSidebarState.defaultLayout
         }
         self.databaseFilterSelected = DatabaseTreeFilterStorage.shared.selectedDatabases(connectionId: connectionId)
-        self.selectedFavorite = UserDefaults.standard.string(
+        let environmentFilterKey = SidebarPersistenceKey.favoriteDatabaseEnvironmentFilter(connectionId: connectionId)
+        self.favoriteDatabaseEnvironmentFilter = AppStorageEnvironment.shared.defaults
+            .string(forKey: environmentFilterKey)
+            .flatMap(FavoriteDatabaseEnvironmentFilter.init(rawValue:)) ?? .all
+        self.selectedFavorite = AppStorageEnvironment.shared.defaults.string(
             forKey: SidebarPersistenceKey.selectedFavorite(connectionId: connectionId)
         ).flatMap(FavoriteSelection.init(rawValue:))
         if AppSettingsManager.shared.general.showRecentTables {
@@ -170,6 +183,7 @@ final class SharedSidebarState {
         self.selectedSidebarTab = .tables
         self.sidebarLayout = .flat
         self.databaseFilterSelected = []
+        self.favoriteDatabaseEnvironmentFilter = .all
         self.selectedFavorite = nil
     }
 

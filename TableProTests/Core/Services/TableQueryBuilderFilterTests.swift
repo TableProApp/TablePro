@@ -12,7 +12,18 @@ import Testing
 
 @Suite("Table Query Builder - Filtered Query Fallback")
 struct TableQueryBuilderFilteredQueryTests {
-    private let builder = TableQueryBuilder(databaseType: .mysql)
+    /// The dialect is what carries the quoting and the operators, so a builder without one emits no
+    /// WHERE at all: that is what `TableQueryBuilderNoSQLTests` asserts for MongoDB. These cases are
+    /// about the SQL fallback, so they need a dialect the way the count suite below has one. Built
+    /// without it, they were asserting behaviour the builder stopped having when the dialect became
+    /// the source of SQL syntax.
+    private static let mysqlDialect = SQLDialectDescriptor(
+        identifierQuote: "`", keywords: [], functions: [], dataTypes: [],
+        regexSyntax: .regexp, booleanLiteralStyle: .numeric,
+        likeEscapeStyle: .implicit, paginationStyle: .limit
+    )
+
+    private let builder = TableQueryBuilder(databaseType: .mysql, dialect: Self.mysqlDialect)
 
     @Test("buildFilteredQuery with enabled filter produces WHERE clause")
     func filteredQueryWithEnabledFilter() {

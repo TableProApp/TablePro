@@ -4,10 +4,7 @@
 //
 
 import Foundation
-import os
 import SwiftUI
-
-private let filterStateLog = Logger(subsystem: "com.TablePro", category: "FilterState")
 
 @MainActor @Observable
 final class FilterCoordinator {
@@ -19,17 +16,24 @@ final class FilterCoordinator {
 
     // MARK: - Filtering
 
-    func applyFilters(_ filters: [TableFilter]) {
+    func applyFilters(_ filters: [TableFilter], logicMode: FilterLogicMode? = nil) {
         guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
               let tableName = tab.tableContext.tableName else { return }
 
         let capturedTabIndex = tabIndex
         let capturedTableName = tableName
         let capturedFilters = filters
+        let capturedLogicMode = logicMode
         parent.confirmDiscardChangesIfNeeded(action: .filter) { [weak self] confirmed in
             guard let self, confirmed else { return }
             guard capturedTabIndex < parent.tabManager.tabs.count else { return }
 
+            if let capturedLogicMode {
+                parent.tabManager.mutate(at: capturedTabIndex) {
+                    $0.filterState.filterLogicMode = capturedLogicMode
+                    $0.filterState.isVisible = true
+                }
+            }
             parent.tabManager.mutate(at: capturedTabIndex) { $0.pagination.reset() }
 
             let tab = parent.tabManager.tabs[capturedTabIndex]
@@ -41,6 +45,7 @@ final class FilterCoordinator {
                 logicMode: tab.filterState.filterLogicMode,
                 sortState: tab.sortState,
                 columns: buffer.columns,
+                columnTypes: buffer.columnTypes,
                 selectColumns: parent.selectColumns(for: tab),
                 limit: tab.pagination.pageSize,
                 offset: tab.pagination.currentOffset
@@ -171,9 +176,9 @@ final class FilterCoordinator {
         let tab = parent.tabManager.tabs[tabIndex]
         let buffer = parent.tabSessionRegistry.tableRows(for: tab.id)
         let hasFilters = tab.filterState.hasAppliedFilters
-        let columns = buffer.columns.isEmpty
-            ? parent.effectiveResultColumns(for: tab)
-            : buffer.columns
+        let hasBufferedColumns = !buffer.columns.isEmpty
+        let columns = hasBufferedColumns ? buffer.columns : parent.effectiveResultColumns(for: tab)
+        let columnTypes = hasBufferedColumns ? buffer.columnTypes : []
 
         let newQuery: String
         if usesBrowseSearch, tab.filterState.hasActiveBrowseSearch {
@@ -197,6 +202,7 @@ final class FilterCoordinator {
                 logicMode: tab.filterState.filterLogicMode,
                 sortState: tab.sortState,
                 columns: columns,
+                columnTypes: columnTypes,
                 selectColumns: parent.selectColumns(for: tab),
                 limit: tab.pagination.pageSize,
                 offset: tab.pagination.currentOffset
@@ -248,6 +254,24 @@ final class FilterCoordinator {
         mutateSelectedTabFilterState { state in
             state.filters.append(newFilter)
         }
+    }
+
+    /// One CONTAINS row per searchable column, joined with OR, replacing the filter set. Only the
+    /// find bar calls this, and only when no filters are applied, because `filterLogicMode` is one
+    /// mode for the whole array: switching it to OR would silently loosen filters the user wrote.
+    func applyCrossColumnSearch(term: String, columns: [String]) {
+        guard !columns.isEmpty else { return }
+
+        let filters = columns.map { column in
+            var filter = TableFilter()
+            filter.columnName = column
+            filter.filterOperator = .contains
+            filter.value = term
+            filter.isEnabled = true
+            return filter
+        }
+
+        applyFilters(filters, logicMode: .or)
     }
 
     func addFilterForColumn(_ columnName: String) {
@@ -462,7 +486,7 @@ final class FilterCoordinator {
     // MARK: - Panel Visibility
 
     func toggleFilterPanel() {
-        withAnimation(.easeInOut(duration: 0.15)) {
+        withMotion(.easeInOut(duration: 0.15)) {
             mutateSelectedTabFilterState { state in
                 state.isVisible.toggle()
             }
@@ -470,7 +494,7 @@ final class FilterCoordinator {
     }
 
     func showFilterPanel() {
-        withAnimation(.easeInOut(duration: 0.15)) {
+        withMotion(.easeInOut(duration: 0.15)) {
             mutateSelectedTabFilterState { state in
                 state.isVisible = true
             }
@@ -478,7 +502,7 @@ final class FilterCoordinator {
     }
 
     func closeFilterPanel() {
-        withAnimation(.easeInOut(duration: 0.15)) {
+        withMotion(.easeInOut(duration: 0.15)) {
             mutateSelectedTabFilterState { state in
                 state.isVisible = false
             }
@@ -608,7 +632,12 @@ final class FilterCoordinator {
         guard let dialect = PluginManager.shared.sqlDialect(for: databaseType) else {
             return "-- Filters are applied natively"
         }
-        let generator = FilterSQLGenerator(dialect: dialect)
+        let buffer = parent.tabManager.selectedTab.map { parent.tabSessionRegistry.tableRows(for: $0.id) }
+        let generator = FilterSQLGenerator(
+            dialect: dialect,
+            columns: buffer?.columns ?? [],
+            columnTypes: buffer?.columnTypes ?? []
+        )
         let filtersToPreview = filtersForPreview(in: state)
 
         if filtersToPreview.isEmpty && !state.filters.isEmpty {
@@ -632,14 +661,5 @@ final class FilterCoordinator {
         var newState = parent.tabManager.tabs[index].filterState
         mutate(&newState)
         parent.tabManager.mutate(at: index) { $0.filterState = newState }
-        let tabId = parent.tabManager.tabs[index].id
-        if let session = parent.tabSessionRegistry.session(for: tabId) {
-            session.filterState = newState
-        } else {
-            filterStateLog.error(
-                "TabSession missing for selected tab \(tabId, privacy: .public); QueryTab updated but session mirror skipped"
-            )
-            assertionFailure("TabSession missing for selected tab: registry sync regression")
-        }
     }
 }

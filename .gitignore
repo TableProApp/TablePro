@@ -2,6 +2,22 @@
 #
 # gitignore contributors: remember to update Global/Xcode.gitignore, Objective-C.gitignore & Swift.gitignore
 
+## Generated Xcode projects
+#
+# Both projects are generated from their project.yml by scripts/generate-project.sh.
+# Package.resolved is not generated: it pins every Swift package revision for CI, so
+# it stays tracked inside the otherwise-ignored project bundles.
+/TablePro.xcodeproj/
+!/TablePro.xcodeproj/project.xcworkspace/
+!/TablePro.xcodeproj/project.xcworkspace/xcshareddata/
+!/TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+!/TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+/TableProMobile/TableProMobile.xcodeproj/
+!/TableProMobile/TableProMobile.xcodeproj/project.xcworkspace/
+!/TableProMobile/TableProMobile.xcodeproj/project.xcworkspace/xcshareddata/
+!/TableProMobile/TableProMobile.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+!/TableProMobile/TableProMobile.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+
 ## User settings
 xcuserdata/
 
@@ -136,25 +152,35 @@ Derived/
 # SwiftFormat
 .swiftformat.lock
 
-# Sourcery
-Sourcery/GeneratedMocks
-
 # XCFilelists
 *.xcfilelists
 
 # Build artifacts
-build/
 *.xcarchive
 
 # Static libraries (downloaded from GitHub Releases via scripts/download-libs.sh)
 Libs/*.a
 Libs/.downloaded
 Libs/dylibs/
-Libs/ios/
-fix-1322-plugin-abi-and-registry-overhaul.diff
+Libs/ios/*
+# The integrity baseline for the iOS xcframeworks is tracked, the way Libs/checksums.sha256 is.
+# The directory pattern above has to end in /* rather than /, because git cannot re-include a
+# file whose parent directory is itself excluded.
+!Libs/ios/checksums.sha256
+
+# Rust driver build outputs. The vendored crates are workspace members, so the bridge
+# lockfile is the only one cargo writes. lib/ holds the staticlib slices build-dameng.sh
+# links into the plugin; they stay out of Libs/, which download-libs.sh checksum-verifies.
+Native/DamengBridge/**/target/
+# No trailing slash: a pattern ending in one matches a directory only, so a symlink named `lib`
+# slipped past it and was committed, pointing at one machine's absolute path. Every checkout
+# elsewhere then got a dangling link and `mkdir -p` in build-dameng.sh failed on it.
+Native/DamengBridge/lib
 
 # Issue analysis blueprints (local only)
 .analysis/
 .docs/
-Local.xcconfig
 /plans/reports
+
+# Working copies produced by scripts/localization.py; the catalog is the source of truth
+Localization/

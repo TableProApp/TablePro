@@ -13,7 +13,10 @@ final class AppSettingsManager {
         didSet {
             general.language.apply()
             storage.saveGeneral(general)
-            syncTracker.markDirty(.settings, id: "general")
+            if oldValue.showWorkspaceRail != general.showWorkspaceRail {
+                appEvents.workspaceRailVisibilityChanged.send(())
+            }
+            syncTracker.markDirty(.settings, id: AppSettingsCategory.general)
         }
     }
 
@@ -25,7 +28,7 @@ final class AppSettingsManager {
                 lightThemeId: appearance.preferredLightThemeId,
                 darkThemeId: appearance.preferredDarkThemeId
             )
-            syncTracker.markDirty(.settings, id: "appearance")
+            syncTracker.markDirty(.settings, id: AppSettingsCategory.appearance)
         }
     }
 
@@ -34,13 +37,29 @@ final class AppSettingsManager {
             storage.saveEditor(editor)
             themeEngine.updateEditorSettings(
                 highlightCurrentLine: editor.highlightCurrentLine,
+                highlightCurrentStatement: editor.highlightCurrentStatement,
                 showLineNumbers: editor.showLineNumbers,
                 tabWidth: editor.clampedTabWidth,
 
                 wordWrap: editor.wordWrap
             )
             appEvents.editorSettingsChanged.send(())
-            syncTracker.markDirty(.settings, id: "editor")
+            syncTracker.markDirty(.settings, id: AppSettingsCategory.editor)
+        }
+    }
+
+    var notifications: NotificationSettings {
+        didSet {
+            guard !isValidating else { return }
+            var validated = notifications
+            validated.thresholdSeconds = notifications.validatedThresholdSeconds
+            if validated != notifications {
+                isValidating = true
+                notifications = validated
+                isValidating = false
+            }
+            storage.saveNotifications(notifications)
+            syncTracker.markDirty(.settings, id: AppSettingsCategory.notifications)
         }
     }
 
@@ -60,7 +79,7 @@ final class AppSettingsManager {
             storage.saveDataGrid(validated)
             dateFormattingService.updateFormat(validated.dateFormat)
             appEvents.dataGridSettingsChanged.send(())
-            syncTracker.markDirty(.settings, id: "dataGrid")
+            syncTracker.markDirty(.settings, id: AppSettingsCategory.dataGrid)
         }
     }
 
@@ -79,28 +98,30 @@ final class AppSettingsManager {
 
             storage.saveHistory(validated)
             Task { await applyHistorySettingsImmediately() }
-            syncTracker.markDirty(.settings, id: "history")
+            syncTracker.markDirty(.settings, id: AppSettingsCategory.history)
         }
     }
 
     var tabs: TabSettings {
         didSet {
             storage.saveTabs(tabs)
-            syncTracker.markDirty(.settings, id: "tabs")
+            syncTracker.markDirty(.settings, id: AppSettingsCategory.tabs)
         }
     }
 
     var keyboard: KeyboardSettings {
         didSet {
             storage.saveKeyboard(keyboard)
-            syncTracker.markDirty(.settings, id: "keyboard")
+            syncTracker.markDirty(.settings, id: AppSettingsCategory.keyboard)
+            MainMenuBuilder.syncKeyEquivalents(keyboard: keyboard)
+            appEvents.keyboardSettingsChanged.send(())
         }
     }
 
     var ai: AISettings {
         didSet {
             storage.saveAI(ai)
-            syncTracker.markDirty(.settings, id: "ai")
+            syncTracker.markDirty(.settings, id: AppSettingsCategory.ai)
             appEvents.aiSettingsChanged.send(())
             let hadCopilot = oldValue.providers.contains(where: { $0.type == .copilot })
             let hasCopilot = ai.providers.contains(where: { $0.type == .copilot })
@@ -119,7 +140,6 @@ final class AppSettingsManager {
     var sync: SyncSettings {
         didSet {
             storage.saveSync(sync)
-            syncTracker.markDirty(.settings, id: "sync")
         }
     }
 
@@ -130,10 +150,6 @@ final class AppSettingsManager {
             validated.maxRowLimit = mcp.validatedMaxRowLimit
             validated.defaultRowLimit = mcp.validatedDefaultRowLimit
             validated.queryTimeoutSeconds = mcp.validatedQueryTimeoutSeconds
-            if validated.allowRemoteConnections, !validated.requireAuthentication {
-                validated.requireAuthentication = true
-            }
-
             if validated != mcp {
                 isValidating = true
                 mcp = validated
@@ -141,12 +157,10 @@ final class AppSettingsManager {
             }
 
             storage.saveMCP(validated)
-            syncTracker.markDirty(.settings, id: "mcp")
             let enabledChanged = mcp.enabled != oldValue.enabled
             let portChanged = mcp.port != oldValue.port
-            let remoteChanged = mcp.allowRemoteConnections != oldValue.allowRemoteConnections
             let authChanged = mcp.requireAuthentication != oldValue.requireAuthentication
-            if enabledChanged || portChanged || remoteChanged || authChanged {
+            if enabledChanged || portChanged || authChanged {
                 if mcp.enabled {
                     mcpServerManager.scheduleRestart(port: UInt16(clamping: mcp.port))
                 } else {
@@ -174,7 +188,12 @@ final class AppSettingsManager {
         }
 
         let defaultName = String(localized: "Default token")
-        let result = await tokenStore.generate(name: defaultName, permissions: .fullAccess)
+        let result = try? await tokenStore.generate(
+            name: defaultName,
+            permissions: .readWrite,
+            connectionAccess: .all,
+            expiresAt: nil
+        )
         mcp.requireAuthentication = value
         return result
     }
@@ -218,6 +237,7 @@ final class AppSettingsManager {
         self.ai = Self.migrateAI(storage.loadAI())
         self.sync = storage.loadSync()
         self.mcp = storage.loadMCP()
+        self.notifications = storage.loadNotifications()
 
         general.language.apply()
 
@@ -229,6 +249,7 @@ final class AppSettingsManager {
 
         themeEngine.updateEditorSettings(
             highlightCurrentLine: editor.highlightCurrentLine,
+            highlightCurrentStatement: editor.highlightCurrentStatement,
             showLineNumbers: editor.showLineNumbers,
             tabWidth: editor.clampedTabWidth,
             wordWrap: editor.wordWrap
@@ -254,7 +275,7 @@ final class AppSettingsManager {
         return migrated
     }
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "AppSettingsManager")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "AppSettingsManager")
 
     private func applyHistorySettingsImmediately() async {
         await queryHistoryManager.applySettingsChange()

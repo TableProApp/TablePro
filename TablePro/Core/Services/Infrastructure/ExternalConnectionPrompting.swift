@@ -23,6 +23,18 @@ internal struct ExternalConnectionAlertPrompt: ExternalConnectionPrompting {
         for connection: DatabaseConnection,
         offerAlwaysAllow: Bool
     ) async -> ExternalConnectionDecision {
+        let response = await present(Self.makeAlert(for: connection, offerAlwaysAllow: offerAlwaysAllow))
+        switch response {
+        case .alertFirstButtonReturn:
+            return .connect
+        case .alertThirdButtonReturn where offerAlwaysAllow:
+            return .alwaysAllow
+        default:
+            return .cancel
+        }
+    }
+
+    internal static func makeAlert(for connection: DatabaseConnection, offerAlwaysAllow: Bool) -> NSAlert {
         let alert = NSAlert()
         alert.messageText = String(localized: "Open External Database Connection?")
         alert.informativeText = String(
@@ -37,26 +49,17 @@ internal struct ExternalConnectionAlertPrompt: ExternalConnectionPrompting {
             details(for: connection).joined(separator: "\n")
         )
         alert.alertStyle = .warning
-        alert.addButton(withTitle: String(localized: "Connect"))
-        alert.addButton(withTitle: String(localized: "Cancel"))
+        /// Connecting is the risky half of this decision, so it gives up Return. Escape stays on
+        /// Cancel, which is the only binding that dismisses the alert from the keyboard.
+        alert.addButton(withTitle: String(localized: "Connect")).keyEquivalent = ""
+        AlertHelper.addCancelButton(to: alert, title: String(localized: "Cancel"))
         if offerAlwaysAllow {
             alert.addButton(withTitle: String(localized: "Always Allow"))
         }
-        alert.buttons[0].keyEquivalent = ""
-        alert.buttons[1].keyEquivalent = "\u{1b}"
-
-        let response = await present(alert)
-        switch response {
-        case .alertFirstButtonReturn:
-            return .connect
-        case .alertThirdButtonReturn where offerAlwaysAllow:
-            return .alwaysAllow
-        default:
-            return .cancel
-        }
+        return alert
     }
 
-    private func details(for connection: DatabaseConnection) -> [String] {
+    private static func details(for connection: DatabaseConnection) -> [String] {
         var details: [String] = [
             String(format: String(localized: "Host: %@"), "\(connection.host):\(connection.port)")
         ]

@@ -2,10 +2,13 @@
 //  DatabaseManagerSchemaChangeRoutingTests.swift
 //  TableProTests
 //
-//  Pins the fix for #2015: a table structure save must run its DDL on the connection
-//  and database the editing tab owns, never on whichever session was activated last.
+//  Pins the fix for #2015 and #2026: a table structure save runs its DDL on the scope
+//  the editing tab owns, and moving the shared driver there is a mechanical detail no
+//  UI reads. The save must not drag the sidebar, the toolbar or the saved default
+//  database onto the edited tab's database.
 //
 
+import Combine
 import Foundation
 @testable import TablePro
 import TableProPluginKit
@@ -36,7 +39,7 @@ private class SchemaRoutingBaseDriver {
     }
 }
 
-private final class SchemaRoutingDriver: SchemaRoutingBaseDriver, PluginDatabaseDriver {
+private final class SchemaRoutingDriver: SchemaRoutingBaseDriver, PluginDatabaseDriver, @unchecked Sendable {
     private(set) var executedQueries: [String] = []
     private(set) var switchedDatabases: [String] = []
     var switchDatabaseError: Error?
@@ -86,26 +89,37 @@ struct DatabaseManagerSchemaChangeRoutingTests {
         return .addColumn(column)
     }
 
+    /// `savedDatabase` is the connection's persisted default, `browseDatabase` is where the
+    /// sidebar currently points. The tab's scope is passed separately at every call site so
+    /// all three can be distinguished.
     private static func makeSession(
         type: DatabaseType = .mysql,
-        database: String = "testdb",
-        currentDatabase: String? = nil,
-        currentSchema: String? = nil
+        savedDatabase: String = "testdb",
+        browseDatabase: String? = nil,
+        browseSchema: String? = nil
     ) -> (DatabaseConnection, SchemaRoutingDriver) {
-        let connection = TestFixtures.makeConnection(database: database, type: type)
-        let pluginDriver = SchemaRoutingDriver(currentSchema: currentSchema)
+        let connection = TestFixtures.makeConnection(database: savedDatabase, type: type)
+        let pluginDriver = SchemaRoutingDriver(currentSchema: browseSchema)
         let adapter = PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
         var session = ConnectionSession(connection: connection, driver: adapter)
-        session.currentDatabase = currentDatabase ?? database
-        session.currentSchema = currentSchema
+        session.browseDatabase = browseDatabase ?? savedDatabase
+        session.browseSchema = browseSchema
         DatabaseManager.shared.injectSession(session, for: connection.id)
         return (connection, pluginDriver)
     }
 
+    private static func makeScope(
+        _ connection: DatabaseConnection,
+        database: String,
+        schema: String? = nil
+    ) -> DatabaseScope? {
+        DatabaseScope(connectionId: connection.id, database: database, schema: schema)
+    }
+
     @Test("Schema changes run on the requested connection, not the last activated one")
     func schemaChangeUsesRequestedConnection() async throws {
-        let (connectionA, driverA) = Self.makeSession(database: "alpha")
-        let (connectionB, driverB) = Self.makeSession(database: "beta")
+        let (connectionA, driverA) = Self.makeSession(savedDatabase: "alpha")
+        let (connectionB, driverB) = Self.makeSession(savedDatabase: "beta")
         DatabaseManager.shared.lastActiveSessionId = connectionA.id
         defer {
             DatabaseManager.shared.removeSession(for: connectionA.id)
@@ -113,13 +127,12 @@ struct DatabaseManagerSchemaChangeRoutingTests {
             DatabaseManager.shared.lastActiveSessionId = nil
         }
 
+        let scope = try #require(Self.makeScope(connectionB, database: "beta"))
         try await DatabaseManager.shared.executeSchemaChanges(
             tableName: "orders",
             changes: [Self.makeAddColumnChange()],
             databaseType: .mysql,
-            databaseName: "beta",
-            schemaName: nil,
-            connectionId: connectionB.id
+            scope: scope
         )
 
         #expect(driverB.executedQueries.count == 1)
@@ -127,57 +140,65 @@ struct DatabaseManagerSchemaChangeRoutingTests {
         #expect(driverA.executedQueries.isEmpty)
     }
 
-    @Test("Schema changes pin the editing tab's database before running any DDL")
-    func schemaChangePinsDatabaseFirst() async throws {
-        let (connection, driver) = Self.makeSession(database: "orders", currentDatabase: "inventory")
+    @Test("A save runs on the tab's database without moving the browse cursor")
+    func schemaChangeRunsOnTheTabsDatabaseWithoutMovingTheBrowseCursor() async throws {
+        let (connection, driver) = Self.makeSession(
+            savedDatabase: "analytics",
+            browseDatabase: "inventory"
+        )
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
+        let scope = try #require(Self.makeScope(connection, database: "orders"))
         try await DatabaseManager.shared.executeSchemaChanges(
             tableName: "orders",
             changes: [Self.makeAddColumnChange()],
             databaseType: .mysql,
-            databaseName: "orders",
-            schemaName: nil,
-            connectionId: connection.id
+            scope: scope
         )
 
-        #expect(driver.switchedDatabases == ["orders"])
-        #expect(DatabaseManager.shared.session(for: connection.id)?.currentDatabase == "orders")
+        #expect(driver.switchedDatabases.allSatisfy { $0 == "orders" })
+        #expect(!driver.switchedDatabases.isEmpty)
         #expect(driver.executedQueries.count == 1)
+
+        let session = DatabaseManager.shared.session(for: connection.id)
+        #expect(session?.browseDatabase == "inventory")
+        #expect(session?.connection.database == "analytics")
     }
 
-    @Test("Schema changes skip the switch when the session is already on the tab's database")
-    func schemaChangeSkipsRedundantSwitch() async throws {
-        let (connection, driver) = Self.makeSession(database: "orders")
+    @Test("A save always pins its target database because nothing tracks where the driver is")
+    func schemaChangeAlwaysPinsItsTargetDatabase() async throws {
+        let (connection, driver) = Self.makeSession(savedDatabase: "orders")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
+        let scope = try #require(Self.makeScope(connection, database: "orders"))
         try await DatabaseManager.shared.executeSchemaChanges(
             tableName: "orders",
             changes: [Self.makeAddColumnChange()],
             databaseType: .mysql,
-            databaseName: "orders",
-            schemaName: nil,
-            connectionId: connection.id
+            scope: scope
         )
 
-        #expect(driver.switchedDatabases.isEmpty)
+        #expect(!driver.switchedDatabases.isEmpty)
+        #expect(driver.switchedDatabases.allSatisfy { $0 == "orders" })
         #expect(driver.executedQueries.count == 1)
     }
 
     @Test("A failed database pin aborts the save before any DDL runs")
     func failedDatabasePinAbortsSave() async throws {
-        let (connection, driver) = Self.makeSession(database: "orders", currentDatabase: "inventory")
+        let (connection, driver) = Self.makeSession(
+            savedDatabase: "orders",
+            browseDatabase: "inventory"
+        )
         driver.switchDatabaseError = DatabaseError.queryFailed("unknown database")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
+        let scope = try #require(Self.makeScope(connection, database: "orders"))
         await #expect(throws: DatabaseError.self) {
             try await DatabaseManager.shared.executeSchemaChanges(
                 tableName: "orders",
                 changes: [Self.makeAddColumnChange()],
                 databaseType: .mysql,
-                databaseName: "orders",
-                schemaName: nil,
-                connectionId: connection.id
+                scope: scope
             )
         }
 
@@ -188,18 +209,16 @@ struct DatabaseManagerSchemaChangeRoutingTests {
     func reconnectRequiredEngineIsNotSwitched() async throws {
         let (connection, driver) = Self.makeSession(
             type: .postgresql,
-            database: "orders",
-            currentDatabase: "inventory"
+            savedDatabase: "orders"
         )
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
+        let scope = try #require(Self.makeScope(connection, database: "orders"))
         try await DatabaseManager.shared.executeSchemaChanges(
             tableName: "orders",
             changes: [Self.makeAddColumnChange()],
             databaseType: .postgresql,
-            databaseName: "orders",
-            schemaName: nil,
-            connectionId: connection.id
+            scope: scope
         )
 
         #expect(driver.switchedDatabases.isEmpty)
@@ -210,23 +229,60 @@ struct DatabaseManagerSchemaChangeRoutingTests {
     func schemaGroupedEngineKeepsTableSchema() async throws {
         let (connection, driver) = Self.makeSession(
             type: .mssql,
-            database: "orders",
-            currentDatabase: "inventory",
-            currentSchema: "sales"
+            savedDatabase: "orders",
+            browseDatabase: "inventory",
+            browseSchema: "sales"
         )
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
+        let scope = try #require(Self.makeScope(connection, database: "orders", schema: "sales"))
         try await DatabaseManager.shared.executeSchemaChanges(
             tableName: "orders",
             changes: [Self.makeAddColumnChange()],
             databaseType: .mssql,
-            databaseName: "orders",
-            schemaName: "sales",
-            connectionId: connection.id
+            scope: scope
         )
 
-        #expect(driver.switchedDatabases == ["orders"])
+        #expect(!driver.switchedDatabases.isEmpty)
+        #expect(driver.switchedDatabases.allSatisfy { $0 == "orders" })
         #expect(driver.currentSchema == "sales")
         #expect(driver.executedQueries.first?.contains("`sales`.`orders`") == true)
+    }
+
+    @Test("A save broadcasts a refresh scoped to the edited tab, not to the browse cursor")
+    func schemaChangeBroadcastsTheEditedScope() async throws {
+        let (connection, _) = Self.makeSession(
+            savedDatabase: "analytics",
+            browseDatabase: "inventory"
+        )
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let recorder = RefreshRequestRecorder()
+        let cancellable = AppCommands.shared.refreshData.sink { request in
+            recorder.record(request)
+        }
+        defer { cancellable.cancel() }
+
+        let scope = try #require(Self.makeScope(connection, database: "orders"))
+        try await DatabaseManager.shared.executeSchemaChanges(
+            tableName: "orders",
+            changes: [Self.makeAddColumnChange()],
+            databaseType: .mysql,
+            scope: scope
+        )
+
+        let broadcast = recorder.requests.filter { $0.connectionId == connection.id }
+        #expect(broadcast.count == 1)
+        #expect(broadcast.first?.scope == scope)
+        #expect(broadcast.first?.scope?.database == "orders")
+    }
+}
+
+@MainActor
+private final class RefreshRequestRecorder {
+    private(set) var requests: [DataRefreshRequest] = []
+
+    func record(_ request: DataRefreshRequest) {
+        requests.append(request)
     }
 }

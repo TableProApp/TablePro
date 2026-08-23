@@ -23,6 +23,7 @@ class CellOverlayBase: NSObject {
     private var appResignObserver: NSObjectProtocol?
     private var windowResignKeyObserver: NSObjectProtocol?
     private var outsideClickMonitor: Any?
+    var onRemove: (() -> Void)?
 
     private(set) var row: Int = -1
     private(set) var column: Int = -1
@@ -51,13 +52,15 @@ class CellOverlayBase: NSObject {
         self.columnIndex = columnIndex
         tableView.addSubview(container)
         self.container = container
-        underlyingCell(in: tableView, row: row, column: column)?.applyOverlayActive(true)
+        setOverlayCell(CellPosition(row: row, column: columnIndex), in: tableView)
         selectionOverlay(in: tableView)?.needsDisplay = true
         installDismissObservers()
     }
 
-    private func underlyingCell(in tableView: NSTableView, row: Int, column: Int) -> DataGridCellView? {
-        tableView.view(atColumn: column, row: row, makeIfNecessary: false) as? DataGridCellView
+    /// The cell under the overlay draws no text of its own behind it. A drawn cell has no view to
+    /// carry that, so the coordinator holds it and repaints the cell either side of the change.
+    private func setOverlayCell(_ position: CellPosition?, in tableView: NSTableView) {
+        (tableView as? KeyHandlingTableView)?.coordinator?.overlayCell = position
     }
 
     private func selectionOverlay(in tableView: NSTableView) -> GridSelectionOverlay? {
@@ -72,7 +75,7 @@ class CellOverlayBase: NSObject {
         guard let activeContainer = container else { return }
         removeDismissObservers()
         if let hostTableView {
-            underlyingCell(in: hostTableView, row: row, column: column)?.applyOverlayActive(false)
+            setOverlayCell(nil, in: hostTableView)
             selectionOverlay(in: hostTableView)?.needsDisplay = true
         }
         activeContainer.removeFromSuperview()
@@ -80,6 +83,7 @@ class CellOverlayBase: NSObject {
         if let hostTableView {
             hostTableView.window?.makeFirstResponder(hostTableView)
         }
+        onRemove?()
     }
 
     static func overlayFrame(for cellFrame: NSRect, value: String) -> NSRect {
@@ -98,11 +102,32 @@ class CellOverlayBase: NSObject {
         let container = CellOverlayContainerView(frame: frame)
         container.wantsLayer = true
         container.layer?.borderWidth = 2
-        container.layer?.borderColor = NSColor.keyboardFocusIndicatorColor.cgColor
         container.layer?.cornerRadius = 2
         container.layer?.masksToBounds = true
-        container.layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
+        container.applyLayerColors()
         return container
+    }
+
+    /// Lays a text view out the way an inline cell overlay needs.
+    ///
+    /// A cell holds one value, so the overlay behaves like a field editor and scrolls a long line
+    /// rather than wrapping it. Wrapping made TextKit 2 lay the whole value out before the overlay
+    /// could appear: measured at 206ms for a 256KB value and 816ms for 1MB, against 7ms unwrapped,
+    /// and the wrapped result was thousands of visual lines in a box 120pt tall (#2381).
+    ///
+    /// `maxSize` is raised with the container because a text view grows only as far as `maxSize`,
+    /// which `init(frame:)` leaves at the frame: without it the long line is clipped at the cell's
+    /// width instead of scrolled, measured as a 140pt document against 344,166pt with it raised.
+    static func applyCellTextLayout(to textView: NSTextView) {
+        let unbounded = NSSize(
+            width: CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = true
+        textView.maxSize = unbounded
+        textView.textContainer?.widthTracksTextView = false
+        textView.textContainer?.containerSize = unbounded
     }
 
     static func makeScrollView(in container: NSView) -> NSScrollView {
@@ -208,4 +233,18 @@ class CellOverlayBase: NSObject {
 
 final class CellOverlayContainerView: NSView {
     override var isFlipped: Bool { true }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyLayerColors()
+    }
+
+    /// A `CGColor` is a resolved colour and a layer never resolves it again, so the two layer
+    /// colours are reapplied whenever the appearance changes under an open overlay.
+    func applyLayerColors() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.borderColor = NSColor.keyboardFocusIndicatorColor.cgColor
+            layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
+        }
+    }
 }

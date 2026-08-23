@@ -55,7 +55,8 @@ final class ConnectionCoordinator {
 
     var supportsSchemas: Bool {
         connection.type == .postgresql || connection.type == .redshift ||
-        connection.type == .mssql || connection.type == .duckdb
+        connection.type == .mssql || connection.type == .duckdb ||
+        connection.type == .oracle
     }
 
     init(connection: DatabaseConnection, appState: AppState) {
@@ -107,7 +108,9 @@ final class ConnectionCoordinator {
         await connectFresh()
     }
 
-    private func connectFresh() async {
+    /// `allowSignIn` is false on the retry that follows a sign-in, so a connection that keeps
+    /// failing cannot put the prompt up again and again.
+    private func connectFresh(allowSignIn: Bool = true) async {
         await appState.sshProvider.setPendingConnectionId(connection.id)
 
         IOSAnalyticsProvider.shared.markConnectionAttempted()
@@ -122,6 +125,14 @@ final class ConnectionCoordinator {
             IOSAnalyticsProvider.shared.markConnectionSucceeded()
             navigateToPendingTable()
         } catch {
+            // A sign-in that expired is recoverable, so offer it once and retry rather than
+            // leaving the user on an error screen whose only button repeats the same failure.
+            if allowSignIn,
+               EntraSignIn.needsSignIn(error),
+               await EntraSignIn.offer(fields: connection.additionalFields) {
+                await connectFresh(allowSignIn: false)
+                return
+            }
             let context = ErrorContext(
                 operation: "connect",
                 databaseType: connection.type,

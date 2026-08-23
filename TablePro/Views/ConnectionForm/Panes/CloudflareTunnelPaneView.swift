@@ -57,7 +57,7 @@ struct CloudflareTunnelPaneView: View {
 
             switch coordinator.cloudflareTunnel.state.authMethod {
             case .browserSSO:
-                Button("Sign In with Browser...") {
+                Button("Sign In with Browser…") {
                     viewModel.signInWithBrowser()
                 }
                 .disabled(coordinator.cloudflareTunnel.state.accessHostname.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -111,7 +111,7 @@ struct CloudflareTunnelPaneView: View {
                 text: $coordinator.cloudflareTunnel.state.binaryPath,
                 prompt: Text("Automatic")
             )
-            Button("Choose...") {
+            Button("Choose…") {
                 chooseBinary()
             }
             .controlSize(.small)
@@ -142,7 +142,8 @@ struct CloudflareTunnelPaneView: View {
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         panel.directoryURL = URL(fileURLWithPath: "/usr/local/bin")
-        if panel.runModal() == .OK, let url = panel.url {
+        panel.presentAsSheet(for: NSApp.keyWindow) { url in
+            guard let url else { return }
             coordinator.cloudflareTunnel.state.binaryPath = url.path
         }
     }

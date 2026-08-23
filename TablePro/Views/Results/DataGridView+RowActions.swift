@@ -15,10 +15,8 @@ extension TableViewCoordinator {
     @MainActor
     func undoDeleteRow(at index: Int) {
         changeManager.undoRowDeletion(rowIndex: index)
-        visualIndex.updateRow(index, from: changeManager, sortedIDs: displayIDs)
-        tableView?.reloadData(
-            forRowIndexes: IndexSet(integer: index),
-            columnIndexes: IndexSet(integersIn: 0..<(tableView?.numberOfColumns ?? 0)))
+        visualIndex.updateRow(index, from: changeManager, displayIDs: displayIDs)
+        repaintRows(IndexSet(integer: index))
         refreshRowVisualState(at: index)
     }
 
@@ -102,7 +100,14 @@ extension TableViewCoordinator {
         let columnType = columnTypes.indices.contains(columnIndex) ? columnTypes[columnIndex] : nil
 
         if case .bytes(let data) = cell {
-            ClipboardService.shared.writeText(BlobFormattingService.shared.format(data, for: .copy) ?? "")
+            let format = columnIndex < columnDisplayFormats.count ? columnDisplayFormats[columnIndex] : nil
+            let value = format.flatMap { format in
+                guard format.isApplicable(to: columnType, databaseType: databaseType) else { return nil }
+                return ValueDisplayFormatService.applyFormat(data, format: format)
+            }
+                ?? BlobFormattingService.shared.format(data, for: .copy)
+                ?? ""
+            ClipboardService.shared.writeText(value)
             return
         }
 
@@ -168,15 +173,15 @@ extension TableViewCoordinator {
     }
 
     func copyRowsAsJson(at indices: Set<Int>) {
-        let projection = selectedColumnProjection()
-        let rows = indices.sorted().compactMap { displayRow(at: $0).map { projection.values(Array($0.values)) } }
-        guard !rows.isEmpty else { return }
-        let tableRows = tableRowsProvider()
-        let converter = JsonRowConverter(
-            columns: projection.columns(tableRows.columns),
-            columnTypes: projection.columnTypes(tableRows.columnTypes)
+        guard !indices.isEmpty else { return }
+        let output = ResultJsonSerializer.serialize(
+            tableRows: tableRowsProvider(),
+            displayIDs: displayIDs,
+            selectedDisplayIndices: indices,
+            columns: selectedColumnProjection()
         )
-        ClipboardService.shared.writeText(converter.generateJson(rows: rows))
+        guard output.rowCount > 0 else { return }
+        ClipboardService.shared.writeText(output.json)
     }
 
     func copyRowsAsCsv(at indices: Set<Int>, includeHeaders: Bool) {
@@ -350,6 +355,11 @@ extension TableViewCoordinator {
 
     func copyGridSelection(_ selection: GridSelection) {
         guard let rect = selection.boundingRectangle else { return }
+        if rect.rows.count == 1, rect.columns.count == 1 {
+            copyCellValue(at: rect.rows.lowerBound, columnIndex: rect.columns.lowerBound)
+            return
+        }
+
         let tableRows = tableRowsProvider()
         let columnTypes = tableRows.columnTypes
         let rowCount = displayIDs?.count ?? tableRows.rows.count

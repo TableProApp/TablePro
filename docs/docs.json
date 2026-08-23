@@ -2,20 +2,46 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "aspen",
   "name": "TablePro",
+  "description": "TablePro is a native macOS database client for MySQL, PostgreSQL, SQLite, MongoDB, Redis and 20 more, built on AppKit and SwiftUI with a plugin-based driver system.",
   "colors": {
-    "primary": "#FFAA46",
-    "light": "#FFAA46",
-    "dark": "#FFAA46"
+    "primary": "#A85A00",
+    "light": "#FFBB6B",
+    "dark": "#A85A00"
   },
   "fonts": {
     "family": "Inter"
   },
   "favicon": "/favicon.png",
-  "metadata": {
-    "og:image": "https://tablepro.app/og.png",
-    "og:site_name": "TablePro",
-    "twitter:card": "summary_large_image",
-    "twitter:image": "https://tablepro.app/og.png"
+  "logo": {
+    "light": "/logo/light.png",
+    "dark": "/logo/dark.png",
+    "href": "https://tablepro.app"
+  },
+  "seo": {
+    "indexing": "navigable",
+    "metatags": {
+      "og:site_name": "TablePro",
+      "og:type": "website",
+      "twitter:card": "summary_large_image"
+    },
+    "organization": {
+      "id": "https://tablepro.app/#organization",
+      "name": "TablePro",
+      "url": "https://tablepro.app",
+      "sameAs": [
+        "https://github.com/TableProApp/TablePro"
+      ]
+    }
+  },
+  "search": {
+    "prompt": "Search the docs"
+  },
+  "errors": {
+    "404": {
+      "redirect": false,
+      "title": "That page moved or never existed",
+      "description": "Try [the docs home](/), or search with `Cmd+K`. If a link here sent you, [open an issue](https://github.com/TableProApp/TablePro/issues)."
+    }
   },
   "redirects": [
     {
@@ -25,6 +51,54 @@
     {
       "source": "/customization/overview",
       "destination": "/customization/settings"
+    },
+    {
+      "source": "/features/quick-switcher",
+      "destination": "/features/open-quickly"
+    },
+    {
+      "source": "/features/export",
+      "destination": "/features/import-export"
+    },
+    {
+      "source": "/features/import",
+      "destination": "/features/import-export"
+    },
+    {
+      "source": "/databases/connection-urls",
+      "destination": "/connections/urls"
+    },
+    {
+      "source": "/databases/ssh-tunneling",
+      "destination": "/connections/ssh-tunneling"
+    },
+    {
+      "source": "/databases/cloudflare-tunnel",
+      "destination": "/connections/cloudflare-tunnel"
+    },
+    {
+      "source": "/databases/cloud-sql-proxy",
+      "destination": "/connections/cloud-sql-proxy"
+    },
+    {
+      "source": "/databases/socks-proxy",
+      "destination": "/connections/socks-proxy"
+    },
+    {
+      "source": "/databases/aws-iam",
+      "destination": "/connections/aws-iam"
+    },
+    {
+      "source": "/databases/overview",
+      "destination": "/connections"
+    },
+    {
+      "source": "/features/ssh-profiles",
+      "destination": "/connections/ssh-profiles"
+    },
+    {
+      "source": "/features/ssl",
+      "destination": "/connections/ssl"
     }
   ],
   "navigation": {
@@ -33,168 +107,213 @@
         "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting Started",
-            "pages": ["index", "quickstart", "installation", "changelog"]
-          },
-          {
-            "group": "Database Connections",
+            "group": "Start here",
             "pages": [
-              "databases/overview",
-              "databases/connection-urls",
-              "databases/ssh-tunneling",
-              "databases/cloudflare-tunnel",
-              "databases/cloud-sql-proxy",
-              "databases/socks-proxy",
-              "databases/aws-iam",
-              {
-                "group": "SQL",
-                "pages": [
-                  "databases/mysql",
-                  "databases/mariadb",
-                  "databases/postgresql",
-                  "databases/redshift",
-                  "databases/cockroachdb",
-                  "databases/pglite",
-                  "databases/mssql",
-                  "databases/oracle"
-                ]
-              },
-              {
-                "group": "NoSQL & Key-Value",
-                "pages": [
-                  "databases/mongodb",
-                  "databases/redis",
-                  "databases/cassandra",
-                  "databases/etcd",
-                  "databases/elasticsearch",
-                  "databases/surrealdb"
-                ]
-              },
-              {
-                "group": "File-Based & Embedded",
-                "pages": [
-                  "databases/sqlite",
-                  "databases/duckdb",
-                  "databases/beancount",
-                  "databases/libsql"
-                ]
-              },
-              {
-                "group": "Cloud & API",
-                "pages": [
-                  "databases/dynamodb",
-                  "databases/bigquery",
-                  "databases/snowflake",
-                  "databases/cloudflare-d1"
-                ]
-              },
-              {
-                "group": "Analytics",
-                "pages": ["databases/clickhouse", "databases/teradata", "databases/trino"]
-              }
+              "index",
+              "installation",
+              "quickstart",
+              "switching",
+              "faq",
+              "troubleshooting",
+              "changelog"
             ]
           },
           {
-            "group": "Features",
+            "group": "Connections",
+            "icon": "plug",
+            "pages": [
+              "connections/index",
+              "connections/connection-form",
+              "connections/urls",
+              "connections/ssh-tunneling",
+              "connections/ssh-profiles",
+              "connections/cloudflare-tunnel",
+              "connections/cloud-sql-proxy",
+              "connections/socks-proxy",
+              "connections/aws-iam",
+              "connections/ssl",
+              "features/connection-sharing",
+              "features/project-folder-import"
+            ]
+          },
+          {
+            "group": "Databases",
+            "icon": "database",
+            "pages": [
+              "databases/index",
+              "features/plugins",
+              "databases/dynamodb",
+              "databases/redshift",
+              "databases/beancount",
+              "databases/cassandra",
+              "databases/clickhouse",
+              "databases/cloudflare-d1",
+              "databases/cockroachdb",
+              "databases/dameng",
+              "databases/duckdb",
+              "databases/elasticsearch",
+              "databases/etcd",
+              "databases/bigquery",
+              "databases/libsql",
+              "databases/mariadb",
+              "databases/mssql",
+              "databases/mongodb",
+              "databases/mysql",
+              "databases/oracle",
+              "databases/pglite",
+              "databases/postgresql",
+              "databases/redis",
+              "databases/snowflake",
+              "databases/sqlite",
+              "databases/surrealdb",
+              "databases/teradata",
+              "databases/trino"
+            ]
+          },
+          {
+            "group": "Write SQL",
+            "icon": "code",
+            "pages": [
+              "features/sql-editor",
+              "features/code-folding",
+              "features/sql-files",
+              "features/autocomplete",
+              "features/query-parameters",
+              "features/vim-mode",
+              "features/query-history",
+              "features/query-insights"
+            ]
+          },
+          {
+            "group": "Browse and edit data",
+            "icon": "table",
+            "pages": [
+              "features/data-grid",
+              "features/query-results",
+              "features/filtering",
+              "features/change-tracking",
+              "features/json-viewer",
+              "features/csv-inspector"
+            ]
+          },
+          {
+            "group": "Schema and server",
+            "icon": "sitemap",
+            "pages": [
+              "features/table-structure",
+              "features/routines-triggers",
+              "features/table-operations",
+              "features/er-diagram",
+              "features/explain-visualization",
+              "features/server-dashboard",
+              "features/users-roles"
+            ]
+          },
+          {
+            "group": "Import and export",
+            "icon": "arrow-right-arrow-left",
+            "pages": [
+              "features/import-export",
+              "features/backup-restore",
+              "features/compare-sync"
+            ]
+          },
+          {
+            "group": "AI",
+            "icon": "sparkles",
+            "pages": [
+              "features/ai-assistant",
+              "features/mcp"
+            ]
+          },
+          {
+            "group": "Around the app",
+            "icon": "window-maximize",
             "pages": [
               "features/overview",
-              {
-                "group": "Editor & Data",
-                "pages": [
-                  "features/sql-editor",
-                  "features/query-parameters",
-                  "features/data-grid",
-                  "features/table-structure",
-                  "features/table-operations",
-                  "features/autocomplete",
-                  "features/vim-mode"
-                ]
-              },
-              {
-                "group": "AI",
-                "pages": [
-                  "features/ai-assistant",
-                  "features/mcp"
-                ]
-              },
-              {
-                "group": "Views & Visualization",
-                "pages": [
-                  "features/er-diagram",
-                  "features/explain-visualization",
-                  "features/json-viewer",
-                  "features/server-dashboard",
-                  "features/users-roles"
-                ]
-              },
-              {
-                "group": "Data Management",
-                "pages": [
-                  "features/csv-inspector",
-                  "features/import-export",
-                  "features/backup-restore",
-                  "features/compare-sync",
-                  "features/change-tracking",
-                  "features/filtering"
-                ]
-              },
-              {
-                "group": "Workflow",
-                "pages": [
-                  "features/tabs",
-                  "features/quick-switcher",
-                  "features/query-history",
-                  "features/favorites",
-                  "features/project-folder-import",
-                  "features/keyboard-shortcuts"
-                ]
-              },
-              {
-                "group": "Security & Sharing",
-                "pages": [
-                  "features/safe-mode",
-                  "features/ssh-profiles",
-                  "features/ssl",
-                  "features/connection-sharing"
-                ]
-              },
-              {
-                "group": "Sync",
-                "pages": [
-                  "features/icloud-sync",
-                  "features/handoff"
-                ]
-              },
-              {
-                "group": "Team & Licensing",
-                "pages": ["features/team", "features/licensing"]
-              },
-              "features/plugins"
+              "features/tabs",
+              "features/workspace-rail",
+              "features/open-quickly",
+              "features/favorites",
+              "features/keyboard-shortcuts"
+            ]
+          },
+          {
+            "group": "Sync and licensing",
+            "icon": "arrows-rotate",
+            "pages": [
+              "features/icloud-sync",
+              "features/handoff",
+              "features/licensing",
+              "features/team"
             ]
           },
           {
             "group": "Customization",
             "pages": [
               "customization/settings",
+              "customization/general-settings",
               "customization/appearance",
               "customization/editor-settings",
-              "customization/data-settings"
+              "customization/data-settings",
+              "customization/notifications"
             ]
           },
           {
-            "group": "External API",
+            "group": "iPhone and iPad",
+            "icon": "mobile",
+            "pages": [
+              "ios/index"
+            ]
+          },
+          {
+            "group": "Security and privacy",
+            "icon": "shield",
+            "pages": [
+              "security/privacy",
+              "features/safe-mode",
+              "features/acknowledgements"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "External API",
+        "icon": "code",
+        "groups": [
+          {
+            "group": "Overview",
             "pages": [
               "external-api/index",
+              "external-api/versioning"
+            ]
+          },
+          {
+            "group": "Drive the app",
+            "pages": [
               "external-api/url-scheme",
+              "external-api/connection-import",
               "external-api/terminal",
-              "external-api/ios-shortcuts",
               "external-api/raycast",
+              "external-api/ios-shortcuts"
+            ]
+          },
+          {
+            "group": "MCP",
+            "pages": [
               "external-api/mcp-clients",
-              "external-api/pairing",
-              "external-api/tokens",
+              "external-api/mcp-protocol",
               "external-api/mcp-tools",
               "external-api/mcp-resources",
-              "external-api/versioning"
+              "external-api/mcp-prompts",
+              "external-api/mcp-subscriptions"
+            ]
+          },
+          {
+            "group": "Auth",
+            "pages": [
+              "external-api/pairing",
+              "external-api/tokens"
             ]
           }
         ]
@@ -209,6 +328,7 @@
               "development/setup",
               "development/architecture",
               "development/building",
+              "development/releasing",
               "development/code-style",
               "development/plugin-development",
               "development/plugin-registry",
@@ -242,11 +362,6 @@
         }
       ]
     }
-  },
-  "logo": {
-    "light": "/logo/logo.png",
-    "dark": "/logo/logo.png",
-    "href": "https://tablepro.app"
   },
   "navbar": {
     "links": [

@@ -1,6 +1,7 @@
 import SwiftUI
 import TableProDatabase
 import TableProModels
+import TableProOracleCore
 import UniformTypeIdentifiers
 
 struct ConnectionFormView: View {
@@ -13,13 +14,17 @@ struct ConnectionFormView: View {
     @State private var showNewDatabaseAlert = false
     @State private var hapticSuccess = false
     @State private var hapticError = false
+    @State private var pasteTarget: CertificateRole?
+    @State private var showPKCS12Password = false
 
     var onSave: (DatabaseConnection) -> Void
 
-    enum ActiveFilePicker: Identifiable {
+    enum ActiveFilePicker: Identifiable, Hashable {
         case sqliteDatabase
         case duckdbDatabase
         case sshKey
+        case certificate(CertificateRole)
+        case pkcs12
         var id: Int { hashValue }
     }
 
@@ -32,6 +37,18 @@ struct ConnectionFormView: View {
         Binding(
             get: { activeFilePicker != nil },
             set: { if !$0 { activeFilePicker = nil } }
+        )
+    }
+
+    private func present(_ picker: ActiveFilePicker) {
+        pendingFilePicker = picker
+        activeFilePicker = picker
+    }
+
+    private var showCertificateError: Binding<Bool> {
+        Binding(
+            get: { viewModel.certificateError != nil },
+            set: { if !$0 { viewModel.dismissCertificateError() } }
         )
     }
 
@@ -57,9 +74,20 @@ struct ConnectionFormView: View {
                     serverSection(viewModel: viewModel)
                 }
 
+                if viewModel.type == .oracle {
+                    oracleSection(viewModel: viewModel)
+                }
+
                 if !viewModel.isFileBased {
                     Section {
-                        if viewModel.type == .mssql {
+                        if viewModel.type == .oracle {
+                            Picker(String(localized: "SSL Mode"), selection: $viewModel.oracleSSLMode) {
+                                Text(String(localized: "Disabled")).tag(SSLConfiguration.SSLMode.disable)
+                                Text(String(localized: "Required")).tag(SSLConfiguration.SSLMode.require)
+                                Text(String(localized: "Verify CA")).tag(SSLConfiguration.SSLMode.verifyCa)
+                                Text(String(localized: "Verify Identity")).tag(SSLConfiguration.SSLMode.verifyFull)
+                            }
+                        } else if viewModel.type == .mssql {
                             // FreeTDS db-lib only honors on/off encryption (DBSETENCRYPT). Per-connection
                             // cert chain verification is not exposed, so only Disabled and Required are listed.
                             // See Plugins/MSSQLDriverPlugin/MSSQLSSLMapping.swift for the FreeTDS contract.
@@ -67,9 +95,15 @@ struct ConnectionFormView: View {
                                 Text(String(localized: "Disabled")).tag(SSLConfiguration.SSLMode.disable)
                                 Text(String(localized: "Required")).tag(SSLConfiguration.SSLMode.require)
                             }
-                        } else {
-                            Toggle("SSL", isOn: $viewModel.sslEnabled)
                         }
+                    }
+                    if viewModel.usesCertificateSection {
+                        ConnectionSSLSection(
+                            viewModel: viewModel,
+                            onChooseFile: { present(.certificate($0)) },
+                            onChoosePKCS12: { present(.pkcs12) },
+                            onPaste: { pasteTarget = $0 }
+                        )
                     }
                     sshSection(viewModel: viewModel)
                 }
@@ -78,6 +112,7 @@ struct ConnectionFormView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .task {
+                viewModel.loadCertificateSummaries()
                 await viewModel.loadStoredCredentials(secureStore: appState.secureStore)
             }
             .navigationTitle(viewModel.isEditing ? String(localized: "Edit Connection") : String(localized: "New Connection"))
@@ -102,8 +137,27 @@ struct ConnectionFormView: View {
                 case .sqliteDatabase: viewModel.handleSQLiteFilePicker(result)
                 case .duckdbDatabase: viewModel.handleDuckDBFilePicker(result)
                 case .sshKey: viewModel.handleSSHKeyFilePicker(result)
+                case .certificate(let role): viewModel.importCertificateFile(result, role: role)
+                case .pkcs12:
+                    viewModel.stagePKCS12(result)
+                    showPKCS12Password = viewModel.pendingPKCS12 != nil
                 case nil: break
                 }
+            }
+            .sheet(item: $pasteTarget) { role in
+                CertificatePasteSheet(viewModel: viewModel, role: role)
+            }
+            .alert("Certificate Password", isPresented: $showPKCS12Password) {
+                SecureField("Password", text: $viewModel.pkcs12Password)
+                Button("Import") { viewModel.importPKCS12() }
+                Button("Cancel", role: .cancel) { viewModel.cancelPKCS12() }
+            } message: {
+                Text("Enter the password used when the certificate file was exported.")
+            }
+            .alert("Certificate", isPresented: showCertificateError) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(viewModel.certificateError ?? "")
             }
             .alert("New Database", isPresented: $showNewDatabaseAlert) {
                 TextField("Database name", text: $viewModel.newDatabaseName)
@@ -115,7 +169,7 @@ struct ConnectionFormView: View {
             .alert("Keychain Warning", isPresented: showCredentialError) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text(viewModel.credentialError ?? "Failed to save credentials.")
+                Text(viewModel.credentialError ?? String(localized: "Failed to save credentials."))
             }
             .sensoryFeedback(.success, trigger: hapticSuccess)
             .sensoryFeedback(.error, trigger: hapticError)
@@ -269,9 +323,39 @@ struct ConnectionFormView: View {
     // MARK: - Server Section
 
     @ViewBuilder
+    private func oracleSection(viewModel: ConnectionFormViewModel) -> some View {
+        @Bindable var viewModel = viewModel
+        Section("Oracle") {
+            Picker(String(localized: "Connect Using"), selection: $viewModel.oracleConnectionType) {
+                Text(String(localized: "Service Name")).tag(OracleConnectionOptions.IdentifierMode.service)
+                Text("SID").tag(OracleConnectionOptions.IdentifierMode.sid)
+            }
+            .pickerStyle(.segmented)
+
+            if viewModel.oracleConnectionType == .service {
+                TextField("Service Name", text: $viewModel.oracleServiceName, prompt: Text(verbatim: "ORCL"))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.asciiCapable)
+            } else {
+                TextField("SID", text: $viewModel.oracleSID, prompt: Text(verbatim: "XE"))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.asciiCapable)
+            }
+
+            Picker(String(localized: "Role"), selection: $viewModel.oracleRole) {
+                Text(String(localized: "Normal")).tag(OracleConnectionOptions.Role.normal)
+                Text(verbatim: "SYSDBA").tag(OracleConnectionOptions.Role.sysdba)
+                Text(verbatim: "SYSOPER").tag(OracleConnectionOptions.Role.sysoper)
+            }
+        }
+    }
+
+    @ViewBuilder
     private func serverSection(viewModel: ConnectionFormViewModel) -> some View {
         @Bindable var viewModel = viewModel
-        Section("Server") {
+        Section {
             TextField("Host", text: $viewModel.host)
                 .textInputAutocapitalization(.never)
                 .keyboardType(.URL)
@@ -279,7 +363,15 @@ struct ConnectionFormView: View {
                 .keyboardType(.numberPad)
             TextField("Username", text: $viewModel.username)
                 .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.asciiCapable)
             SecureField("Password", text: $viewModel.password)
+        } header: {
+            Text("Server")
+        } footer: {
+            if viewModel.type == .redis {
+                Text("Username is for Redis 6 and later ACL users. Leave it empty for password-only servers.")
+            }
         }
         Section("Database") {
             TextField("Database Name", text: $viewModel.database)
@@ -329,7 +421,7 @@ struct ConnectionFormView: View {
         Section("Private Key") {
             Picker("Input Method", selection: $viewModel.sshKeyInputMode) {
                 ForEach(ConnectionFormViewModel.KeyInputMode.allCases, id: \.self) { mode in
-                    Text(mode.rawValue).tag(mode)
+                    Text(mode.displayName).tag(mode)
                 }
             }
             .pickerStyle(.segmented)
@@ -340,9 +432,11 @@ struct ConnectionFormView: View {
                     activeFilePicker = .sshKey
                 } label: {
                     HStack {
-                        Text(viewModel.sshKeyPath.isEmpty
-                            ? "Select Private Key"
-                            : URL(fileURLWithPath: viewModel.sshKeyPath).lastPathComponent)
+                        if viewModel.sshKeyPath.isEmpty {
+                            Text("Select Private Key")
+                        } else {
+                            Text(verbatim: URL(fileURLWithPath: viewModel.sshKeyPath).lastPathComponent)
+                        }
                         Spacer()
                         Image(systemName: "folder")
                     }
@@ -403,6 +497,16 @@ struct ConnectionFormView: View {
                             .foregroundStyle(.secondary)
                             .padding(.leading, 28)
                     }
+                    if let suggested = testResult.suggestedOracleMode {
+                        Button(suggested == .sid
+                            ? String(localized: "Use SID Instead")
+                            : String(localized: "Use Service Name Instead")) {
+                            viewModel.oracleConnectionType = suggested
+                            Task { await handleTest() }
+                        }
+                        .font(.caption)
+                        .padding(.leading, 28)
+                    }
                 }
             }
         }
@@ -428,8 +532,19 @@ struct ConnectionFormView: View {
         switch picker {
         case .sqliteDatabase: return sqliteContentTypes
         case .duckdbDatabase: return duckDBContentTypes
+        case .certificate: return certificateContentTypes
+        case .pkcs12: return pkcs12ContentTypes
         default: return [.data]
         }
+    }
+
+    private var certificateContentTypes: [UTType] {
+        [UTType.x509Certificate, .text, .data]
+    }
+
+    private var pkcs12ContentTypes: [UTType] {
+        let extensions = ["p12", "pfx"]
+        return [UTType.pkcs12] + extensions.compactMap { UTType(filenameExtension: $0) } + [.data]
     }
 
     private var sqliteContentTypes: [UTType] {

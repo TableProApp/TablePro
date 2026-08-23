@@ -1,0 +1,45 @@
+---
+title: Code Folding
+description: Collapse statements, CTEs, subqueries and BEGIN blocks in the SQL editor and every other code view
+---
+
+Move the pointer into the gutter and chevrons appear. Every region that spans more than one line gets one, which covers whole statements, table bodies, CTEs, subqueries, `BEGIN` blocks and block comments. Click to collapse, click again to expand.
+
+<Frame caption="A folded region and its chip in the gutter">
+  <img className="block dark:hidden" src="/images/code-folding.png" alt="Code folding in the SQL editor" />
+  <img className="hidden dark:block" src="/images/code-folding-dark.png" alt="Code folding in the SQL editor" />
+</Frame>
+
+The chevron points down while the region is showing and right while it is folded, the way a disclosure control behaves everywhere else in macOS. Resting on one marks how far its region reaches. Where a statement and the block inside it open on the same line, the chevron folds the larger of the two.
+
+A folded region keeps its chevron whether or not the pointer is in the gutter, so nothing is hidden without a visible way back. Move the pointer away from a gutter with nothing folded and it is line numbers again.
+
+## Collapsed chips
+
+A collapsed region is replaced inline by a chip showing the start of what it hides and how many lines that is, so a folded `CREATE TABLE` still says what is inside it. Click the chip to bring the region back. Pointing at a chip also marks its chevron in the gutter, since the two are ways to reach the same fold.
+
+In the query editor, resting on a chip peeks at the block without expanding it. The peek shows the whole block, opening line included, with the editor's own highlighting and theme, and says how many lines it left out when the block is longer than it can show. Moving away, scrolling, typing or clicking closes the peek, and the caret never leaves the editor.
+
+## Commands
+
+| Command | Shortcut |
+|---|---|
+| **Toggle Fold** | `Cmd+Option+Left` |
+| **Fold All** | `Cmd+Option+Shift+Left` |
+| **Unfold All** | `Cmd+Option+Shift+Right` |
+
+All three are on the Query menu and rebindable in **Settings > Keyboard**. Fold All collapses top-level statements only; fold the regions inside them one at a time. The editor's right-click menu carries **Fold** over an expanded region and **Unfold** over a collapsed one.
+
+Chevrons are reachable with VoiceOver. Each reports as a disclosure control that says whether its block is folded, and pressing it folds or unfolds the block.
+
+## What folds and what does not
+
+Strings, comments and PostgreSQL dollar-quoted bodies are never read as structure, so a `(` inside a string opens no fold. Documents over 2 million characters get no folding at all, the same limit that turns off syntax highlighting.
+
+Collapsed regions survive closing and reopening a tab. If the file changed while the tab was closed, the folds that no longer fit are dropped.
+
+## Where it works
+
+Turn folding off in **Settings > Editor**. Beyond the SQL editor it covers the DDL and trigger views, the SQL import preview, the AI review sheet, AI chat code blocks, and the JSON cell viewer, all of which number their lines while folding is on.
+
+Turning line numbers off in **Settings > Editor** removes the gutter and the chevrons with it. Toggle Fold, Fold All, Unfold All and the collapsed chips all still work.

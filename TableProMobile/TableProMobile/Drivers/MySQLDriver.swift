@@ -3,7 +3,7 @@ import Foundation
 import TableProDatabase
 import TableProModels
 
-final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
+nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     private let actor = MySQLActor()
     private let host: String
     private let port: Int
@@ -15,6 +15,10 @@ final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     var supportsSchemas: Bool { false }
     var currentSchema: String? { nil }
     var supportsTransactions: Bool { true }
+
+    func escapeStringLiteral(_ value: String) -> String {
+        SQLEscaping.backslashStringLiteral(value)
+    }
 
     // Set once during connect() before the driver is shared — safe for concurrent reads
     nonisolated(unsafe) private(set) var serverVersion: String?
@@ -276,12 +280,21 @@ private actor MySQLActor {
         var reconnect: my_bool = 0
         mysql_options(handle, MYSQL_OPT_RECONNECT, &reconnect)
 
+        var allowLocalInfile: UInt32 = 0
+        mysql_options(handle, MYSQL_OPT_LOCAL_INFILE, &allowLocalInfile)
+
         var sslEnforce: my_bool = ssl.isEnabled ? 1 : 0
         mysql_options(handle, MYSQL_OPT_SSL_ENFORCE, &sslEnforce)
         var sslVerify: my_bool = ssl.verifiesCertificate ? 1 : 0
         mysql_options(handle, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &sslVerify)
         if let caPath = ssl.existingCACertificatePath {
             _ = caPath.withCString { mysql_options(handle, MYSQL_OPT_SSL_CA, $0) }
+        }
+        if let clientCertPath = ssl.existingClientCertificatePath {
+            _ = clientCertPath.withCString { mysql_options(handle, MYSQL_OPT_SSL_CERT, $0) }
+        }
+        if let clientKeyPath = ssl.existingClientKeyPath {
+            _ = clientKeyPath.withCString { mysql_options(handle, MYSQL_OPT_SSL_KEY, $0) }
         }
 
         guard let portU32 = UInt32(exactly: port), (1...65_535).contains(port) else {
@@ -487,7 +500,7 @@ private actor MySQLActor {
     }
 }
 
-enum MySQLBeginStreamResult: Sendable {
+nonisolated enum MySQLBeginStreamResult: Sendable {
     case rowSet([ColumnInfo])
     case noResult(affectedRows: Int)
 }
@@ -525,7 +538,7 @@ nonisolated private func mysqlFieldTypeName(_ typeValue: UInt32) -> String {
     }
 }
 
-private struct RawMySQLResult: Sendable {
+nonisolated private struct RawMySQLResult: Sendable {
     let columns: [String]
     let columnTypes: [String]
     let rows: [[String?]]
@@ -536,7 +549,7 @@ private struct RawMySQLResult: Sendable {
 
 // MARK: - Errors
 
-enum MySQLError: Error, LocalizedError {
+nonisolated enum MySQLError: Error, LocalizedError {
     case connectionFailed(String)
     case notConnected
     case queryFailed(String)

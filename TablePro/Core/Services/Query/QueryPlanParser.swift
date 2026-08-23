@@ -83,14 +83,30 @@ struct PostgreSQLPlanParser: QueryPlanParser {
     }
 }
 
-// MARK: - MySQL JSON Parser
+// MARK: - MySQL Parsers
+
+struct MySQLPlanParser: QueryPlanParser {
+    static let maximumInputBytes = 2_000_000
+
+    func parse(rawText: String) -> QueryPlan? {
+        guard rawText.utf8.count <= Self.maximumInputBytes else {
+            logger.debug("MySQL EXPLAIN plan exceeds parser input limit")
+            return nil
+        }
+        return MySQLJsonPlanParser().parse(rawText: rawText)
+            ?? MySQLTreePlanParser().parse(rawText: rawText)
+    }
+}
 
 /// Parses MySQL and MariaDB `EXPLAIN FORMAT=JSON` output.
 /// Handles both MySQL's flat structure and MariaDB's nested structure
 /// (query_block → filesort → temporary_table → nested_loop).
-struct MySQLPlanParser: QueryPlanParser {
+struct MySQLJsonPlanParser: QueryPlanParser {
     func parse(rawText: String) -> QueryPlan? {
-        guard let data = rawText.data(using: .utf8),
+        let trimmed = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.first == "{" else { return nil }
+
+        guard let data = trimmed.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let queryBlock = json["query_block"] as? [String: Any]
         else {
@@ -205,6 +221,254 @@ struct MySQLPlanParser: QueryPlanParser {
     }
 }
 
+struct MySQLTreePlanParser: QueryPlanParser {
+    private struct RawNode {
+        let depth: Int
+        let text: String
+    }
+
+    private struct ParsedMetrics {
+        var estimatedCost: Double?
+        var estimatedRows: Int?
+        var actualStartupTime: Double?
+        var actualTotalTime: Double?
+        var actualRows: Int?
+        var actualLoops: Int?
+        var wasExecuted = true
+    }
+
+    private struct ParsedNodeText {
+        let operation: String
+        let relation: String?
+        let properties: [String: String]
+        let metrics: ParsedMetrics
+    }
+
+    private static let maximumNodes = 10_000
+    private static let maximumDepth = 128
+    private static let numberPattern = "[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][-+]?\\d+)?"
+    private static let actualMetricsRegex = try? NSRegularExpression(
+        pattern: "\\s+\\(actual time=(\(numberPattern))\\.\\.(\(numberPattern))"
+            + "\\s+rows=(\(numberPattern))\\s+loops=(\(numberPattern))\\)\\s*$"
+    )
+    private static let costMetricsRegex = try? NSRegularExpression(
+        pattern: "\\s+\\(cost=(\(numberPattern))\\s+rows=(\(numberPattern))\\)\\s*$"
+    )
+    private static let neverExecutedRegex = try? NSRegularExpression(
+        pattern: "\\s+\\(never executed\\)\\s*$",
+        options: [.caseInsensitive]
+    )
+
+    func parse(rawText: String) -> QueryPlan? {
+        guard let rawNodes = parseRawNodes(rawText), !rawNodes.isEmpty else { return nil }
+
+        let roots = QueryPlanTreeBuilder.forest(from: rawNodes, depth: \.depth) { rawNode, children in
+            Self.makeNode(rawNode, children: children)
+        }
+        guard let rootNode = QueryPlanTreeBuilder.root(from: roots) else { return nil }
+
+        let executionTime = roots.compactMap(Self.totalExecutionTime).max()
+        var plan = QueryPlan(
+            rootNode: rootNode,
+            planningTime: nil,
+            executionTime: executionTime,
+            rawText: rawText
+        )
+        plan.computeCostFractions()
+        return plan
+    }
+
+    private static func makeNode(_ rawNode: RawNode, children: [QueryPlanNode]) -> QueryPlanNode {
+        let parsed = parseNodeText(rawNode.text)
+        return QueryPlanNode(
+            operation: parsed.operation,
+            relation: parsed.relation,
+            schema: nil,
+            alias: nil,
+            estimatedStartupCost: nil,
+            estimatedTotalCost: parsed.metrics.estimatedCost,
+            estimatedRows: parsed.metrics.estimatedRows,
+            estimatedWidth: nil,
+            actualStartupTime: parsed.metrics.actualStartupTime,
+            actualTotalTime: parsed.metrics.actualTotalTime,
+            actualRows: parsed.metrics.actualRows,
+            actualLoops: parsed.metrics.actualLoops,
+            properties: parsed.properties,
+            children: children
+        )
+    }
+
+    /// A TREE plan starts a node at every `->` line, so every line in between belongs to the
+    /// node above it: MySQL wraps the metrics group, and node text keeps any newline the
+    /// query's own literals contain.
+    private func parseRawNodes(_ rawText: String) -> [RawNode]? {
+        var nodes: [RawNode] = []
+        var indentationStack: [Int] = []
+        var pending: (indent: Int, text: String)?
+
+        func appendPending() -> Bool {
+            guard let pending else { return true }
+            while let lastIndent = indentationStack.last, pending.indent <= lastIndent {
+                indentationStack.removeLast()
+            }
+            guard indentationStack.count < Self.maximumDepth,
+                  nodes.count < Self.maximumNodes else { return false }
+            indentationStack.append(pending.indent)
+            nodes.append(RawNode(depth: indentationStack.count - 1, text: pending.text))
+            return true
+        }
+
+        for line in rawText.components(separatedBy: .newlines) {
+            if let nodeLine = Self.nodeLine(from: line) {
+                guard appendPending() else { return nil }
+                pending = nodeLine
+                continue
+            }
+
+            let continuation = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if var current = pending, !continuation.isEmpty {
+                current.text += " \(continuation)"
+                pending = current
+            }
+        }
+
+        guard appendPending() else { return nil }
+        return nodes
+    }
+
+    private static func nodeLine(from line: String) -> (indent: Int, text: String)? {
+        let leadingWhitespace = line.prefix { $0 == " " || $0 == "\t" }
+        let remainder = line.dropFirst(leadingWhitespace.count)
+        guard remainder.hasPrefix("->") else { return nil }
+
+        let text = remainder.dropFirst(2).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+
+        let indent = leadingWhitespace.reduce(into: 0) { width, character in
+            width += character == "\t" ? 4 : 1
+        }
+        return (indent, text)
+    }
+
+    private static func parseNodeText(_ rawText: String) -> ParsedNodeText {
+        var text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        var metrics = ParsedMetrics()
+
+        if let match = match(Self.actualMetricsRegex, in: text), match.numberOfRanges == 5 {
+            metrics.actualStartupTime = nonnegativeDouble(capture(1, from: match, in: text))
+            metrics.actualTotalTime = nonnegativeDouble(capture(2, from: match, in: text))
+            metrics.actualRows = roundedInt(capture(3, from: match, in: text))
+            metrics.actualLoops = wholeInt(capture(4, from: match, in: text))
+            text = removing(match, from: text)
+        } else if let match = match(Self.neverExecutedRegex, in: text) {
+            metrics.wasExecuted = false
+            text = removing(match, from: text)
+        }
+
+        if let match = match(Self.costMetricsRegex, in: text), match.numberOfRanges == 3 {
+            metrics.estimatedCost = nonnegativeDouble(capture(1, from: match, in: text))
+            metrics.estimatedRows = roundedInt(capture(2, from: match, in: text))
+            text = removing(match, from: text)
+        }
+
+        let presentation = accessPresentation(from: text)
+        var properties = presentation.properties
+        if !metrics.wasExecuted {
+            properties["Execution"] = String(localized: "Never executed")
+        }
+        return ParsedNodeText(
+            operation: presentation.operation,
+            relation: presentation.relation,
+            properties: properties,
+            metrics: metrics
+        )
+    }
+
+    private static func accessPresentation(
+        from text: String
+    ) -> (operation: String, relation: String?, properties: [String: String]) {
+        guard let onRange = text.range(of: " on ", options: [.caseInsensitive]),
+              isAccessOperation(String(text[..<onRange.lowerBound])) else {
+            return (text, nil, [:])
+        }
+
+        let operation = text[..<onRange.lowerBound].trimmingCharacters(in: .whitespaces)
+        let remainder = String(text[onRange.upperBound...]).trimmingCharacters(in: .whitespaces)
+        guard let relation = leadingIdentifier(in: remainder) else { return (text, nil, [:]) }
+
+        var properties = ["Details": text]
+        let suffix = remainder.dropFirst(relation.count)
+        if let usingRange = suffix.range(of: "using ", options: [.caseInsensitive]),
+           let indexName = leadingIdentifier(in: String(suffix[usingRange.upperBound...])) {
+            properties["Index Name"] = indexName
+        }
+        return (operation, relation, properties)
+    }
+
+    private static func isAccessOperation(_ operation: String) -> Bool {
+        let lowercased = operation.lowercased()
+        return lowercased.contains("scan") || lowercased.contains("lookup") || lowercased.contains("search")
+    }
+
+    private static func leadingIdentifier(in text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard let first = trimmed.first else { return nil }
+
+        let closingCharacter: Character?
+        switch first {
+        case "`": closingCharacter = "`"
+        case "<": closingCharacter = ">"
+        default: closingCharacter = nil
+        }
+
+        if let closingCharacter,
+           let end = trimmed.dropFirst().firstIndex(of: closingCharacter) {
+            return String(trimmed[...end])
+        }
+        let identifier = String(trimmed.prefix { !$0.isWhitespace && $0 != "(" })
+        return identifier.isEmpty ? nil : identifier
+    }
+
+    private static func match(_ regex: NSRegularExpression?, in text: String) -> NSTextCheckingResult? {
+        guard let regex else { return nil }
+        return regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text))
+    }
+
+    private static func capture(_ index: Int, from match: NSTextCheckingResult, in text: String) -> String? {
+        guard let range = Range(match.range(at: index), in: text) else { return nil }
+        return String(text[range])
+    }
+
+    private static func removing(_ match: NSTextCheckingResult, from text: String) -> String {
+        guard let range = Range(match.range, in: text) else { return text }
+        var result = text
+        result.removeSubrange(range)
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func nonnegativeDouble(_ text: String?) -> Double? {
+        guard let text, let value = Double(text), value.isFinite, value >= 0 else { return nil }
+        return value
+    }
+
+    private static func roundedInt(_ text: String?) -> Int? {
+        guard let value = nonnegativeDouble(text), value < Double(Int.max) else { return nil }
+        return Int(value.rounded())
+    }
+
+    private static func wholeInt(_ text: String?) -> Int? {
+        guard let value = nonnegativeDouble(text), value.rounded() == value,
+              value < Double(Int.max) else { return nil }
+        return Int(value)
+    }
+
+    private static func totalExecutionTime(_ node: QueryPlanNode) -> Double? {
+        guard let time = node.actualTotalTime else { return nil }
+        let total = time * Double(node.actualLoops ?? 1)
+        return total.isFinite ? total : nil
+    }
+}
+
 // MARK: - SQLite Parser
 
 /// Parses SQLite `EXPLAIN QUERY PLAN` output (id/parent/notused/detail columns).
@@ -247,21 +511,8 @@ struct SQLitePlanParser: QueryPlanParser {
 
         // Find the minimum parent ID to use as the virtual root parent
         let minParent = nodes.map(\.parent).min() ?? 0
-        let rootChildren = buildChildren(parentId: minParent)
-        let rootNode: QueryPlanNode
-        if rootChildren.count == 1 {
-            rootNode = rootChildren[0]
-        } else {
-            rootNode = QueryPlanNode(
-                operation: "Query Plan",
-                relation: nil, schema: nil, alias: nil,
-                estimatedStartupCost: nil, estimatedTotalCost: nil,
-                estimatedRows: nil, estimatedWidth: nil,
-                actualStartupTime: nil, actualTotalTime: nil,
-                actualRows: nil, actualLoops: nil,
-                properties: [:],
-                children: rootChildren
-            )
+        guard let rootNode = QueryPlanTreeBuilder.root(from: buildChildren(parentId: minParent)) else {
+            return nil
         }
 
         return QueryPlan(rootNode: rootNode, planningTime: nil, executionTime: nil, rawText: rawText)
@@ -325,23 +576,96 @@ struct IndentedTextPlanParser: QueryPlanParser {
         }
 
         let result = buildNodes(from: 0, parentIndent: -1)
-        let rootNode: QueryPlanNode
-        if result.nodes.count == 1 {
-            rootNode = result.nodes[0]
-        } else {
-            rootNode = QueryPlanNode(
-                operation: "Query Plan",
-                relation: nil, schema: nil, alias: nil,
-                estimatedStartupCost: nil, estimatedTotalCost: nil,
-                estimatedRows: nil, estimatedWidth: nil,
-                actualStartupTime: nil, actualTotalTime: nil,
-                actualRows: nil, actualLoops: nil,
-                properties: [:],
-                children: result.nodes
-            )
-        }
+        guard let rootNode = QueryPlanTreeBuilder.root(from: result.nodes) else { return nil }
 
         return QueryPlan(rootNode: rootNode, planningTime: nil, executionTime: nil, rawText: rawText)
+    }
+}
+
+// MARK: - Dameng Text Parser
+
+/// Parses DM8 plans whose hierarchy is encoded by the column the `#` marker sits in.
+struct DamengPlanParser: QueryPlanParser {
+    private struct ParsedLine {
+        let indent: Int
+        let operation: String
+        let details: String?
+    }
+
+    func parse(rawText: String) -> QueryPlan? {
+        let lines = rawText.components(separatedBy: .newlines).compactMap(parseLine)
+        guard !lines.isEmpty else { return nil }
+
+        func buildNodes(from startIndex: Int, parentIndent: Int) -> (nodes: [QueryPlanNode], nextIndex: Int) {
+            var nodes: [QueryPlanNode] = []
+            var index = startIndex
+
+            while index < lines.count {
+                let line = lines[index]
+                if line.indent <= parentIndent && index > startIndex {
+                    break
+                }
+
+                let children: [QueryPlanNode]
+                let nextIndex: Int
+                if index + 1 < lines.count, lines[index + 1].indent > line.indent {
+                    let nested = buildNodes(from: index + 1, parentIndent: line.indent)
+                    children = nested.nodes
+                    nextIndex = nested.nextIndex
+                } else {
+                    children = []
+                    nextIndex = index + 1
+                }
+
+                nodes.append(QueryPlanNode(
+                    operation: line.operation,
+                    relation: nil,
+                    schema: nil,
+                    alias: nil,
+                    estimatedStartupCost: nil,
+                    estimatedTotalCost: nil,
+                    estimatedRows: nil,
+                    estimatedWidth: nil,
+                    actualStartupTime: nil,
+                    actualTotalTime: nil,
+                    actualRows: nil,
+                    actualLoops: nil,
+                    properties: line.details.map { ["Details": $0] } ?? [:],
+                    children: children
+                ))
+                index = nextIndex
+            }
+
+            return (nodes, index)
+        }
+
+        let result = buildNodes(from: 0, parentIndent: -1)
+        guard let root = QueryPlanTreeBuilder.root(from: result.nodes) else { return nil }
+
+        return QueryPlan(rootNode: root, planningTime: nil, executionTime: nil, rawText: rawText)
+    }
+
+    private func parseLine(_ line: String) -> ParsedLine? {
+        let content = line.drop(while: { $0 == " " || $0 == "\t" })
+        let numberEnd = content.prefix(while: { $0.isNumber }).endIndex
+        guard numberEnd != content.startIndex else { return nil }
+
+        let afterNumber = content[numberEnd...]
+        let indentation = afterNumber.prefix(while: { $0 == " " || $0 == "\t" })
+        let text = afterNumber.dropFirst(indentation.count)
+        guard text.first == "#" else { return nil }
+
+        let planText = text.dropFirst()
+        let parts = planText.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+        let operation = parts[0].trimmingCharacters(in: .whitespaces)
+        guard !operation.isEmpty else { return nil }
+        let details = parts.count == 2 ? parts[1].trimmingCharacters(in: .whitespaces) : nil
+
+        return ParsedLine(
+            indent: line.distance(from: line.startIndex, to: text.startIndex),
+            operation: operation,
+            details: details?.isEmpty == false ? details : nil
+        )
     }
 }
 
@@ -389,37 +713,10 @@ struct CockroachDBPlanParser: QueryPlanParser {
             nodes.append(RawNode(depth: depth, operation: operation, properties: [:]))
         }
 
-        guard !nodes.isEmpty else { return nil }
-
-        var index = 0
-        func build(parentDepth: Int) -> [QueryPlanNode] {
-            var result: [QueryPlanNode] = []
-            while index < nodes.count {
-                let raw = nodes[index]
-                if raw.depth <= parentDepth { break }
-                index += 1
-                let children = build(parentDepth: raw.depth)
-                result.append(Self.makeNode(raw, children: children))
-            }
-            return result
+        let roots = QueryPlanTreeBuilder.forest(from: nodes, depth: \.depth) { raw, children in
+            Self.makeNode(raw, children: children)
         }
-
-        let roots = build(parentDepth: -1)
-        let rootNode: QueryPlanNode
-        if roots.count == 1 {
-            rootNode = roots[0]
-        } else {
-            rootNode = QueryPlanNode(
-                operation: "Query Plan",
-                relation: nil, schema: nil, alias: nil,
-                estimatedStartupCost: nil, estimatedTotalCost: nil,
-                estimatedRows: nil, estimatedWidth: nil,
-                actualStartupTime: nil, actualTotalTime: nil,
-                actualRows: nil, actualLoops: nil,
-                properties: [:],
-                children: roots
-            )
-        }
+        guard let rootNode = QueryPlanTreeBuilder.root(from: roots) else { return nil }
 
         return QueryPlan(
             rootNode: rootNode,
@@ -478,27 +775,6 @@ struct CockroachDBPlanParser: QueryPlanParser {
         case "s": return number * 1_000
         case "µs", "us": return number / 1_000
         default: return number
-        }
-    }
-}
-
-// MARK: - Factory
-
-enum QueryPlanParserFactory {
-    static func parser(for databaseType: DatabaseType) -> QueryPlanParser? {
-        switch databaseType {
-        case .postgresql, .redshift:
-            return PostgreSQLPlanParser()
-        case .cockroachdb:
-            return CockroachDBPlanParser()
-        case .mysql, .mariadb:
-            return MySQLPlanParser()
-        case .sqlite:
-            return SQLitePlanParser()
-        case .clickhouse, .duckdb:
-            return IndentedTextPlanParser()
-        default:
-            return nil
         }
     }
 }

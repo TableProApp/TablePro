@@ -19,8 +19,8 @@ final class GroupStorageTests: XCTestCase {
     private var connectionStorage: ConnectionStorage!
     private var connectionFileURL: URL!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         let unique = UUID().uuidString
         suiteName = "com.TablePro.tests.GroupStorage.\(unique)"
         defaults = UserDefaults(suiteName: suiteName)!

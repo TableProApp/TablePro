@@ -7,7 +7,7 @@ import Foundation
 
 public final class PluginSettingsStorage {
     private let pluginId: String
-    private let defaults = UserDefaults.standard
+    private let defaults = PluginHostStorage.resolveDefaults()
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 

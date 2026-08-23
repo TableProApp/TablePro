@@ -5,9 +5,10 @@
 
 import Foundation
 import os
+import TableProNumberFormatting
 import TableProPluginKit
 
-final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
+final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseReporting {
     private struct State {
         var status: ConnectionStatus = .disconnected
         var columnTypeCache: [String: ColumnType] = [:]
@@ -72,11 +73,28 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "PluginDriverAdapter")
 
-    private static let iso8601Formatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
+    private static let iso8601Formatter = OSAllocatedUnfairLock(
+        uncheckedState: {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return formatter
+        }()
+    )
+
+    static func cellValue(for parameter: Any?) -> PluginCellValue {
+        guard let parameter else { return .null }
+        if let data = parameter as? Data { return .bytes(data) }
+        if let f = parameter as? Float {
+            guard f.isFinite else { return .null }
+            return .text(NumberText.text(for: f))
+        }
+        if let f = parameter as? any BinaryFloatingPoint {
+            let d = Double(f)
+            guard d.isFinite else { return .null }
+            return .text(NumberText.text(for: d))
+        }
+        return .text(stringValue(for: parameter))
+    }
 
     private static func stringValue(for parameter: Any) -> String {
         switch parameter {
@@ -87,11 +105,9 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         case let i as any BinaryInteger:
             return String(i)
         case let f as any BinaryFloatingPoint:
-            let d = Double(f)
-            guard d.isFinite else { return "NULL" }
-            return String(d)
+            return NumberText.text(for: Double(f))
         case let d as Date:
-            return Self.iso8601Formatter.string(from: d)
+            return Self.iso8601Formatter.withLockUnchecked { $0.string(from: d) }
         case let data as Data:
             return data.hexEncoded
         case let uuid as UUID:
@@ -109,9 +125,13 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     // MARK: - Connection Management
 
     func connect() async throws {
+        try await connectReporting(stage: { _ in })
+    }
+
+    func connectReporting(stage report: @escaping ConnectionStageReporter) async throws {
         state.withLock { $0.status = .connecting }
         do {
-            try await pluginDriver.connect()
+            try await pluginDriver.connect(reportingStage: report)
             state.withLock { $0.status = .connected }
         } catch {
             state.withLock { $0.status = .error(error.localizedDescription) }
@@ -140,11 +160,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     }
 
     func executeParameterized(query: String, parameters: [Any?]) async throws -> QueryResult {
-        let cellParams: [PluginCellValue] = parameters.map { param in
-            guard let p = param else { return .null }
-            if let data = p as? Data { return .bytes(data) }
-            return .text(Self.stringValue(for: p))
-        }
+        let cellParams: [PluginCellValue] = parameters.map(Self.cellValue(for:))
         let pluginResult = try await pluginDriver.executeParameterized(query: query, parameters: cellParams)
         return mapQueryResult(pluginResult)
     }
@@ -152,11 +168,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult {
         let cellParams: [PluginCellValue]?
         if let parameters {
-            cellParams = parameters.map { param -> PluginCellValue in
-                guard let p = param else { return .null }
-                if let data = p as? Data { return .bytes(data) }
-                return .text(Self.stringValue(for: p))
-            }
+            cellParams = parameters.map(Self.cellValue(for:))
         } else {
             cellParams = nil
         }
@@ -201,6 +213,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
             tableType = .foreignTable
         case "system table", "system base table", "system view":
             tableType = .systemTable
+        case "external table", "external_table":
+            tableType = .externalTable
         default:
             Self.logger.warning("Unknown plugin table type \"\(table.type, privacy: .public)\" for \"\(table.name, privacy: .public)\"; defaulting to .table")
             tableType = .table
@@ -236,6 +250,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
                 charset: col.charset,
                 collation: col.collation,
                 comment: col.comment,
+                isGenerated: col.isGenerated,
                 allowedValues: col.allowedValues
             )
         }
@@ -272,16 +287,19 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     }
 
     func fetchTriggers(table: String) async throws -> [TriggerInfo] {
-        let pluginTriggers = try await pluginDriver.fetchTriggers(table: table, schema: pluginDriver.currentSchema)
-        return pluginTriggers.map { trigger in
-            TriggerInfo(
-                name: trigger.name,
-                timing: trigger.timing,
-                event: trigger.event,
-                statement: trigger.statement,
-                enabled: trigger.enabled
-            )
-        }
+        let schema = pluginDriver.currentSchema
+        let pluginTriggers = try await pluginDriver.fetchTriggers(table: table, schema: schema)
+        return pluginTriggers.map { TriggerInfo($0.adopting(table: table, schema: schema)) }
+    }
+
+    func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo] {
+        let resolvedSchema = schema ?? pluginDriver.currentSchema
+        let pluginTriggers = try await pluginDriver.fetchAllTriggers(schema: resolvedSchema)
+        return pluginTriggers.map { TriggerInfo($0.adopting(table: nil, schema: resolvedSchema)) }
+    }
+
+    func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String {
+        try await pluginDriver.fetchTriggerDDL(trigger.pluginTrigger)
     }
 
     func createTriggerTemplate(table: String) -> String? {
@@ -305,24 +323,24 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     }
 
     func fetchFilteredRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? {
-        let tuples = filters
+        let queryFilters = filters
             .filter { $0.isEnabled && !$0.columnName.isEmpty }
-            .map(\.asPluginFilterTuple)
+            .map(\.asPluginQueryFilter)
         return try await pluginDriver.fetchFilteredRowCount(
             table: table,
-            filters: tuples,
+            queryFilters: queryFilters,
             logicMode: logicMode == .and ? "and" : "or"
         )
     }
 
     func fetchExactRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? {
-        let tuples = filters
+        let queryFilters = filters
             .filter { $0.isEnabled && !$0.columnName.isEmpty }
-            .map(\.asPluginFilterTuple)
+            .map(\.asPluginQueryFilter)
         return try await pluginDriver.fetchExactRowCount(
             table: table,
             schema: pluginDriver.currentSchema,
-            filters: tuples,
+            queryFilters: queryFilters,
             logicMode: logicMode == .and ? "and" : "or"
         )
     }
@@ -371,59 +389,24 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         try await pluginDriver.fetchSchemas()
     }
 
-    func fetchProcedures(schema: String?) async throws -> [RoutineInfo] {
-        guard let support = pluginDriver as? PluginProcedureFunctionSupport else { return [] }
+    func fetchExternalSchemaNames() async throws -> Set<String> {
+        try await pluginDriver.fetchExternalSchemaNames()
+    }
+
+    func fetchRoutines(schema: String?) async throws -> [RoutineInfo] {
         let resolvedSchema = schema ?? pluginDriver.currentSchema
         do {
-            let pluginRoutines = try await support.fetchProcedures(schema: resolvedSchema)
-            return pluginRoutines.map { routine in
-                RoutineInfo(
-                    name: routine.name,
-                    schema: resolvedSchema,
-                    kind: .procedure,
-                    signature: routine.returnType
-                )
-            }
+            let pluginRoutines = try await pluginDriver.fetchRoutines(schema: resolvedSchema)
+            return pluginRoutines.map { RoutineInfo($0.adopting(kind: $0.kind, schema: resolvedSchema)) }
+                .sorted { ($0.kind.rawValue, $0.name) < ($1.kind.rawValue, $1.name) }
         } catch {
-            Self.logger.warning("fetchProcedures failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("fetchRoutines failed: \(error.localizedDescription, privacy: .public)")
             throw error
         }
     }
 
-    func fetchFunctions(schema: String?) async throws -> [RoutineInfo] {
-        guard let support = pluginDriver as? PluginProcedureFunctionSupport else { return [] }
-        let resolvedSchema = schema ?? pluginDriver.currentSchema
-        do {
-            let pluginRoutines = try await support.fetchFunctions(schema: resolvedSchema)
-            return pluginRoutines.map { routine in
-                RoutineInfo(
-                    name: routine.name,
-                    schema: resolvedSchema,
-                    kind: .function,
-                    signature: routine.returnType
-                )
-            }
-        } catch {
-            Self.logger.warning("fetchFunctions failed: \(error.localizedDescription, privacy: .public)")
-            throw error
-        }
-    }
-
-    func fetchRoutineDDL(routine: RoutineInfo) async throws -> String {
-        guard let support = pluginDriver as? PluginProcedureFunctionSupport else {
-            throw NSError(
-                domain: "PluginDriverAdapter",
-                code: -1,
-                userInfo: [NSLocalizedDescriptionKey: String(localized: "This driver does not expose routine DDL.")]
-            )
-        }
-        let resolvedSchema = routine.schema ?? pluginDriver.currentSchema
-        switch routine.kind {
-        case .procedure:
-            return try await support.fetchProcedureDDL(name: routine.name, schema: resolvedSchema)
-        case .function:
-            return try await support.fetchFunctionDDL(name: routine.name, schema: resolvedSchema)
-        }
+    func fetchRoutineDDL(_ routine: RoutineInfo) async throws -> String {
+        try await pluginDriver.fetchRoutineDDL(routine.pluginRoutine)
     }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata {
@@ -453,6 +436,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         try await pluginDriver.dropDatabase(name: name)
     }
 
+    func dropSchema(name: String) async throws {
+        try await pluginDriver.dropSchema(name: name)
+    }
+
     func fetchSessionContexts() async throws -> [PluginSessionContext]? {
         try await pluginDriver.fetchSessionContexts()
     }
@@ -462,6 +449,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     }
 
     // MARK: - Batch Operations
+
+    func sampleFieldPaths(table: String, limit: Int) async throws -> [PluginFieldPath] {
+        try await pluginDriver.sampleFieldPaths(table: table, schema: pluginDriver.currentSchema, limit: limit)
+    }
 
     func fetchAllColumns() async throws -> [String: [ColumnInfo]] {
         let pluginResult = try await pluginDriver.fetchAllColumns(schema: pluginDriver.currentSchema)
@@ -476,6 +467,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         }
         return result
     }
+
+    var providesBulkForeignKeyFetch: Bool { pluginDriver.providesBulkForeignKeyFetch }
 
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] {
         let pluginResult = try await pluginDriver.fetchAllForeignKeys(schema: pluginDriver.currentSchema)
@@ -538,6 +531,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
 
     func switchDatabase(to database: String) async throws {
         try await pluginDriver.switchDatabase(to: database)
+    }
+
+    var currentDatabase: String? {
+        pluginDriver.currentDatabase
     }
 
     // MARK: - DDL Schema Generation

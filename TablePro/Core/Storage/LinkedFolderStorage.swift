@@ -21,12 +21,12 @@ struct LinkedFolder: Codable, Identifiable, Hashable {
     }
 }
 
-final class LinkedFolderStorage {
+final class LinkedFolderStorage: Sendable {
     static let shared = LinkedFolderStorage()
 
     private let store: CodableListPreferenceStore<LinkedFolder>
 
-    init(defaults: KeyValueStore = UserDefaults.standard) {
+    init(defaults: KeyValueStore = AppStorageEnvironment.shared.defaults) {
         store = CodableListPreferenceStore(key: PreferenceKeys.linkedFolders, store: defaults)
     }
 

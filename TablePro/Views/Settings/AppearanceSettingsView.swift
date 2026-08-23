@@ -23,6 +23,10 @@ struct AppearanceSettingsView: View {
         chosenSlot ?? (ThemeEngine.shared.effectiveAppearance == .dark ? .dark : .light)
     }
 
+    private var slotAppearance: ThemeAppearance {
+        editSlot == .dark ? .dark : .light
+    }
+
     private var slotThemeBinding: Binding<String> {
         Binding(
             get: {
@@ -47,12 +51,13 @@ struct AppearanceSettingsView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
 
-                Picker("", selection: $settings.appearanceMode) {
+                Picker(String(localized: "Appearance"), selection: $settings.appearanceMode) {
                     ForEach(AppAppearanceMode.allCases, id: \.self) { mode in
                         Text(mode.displayName).tag(mode)
                     }
                 }
                 .pickerStyle(.segmented)
+                .labelsHidden()
                 .fixedSize()
 
                 Spacer()
@@ -61,11 +66,12 @@ struct AppearanceSettingsView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
 
-                Picker("", selection: Binding(get: { editSlot }, set: { chosenSlot = $0 })) {
+                Picker(String(localized: "Editing"), selection: Binding(get: { editSlot }, set: { chosenSlot = $0 })) {
                     Text("Light").tag(ThemeEditSlot.light)
                     Text("Dark").tag(ThemeEditSlot.dark)
                 }
                 .pickerStyle(.segmented)
+                .labelsHidden()
                 .fixedSize()
             }
             .padding(.horizontal, 16)
@@ -74,7 +80,7 @@ struct AppearanceSettingsView: View {
             Divider()
 
             HSplitView {
-                ThemeListView(selectedThemeId: slotThemeBinding)
+                ThemeListView(selectedThemeId: slotThemeBinding, slotAppearance: slotAppearance)
                     .frame(minWidth: 180, idealWidth: 210, maxWidth: 250)
 
                 ThemeEditorView(selectedThemeId: slotThemeBinding)

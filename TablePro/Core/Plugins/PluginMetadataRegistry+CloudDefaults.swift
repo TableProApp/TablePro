@@ -59,7 +59,8 @@ extension PluginMetadataRegistry {
                             "begins_with", "contains", "size", "attribute_type",
                             "attribute_exists", "attribute_not_exists",
                         ],
-                        dataTypes: ["S", "N", "B", "BOOL", "NULL", "L", "M", "SS", "NS", "BS"]
+                        dataTypes: ["S", "N", "B", "BOOL", "NULL", "L", "M", "SS", "NS", "BS"],
+                        caseSensitivityStyle: .driverManaged
                     ),
                     statementCompletions: [
                         CompletionEntry(label: "SELECT", insertText: "SELECT"),
@@ -238,8 +239,9 @@ extension PluginMetadataRegistry {
                         ],
                         regexSyntax: .unsupported,
                         booleanLiteralStyle: .truefalse,
-                        likeEscapeStyle: .explicit,
-                        paginationStyle: .limit
+                        likeEscapeStyle: .implicit,
+                        paginationStyle: .limit,
+                        caseSensitivityStyle: .caseFoldFunction
                     ),
                     statementCompletions: [
                         CompletionEntry(label: "SELECT", insertText: "SELECT"),
@@ -482,7 +484,8 @@ extension PluginMetadataRegistry {
                         regexSyntax: .regexpLike,
                         booleanLiteralStyle: .truefalse,
                         likeEscapeStyle: .explicit,
-                        paginationStyle: .limit
+                        paginationStyle: .limit,
+                        caseSensitivityStyle: .ilikeOperator
                     ),
                     statementCompletions: [
                         CompletionEntry(label: "SELECT", insertText: "SELECT"),

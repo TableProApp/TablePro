@@ -29,14 +29,23 @@ extension MainContentCoordinator {
             value: value
         )
 
-        let currentDatabase = activeDatabaseName
+        guard let sourceScope = selectedTabScope else {
+            fkNavigationLogger.error("FK navigate skipped: the source tab is not bound to a database")
+            return
+        }
 
-        let targetSchema = DatabaseManager.shared.resolvedSchemaName(fkInfo.referencedSchema, for: connectionId)
+        let currentDatabase = sourceScope.database
+        let targetSchema = fkInfo.referencedSchema.flatMap { $0.isEmpty ? nil : $0 } ?? sourceScope.schema
 
         if !openInNewTab,
            let current = tabManager.selectedTab,
            matchesFKTarget(current, table: referencedTable, database: currentDatabase, schema: targetSchema) {
+            /// Re-filtering the tab in place is a jump like any other, so it goes on the history.
+            /// Clicking the reference the tab is already showing is not, and recording it would
+            /// stack identical entries a reader has to press Back through.
+            let departing = showsOnlyFKPredicate(current, filter: filter) ? nil : captureNavigationEntry()
             applyFKFilter(filter, for: referencedTable)
+            commitNavigationEntry(departing)
             return
         }
 
@@ -83,6 +92,9 @@ extension MainContentCoordinator {
             isVisible: true,
             filterLogicMode: .and
         )
+        /// This payload is only built once no open tab could take the jump, so it must land in a
+        /// tab of its own. Reusing one would write the FK filter over filters the user applied
+        /// there, and leave the grid on rows the new filter never ran against.
         return EditorTabPayload(
             connectionId: connection.id,
             tabType: .table,
@@ -90,23 +102,33 @@ extension MainContentCoordinator {
             databaseName: databaseName,
             schemaName: schemaName,
             isView: false,
+            forcesNewTab: true,
             initialFilterState: fkFilterState
         )
     }
 
     /// Toggle FK preview for the currently focused cell in the data grid.
     /// Called from the menu command system (Settings > Keyboard rebindable).
+    /// `focusedColumn` is a position in `tableView.tableColumns`, which carries the row-number
+    /// column and a hidden spacer before the data, and which the reader can reorder. Subtracting a
+    /// fixed offset from it named a different column than the one they were on, or none at all, so
+    /// this resolves it by column identity the way the key-equivalent path already does.
     func toggleFKPreviewForFocusedCell() {
         guard let tableView = NSApp.keyWindow?.firstResponder as? KeyHandlingTableView,
               let coordinator = tableView.coordinator,
               tableView.selectedRow >= 0,
-              tableView.focusedColumn >= 1
+              tableView.presentsDataColumn(at: tableView.focusedColumn),
+              let columnIndex = DataGridView.dataColumnIndex(
+                  for: tableView.focusedColumn,
+                  in: tableView,
+                  schema: coordinator.identitySchema
+              )
         else { return }
         coordinator.toggleForeignKeyPreview(
             tableView: tableView,
             row: tableView.selectedRow,
             column: tableView.focusedColumn,
-            columnIndex: tableView.focusedColumn - 1
+            columnIndex: columnIndex
         )
     }
 
@@ -123,6 +145,14 @@ extension MainContentCoordinator {
             && lhs.value == rhs.value
     }
 
+    /// Whether this tab is already showing exactly this reference and nothing else. One definition,
+    /// because the reuse search and the history both have to agree on what "already here" means.
+    private func showsOnlyFKPredicate(_ tab: QueryTab, filter: TableFilter) -> Bool {
+        let applied = tab.filterState.appliedFilters
+        guard applied.count == 1 else { return false }
+        return isSameFKPredicate(applied[0], filter)
+    }
+
     /// A tab already showing exactly this reference. Matching the filter too keeps a click on a
     /// different row from re-filtering a tab the user opened for another one.
     private func openFKTargetTab(
@@ -132,10 +162,8 @@ extension MainContentCoordinator {
         filter: TableFilter
     ) -> (coordinator: MainContentCoordinator, tabId: UUID)? {
         func matches(_ tab: QueryTab) -> Bool {
-            guard matchesFKTarget(tab, table: table, database: database, schema: schema) else { return false }
-            let applied = tab.filterState.appliedFilters
-            guard applied.count == 1 else { return false }
-            return isSameFKPredicate(applied[0], filter)
+            matchesFKTarget(tab, table: table, database: database, schema: schema)
+                && showsOnlyFKPredicate(tab, filter: filter)
         }
 
         if let match = tabManager.tabs.first(where: matches) {
@@ -156,6 +184,7 @@ extension MainContentCoordinator {
         databaseName: String,
         schemaName: String?
     ) {
+        let departing = captureNavigationEntry()
         if let outgoingTable = tabManager.selectedTab?.tableContext.tableName {
             saveLastFilters(for: outgoingTable)
         }
@@ -174,6 +203,7 @@ extension MainContentCoordinator {
             return
         }
 
+        commitNavigationEntry(departing)
         guard replaced, let (replacedTab, tabIndex) = tabManager.selectedTabAndIndex else {
             applyFKFilter(filter, for: referencedTable)
             return
@@ -193,6 +223,7 @@ extension MainContentCoordinator {
             schemaName: schemaName,
             filters: [filter],
             columns: tableRows.columns,
+            columnTypes: tableRows.columnTypes,
             limit: pagination.pageSize,
             offset: pagination.currentOffset
         )

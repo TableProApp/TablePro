@@ -30,8 +30,13 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static let urlSchemes: [String] = ["mysql"]
     static let explainVariants: [ExplainVariant] = [
-        ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN"),
-        ExplainVariant(id: "explain-json", label: "EXPLAIN (JSON)", sqlPrefix: "EXPLAIN FORMAT=JSON"),
+        ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN", format: .mysqlComposite),
+        ExplainVariant(
+            id: "explain-json",
+            label: "EXPLAIN (JSON)",
+            sqlPrefix: "EXPLAIN FORMAT=JSON",
+            format: .mysqlComposite
+        ),
     ]
     static let brandColorHex = "#FF9500"
     static let postConnectActions: [PostConnectAction] = [.selectDatabaseFromLastSession]
@@ -92,11 +97,14 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .implicit,
         paginationStyle: .limit,
-        requiresBackslashEscaping: true
+        requiresBackslashEscaping: true,
+        caseSensitivityStyle: .collationDefined
     )
 
     static let supportsDropDatabase = true
     static let supportsTriggers = true
+    static let supportsRoutines = true
+    static let supportsDatabaseTriggerBrowse = true
     static let supportsTriggerEditing = true
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {

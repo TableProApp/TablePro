@@ -1,0 +1,82 @@
+---
+title: Cloud SQL Auth Proxy
+description: Connect to Google Cloud SQL by letting TablePro manage the Cloud SQL Auth Proxy
+---
+
+import HelperPort from "/snippets/helper-port.mdx";
+
+One field carries the whole setup: the instance connection name, `project:region:instance`, which is on the instance's overview page in the Google Cloud console. The proxy itself runs as a child process, started on connect and killed on disconnect.
+
+<Frame caption="The Cloud SQL Auth Proxy pane in the connection form">
+  <img className="block dark:hidden" src="/images/cloud-sql-proxy-pane.png" alt="Cloud SQL Auth Proxy pane" />
+  <img className="hidden dark:block" src="/images/cloud-sql-proxy-pane-dark.png" alt="Cloud SQL Auth Proxy pane" />
+</Frame>
+
+## Before you start
+
+The pane appears for Cloud SQL instances running MySQL, PostgreSQL, or SQL Server. The account you connect with needs the **Cloud SQL Client** role (`roles/cloudsql.client`) on the project, and for Application Default Credentials, one run of:
+
+```bash
+gcloud auth application-default login
+```
+
+Install the binary, or click **Download cloud-sql-proxy…** in the pane, which fetches 2.23.0 and checks its SHA-256 against the value pinned for your CPU architecture.
+
+```bash
+brew install cloud-sql-proxy
+```
+
+Auto-detection covers your `PATH`, `/opt/homebrew/bin`, `/usr/local/bin`, and `~/google-cloud-sdk/bin`. Anywhere else, use **Choose…**.
+
+## Setting up
+
+<Steps>
+  <Step title="Enable the pane">
+    Select **Cloud SQL Auth Proxy** and turn **Enable Cloud SQL Auth Proxy** on. A connection carries one method at a time, so an SSH tunnel or SOCKS proxy already enabled has to be switched off here first.
+  </Step>
+  <Step title="Name the instance and pick credentials">
+    Enter the **Instance connection name**, then choose **Application Default Credentials** or **Service Account Key**.
+  </Step>
+  <Step title="Leave the SSL pane alone">
+    The proxy encrypts the leg to Cloud SQL and hands the driver plain loopback, so SSL/TLS stays off.
+  </Step>
+  <Step title="Test it">
+    On **General**, click **Test Connection**. **Host** and **Port** there are never dialed: the instance connection name decides where the proxy lands. **Username** and **Database** work as usual.
+  </Step>
+</Steps>
+
+## Options
+
+| Option | What it does | Default |
+|--------|--------------|---------|
+| **Instance connection name** | `project:region:instance`. Three colon-separated parts, none empty, or the connect is refused outright. | - |
+| **Credentials** | **Application Default Credentials**, or a **Service Account Key** pasted as JSON. | Application Default Credentials |
+| **Use IAM database authentication** | Signs in as an IAM principal instead. Set **Username** to that principal, a user email or `name@project.iam` for a service account; the password goes unused. | Off |
+| **Connect over private IP** | Reaches the instance on its private address instead of its public one. | Off |
+| **Path** | The `cloud-sql-proxy` binary. Blank auto-detects. | Blank |
+
+A pasted key is kept in the macOS Keychain and written to a temporary file readable only by you while the proxy runs, then deleted. It never reaches the command line.
+
+<Note>
+`GOOGLE_APPLICATION_CREDENTIALS` works too, but the proxy inherits the app's environment, and a GUI app never sees variables exported by your shell profile.
+</Note>
+
+<HelperPort />
+
+## Troubleshooting
+
+### cloud-sql-proxy was not found
+
+Install it with `brew install cloud-sql-proxy`, download it from the pane, or set **Path**.
+
+### The proxy did not become ready in time
+
+Run it by hand to see what it says:
+
+```bash
+cloud-sql-proxy --port 5433 --address 127.0.0.1 project:region:instance
+```
+
+### Permission or authentication errors
+
+The proxy reports these on its own output, which the failed connect shows. Usually the account is missing the **Cloud SQL Client** role, Application Default Credentials were never set up, or IAM database authentication is on with no database user for the principal.

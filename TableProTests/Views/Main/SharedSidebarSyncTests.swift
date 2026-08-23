@@ -21,11 +21,11 @@ struct SharedSidebarSyncTests {
         TestFixtures.makeTableInfo(name: name, type: type)
     }
 
-    // MARK: - syncSidebarToCurrentTab must not trigger navigation
+    // MARK: - syncSidebarObjectSelection must not trigger navigation
 
-    @Test("syncSidebarToCurrentTab sets same table as current tab — resolve skips")
+    @Test("syncSidebarObjectSelection sets same table as current tab, so resolve skips")
     func syncSameTableSkipsNavigation() {
-        // Simulates: didBecomeKey → syncSidebarToCurrentTab → onChange fires
+        // Simulates: didBecomeKey → syncSidebarObjectSelection → onChange fires
         // previousSelectedTables was empty (initial), sync sets [users]
         let previousSelectedTables: Set<TableInfo> = []
         let newSelectedTables: Set<TableInfo> = [makeTable("users")]
@@ -33,7 +33,8 @@ struct SharedSidebarSyncTests {
         // TableSelectionAction sees one table added
         let action = TableSelectionAction.resolve(
             oldTables: previousSelectedTables,
-            newTables: newSelectedTables
+            newTables: newSelectedTables,
+            selectedRowCount: (newSelectedTables).count
         )
         #expect(action == .navigate(table: TableInfo(name: "users", type: .table, rowCount: nil)))
 
@@ -44,25 +45,25 @@ struct SharedSidebarSyncTests {
             hasExistingTabs: true,
             isActiveTabReusable: false
         )
-        #expect(result == .skip, "syncSidebarToCurrentTab must not trigger navigation")
+        #expect(result == .skip, "syncSidebarObjectSelection must not trigger navigation")
     }
 
-    @Test("syncSidebarToCurrentTab with no change — no onChange fires")
+    @Test("syncSidebarObjectSelection with no change fires no onChange")
     func syncNoChangeNoOnChange() {
         // When sidebarState already has [users] and sync sets [users],
         // @Observable does not fire onChange (same value)
         let previous: Set<TableInfo> = [makeTable("users")]
         let new: Set<TableInfo> = [makeTable("users")]
-        let action = TableSelectionAction.resolve(oldTables: previous, newTables: new)
+        let action = TableSelectionAction.resolve(oldTables: previous, newTables: new, selectedRowCount: new.count)
         #expect(action == .noNavigation, "Same selection set must not trigger navigation")
     }
 
-    @Test("syncSidebarToCurrentTab clears selection for query tab — no navigation")
+    @Test("syncSidebarObjectSelection clears selection for a query tab without navigating")
     func syncClearsForQueryTab() {
         // Current tab is SQL query (tableName = nil), sync clears sidebar
         let previous: Set<TableInfo> = [makeTable("users")]
         let new: Set<TableInfo> = []
-        let action = TableSelectionAction.resolve(oldTables: previous, newTables: new)
+        let action = TableSelectionAction.resolve(oldTables: previous, newTables: new, selectedRowCount: new.count)
         #expect(action == .noNavigation, "Clearing selection must not navigate")
     }
 
@@ -74,7 +75,8 @@ struct SharedSidebarSyncTests {
         // TableSelectionAction says navigate
         let action = TableSelectionAction.resolve(
             oldTables: [makeTable("orders")],
-            newTables: [makeTable("users")]
+            newTables: [makeTable("users")],
+            selectedRowCount: ([makeTable("users")]).count
         )
         #expect(action == .navigate(table: TableInfo(name: "users", type: .table, rowCount: nil)))
 
@@ -91,10 +93,10 @@ struct SharedSidebarSyncTests {
     @Test("Switch back: sync sets same table — skip, no new tab")
     func switchBackSameTable() {
         // User has "users" tab, switches away and back
-        // syncSidebarToCurrentTab sets [users] (same as before)
+        // syncSidebarObjectSelection sets [users] (same as before)
         let previous: Set<TableInfo> = [makeTable("users")]
         let new: Set<TableInfo> = [makeTable("users")]
-        let action = TableSelectionAction.resolve(oldTables: previous, newTables: new)
+        let action = TableSelectionAction.resolve(oldTables: previous, newTables: new, selectedRowCount: new.count)
         #expect(action == .noNavigation, "Switch-back with same table must be no-op")
     }
 
@@ -104,7 +106,8 @@ struct SharedSidebarSyncTests {
         // which matches current tab
         let action = TableSelectionAction.resolve(
             oldTables: [],
-            newTables: [makeTable("users")]
+            newTables: [makeTable("users")],
+            selectedRowCount: ([makeTable("users")]).count
         )
         // This produces .navigate — but SidebarNavigationResult catches it
         #expect(action == .navigate(table: TableInfo(name: "users", type: .table, rowCount: nil)))
@@ -121,10 +124,11 @@ struct SharedSidebarSyncTests {
     @Test("Switch back to SQL query tab — sync clears, no navigation")
     func switchBackToQueryTab() {
         // User was on SQL query tab (tableName = nil), switches back
-        // syncSidebarToCurrentTab clears selection
+        // syncSidebarObjectSelection clears selection
         let action = TableSelectionAction.resolve(
             oldTables: [makeTable("users")],
-            newTables: []
+            newTables: [],
+            selectedRowCount: ([]).count
         )
         #expect(action == .noNavigation)
     }
@@ -135,7 +139,8 @@ struct SharedSidebarSyncTests {
     func clickDifferentTableOpensNewTab() {
         let action = TableSelectionAction.resolve(
             oldTables: [makeTable("users")],
-            newTables: [makeTable("orders")]
+            newTables: [makeTable("orders")],
+            selectedRowCount: ([makeTable("orders")]).count
         )
         #expect(action == .navigate(table: TableInfo(name: "orders", type: .table, rowCount: nil)))
 
@@ -152,7 +157,8 @@ struct SharedSidebarSyncTests {
     func clickTableEmptyTabsOpensInPlace() {
         let action = TableSelectionAction.resolve(
             oldTables: [],
-            newTables: [makeTable("users")]
+            newTables: [makeTable("users")],
+            selectedRowCount: ([makeTable("users")]).count
         )
         #expect(action == .navigate(table: TableInfo(name: "users", type: .table, rowCount: nil)))
 
@@ -170,7 +176,8 @@ struct SharedSidebarSyncTests {
         // Edge case: previousSelectedTables was different (e.g. empty after tab switch)
         let action = TableSelectionAction.resolve(
             oldTables: [],
-            newTables: [makeTable("users")]
+            newTables: [makeTable("users")],
+            selectedRowCount: ([makeTable("users")]).count
         )
         #expect(action == .navigate(table: TableInfo(name: "users", type: .table, rowCount: nil)))
 
@@ -191,7 +198,8 @@ struct SharedSidebarSyncTests {
         // Window B (non-key) sees onChange: from [orders] to [users]
         let action = TableSelectionAction.resolve(
             oldTables: [makeTable("orders")],
-            newTables: [makeTable("users")]
+            newTables: [makeTable("users")],
+            selectedRowCount: ([makeTable("users")]).count
         )
         #expect(action == .navigate(table: TableInfo(name: "users", type: .table, rowCount: nil)))
         // Window B's isKeyWindow = false → handleTableSelectionChange returns early
@@ -204,33 +212,10 @@ struct SharedSidebarSyncTests {
         // No value change → no onChange → no navigation
         let action = TableSelectionAction.resolve(
             oldTables: [makeTable("users")],
-            newTables: [makeTable("users")]
+            newTables: [makeTable("users")],
+            selectedRowCount: ([makeTable("users")]).count
         )
         #expect(action == .noNavigation)
-    }
-
-    // MARK: - Tables load scenarios
-
-    @Test("Tables load with empty sidebar and matching tab — syncs selection")
-    func tablesLoadSyncsSelection() {
-        let tables = [makeTable("users"), makeTable("orders")]
-        let result = SidebarSyncAction.resolveOnTablesLoad(
-            newTables: tables,
-            selectedTables: [],
-            currentTabTableName: "users"
-        )
-        #expect(result == .select(tableName: "users"))
-    }
-
-    @Test("Tables load with existing sidebar selection — no sync")
-    func tablesLoadNoSyncWhenSelected() {
-        let tables = [makeTable("users"), makeTable("orders")]
-        let result = SidebarSyncAction.resolveOnTablesLoad(
-            newTables: tables,
-            selectedTables: [makeTable("users")],
-            currentTabTableName: "orders"
-        )
-        #expect(result == .noSync)
     }
 
     // MARK: - Deselection scenarios
@@ -239,7 +224,8 @@ struct SharedSidebarSyncTests {
     func selectAllNoNavigation() {
         let action = TableSelectionAction.resolve(
             oldTables: [],
-            newTables: [makeTable("a"), makeTable("b"), makeTable("c")]
+            newTables: [makeTable("a"), makeTable("b"), makeTable("c")],
+            selectedRowCount: ([makeTable("a"), makeTable("b"), makeTable("c")]).count
         )
         #expect(action == .noNavigation)
     }
@@ -248,7 +234,8 @@ struct SharedSidebarSyncTests {
     func deselectAllNoNavigation() {
         let action = TableSelectionAction.resolve(
             oldTables: [makeTable("users"), makeTable("orders")],
-            newTables: []
+            newTables: [],
+            selectedRowCount: ([]).count
         )
         #expect(action == .noNavigation)
     }

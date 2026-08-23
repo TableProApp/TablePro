@@ -9,7 +9,7 @@ import SwiftUI
 import TableProPluginKit
 
 @Observable
-final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
+final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "SQL Export"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Export data to SQL format"
@@ -51,6 +51,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
         settings.compressWithGzip ? "sql.gz" : "sql"
     }
 
+    @MainActor
     func settingsView() -> AnyView? {
         AnyView(SQLExportOptionsView(plugin: self))
     }

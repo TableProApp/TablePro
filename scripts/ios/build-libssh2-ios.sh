@@ -1,5 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -eo pipefail
+
+# shellcheck source=../lib/common.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/common.sh"
 
 # Build static libssh2 for iOS → xcframework
 #
@@ -16,18 +19,6 @@ LIBS_DIR="$PROJECT_DIR/Libs/ios"
 BUILD_DIR="$(mktemp -d)"
 NCPU=$(sysctl -n hw.ncpu)
 
-run_quiet() {
-    local logfile
-    logfile=$(mktemp)
-    if ! "$@" > "$logfile" 2>&1; then
-        echo "FAILED: $*"
-        tail -50 "$logfile"
-        rm -f "$logfile"
-        return 1
-    fi
-    rm -f "$logfile"
-}
-
 cleanup() {
     echo "   Cleaning up build directory..."
     rm -rf "$BUILD_DIR"
@@ -43,9 +34,12 @@ resolve_openssl() {
     local PLATFORM_KEY=$1
     local PREFIX="$BUILD_DIR/openssl-$PLATFORM_KEY"
 
-    local SSL_LIB=$(find "$LIBS_DIR/OpenSSL-SSL.xcframework" -path "*$PLATFORM_KEY*/libssl.a" | head -1)
-    local CRYPTO_LIB=$(find "$LIBS_DIR/OpenSSL-Crypto.xcframework" -path "*$PLATFORM_KEY*/libcrypto.a" | head -1)
-    local HEADERS=$(find "$LIBS_DIR/OpenSSL-SSL.xcframework" -path "*$PLATFORM_KEY*/Headers" -type d | head -1)
+    local SSL_LIB
+    SSL_LIB=$(find "$LIBS_DIR/OpenSSL-SSL.xcframework" -path "*$PLATFORM_KEY*/libssl.a" | head -1)
+    local CRYPTO_LIB
+    CRYPTO_LIB=$(find "$LIBS_DIR/OpenSSL-Crypto.xcframework" -path "*$PLATFORM_KEY*/libcrypto.a" | head -1)
+    local HEADERS
+    HEADERS=$(find "$LIBS_DIR/OpenSSL-SSL.xcframework" -path "*$PLATFORM_KEY*/Headers" -type d | head -1)
 
     if [ -z "$SSL_LIB" ] || [ -z "$CRYPTO_LIB" ]; then
         echo "ERROR: OpenSSL not found for $PLATFORM_KEY. Run build-openssl-ios.sh first."
@@ -69,7 +63,8 @@ echo "$LIBSSH2_SHA256  $BUILD_DIR/libssh2.tar.gz" | shasum -a 256 -c - > /dev/nu
 tar xzf "$BUILD_DIR/libssh2.tar.gz" -C "$BUILD_DIR"
 LIBSSH2_SRC="$BUILD_DIR/libssh2-$LIBSSH2_VERSION"
 
-for patch in "$SCRIPT_DIR/../patches"/*.patch; do
+# Only this library's patches. A flat patch directory would apply every library's here.
+for patch in "$SCRIPT_DIR/../patches/libssh2"/*.patch; do
     [ -e "$patch" ] || continue
     echo "=> Applying $(basename "$patch")"
     patch -p1 -d "$LIBSSH2_SRC" -i "$patch"

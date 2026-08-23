@@ -5,7 +5,6 @@
 
 import Observation
 import SwiftUI
-import TableProPluginKit
 
 @MainActor @Observable
 final class SidebarViewModel {
@@ -72,18 +71,36 @@ final class SidebarViewModel {
         }
 
         static func defaultValue(for kind: SidebarObjectKind) -> Bool {
-            kind == .table
+            kind.isExpandedByDefault
         }
     }
 
     // MARK: - Published State
 
+    /// The text in the sidebar's filter field, which the field itself writes into
+    /// `SharedSidebarState`. This is a window onto that one value rather than a second copy, so a
+    /// write here is a write there.
     var searchText: String {
         get { sharedState.searchText }
         set {
             let oldValue = sharedState.searchText
             sharedState.searchText = newValue
             scheduleFilterQueryUpdate(oldValue: oldValue)
+        }
+    }
+
+    /// Watches the shared state directly instead of being told by a view's `onChange`. The relay
+    /// meant a keystroke reached the filter only while a SwiftUI body was evaluating, and the view
+    /// that carried it also re-seeded the debounce on every rebuild.
+    private func observeSearchText() {
+        withObservationTracking { [weak self] in
+            _ = self?.sharedState.searchText
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.scheduleFilterQueryUpdate(oldValue: self.filterQuery)
+                self.observeSearchText()
+            }
         }
     }
 
@@ -98,7 +115,7 @@ final class SidebarViewModel {
     }
     var isRedisKeysExpanded: Bool {
         didSet {
-            UserDefaults.standard.set(
+            AppStorageEnvironment.shared.defaults.set(
                 isRedisKeysExpanded,
                 forKey: SidebarPersistenceKey.redisKeysExpanded(connectionId: connectionId)
             )
@@ -106,7 +123,7 @@ final class SidebarViewModel {
     }
     var isRecentsExpanded: Bool {
         didSet {
-            UserDefaults.standard.set(
+            AppStorageEnvironment.shared.defaults.set(
                 isRecentsExpanded,
                 forKey: SidebarPersistenceKey.recentsExpanded(connectionId: connectionId)
             )
@@ -190,6 +207,10 @@ final class SidebarViewModel {
             perConnectionKey: SidebarPersistenceKey.recentsExpanded(connectionId: connectionId),
             defaultValue: true
         )
+        /// Seeded once, at creation, from whatever the field already holds. Doing it from a view's
+        /// initializer instead ran on every view-graph pass.
+        self.filterQuery = self.sharedState.searchText
+        observeSearchText()
     }
 
     private static func loadInitialExpansion(connectionId: UUID) -> ExpansionState {
@@ -201,7 +222,7 @@ final class SidebarViewModel {
     }
 
     private static func loadKindExpansion(connectionId: UUID, kind: SidebarObjectKind) -> Bool {
-        let defaults = UserDefaults.standard
+        let defaults = AppStorageEnvironment.shared.defaults
         let perKindKey = SidebarPersistenceKey.expanded(connectionId: connectionId, kind: kind)
         if defaults.object(forKey: perKindKey) != nil {
             return defaults.bool(forKey: perKindKey)
@@ -227,7 +248,7 @@ final class SidebarViewModel {
         legacyKey: String? = nil,
         defaultValue: Bool
     ) -> Bool {
-        let defaults = UserDefaults.standard
+        let defaults = AppStorageEnvironment.shared.defaults
         if defaults.object(forKey: perConnectionKey) != nil {
             return defaults.bool(forKey: perConnectionKey)
         }
@@ -240,33 +261,13 @@ final class SidebarViewModel {
     }
 
     private func persistExpansion(oldValue: ExpansionState) {
-        let defaults = UserDefaults.standard
+        let defaults = AppStorageEnvironment.shared.defaults
         for kind in SidebarObjectKind.allCases where oldValue[kind] != expanded[kind] {
             defaults.set(
                 expanded[kind],
                 forKey: SidebarPersistenceKey.expanded(connectionId: connectionId, kind: kind)
             )
         }
-    }
-
-    // MARK: - Capability Gating
-
-    func capabilities(for connectionId: UUID) -> PluginCapabilities {
-        guard let adapter = DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter else {
-            return []
-        }
-        return adapter.schemaPluginDriver.capabilities
-    }
-
-    func sectionShouldRender(
-        kind: SidebarObjectKind,
-        itemCount: Int,
-        capabilities: PluginCapabilities
-    ) -> Bool {
-        if kind == .table { return true }
-        if let flag = kind.capabilityFlag, !capabilities.contains(flag) { return false }
-        if itemCount > 0 { return true }
-        return false
     }
 
     // MARK: - Batch Operations
@@ -307,6 +308,11 @@ final class SidebarViewModel {
             pendingOperationTables = tablesToToggle
             showOperationDialog = true
         }
+    }
+
+    func cancelPendingOperation() {
+        pendingOperationType = nil
+        pendingOperationTables = []
     }
 
     func confirmOperation(options: TableOperationOptions) {
@@ -353,13 +359,15 @@ final class SidebarViewModel {
 
     @ObservationIgnored private var cachedFilteredRoutines: [SidebarObjectKind: [RoutineInfo]] = [:]
     @ObservationIgnored private var cachedFilteredRoutinesFingerprint: (count: Int, generation: Int, query: String)?
+    @ObservationIgnored private var cachedFilteredTriggers: [TriggerInfo] = []
+    @ObservationIgnored private var cachedFilteredTriggersFingerprint: (count: Int, generation: Int, query: String)?
 
     private var schemaGeneration: Int {
         SchemaService.shared.generationToken(for: connectionId)
     }
 
     func tables(of kind: SidebarObjectKind, from tables: [TableInfo]) -> [TableInfo] {
-        guard !kind.isRoutine else { return [] }
+        guard kind.category == .table else { return [] }
         let fingerprint = (count: tables.count, generation: schemaGeneration)
         if cachedKindFingerprint?.count != fingerprint.count
             || cachedKindFingerprint?.generation != fingerprint.generation {
@@ -409,6 +417,18 @@ final class SidebarViewModel {
         return cachedFilteredRoutines[kind] ?? []
     }
 
+    func filteredTriggers(from triggers: [TriggerInfo]) -> [TriggerInfo] {
+        let query = filterQuery
+        let fingerprint = (count: triggers.count, generation: schemaGeneration, query: query)
+        if cachedFilteredTriggersFingerprint?.count != fingerprint.count
+            || cachedFilteredTriggersFingerprint?.generation != fingerprint.generation
+            || cachedFilteredTriggersFingerprint?.query != fingerprint.query {
+            cachedFilteredTriggers = DatabaseTreeFilter.filteredTriggers(triggers, searchText: query)
+            cachedFilteredTriggersFingerprint = fingerprint
+        }
+        return cachedFilteredTriggers
+    }
+
     func effectiveExpanded(kind: SidebarObjectKind, hasMatches: Bool) -> Bool {
         if !filterQuery.isEmpty && hasMatches { return true }
         return expanded[kind]
@@ -418,8 +438,12 @@ final class SidebarViewModel {
         SidebarNameFilter.ranked(tables, query: query, name: { $0.name })
     }
 
+    /// Goes through DatabaseTreeFilter so the flat root and the tree share one dedup owner. The
+    /// flat root used to rank without deduplicating, so a driver that returned one routine twice
+    /// handed NSOutlineView the same node object at several row indices and selection snapped back
+    /// to the first of them.
     private func applyRoutineQuery(_ query: String, to routines: [RoutineInfo]) -> [RoutineInfo] {
-        SidebarNameFilter.ranked(routines, query: query, name: { $0.name })
+        DatabaseTreeFilter.filteredRoutines(routines, searchText: query)
     }
 
     private func rebuildKindBuckets(from tables: [TableInfo]) {
@@ -428,19 +452,10 @@ final class SidebarViewModel {
             buckets[kind] = []
         }
         for table in tables {
-            let kind = Self.sidebarObjectKind(for: table.type)
+            let kind = SidebarObjectKind.resolve(tableType: table.type)
             buckets[kind, default: []].append(table)
         }
         cachedKindBuckets = buckets
-    }
-
-    private static func sidebarObjectKind(for tableType: TableInfo.TableType) -> SidebarObjectKind {
-        switch tableType.rawValue {
-        case "VIEW":               return .view
-        case "MATERIALIZED VIEW":  return .materializedView
-        case "FOREIGN TABLE":      return .foreignTable
-        default:                   return .table
-        }
     }
 
     private func invalidateFilterCaches() {
@@ -450,7 +465,11 @@ final class SidebarViewModel {
         cachedFilteredRoutinesFingerprint = nil
     }
 
+    /// Clearing the field, or typing the first character into an empty one, changes what the list
+    /// shows wholesale, so it applies at once. Editing an existing query only narrows it, which is
+    /// worth waiting a moment for.
     private func scheduleFilterQueryUpdate(oldValue: String) {
+        guard filterQuery != searchText else { return }
         if searchText.isEmpty || oldValue.isEmpty {
             filterDebounceTask?.cancel()
             filterDebounceTask = nil

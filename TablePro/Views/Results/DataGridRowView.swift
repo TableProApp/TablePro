@@ -20,11 +20,202 @@ class DataGridRowView: NSTableRowView {
     private(set) var visualState: RowVisualState = .empty
     private var rowTint: NSColor?
 
+    /// Draws the row's data cells.
+    ///
+    /// A subview rather than the row view's own `draw(_:)`, so the cells land after AppKit has
+    /// painted the row background and the selection, which is the order a mounted cell view got.
+    private let contentView = DataGridRowContentView()
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
         layerContentsRedrawPolicy = .onSetNeedsDisplay
         canDrawSubviewsIntoLayer = true
+        contentView.rowView = self
+        contentView.autoresizingMask = [.width, .height]
+        contentView.frame = bounds
+        addSubview(contentView)
+    }
+
+    /// Repaints one cell, the way a mounted cell view repainted itself.
+    ///
+    /// The accessibility elements carry the cell's value, so a repaint has to stand them down too,
+    /// or VoiceOver keeps reading what the cell said before the edit. A committed cell edit takes
+    /// this path, so it is the ordinary case rather than a rare one.
+    func redrawCell(atTableColumnIndex tableColumnIndex: Int) {
+        accessibilityCellsAreStale = true
+        guard let tableView = coordinator?.tableView else {
+            contentView.needsDisplay = true
+            return
+        }
+        let columnRect = tableView.rect(ofColumn: tableColumnIndex)
+        contentView.setNeedsDisplay(
+            NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: contentView.bounds.height)
+        )
+    }
+
+    func redrawCells() {
+        contentView.needsDisplay = true
+        accessibilityCellsAreStale = true
+    }
+
+    // MARK: - Accessibility
+
+    /// One element per data column, vended as this row's accessibility children.
+    ///
+    /// A mounted cell view was its own accessibility element and AppKit built the AXCell tree from
+    /// those. Drawn cells have no view to carry that, so the row vends the elements itself, which is
+    /// what `NSAccessibilityElement` exists for. Owned for the row's lifetime and reconfigured in
+    /// place, because an element handed to an assistive client must not be replaced underneath it.
+    private var accessibilityCells: [NSAccessibilityElement] = []
+    /// Accessibility is pull-based, so the elements are built when something asks for them and never
+    /// on the draw path. Building them there cost a formatted value per column per repaint, which is
+    /// 500 of them on a wide result every time the selection moved, with nothing reading the result
+    /// unless an assistive client is attached.
+    private var accessibilityCellsAreStale = true
+
+    private func rebuildAccessibilityCellsIfStale() {
+        guard accessibilityCellsAreStale else { return }
+        rebuildAccessibilityCells()
+    }
+
+    private func rebuildAccessibilityCells() {
+        accessibilityCellsAreStale = false
+        guard let coordinator, let tableView = coordinator.tableView else { return }
+        let columnCount = coordinator.identitySchema.totalDataColumns
+        if accessibilityCells.count != columnCount {
+            accessibilityCells = (0..<columnCount).map { _ in NSAccessibilityElement() }
+        }
+
+        for dataColumn in 0..<columnCount {
+            let element = accessibilityCells[dataColumn]
+            element.setAccessibilityRole(.cell)
+            element.setAccessibilityParent(self)
+            element.setAccessibilityRowIndexRange(NSRange(location: rowIndex, length: 1))
+            element.setAccessibilityColumnIndexRange(NSRange(location: dataColumn, length: 1))
+
+            let text = coordinator.accessibilityText(row: rowIndex, columnIndex: dataColumn) ?? ""
+            element.setAccessibilityValue(text)
+            element.setAccessibilityLabel(
+                String(
+                    format: String(localized: "Row %d, column %d: %@"),
+                    rowIndex + 1,
+                    dataColumn + 1,
+                    text
+                )
+            )
+
+            if let position = coordinator.tableColumnIndex(for: dataColumn) {
+                let columnRect = tableView.rect(ofColumn: position)
+                element.setAccessibilityFrameInParentSpace(
+                    NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: bounds.height)
+                )
+            }
+        }
+    }
+
+    func accessibilityCell(forDataColumn dataColumn: Int) -> NSAccessibilityElement? {
+        rebuildAccessibilityCellsIfStale()
+        guard accessibilityCells.indices.contains(dataColumn) else { return nil }
+        return accessibilityCells[dataColumn]
+    }
+
+    override func accessibilityChildren() -> [Any]? {
+        rebuildAccessibilityCellsIfStale()
+        return accessibilityCells.map { $0 as Any }
+    }
+
+    override func accessibilityRole() -> NSAccessibility.Role? { .row }
+
+    override func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        guard let window else { return super.accessibilityHitTest(point) }
+        let local = convert(window.convertPoint(fromScreen: point), from: nil)
+        rebuildAccessibilityCellsIfStale()
+        for element in accessibilityCells where element.accessibilityFrameInParentSpace().contains(local) {
+            return element
+        }
+        return super.accessibilityHitTest(point)
+    }
+
+    /// The click a cell view used to take for itself: the in-cell accessory, then a double click.
+    ///
+    /// - Returns: whether the click was consumed, leaving the table view's own selection handling
+    ///   to everything else.
+    func handleCellClick(at point: NSPoint, in view: NSView, clickCount: Int, modifiers: NSEvent.ModifierFlags) -> Bool {
+        guard let coordinator, let tableView = coordinator.tableView else { return false }
+        let inTableView = view.convert(point, to: tableView)
+        let tableColumnIndex = tableView.column(at: inTableView)
+        guard tableColumnIndex >= 0, tableColumnIndex < tableView.tableColumns.count,
+              let dataColumn = coordinator.dataColumnIndex(from: tableView.tableColumns[tableColumnIndex].identifier)
+        else { return false }
+
+        let columnRect = view.convert(tableView.rect(ofColumn: tableColumnIndex), from: tableView)
+        let cellRect = NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: view.bounds.height)
+        guard let appearance = coordinator.cellAppearance(
+            row: rowIndex,
+            columnIndex: dataColumn,
+            onEmphasizedSelection: isSelected && isEmphasized
+        ) else { return false }
+
+        let accessoryRect = appearance.accessory.frame(in: cellRect)
+        guard !accessoryRect.isEmpty, accessoryRect.contains(point) else {
+            guard clickCount == 2 else { return false }
+            coordinator.dataGridCellDidDoubleClick(row: rowIndex, columnIndex: dataColumn)
+            return true
+        }
+
+        switch appearance.accessory {
+        case .foreignKey:
+            coordinator.dataGridCellDidClickFKArrow(
+                row: rowIndex,
+                columnIndex: dataColumn,
+                openInNewTab: modifiers.contains(.command)
+            )
+            return true
+        case .chevron where !visualState.isDeleted:
+            coordinator.dataGridCellDidClickChevron(row: rowIndex, columnIndex: dataColumn)
+            return true
+        case .none, .chevron:
+            return false
+        }
+    }
+
+    /// Draws every data cell the dirty area touches.
+    ///
+    /// The columns are still real `NSTableColumn`s, so AppKit answers which of them the area covers
+    /// and where each one sits; only the cell content is drawn rather than mounted.
+    func drawCells(in dirtyRect: NSRect, of view: NSView) {
+        guard let coordinator, let tableView = coordinator.tableView else { return }
+        let inTableView = view.convert(dirtyRect, to: tableView)
+        let onEmphasizedSelection = isSelected && isEmphasized
+
+        for tableColumnIndex in tableView.columnIndexes(in: inTableView) {
+            guard tableColumnIndex < tableView.tableColumns.count else { continue }
+            let identifier = tableView.tableColumns[tableColumnIndex].identifier
+            guard let dataColumn = coordinator.dataColumnIndex(from: identifier) else { continue }
+            guard let appearance = coordinator.cellAppearance(
+                row: rowIndex,
+                columnIndex: dataColumn,
+                onEmphasizedSelection: onEmphasizedSelection
+            ) else { continue }
+
+            let columnRect = view.convert(tableView.rect(ofColumn: tableColumnIndex), from: tableView)
+            coordinator.cellRenderer.draw(
+                appearance,
+                in: NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: view.bounds.height)
+            )
+        }
+    }
+
+    /// Draws the column separators crossing this row. See `DataGridBodyChrome`.
+    func drawColumnSeparators(in dirtyRect: NSRect, of view: NSView) {
+        guard let coordinator, let tableView = coordinator.tableView else { return }
+        DataGridBodyChrome.drawColumnSeparators(
+            in: dirtyRect,
+            of: view,
+            tableView: tableView,
+            presentsColumn: { coordinator.presentsColumn(atTableColumnIndex: $0) }
+        )
     }
 
     required init?(coder: NSCoder) {
@@ -45,8 +236,10 @@ class DataGridRowView: NSTableRowView {
         "hidden": NSNull(),
     ]
 
+    /// The tint derives from the row state and the active theme, so it is recomputed on every call
+    /// and the colour comparison below decides whether anything needs redrawing. Returning early on
+    /// an unchanged state would ignore the theme, which is the input a theme change moves.
     func applyVisualState(_ state: RowVisualState) {
-        guard state != visualState else { return }
         visualState = state
         let nextTint: NSColor? = if state.isDeleted {
             ThemeEngine.shared.colors.dataGrid.deleted
@@ -64,6 +257,7 @@ class DataGridRowView: NSTableRowView {
         didSet {
             guard isSelected != oldValue else { return }
             propagateEmphasisToCells()
+            needsDisplay = true
         }
     }
 
@@ -71,22 +265,14 @@ class DataGridRowView: NSTableRowView {
         didSet {
             guard isEmphasized != oldValue else { return }
             propagateEmphasisToCells()
+            needsDisplay = true
         }
     }
 
-    override func didAddSubview(_ subview: NSView) {
-        super.didAddSubview(subview)
-        guard let cell = subview as? DataGridCellView else { return }
-        cell.applyEmphasizedSelection(isSelected && isEmphasized)
-    }
-
+    /// Selection recolours every cell's text, so the row repaints its own cells rather than telling
+    /// a set of cell views to repaint themselves.
     private func propagateEmphasisToCells() {
-        let emphasized = isSelected && isEmphasized
-        for subview in subviews {
-            guard let cell = subview as? DataGridCellView else { continue }
-            cell.applyEmphasizedSelection(emphasized)
-            cell.needsDisplay = true
-        }
+        redrawCells()
     }
 
     override func drawBackground(in dirtyRect: NSRect) {
@@ -98,18 +284,18 @@ class DataGridRowView: NSTableRowView {
         drawCellSelectionFill(in: dirtyRect)
     }
 
+    /// A cell range on a row the table has selected is already covered by `NSTableRowView`'s own
+    /// selection fill, which runs after this, so only the remaining rows are painted here.
     private func drawCellSelectionFill(in dirtyRect: NSRect) {
-        guard let coordinator,
+        guard !isSelected,
+              let coordinator,
               let tableView = coordinator.tableView else { return }
         let selection = coordinator.selectionController.selection
         guard !selection.isEmpty else { return }
         let columns = selection.columns(in: rowIndex)
         guard !columns.isEmpty else { return }
 
-        let fillColor: NSColor = isSelected
-            ? NSColor.unemphasizedSelectedContentBackgroundColor
-            : NSColor.selectedContentBackgroundColor.withAlphaComponent(0.28)
-        fillColor.setFill()
+        cellSelectionFill.setFill()
 
         for dataColumn in columns {
             guard let tableColumnIndex = coordinator.tableColumnIndex(for: dataColumn) else { continue }
@@ -119,6 +305,18 @@ class DataGridRowView: NSTableRowView {
             localRect.fill()
         }
     }
+
+    /// `unemphasizedSelectedContentBackgroundColor` is a background colour and is used as one, the
+    /// way AppKit fills a selection in a view that does not hold focus. Thinning it out instead
+    /// left the range at 1.09:1 against a white grid, which is no visible selection at all. The
+    /// emphasized accent is far too dark to sit behind text these rows do not recolour, so that
+    /// one goes on as a tint.
+    private var cellSelectionFill: NSColor {
+        guard isEmphasized else { return .unemphasizedSelectedContentBackgroundColor }
+        return NSColor.selectedContentBackgroundColor.withAlphaComponent(Self.emphasizedCellSelectionAlpha)
+    }
+
+    private static let emphasizedCellSelectionAlpha: CGFloat = 0.28
 
     private func colorsEqual(_ lhs: NSColor?, _ rhs: NSColor?) -> Bool {
         switch (lhs, rhs) {
@@ -165,7 +363,10 @@ class DataGridRowView: NSTableRowView {
         menu.addItem(navInNewTabItem)
     }
 
-    override func menu(for event: NSEvent) -> NSMenu? {
+    /// Deliberately not `menu(for:)`. The table view owns context-menu handling because it
+    /// is the only level that can re-target the selection to the clicked row first; a row
+    /// view answering `menuForEvent:` would swallow the event and act on the old selection.
+    func contextMenu(for event: NSEvent) -> NSMenu? {
         guard let coordinator = coordinator,
               let tableView = coordinator.tableView else { return nil }
 
@@ -302,7 +503,7 @@ class DataGridRowView: NSTableRowView {
         menu.addItem(NSMenuItem.separator())
 
         let exportItem = NSMenuItem(
-            title: String(localized: "Export Results..."),
+            title: String(localized: "Export Results…"),
             action: #selector(exportResults),
             keyEquivalent: ""
         )
@@ -443,7 +644,7 @@ class DataGridRowView: NSTableRowView {
     private func focusedDataColumnIndex(in coordinator: TableViewCoordinator) -> Int? {
         guard let tableView = coordinator.tableView as? KeyHandlingTableView,
               tableView.focusedRow == rowIndex,
-              DataGridView.isDataTableColumn(tableView.focusedColumn) else { return nil }
+              tableView.presentsDataColumn(at: tableView.focusedColumn) else { return nil }
         return DataGridView.dataColumnIndex(
             for: tableView.focusedColumn,
             in: tableView,
@@ -566,5 +767,37 @@ private final class DateSetterContext {
     init(columnIndex: Int, value: String) {
         self.columnIndex = columnIndex
         self.value = value
+    }
+}
+
+/// The view a row's data cells are drawn into.
+///
+/// Its own class so the drawing lands after the row's background and selection, and so one row
+/// costs exactly one view however many columns the result has.
+@MainActor
+final class DataGridRowContentView: NSView {
+    weak var rowView: DataGridRowView?
+
+    override var isFlipped: Bool { true }
+    override var allowsVibrancy: Bool { false }
+
+    /// The separators go down in a second pass, after every cell, because a cell fills its whole
+    /// rect for a modified or find-match tint and would paint over a line drawn beside it. AppKit's
+    /// own separator views composite above the rows for the same reason.
+    override func draw(_ dirtyRect: NSRect) {
+        rowView?.drawCells(in: dirtyRect, of: self)
+        rowView?.drawColumnSeparators(in: dirtyRect, of: self)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let consumed = rowView?.handleCellClick(
+            at: point,
+            in: self,
+            clickCount: event.clickCount,
+            modifiers: event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        ) ?? false
+        guard !consumed else { return }
+        super.mouseDown(with: event)
     }
 }

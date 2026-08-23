@@ -91,7 +91,7 @@ struct CommandActionsDispatchTests {
         #expect(tab?.content.query == "SELECT 2")
     }
 
-    @Test("insertQueryFromAI appends to existing query")
+    @Test("insertQueryFromAI leaves a tab the user has typed into alone")
     func insertQueryFromAI_appendsToExisting() {
         let (actions, coordinator) = makeSUT()
         coordinator.tabManager.addTab(databaseName: "testdb")
@@ -103,8 +103,22 @@ struct CommandActionsDispatchTests {
 
         actions.insertQueryFromAI("SELECT 2")
 
-        let tab = coordinator.tabManager.selectedTab
-        #expect(tab?.content.query == "SELECT 1\n\nSELECT 2")
+        /// Left alone. Appending was removed on purpose in #1257, and `aiInsertReusesSelectedQueryTab`
+        /// is true only for a query tab that is empty, so generated SQL takes over a blank tab and
+        /// otherwise opens its own. A tab the user has typed into is never rewritten, which is the
+        /// property worth holding; this case asserted the concatenation that fix removed.
+        #expect(coordinator.tabManager.selectedTab?.content.query == "SELECT 1")
+    }
+
+    @Test("insertQueryFromAI reuses the selected query tab when it is empty")
+    @MainActor
+    func insertQueryFromAI_reusesAnEmptyTab() {
+        let (actions, coordinator) = makeSUT()
+        coordinator.tabManager.addTab(databaseName: "testdb")
+
+        actions.insertQueryFromAI("SELECT 2")
+
+        #expect(coordinator.tabManager.selectedTab?.content.query == "SELECT 2")
     }
 
     // MARK: - copySelectedRows (structure mode)
@@ -197,40 +211,51 @@ struct CommandActionsDispatchTests {
 
     // MARK: - saveChanges (createTable tab)
 
+    /// A Create Table tab is answered by `createTableActions` and nothing else. The structure arm
+    /// sits below it and would otherwise try to apply the staged edits of whatever session the tab
+    /// id happens to carry.
     @Test("saveChanges dispatches createTableActions when the selected tab is createTable")
     func saveChanges_createTableTab_callsCreateTableAction() {
         let (actions, coordinator) = makeSUT()
         coordinator.tabManager.addCreateTableTab(databaseName: "testdb")
+        guard let id = coordinator.tabManager.selectedTabId else {
+            Issue.record("expected a selected tab")
+            return
+        }
 
         let createHandler = CreateTableActionHandler()
         var createCalled = false
         createHandler.createTable = { createCalled = true }
         coordinator.createTableActions = createHandler
 
-        let handler = StructureViewActionHandler()
-        var structureSaveCalled = false
-        handler.saveChanges = { structureSaveCalled = true }
-        coordinator.structureActions = handler
+        let session = TestFixtures.makeStructureSession()
+        coordinator.structureSessions[id] = session
+        session.changeManager.loadSchema(
+            tableName: "users", columns: [], indexes: [], foreignKeys: [], primaryKey: []
+        )
+        session.changeManager.addNewColumn()
 
         actions.saveChanges()
 
         #expect(createCalled)
-        #expect(!structureSaveCalled)
+        #expect(session.appliedVersion == 0)
+        #expect(session.changeManager.hasChanges)
     }
 
     @Test("saveChanges without createTableActions is a no-op for a createTable tab")
     func saveChanges_createTableTab_withoutAction_doesNothing() {
         let (actions, coordinator) = makeSUT()
         coordinator.tabManager.addCreateTableTab(databaseName: "testdb")
-
-        let handler = StructureViewActionHandler()
-        var structureSaveCalled = false
-        handler.saveChanges = { structureSaveCalled = true }
-        coordinator.structureActions = handler
+        guard let id = coordinator.tabManager.selectedTabId else {
+            Issue.record("expected a selected tab")
+            return
+        }
+        let session = TestFixtures.makeStructureSession()
+        coordinator.structureSessions[id] = session
 
         actions.saveChanges()
 
-        #expect(!structureSaveCalled)
+        #expect(session.appliedVersion == 0)
     }
 
     // MARK: - Row selection resolution

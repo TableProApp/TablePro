@@ -9,7 +9,7 @@ import Foundation
 import os
 
 /// HTTP client for the TablePro license API
-final class LicenseAPIClient {
+final class LicenseAPIClient: Sendable {
     static let shared = LicenseAPIClient()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "LicenseAPIClient")
@@ -111,6 +111,11 @@ final class LicenseAPIClient {
             }
 
         case 404:
+            // Only a body this API produced counts as the server rejecting the key. A captive
+            // portal or proxy answering 404 is a transport failure, not a revoked license.
+            guard (try? decoder.decode(LicenseAPIErrorResponse.self, from: data)) != nil else {
+                throw LicenseError.serverError(404, "Not Found")
+            }
             throw LicenseError.invalidKey
 
         case 409:

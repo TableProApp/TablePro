@@ -29,6 +29,7 @@ final class LibSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsImport = false
     static let supportsSchemaEditing = true
     static let supportsTriggers = true
+    static let supportsDatabaseTriggerBrowse = true
     static let supportsTriggerEditing = true
     static let supportsDropDatabase = false
     static let supportsDatabaseSwitching = false
@@ -37,7 +38,9 @@ final class LibSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let urlSchemes: [String] = ["libsql"]
 
     static let explainVariants: [ExplainVariant] = [
-        ExplainVariant(id: "plan", label: "Query Plan", sqlPrefix: "EXPLAIN QUERY PLAN")
+        ExplainVariant(
+            id: "plan", label: "Query Plan", sqlPrefix: "EXPLAIN QUERY PLAN", format: .sqliteQueryPlan
+        )
     ]
 
     static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable, .defaultValue]
@@ -92,7 +95,8 @@ final class LibSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         regexSyntax: .unsupported,
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .explicit,
-        paginationStyle: .limit
+        paginationStyle: .limit,
+        caseSensitivityStyle: .collationDefined
     )
 
     static let additionalConnectionFields: [ConnectionField] = [

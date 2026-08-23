@@ -9,7 +9,7 @@ import os
 @Observable
 @MainActor
 final class CloudSQLProxyPaneViewModel {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "CloudSQLProxyPane")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CloudSQLProxyPane")
 
     var state = CloudSQLProxyFormState()
 
@@ -73,7 +73,9 @@ final class CloudSQLProxyPaneViewModel {
             if let found {
                 resolvedBinaryPath = found
             } else {
-                resolvedBinaryPath = await CloudSQLProxyBinaryManager.shared.cachedBinaryPath
+                resolvedBinaryPath = await CloudSQLProxyBinaryManager.shared.isInstalled
+                    ? CloudSQLProxyBinaryManager.shared.binaryExecutablePath
+                    : nil
             }
             downloadedVersion = await CloudSQLProxyBinaryManager.shared.installedVersion()
             didResolveBinary = true

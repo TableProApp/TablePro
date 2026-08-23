@@ -18,6 +18,8 @@ extension TableViewCoordinator {
             return column.width
         }
 
+        markColumnWidthUserSized(column)
+        scheduleLayoutPersist()
         return fitToContentWidth(for: column, dataColumnIndex: dataColumnIndex, tableRows: tableRowsProvider())
     }
 
@@ -29,13 +31,15 @@ extension TableViewCoordinator {
     private func fitToContentWidth(
         for column: NSTableColumn,
         dataColumnIndex: Int,
-        tableRows: TableRows
+        tableRows: TableRows,
+        fittedColumnCount: Int = 1
     ) -> CGFloat {
-        cellFactory.calculateFitToContentWidth(
+        fitToContentColumnWidth(
             for: dataColumnIndex < tableRows.columns.count ? tableRows.columns[dataColumnIndex] : column.title,
             columnIndex: dataColumnIndex,
             tableRows: tableRows,
-            availableWidth: visibleGridWidth
+            availableWidth: visibleGridWidth,
+            fittedColumnCount: fittedColumnCount
         )
     }
 
@@ -166,33 +170,7 @@ extension TableViewCoordinator {
         }
 
         if let dataColumnIndex = dataColumnIndex(from: column.identifier) {
-            let columnType = dataColumnIndex < tableRows.columnTypes.count ? tableRows.columnTypes[dataColumnIndex] : nil
-            let applicableFormats = ValueDisplayFormat.applicableFormats(for: columnType)
-            if applicableFormats.count > 1 {
-                let displaySubmenu = NSMenu()
-                let currentFormat = ValueDisplayFormatService.shared.effectiveFormat(
-                    columnName: baseName,
-                    scope: tableScope
-                )
-                for format in applicableFormats {
-                    let item = NSMenuItem(
-                        title: format.displayName,
-                        action: #selector(setDisplayFormat(_:)),
-                        keyEquivalent: ""
-                    )
-                    item.representedObject = DisplayFormatMenuItem(
-                        columnName: baseName,
-                        columnIndex: dataColumnIndex,
-                        format: format
-                    )
-                    item.target = self
-                    item.state = (format == currentFormat) ? .on : .off
-                    displaySubmenu.addItem(item)
-                }
-                let displayItem = NSMenuItem(title: String(localized: "Display As"), action: nil, keyEquivalent: "")
-                displayItem.submenu = displaySubmenu
-                menu.addItem(displayItem)
-            }
+            addDisplayFormatMenu(to: menu, dataColumnIndex: dataColumnIndex, tableRows: tableRows)
         }
 
         menu.addItem(NSMenuItem.separator())
@@ -214,7 +192,7 @@ extension TableViewCoordinator {
         menu.addItem(hideItem)
 
         if delegate != nil,
-           tableView.tableColumns.contains(where: { $0.isHidden && $0.identifier != ColumnIdentitySchema.rowNumberIdentifier }) {
+           columnPool.hasUserHiddenColumns {
             let showAllItem = NSMenuItem(
                 title: String(localized: "Show All Columns"),
                 action: #selector(showAllColumns),
@@ -225,6 +203,46 @@ extension TableViewCoordinator {
         }
 
         appendColumnStructureItems(to: menu, forColumnIdentifier: column.identifier)
+    }
+
+    private func addDisplayFormatMenu(
+        to menu: NSMenu,
+        dataColumnIndex: Int,
+        tableRows: TableRows
+    ) {
+        let columnType = dataColumnIndex < tableRows.columnTypes.count
+            ? tableRows.columnTypes[dataColumnIndex]
+            : nil
+        let applicableFormats = ValueDisplayFormat.applicableFormats(
+            for: columnType,
+            databaseType: databaseType
+        )
+        guard applicableFormats.count > 1 else { return }
+
+        let displaySubmenu = NSMenu()
+        let currentFormat = dataColumnIndex < columnDisplayFormats.count
+            ? columnDisplayFormats[dataColumnIndex] ?? .raw
+            : .raw
+        let storageKeys = ValueDisplayFormatColumnKey.storageKeys(for: tableRows.columns)
+        guard storageKeys.indices.contains(dataColumnIndex) else { return }
+        for format in applicableFormats {
+            let item = NSMenuItem(
+                title: format.displayName,
+                action: #selector(setDisplayFormat(_:)),
+                keyEquivalent: ""
+            )
+            item.representedObject = DisplayFormatMenuItem(
+                storageKey: storageKeys[dataColumnIndex],
+                columnIndex: dataColumnIndex,
+                format: format
+            )
+            item.target = self
+            item.state = (format == currentFormat) ? .on : .off
+            displaySubmenu.addItem(item)
+        }
+        let displayItem = NSMenuItem(title: String(localized: "Display As"), action: nil, keyEquivalent: "")
+        displayItem.submenu = displaySubmenu
+        menu.addItem(displayItem)
     }
 
     private func appendColumnStructureItems(to menu: NSMenu, forColumnIdentifier identifier: NSUserInterfaceItemIdentifier) {
@@ -240,18 +258,26 @@ extension TableViewCoordinator {
     @objc func sortAscending(_ sender: NSMenuItem) {
         guard let columnIndex = sender.representedObject as? Int else { return }
         var state = SortState()
-        state.columns = [SortColumn(columnIndex: columnIndex, direction: .ascending)]
+        state.columns = [SortColumn(
+            columnIndex: columnIndex,
+            direction: .ascending,
+            columnName: identitySchema.columnName(for: columnIndex)
+        )]
         currentSortState = state
-        updateSortIndicatorsFromCurrentState()
+        applyCurrentSortStateToHeader()
         delegate?.dataGridSortStateChanged(state)
     }
 
     @objc func sortDescending(_ sender: NSMenuItem) {
         guard let columnIndex = sender.representedObject as? Int else { return }
         var state = SortState()
-        state.columns = [SortColumn(columnIndex: columnIndex, direction: .descending)]
+        state.columns = [SortColumn(
+            columnIndex: columnIndex,
+            direction: .descending,
+            columnName: identitySchema.columnName(for: columnIndex)
+        )]
         currentSortState = state
-        updateSortIndicatorsFromCurrentState()
+        applyCurrentSortStateToHeader()
         delegate?.dataGridSortStateChanged(state)
     }
 
@@ -261,13 +287,13 @@ extension TableViewCoordinator {
 
     @objc func clearSortAction() {
         currentSortState = SortState()
-        updateSortIndicatorsFromCurrentState()
+        applyCurrentSortStateToHeader()
         delegate?.dataGridSortStateChanged(SortState())
     }
 
-    private func updateSortIndicatorsFromCurrentState() {
+    private func applyCurrentSortStateToHeader() {
         guard let header = tableView?.headerView as? SortableHeaderView else { return }
-        header.updateSortIndicators(state: currentSortState, schema: identitySchema)
+        header.applySortState(currentSortState, schema: identitySchema)
     }
 
     @objc func copyColumnName(_ sender: NSMenuItem) {
@@ -317,71 +343,92 @@ extension TableViewCoordinator {
         let column = tableView.tableColumns[columnIndex]
         guard let dataColumnIndex = dataColumnIndex(from: column.identifier) else { return }
 
+        markColumnWidthUserSized(column)
         column.width = fitToContentWidth(
             for: column,
             dataColumnIndex: dataColumnIndex,
             tableRows: tableRowsProvider()
         )
+        scheduleLayoutPersist()
     }
 
     @objc func sizeAllColumnsToFit(_ sender: NSMenuItem) {
         guard let tableView else { return }
 
         let tableRows = tableRowsProvider()
-        for column in tableView.tableColumns {
-            guard !column.isHidden,
-                  column.identifier != ColumnIdentitySchema.rowNumberIdentifier,
-                  let dataColumnIndex = dataColumnIndex(from: column.identifier),
-                  dataColumnIndex < tableRows.columns.count else { continue }
+        let fittedColumns = tableView.tableColumns.filter { column in
+            guard presentsColumn(column), let index = dataColumnIndex(from: column.identifier) else { return false }
+            return index < tableRows.columns.count
+        }
+        for column in fittedColumns {
+            guard let dataColumnIndex = dataColumnIndex(from: column.identifier) else { continue }
 
+            markColumnWidthUserSized(column)
             column.width = fitToContentWidth(
                 for: column,
                 dataColumnIndex: dataColumnIndex,
-                tableRows: tableRows
+                tableRows: tableRows,
+                fittedColumnCount: fittedColumns.count
             )
         }
+        redrawVisibleCells()
+        scheduleLayoutPersist()
     }
 
     @objc func setDisplayFormat(_ sender: NSMenuItem) {
         guard let info = sender.representedObject as? DisplayFormatMenuItem else { return }
 
-        let formatToStore: ValueDisplayFormat? = (info.format == .raw) ? nil : info.format
-
         if let scope = tableScope {
             ValueDisplayFormatService.shared.setOverride(
-                formatToStore,
-                columnName: info.columnName,
+                info.format,
+                columnKey: info.storageKey,
                 scope: scope
             )
         }
 
-        var formats = columnDisplayFormats
-        while formats.count <= info.columnIndex {
+        let formats = DisplayFormatArray.setting(
+            info.format,
+            at: info.columnIndex,
+            in: columnDisplayFormats,
+            columnCount: tableRowsProvider().columns.count
+        )
+        let remappedValueFilters = updateDisplayFormats(formats)
+
+        if remappedValueFilters {
+            reloadAfterValueFilterChange()
+            return
+        }
+
+        reloadAfterDisplayFormatChange()
+    }
+}
+
+/// Builds the format array the grid and the SwiftUI recompute must agree on.
+/// A short array reads as a change on the next update and costs a second full reload.
+enum DisplayFormatArray {
+    static func setting(
+        _ format: ValueDisplayFormat,
+        at columnIndex: Int,
+        in existing: [ValueDisplayFormat?],
+        columnCount: Int
+    ) -> [ValueDisplayFormat?] {
+        var formats = existing
+        while formats.count < max(columnCount, columnIndex + 1) {
             formats.append(nil)
         }
-        formats[info.columnIndex] = (info.format == .raw) ? nil : info.format
-        updateDisplayFormats(formats)
-
-        guard let tableView else { return }
-        let visibleRect = tableView.visibleRect
-        let visibleRange = tableView.rows(in: visibleRect)
-        if visibleRange.length > 0 {
-            tableView.reloadData(
-                forRowIndexes: IndexSet(integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length)),
-                columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)
-            )
-        }
+        formats[columnIndex] = format
+        return formats
     }
 }
 
 /// Payload for the "Display As" context menu item
 private final class DisplayFormatMenuItem {
-    let columnName: String
+    let storageKey: String
     let columnIndex: Int
     let format: ValueDisplayFormat
 
-    init(columnName: String, columnIndex: Int, format: ValueDisplayFormat) {
-        self.columnName = columnName
+    init(storageKey: String, columnIndex: Int, format: ValueDisplayFormat) {
+        self.storageKey = storageKey
         self.columnIndex = columnIndex
         self.format = format
     }

@@ -127,14 +127,14 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
 
     func fetchFilteredRowCount(
         table: String,
-        filters: [(column: String, op: String, value: String)],
+        queryFilters: [PluginQueryFilter],
         logicMode: String
     ) async throws -> Int? {
         guard let conn = connection else { throw ElasticsearchError.notConnected }
         let fields = ElasticsearchMappingFlattener.fieldInfo(from: try await cachedMappingColumns(table))
-        let specs = filters.map { ElasticsearchFilterSpec(column: $0.column, op: $0.op, value: $0.value) }
+        let specs = ElasticsearchQueryBuilder.specs(from: queryFilters)
         let query = ElasticsearchQueryBuilder.queryClause(
-            filters: specs, logicMode: logicMode, fields: fields, caseInsensitive: supportsCaseInsensitiveSearch
+            filters: specs, logicMode: logicMode, fields: fields, supportsCaseInsensitive: supportsCaseInsensitiveSearch
         )
         return try await conn.count(index: table, query: query)
     }
@@ -180,12 +180,14 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
 
     func buildFilteredQuery(
         table: String,
-        filters: [(column: String, op: String, value: String)],
+        schema: String?,
+        queryFilters filters: [PluginQueryFilter],
         logicMode: String,
         sortColumns: [(columnIndex: Int, ascending: Bool)],
         columns: [String],
         limit: Int,
-        offset: Int
+        offset: Int,
+        columnKinds: [String: PluginColumnKind]
     ) -> String? {
         let sorts = sortSpecs(from: sortColumns, columns: columns)
         Self.logger.debug("""

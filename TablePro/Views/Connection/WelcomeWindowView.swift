@@ -22,7 +22,7 @@ struct WelcomeWindowView: View {
         ZStack {
             if vm.showOnboarding {
                 OnboardingContentView {
-                    withAnimation(.easeInOut(duration: 0.45)) {
+                    withMotion(.easeInOut(duration: 0.45)) {
                         vm.showOnboarding = false
                     }
                 }
@@ -229,17 +229,9 @@ struct WelcomeWindowView: View {
         .background(Color(nsColor: .controlBackgroundColor))
         .contentShape(Rectangle())
         .contextMenu { newConnectionContextMenu }
-        .background(findShortcut)
-    }
-
-    private var findShortcut: some View {
-        Button {
+        .onReceive(NotificationCenter.default.publisher(for: .welcomeWindowFindRequested)) { _ in
             searchFocusTrigger += 1
-        } label: {
-            EmptyView()
         }
-        .keyboardShortcut("f", modifiers: .command)
-        .accessibilityHidden(true)
     }
 
     private var newConnectionHelp: String {
@@ -279,7 +271,7 @@ struct WelcomeWindowView: View {
 
             NativeSearchField(
                 text: $vm.searchText,
-                placeholder: String(localized: "Search for connection..."),
+                placeholder: String(localized: "Search for connection…"),
                 controlSize: .regular,
                 onMoveDown: { focus = .connectionList },
                 onSubmit: { focus = .connectionList },
@@ -418,6 +410,10 @@ struct WelcomeWindowView: View {
         )
         .tag(connection.id)
         .listRowSeparator(.hidden)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            editConnectionButton(for: connection)
+            deleteConnectionButton(for: connection)
+        }
     }
 
     private func sourceListSectionHeader(_ title: String) -> some View {
@@ -640,7 +636,7 @@ private struct TreeRowsView<ConnectionContent: View>: View {
         }
 
         if vm.groups.count > 1 {
-            Menu(String(localized: "Move Group to...")) {
+            Menu(String(localized: "Move Group to…")) {
                 Button {
                     vm.moveGroup(group, toParent: nil)
                 } label: {

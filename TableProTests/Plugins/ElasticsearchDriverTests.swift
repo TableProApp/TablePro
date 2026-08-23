@@ -59,7 +59,7 @@ struct ElasticsearchQueryBuilderEncodingTests {
     func filteredRoundTrip() {
         let query = builder.buildFilteredQuery(
             index: "users",
-            filters: [(column: "age", op: ">", value: "21")],
+            filters: [PluginQueryFilter(column: "age", op: ">", value: "21")],
             logicMode: "AND",
             sorts: [ElasticsearchSortSpec(column: "name", ascending: true)],
             limit: 100,
@@ -194,12 +194,12 @@ struct ElasticsearchQueryDSLTests {
     func caseInsensitiveGated() {
         let on = ElasticsearchQueryBuilder.clause(
             for: ElasticsearchFilterSpec(column: "status", op: "CONTAINS", value: "x"),
-            fields: keywordField, caseInsensitive: true
+            fields: keywordField, supportsCaseInsensitive: true
         )
         #expect((on["wildcard"] as? [String: Any]).map { ($0["status"] as? [String: Any])?["case_insensitive"] as? Bool } == true)
         let off = ElasticsearchQueryBuilder.clause(
             for: ElasticsearchFilterSpec(column: "status", op: "CONTAINS", value: "x"),
-            fields: keywordField, caseInsensitive: false
+            fields: keywordField, supportsCaseInsensitive: false
         )
         let offOptions = (off["wildcard"] as? [String: Any])?["status"] as? [String: Any]
         #expect(offOptions?["case_insensitive"] == nil)
@@ -272,6 +272,27 @@ struct ElasticsearchMappingFlattenerTests {
         #expect(flat["name"] == .text("Alice"))
         #expect(flat["address.city"] == .text("NYC"))
         #expect(flat["tags"]?.asText?.contains("a") == true)
+    }
+
+    @Test("Doubles keep every digit needed to round-trip, nested or not")
+    func doublesRoundTrip() {
+        let source: [String: Any] = [
+            "score": -3.9192320754595876e-07,
+            "total": 1847.27,
+            "counts": ["rate": 0.1, "qty": 3.0],
+        ]
+        let flat = ElasticsearchMappingFlattener.flattenSource(source)
+        #expect(flat["score"] == .text("-3.9192320754595876e-07"))
+        #expect(flat["total"] == .text("1847.27"))
+        #expect(flat["counts.rate"] == .text("0.1"))
+        #expect(flat["counts.qty"] == .text("3"))
+    }
+
+    @Test("An array of doubles serializes without binary floating point noise")
+    func arrayOfDoublesHasNoExcessDigits() {
+        let source: [String: Any] = ["samples": [0.1, 1847.27]]
+        let flat = ElasticsearchMappingFlattener.flattenSource(source)
+        #expect(flat["samples"] == .text("[0.1,1847.27]"))
     }
 
     @Test("Rows pull meta fields from the hit envelope")

@@ -76,7 +76,7 @@ struct ConnectionListView: View {
                         moreMenu
                         filterMenu
                         if filterTagId == nil && !appState.connections.isEmpty {
-                            Button(editMode == .active ? "Done" : "Edit") {
+                            Button(editMode == .active ? String(localized: "Done") : String(localized: "Edit")) {
                                 editMode = editMode == .active ? .inactive : .active
                             }
                         }
@@ -537,7 +537,11 @@ private struct ConnectionRow: View {
         let typeName = connection.type.rawValue.uppercased()
         let location: String = connection.type == .sqlite
             ? (connection.database.components(separatedBy: "/").last ?? "database")
-            : "\(connection.host) port \(connection.port)"
+            : String(
+                format: String(localized: "%@, port %lld"),
+                connection.host,
+                Int64(connection.port)
+            )
         if let tag {
             return Text("\(typeName), \(displayName), \(location), tag \(tag.name)")
         }

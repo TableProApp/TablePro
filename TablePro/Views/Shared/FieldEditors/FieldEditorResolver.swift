@@ -66,9 +66,24 @@ internal enum FieldEditorResolver {
         if BlobFormattingService.shared.requiresFormatting(columnType: type) {
             return .blobHex
         }
-        if isLongText {
+        if isLongText || needsMultiLineEditor(originalValue) {
             return .multiLine
         }
         return .singleLine
     }
+
+    /// `isLongText` only matches six exact type names, so a large value in `VARCHAR(MAX)`,
+    /// `NCLOB` or ClickHouse's `Nullable(String)` never reached the multi-line editor. Whether a
+    /// value belongs on one line is a property of the value, so ask the value as well.
+    static func needsMultiLineEditor(_ value: String?) -> Bool {
+        guard let value, !value.isEmpty else { return false }
+        let text = value as NSString
+        if text.length > multiLineValueThreshold { return true }
+        return text.rangeOfCharacter(from: .newlines).location != NSNotFound
+    }
+
+    /// Two lines' worth. Between 32 and 46 subheadline characters fit one line at the inspector's
+    /// minimum width, so a value past this needs a third line and a short scalar keeps the text
+    /// field AppKit intends for it.
+    static let multiLineValueThreshold = 80
 }

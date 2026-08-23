@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProNumberFormatting
 import TableProPluginKit
 
 final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
@@ -22,15 +23,16 @@ final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static let isDownloadable = true
     static let explainVariants: [ExplainVariant] = [
-        ExplainVariant(id: "plan", label: "Plan", sqlPrefix: "EXPLAIN"),
-        ExplainVariant(id: "pipeline", label: "Pipeline", sqlPrefix: "EXPLAIN PIPELINE"),
-        ExplainVariant(id: "ast", label: "AST", sqlPrefix: "EXPLAIN AST"),
-        ExplainVariant(id: "syntax", label: "Syntax", sqlPrefix: "EXPLAIN SYNTAX"),
-        ExplainVariant(id: "estimate", label: "Estimate", sqlPrefix: "EXPLAIN ESTIMATE"),
+        ExplainVariant(id: "plan", label: "Plan", sqlPrefix: "EXPLAIN", format: .indentedText),
+        ExplainVariant(id: "pipeline", label: "Pipeline", sqlPrefix: "EXPLAIN PIPELINE", format: .indentedText),
+        ExplainVariant(id: "ast", label: "AST", sqlPrefix: "EXPLAIN AST", format: .indentedText),
+        ExplainVariant(id: "syntax", label: "Syntax", sqlPrefix: "EXPLAIN SYNTAX", format: .indentedText),
+        ExplainVariant(id: "estimate", label: "Estimate", sqlPrefix: "EXPLAIN ESTIMATE", format: .indentedText),
     ]
     static let brandColorHex = "#FFD100"
     static let postConnectActions: [PostConnectAction] = [.selectDatabaseFromLastSession]
     static let supportsForeignKeys = false
+    static let supportsRoutines = true
     static let systemDatabaseNames: [String] = ["information_schema", "INFORMATION_SCHEMA", "system"]
     static let columnTypesByCategory: [String: [String]] = [
         "Integer": [
@@ -105,7 +107,9 @@ final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .implicit,
         paginationStyle: .limit,
-        requiresBackslashEscaping: true
+        requiresBackslashEscaping: true,
+        caseSensitivityStyle: .caseFoldFunction,
+        caseFoldFunction: "lowerUTF8"
     )
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
@@ -193,25 +197,29 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
+        try await connect(reportingStage: { _ in })
+    }
+
+    func connect(reportingStage report: @escaping ConnectionStageReporter) async throws {
         let urlConfig = URLSessionConfiguration.default
         urlConfig.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
         urlConfig.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
 
-        lock.lock()
-        if let delegate = ClickHouseTLSDelegate.make(for: config.ssl) {
-            session = URLSession(configuration: urlConfig, delegate: delegate, delegateQueue: nil)
-        } else {
-            session = URLSession(configuration: urlConfig)
+        lock.withLock {
+            if let delegate = ClickHouseTLSDelegate.make(for: config.ssl) {
+                session = URLSession(configuration: urlConfig, delegate: delegate, delegateQueue: nil)
+            } else {
+                session = URLSession(configuration: urlConfig)
+            }
         }
-        lock.unlock()
 
         do {
             _ = try await executeRaw("SELECT 1")
         } catch {
-            lock.lock()
-            session?.invalidateAndCancel()
-            session = nil
-            lock.unlock()
+            lock.withLock {
+                session?.invalidateAndCancel()
+                session = nil
+            }
             Self.logger.error("Connection test failed: \(error.localizedDescription)")
             if let sslError = ClickHouseSSLClassifier.classifySSLError(error) {
                 throw sslError
@@ -219,6 +227,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw ClickHouseError.connectionFailed
         }
 
+        report(.preparingSession)
         if let result = try? await executeRaw("SELECT version()"),
            let versionStr = result.rows.first?.first?.asText {
             _serverVersion = versionStr
@@ -425,9 +434,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Database Switching
 
     func switchDatabase(to database: String) async throws {
-        lock.lock()
-        _currentDatabase = database
-        lock.unlock()
+        lock.withLock { _currentDatabase = database }
     }
 
     // MARK: - EXPLAIN
@@ -495,13 +502,10 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         query: String,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
-        lock.lock()
-        guard let session = self.session else {
-            lock.unlock()
-            throw ClickHouseError.notConnected
+        let (session, database) = try lock.withLock { () throws -> (URLSession, String) in
+            guard let session = self.session else { throw ClickHouseError.notConnected }
+            return (session, _currentDatabase)
         }
-        let database = _currentDatabase
-        lock.unlock()
 
         var trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         while trimmedQuery.hasSuffix(";") {
@@ -559,10 +563,9 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     } else if let str = value as? String {
                         row.append(.text(str))
                     } else if let num = value as? NSNumber {
-                        row.append(.text(num.stringValue))
+                        row.append(.text(NumberText.text(for: num)))
                     } else {
-                        if let jsonData = try? JSONSerialization.data(withJSONObject: value),
-                           let jsonStr = String(data: jsonData, encoding: .utf8) {
+                        if let jsonStr = NumberText.json(from: value, sortedKeys: false) {
                             row.append(.text(jsonStr))
                         } else {
                             row.append(.text(String(describing: value)))
@@ -715,6 +718,7 @@ private final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchec
     private enum Strategy {
         case skipVerify
         case verifyChain(anchor: SecCertificate?)
+        case anchorUnavailable
     }
 
     private let strategy: Strategy
@@ -732,15 +736,24 @@ private final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchec
         case .preferred, .required:
             return ClickHouseTLSDelegate(strategy: .skipVerify)
         case .verifyCa:
-            return ClickHouseTLSDelegate(strategy: .verifyChain(anchor: loadAnchor(at: ssl.caCertificatePath)))
+            guard !ssl.caCertificatePath.isEmpty else {
+                return ClickHouseTLSDelegate(strategy: .verifyChain(anchor: nil))
+            }
+            guard let anchor = loadAnchor(at: ssl.caCertificatePath) else {
+                return ClickHouseTLSDelegate(strategy: .anchorUnavailable)
+            }
+            return ClickHouseTLSDelegate(strategy: .verifyChain(anchor: anchor))
         }
     }
 
+    /// A verification mode whose anchor cannot be read must fail, never quietly widen to the
+    /// system roots. `SecCertificateCreateWithData` takes DER only, so PEM is decoded first.
     private static func loadAnchor(at path: String) -> SecCertificate? {
         guard !path.isEmpty, let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
             return nil
         }
-        return SecCertificateCreateWithData(nil, data as CFData)
+        guard let der = PEMCertificateDecoder.certificateDER(from: data) else { return nil }
+        return SecCertificateCreateWithData(nil, der as CFData)
     }
 
     func urlSession(
@@ -757,6 +770,8 @@ private final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchec
         switch strategy {
         case .skipVerify:
             completionHandler(.useCredential, URLCredential(trust: serverTrust))
+        case .anchorUnavailable:
+            completionHandler(.cancelAuthenticationChallenge, nil)
         case .verifyChain(let anchor):
             if let anchor {
                 SecTrustSetAnchorCertificates(serverTrust, [anchor] as CFArray)

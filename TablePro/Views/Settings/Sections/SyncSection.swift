@@ -122,6 +122,7 @@ struct SyncSection: View {
             Toggle("SSH Profiles:", isOn: $settingsManager.sync.syncSSHProfiles)
             Toggle("Settings:", isOn: $settingsManager.sync.syncSettings)
             Toggle("Table Favorites:", isOn: $settingsManager.sync.syncTableFavorites)
+            Toggle("Database Favorites:", isOn: $settingsManager.sync.syncDatabaseFavorites)
             Toggle("Saved Queries:", isOn: $settingsManager.sync.syncSQLFavorites)
         }
     }
@@ -130,12 +131,12 @@ struct SyncSection: View {
 
     private func onPasswordSyncChanged(_ enabled: Bool) {
         let effective = settingsManager.sync.enabled && settingsManager.sync.syncConnections && enabled
-        UserDefaults.standard.set(effective, forKey: KeychainHelper.passwordSyncEnabledKey)
+        AppStorageEnvironment.shared.defaults.set(effective, forKey: KeychainHelper.passwordSyncEnabledKey)
     }
 
     private func updatePasswordSyncFlag() {
         let sync = settingsManager.sync
         let effective = sync.enabled && sync.syncConnections && sync.syncPasswords
-        UserDefaults.standard.set(effective, forKey: KeychainHelper.passwordSyncEnabledKey)
+        AppStorageEnvironment.shared.defaults.set(effective, forKey: KeychainHelper.passwordSyncEnabledKey)
     }
 }

@@ -3,9 +3,13 @@ import Foundation
 import UIKit
 
 struct OpenConnectionIntent: AppIntent {
-    static var title: LocalizedStringResource = "Open Connection"
-    static var description = IntentDescription("Opens a database connection in TablePro")
-    static var openAppWhenRun = true
+    static let title: LocalizedStringResource = "Open Connection"
+    static let description = IntentDescription(
+        "Opens a database connection in TablePro",
+        categoryName: "Database",
+        searchKeywords: ["TablePro", "database", "connection", "SQL", "open"]
+    )
+    static let openAppWhenRun = true
 
     @Parameter(title: "Connection")
     var connection: ConnectionEntity

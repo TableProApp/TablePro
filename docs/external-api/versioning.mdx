@@ -1,71 +1,75 @@
 ---
 title: Versioning
-description: Stability policy for the URL scheme, MCP tools, and resource catalog
+description: Which MCP protocol versions TablePro accepts, and the stability policy for the URL scheme, tools, and resources
 ---
 
-The External API follows TablePro's semver. The contract is the URL scheme, the MCP tool catalog, the resource list, and the pairing flow.
+Ask the server which protocol versions it takes, never this page: `server/discover` returns them in
+`supportedVersions`, and an unsupported one is rejected with `-32022` whose `data.supported` carries
+the same list. A client that hardcodes the list breaks on the release that adds one.
 
-The MCP server accepts three versions from the [MCP spec](https://modelcontextprotocol.io): `2025-03-26`, `2025-06-18`, and `2025-11-25`. On `initialize` the server echoes the version the client asked for. If the client asks for something else, the server returns `2025-11-25` and the client decides whether to use it.
+The other number, TablePro's own, governs everything else on this tab: the URL scheme, the MCP tool
+catalog, the resource list, the prompt catalog, and the pairing flow. It follows semver.
 
-### Capabilities
+## Which era gets new work
 
-The server reports these capabilities. Anything not listed here is not supported.
+The newest protocol version is the only one that gets new features. It is stateless, it carries two
+methods no older version can reach, and it is what a new client should be built against.
 
-- `tools.listChanged: false`. The tool list does not change during a session.
-- `resources.listChanged: false`, `resources.subscribe: false`. Resources are static. Clients that need fresh data should call `resources/read` again.
-- `prompts.listChanged: false`. No prompts yet.
-- `logging`. Accepts `logging/setLevel`.
-- `completions`. Accepts `completion/complete`. Returns an empty list today.
+Older versions keep working through `initialize` and `Mcp-Session-Id` so a shipped client does not
+break on an app update, and they see a reduced feature set. One stays accepted for as long as the
+[specification](https://modelcontextprotocol.io) lists it as current or recent. Dropping one is a
+`Removed` entry in the CHANGELOG, never a silent change. [MCP Protocol](/external-api/mcp-protocol)
+has the version list and the per-era differences.
 
-There is no `elicitation` capability. The server does not ask clients for input.
-
-### What changed in 2025-11-25
-
-`2025-11-25` is the spec version that defines `structuredContent` and tool annotations. TablePro emits both regardless of the negotiated version; clients on older versions ignore the extra fields.
-
-- Every `tools/call` result includes `structuredContent` next to `content[]`. Clients on older versions keep reading the text content; newer clients read the typed object directly.
-- `tools/list` returns annotations per tool. `readOnlyHint` and `idempotentHint` mark read tools. `destructiveHint` marks `confirm_destructive_operation`. `openWorldHint` marks tools that reach a live database, such as `execute_query` and `export_data`.
-- `serverInfo` includes `title: "TablePro"`.
+For stdio clients this is somebody else's problem: the bundled `tablepro-mcp` bridge answers the
+client's `initialize` locally and speaks the newest version upstream. See
+[MCP Clients](/external-api/mcp-clients).
 
 ## Stability rules
 
-Within a major version, the External API is **additive only**:
+Within a major TablePro version the External API is additive only:
 
-- New URL scheme actions can be added.
-- New MCP tools can be added.
-- New tool input fields can be added if they are optional with a sensible default.
-- New tool output fields can be added.
-- New resources can be added.
-- New error codes can be added.
+- New URL scheme actions, MCP tools, prompts, resources and error codes can appear.
+- A new tool input field can appear when it is optional and has a default.
+- A new tool output field can appear.
 
-Within a major version, none of the following will happen:
+And within a major version, none of these happen:
 
-- A URL scheme path will not be removed or change meaning.
-- A tool will not be removed or renamed.
-- A required input field will not be added to an existing tool.
-- An output field will not be removed or change type.
-- A resource will not be removed.
+- A URL scheme path is removed or changes meaning.
+- A tool or prompt is removed or renamed.
+- A required input field is added to an existing tool.
+- An output field is removed or changes type.
+- A resource is removed.
 
-## Breaking changes
+Error codes are the one place this already moved. TablePro's own codes left the `-32000` block, which
+the specification froze, for `-33000` and above; a client that matched on the old numbers needs
+updating once. The current table is in [MCP Protocol](/external-api/mcp-protocol#errors).
 
-Breaking changes ship only at major TablePro version bumps (e.g. 1.x to 2.x). The 0.x series is pre-1.0; we treat minor versions as the release boundary, but only break with explicit notice.
+## Breaking changes before 1.0
 
-## Deprecation lifecycle
+The app is on 0.x, so the minor version is the release boundary. A break can land between 0.67 and
+0.68, but never silently. Once 1.0 ships, breaks move to major bumps.
 
-1. **Announce.** The docs mark the surface deprecated and name the replacement. CHANGELOG mentions the affected surface.
-2. **Grace.** The deprecated surface keeps working for at least one minor version after the announcement.
-3. **Remove.** A later release removes the surface. CHANGELOG marks it `BREAKING`.
+Nothing in the External API is deprecated right now. When something is, it is deprecated in the docs
+first, with the replacement named and a CHANGELOG entry to match. It then keeps working for at least
+one more minor version. A later release removes it, marked `BREAKING` in the CHANGELOG.
 
 ## What is not under the contract
 
-The following are not part of the External API contract and can change at any time without notice:
+These can change in any release, without notice:
 
-- Internal MCP message routing details, transport framing, and HTTP path layout under `/v1/internal/*`.
-- The handshake file format at `~/Library/Application Support/TablePro/mcp-handshake.json`. Use the bundled `tablepro-mcp` CLI rather than parsing it yourself.
-- The tokens file format at `~/Library/Application Support/TablePro/mcp-tokens.json`. Tokens are managed via Settings, not the file.
-- Audit log file format at `~/Library/Application Support/TablePro/mcp-audit.db`. Read via the activity log view.
-- The connections file format at `~/Library/Application Support/TablePro/connections.json`. Treat as best-effort. Schema can shift between minor versions; integrations should fall back to MCP `list_connections`.
+- Transport framing, internal message routing, and any HTTP path other than `/mcp` and
+  `/v1/integrations/exchange`.
+- The handshake file at `~/Library/Application Support/TablePro/mcp-handshake.json`. Use the bundled
+  `tablepro-mcp` bridge instead of parsing it.
+- Token storage. Tokens are managed in **Settings > Integrations**.
+- The audit log at `~/Library/Application Support/TablePro/mcp-audit.db`. Read it through the
+  activity window.
+- The connections file at `~/Library/Application Support/TablePro/connections.json`. Its shape can
+  shift between minor versions; use `list_connections` instead.
 
-## Reporting issues
+## Reporting a contradiction
 
-If you find a behavior that contradicts these rules, file an issue at [github.com/TableProApp/TablePro](https://github.com/TableProApp/TablePro/issues). Include the TablePro version, the URL or MCP call, expected and actual behavior, and a snippet of the activity log row if relevant.
+File an issue at [github.com/TableProApp/TablePro](https://github.com/TableProApp/TablePro/issues)
+with the TablePro version, the call, expected and actual behavior, and the matching activity log row
+if there is one.

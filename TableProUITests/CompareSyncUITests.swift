@@ -1,24 +1,14 @@
 import XCTest
 
-final class CompareSyncUITests: XCTestCase {
-    override func setUpWithError() throws {
-        continueAfterFailure = false
-    }
-
-    override func tearDownWithError() throws {
-        XCUIApplication().terminate()
-    }
-
+final class CompareSyncUITests: UITestCase {
     private func launchAndOpenCompareSync() throws -> XCUIApplication {
-        let app = XCUIApplication()
-        app.launchEnvironment["TABLEPRO_UI_TESTING"] = "1"
-        app.launch()
+        let app = try launchApp()
 
         let menuBar = app.menuBars.firstMatch
         XCTAssertTrue(menuBar.waitForExistence(timeout: 10))
         menuBar.menuBarItems["File"].click()
 
-        let item = menuBar.menuItems["Compare & Sync Databases..."]
+        let item = menuBar.menuItems["Compare & Sync Databases…"]
         XCTAssertTrue(item.waitForExistence(timeout: 5), "Compare & Sync must be reachable from the File menu")
         guard item.isEnabled else {
             throw XCTSkip("Compare & Sync is licence gated and unavailable in this build")

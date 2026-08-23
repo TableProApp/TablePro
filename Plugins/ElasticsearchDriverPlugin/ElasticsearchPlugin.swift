@@ -13,6 +13,7 @@ final class ElasticsearchPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Elasticsearch support via the REST API with a Query DSL console"
     static let capabilities: [PluginCapability] = [.databaseDriver]
+    static let caseSensitivityStyle: SQLDialectDescriptor.CaseSensitivityStyle = .driverManaged
 
     static let databaseTypeId = "Elasticsearch"
     static let databaseDisplayName = "Elasticsearch"

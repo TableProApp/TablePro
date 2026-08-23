@@ -5,43 +5,77 @@
 
 import AppKit
 import Observation
+import os
+import SwiftUI
 import TableProPluginKit
 
 @MainActor
 final class DatabaseTreeOutlineCoordinator: NSObject {
-    private weak var outlineView: NSOutlineView?
-    private let service = DatabaseTreeMetadataService.shared
+    internal weak var outlineView: NSOutlineView?
+    internal let service = DatabaseTreeMetadataService.shared
     private static let cellIdentifier = NSUserInterfaceItemIdentifier("DatabaseTreeCell")
+    private let favoriteTablesStorage: FavoriteTablesStorage
+    internal let favoriteDatabasesStorage: FavoriteDatabasesStorage
 
-    private var connectionId = UUID()
-    private var databaseType: DatabaseType = .mysql
-    private weak var mainCoordinator: MainContentCoordinator?
-    private var windowState: WindowSidebarState?
-    private var sidebarState: SharedSidebarState?
-    private weak var viewModel: SidebarViewModel?
-    private var searchText = ""
-    private var connectionToken = ""
-    private var activeDatabase: String?
-    private var activeSchema: String?
+    internal var connectionId = UUID()
+    internal var databaseType: DatabaseType = .mysql
+    internal weak var mainCoordinator: MainContentCoordinator?
+    internal var windowState: WindowSidebarState?
+    internal var sidebarState: SharedSidebarState?
+    internal weak var viewModel: SidebarViewModel?
+    internal var searchText = ""
+    private var isConnected = false
+    internal var activeDatabase: String?
+    internal var activeSchema: String?
     private var pendingTruncates: Set<String> = []
     private var pendingDeletes: Set<String> = []
+    internal var showRecentTables = true
+    private var rowSize: SidebarRowSize = .medium
 
-    private var nodeCache: [String: DatabaseTreeNode] = [:]
-    private var childrenCache: [String: [DatabaseTreeNode]] = [:]
+    internal var nodeCache: [String: DatabaseTreeNode] = [:]
+    internal var childrenCache: [String: [DatabaseTreeNode]] = [:]
+    internal var objectBucketsCache: [DatabaseTreeContainerKey: DatabaseTreeObjectBuckets] = [:]
+    /// Whether a routine row shows its signature depends on the other rows in its own section, so
+    /// the label is decided where the section is built and looked up here when the row draws.
+    internal var routineDisplayLabels: [String: String] = [:]
+    private var cachedRowContext: DatabaseTreeRowContext?
+    private var cachedRowActions: DatabaseTreeRowActions?
     private var lastSelection: Set<DatabaseTreeTableRef> = []
-    private var pendingSingleClickWork: DispatchWorkItem?
-    private var isApplyingExpansion = false
+    private var lastSelectedNodeIds: [String] = []
+    private var publishedTables: Set<TableInfo> = []
+    private var publishedSelectionDatabase: String?
+    private var isModelSelectionAdoptionPending = false
+    private var openSelectionDepth = 0
+    private var pendingOpenWork: DispatchWorkItem?
+    private var openWork: Task<Void, Never>?
+    internal var isApplyingExpansion = false
+    private var isSelectionSyncScheduled = false
+    private var isCollapsingItem = false
     private var isSyncingSelection = false
     private var isReloading = false
     private var hasRenderedOnce = false
     private var reconcileScheduled = false
     private var observationGeneration = 0
 
-    private var supportsSchemaLevel: Bool {
+    internal let schemaService = SchemaService.shared
+    private var favoriteTables: Set<FavoriteTablesStorage.FavoriteEntry> = []
+    private var favoriteDatabases: Set<FavoriteDatabaseEntry> = []
+    private let favoritesObservers = OSAllocatedUnfairLock<[any NSObjectProtocol]>(uncheckedState: [])
+
+    init(
+        favoriteTablesStorage: FavoriteTablesStorage = .shared,
+        favoriteDatabasesStorage: FavoriteDatabasesStorage = .shared
+    ) {
+        self.favoriteTablesStorage = favoriteTablesStorage
+        self.favoriteDatabasesStorage = favoriteDatabasesStorage
+        super.init()
+    }
+
+    internal var supportsSchemaLevel: Bool {
         PluginManager.shared.databaseGroupingStrategy(for: databaseType) == .bySchema
     }
 
-    private var systemSchemas: Set<String> {
+    internal var systemSchemas: Set<String> {
         Set(PluginManager.shared.systemSchemaNames(for: databaseType))
     }
 
@@ -49,10 +83,37 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
 
     func attach(outlineView: NSOutlineView) {
         self.outlineView = outlineView
+        let tableObserver = NotificationCenter.default.addObserver(
+            forName: .favoriteTablesDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.reloadFavorites()
+                self.refreshVisibleRows()
+            }
+        }
+        favoritesObservers.withLockUnchecked { $0.append(tableObserver) }
+
+        let databaseObserver = NotificationCenter.default.addObserver(
+            forName: .favoriteDatabasesDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.reloadFavorites()
+                self.refreshVisibleRows()
+            }
+        }
+        favoritesObservers.withLockUnchecked { $0.append(databaseObserver) }
+    }
+
+    deinit {
+        favoritesObservers.withLockUnchecked { $0.forEach(NotificationCenter.default.removeObserver) }
     }
 
     func update(from view: DatabaseTreeOutlineView) {
+        let connectionChanged = connectionId != view.connectionId
         connectionId = view.connectionId
+        if connectionChanged { reloadFavorites() }
         databaseType = view.databaseType
         mainCoordinator = view.coordinator
         windowState = view.windowState
@@ -60,29 +121,34 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         viewModel = view.viewModel
 
         let activeChanged = activeDatabase != view.activeDatabase || activeSchema != view.activeSchema
-        let changed = searchText != view.searchText
-            || connectionToken != view.connectionToken
+        let changed = connectionChanged
+            || searchText != view.searchText
+            || isConnected != view.isConnected
             || activeChanged
             || pendingTruncates != view.pendingTruncates
             || pendingDeletes != view.pendingDeletes
+            || showRecentTables != view.showRecentTables
+            || rowSize != view.resolvedRowSize
 
         searchText = view.searchText
-        connectionToken = view.connectionToken
+        isConnected = view.isConnected
         activeDatabase = view.activeDatabase
         activeSchema = view.activeSchema
         pendingTruncates = view.pendingTruncates
         pendingDeletes = view.pendingDeletes
+        showRecentTables = view.showRecentTables
+        rowSize = view.resolvedRowSize
 
         if !hasRenderedOnce || activeChanged {
             persistActiveExpansion()
         }
 
-        if !hasRenderedOnce {
+        guard hasRenderedOnce, !changed else {
             hasRenderedOnce = true
             refresh()
-        } else if changed {
-            refresh()
+            return
         }
+        syncSelectionToModel()
     }
 
     private func persistActiveExpansion() {
@@ -125,20 +191,39 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     private func snapshotDependencies() {
         _ = service.databaseListState(for: connectionId)
         _ = sidebarState?.recentTables
+        /// Both feed `rootNodes()`: the layout picks the root's shape and the filter picks which
+        /// databases survive into it. Left unobserved, hiding a database in the filter popover
+        /// changed nothing until some other edit happened to rebuild the tree.
+        _ = sidebarState?.sidebarLayout
+        _ = sidebarState?.databaseFilterSelected
+        /// One token covers every table, routine and per-schema load for this connection, which is
+        /// the whole reactive surface the flat and hierarchical shapes read.
+        _ = schemaService.generationToken(for: connectionId)
+        if let keyTree = sidebarState?.redisKeyTreeViewModel {
+            _ = keyTree.isLoading
+            _ = keyTree.isTruncated
+            _ = keyTree.allKeys.count
+        }
         for node in nodeCache.values {
             switch node.kind {
             case .database(let metadata):
                 _ = service.schemaListState(connectionId: connectionId, database: metadata.name)
                 _ = service.tablesLoadState(connectionId: connectionId, database: metadata.name, schema: nil)
                 _ = service.routinesLoadState(connectionId: connectionId, database: metadata.name, schema: nil)
+                _ = service.triggersLoadState(connectionId: connectionId, database: metadata.name, schema: nil)
             case .schema(let database, let schema):
                 _ = service.tablesLoadState(connectionId: connectionId, database: database, schema: schema)
                 _ = service.routinesLoadState(connectionId: connectionId, database: database, schema: schema)
+                _ = service.triggersLoadState(connectionId: connectionId, database: database, schema: schema)
+            case .hierarchicalSchemaSection(let schema):
+                _ = schemaService.schemaState(for: connectionId, schema: schema)
             case .table(let ref) where ref.table.type == .partitionedTable:
                 _ = service.partitionsLoadState(
-                    connectionId: connectionId, database: ref.database, schema: ref.schema, table: ref.table.name
+                    connectionId: connectionId, database: ref.database ?? "", schema: ref.schema, table: ref.table.name
                 )
-            case .recentSection, .recentTable, .table, .routine, .status:
+            case .recentSection, .recentTable, .table, .routine, .trigger, .status,
+                 .objectKindSection, .containerObjectKindSection,
+                 .redisKeysSection, .redisNode:
                 break
             }
         }
@@ -148,6 +233,9 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         guard let outlineView else { return }
         isReloading = true
         childrenCache.removeAll()
+        objectBucketsCache.removeAll()
+        routineDisplayLabels.removeAll()
+        invalidateRowConfiguration()
         outlineView.reloadData()
         applyDesiredExpansion()
         syncSelectionToModel()
@@ -155,379 +243,205 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         beginObserving()
     }
 
-    // MARK: - Node building
-
-    private func node(id: String, kind: DatabaseTreeNode.Kind) -> DatabaseTreeNode {
-        if let existing = nodeCache[id] {
-            existing.kind = kind
-            return existing
-        }
-        let created = DatabaseTreeNode(id: id, kind: kind)
-        nodeCache[id] = created
-        return created
-    }
-
-    private func resolvedChildren(of item: Any?) -> [DatabaseTreeNode] {
-        let key = (item as? DatabaseTreeNode)?.id ?? ""
-        if let cached = childrenCache[key] { return cached }
-        let built = buildChildren(of: item as? DatabaseTreeNode)
-        childrenCache[key] = built
-        return built
-    }
-
-    private func buildChildren(of node: DatabaseTreeNode?) -> [DatabaseTreeNode] {
-        guard let node else { return rootNodes() }
-        switch node.kind {
-        case .recentSection:
-            return recentTableRefs().map {
-                self.node(id: DatabaseTreeNode.recentTableId($0), kind: .recentTable($0))
-            }
-        case .database(let metadata):
-            return supportsSchemaLevel
-                ? schemaNodes(database: metadata.name)
-                : objectNodes(database: metadata.name, schema: nil)
-        case .schema(let database, let schema):
-            return objectNodes(database: database, schema: schema)
-        case .table(let ref):
-            return ref.table.type == .partitionedTable ? partitionNodes(of: ref) : []
-        case .recentTable, .routine, .status:
-            return []
-        }
-    }
-
-    private func partitionNodes(of ref: DatabaseTreeTableRef) -> [DatabaseTreeNode] {
-        let parentId = DatabaseTreeNode.tableId(ref)
-        let state = service.partitionsLoadState(
-            connectionId: connectionId, database: ref.database, schema: ref.schema, table: ref.table.name
-        )
-        switch state {
-        case .idle, .loading:
-            return [statusNode(parentId: parentId, status: .loading)]
-        case .failed(let message):
-            return [statusNode(parentId: parentId, status: .error(message))]
-        case .loaded(let partitions):
-            if partitions.isEmpty { return [statusNode(parentId: parentId, status: .empty)] }
-            return partitions.map { partition in
-                let childRef = DatabaseTreeTableRef(database: ref.database, schema: ref.schema, table: partition)
-                return node(id: DatabaseTreeNode.tableId(childRef), kind: .table(childRef))
-            }
-        }
-    }
-
-    private func rootNodes() -> [DatabaseTreeNode] {
-        var nodes: [DatabaseTreeNode] = []
-        if !recentTableRefs().isEmpty {
-            nodes.append(node(id: DatabaseTreeNode.recentSectionId, kind: .recentSection))
-        }
-        let visible = DatabaseTreeVisibility.visible(
-            databases: service.databases(for: connectionId),
-            selected: sidebarState?.databaseFilterSelected ?? [],
-            activeDatabase: mainCoordinator?.activeDatabaseName ?? activeDatabase
-        )
-        let matched = searchText.isEmpty ? visible : visible.filter { databaseMatchesSearch($0) }
-        var seen = Set<String>()
-        nodes += matched
-            .filter { seen.insert($0.id).inserted }
-            .map { node(id: DatabaseTreeNode.databaseId($0.name), kind: .database($0)) }
-        return nodes
-    }
-
-    private func recentTableRefs() -> [DatabaseTreeTableRef] {
-        guard let sidebarState, AppSettingsManager.shared.general.showRecentTables else { return [] }
-        let database = mainCoordinator?.activeDatabaseName ?? activeDatabase ?? ""
-        return sidebarState.recentEntries(inDatabase: database).compactMap { entry -> DatabaseTreeTableRef? in
-            if !searchText.isEmpty, !DatabaseTreeFilter.matches(searchText, entry.name) { return nil }
-            return DatabaseTreeTableRef(database: database, schema: entry.schema, table: entry.tableInfo)
-        }
-    }
-
-    private func schemaNodes(database: String) -> [DatabaseTreeNode] {
-        let parentId = DatabaseTreeNode.databaseId(database)
-        switch service.schemaListState(connectionId: connectionId, database: database) {
-        case .idle, .loading:
-            return [statusNode(parentId: parentId, status: .loading)]
-        case .failed(let message):
-            return [statusNode(parentId: parentId, status: .error(message))]
-        case .loaded(let schemas):
-            let visible = DatabaseTreeFilter.visibleSchemas(
-                schemas,
-                systemSchemas: systemSchemas,
-                searchText: searchText,
-                contentMatches: { schemaContentMatchesSearch(database: database, schema: $0) }
-            )
-            if visible.isEmpty { return [statusNode(parentId: parentId, status: .empty)] }
-            return visible.map {
-                node(id: DatabaseTreeNode.schemaId(database: database, schema: $0), kind: .schema(database: database, schema: $0))
-            }
-        }
-    }
-
-    private func objectNodes(database: String, schema: String?) -> [DatabaseTreeNode] {
-        let parentId = schema.map { DatabaseTreeNode.schemaId(database: database, schema: $0) }
-            ?? DatabaseTreeNode.databaseId(database)
-        switch service.tablesLoadState(connectionId: connectionId, database: database, schema: schema) {
-        case .idle, .loading:
-            return [statusNode(parentId: parentId, status: .loading)]
-        case .failed(let message):
-            return [statusNode(parentId: parentId, status: .error(message))]
-        case .loaded:
-            return loadedObjectNodes(database: database, schema: schema, parentId: parentId)
-        }
-    }
-
-    private func loadedObjectNodes(database: String, schema: String?, parentId: String) -> [DatabaseTreeNode] {
-        let tables = DatabaseTreeFilter.filteredTables(
-            service.tables(connectionId: connectionId, database: database, schema: schema), searchText: searchText
-        )
-        let routines = DatabaseTreeFilter.filteredRoutines(
-            service.routines(connectionId: connectionId, database: database, schema: schema), searchText: searchText
-        )
-        let routinesState = service.routinesLoadState(connectionId: connectionId, database: database, schema: schema)
-
-        guard !tables.isEmpty || !routines.isEmpty else {
-            switch routinesState {
-            case .failed(let message): return [statusNode(parentId: parentId, status: .error(message))]
-            case .loaded: return [statusNode(parentId: parentId, status: .empty)]
-            case .idle, .loading: return [statusNode(parentId: parentId, status: .loading)]
-            }
-        }
-
-        var nodes: [DatabaseTreeNode] = tables.map { table in
-            let ref = DatabaseTreeTableRef(database: database, schema: schema, table: table)
-            return node(id: DatabaseTreeNode.tableId(ref), kind: .table(ref))
-        }
-        nodes += routines.map { routine in
-            let ref = DatabaseTreeRoutineRef(database: database, schema: schema, routine: routine)
-            return node(id: DatabaseTreeNode.routineId(ref), kind: .routine(ref))
-        }
-        if case .failed(let message) = routinesState {
-            nodes.append(statusNode(parentId: parentId, status: .error(message)))
-        }
-        return nodes
-    }
-
-    private func statusNode(parentId: String, status: DatabaseTreeNode.Status) -> DatabaseTreeNode {
-        node(id: DatabaseTreeNode.statusId(parentId: parentId, status: status), kind: .status(status))
-    }
-
-    // MARK: - Search
-
-    private func databaseMatchesSearch(_ metadata: DatabaseMetadata) -> Bool {
-        if DatabaseTreeFilter.matches(searchText, metadata.name) { return true }
-        if case .loaded(let schemas) = service.schemaListState(connectionId: connectionId, database: metadata.name) {
-            if schemas.contains(where: { DatabaseTreeFilter.matches(searchText, $0) }) { return true }
-            for schema in schemas where schemaContentMatchesSearch(database: metadata.name, schema: schema) {
-                return true
-            }
-        }
-        return schemaContentMatchesSearch(database: metadata.name, schema: nil)
-    }
-
-    private func schemaContentMatchesSearch(database: String, schema: String?) -> Bool {
-        if let schema, DatabaseTreeFilter.matches(searchText, schema) { return true }
-        let tables = service.tables(connectionId: connectionId, database: database, schema: schema)
-        if tables.contains(where: { DatabaseTreeFilter.matches(searchText, $0.name) }) { return true }
-        let routines = service.routines(connectionId: connectionId, database: database, schema: schema)
-        return routines.contains { DatabaseTreeFilter.matches(searchText, $0.name) }
-    }
-
-    // MARK: - Expansion
-
-    private func applyDesiredExpansion() {
+    /// A star toggling on or off changes no row and no ordering, so the rows are reconfigured in
+    /// place. Reloading would throw away every hosted SwiftUI view to repaint one glyph.
+    internal func refreshVisibleRows() {
         guard let outlineView else { return }
-        isApplyingExpansion = true
-        defer { isApplyingExpansion = false }
-        let searching = !searchText.isEmpty
-        for rootNode in resolvedChildren(of: nil) where rootNode.id == DatabaseTreeNode.recentSectionId {
-            setExpanded(rootNode, searching || (viewModel?.isRecentsExpanded ?? true))
-        }
-        for databaseNode in resolvedChildren(of: nil) {
-            guard case .database(let metadata) = databaseNode.kind else { continue }
-            let want = searching
-                ? databaseMatchesSearch(metadata)
-                : windowState?.expandedTreeDatabases.contains(metadata.name) ?? false
-            setExpanded(databaseNode, want)
-            guard outlineView.isItemExpanded(databaseNode) else { continue }
-            triggerLoad(for: databaseNode)
-            guard supportsSchemaLevel else {
-                restorePartitionExpansion(under: databaseNode)
-                continue
-            }
-            for schemaNode in resolvedChildren(of: databaseNode) {
-                guard case .schema(let database, let schema) = schemaNode.kind else { continue }
-                let wantSchema = searching
-                    ? DatabaseTreeFilter.matches(searchText, schema) || schemaContentMatchesSearch(database: database, schema: schema)
-                    : windowState?.expandedTreeDatabaseSchemas.contains(DatabaseSchemaKey(database: database, schema: schema)) ?? false
-                setExpanded(schemaNode, wantSchema)
-                if outlineView.isItemExpanded(schemaNode) {
-                    triggerLoad(for: schemaNode)
-                    restorePartitionExpansion(under: schemaNode)
-                }
-            }
-        }
-    }
-
-    private func restorePartitionExpansion(under parent: DatabaseTreeNode) {
-        guard searchText.isEmpty, let outlineView, let windowState else { return }
-        for tableNode in resolvedChildren(of: parent) {
-            guard case .table(let ref) = tableNode.kind, ref.table.type == .partitionedTable else { continue }
-            let key = DatabaseTableKey(database: ref.database, schema: ref.schema, table: ref.table.name)
-            guard windowState.expandedTreeTables.contains(key) else { continue }
-            setExpanded(tableNode, true)
-            guard outlineView.isItemExpanded(tableNode) else { continue }
-            triggerLoad(for: tableNode)
-            restorePartitionExpansion(under: tableNode)
-        }
-    }
-
-    private func setExpanded(_ node: DatabaseTreeNode, _ expanded: Bool) {
-        guard let outlineView else { return }
-        if expanded, !outlineView.isItemExpanded(node) {
-            outlineView.expandItem(node)
-        } else if !expanded, outlineView.isItemExpanded(node) {
-            outlineView.collapseItem(node)
-        }
-    }
-
-    private func recordExpansion(_ node: DatabaseTreeNode, expanded: Bool) {
-        switch node.kind {
-        case .recentSection:
-            viewModel?.isRecentsExpanded = expanded
-        case .database(let metadata):
-            if expanded {
-                windowState?.expandedTreeDatabases.insert(metadata.name)
-            } else {
-                windowState?.expandedTreeDatabases.remove(metadata.name)
-            }
-        case .schema(let database, let schema):
-            let key = DatabaseSchemaKey(database: database, schema: schema)
-            if expanded {
-                windowState?.expandedTreeDatabaseSchemas.insert(key)
-            } else {
-                windowState?.expandedTreeDatabaseSchemas.remove(key)
-            }
-        case .table(let ref):
-            let key = DatabaseTableKey(database: ref.database, schema: ref.schema, table: ref.table.name)
-            if expanded {
-                windowState?.expandedTreeTables.insert(key)
-            } else {
-                windowState?.expandedTreeTables.remove(key)
-            }
-        case .recentTable, .routine, .status:
-            break
-        }
-    }
-
-    private func triggerLoad(for node: DatabaseTreeNode) {
-        switch node.kind {
-        case .database(let metadata):
-            if supportsSchemaLevel {
-                if isIdle(service.schemaListState(connectionId: connectionId, database: metadata.name)) {
-                    Task { await service.loadSchemas(connectionId: connectionId, database: metadata.name) }
-                }
-            } else {
-                loadObjects(database: metadata.name, schema: nil)
-            }
-        case .schema(let database, let schema):
-            loadObjects(database: database, schema: schema)
-        case .table(let ref):
-            loadPartitions(ref)
-        case .recentSection, .recentTable, .routine, .status:
-            break
-        }
-    }
-
-    private func loadPartitions(_ ref: DatabaseTreeTableRef) {
-        guard ref.table.type == .partitionedTable else { return }
-        let state = service.partitionsLoadState(
-            connectionId: connectionId, database: ref.database, schema: ref.schema, table: ref.table.name
-        )
-        guard isIdle(state) else { return }
-        Task {
-            await service.loadPartitions(
-                connectionId: connectionId, database: ref.database, schema: ref.schema, table: ref.table.name
+        for row in 0..<outlineView.numberOfRows {
+            guard let node = outlineView.item(atRow: row) as? DatabaseTreeNode,
+                  let cell = outlineView.view(atColumn: 0, row: row, makeIfNecessary: false) as? DatabaseTreeCellView
+            else { continue }
+            cell.configure(
+                node: node,
+                isFavorite: favoriteState(for: node),
+                context: rowContext,
+                actions: rowActions
             )
         }
     }
 
-    private func loadObjects(database: String, schema: String?) {
-        if isIdle(service.tablesLoadState(connectionId: connectionId, database: database, schema: schema)) {
-            Task { await service.loadTables(connectionId: connectionId, database: database, schema: schema) }
-        }
-        if isIdle(service.routinesLoadState(connectionId: connectionId, database: database, schema: schema)) {
-            Task { await service.loadRoutines(connectionId: connectionId, database: database, schema: schema) }
+    private func reloadFavorites() {
+        favoriteTables = favoriteTablesStorage.favorites(for: connectionId)
+        favoriteDatabases = favoriteDatabasesStorage.favorites(for: connectionId)
+    }
+
+    private func favoriteEntry(for ref: DatabaseTreeTableRef) -> FavoriteTablesStorage.FavoriteEntry {
+        FavoriteTablesStorage.FavoriteEntry(
+            connectionId: connectionId,
+            database: ref.database,
+            schema: ref.table.schema,
+            name: ref.table.name
+        )
+    }
+
+    internal func isFavorite(_ ref: DatabaseTreeTableRef) -> Bool {
+        favoriteTables.contains(favoriteEntry(for: ref))
+    }
+
+    private func favoriteState(for node: DatabaseTreeNode) -> Bool {
+        switch node.kind {
+        case .database(let metadata):
+            return favoriteDatabases.contains { $0.database == metadata.name }
+        default:
+            guard let ref = DatabaseTreeSelection.tableRef(of: node) else { return false }
+            return isFavorite(ref)
         }
     }
 
-    private func isIdle<Value>(_ state: MetadataLoadState<Value>) -> Bool {
-        if case .idle = state { return true }
-        return false
+    internal func favoriteDatabaseEnvironments() -> [String: FavoriteDatabaseEnvironment] {
+        Dictionary(favoriteDatabases.map { ($0.database, $0.environment) }) { first, _ in first }
+    }
+
+    internal func toggleFavoriteDatabase(_ database: String) {
+        guard favoriteDatabases.contains(where: { $0.database == database }) else {
+            favoriteDatabasesStorage.setFavorite(
+                database: database,
+                environment: .unassigned,
+                connectionId: connectionId
+            )
+            return
+        }
+        favoriteDatabasesStorage.removeFavorite(database: database, connectionId: connectionId)
+    }
+
+    internal func toggleFavorite(_ ref: DatabaseTreeTableRef) {
+        let entry = favoriteEntry(for: ref)
+        favoriteTablesStorage.toggle(
+            name: entry.name, schema: entry.schema, database: entry.database, connectionId: connectionId
+        )
     }
 
     // MARK: - Selection / open
 
-    private func selectedRefs() -> [DatabaseTreeTableRef] {
+    internal func selectedRefs() -> [DatabaseTreeTableRef] {
+        DatabaseTreeSelection.tableRefs(of: selectedNodes())
+    }
+
+    internal func selectedContainerRefs() -> [DatabaseContainerRef] {
+        let systemSchemaNames = systemSchemas
+        return selectedNodes().compactMap { $0.containerRef(systemSchemas: systemSchemaNames) }
+    }
+
+    private func selectedNodes() -> [DatabaseTreeNode] {
         guard let outlineView else { return [] }
         return outlineView.selectedRowIndexes.compactMap {
-            (outlineView.item(atRow: $0) as? DatabaseTreeNode)?.tableRef
+            outlineView.item(atRow: $0) as? DatabaseTreeNode
         }
     }
 
-    private func syncSelectionToModel() {
+    internal func syncSelectionToModel() {
         guard let outlineView else { return }
-        let rows = lastSelection.compactMap { ref -> Int? in
-            guard let node = nodeCache[DatabaseTreeNode.tableId(ref)] else { return nil }
+        adoptModelSelection()
+        let rows = lastSelectedNodeIds.compactMap { nodeId -> Int? in
+            guard let node = nodeCache[nodeId] else { return nil }
             let row = outlineView.row(forItem: node)
             return row >= 0 ? row : nil
         }
+        guard outlineView.selectedRowIndexes != IndexSet(rows) else { return }
         isSyncingSelection = true
         outlineView.selectRowIndexes(IndexSet(rows), byExtendingSelection: false)
         isSyncingSelection = false
     }
 
-    private func open(_ ref: DatabaseTreeTableRef, activateGridFocus: Bool, forceNewWindowTab: Bool = false) {
-        Task { @MainActor in
+    /// The window writes `selectedTables` whenever the active editor tab moves, so the highlight has
+    /// to follow it the way the `List(selection:)` binding this outline replaced did. Reading it back
+    /// is also what keeps a click on the row that is still highlighted from being swallowed: AppKit
+    /// posts no selection change when the selection already holds that row, so a highlight left
+    /// behind on a table the user has since navigated away from becomes a dead row.
+    ///
+    /// A table can be drawn twice, once under Recent and once in its own section. Only the section
+    /// row is adopted, because that is the row the model's `TableInfo` stands for.
+    ///
+    /// Nothing is adopted while this coordinator is opening a row the user clicked. `activate(_:)`
+    /// moves the browse database before `publishSelection()` runs, so through that window the model
+    /// still names the previous database's table. Adopting it would deselect the clicked row and
+    /// then publish the empty selection over it. The depth counts, because a second click can land
+    /// while the first switch is still in flight.
+    private func adoptModelSelection() {
+        guard let windowState, openSelectionDepth == 0 else { return }
+        let selectedTables = windowState.selectedTables
+        let selectionDatabase = modelSelectionDatabase
+        guard selectedTables != publishedTables
+            || selectionDatabase != publishedSelectionDatabase
+            || isModelSelectionAdoptionPending
+        else { return }
+        publishedTables = selectedTables
+        publishedSelectionDatabase = selectionDatabase
+
+        var nodes: [DatabaseTreeNode] = []
+        for node in nodeCache.values {
+            guard case .table(let ref) = node.kind, selectedTables.contains(ref.table) else { continue }
+            guard selectionDatabase == nil || ref.database == selectionDatabase else { continue }
+            nodes.append(node)
+        }
+        lastSelectedNodeIds = nodes.map(\.id)
+        lastSelection = Set(DatabaseTreeSelection.tableRefs(of: nodes))
+        /// Still pending while a selected table has no row in the database being browsed: the row is
+        /// usually one that has not been built yet, and the next sync adopts it.
+        isModelSelectionAdoptionPending = Set(lastSelection.map(\.table)) != selectedTables
+    }
+
+    private var modelSelectionDatabase: String? {
+        if let browseDatabase = mainCoordinator?.browseDatabaseName, !browseDatabase.isEmpty { return browseDatabase }
+        guard let activeDatabase, !activeDatabase.isEmpty else { return nil }
+        return activeDatabase
+    }
+
+    /// Opens run one after another, because a double-click is two opens of the same row and the
+    /// second lands while the first is still inside `activate(_:)`. Both would then read the same
+    /// stale `activeDatabase` and switch the database twice for one gesture, which on an engine
+    /// that reconnects to switch means two reconnects and two schema invalidations. Waiting for the
+    /// one in flight lets the second see the database it already moved to, so it only promotes.
+    private func open(
+        _ ref: DatabaseTreeTableRef,
+        activateGridFocus: Bool,
+        forceNonPreview: Bool = false
+    ) {
+        let inFlight = openWork
+        openSelectionDepth += 1
+        openWork = Task { @MainActor in
+            defer { openSelectionDepth -= 1 }
+            await inFlight?.value
             await activate(ref)
             mainCoordinator?.openTableTab(
                 ref.table,
                 schema: ref.schema,
-                activateGridFocus: activateGridFocus,
-                forceNewWindowTab: forceNewWindowTab
+                forceNonPreview: forceNonPreview,
+                activateGridFocus: activateGridFocus
             )
+            publishSelection()
         }
     }
 
-    private func activate(_ ref: DatabaseTreeTableRef) async {
-        if ref.database != activeDatabase {
-            await mainCoordinator?.switchDatabase(to: ref.database)
-        }
-        guard let schema = ref.schema,
-              PluginManager.shared.supportsSchemaSwitching(for: databaseType),
-              schema != sessionSchema else { return }
-        await mainCoordinator?.switchSchema(to: schema)
+    /// The Table menu reads `windowState.selectedTables`, so the tree has to put its own selection
+    /// there or every command that acts on a selection does nothing in tree layout.
+    ///
+    /// Timing is the whole trick. The shared navigation observer also watches this property, and it
+    /// opens whatever single table appeared. Publishing before the tree's own open landed would race
+    /// it into opening the table twice, so a selection that navigates publishes only once the tab is
+    /// already the clicked table, which is exactly the case that observer resolves to skip.
+    private func publishSelection() {
+        guard let windowState else { return }
+        let nodes = selectedNodes()
+        let tables = DatabaseTreeSelection.tableInfos(of: nodes)
+        publishedTables = tables
+        publishedSelectionDatabase = modelSelectionDatabase
+        isModelSelectionAdoptionPending = false
+        /// The row count goes with the tables, because this is the one list that can select a row
+        /// which is not a table. One table selected beside a schema must not read as a pick.
+        windowState.select(tables: tables, rowCount: nodes.count)
     }
 
-    /// The live session schema, not the window's toolbar mirror. A database switch
-    /// moves the session schema without touching the toolbar, so comparing against
-    /// the toolbar skips the switch exactly when the session needs it.
-    private var sessionSchema: String? {
-        DatabaseManager.shared.session(for: connectionId)?.currentSchema
+    internal func activate(_ ref: DatabaseTreeTableRef) async {
+        await mainCoordinator?.switchContainers(database: ref.database, schema: ref.schema)
     }
 
-    private func setActiveDatabase(_ database: String) {
-        guard database != activeDatabase else { return }
-        Task { await mainCoordinator?.switchDatabase(to: database) }
+    internal func setActiveDatabase(_ database: String) {
+        Task { await mainCoordinator?.switchContainers(database: database, schema: nil) }
     }
 
-    private func setActiveSchema(database: String, schema: String) {
-        Task { @MainActor in
-            if database != activeDatabase {
-                await mainCoordinator?.switchDatabase(to: database)
-            }
-            if schema != sessionSchema {
-                await mainCoordinator?.switchSchema(to: schema)
-            }
-        }
+    internal func setActiveSchema(database: String?, schema: String) {
+        Task { await mainCoordinator?.switchContainers(database: database, schema: schema) }
     }
 
     private func refreshDatabase(_ database: String) {
@@ -542,63 +456,174 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         Task { await service.refreshObjects(connectionId: connectionId, database: database, schema: schema) }
     }
 
-    private func rowContext() -> DatabaseTreeRowContext {
+    internal func refreshContainers(_ targets: [DatabaseContainerRef]) {
+        for target in targets {
+            switch target.kind {
+            case .database: refreshDatabase(target.database ?? "")
+            case .schema: refreshObjects(database: target.database ?? "", schema: target.schema)
+            }
+        }
+    }
+
+    /// Every visible row is handed the same context and the same action set, and both are pure
+    /// functions of the inputs `update(from:)` already tracks, so they are built once per refresh
+    /// instead of once per row. Rebuilding them in `viewFor` allocated a fresh set of closures for
+    /// every row the outline drew, on every reload and every scroll.
+    private var rowContext: DatabaseTreeRowContext {
+        if let cachedRowContext { return cachedRowContext }
+        let context = makeRowContext()
+        cachedRowContext = context
+        return context
+    }
+
+    private var rowActions: DatabaseTreeRowActions {
+        if let cachedRowActions { return cachedRowActions }
+        let actions = makeRowActions()
+        cachedRowActions = actions
+        return actions
+    }
+
+    private func invalidateRowConfiguration() {
+        cachedRowContext = nil
+        cachedRowActions = nil
+    }
+
+    private func makeRowContext() -> DatabaseTreeRowContext {
         DatabaseTreeRowContext(
             databaseType: databaseType,
             activeDatabase: activeDatabase,
             activeSchema: activeSchema,
             systemSchemas: systemSchemas,
             pendingTruncates: pendingTruncates,
-            pendingDeletes: pendingDeletes
-        )
-    }
-
-    private func rowActions() -> DatabaseTreeRowActions {
-        DatabaseTreeRowActions(
-            coordinator: mainCoordinator,
-            isReadOnly: mainCoordinator?.safeModeLevel.blocksAllWrites ?? false,
-            selectedTables: { [weak self] in Set((self?.selectedRefs() ?? []).map(\.table)) },
-            activate: { [weak self] ref in await self?.activate(ref) },
-            setActiveDatabase: { [weak self] in self?.setActiveDatabase($0) },
-            setActiveSchema: { [weak self] database, schema in self?.setActiveSchema(database: database, schema: schema) },
-            refreshDatabase: { [weak self] in self?.refreshDatabase($0) },
-            refreshObjects: { [weak self] database, schema in self?.refreshObjects(database: database, schema: schema) },
-            showRoutineDDL: { [weak self] routine in self?.mainCoordinator?.showRoutineDDL(routine) },
-            batchToggleTruncate: { [weak self] in self?.viewModel?.batchToggleTruncate(tableNames: $0) },
-            batchToggleDelete: { [weak self] in self?.viewModel?.batchToggleDelete(tableNames: $0) },
-            removeRecent: { [weak self] ref in
-                self?.sidebarState?.removeRecentTable(database: ref.database, schema: ref.schema, name: ref.table.name)
+            pendingDeletes: pendingDeletes,
+            rowSize: rowSize,
+            isExternalSchema: { [connectionId] database, schema in
+                ExternalSchemaTracker.shared.isExternal(
+                    connectionId: connectionId,
+                    database: database,
+                    schema: schema
+                )
             },
-            clearRecents: { [weak self] in
-                self?.sidebarState?.clearRecentTables(inDatabase: self?.mainCoordinator?.activeDatabaseName)
+            objectKindTitle: { [databaseType] kind in
+                kind.title(tableEntityName: PluginManager.shared.tableEntityName(for: databaseType))
+            },
+            routineDisplayLabel: { [weak self] ref in
+                self?.routineDisplayLabels[ref.id] ?? ref.routine.name
             }
         )
     }
 
-    @objc
-    func handleSingleClick() {
-        guard let outlineView, outlineView.clickedRow >= 0,
-              let node = outlineView.item(atRow: outlineView.clickedRow) as? DatabaseTreeNode,
-              let ref = node.recentTableRef else { return }
-        scheduleSingleClickOpen(ref)
+    private func makeRowActions() -> DatabaseTreeRowActions {
+        DatabaseTreeRowActions(
+            toggleFavorite: { [weak self] ref in self?.toggleFavorite(ref) },
+            toggleFavoriteDatabase: { [weak self] database in self?.toggleFavoriteDatabase(database) }
+        )
+    }
+
+    /// A namespace rescopes the browse pattern and a key opens; neither goes through the
+    /// double-click window a table open needs, because there is no preview tab to promote.
+    private func openRedis(_ node: RedisKeyNode) {
+        switch node {
+        case .namespace(_, let fullPrefix, _, _):
+            mainCoordinator?.browseRedisNamespace(fullPrefix)
+        case .key(_, let fullKey, let keyType):
+            mainCoordinator?.openRedisKey(fullKey, keyType: keyType)
+        }
+    }
+
+    internal func refreshObjectKind(_ kind: SidebarObjectKind) {
+        guard let mainCoordinator else { return }
+        switch kind {
+        case .procedure, .function: Task { await mainCoordinator.refreshRoutines() }
+        case .trigger: Task { await mainCoordinator.refreshTriggers() }
+        case .table, .view, .materializedView, .foreignTable: Task { await mainCoordinator.refreshTables() }
+        }
+    }
+
+    internal func refreshContainerObjectKind(_ group: DatabaseTreeObjectGroup) {
+        let connectionId = connectionId
+        Task {
+            switch group.kind.category {
+            case .table:
+                await service.refreshTableObjects(
+                    connectionId: connectionId,
+                    database: group.database,
+                    schema: group.schema
+                )
+            case .routine:
+                await service.refreshRoutineObjects(
+                    connectionId: connectionId,
+                    database: group.database,
+                    schema: group.schema
+                )
+            case .trigger:
+                await service.refreshTriggerObjects(
+                    connectionId: connectionId,
+                    database: group.database,
+                    schema: group.schema
+                )
+            }
+        }
+    }
+
+    internal func reloadHierarchicalSchemaTables(_ schema: String) {
+        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
+        let connectionId = connectionId
+        Task { await schemaService.reloadSchemaTables(connectionId: connectionId, schema: schema, driver: driver) }
     }
 
     @objc
     func handleDoubleClick() {
         guard let outlineView, outlineView.clickedRow >= 0,
-              let node = outlineView.item(atRow: outlineView.clickedRow) as? DatabaseTreeNode else { return }
-        if let ref = node.tableRef ?? node.recentTableRef {
-            pendingSingleClickWork?.cancel()
-            pendingSingleClickWork = nil
-            open(ref, activateGridFocus: true, forceNewWindowTab: true)
+              let node = outlineView.item(atRow: outlineView.clickedRow) as? DatabaseTreeNode
+        else { return }
+        perform(DatabaseTreeDoubleClickResolver.resolve(node: node), on: node, in: outlineView)
+    }
+
+    /// Return does what a double-click does, because a keyboard user arrowing through the tree has
+    /// already opened every row they passed and needs the same way to keep one. `NSOutlineView`
+    /// routes neither gesture on its own.
+    internal func performPrimaryAction() {
+        /// One row only, for the same reason `DatabaseTreeSelection.navigationTarget` refuses to
+        /// navigate on an extended selection: that selection is a batch about to be exported or
+        /// truncated, and opening one of its rows would move the browsed database out from under it.
+        guard let outlineView, outlineView.numberOfSelectedRows == 1,
+              outlineView.selectedRow >= 0,
+              let node = outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode
+        else { return }
+        perform(DatabaseTreeDoubleClickResolver.resolve(node: node), on: node, in: outlineView)
+    }
+
+    private func perform(
+        _ intent: DatabaseTreeDoubleClickIntent,
+        on node: DatabaseTreeNode,
+        in outlineView: NSOutlineView
+    ) {
+        switch intent {
+        case .openPermanently(let ref):
+            pendingOpenWork?.cancel()
+            pendingOpenWork = nil
+            open(ref, activateGridFocus: true, forceNonPreview: true)
+        case .openObjectSource(let objectRef):
+            mainCoordinator?.showObjectSource(objectRef)
+        case .toggleDisclosure:
+            if outlineView.isItemExpanded(node) {
+                outlineView.collapseItem(node)
+            } else {
+                outlineView.expandItem(node)
+            }
+        case .ignore:
             return
         }
-        guard node.isExpandable else { return }
-        if outlineView.isItemExpanded(node) {
-            outlineView.collapseItem(node)
-        } else {
-            outlineView.expandItem(node)
-        }
+    }
+}
+
+extension DatabaseTreeOutlineCoordinator: DatabaseTreeSelectionClearing {
+    /// Deselecting runs the normal delegate path, which publishes the now empty selection, so the
+    /// Table menu and the outline agree without a second write.
+    func clearSelection() {
+        guard let outlineView, !outlineView.selectedRowIndexes.isEmpty else { return }
+        outlineView.deselectAll(nil)
     }
 }
 
@@ -621,57 +646,154 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
         guard let node = item as? DatabaseTreeNode else { return nil }
         let cell = outlineView.makeView(withIdentifier: Self.cellIdentifier, owner: self) as? DatabaseTreeCellView
             ?? makeCell()
-        cell.configure(node: node, context: rowContext(), actions: rowActions())
+        cell.configure(
+            node: node,
+            isFavorite: favoriteState(for: node),
+            context: rowContext,
+            actions: rowActions
+        )
         return cell
     }
 
     func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
-        (item as? DatabaseTreeNode)?.tableRef != nil
+        guard let node = item as? DatabaseTreeNode else { return false }
+        return DatabaseTreeSelection.isSelectable(node.kind)
     }
 
+    /// Hands the section headers to AppKit. In `.sourceList` a group row is drawn at its own
+    /// height with its own background and collapse control, and its children are laid out at the
+    /// depth the group itself sits at rather than one level in. That last part is what makes a
+    /// table under "Tables" line up with a database, the way a package lines up with the project
+    /// in Xcode's navigator.
+    func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {
+        (item as? DatabaseTreeNode)?.isGroupRow ?? false
+    }
+
+    func outlineView(
+        _ outlineView: NSOutlineView,
+        typeSelectStringFor tableColumn: NSTableColumn?,
+        item: Any
+    ) -> String? {
+        guard let node = item as? DatabaseTreeNode else { return nil }
+        return DatabaseTreeTypeSelect.matchString(
+            for: node.kind,
+            tableEntityName: PluginManager.shared.tableEntityName(for: databaseType)
+        )
+    }
+
+    /// The load has to run before AppKit asks for the children, which is what `will` is for. The
+    /// recording is the opposite: `will` fires before the state flips, so a disclosure recorded
+    /// there is describing the state the row is leaving.
     func outlineViewItemWillExpand(_ notification: Notification) {
         guard let node = notification.userInfo?["NSObject"] as? DatabaseTreeNode else { return }
         triggerLoad(for: node)
-        if !isApplyingExpansion { recordExpansion(node, expanded: true) }
     }
 
-    func outlineViewItemWillCollapse(_ notification: Notification) {
+    func outlineViewItemDidExpand(_ notification: Notification) {
         guard let node = notification.userInfo?["NSObject"] as? DatabaseTreeNode else { return }
-        if !isApplyingExpansion { recordExpansion(node, expanded: false) }
+        if isRecordingExpansion {
+            recordExpansion(node, expanded: true)
+            restoreDescendantExpansion(afterExpanding: node)
+        }
+        scheduleSelectionSync()
     }
 
+    private func scheduleSelectionSync(force: Bool = false) {
+        guard force || !isApplyingExpansion, !isSelectionSyncScheduled else { return }
+        isSelectionSyncScheduled = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.isSelectionSyncScheduled = false
+            self.isCollapsingItem = false
+            self.syncSelectionToModel()
+        }
+    }
+
+    /// A collapse that hides the selected row makes AppKit rewrite the outline's selection, and that
+    /// rewrite is not a pick. Publishing it wrote an empty `selectedTables` the tree could never take
+    /// back: an empty model against an empty published set leaves `adoptModelSelection()` nothing to
+    /// restore when the row comes back.
+    ///
+    /// AppKit posts that selection change outside the will/did pair, so the suppression is raised at
+    /// both ends and lowered a main-actor hop later, which is also when the highlight is driven back
+    /// from the model.
+    func outlineViewItemWillCollapse(_ notification: Notification) {
+        isCollapsingItem = true
+    }
+
+    func outlineViewItemDidCollapse(_ notification: Notification) {
+        isCollapsingItem = true
+        if let node = notification.userInfo?["NSObject"] as? DatabaseTreeNode, isRecordingExpansion {
+            recordExpansion(node, expanded: false)
+        }
+        scheduleSelectionSync(force: true)
+    }
+
+    /// A filtered tree discloses whatever matches, so while the field has text the disclosure on
+    /// screen is the search's, not the user's. A gesture against it is an edit of the search view
+    /// and must stay out of the saved state: recording it made the row spring back open on the next
+    /// keystroke and then, once the filter cleared, took the layout the user had built with it.
+    private var isRecordingExpansion: Bool {
+        !isApplyingExpansion && searchText.isEmpty
+    }
+
+    /// Selection drives the content, which is how a source list works: the navigator picks, the
+    /// detail follows. Both the mouse and the keyboard land here, so there is one entry point.
+    ///
+    /// This deliberately does not use `NSTableView.action`. AppKit sends the action on mouse up,
+    /// which is a whole gesture later than the selection the user already sees.
+    ///
+    /// Nothing is published when a single table was added, because the open publishes it once the
+    /// tab is already that table. Publishing here would hand the same table to the window's
+    /// navigation observer first and open it twice.
     func outlineViewSelectionDidChange(_ notification: Notification) {
-        guard !isSyncingSelection, !isReloading else { return }
-        let refs = Set(selectedRefs())
-        if let added = SelectionDelta.singleAddition(old: lastSelection, new: refs) {
-            if isKeyboardDrivenSelection {
-                pendingSingleClickWork?.cancel()
-                pendingSingleClickWork = nil
-                open(added, activateGridFocus: false)
+        guard !isSyncingSelection, !isReloading, !isCollapsingItem else { return }
+        let nodes = selectedNodes()
+        lastSelectedNodeIds = nodes.map(\.id)
+        let refs = Set(DatabaseTreeSelection.tableRefs(of: nodes))
+        let target = DatabaseTreeSelection.navigationTarget(
+            selectedNodes: nodes, previousRefs: lastSelection, newRefs: refs
+        )
+        if let target {
+            /// Only a repeating key is a burst to wait out. A discrete press is the whole gesture
+            /// and opens now, the way a click does.
+            if isAutorepeatingSelection {
+                scheduleOpen(target, after: NSEvent.keyRepeatInterval)
             } else {
-                scheduleSingleClickOpen(added)
+                pendingOpenWork?.cancel()
+                pendingOpenWork = nil
+                open(target, activateGridFocus: false)
             }
+        } else if let redisNode = singleSelectedRedisNode(in: nodes) {
+            openRedis(redisNode)
+        } else {
+            publishSelection()
         }
         lastSelection = refs
     }
 
-    private var isKeyboardDrivenSelection: Bool {
-        guard let outlineView, outlineView.window?.firstResponder === outlineView else { return false }
-        switch NSApp.currentEvent?.type {
-        case .keyDown, .keyUp:
-            return true
-        default:
-            return false
-        }
+    private func singleSelectedRedisNode(in nodes: [DatabaseTreeNode]) -> RedisKeyNode? {
+        guard nodes.count == 1, case .redisNode(let redisNode) = nodes[0].kind else { return nil }
+        return redisNode
     }
 
-    private func scheduleSingleClickOpen(_ ref: DatabaseTreeTableRef) {
-        pendingSingleClickWork?.cancel()
+    private var isAutorepeatingSelection: Bool {
+        guard let outlineView, outlineView.window?.firstResponder === outlineView else { return false }
+        guard let event = NSApp.currentEvent else { return false }
+        return DatabaseTreeTypeSelect.isAutorepeatingArrowNavigation(event)
+    }
+
+    /// A held arrow key is one gesture, not one open per row it travels over, so a repeating key
+    /// waits out `NSEvent.keyRepeatInterval` and each new selection cancels the pending one. The
+    /// burst collapses to the row the user stopped on. Without it, arrowing down a schema ran a
+    /// query and opened a tab for every row in between.
+    private func scheduleOpen(_ ref: DatabaseTreeTableRef, after delay: TimeInterval) {
+        pendingOpenWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
             self?.open(ref, activateGridFocus: false)
         }
-        pendingSingleClickWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.doubleClickInterval, execute: work)
+        pendingOpenWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     private func makeCell() -> DatabaseTreeCellView {

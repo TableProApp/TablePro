@@ -84,7 +84,8 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
             defaultValue: "sql",
             fieldType: .dropdown(options: [
                 .init(value: "sql", label: "SQL Server Authentication"),
-                .init(value: "windows", label: "Windows Authentication (Kerberos)")
+                .init(value: "windows", label: "Windows Authentication (Kerberos)"),
+                .init(value: "entra", label: String(localized: "Microsoft Entra ID"))
             ]),
             section: .authentication
         ),
@@ -110,7 +111,10 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
             )
         ),
         ConnectionField(id: "mssqlSchema", label: "Schema", placeholder: "dbo", defaultValue: "dbo")
-    ]
+    ] + EntraAuthFields.standard(
+        gatedBy: MSSQLConnectionOptions.AdditionalFieldKey.authMethod,
+        value: MSSQLAuthMethod.entra.rawValue
+    )
 
     // MARK: - UI/Capability Metadata
 
@@ -181,11 +185,15 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .explicit,
         paginationStyle: .offsetFetch,
-        autoLimitStyle: .top
+        autoLimitStyle: .top,
+        caseSensitivityStyle: .collationDefined
     )
 
     static let supportsDropDatabase = true
+    static let supportsDropSchema = true
     static let supportsTriggers = true
+    static let supportsRoutines = true
+    static let supportsDatabaseTriggerBrowse = true
     static let supportsTriggerEditing = true
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
@@ -277,7 +285,8 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         do {
             let kerberosCachePath = try await acquireKerberosTicketIfNeeded(authMethod: authMethod)
             let kerberosServicePrincipal = try await resolveKerberosServicePrincipal(authMethod: authMethod)
-            let options = MSSQLConnectionOptions(
+            let fedAuthToken = try await resolveEntraTokenIfNeeded(authMethod: authMethod)
+            var options = MSSQLConnectionOptions(
                 host: config.host,
                 port: config.port,
                 user: config.username,
@@ -289,6 +298,9 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 kerberosCachePath: kerberosCachePath,
                 kerberosServicePrincipal: kerberosServicePrincipal
             )
+            options.certificateVerification = MSSQLSSLMapping.certificateVerification(for: config.ssl.mode)
+            options.caCertificatePath = config.ssl.caCertificatePath
+            options.fedAuthToken = fedAuthToken
             conn = FreeTDSConnection(options: options)
             try await conn.connect()
         } catch let error as MSSQLCoreError {
@@ -342,6 +354,13 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             Self.logger.warning("Kerberos realm resolution timed out; using the default service principal")
             return nil
         }
+    }
+
+    /// `EntraOAuthError` deliberately escapes unwrapped. The connection form checks for it to
+    /// offer a browser sign-in, and wrapping it in a plugin error would erase that.
+    private func resolveEntraTokenIfNeeded(authMethod: MSSQLAuthMethod) async throws -> String? {
+        guard authMethod == .entra else { return nil }
+        return try await EntraCredentialResolver.shared.accessToken(fields: config.additionalFields)
     }
 
     private func acquireKerberosTicketIfNeeded(authMethod: MSSQLAuthMethod) async throws -> String? {
@@ -716,11 +735,29 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         limit: Int,
         offset: Int
     ) -> String? {
+        buildFilteredQuery(
+            table: table, schema: schema, filters: filters, logicMode: logicMode,
+            sortColumns: sortColumns, columns: columns, limit: limit, offset: offset, columnKinds: [:]
+        )
+    }
+
+    func buildFilteredQuery(
+        table: String,
+        schema: String?,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int,
+        columnKinds: [String: PluginColumnKind]
+    ) -> String? {
         let whereClause = PluginSQLFilter.buildWhereClause(
             filters: filters,
             logicMode: logicMode,
+            columnKinds: columnKinds,
             quoteIdentifier: mssqlQuoteIdentifier,
-            escapeValue: mssqlEscapeValue,
+            escapeTypedValue: mssqlEscapeValue,
             regexCondition: { quoted, value in
                 "\(quoted) LIKE '%\(value.replacingOccurrences(of: "'", with: "''"))%'"
             }
@@ -740,13 +777,14 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         quoteIdentifier(identifier)
     }
 
-    private func mssqlEscapeValue(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespaces)
-        if trimmed.caseInsensitiveCompare("NULL") == .orderedSame { return "NULL" }
-        if trimmed.caseInsensitiveCompare("TRUE") == .orderedSame { return "1" }
-        if trimmed.caseInsensitiveCompare("FALSE") == .orderedSame { return "0" }
-        if Int(trimmed) != nil || Double(trimmed) != nil { return trimmed }
-        return "'\(trimmed.replacingOccurrences(of: "'", with: "''"))'"
+    private func mssqlEscapeValue(_ value: String, kind: PluginColumnKind?) -> String {
+        PluginSQLLiteral.escapedLiteral(
+            value,
+            kind: kind,
+            trueLiteral: "1",
+            falseLiteral: "0",
+            quote: { "'\($0.replacingOccurrences(of: "'", with: "''"))'" }
+        )
     }
 
 

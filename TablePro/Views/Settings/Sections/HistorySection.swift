@@ -27,10 +27,10 @@ struct HistorySection: View {
                 Text("Forever").tag(0)
             }
 
-            Toggle("Auto cleanup on startup", isOn: $settings.autoCleanup)
+            Toggle("Auto cleanup", isOn: $settings.autoCleanup)
 
             LabeledContent("Clear all query history") {
-                Button("Clear History...") {
+                Button("Clear History…") {
                     Task { @MainActor in
                         let confirmed = await AlertHelper.confirmDestructive(
                             title: String(localized: "Clear All History?"),
@@ -39,7 +39,7 @@ struct HistorySection: View {
                             cancelButton: String(localized: "Cancel")
                         )
                         if confirmed {
-                            Task { _ = await QueryHistoryManager.shared.clearAllHistory() }
+                            Task { _ = await QueryHistoryManager.shared.clearEverything() }
                         }
                     }
                 }

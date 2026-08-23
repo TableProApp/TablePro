@@ -28,6 +28,9 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Connect to the database
     func connect() async throws
 
+    /// Connect while reporting the steps this driver can see from inside its own handshake.
+    func connectReporting(stage report: @escaping ConnectionStageReporter) async throws
+
     /// Disconnect from the database
     func disconnect()
 
@@ -83,6 +86,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Default implementation falls back to per-table fetchColumns.
     func fetchAllColumns() async throws -> [String: [ColumnInfo]]
 
+    /// Dotted field paths a document store exposes for a collection, for query authoring.
+    /// Default implementation returns nothing, which is correct for every SQL driver.
+    func sampleFieldPaths(table: String, limit: Int) async throws -> [PluginFieldPath]
+
     /// Fetch indexes for a specific table
     func fetchIndexes(table: String) async throws -> [IndexInfo]
 
@@ -102,6 +109,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Fetch foreign keys for all tables in the current database/schema in bulk.
     /// Default implementation falls back to per-table fetchForeignKeys.
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]]
+
+    /// Whether `fetchAllForeignKeys` is a single query. False means it degrades to one round trip
+    /// per table, which is too expensive to run ahead of the user.
+    var providesBulkForeignKeyFetch: Bool { get }
 
     /// Fetch foreign keys for a specific set of tables.
     /// Default implementation calls fetchAllForeignKeys and filters, or falls back to per-table.
@@ -142,13 +153,24 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Fetch list of schemas in the current database (PostgreSQL only)
     func fetchSchemas() async throws -> [String]
 
-    /// Fetch stored procedures for the given schema (or current schema if nil).
-    /// Default implementation returns an empty list; drivers that support routines override.
-    func fetchProcedures(schema: String?) async throws -> [RoutineInfo]
+    /// Names of schemas whose objects live in a catalog outside the database.
+    /// Default implementation returns an empty set; drivers that support them override.
+    func fetchExternalSchemaNames() async throws -> Set<String>
 
-    /// Fetch user-defined functions for the given schema (or current schema if nil).
-    /// Default implementation returns an empty list; drivers that support routines override.
-    func fetchFunctions(schema: String?) async throws -> [RoutineInfo]
+    /// Fetch every stored procedure and function in the given schema (or the current schema if
+    /// nil), in one round trip. Callers that want one kind filter the result rather than asking
+    /// twice, so an engine is never queried twice for what a single catalog read answers.
+    func fetchRoutines(schema: String?) async throws -> [RoutineInfo]
+
+    /// Fetch the source of one routine. The routine must be one this driver listed, because its
+    /// `identity` is the driver's own key for finding it again.
+    func fetchRoutineDDL(_ routine: RoutineInfo) async throws -> String
+
+    /// Fetch every trigger in the given schema, across all its tables.
+    func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo]
+
+    /// Fetch the source of one trigger.
+    func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String
 
     /// Fetch metadata for a specific database (table count, size, etc.)
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata
@@ -162,6 +184,8 @@ protocol DatabaseDriver: AnyObject, Sendable {
     func createDatabase(_ request: CreateDatabaseRequest) async throws
 
     func dropDatabase(name: String) async throws
+
+    func dropSchema(name: String) async throws
 
     func fetchSessionContexts() async throws -> [PluginSessionContext]?
 
@@ -230,11 +254,33 @@ protocol SchemaSwitchable: DatabaseDriver {
     func switchSchema(to schema: String) async throws
 }
 
+extension SchemaSwitchable {
+    /// A driver already on the schema needs no statement, and sending one anyway is a round trip that
+    /// can fail on its own. Every schema switch the app issues goes through here, so no two of them can
+    /// disagree about when it is redundant: the pooled metadata driver kept sending an `ALTER SESSION`
+    /// the session driver knew to skip, and on Oracle that spare statement was the one that hung (#2294).
+    func switchSchemaIfNeeded(to schema: String) async throws {
+        guard currentSchema != schema else { return }
+        try await switchSchema(to: schema)
+    }
+}
+
+/// Protocol for drivers that know which database they are on. An embedded engine names
+/// its database from the file it opened, so the session cannot derive it from the
+/// connection definition the way a networked engine can.
+protocol DatabaseReporting: DatabaseDriver {
+    var currentDatabase: String? { get }
+}
+
 /// Default implementation for common operations
 extension DatabaseDriver {
     /// Default implementation returns nil
     /// Override in drivers that support version querying
     var serverVersion: String? { nil }
+
+    func connectReporting(stage report: @escaping ConnectionStageReporter) async throws {
+        try await connect()
+    }
 
     var queryBuildingPluginDriver: (any PluginDatabaseDriver)? { nil }
 
@@ -290,6 +336,11 @@ extension DatabaseDriver {
                       userInfo: [NSLocalizedDescriptionKey: "Drop database is not supported by this driver"])
     }
 
+    func dropSchema(name: String) async throws {
+        throw NSError(domain: "DatabaseDriver", code: -1,
+                      userInfo: [NSLocalizedDescriptionKey: "Drop schema is not supported by this driver"])
+    }
+
     func createDatabaseFormSpec() async throws -> CreateDatabaseFormSpec? { nil }
 
     func fetchSessionContexts() async throws -> [PluginSessionContext]? { nil }
@@ -319,6 +370,8 @@ extension DatabaseDriver {
         }
         return results
     }
+
+    var providesBulkForeignKeyFetch: Bool { false }
 
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] {
         let allTables = try await fetchTables()
@@ -367,6 +420,10 @@ extension DatabaseDriver {
             }
         }
         return result
+    }
+
+    func sampleFieldPaths(table: String, limit: Int) async throws -> [PluginFieldPath] {
+        []
     }
 
     /// Default fetchAllColumns: falls back to per-table fetchColumns (N+1).
@@ -426,13 +483,24 @@ extension DatabaseDriver {
     /// Default: no schema support (MySQL/SQLite don't use schemas in the same way)
     func fetchSchemas() async throws -> [String] { [] }
 
+    func fetchExternalSchemaNames() async throws -> Set<String> { [] }
+
     func fetchTables(schema: String?) async throws -> [TableInfo] {
         try await fetchTables()
     }
 
-    func fetchProcedures(schema: String?) async throws -> [RoutineInfo] { [] }
+    func fetchRoutines(schema: String?) async throws -> [RoutineInfo] { [] }
 
-    func fetchFunctions(schema: String?) async throws -> [RoutineInfo] { [] }
+    func fetchRoutineDDL(_ routine: RoutineInfo) async throws -> String {
+        throw PluginObjectSourceError.unsupported(routine.name)
+    }
+
+    func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo] { [] }
+
+    func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String {
+        if let definition = trigger.definition, !definition.isEmpty { return definition }
+        throw PluginObjectSourceError.unsupported(trigger.name)
+    }
 
     var supportsTransactions: Bool { true }
 
@@ -450,7 +518,7 @@ extension DatabaseDriver {
 /// Factory for creating database drivers via plugin lookup
 @MainActor
 enum DatabaseDriverFactory {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseDriverFactory")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseDriverFactory")
 
     /// Async variant that awaits background plugin loading instead of blocking the main thread.
     /// Preferred for all call sites that are already in an async context.
@@ -567,6 +635,9 @@ enum DatabaseDriverFactory {
         }
         if let override { return override }
         if let passwordSource = connection.passwordSource {
+            guard await ConnectionStorage.shared.storeIsTrusted else {
+                throw PasswordSourceResolver.ResolutionError.storeNotTrusted
+            }
             return try await PasswordSourceResolver.resolve(passwordSource)
         }
         if connection.usePgpass {

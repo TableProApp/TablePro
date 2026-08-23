@@ -33,12 +33,12 @@ struct ClaudeAgentMCPBridge: ClaudeAgentMCPBridging {
         guard let endpoint = await Self.resolveEndpoint() else { return nil }
         guard let tokenStore = await MCPServerManager.shared.tokenStore else { return nil }
 
-        let generated = await tokenStore.generate(
+        guard let generated = try? await tokenStore.generate(
             name: Self.tokenName,
             permissions: permissions,
             connectionAccess: connectionAccess,
             expiresAt: Date.now.addingTimeInterval(Self.tokenLifetime)
-        )
+        ) else { return nil }
 
         guard let configPath = Self.writeConfig(endpoint: endpoint, token: generated.plaintext) else {
             await tokenStore.delete(tokenId: generated.token.id)
@@ -61,10 +61,6 @@ struct ClaudeAgentMCPBridge: ClaudeAgentMCPBridging {
     private static func resolveEndpoint() -> URL? {
         guard case .running(let port) = MCPServerManager.shared.state else {
             logger.info("MCP server is not running; Claude Agent runs without database tools")
-            return nil
-        }
-        guard !AppSettingsManager.shared.mcp.allowRemoteConnections else {
-            logger.info("MCP server uses TLS for remote access; Claude Agent runs without database tools")
             return nil
         }
         return URL(string: "http://127.0.0.1:\(port)/mcp")

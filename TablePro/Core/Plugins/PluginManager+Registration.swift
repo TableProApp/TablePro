@@ -214,6 +214,16 @@ extension PluginManager {
             .editor.sqlDialect
     }
 
+    /// How this engine can express case-insensitive matching. SQL engines answer from their
+    /// dialect; document stores have no dialect and declare it on the plugin directly.
+    func caseSensitivityStyle(for databaseType: DatabaseType) -> SQLDialectDescriptor.CaseSensitivityStyle {
+        if let dialect = sqlDialect(for: databaseType) {
+            return dialect.caseSensitivityStyle
+        }
+        guard let plugin = driverPlugin(for: databaseType) else { return .unsupported }
+        return type(of: plugin).caseSensitivityStyle
+    }
+
     func statementCompletions(for databaseType: DatabaseType) -> [CompletionEntry] {
         PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
             .editor.statementCompletions ?? []
@@ -338,14 +348,25 @@ extension PluginManager {
             .capabilities.supportsSchemaSwitching ?? false
     }
 
-    func containerSwitchTarget(for databaseType: DatabaseType) -> ContainerSwitchTarget? {
+    /// Every container dimension the engine can switch, ordered outermost first. An engine can have
+    /// both, which is why this is a list: PostgreSQL browses a database and a schema within it, and
+    /// naming only one of them is what left the schema with no control of its own.
+    func switchableContainers(for databaseType: DatabaseType) -> [ContainerSwitchTarget] {
+        var targets: [ContainerSwitchTarget] = []
         if supportsDatabaseSwitching(for: databaseType) {
-            return .database
+            targets.append(.database)
         }
         if supportsSchemaSwitching(for: databaseType) {
-            return .schema
+            targets.append(.schema)
         }
-        return nil
+        return targets
+    }
+
+    /// The dimension a tab and a workspace are anchored to, which is the outermost one the engine
+    /// switches. Derived from `switchableContainers` so the two orderings cannot drift apart.
+    /// This is not "the dimension the user can switch": read `switchableContainers` for that.
+    func containerSwitchTarget(for databaseType: DatabaseType) -> ContainerSwitchTarget? {
+        switchableContainers(for: databaseType).first
     }
 
     func supportsContainerSwitching(for databaseType: DatabaseType) -> Bool {
@@ -404,6 +425,10 @@ extension PluginManager {
     func schemaEntityName(for databaseType: DatabaseType) -> String {
         PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
             .schema.schemaEntityName ?? "Schema"
+    }
+
+    func schemaEntityNamePlural(for databaseType: DatabaseType) -> String {
+        schemaEntityName(for: databaseType) + "s"
     }
 
     func supportsCascadeDrop(for databaseType: DatabaseType) -> Bool {
@@ -481,6 +506,11 @@ extension PluginManager {
             .capabilities.supportsDropDatabase ?? false
     }
 
+    func supportsDropSchema(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .capabilities.supportsDropSchema ?? false
+    }
+
     func autoLimitStyle(for databaseType: DatabaseType) -> AutoLimitStyle {
         guard let snapshot = PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId) else {
             return .limit
@@ -506,12 +536,32 @@ extension PluginManager {
             .schema.databaseGroupingStrategy ?? .byDatabase
     }
 
+    /// A file holds exactly one database, so a file-based engine never has a tree to draw.
+    /// Every other mode can: a server hosts several databases, and an embedded engine can
+    /// attach them.
+    ///
+    /// Both remaining terms are permissive by default (`supportsDatabaseSwitching` is true
+    /// and the grouping strategy is `.byDatabase` on `DriverPlugin`), so a plugin that
+    /// declares neither gets a tree its default `fetchDatabases()` returns nothing for.
+    /// That was true of networked plugins before this guard was widened and is why the
+    /// list stays a declaration rather than an inference; `DatabaseTreeCapabilityTests`
+    /// pins it for both modes.
     func supportsDatabaseTree(for databaseType: DatabaseType) -> Bool {
-        guard connectionMode(for: databaseType) == .network,
-              supportsDatabaseSwitching(for: databaseType) else {
-            return false
-        }
-        let grouping = databaseGroupingStrategy(for: databaseType)
+        Self.supportsDatabaseTree(
+            connectionMode: connectionMode(for: databaseType),
+            supportsDatabaseSwitching: supportsDatabaseSwitching(for: databaseType),
+            grouping: databaseGroupingStrategy(for: databaseType)
+        )
+    }
+
+    /// The rule itself, as a pure function of the three inputs, so it can be exercised for
+    /// combinations no registered type declares today.
+    static func supportsDatabaseTree(
+        connectionMode: ConnectionMode,
+        supportsDatabaseSwitching: Bool,
+        grouping: GroupingStrategy
+    ) -> Bool {
+        guard connectionMode != .fileBased, supportsDatabaseSwitching else { return false }
         return grouping == .byDatabase || grouping == .bySchema
     }
 

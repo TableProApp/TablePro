@@ -1,0 +1,15 @@
+model = "gpt-5.6-sol"
+model_reasoning_effort = "ultra"
+plan_mode_reasoning_effort = "ultra"
+model_reasoning_summary = "detailed"
+model_verbosity = "high"
+service_tier = "fast"
+web_search = "live"
+review_model = "gpt-5.6-sol"
+project_doc_max_bytes = 65536
+
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 8
+default_subagent_model = "gpt-5.6-sol"
+default_subagent_reasoning_effort = "max"

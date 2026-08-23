@@ -29,13 +29,18 @@ extension MainContentView {
         updateWindowTitleAndFileState()
         let t2 = Date()
 
-        syncSidebarToCurrentTab()
+        /// A tab selection change in a background window is usually a side effect rather than
+        /// navigation, a close refocusing its neighbour above all, and that window re-marks its own
+        /// object tree the moment it becomes key.
+        if coordinator.isKeyWindow {
+            coordinator.syncSidebarObjectSelection()
+        }
         let t3 = Date()
 
         guard !coordinator.isTearingDown else { return }
         let aggregated = MainContentCoordinator.aggregatedTabs(for: coordinator.connectionId)
         coordinator.persistence.saveNow(
-            windowedTabs: aggregated,
+            tabs: aggregated,
             selectedTabId: newTabId
         )
         MainContentView.lifecycleLogger.debug(
@@ -96,7 +101,11 @@ extension MainContentView {
     func handleTableSelectionChange(
         from oldTables: Set<TableInfo>, to newTables: Set<TableInfo>
     ) {
-        let action = TableSelectionAction.resolve(oldTables: oldTables, newTables: newTables)
+        let action = TableSelectionAction.resolve(
+            oldTables: oldTables,
+            newTables: newTables,
+            selectedRowCount: coordinator.windowSidebarState.selectedRowCount
+        )
 
         guard case .navigate(let table) = action else {
             return
@@ -113,6 +122,15 @@ extension MainContentView {
             isActiveTabReusable: coordinator.isActiveTabReusable
         )
 
+        MainContentView.lifecycleLogger.debug(
+            """
+            [tableload] sidebarSelection table=\(table.name, privacy: .public) \
+            decision=\(String(describing: result), privacy: .public) \
+            currentTab=\(tabManager.selectedTab?.tableContext.tableName ?? "none", privacy: .public) \
+            isExecuting=\(coordinator.tabExecution.isAnyExecuting)
+            """
+        )
+
         switch result {
         case .skip:
             return
@@ -121,28 +139,6 @@ extension MainContentView {
             coordinator.openTableTab(table)
         case .openNewTab:
             coordinator.openTableTab(table)
-        }
-    }
-
-    /// Keep sidebar selection in sync with the current window's tab.
-    /// Only writes when the value actually changes, preventing spurious onChange triggers.
-    /// Navigation safety is guaranteed by `SidebarNavigationResult.resolve` returning `.skip`
-    /// when the selected table matches the current tab.
-    /// Reads from DatabaseManager (authoritative source) instead of the `tables` binding.
-    func syncSidebarToCurrentTab() {
-        guard coordinator.isKeyWindow else { return }
-        let liveTables = DatabaseManager.shared.session(for: connection.id)?.tables ?? []
-        let target: Set<TableInfo>
-        if let currentTableName = tabManager.selectedTab?.tableContext.tableName,
-            let match = liveTables.first(where: { $0.name == currentTableName })
-        {
-            target = [match]
-        } else {
-            target = []
-        }
-        if coordinator.windowSidebarState.selectedTables != target {
-            if target.isEmpty && liveTables.isEmpty { return }
-            coordinator.windowSidebarState.selectedTables = target
         }
     }
 

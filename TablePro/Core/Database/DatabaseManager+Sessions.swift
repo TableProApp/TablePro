@@ -29,6 +29,8 @@ extension DatabaseManager {
         MacAnalyticsProvider.shared.markConnectionAttempted()
 
         let attempt = connectionAttempts.begin(for: connection.id)
+        disconnectReasons[connection.id] = nil
+        userRequestedDisconnects.remove(connection.id)
 
         let resolvedConnection: DatabaseConnection
         if LicenseManager.shared.isFeatureAvailable(.envVarReferences) {
@@ -46,6 +48,9 @@ extension DatabaseManager {
 
         let effectiveConnection: DatabaseConnection
         do {
+            if !resolvedConnection.enabledTunnelKinds.isEmpty {
+                reportStage(.resolvingTunnel, for: connection.id)
+            }
             effectiveConnection = try await buildEffectiveConnection(
                 for: resolvedConnection,
                 sshPasswordOverride: sshPasswordOverride
@@ -53,7 +58,8 @@ extension DatabaseManager {
         } catch {
             finalizeConnectionFailure(
                 for: connection.id,
-                cancelled: isAttemptCancelled(attempt, for: connection.id)
+                cancelled: isAttemptCancelled(attempt, for: connection.id),
+                error: error
             )
             throw error
         }
@@ -62,11 +68,13 @@ extension DatabaseManager {
            !script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         {
             do {
+                reportStage(.runningPreConnectScript, for: connection.id)
                 try await PreConnectHookRunner.run(script: script)
             } catch {
                 finalizeConnectionFailure(
                     for: connection.id,
-                    cancelled: isAttemptCancelled(attempt, for: connection.id)
+                    cancelled: isAttemptCancelled(attempt, for: connection.id),
+                    error: error
                 )
                 throw error
             }
@@ -78,6 +86,7 @@ extension DatabaseManager {
                 passwordOverride = cached
             } else {
                 let isApiOnly = pluginManager.connectionMode(for: connection.type) == .apiOnly
+                reportStage(.awaitingCredentials, for: connection.id)
                 guard let prompted = await PasswordPromptHelper.prompt(
                     connectionName: connection.name,
                     isAPIToken: isApiOnly,
@@ -105,15 +114,17 @@ extension DatabaseManager {
             if !cancelled {
                 closeActiveTunnel(for: connection)
             }
-            finalizeConnectionFailure(for: connection.id, cancelled: cancelled)
+            finalizeConnectionFailure(for: connection.id, cancelled: cancelled, error: error)
             throw error
         }
 
         do {
-            try await driver.connect()
+            reportStage(.openingConnection, for: connection.id)
+            try await driver.connectReporting(stage: stageReporter(for: connection.id))
             try Task.checkCancellation()
             try ensureAttemptIsCurrent(attempt, for: connection.id, driver: driver)
 
+            reportStage(.preparingSession, for: connection.id)
             await applyTimeoutAndStartupCommands(
                 on: driver,
                 startupCommands: resolvedConnection.startupCommands,
@@ -121,7 +132,11 @@ extension DatabaseManager {
             )
 
             if let schemaDriver = driver as? SchemaSwitchable {
-                activeSessions[connection.id]?.currentSchema = schemaDriver.currentSchema
+                activeSessions[connection.id]?.browseSchema = schemaDriver.currentSchema
+            }
+            if let reportingDriver = driver as? DatabaseReporting,
+               let openedDatabase = reportingDriver.currentDatabase, !openedDatabase.isEmpty {
+                activeSessions[connection.id]?.browseDatabase = openedDatabase
             }
 
             await executePostConnectActions(
@@ -166,7 +181,7 @@ extension DatabaseManager {
                 closeActiveTunnel(for: connection)
             }
 
-            finalizeConnectionFailure(for: connection.id, cancelled: cancelled)
+            finalizeConnectionFailure(for: connection.id, cancelled: cancelled, error: reportedError)
             throw reportedError
         }
     }
@@ -193,8 +208,15 @@ extension DatabaseManager {
         return resolved
     }
 
-    internal func finalizeConnectionFailure(for connectionId: UUID, cancelled: Bool) {
+    /// The classified error is recorded before the session entry goes away. Only the window that
+    /// started an attempt learns the outcome directly, so without this a connect kicked off from
+    /// anywhere else leaves the window to infer "the connection was closed" from an empty slot
+    /// while the real reason is thrown away.
+    internal func finalizeConnectionFailure(for connectionId: UUID, cancelled: Bool, error: Error? = nil) {
         guard !cancelled else { return }
+        if let error, !ConnectionFailureClassifier.isUserCancelled(error) {
+            recordDisconnectReason(ConnectionFailureClassifier.info(for: error), for: connectionId)
+        }
         removeSessionEntry(for: connectionId)
         if lastActiveSessionId == connectionId {
             lastActiveSessionId = activeSessions.keys.first
@@ -218,7 +240,7 @@ extension DatabaseManager {
                    let savedDb = appSettingsStorage.loadLastDatabase(for: connection.id) {
                     do {
                         try await adapter.switchDatabase(to: savedDb)
-                        activeSessions[connection.id]?.currentDatabase = savedDb
+                        activeSessions[connection.id]?.browseDatabase = savedDb
                     } catch {
                         Self.logger.warning("Failed to restore saved database '\(savedDb, privacy: .public)' for \(connection.id): \(error.localizedDescription, privacy: .public)")
                     }
@@ -237,20 +259,19 @@ extension DatabaseManager {
                 if initialDb != 0 {
                     do {
                         try await (driver as? PluginDriverAdapter)?.switchDatabase(to: String(initialDb))
-                        activeSessions[connection.id]?.currentDatabase = String(initialDb)
+                        activeSessions[connection.id]?.browseDatabase = String(initialDb)
                     } catch {
                         Self.logger.error("Failed to switch to database \(initialDb): \(error.localizedDescription)")
                     }
                 } else {
-                    activeSessions[connection.id]?.currentDatabase = "0"
+                    activeSessions[connection.id]?.browseDatabase = "0"
                 }
             case .selectSchemaFromLastSession:
                 if let schemaDriver = driver as? SchemaSwitchable,
-                   let savedSchema = appSettingsStorage.loadLastSchema(for: connection.id),
-                   savedSchema != schemaDriver.currentSchema {
+                   let savedSchema = appSettingsStorage.loadLastSchema(for: connection.id) {
                     do {
-                        try await schemaDriver.switchSchema(to: savedSchema)
-                        activeSessions[connection.id]?.currentSchema = savedSchema
+                        try await schemaDriver.switchSchemaIfNeeded(to: savedSchema)
+                        activeSessions[connection.id]?.browseSchema = savedSchema
                     } catch {
                         Self.logger.warning("Failed to restore saved schema '\(savedSchema, privacy: .public)': \(error.localizedDescription, privacy: .public)")
                     }
@@ -262,6 +283,13 @@ extension DatabaseManager {
     // MARK: - Database / Schema Switching
 
     func switchDatabase(to database: String, for connectionId: UUID, persist: Bool = true) async throws {
+        /// An engine that browses no database has nothing to switch to, and asking anyway reached
+        /// the driver and surfaced its own "does not support database switching" as an alert on
+        /// every table click (#2262). Refusing rather than reporting success, because the caller
+        /// writes the toolbar's database on success.
+        guard !database.isEmpty else {
+            throw DatabaseError.unsupportedOperation
+        }
         guard let driver = driver(for: connectionId) else {
             throw DatabaseError.notConnected
         }
@@ -271,31 +299,71 @@ extension DatabaseManager {
         )
 
         if pm?.capabilities.requiresReconnectForDatabaseSwitch == true {
-            updateSession(connectionId) { session in
-                session.connection.database = database
-                session.currentDatabase = database
-                session.currentSchema = nil
-                session.status = .connecting
-            }
-            appSettingsStorage.saveLastSchema(nil, for: connectionId)
-            await SchemaService.shared.invalidate(connectionId: connectionId)
-            await reconnectSession(connectionId)
+            try await reconnectOntoDatabase(database, for: connectionId)
         } else if let adapter = driver as? PluginDriverAdapter {
-            try await adapter.switchDatabase(to: database)
             let grouping = pm?.schema.databaseGroupingStrategy ?? .byDatabase
-            if grouping == .bySchema {
-                await resetSchema(on: adapter, to: pm?.schema.defaultSchemaName)
+            try await sessionDriverGate.withExclusiveAccess(connectionId) {
+                try await adapter.switchDatabase(to: database)
+                if grouping == .bySchema {
+                    await resetSchema(on: adapter, to: pm?.schema.defaultSchemaName)
+                }
             }
             updateSession(connectionId) { session in
-                session.currentDatabase = database
+                session.browseDatabase = database
                 if grouping == .bySchema {
-                    session.currentSchema = adapter.currentSchema
+                    session.browseSchema = adapter.currentSchema
                 }
             }
         }
 
         if persist {
             appSettingsStorage.saveLastDatabase(database, for: connectionId)
+        }
+        Self.logger.info(
+            """
+            switchDatabase landed conn=\(connectionId, privacy: .public) \
+            database=\(database, privacy: .public) \
+            browse=\(self.session(for: connectionId)?.resolvedBrowseDatabase ?? "none", privacy: .public)
+            """
+        )
+        AppEvents.shared.browseContainerChanged.send(connectionId)
+    }
+
+    /// Reopens the connection on `database`, for an engine that cannot change database on a live
+    /// connection.
+    ///
+    /// The session has to be pointed at the target before the attempt, because the reconnect
+    /// builds its connection from those very fields. A failed attempt therefore has to put them
+    /// back: leaving them on a database the connection never reached aims the next reconnect, and
+    /// the next launch, at a database the user only tried once and could not open.
+    private func reconnectOntoDatabase(_ database: String, for connectionId: UUID) async throws {
+        guard let previous = session(for: connectionId) else {
+            throw DatabaseError.notConnected
+        }
+        let previousDatabase = previous.connection.database
+        let previousBrowseDatabase = previous.browseDatabase
+        let previousBrowseSchema = previous.browseSchema
+        let previousSavedSchema = appSettingsStorage.loadLastSchema(for: connectionId)
+
+        updateSession(connectionId) { session in
+            session.connection.database = database
+            session.browseDatabase = database
+            session.browseSchema = nil
+            session.status = .connecting
+        }
+        appSettingsStorage.saveLastSchema(nil, for: connectionId)
+        await SchemaService.shared.invalidate(connectionId: connectionId)
+
+        do {
+            try await reconnectSession(connectionId)
+        } catch {
+            updateSession(connectionId) { session in
+                session.connection.database = previousDatabase
+                session.browseDatabase = previousBrowseDatabase
+                session.browseSchema = previousBrowseSchema
+            }
+            appSettingsStorage.saveLastSchema(previousSavedSchema, for: connectionId)
+            throw error
         }
     }
 
@@ -304,9 +372,8 @@ extension DatabaseManager {
     /// (driver schema) and table queries (session schema) on different schemas.
     private func resetSchema(on driver: any SchemaSwitchable, to defaultSchemaName: String?) async {
         guard let defaultSchemaName, !defaultSchemaName.isEmpty else { return }
-        guard driver.currentSchema != defaultSchemaName else { return }
         do {
-            try await driver.switchSchema(to: defaultSchemaName)
+            try await driver.switchSchemaIfNeeded(to: defaultSchemaName)
         } catch {
             Self.logger.warning(
                 "Failed to reset schema to '\(defaultSchemaName, privacy: .public)' after a database switch: \(error.localizedDescription, privacy: .public)"
@@ -320,12 +387,15 @@ extension DatabaseManager {
             throw DatabaseError.unsupportedOperation
         }
 
-        try await schemaDriver.switchSchema(to: schema)
+        try await sessionDriverGate.withExclusiveAccess(connectionId) {
+            try await schemaDriver.switchSchema(to: schema)
+        }
         updateSession(connectionId) { session in
-            session.currentSchema = schema
+            session.browseSchema = schema
         }
         appSettingsStorage.saveLastSchema(schema, for: connectionId)
         AppEvents.shared.currentSchemaChanged.send(connectionId)
+        AppEvents.shared.browseContainerChanged.send(connectionId)
     }
 
     func switchToSession(_ sessionId: UUID) {
@@ -336,13 +406,31 @@ extension DatabaseManager {
         }
     }
 
-    func disconnectSession(_ sessionId: UUID) async {
+    /// Ends a session. The window that was showing it stays open, so the tabs are written to disk
+    /// first: `MainContentCoordinator.teardown()` clears them from memory and only the window-close
+    /// path saves on its way out, which is how a disconnect used to take a window's tabs with it.
+    func disconnectSession(_ sessionId: UUID, origin: SessionDisconnectOrigin = .appManaged) async {
         let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
         guard let session = activeSessions[sessionId] else {
             lifecycleLogger.info(
                 "[close] disconnectSession: no session found connId=\(sessionId, privacy: .public)"
             )
             return
+        }
+        /// Two disconnects for one session would both run the whole teardown, and the second one's
+        /// tail would land after the user had already reconnected, tearing the new session down.
+        guard !disconnectsInFlight.contains(sessionId) else {
+            lifecycleLogger.info(
+                "[close] disconnectSession: already in flight connId=\(sessionId, privacy: .public)"
+            )
+            return
+        }
+        disconnectsInFlight.insert(sessionId)
+        defer { disconnectsInFlight.remove(sessionId) }
+
+        tabStatePersister?.persistTabState(for: sessionId)
+        if origin == .userRequested {
+            userRequestedDisconnects.insert(sessionId)
         }
         let totalStart = Date()
         lifecycleLogger.info(
@@ -378,9 +466,12 @@ extension DatabaseManager {
         await DatabaseTreeMetadataService.shared.handleDisconnect(connectionId: sessionId)
 
         SchemaProviderRegistry.shared.clear(for: sessionId)
+        ExternalSchemaTracker.shared.reset(connectionId: sessionId)
 
         SharedSidebarState.removeConnection(sessionId)
         SidebarViewModel.removeConnection(sessionId)
+        HistoryPanelState.removeConnection(sessionId)
+        QuickSwitcherCatalogStore.shared.removeConnection(sessionId)
 
         if lastActiveSessionId == sessionId {
             if let nextSessionId = activeSessions.keys.first {
@@ -449,6 +540,47 @@ extension DatabaseManager {
         AppEvents.shared.connectionStatusChanged.send(
             ConnectionStatusChange(connectionId: connectionId, status: session.status)
         )
+    }
+
+    /// Seeds the session entry before a window opens, so a window can resolve its connection and
+    /// show the connecting surface for an attempt it does not own. A connection opened from a
+    /// link or a database file is never in storage, so this is the only way the window can name
+    /// what it is connecting to.
+    internal func registerPendingSession(_ connection: DatabaseConnection) {
+        guard activeSessions[connection.id] == nil else { return }
+        var session = ConnectionSession(connection: connection)
+        session.status = .connecting
+        setSession(session, for: connection.id)
+    }
+
+    internal func reportStage(_ stage: ConnectionStage, for connectionId: UUID) {
+        AppEvents.shared.connectionStageChanged.send(
+            ConnectionStageChange(connectionId: connectionId, stage: stage)
+        )
+    }
+
+    /// Handed to a driver, so it is called from whatever thread the handshake runs on and has
+    /// to hop back before touching the main-actor event bus.
+    internal func stageReporter(for connectionId: UUID) -> ConnectionStageReporter {
+        { stage in
+            Task { @MainActor in
+                AppEvents.shared.connectionStageChanged.send(
+                    ConnectionStageChange(connectionId: connectionId, stage: stage)
+                )
+            }
+        }
+    }
+
+    internal func recordDisconnectReason(_ info: ConnectionFailureInfo, for connectionId: UUID) {
+        disconnectReasons[connectionId] = info
+    }
+
+    internal func disconnectReason(for connectionId: UUID) -> ConnectionFailureInfo? {
+        disconnectReasons[connectionId]
+    }
+
+    internal func wasDisconnectedByUser(_ connectionId: UUID) -> Bool {
+        userRequestedDisconnects.contains(connectionId)
     }
 
     internal func removeSessionEntry(for connectionId: UUID) {

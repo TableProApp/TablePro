@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import AppKit
 import Testing
 
 @Suite("Filter Value Text Field Suggestions")
@@ -114,24 +115,44 @@ struct FilterValueTextFieldTests {
         #expect(result == nil)
     }
 
-    @Test("Escape dismisses the suggestions and is consumed, not passed through")
-    func testKeyOutcome_escapeDismisses() {
-        #expect(FilterValueTextField.suggestionKeyOutcome(for: .escape, submitsOnAccept: true) == .dismiss)
-        #expect(FilterValueTextField.suggestionKeyOutcome(for: .escape, submitsOnAccept: false) == .dismiss)
+    @Test("Escape dismisses the popup while it is up, then closes the bar")
+    func testEscapeOutcome() {
+        #expect(FilterValueTextField.escapeOutcome(popupVisible: true, recentlyDismissedPopup: false) == .dismissPopup)
+        #expect(FilterValueTextField.escapeOutcome(popupVisible: false, recentlyDismissedPopup: true) == .consume)
+        #expect(FilterValueTextField.escapeOutcome(popupVisible: false, recentlyDismissedPopup: false) == .closeBar)
     }
 
-    @Test("Arrow and accept keys map to consuming outcomes")
-    func testKeyOutcome_navigationAndAccept() {
-        #expect(FilterValueTextField.suggestionKeyOutcome(for: .downArrow, submitsOnAccept: false) == .moveSelection(1))
-        #expect(FilterValueTextField.suggestionKeyOutcome(for: .upArrow, submitsOnAccept: false) == .moveSelection(-1))
-        #expect(FilterValueTextField.suggestionKeyOutcome(for: .return, submitsOnAccept: true) == .accept(submitting: true))
-        #expect(FilterValueTextField.suggestionKeyOutcome(for: .tab, submitsOnAccept: true) == .accept(submitting: false))
+    @Test("Arrow and accept commands map to consuming outcomes")
+    func testCommandOutcome_navigationAndAccept() {
+        #expect(
+            FilterValueTextField.suggestionCommandOutcome(
+                for: #selector(NSResponder.moveDown(_:)), submitsOnAccept: false
+            ) == .moveSelection(1)
+        )
+        #expect(
+            FilterValueTextField.suggestionCommandOutcome(
+                for: #selector(NSResponder.moveUp(_:)), submitsOnAccept: false
+            ) == .moveSelection(-1)
+        )
+        #expect(
+            FilterValueTextField.suggestionCommandOutcome(
+                for: #selector(NSResponder.insertNewline(_:)), submitsOnAccept: true
+            ) == .accept(submitting: true)
+        )
+        #expect(
+            FilterValueTextField.suggestionCommandOutcome(
+                for: #selector(NSResponder.insertTab(_:)), submitsOnAccept: true
+            ) == .accept(submitting: false)
+        )
     }
 
-    @Test("Unhandled keys pass through unchanged")
-    func testKeyOutcome_passThrough() {
-        #expect(FilterValueTextField.suggestionKeyOutcome(for: .space, submitsOnAccept: true) == .passThrough)
-        #expect(FilterValueTextField.suggestionKeyOutcome(for: nil, submitsOnAccept: true) == .passThrough)
+    @Test("A command the popup does not own passes through to the field editor")
+    func testCommandOutcome_passThrough() {
+        #expect(
+            FilterValueTextField.suggestionCommandOutcome(
+                for: #selector(NSResponder.moveLeft(_:)), submitsOnAccept: true
+            ) == .passThrough
+        )
     }
 
     @Test("Token completion is offered while typing a partial token")

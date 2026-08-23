@@ -8,7 +8,7 @@
 import AppKit
 import SwiftUI
 
-struct AIChatMessageView: View {
+struct AIChatMessageView: View, Equatable {
     private static let userBubbleTintOpacity: Double = 0.08
 
     let message: ChatTurn
@@ -18,6 +18,16 @@ struct AIChatMessageView: View {
     var onContinue: (() -> Void)?
     var onAdjustToolLimit: (() -> Void)?
     var pausedToolCallCount: Int?
+
+    static func == (lhs: AIChatMessageView, rhs: AIChatMessageView) -> Bool {
+        lhs.message === rhs.message
+            && (lhs.onRetry == nil) == (rhs.onRetry == nil)
+            && (lhs.onRegenerate == nil) == (rhs.onRegenerate == nil)
+            && (lhs.onEdit == nil) == (rhs.onEdit == nil)
+            && (lhs.onContinue == nil) == (rhs.onContinue == nil)
+            && (lhs.onAdjustToolLimit == nil) == (rhs.onAdjustToolLimit == nil)
+            && lhs.pausedToolCallCount == rhs.pausedToolCallCount
+    }
 
     private var attachedContextItems: [ContextItem] {
         message.blocks.compactMap { block in
@@ -186,6 +196,7 @@ struct AIChatMessageView: View {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(visibleBlocks) { block in
                     AIChatBlockView(block: block)
+                        .equatable()
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -194,8 +205,12 @@ struct AIChatMessageView: View {
     }
 }
 
-private struct AIChatBlockView: View {
+private struct AIChatBlockView: View, Equatable {
     @Bindable var block: ChatContentBlock
+
+    static func == (lhs: AIChatBlockView, rhs: AIChatBlockView) -> Bool {
+        lhs.block === rhs.block
+    }
 
     var body: some View {
         switch block.kind {
@@ -222,6 +237,7 @@ private struct AIChatBlockView: View {
 }
 
 struct ChatTypingIndicatorView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var animating = false
 
     var body: some View {
@@ -232,7 +248,9 @@ struct ChatTypingIndicatorView: View {
                     .frame(width: 6, height: 6)
                     .offset(y: animating ? -3 : 0)
                     .animation(
-                        .easeInOut(duration: 0.4)
+                        reduceMotion
+                            ? nil
+                            : .easeInOut(duration: 0.4)
                             .repeatForever(autoreverses: true)
                             .delay(Double(index) * 0.15),
                         value: animating
@@ -240,6 +258,8 @@ struct ChatTypingIndicatorView: View {
             }
         }
         .frame(height: 16)
-        .onAppear { animating = true }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(String(localized: "Responding"))
+        .onAppear { animating = !reduceMotion }
     }
 }

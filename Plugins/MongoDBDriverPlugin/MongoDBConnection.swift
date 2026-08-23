@@ -36,6 +36,12 @@ extension MongoDBError: PluginDriverError {
 
 // MARK: - Connection Class
 
+/// Hands a BSON pointer or a decoded document between the serial queue and the awaiting caller.
+/// Only one of the two touches it at a time, which is what the compiler cannot see through `Any`.
+private struct QueueTransfer<Value>: @unchecked Sendable {
+    let value: Value
+}
+
 /// Thread-safe MongoDB connection using libmongoc.
 /// All blocking C calls are dispatched to a dedicated serial queue.
 /// Async entry points use `queue.async` + continuations. Synchronous entry points
@@ -67,6 +73,7 @@ final class MongoDBConnection: @unchecked Sendable {
     private let authMechanism: String?
     private let replicaSet: String?
     private let extraUriParams: [String: String]
+    let uuidRepresentation: MongoDBUuidRepresentation
 
     private let controlQueue = DispatchQueue(label: "com.TablePro.mongodb.control", qos: .userInitiated)
 
@@ -131,7 +138,8 @@ final class MongoDBConnection: @unchecked Sendable {
         useSrv: Bool = false,
         authMechanism: String? = nil,
         replicaSet: String? = nil,
-        extraUriParams: [String: String] = [:]
+        extraUriParams: [String: String] = [:],
+        uuidRepresentation: MongoDBUuidRepresentation = .unspecified
     ) {
         self.host = host
         self.port = port
@@ -150,6 +158,7 @@ final class MongoDBConnection: @unchecked Sendable {
         self.authMechanism = authMechanism
         self.replicaSet = replicaSet
         self.extraUriParams = extraUriParams
+        self.uuidRepresentation = uuidRepresentation
         queue.setSpecific(key: Self.queueKey, value: ObjectIdentifier(self))
     }
 
@@ -404,7 +413,9 @@ final class MongoDBConnection: @unchecked Sendable {
     /// libmongoc call at this point, so the `killSessions` command needs its own client.
     private func killSession(lsid: OpaquePointer) {
         let uriString = buildUri()
+        let session = QueueTransfer(value: lsid)
         controlQueue.async {
+            let lsid = session.value
             defer { bson_destroy(lsid) }
             guard let controlClient = mongoc_client_new(uriString) else { return }
             defer { mongoc_client_destroy(controlClient) }
@@ -508,8 +519,8 @@ final class MongoDBConnection: @unchecked Sendable {
             try checkCancelled()
             let result = try runCommandSync(client: client, command: command, database: database)
             try checkCancelled()
-            return result
-        }
+            return QueueTransfer(value: result)
+        }.value
         #else
         throw MongoDBError.libmongocUnavailable
         #endif
@@ -533,11 +544,11 @@ final class MongoDBConnection: @unchecked Sendable {
                 throw MongoDBError.notConnected
             }
             try checkCancelled()
-            return try findSync(
+            return try QueueTransfer(value: findSync(
                 client: client, database: database, collection: collection,
                 filter: filter, sort: sort, projection: projection, skip: skip, limit: limit
-            )
-        }
+            ))
+        }.value
         #else
         throw MongoDBError.libmongocUnavailable
         #endif
@@ -551,10 +562,10 @@ final class MongoDBConnection: @unchecked Sendable {
                 throw MongoDBError.notConnected
             }
             try checkCancelled()
-            return try aggregateSync(
+            return try QueueTransfer(value: aggregateSync(
                 client: client, database: database, collection: collection, pipeline: pipeline
-            )
-        }
+            ))
+        }.value
         #else
         throw MongoDBError.libmongocUnavailable
         #endif
@@ -707,10 +718,10 @@ final class MongoDBConnection: @unchecked Sendable {
                 throw MongoDBError.notConnected
             }
             try checkCancelled()
-            return try listIndexesSync(
+            return try QueueTransfer(value: listIndexesSync(
                 client: client, database: database, collection: collection
-            )
-        }
+            ))
+        }.value
         #else
         throw MongoDBError.libmongocUnavailable
         #endif
@@ -938,11 +949,11 @@ extension MongoDBConnection {
     static func unwrapExtendedJson(_ value: Any) -> Any {
         if let dict = value as? [String: Any] {
             if dict.count == 1 {
-                if let oid = dict["$oid"] as? String { return oid }
+                if let oid = dict["$oid"] as? String { return MongoDBObjectId(hex: oid) }
                 if let s = dict["$numberInt"] as? String, let n = Int32(s) { return n }
                 if let s = dict["$numberLong"] as? String, let n = Int64(s) { return n }
                 if let s = dict["$numberDouble"] as? String, let n = Double(s) { return n }
-                if let s = dict["$numberDecimal"] as? String { return s }
+                if let s = dict["$numberDecimal"] as? String { return MongoDBDecimal128(digits: s) }
                 if let b = dict["$regularExpression"] as? [String: Any],
                    let pattern = b["pattern"] as? String,
                    let options = b["options"] as? String {
@@ -963,7 +974,9 @@ extension MongoDBConnection {
                 }
                 if let b = dict["$binary"] as? [String: Any],
                    let base64 = b["base64"] as? String {
-                    return Data(base64Encoded: base64) ?? base64
+                    guard let data = Data(base64Encoded: base64) else { return base64 }
+                    let subtype = (b["subType"] as? String).flatMap { UInt8($0, radix: 16) } ?? 0
+                    return MongoDBBinaryValue(data: data, subtype: subtype)
                 }
                 if let ts = dict["$timestamp"] as? [String: Any],
                    let t = ts["t"], let i = ts["i"] {

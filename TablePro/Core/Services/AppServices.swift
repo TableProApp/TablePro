@@ -19,6 +19,7 @@ struct AppServices {
     let schemaProviderRegistry: SchemaProviderRegistry
     let sqlFavoriteManager: SQLFavoriteManager
     let favoriteTablesStorage: FavoriteTablesStorage
+    let favoriteDatabasesStorage: FavoriteDatabasesStorage
     let aiChatStorage: AIChatStorage
     let aiKeyStorage: AIKeyStorage
     let groupStorage: GroupStorage
@@ -48,6 +49,7 @@ struct AppServices {
         schemaProviderRegistry: .shared,
         sqlFavoriteManager: .shared,
         favoriteTablesStorage: .shared,
+        favoriteDatabasesStorage: .shared,
         aiChatStorage: .shared,
         aiKeyStorage: .shared,
         groupStorage: .shared,
@@ -67,7 +69,7 @@ struct AppServices {
     )
 }
 
-private struct AppServicesEnvironmentKey: EnvironmentKey {
+private struct AppServicesEnvironmentKey: @preconcurrency EnvironmentKey {
     @MainActor static var defaultValue: AppServices { .live }
 }
 

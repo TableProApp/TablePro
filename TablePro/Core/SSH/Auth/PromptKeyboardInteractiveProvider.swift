@@ -63,7 +63,7 @@ internal final class PromptKeyboardInteractiveProvider: KeyboardInteractivePromp
         alert.window.initialFirstResponder = fields.first
 
         guard alert.runModal() == .alertFirstButtonReturn else { return nil }
-        return fields.map(\.stringValue)
+        return fields.map { $0.stringValue }
     }
 
     private func informativeText(for challenge: KeyboardInteractiveChallenge, attempt: Int) -> String {

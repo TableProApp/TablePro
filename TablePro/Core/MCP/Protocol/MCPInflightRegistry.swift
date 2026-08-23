@@ -1,50 +1,88 @@
 import Foundation
 
-actor MCPInflightRegistry {
-    private struct Key: Hashable {
-        let sessionId: MCPSessionId
-        let requestId: JsonRpcId
+public struct MCPInflightKey: Sendable, Hashable {
+    public let clientFingerprint: String
+    public let requestId: JsonRpcId
+
+    public init(clientFingerprint: String, requestId: JsonRpcId) {
+        self.clientFingerprint = clientFingerprint
+        self.requestId = requestId
     }
 
+    public init(principal: MCPPrincipal, requestId: JsonRpcId) {
+        self.init(clientFingerprint: principal.tokenFingerprint, requestId: requestId)
+    }
+}
+
+public actor MCPInflightRegistry {
     private struct Entry {
         let token: MCPCancellationToken
         let tokenId: UUID?
+        let method: String
+        let startedAt: Date
     }
 
-    private var entries: [Key: Entry] = [:]
+    private var entries: [MCPInflightKey: Entry] = [:]
 
-    func register(
-        requestId: JsonRpcId,
-        sessionId: MCPSessionId,
+    public init() {}
+
+    @discardableResult
+    public func register(
+        key: MCPInflightKey,
         token: MCPCancellationToken,
-        tokenId: UUID? = nil
-    ) {
-        entries[Key(sessionId: sessionId, requestId: requestId)] = Entry(
-            token: token,
-            tokenId: tokenId
-        )
+        tokenId: UUID?,
+        method: String,
+        startedAt: Date
+    ) -> Bool {
+        let displaced = entries[key] != nil
+        entries[key] = Entry(token: token, tokenId: tokenId, method: method, startedAt: startedAt)
+        return !displaced
     }
 
-    func cancel(requestId: JsonRpcId, sessionId: MCPSessionId) async {
-        let key = Key(sessionId: sessionId, requestId: requestId)
-        guard let entry = entries.removeValue(forKey: key) else { return }
-        await entry.token.cancel()
+    public func remove(key: MCPInflightKey, token: MCPCancellationToken) {
+        guard let entry = entries[key], entry.token === token else { return }
+        entries.removeValue(forKey: key)
     }
 
-    func cancelAll(matchingTokenId tokenId: UUID) async -> [MCPSessionId] {
-        let matching = entries.filter { $0.value.tokenId == tokenId }
-        for (key, entry) in matching {
-            await entry.token.cancel()
-            entries.removeValue(forKey: key)
-        }
-        return Array(Set(matching.map { $0.key.sessionId }))
+    @discardableResult
+    public func cancel(key: MCPInflightKey, reason: MCPCancellationReason) async -> Bool {
+        guard let entry = entries.removeValue(forKey: key) else { return false }
+        await entry.token.cancel(reason: reason)
+        return true
     }
 
-    func remove(requestId: JsonRpcId, sessionId: MCPSessionId) {
-        entries.removeValue(forKey: Key(sessionId: sessionId, requestId: requestId))
+    @discardableResult
+    public func cancelAll(matchingTokenId tokenId: UUID, reason: MCPCancellationReason) async -> Int {
+        await cancelMatching(reason: reason) { _, entry in entry.tokenId == tokenId }
     }
 
-    func count() -> Int {
+    @discardableResult
+    public func cancelAll(matchingFingerprint fingerprint: String, reason: MCPCancellationReason) async -> Int {
+        await cancelMatching(reason: reason) { key, _ in key.clientFingerprint == fingerprint }
+    }
+
+    @discardableResult
+    public func cancelAll(reason: MCPCancellationReason) async -> Int {
+        await cancelMatching(reason: reason) { _, _ in true }
+    }
+
+    public func contains(key: MCPInflightKey) -> Bool {
+        entries[key] != nil
+    }
+
+    public func count() -> Int {
         entries.count
+    }
+
+    private func cancelMatching(
+        reason: MCPCancellationReason,
+        where predicate: (MCPInflightKey, Entry) -> Bool
+    ) async -> Int {
+        let matching = entries.filter { predicate($0.key, $0.value) }
+        for (key, entry) in matching {
+            entries.removeValue(forKey: key)
+            await entry.token.cancel(reason: reason)
+        }
+        return matching.count
     }
 }

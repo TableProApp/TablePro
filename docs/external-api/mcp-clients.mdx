@@ -1,9 +1,9 @@
 ---
 title: MCP Clients
-description: Connect Claude Desktop, Claude Code, Cursor, VS Code, Cline, Continue, Zed, Windsurf, Antigravity, Goose, and custom clients to TablePro over stdio
+description: Connect Claude Desktop, Claude Code, Cursor, VS Code, Cline, Continue, Zed, Windsurf, Antigravity, Goose, and custom clients to TablePro
 ---
 
-Any MCP client that supports the stdio transport and can run a command on disk can connect to TablePro. The pattern is the same across every client:
+Paste one absolute path into your client's MCP config and stop there. `tablepro-mcp` ships inside the app bundle; it starts TablePro when nothing is running, reads the port, and carries the token, so none of those end up in the file.
 
 ```json
 {
@@ -15,19 +15,11 @@ Any MCP client that supports the stdio transport and can run a command on disk c
 }
 ```
 
-The `tablepro-mcp` CLI ships inside the app bundle. It reads `~/Library/Application Support/TablePro/mcp-handshake.json` for the local port and a bridge token, then forwards stdio JSON-RPC to the app's HTTP MCP server. If the handshake file is missing or points at a dead process, the bridge launches TablePro itself (`open -g tablepro://integrations/start-mcp`) and polls up to 10 seconds for a fresh handshake. You do not need to start TablePro first.
+For an install outside `/Applications`, use your own bundle's path. Setapp puts it at `~/Applications/Setapp/TablePro.app/Contents/MacOS/tablepro-mcp`.
 
-You never put a token in the client config. At every server start TablePro mints a full-access bridge token named `__stdio_bridge__` and writes it to the handshake file; the bridge picks it up from there. Pairing and manually created tokens apply only to HTTP clients.
+## Clients that take the JSON above
 
-<Note>
-The bridge token is full access. To give an AI agent a narrower scope or a connection allowlist, use the [HTTP transport](#http-transport) with a token you mint yourself.
-</Note>
-
-If TablePro is installed outside `/Applications` (Setapp, custom path), replace the `command` value with the absolute path to your bundle's `tablepro-mcp` binary.
-
-## Clients using the standard shape
-
-These clients take the exact JSON above; only the config file differs.
+Only the config file differs.
 
 | Client | Config file | How to open it |
 |--------|-------------|----------------|
@@ -35,7 +27,7 @@ These clients take the exact JSON above; only the config file differs.
 | Cursor | `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (project) | **Settings > MCP > + Add new global MCP server**, then restart Cursor |
 | Cline | `cline_mcp_settings.json` | Cline panel > MCP Servers icon > **Configure MCP Servers** |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` | MCP icon in the Cascade panel > **Configure**, then restart Cascade |
-| Antigravity | `~/.gemini/antigravity/mcp_config.json` | Chat panel `...` menu > **MCP Servers > Manage MCP Servers > View raw config**, then **Refresh** |
+| Antigravity | `~/.gemini/antigravity/mcp_config.json` | Chat panel `…` menu > **MCP Servers > Manage MCP Servers > View raw config**, then **Refresh** |
 
 ## Claude Code
 
@@ -45,9 +37,9 @@ claude mcp add tablepro -- /Applications/TablePro.app/Contents/MacOS/tablepro-mc
 
 The double dash separates Claude Code's flags from the command it runs. stdio is the default transport. Verify with `claude mcp list`.
 
-## VS Code
+## VS code
 
-VS Code has native MCP support (1.99+). Run **MCP: Open User Configuration** from the Command Palette, or create `.vscode/mcp.json` in the workspace. The top-level key is `servers`, not `mcpServers`:
+Native MCP support arrived in 1.99. Run **MCP: Open User Configuration** from the Command Palette, or create `.vscode/mcp.json` in the workspace. The top-level key is `servers`, not `mcpServers`:
 
 ```json
 {
@@ -108,20 +100,25 @@ Run `goose session` and ask for the tool list to confirm.
 
 ## Setup snippets in TablePro
 
-Click **Connect a Client…** in **Settings > Integrations**. The sheet covers Claude Desktop, Claude Code, Cursor, and Zed, with numbered steps and copyable snippets that already contain the correct binary path for your install.
+Click **Connect a Client…** in **Settings > Integrations**. The sheet covers Claude Desktop, Claude Code, Cursor, and Zed, with numbered steps and copyable snippets that already carry the right binary path for your install.
 
-## Generic or custom client
+## What the config leaves out
 
-If you are building against the [MCP specification](https://modelcontextprotocol.io), TablePro speaks two transports:
+TablePro does not have to be open first. Finding no trusted handshake, the bridge runs `open -g tablepro://integrations/start-mcp` and polls for one every 200ms for up to 10 seconds. A TablePro started that way stays out of the Dock, the app switcher and the menu bar until it has a window to show; open the app yourself and it behaves normally for the rest of that run.
 
-- **stdio**: spawn the `tablepro-mcp` binary with no arguments. It handles the handshake and forwards JSON-RPC over stdin and stdout. No token, no environment variables, full access.
-- **HTTP**: `http://127.0.0.1:<port>/mcp` with the port from the handshake file and a bearer token from [Pairing](/external-api/pairing) or the Settings UI. See [Tokens](/external-api/tokens) for scope rules.
+The token is not yours to manage either. Each server start mints one named `__stdio_bridge__`, writes it into the handshake file, and rotates it 15 minutes before its one-hour expiry. It is **Read & Write**, so an agent on the bridge can read and write but cannot call `confirm_destructive_operation`.
 
-Use HTTP when the client runs on another machine, cannot spawn a local process, or needs a tighter scope than the bridge token. See [MCP Server](/features/mcp#remote-access) for remote setup.
+The port is absent for the same reason: TablePro writes the port it actually bound into the handshake file, so a conflict resolves itself and your config never changes.
+
+Two installs share that one handshake file, so the bridge reaches whichever TablePro is running rather than the bundle whose path you configured. Quit the one you do not want.
+
+<Note>
+For a narrower scope than `readWrite`, or a connection allowlist, use the [HTTP transport](#http-transport) with a token you mint yourself.
+</Note>
 
 ## HTTP transport
 
-Mint a token in **Settings > Integrations > Authentication** and point the client at the server directly. Cursor's form:
+Use HTTP when the client cannot spawn a local process. Mint a token in **Settings > Integrations > Authentication** and point the client at the server:
 
 ```json
 {
@@ -138,35 +135,48 @@ Mint a token in **Settings > Integrations > Authentication** and point the clien
 
 Replace `23508` with the port shown in **Settings > Integrations**. Other clients use the same `url` plus `headers` shape, sometimes under `type: streamable-http`. Check the client's docs.
 
-## What the AI sees
+Three things change on this route. The server binds `127.0.0.1` over plain HTTP with no remote mode and no TLS, so a client on another machine needs an SSH port forward. `GET /mcp` answers `405`, so a client that opens a `GET` stream for notifications fails; notifications ride the response stream of the request they belong to. And `2025-11-25` and `2025-06-18` still work through the old `initialize` handshake and `Mcp-Session-Id`, while `2025-03-26` is refused.
 
-AI clients see the full [tool catalog](/external-api/mcp-tools). For an unfamiliar schema the AI is expected to call `describe_table` before generating SQL, and mutating SQL goes through the host's tool-confirmation UI. The connection's `externalAccess` setting and the token scope still apply: a read-only connection rejects writes regardless of what the AI tries.
+Writing a client against `2026-07-28` directly means sending the required `_meta` and headers on every request. See [MCP Protocol](/external-api/mcp-protocol).
 
-## Verify the connection
+## Check it worked
 
-Ask the client to list TablePro tools or call `list_connections`. Success looks like:
+Ask the client to list TablePro tools, or call `list_connections`.
 
-- The client lists tools such as `list_connections`, `list_tables`, `describe_table`, and `execute_query`.
-- A `list_connections` call returns the connections you have saved in TablePro.
+<Check>
+The tool list contains `list_connections`, `list_tables`, `describe_table` and `execute_query`, and `list_connections` returns your saved connections.
+</Check>
 
-If the call fails, the response tells you which layer rejected it:
+Clients see the full [tool catalog](/external-api/mcp-tools), the [resources](/external-api/mcp-resources) and the [prompts](/external-api/mcp-prompts), and the server's instructions tell the model to start from `list_connections` and call `describe_table` before writing SQL. A connection's **External Clients** level and the token's scope still apply on top of that.
 
-- **stdio process exits immediately**: the bridge could not launch TablePro or got no handshake within 10 seconds. Open TablePro manually and check that **Settings > Integrations** shows the server running.
-- **`401 Unauthorized`**: the bridge token is stale. The stdio bridge re-reads the handshake and retries on its own; you only see this if the retry also fails, which means TablePro is not running.
-- **`403 Forbidden`**: the connection's `externalAccess` is `blocked` or `readOnly`, or the token's allowlist excludes it. Adjust **External Access** in TablePro's connection editor.
-- **`404 Session not found`** (JSON-RPC code `-32001`): the session hit the 15-minute idle timeout or the server restarted. The stdio bridge starts a new session on its own and replays the call, so you should never see this through the bridge. If you speak HTTP to the server directly, drop the cached `Mcp-Session-Id` and send a new `initialize` request yourself. Most HTTP clients do not do this for you.
-- **`429 Too Many Requests`**: 5 failed auth attempts within 60 seconds against the same `(client_address, principal)` pair triggered a 5-minute lockout. Wait it out or restart TablePro.
+## When it does not work
 
-## Troubleshooting
+The bridge writes its failure to stderr and as a JSON-RPC error, so the message in the client names the layer that refused.
 
-**Handshake timeout.** TablePro launched but did not respond to `tablepro://integrations/start-mcp` within 10 seconds. Open **Settings > Integrations**, toggle **Enable MCP Server** off and on, then re-launch the client.
+### TablePro is not running
 
-**Stale handshake file.** The bridge detects a handshake from a dead process and relaunches TablePro on its own. If connections still fail, delete `~/Library/Application Support/TablePro/mcp-handshake.json` and reopen TablePro; the app rewrites it.
+The bridge could not launch the app, or got no trusted handshake within 10 seconds. Open TablePro and check that **Settings > Integrations** shows the server running; if it does, toggle **Enable MCP Server** off and on, then relaunch the client.
 
-**Setapp or non-default install path.** Replace `/Applications/TablePro.app` in the `command` with your install path. For Setapp the bundle lives under `~/Applications/Setapp/TablePro.app`.
+### The local MCP endpoint did not prove it belongs to TablePro
 
-**Port conflict.** If the configured port (default 23508) is taken, TablePro falls back to a free port in the 51000-52000 range and rewrites the handshake file. A bridge that is already running re-reads the file the next time a call fails against the old port, so it picks up the new one without a restart.
+The handshake file points at a process the bridge will not trust, usually one left behind by a TablePro that is gone. Quit TablePro, delete `~/Library/Application Support/TablePro/mcp-handshake.json`, and reopen the app, which rewrites it.
 
-**Sessions recover on their own.** The MCP server drops a session after 15 minutes with no client attached, and restarting the server from Settings retires every session and rotates the bridge token. In both cases the stdio bridge starts a fresh session and replays the call that triggered it. You do not need to restart your agent or toggle the server. While an agent is attached, the bridge pings every 5 minutes, so an idle session stays alive rather than being recreated.
+### This TablePro build does not speak 2026-07-28
 
-**Tool calls return `403 Connection is read-only for external clients`.** The connection's external access is `readOnly` and the SQL is a write. Change external access in TablePro, or run the query in TablePro's editor.
+The bridge is newer than the app it found. Update TablePro.
+
+### This connection is read only for external clients
+
+**External Clients** on that connection is **Read Only** and the statement writes. Change it in the connection editor's **Advanced** pane, or run the query in the app's editor.
+
+### Forbidden (`-33007`)
+
+**External Clients** is **Blocked**, the connection's AI policy is **Never**, or the token's allowlist excludes it. Any of the three also hides the connection from `list_connections`.
+
+### Unauthenticated (`-33009`)
+
+The bridge token is stale. The bridge re-reads the handshake and retries once on its own, so this reaches you only when TablePro is not running.
+
+### Rate limited (`-33010`)
+
+Five failed auth attempts inside 60 seconds triggered a 5-minute lockout. Wait it out, or restart TablePro. The other [rate limits](/external-api/tokens#rate-limits) return the same code.

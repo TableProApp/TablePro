@@ -26,13 +26,21 @@ actor CloudSQLProxyManager: TunnelManaging {
     private var tunnels: [UUID: TunnelState] = [:]
     private var pidRecords: [UUID: CloudSQLProxyPidRecord] = [:]
     private let runnerFactory: () -> any SupervisedProcessRunner
+    private let binaryManager: CloudSQLProxyBinaryManager
+    private let systemBinaryLookup: (String) -> String?
 
     private static let runnerRegistry = OSAllocatedUnfairLock(initialState: [UUID: any SupervisedProcessRunner]())
 
     private var appNapActivity: NSObjectProtocol?
 
-    init(runnerFactory: @escaping () -> any SupervisedProcessRunner = { ProcessSupervisedRunner() }) {
+    init(
+        runnerFactory: @escaping () -> any SupervisedProcessRunner = { ProcessSupervisedRunner() },
+        binaryManager: CloudSQLProxyBinaryManager = .shared,
+        systemBinaryLookup: @escaping (String) -> String? = { CLIExecutableFinder.findExecutable($0) }
+    ) {
         self.runnerFactory = runnerFactory
+        self.binaryManager = binaryManager
+        self.systemBinaryLookup = systemBinaryLookup
     }
 
     func createTunnel(
@@ -143,8 +151,8 @@ actor CloudSQLProxyManager: TunnelManaging {
 
     func sweepStalePidsIfNeeded() {
         Self.purgeCredentialsFiles()
-        defer { UserDefaults.standard.removeObject(forKey: Self.stalePidsDefaultsKey) }
-        guard let data = UserDefaults.standard.data(forKey: Self.stalePidsDefaultsKey),
+        defer { AppStorageEnvironment.shared.defaults.removeObject(forKey: Self.stalePidsDefaultsKey) }
+        guard let data = AppStorageEnvironment.shared.defaults.data(forKey: Self.stalePidsDefaultsKey),
               let records = try? JSONDecoder().decode([CloudSQLProxyPidRecord].self, from: data) else {
             return
         }
@@ -227,13 +235,14 @@ actor CloudSQLProxyManager: TunnelManaging {
             }
             return expandedPath
         }
-        if let resolved = CLIExecutableFinder.findExecutable("cloud-sql-proxy") {
+        if let resolved = systemBinaryLookup("cloud-sql-proxy") {
             return resolved
         }
-        if let cached = await CloudSQLProxyBinaryManager.shared.cachedBinaryPath {
-            return cached
-        }
-        throw CloudSQLProxyError.binaryNotFound
+        /// The managed binary is ad-hoc signed and lives in a user-writable directory, so its
+        /// pinned checksum is the only thing attesting to what is about to run. Going through
+        /// `ensureBinary()` rather than the path alone means a stale or altered copy is replaced
+        /// here instead of being executed.
+        return try await binaryManager.ensureBinary()
     }
 
     private static func buildArguments(
@@ -298,12 +307,12 @@ actor CloudSQLProxyManager: TunnelManaging {
     private func persistPidRecords() {
         let records = Array(pidRecords.values)
         guard !records.isEmpty else {
-            UserDefaults.standard.removeObject(forKey: Self.stalePidsDefaultsKey)
+            AppStorageEnvironment.shared.defaults.removeObject(forKey: Self.stalePidsDefaultsKey)
             return
         }
         do {
             let data = try JSONEncoder().encode(records)
-            UserDefaults.standard.set(data, forKey: Self.stalePidsDefaultsKey)
+            AppStorageEnvironment.shared.defaults.set(data, forKey: Self.stalePidsDefaultsKey)
         } catch {
             Self.logger.error("Failed to persist cloud-sql-proxy PID records: \(error.localizedDescription, privacy: .public)")
         }

@@ -204,7 +204,8 @@ struct SQLReviewSheet: View {
             .constant(text),
             language: PluginManager.shared.editorLanguage(for: databaseType).treeSitterLanguage,
             configuration: Self.makeConfiguration(),
-            state: stateBinding
+            state: stateBinding,
+            foldProvider: FoldProviderResolver.provider(for: databaseType)
         )
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(
@@ -306,10 +307,8 @@ struct SQLReviewSheet: View {
             layout: .init(
                 contentInsets: NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
             ),
-            peripherals: .init(
-                showGutter: false,
-                showMinimap: false,
-                showFoldingRibbon: false
+            peripherals: EditorPeripherals.preview(
+                folding: AppSettingsManager.shared.editor.codeFoldingEnabled
             )
         )
     }

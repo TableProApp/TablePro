@@ -105,7 +105,7 @@ struct DatabaseTypeChooserSheet: View {
                     onImportFromURL()
                     dismiss()
                 } label: {
-                    Label(String(localized: "Import from URL..."), systemImage: "link")
+                    Label(String(localized: "Import from URL…"), systemImage: "link")
                 }
                 .help(String(localized: "Paste a connection URL to detect type and pre-fill fields"))
             }
@@ -144,7 +144,7 @@ private struct DatabaseTypeChooserRow: View {
         HStack(spacing: 12) {
             type.iconImage
                 .renderingMode(.template)
-                .foregroundStyle(type.brandColor)
+                .foregroundStyle(type.themeColor)
                 .frame(width: 26, height: 26)
 
             VStack(alignment: .leading, spacing: 2) {

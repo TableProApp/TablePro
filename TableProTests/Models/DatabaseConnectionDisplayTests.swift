@@ -144,6 +144,63 @@ struct DatabaseConnectionDisplayTests {
         #expect(connection.connectionSubtitle == "node1.example.com (+2 more) · appdb")
     }
 
+    /// A Sentinel or Cluster connection leaves Host blank, so before the host list was described
+    /// the connection list showed nothing but the word "Redis".
+    @Test("Redis Sentinel shows its Sentinel nodes")
+    func redisSentinelShowsItsNodes() {
+        let connection = DatabaseConnection(
+            name: "Cache", host: "", port: 6_379,
+            database: "", type: .redis,
+            additionalFields: [
+                "redisMode": "sentinel",
+                "redisSentinelHosts": "10.0.0.1:26379,10.0.0.2:26379,10.0.0.3:26379",
+            ]
+        )
+
+        #expect(connection.connectionSubtitle.hasPrefix("10.0.0.1:26379 (+2 more)"))
+    }
+
+    @Test("Redis Cluster shows its seed nodes, not the Sentinel list it no longer uses")
+    func redisClusterShowsSeedNodes() {
+        let connection = DatabaseConnection(
+            name: "Shards", host: "", port: 6_379,
+            database: "", type: .redis,
+            additionalFields: [
+                "redisMode": "cluster",
+                "redisSentinelHosts": "10.0.0.1:26379",
+                "redisClusterHosts": "10.9.9.1:6379,10.9.9.2:6379",
+            ]
+        )
+
+        #expect(connection.connectionSubtitle.hasPrefix("10.9.9.1:6379 (+1 more)"))
+    }
+
+    @Test("A single-entry host list drops the count")
+    func singleHostListEntryHasNoCount() {
+        let connection = DatabaseConnection(
+            name: "Cache", host: "", port: 6_379,
+            database: "", type: .redis,
+            additionalFields: [
+                "redisMode": "sentinel",
+                "redisSentinelHosts": "10.0.0.1:26379",
+            ]
+        )
+
+        #expect(connection.connectionSubtitle.hasPrefix("10.0.0.1:26379"))
+        #expect(!connection.connectionSubtitle.contains("more"))
+    }
+
+    @Test("Standalone Redis still shows its own host")
+    func standaloneRedisShowsHost() {
+        let connection = DatabaseConnection(
+            name: "Cache", host: "localhost", port: 6_379,
+            database: "", type: .redis,
+            additionalFields: ["redisMode": "standalone", "redisSentinelHosts": "10.0.0.1:26379"]
+        )
+
+        #expect(connection.connectionSubtitle.hasPrefix("localhost"))
+    }
+
     @Test("SSH via segment comes last")
     func sshViaComesLast() {
         var sshConfig = SSHConfiguration()

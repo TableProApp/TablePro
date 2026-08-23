@@ -75,6 +75,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     var capabilities: PluginCapabilities { get }
 
     func connect() async throws
+    func connect(reportingStage report: @escaping ConnectionStageReporter) async throws
     func disconnect()
     func ping() async throws
 
@@ -87,6 +88,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo]
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo]
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo]
+    func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo]
+    func fetchTriggerDDL(_ trigger: PluginTriggerInfo) async throws -> String
+    func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo]
+    func fetchRoutineDDL(_ routine: PluginRoutineInfo) async throws -> String
     func fetchTableDDL(table: String, schema: String?) async throws -> String
     func fetchViewDefinition(view: String, schema: String?) async throws -> String
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata
@@ -95,6 +100,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     var supportsSchemas: Bool { get }
     func fetchSchemas() async throws -> [String]
+    func fetchExternalSchemaNames() async throws -> Set<String>
     func switchSchema(to schema: String) async throws
     var currentSchema: String? { get }
 
@@ -113,13 +119,16 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int?
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]]
+    func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath]
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]]
+    var providesBulkForeignKeyFetch: Bool { get }
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata]
     func fetchDependentTypes(table: String, schema: String?) async throws -> [(name: String, labels: [String])]
     func fetchDependentSequences(table: String, schema: String?) async throws -> [(name: String, ddl: String)]
     func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec?
     func createDatabase(_ request: PluginCreateDatabaseRequest) async throws
     func dropDatabase(name: String) async throws
+    func dropSchema(name: String) async throws
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult
 
     // Session contexts (optional, switchable session dimensions such as a warehouse or role)
@@ -131,16 +140,26 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func buildFilteredQuery(table: String, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
     func buildBrowseQuery(table: String, schema: String?, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
     func buildFilteredQuery(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
+    func buildFilteredQuery(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int, columnKinds: [String: PluginColumnKind]) -> String?
+    func buildFilteredQuery(table: String, schema: String?, queryFilters: [PluginQueryFilter], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int, columnKinds: [String: PluginColumnKind]) -> String?
     // Filtered row count (optional, for NoSQL plugins; SQL plugins use COUNT(*) WHERE)
     func fetchFilteredRowCount(table: String, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int?
+    func fetchFilteredRowCount(table: String, queryFilters: [PluginQueryFilter], logicMode: String) async throws -> Int?
     // User-initiated exact row count (allowed to be slow; background count caps must not apply)
     func fetchExactRowCount(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int?
+    func fetchExactRowCount(table: String, schema: String?, queryFilters: [PluginQueryFilter], logicMode: String) async throws -> Int?
     // Statement generation (optional, for NoSQL plugins)
     func generateStatements(table: String, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]?
     func generateStatements(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]?
 
     // Database switching (SQL Server USE, ClickHouse database switch, etc.)
     func switchDatabase(to database: String) async throws
+
+    /// The database the connection is currently on, when the driver rather than the
+    /// connection definition is the authority on that. An embedded engine names its
+    /// database from the file it opened, so nothing outside the driver can derive it.
+    /// Drivers whose database comes from the connection definition return nil.
+    var currentDatabase: String? { get }
 
     // DDL schema generation (optional, plugins return nil to use default fallback)
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String?
@@ -203,7 +222,53 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 public extension PluginDatabaseDriver {
     var capabilities: PluginCapabilities { [] }
 
+    /// A driver that cannot see inside its own connect keeps the plain path. The app still
+    /// reports the stages either side of this call, so the window is never blank.
+    func connect(reportingStage report: @escaping ConnectionStageReporter) async throws {
+        try await connect()
+    }
+
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] { [] }
+
+    func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo] { [] }
+
+    func fetchTriggerDDL(_ trigger: PluginTriggerInfo) async throws -> String {
+        if let definition = trigger.definition, !definition.isEmpty { return definition }
+        guard let table = trigger.table else {
+            throw PluginObjectSourceError.unsupported(trigger.name)
+        }
+        guard let existing = try await fetchTriggerDefinition(
+            name: trigger.name,
+            table: table,
+            schema: trigger.schema
+        ) else {
+            throw PluginObjectSourceError.unsupported(trigger.name)
+        }
+        return existing
+    }
+
+    /// A driver written against `PluginProcedureFunctionSupport` keeps working untouched: the
+    /// runtime fills this requirement from here, and here adopts that conformance. The app only
+    /// ever calls this one, so nothing above PluginKit has to know the older protocol exists.
+    func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo] {
+        guard let legacy = self as? PluginProcedureFunctionSupport else { return [] }
+        let procedures = try await legacy.fetchProcedures(schema: schema)
+        let functions = try await legacy.fetchFunctions(schema: schema)
+        return procedures.map { $0.adopting(kind: .procedure, schema: schema) }
+            + functions.map { $0.adopting(kind: .function, schema: schema) }
+    }
+
+    func fetchRoutineDDL(_ routine: PluginRoutineInfo) async throws -> String {
+        guard let legacy = self as? PluginProcedureFunctionSupport else {
+            throw PluginObjectSourceError.unsupported(routine.name)
+        }
+        switch routine.kind {
+        case .procedure:
+            return try await legacy.fetchProcedureDDL(name: routine.name, schema: routine.schema)
+        case .function:
+            return try await legacy.fetchFunctionDDL(name: routine.name, schema: routine.schema)
+        }
+    }
 
     /// Engines whose partitions are metadata on one table object, rather than
     /// separate relations, have nothing to nest and keep the empty default.
@@ -218,6 +283,11 @@ public extension PluginDatabaseDriver {
     var supportsSchemas: Bool { false }
 
     func fetchSchemas() async throws -> [String] { [] }
+
+    /// Schemas whose objects live in a catalog outside the database itself, such
+    /// as Redshift external schemas backed by Glue, Hive, or a federated source.
+    /// Engines without that concept keep the empty default.
+    func fetchExternalSchemaNames() async throws -> Set<String> { [] }
 
     func switchSchema(to schema: String) async throws {}
 
@@ -268,6 +338,19 @@ public extension PluginDatabaseDriver {
         return result
     }
 
+    /// Default: no nested field paths. Document stores override this to sample documents and
+    /// report the dotted paths their nested structure exposes, which a flat column list cannot.
+    func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath] {
+        []
+    }
+
+    /// Answers whether `fetchAllForeignKeys` is a single query rather than the N+1 default below.
+    /// The app reads this before fetching a whole schema's foreign keys up front, so a driver that
+    /// has not overridden the default is never asked to make one round trip per table. It belongs
+    /// on the driver rather than on the database type, because the PostgreSQL plugin registers
+    /// CockroachDB and Redshift as variants of its own type and neither has the bulk query.
+    var providesBulkForeignKeyFetch: Bool { false }
+
     /// Default: fetches foreign keys per-table sequentially (N+1 round-trips).
     /// SQL drivers should override with a single bulk query (e.g. INFORMATION_SCHEMA.KEY_COLUMN_USAGE).
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
@@ -311,6 +394,11 @@ public extension PluginDatabaseDriver {
                       userInfo: [NSLocalizedDescriptionKey: "Drop database is not supported by this driver"])
     }
 
+    func dropSchema(name: String) async throws {
+        throw NSError(domain: "PluginDatabaseDriver", code: -1,
+                      userInfo: [NSLocalizedDescriptionKey: "Drop schema is not supported by this driver"])
+    }
+
     func switchDatabase(to database: String) async throws {
         throw NSError(
             domain: "TableProPluginKit",
@@ -318,6 +406,8 @@ public extension PluginDatabaseDriver {
             userInfo: [NSLocalizedDescriptionKey: "This driver does not support database switching"]
         )
     }
+
+    var currentDatabase: String? { nil }
 
     func buildBrowseQuery(table: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String? { nil }
     func buildFilteredQuery(table: String, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String? { nil }
@@ -327,9 +417,21 @@ public extension PluginDatabaseDriver {
     func buildFilteredQuery(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String? {
         buildFilteredQuery(table: table, filters: filters, logicMode: logicMode, sortColumns: sortColumns, columns: columns, limit: limit, offset: offset)
     }
+    func buildFilteredQuery(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int, columnKinds: [String: PluginColumnKind]) -> String? {
+        buildFilteredQuery(table: table, schema: schema, filters: filters, logicMode: logicMode, sortColumns: sortColumns, columns: columns, limit: limit, offset: offset)
+    }
+    func buildFilteredQuery(table: String, schema: String?, queryFilters: [PluginQueryFilter], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int, columnKinds: [String: PluginColumnKind]) -> String? {
+        buildFilteredQuery(table: table, schema: schema, filters: queryFilters.asTuples, logicMode: logicMode, sortColumns: sortColumns, columns: columns, limit: limit, offset: offset, columnKinds: columnKinds)
+    }
     func fetchFilteredRowCount(table: String, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int? { nil }
+    func fetchFilteredRowCount(table: String, queryFilters: [PluginQueryFilter], logicMode: String) async throws -> Int? {
+        try await fetchFilteredRowCount(table: table, filters: queryFilters.asTuples, logicMode: logicMode)
+    }
     func fetchExactRowCount(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int? {
         try await fetchFilteredRowCount(table: table, filters: filters, logicMode: logicMode)
+    }
+    func fetchExactRowCount(table: String, schema: String?, queryFilters: [PluginQueryFilter], logicMode: String) async throws -> Int? {
+        try await fetchExactRowCount(table: table, schema: schema, filters: queryFilters.asTuples, logicMode: logicMode)
     }
     func generateStatements(table: String, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]? { nil }
     func generateStatements(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]? {
@@ -732,6 +834,59 @@ public enum PluginSQLFilter {
         case "REGEX":
             return regexCondition(quoted, value)
         default: return nil
+        }
+    }
+
+    public static func buildWhereClause(
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String,
+        columnKinds: [String: PluginColumnKind],
+        quoteIdentifier: (String) -> String,
+        escapeTypedValue: (_ value: String, _ kind: PluginColumnKind?) -> String,
+        regexCondition: (_ quotedColumn: String, _ value: String) -> String?
+    ) -> String {
+        let conditions = filters.compactMap { filter in
+            buildFilterCondition(
+                column: filter.column,
+                op: filter.op,
+                value: filter.value,
+                kind: columnKinds[filter.column],
+                quoteIdentifier: quoteIdentifier,
+                escapeTypedValue: escapeTypedValue,
+                regexCondition: regexCondition
+            )
+        }
+        guard !conditions.isEmpty else { return "" }
+        let separator = logicMode == "and" ? " AND " : " OR "
+        return conditions.joined(separator: separator)
+    }
+
+    public static func buildFilterCondition(
+        column: String,
+        op: String,
+        value: String,
+        kind: PluginColumnKind?,
+        quoteIdentifier: (String) -> String,
+        escapeTypedValue: (_ value: String, _ kind: PluginColumnKind?) -> String,
+        regexCondition: (_ quotedColumn: String, _ value: String) -> String?
+    ) -> String? {
+        let quoted = quoteIdentifier(column)
+        switch op {
+        case "IS EMPTY":
+            guard PluginSQLLiteral.supportsEmptyStringComparison(kind) else { return "\(quoted) IS NULL" }
+            return "(\(quoted) IS NULL OR \(quoted) = '')"
+        case "IS NOT EMPTY":
+            guard PluginSQLLiteral.supportsEmptyStringComparison(kind) else { return "\(quoted) IS NOT NULL" }
+            return "(\(quoted) IS NOT NULL AND \(quoted) != '')"
+        default:
+            return buildFilterCondition(
+                column: column,
+                op: op,
+                value: value,
+                quoteIdentifier: quoteIdentifier,
+                escapeValue: { escapeTypedValue($0, kind) },
+                regexCondition: regexCondition
+            )
         }
     }
 }

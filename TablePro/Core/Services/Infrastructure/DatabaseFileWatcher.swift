@@ -12,7 +12,7 @@ import os
 
 @MainActor
 final class DatabaseFileWatcher {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseFileWatcher")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseFileWatcher")
 
     private var activeSources: [UUID: DispatchSourceFileSystemObject] = [:]
     private var debounceTasks: [UUID: Task<Void, Never>] = [:]
@@ -71,14 +71,14 @@ final class DatabaseFileWatcher {
             queue: .global(qos: .utility)
         )
 
-        source.setEventHandler { [weak self] in
+        source.setEventHandler { @Sendable [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.handleEvent(connectionId: connectionId)
             }
         }
 
-        source.setCancelHandler {
+        source.setCancelHandler { @Sendable in
             close(fd)
         }
 

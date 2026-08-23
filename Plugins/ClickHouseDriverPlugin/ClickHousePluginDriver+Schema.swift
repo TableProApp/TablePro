@@ -72,6 +72,7 @@ extension ClickHousePluginDriver {
                 defaultValue: defaultValue,
                 extra: extra,
                 comment: (comment?.isEmpty == false) ? comment : nil,
+                isGenerated: clickhouseColumnIsGenerated(defaultKind: defaultKind),
                 allowedValues: EnumValueParser.parseClickHouseEnum(from: ClickHousePluginDriver.unwrapTypeWrappers(dataType))
             )
         }
@@ -133,6 +134,7 @@ extension ClickHousePluginDriver {
                 defaultValue: defaultValue,
                 extra: extra,
                 comment: (comment?.isEmpty == false) ? comment : nil,
+                isGenerated: clickhouseColumnIsGenerated(defaultKind: defaultKind),
                 allowedValues: EnumValueParser.parseClickHouseEnum(from: ClickHousePluginDriver.unwrapTypeWrappers(dataType))
             )
             columnsByTable[tableName, default: []].append(colInfo)

@@ -46,6 +46,29 @@ struct FavoriteNodeTests {
         #expect(node.id == "folder-\(folder.id)")
     }
 
+    // MARK: - Disabled linked folders
+
+    @Test("A disabled linked folder keeps a row so its Enable command stays reachable")
+    func disabledLinkedFolderIsALeafRow() {
+        let folder = LinkedSQLFolder(path: "~/queries")
+        let node = FavoriteNode.disabledLinkedFolder(folder)
+
+        #expect(node.asLinkedFolder?.id == folder.id)
+        #expect(node.isFolder == false)
+    }
+
+    @Test("Enabling a linked folder does not change its node ID")
+    func disabledLinkedFolderKeepsItsIdentity() {
+        var folder = LinkedSQLFolder(path: "~/queries")
+        folder.isEnabled = false
+        let disabled = FavoriteNode.disabledLinkedFolder(folder)
+
+        folder.isEnabled = true
+        let enabled = FavoriteNode.linkedFolder(folder, children: [])
+
+        #expect(disabled.id == enabled.id)
+    }
+
     // MARK: - collectFavorites
 
     @Test("collectFavorites from flat list")
@@ -171,7 +194,7 @@ struct FavoriteNodeTests {
         let fav2 = makeFavorite(name: "Sales Data")
         let nodes: [FavoriteNode] = [.favorite(fav1), .favorite(fav2)]
 
-        let filtered = filterTree(nodes, searchText: "user")
+        let filtered = FavoritesTreeFilter.filterTree(nodes, searchText: "user")
         #expect(filtered.count == 1)
         if let first = filtered.first?.asFavorite {
             #expect(first.id == fav1.id)
@@ -184,7 +207,7 @@ struct FavoriteNodeTests {
         let fav2 = makeFavorite(name: "B", keyword: "sls")
         let nodes: [FavoriteNode] = [.favorite(fav1), .favorite(fav2)]
 
-        let filtered = filterTree(nodes, searchText: "usr")
+        let filtered = FavoritesTreeFilter.filterTree(nodes, searchText: "usr")
         #expect(filtered.count == 1)
     }
 
@@ -194,7 +217,7 @@ struct FavoriteNodeTests {
         let fav2 = makeFavorite(name: "B", query: "INSERT INTO logs")
         let nodes: [FavoriteNode] = [.favorite(fav1), .favorite(fav2)]
 
-        let filtered = filterTree(nodes, searchText: "large_table")
+        let filtered = FavoritesTreeFilter.filterTree(nodes, searchText: "large_table")
         #expect(filtered.count == 1)
     }
 
@@ -206,7 +229,7 @@ struct FavoriteNodeTests {
             .folder(folder, children: [.favorite(fav)])
         ]
 
-        let filtered = filterTree(nodes, searchText: "matching")
+        let filtered = FavoritesTreeFilter.filterTree(nodes, searchText: "matching")
         #expect(filtered.count == 1)
         if let first = filtered.first, let children = first.children {
             #expect(children.count == 1)
@@ -267,50 +290,4 @@ struct FavoriteNodeTests {
         #expect(folders.contains { $0.id == folder2.id })
     }
 
-    // MARK: - Private helpers (duplicated from ViewModel for testing)
-
-    private func filterTree(_ items: [FavoriteNode], searchText: String) -> [FavoriteNode] {
-        items.compactMap { node in
-            switch node.content {
-            case .favorite(let fav):
-                if fav.name.localizedCaseInsensitiveContains(searchText) ||
-                    (fav.keyword?.localizedCaseInsensitiveContains(searchText) == true) ||
-                    fav.query.localizedCaseInsensitiveContains(searchText) {
-                    return node
-                }
-                return nil
-            case .folder(let folder):
-                let filteredChildren = filterTree(node.children ?? [], searchText: searchText)
-                if !filteredChildren.isEmpty ||
-                    folder.name.localizedCaseInsensitiveContains(searchText) {
-                    return .folder(folder, children: filteredChildren)
-                }
-                return nil
-            case .linkedFavorite(let linked):
-                if linked.name.localizedCaseInsensitiveContains(searchText) ||
-                    (linked.keyword?.localizedCaseInsensitiveContains(searchText) == true) ||
-                    linked.relativePath.localizedCaseInsensitiveContains(searchText) {
-                    return node
-                }
-                return nil
-            case .linkedFolder(let folder):
-                let filteredChildren = filterTree(node.children ?? [], searchText: searchText)
-                if !filteredChildren.isEmpty || folder.name.localizedCaseInsensitiveContains(searchText) {
-                    return .linkedFolder(folder, children: filteredChildren)
-                }
-                return nil
-            case .linkedSubfolder(let folderId, let displayName, let pathPrefix):
-                let filteredChildren = filterTree(node.children ?? [], searchText: searchText)
-                if !filteredChildren.isEmpty || displayName.localizedCaseInsensitiveContains(searchText) {
-                    return .linkedSubfolder(
-                        folderId: folderId,
-                        displayName: displayName,
-                        pathPrefix: pathPrefix,
-                        children: filteredChildren
-                    )
-                }
-                return nil
-            }
-        }
-    }
 }

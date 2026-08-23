@@ -21,8 +21,7 @@ actor TeamLibraryStore {
         if let fileURL {
             self.fileURL = fileURL
         } else {
-            let directory = FileManager.default
-                .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            let directory = AppStorageEnvironment.shared.applicationSupportRoot
                 .appendingPathComponent("TablePro", isDirectory: true)
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             self.fileURL = directory.appendingPathComponent("team_library.json")
@@ -36,14 +35,15 @@ actor TeamLibraryStore {
         guard let data = try? Data(contentsOf: fileURL) else {
             return nil
         }
-        cached = try? JSONDecoder().decode(TeamLibraryPullResponse.self, from: data)
+        cached = (try? JSONDecoder().decode(TeamLibraryPullResponse.self, from: data))?.sanitized()
         return cached
     }
 
     func replace(_ response: TeamLibraryPullResponse) {
-        cached = response
+        let sanitized = response.sanitized()
+        cached = sanitized
         do {
-            try JSONEncoder().encode(response).write(to: fileURL, options: .atomic)
+            try JSONEncoder().encode(sanitized).write(to: fileURL, options: .atomic)
         } catch {
             Self.logger.error("Failed to cache team library: \(error.localizedDescription)")
         }

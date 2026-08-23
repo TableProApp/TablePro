@@ -2,8 +2,11 @@ import SwiftUI
 import TableProImport
 
 internal struct FavoritesTabView: View {
+    @Environment(\.sidebarRowSize) private var systemRowSize
+
     @State private var viewModel: FavoritesSidebarViewModel
     @State private var favoriteTables: [FavoriteTablesStorage.FavoriteEntry] = []
+    @State private var favoriteDatabases: Set<FavoriteDatabaseEntry> = []
     @State private var folderToDelete: SQLFavoriteFolder?
     @State private var showDeleteFolderAlert = false
     @State private var linkedFileToTrash: LinkedSQLFavorite?
@@ -11,16 +14,32 @@ internal struct FavoritesTabView: View {
     @State private var linkedMetadataTarget: LinkedSQLFavorite?
     @State private var linkedFolderToRemove: LinkedSQLFolder?
     @State private var showRemoveLinkedFolderAlert = false
-    @FocusState private var isRenameFocused: Bool
     let connectionId: UUID
+    let databaseType: DatabaseType
     @Bindable private var sharedSidebarState: SharedSidebarState
     let tables: [TableInfo]
     private var coordinator: MainContentCoordinator?
 
     private var searchText: String { sharedSidebarState.favoritesSearchText }
     private var activeDatabase: String? {
-        let name = coordinator?.activeDatabaseName ?? ""
+        let name = coordinator?.browseDatabaseName ?? ""
         return name.isEmpty ? nil : name
+    }
+
+    private var databaseGroups: [FavoriteDatabaseGroup] {
+        FavoriteDatabaseGrouping.groups(
+            entries: favoriteDatabases,
+            searchText: searchText,
+            filter: sharedSidebarState.favoriteDatabaseEnvironmentFilter
+        )
+    }
+
+    private var databaseEntityName: String {
+        PluginManager.shared.containerEntityName(for: databaseType)
+    }
+
+    private var databaseEntityNamePlural: String {
+        PluginManager.shared.containerEntityNamePlural(for: databaseType)
     }
 
     private var availableFavoriteTables: [TableInfo] {
@@ -39,8 +58,15 @@ internal struct FavoritesTabView: View {
         "\(schema ?? "")\u{1}\(name)"
     }
 
-    init(connectionId: UUID, sharedSidebarState: SharedSidebarState, tables: [TableInfo], coordinator: MainContentCoordinator?) {
+    init(
+        connectionId: UUID,
+        databaseType: DatabaseType,
+        sharedSidebarState: SharedSidebarState,
+        tables: [TableInfo],
+        coordinator: MainContentCoordinator?
+    ) {
         self.connectionId = connectionId
+        self.databaseType = databaseType
         self.sharedSidebarState = sharedSidebarState
         self.tables = tables
         _viewModel = State(wrappedValue: FavoritesSidebarViewModel(connectionId: connectionId))
@@ -49,35 +75,54 @@ internal struct FavoritesTabView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if !favoriteDatabases.isEmpty {
+                FavoriteDatabaseFilterBar(selection: $sharedSidebarState.favoriteDatabaseEnvironmentFilter)
+                Divider()
+            }
             Group {
                 let items = viewModel.filteredNodes(searchText: searchText)
+                let groups = databaseGroups
                 let filteredTables = searchText.isEmpty
                     ? availableFavoriteTables
                     : availableFavoriteTables.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
 
-                if !viewModel.isInitialLoadComplete && viewModel.nodes.isEmpty && filteredTables.isEmpty {
+                switch FavoritesEmptyState.resolve(FavoritesEmptyState.Input(
+                    isInitialLoadComplete: viewModel.isInitialLoadComplete,
+                    hasAnyFavorite: !viewModel.nodes.isEmpty
+                        || !availableFavoriteTables.isEmpty
+                        || !teamLibraryQueries.isEmpty
+                        || !favoriteDatabases.isEmpty,
+                    hasVisibleContent: !items.isEmpty
+                        || !groups.isEmpty
+                        || !filteredTables.isEmpty
+                        || !teamLibraryQueries.isEmpty,
+                    searchText: searchText,
+                    isEnvironmentFiltered: sharedSidebarState.favoriteDatabaseEnvironmentFilter != .all
+                )) {
+                case .loading:
                     ProgressView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if viewModel.nodes.isEmpty && filteredTables.isEmpty && teamLibraryQueries.isEmpty && searchText.isEmpty {
+                case .noFavorites:
                     emptyState
-                } else if items.isEmpty && filteredTables.isEmpty && teamLibraryQueries.isEmpty {
-                    noMatchState
-                } else {
-                    favoritesList(items, filteredTables: filteredTables)
+                case .noFilterMatch:
+                    noFilterMatchState
+                case .noSearchMatch(let term):
+                    noSearchMatchState(term)
+                case .content:
+                    favoritesList(items, databaseGroups: groups, filteredTables: filteredTables)
                 }
-            }
-
-            VStack(spacing: 0) {
-                Divider()
-                bottomToolbar
             }
         }
         .onAppear {
-            SQLFolderWatcher.shared.start()
-            favoriteTables = FavoriteTablesStorage.shared.favorites(for: connectionId).sorted { $0.name < $1.name }
+            viewModel.startWatchingLinkedFolders()
+            favoriteTables = viewModel.favoriteTables(for: connectionId)
+            favoriteDatabases = FavoriteDatabasesStorage.shared.favorites(for: connectionId)
         }
         .onReceive(NotificationCenter.default.publisher(for: .favoriteTablesDidChange)) { _ in
-            favoriteTables = FavoriteTablesStorage.shared.favorites(for: connectionId).sorted { $0.name < $1.name }
+            favoriteTables = viewModel.favoriteTables(for: connectionId)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .favoriteDatabasesDidChange)) { _ in
+            favoriteDatabases = FavoriteDatabasesStorage.shared.favorites(for: connectionId)
         }
         .sheet(item: $viewModel.editDialogItem) { item in
             FavoriteEditDialog(
@@ -116,8 +161,7 @@ internal struct FavoritesTabView: View {
                 linkedFolderToRemove = nil
             }
             Button(String(localized: "Remove"), role: .destructive) {
-                LinkedSQLFolderStorage.shared.removeFolder(folder)
-                SQLFolderWatcher.shared.reload()
+                viewModel.removeLinkedFolder(folder)
                 linkedFolderToRemove = nil
             }
         } message: { folder in
@@ -133,7 +177,7 @@ internal struct FavoritesTabView: View {
             }
             Button(String(localized: "Move to Trash"), role: .destructive) {
                 coordinator?.trashLinkedFavorite(file)
-                SQLFolderWatcher.shared.reload()
+                viewModel.reloadLinkedFolders()
                 linkedFileToTrash = nil
             }
         } message: { file in
@@ -181,33 +225,6 @@ internal struct FavoritesTabView: View {
         )
     }
 
-    @ViewBuilder
-    private func teamLibrarySection() -> some View {
-        if !teamLibraryQueries.isEmpty {
-            Section(String(localized: "Team Library")) {
-                ForEach(teamLibraryQueries) { query in
-                    Button {
-                        coordinator?.runFavoriteInNewTab(teamFavorite(from: query))
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "books.vertical")
-                                .foregroundStyle(.secondary)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(query.name)
-                                if let publishedBy = query.publishedBy {
-                                    Text(publishedBy)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
     private func publishSavedQueriesToTeam() {
         Task { @MainActor in
             let favorites = await SQLFavoriteManager.shared.fetchFavorites()
@@ -216,7 +233,7 @@ internal struct FavoritesTabView: View {
                 presentTeamLibraryInfo(String(localized: "You have no saved queries to publish."))
                 return
             }
-            guard confirmPublishSavedQueries(count: favorites.count) else { return }
+            guard await confirmPublishSavedQueries(count: favorites.count) else { return }
             do {
                 _ = try await TeamLibrarySyncCoordinator.shared.publish(connections: [], favorites: favorites, folders: folders)
                 presentTeamLibraryInfo(String(format: String(localized: "Published %d saved queries to your team."), favorites.count))
@@ -226,62 +243,168 @@ internal struct FavoritesTabView: View {
         }
     }
 
-    private func confirmPublishSavedQueries(count: Int) -> Bool {
-        let alert = NSAlert()
-        alert.messageText = String(localized: "Publish saved queries to your team?")
-        alert.informativeText = String(
-            format: String(localized: "Your team will see the names and SQL of %d saved queries. This replaces what you previously published."),
-            count
+    private func confirmPublishSavedQueries(count: Int) async -> Bool {
+        await AlertHelper.confirmDestructive(
+            title: String(localized: "Publish saved queries to your team?"),
+            message: String(
+                format: String(localized: "Your team will see the names and SQL of %d saved queries. This replaces what you previously published."),
+                count
+            ),
+            confirmButton: String(localized: "Publish"),
+            window: nil
         )
-        alert.addButton(withTitle: String(localized: "Publish"))
-        alert.addButton(withTitle: String(localized: "Cancel"))
-        return alert.runModal() == .alertFirstButtonReturn
     }
 
     private func presentTeamLibraryInfo(_ message: String) {
-        let alert = NSAlert()
-        alert.messageText = String(localized: "Team Library")
-        alert.informativeText = message
-        alert.runModal()
+        AlertHelper.showInfoSheet(
+            title: String(localized: "Team Library"),
+            message: message,
+            window: nil
+        )
     }
 
+    /// The Favorites list is an `NSOutlineView`. A SwiftUI `List` here drew no emphasized selection
+    /// and answered no arrow key, because the app hosts it in a bare `NSHostingController` with no
+    /// SwiftUI scene above it. Rows, menus and actions stay exactly where they were; only the list
+    /// container changed.
     private func favoritesList(
         _ items: [FavoriteNode],
+        databaseGroups: [FavoriteDatabaseGroup],
         filteredTables: [TableInfo]
     ) -> some View {
-        List(selection: $sharedSidebarState.selectedFavorite) {
-            if !filteredTables.isEmpty {
-                Section(String(localized: "Tables")) {
-                    ForEach(filteredTables) { table in
-                        favoriteTableRow(table: table)
-                    }
+        FavoritesOutlineView(
+            input: FavoritesOutlineInput(
+                connectionId: connectionId,
+                activeDatabase: activeDatabase,
+                databaseGroups: databaseGroups,
+                databaseEntityName: databaseEntityName,
+                databaseEntityNamePlural: databaseEntityNamePlural,
+                isNarrowingDatabases: !searchText.isEmpty
+                    || sharedSidebarState.favoriteDatabaseEnvironmentFilter != .all,
+                tables: filteredTables,
+                queryNodes: items,
+                teamQueries: teamLibraryQueries.map {
+                    FavoritesOutlineTeamQuery(id: $0.id, name: $0.name, publishedBy: $0.publishedBy)
+                },
+                renamingFolderId: viewModel.renamingFolderId,
+                allFolders: viewModel.nodes.collectFolders(),
+                teamLibraryAvailable: LicenseManager.shared.isFeatureAvailable(.teamLibrary)
+            ),
+            selection: $sharedSidebarState.selectedFavorite,
+            rowSizePreference: AppSettingsManager.shared.general.sidebarRowSize,
+            actions: FavoritesOutlineActions(
+                primaryAction: { handlePrimaryAction($0) },
+                deleteSelection: { deleteNode($0) },
+                commitRename: { folder, name in viewModel.commitRenameFolder(folder, to: name) },
+                cancelRename: { viewModel.renamingFolderId = nil },
+                performMenuCommand: { perform($0) }
+            ),
+            row: { outlineRow($0) }
+        )
+    }
+
+    /// The cell pins its hosted view to the full row width, and `NSHostingView` centers a root view
+    /// narrower than its bounds, so the row has to claim that width itself or short content drifts
+    /// to the middle.
+    private func outlineRow(_ node: FavoritesOutlineNode) -> some View {
+        rowContent(node)
+            .font(resolvedRowSize.rowFont)
+            .imageScale(.medium)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+    }
+
+    /// AppKit sizes the row from `rowSizeStyle`, but it does that by laying out
+    /// `NSTableCellView.textField`, and these cells host SwiftUI instead. Without this the object
+    /// list grew with the sidebar size and the Favorites list beside it did not.
+    private var resolvedRowSize: SidebarRowSize {
+        SidebarRowSizeResolver.resolve(
+            preference: AppSettingsManager.shared.general.sidebarRowSize,
+            system: systemRowSize
+        )
+    }
+
+    /// No `.contextMenu` on any row: the outline view owns the menu, so AppKit sets `clickedRow`,
+    /// highlights the clicked row and answers a right-click below the last one.
+    @ViewBuilder
+    private func rowContent(_ node: FavoritesOutlineNode) -> some View {
+        switch node.kind {
+        case .header(let title):
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+        case .databaseEnvironment(let group):
+            databaseEnvironmentRow(group)
+        case .database(let entry):
+            favoriteDatabaseRow(entry)
+        case .table(let table):
+            favoriteTableRow(table: table)
+        case .query(let favoriteNode):
+            favoriteQueryRow(favoriteNode)
+        case .teamQuery(_, let name, let publishedBy):
+            teamQueryRow(name: name, publishedBy: publishedBy)
+        }
+    }
+
+    private func databaseEnvironmentRow(_ group: FavoriteDatabaseGroup) -> some View {
+        Label {
+            HStack(spacing: 6) {
+                Text(group.environment.title)
+                    .lineLimit(1)
+                Text(group.entries.count, format: .number)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } icon: {
+            Image(systemName: group.environment.iconName)
+        }
+        .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
+    }
+
+    private func favoriteDatabaseRow(_ entry: FavoriteDatabaseEntry) -> some View {
+        Label(entry.database, systemImage: "cylinder")
+            .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
+            .lineLimit(1)
+            .accessibilityLabel(String(
+                format: String(localized: "%@: %@"),
+                databaseEntityName,
+                entry.database
+            ))
+    }
+
+    @ViewBuilder
+    private func favoriteQueryRow(_ node: FavoriteNode) -> some View {
+        switch node.content {
+        case .favorite(let favorite):
+            FavoriteRowView(favorite: favorite)
+        case .folder(let folder):
+            Label(folder.name, systemImage: "folder")
+        case .linkedFolder(let folder):
+            LinkedFolderRowLabel(folder: folder)
+        case .linkedSubfolder(_, let displayName, _):
+            LinkedSubfolderRowLabel(displayName: displayName)
+        case .linkedFavorite(let linked):
+            LinkedFavoriteRowView(favorite: linked)
+        }
+    }
+
+    /// One line, not two. The outline draws a uniform 24pt row, and the stacked publisher caption
+    /// the SwiftUI list used would be clipped.
+    private func teamQueryRow(name: String, publishedBy: String?) -> some View {
+        Label {
+            HStack(spacing: 6) {
+                Text(name)
+                    .lineLimit(1)
+                if let publishedBy {
+                    Text(publishedBy)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
             }
-            if !items.isEmpty {
-                Section(String(localized: "Queries")) {
-                    ForEach(items) { node in
-                        FavoriteNodeRow(
-                            node: node,
-                            connectionId: connectionId,
-                            viewModel: viewModel,
-                            isRenameFocused: $isRenameFocused
-                        )
-                    }
-                }
-            }
-            teamLibrarySection()
-        }
-        .sidebarListLayout()
-        .onDeleteCommand {
-            deleteSelectedNode()
-        }
-        .contextMenu(forSelectionType: FavoriteSelection.self) { selection in
-            if let selected = selection.first {
-                contextMenu(for: selected)
-            }
-        } primaryAction: { selection in
-            guard let selected = selection.first else { return }
-            handlePrimaryAction(selected)
+        } icon: {
+            Image(systemName: "books.vertical")
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -290,9 +413,9 @@ internal struct FavoritesTabView: View {
             Text(table.name)
         } icon: {
             Image(systemName: TableRowLogic.iconName(for: table.type))
-                .sidebarTint(Color.accentColor)
+                .selectionAwareTint(Color.accentColor)
         }
-        .tag(FavoriteSelection.table(database: activeDatabase, schema: table.schema, name: table.name))
+        .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
         .accessibilityLabel(
             TableRowLogic.accessibilityLabel(table: table, isPendingDelete: false, isPendingTruncate: false)
         )
@@ -301,7 +424,7 @@ internal struct FavoritesTabView: View {
     @ViewBuilder
     private func favoriteTableContextMenu(_ table: TableInfo) -> some View {
         Button(String(localized: "Open Table")) {
-            coordinator?.openTableTab(table, activateGridFocus: true)
+            coordinator?.openTableTab(table, forceNonPreview: true, activateGridFocus: true)
         }
 
         Button(String(localized: "Show ER Diagram")) {
@@ -317,44 +440,20 @@ internal struct FavoritesTabView: View {
         }
     }
 
-    private func favoriteTable(database: String?, schema: String?, name: String) -> TableInfo? {
-        guard database == activeDatabase else { return nil }
-        return availableFavoriteTables.first { $0.name == name && $0.schema == schema }
-    }
-
-    @ViewBuilder
-    private func contextMenu(for selection: FavoriteSelection) -> some View {
-        switch selection {
-        case .table(let database, let schema, let name):
-            if let table = favoriteTable(database: database, schema: schema, name: name) {
-                favoriteTableContextMenu(table)
-            }
-        case .node(let id):
-            if let node = viewModel.node(forId: id) {
-                switch node.content {
-                case .favorite(let favorite):
-                    favoriteContextMenu(favorite)
-                case .linkedFavorite(let linked):
-                    linkedFavoriteContextMenu(linked)
-                case .folder(let folder):
-                    folderContextMenu(folder)
-                case .linkedFolder(let folder):
-                    linkedFolderContextMenu(folder)
-                case .linkedSubfolder:
-                    EmptyView()
-                }
-            }
-        }
-    }
-
-    private func handlePrimaryAction(_ selection: FavoriteSelection) {
-        switch selection {
-        case .table(let database, let schema, let name):
-            if let table = favoriteTable(database: database, schema: schema, name: name) {
-                coordinator?.openTableTab(table, activateGridFocus: true)
-            }
-        case .node(let id):
-            guard let node = viewModel.node(forId: id) else { return }
+    /// Selecting a favourite does not open it, so every open from this list is a deliberate one:
+    /// a double-click, Return, or a menu item. None of them may hand back a tab the next sidebar
+    /// click throws away.
+    private func handlePrimaryAction(_ kind: FavoritesOutlineNode.Kind) {
+        switch kind {
+        case .header:
+            break
+        case .databaseEnvironment:
+            break
+        case .database(let entry):
+            useDatabase(entry)
+        case .table(let table):
+            coordinator?.openTableTab(table, forceNonPreview: true, activateGridFocus: true)
+        case .query(let node):
             switch node.content {
             case .favorite(let favorite):
                 coordinator?.insertFavorite(favorite)
@@ -363,20 +462,27 @@ internal struct FavoritesTabView: View {
             case .folder, .linkedFolder, .linkedSubfolder:
                 break
             }
+        case .teamQuery(let id, _, _):
+            guard let query = TeamLibrarySyncCoordinator.shared.library.queries.first(where: { $0.id == id })
+            else { return }
+            coordinator?.runFavoriteInNewTab(teamFavorite(from: query))
         }
     }
 
-    private func deleteSelectedNode() {
-        guard let selection = sharedSidebarState.selectedFavorite else { return }
-        switch selection {
-        case .table(let database, let schema, let name):
-            if let table = favoriteTable(database: database, schema: schema, name: name) {
-                FavoriteTablesStorage.shared.removeFavorite(
-                    name: table.name, schema: table.schema, database: activeDatabase, connectionId: connectionId
-                )
-            }
-        case .node(let id):
-            guard let node = viewModel.node(forId: id) else { return }
+    private func deleteNode(_ kind: FavoritesOutlineNode.Kind) {
+        switch kind {
+        case .header, .databaseEnvironment, .teamQuery:
+            break
+        case .database(let entry):
+            FavoriteDatabasesStorage.shared.removeFavorite(
+                database: entry.database,
+                connectionId: connectionId
+            )
+        case .table(let table):
+            FavoriteTablesStorage.shared.removeFavorite(
+                name: table.name, schema: table.schema, database: activeDatabase, connectionId: connectionId
+            )
+        case .query(let node):
             switch node.content {
             case .favorite(let favorite):
                 viewModel.deleteFavorite(favorite)
@@ -389,226 +495,133 @@ internal struct FavoritesTabView: View {
         }
     }
 
-    // MARK: - Context Menus
+    // MARK: - Menu commands
 
-    @ViewBuilder
-    private func favoriteContextMenu(_ favorite: SQLFavorite) -> some View {
-        Button(String(localized: "Insert in Editor")) {
+    /// Runs what a contextual menu item described. The commands that end in a confirmation set the
+    /// state this view already owns, so the alert stays where the rest of the presentation is.
+    private func perform(_ command: FavoritesMenuCommand) {
+        switch command {
+        case .useDatabase(let entry):
+            useDatabase(entry)
+        case .setDatabaseEnvironment(let entry, let environment):
+            FavoriteDatabasesStorage.shared.setFavorite(
+                database: entry.database,
+                environment: environment,
+                connectionId: connectionId
+            )
+        case .removeDatabaseFavorite(let entry):
+            FavoriteDatabasesStorage.shared.removeFavorite(
+                database: entry.database,
+                connectionId: connectionId
+            )
+        case .openTable(let table):
+            coordinator?.openTableTab(table, forceNonPreview: true, activateGridFocus: true)
+        case .showERDiagram:
+            coordinator?.showERDiagram()
+        case .removeTableFavorite(let table):
+            viewModel.removeTableFavorite(table, database: activeDatabase)
+        case .insertFavorite(let favorite):
             coordinator?.insertFavorite(favorite)
-        }
-
-        Button(String(localized: "Run in New Tab")) {
+        case .runFavoriteInNewTab(let favorite):
             coordinator?.runFavoriteInNewTab(favorite)
-        }
-
-        Divider()
-
-        Button {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(favorite.query, forType: .string)
-        } label: {
-            Label(String(localized: "Copy Query"), systemImage: "doc.on.doc")
-        }
-
-        Button(String(localized: "Edit...")) {
+        case .copyText(let text):
+            ClipboardService.shared.writeText(text)
+        case .editFavorite(let favorite):
             viewModel.editFavorite(favorite)
-        }
-
-        let allFolders = viewModel.nodes.collectFolders()
-        if !allFolders.isEmpty {
-            Menu(String(localized: "Move to")) {
-                if favorite.folderId != nil {
-                    Button(String(localized: "Root Level")) {
-                        viewModel.moveFavorite(id: favorite.id, toFolder: nil)
-                    }
-
-                    Divider()
-                }
-
-                ForEach(allFolders) { folder in
-                    if folder.id != favorite.folderId {
-                        Button(folder.name) {
-                            viewModel.moveFavorite(id: favorite.id, toFolder: folder.id)
-                            FavoritesExpansionState.shared.setFolderExpanded(folder.id, expanded: true, for: connectionId)
-                        }
-                    }
-                }
+        case .moveFavorite(let id, let folderId):
+            viewModel.moveFavorite(id: id, toFolder: folderId)
+            if let folderId {
+                FavoritesExpansionState.shared.setFolderExpanded(folderId, expanded: true, for: connectionId)
             }
-        }
-
-        Divider()
-
-        Button(role: .destructive) {
+        case .deleteFavorite(let favorite):
             viewModel.deleteFavorite(favorite)
-        } label: {
-            Text(String(localized: "Delete"))
-        }
-    }
-
-    @ViewBuilder
-    private func linkedFavoriteContextMenu(_ favorite: LinkedSQLFavorite) -> some View {
-        Button(String(localized: "Open in Editor")) {
+        case .openLinkedFavorite(let favorite):
             coordinator?.openLinkedFavorite(favorite)
-        }
-
-        Button(String(localized: "Edit Metadata...")) {
+        case .editLinkedMetadata(let favorite):
             linkedMetadataTarget = favorite
-        }
-
-        Divider()
-
-        Button {
-            NSPasteboard.general.clearContents()
-            if let loaded = FileTextLoader.load(favorite.fileURL) {
-                NSPasteboard.general.setString(loaded.content, forType: .string)
-            }
-        } label: {
-            Label(String(localized: "Copy Query"), systemImage: "doc.on.doc")
-        }
-
-        Button(String(localized: "Show in Finder")) {
+        case .copyLinkedFavoriteQuery(let favorite):
+            guard let loaded = FileTextLoader.load(favorite.fileURL) else { return }
+            ClipboardService.shared.writeText(loaded.content)
+        case .revealLinkedFavorite(let favorite):
             coordinator?.revealLinkedFavoriteInFinder(favorite)
-        }
-
-        Divider()
-
-        Button(role: .destructive) {
+        case .trashLinkedFavorite(let favorite):
             linkedFileToTrash = favorite
             showTrashLinkedFileAlert = true
-        } label: {
-            Text(String(localized: "Move File to Trash"))
-        }
-    }
-
-    @ViewBuilder
-    private func linkedFolderContextMenu(_ folder: LinkedSQLFolder) -> some View {
-        Button(String(localized: "Show in Finder")) {
-            NSWorkspace.shared.activateFileViewerSelecting([folder.expandedURL])
-        }
-
-        Button {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(folder.expandedURL.path, forType: .string)
-        } label: {
-            Label(String(localized: "Copy Path"), systemImage: "doc.on.doc")
-        }
-
-        Divider()
-
-        Button(folder.isEnabled
-               ? String(localized: "Disable")
-               : String(localized: "Enable")) {
-            toggleLinkedFolder(folder)
-        }
-
-        Button(String(localized: "Reload")) {
-            SQLFolderWatcher.shared.reload()
-        }
-
-        Divider()
-
-        Button(String(localized: "Add Another SQL Folder...")) {
+        case .revealLinkedFolder(let folder):
+            viewModel.revealLinkedFolder(folder)
+        case .setLinkedFolderEnabled(let folder, let isEnabled):
+            viewModel.setLinkedFolder(folder, enabled: isEnabled)
+        case .reloadLinkedFolders:
+            viewModel.reloadLinkedFolders()
+        case .addLinkedFolder:
             addLinkedFolder()
-        }
-
-        Divider()
-
-        Button(role: .destructive) {
+        case .removeLinkedFolder(let folder):
             linkedFolderToRemove = folder
             showRemoveLinkedFolderAlert = true
-        } label: {
-            Text(String(localized: "Remove from Sidebar"))
-        }
-    }
-
-    private func toggleLinkedFolder(_ folder: LinkedSQLFolder) {
-        var updated = folder
-        updated.isEnabled.toggle()
-        LinkedSQLFolderStorage.shared.updateFolder(updated)
-        SQLFolderWatcher.shared.reload()
-    }
-
-    @ViewBuilder
-    private func folderContextMenu(_ folder: SQLFavoriteFolder) -> some View {
-        Button(String(localized: "Rename")) {
+        case .renameFolder(let folder):
             viewModel.startRenameFolder(folder)
-        }
-
-        Button(String(localized: "New Favorite...")) {
-            viewModel.createFavorite(folderId: folder.id)
-        }
-
-        Button(String(localized: "New Subfolder")) {
-            viewModel.createFolder(parentId: folder.id)
-        }
-
-        Divider()
-
-        Button(role: .destructive) {
+        case .newFavorite(let folderId):
+            viewModel.createFavorite(folderId: folderId)
+        case .newFolder(let parentId):
+            viewModel.createFolder(parentId: parentId)
+        case .deleteFolder(let folder):
             folderToDelete = folder
             showDeleteFolderAlert = true
-        } label: {
-            Text(String(localized: "Delete Folder"))
+        case .newQuery:
+            coordinator?.commandActions?.newTab()
+        case .publishSavedQueriesToTeam:
+            publishSavedQueriesToTeam()
         }
+    }
+
+    private func useDatabase(_ entry: FavoriteDatabaseEntry) {
+        guard entry.database != activeDatabase else { return }
+        Task { await coordinator?.switchDatabase(to: entry.database) }
     }
 
     // MARK: - Empty States
 
+    /// An empty list has no row to right-click, so the commands the background menu carries have to
+    /// be here too. They used to live in a bar at the bottom of the sidebar.
+    ///
+    /// The actions are stacked, not left to `ContentUnavailableView`'s default row. On macOS 15 the
+    /// row of three buttons is wider than the sidebar, and the view sizes its whole content to that
+    /// row, so the description and the buttons ran past both edges and were cut off.
     private var emptyState: some View {
         ContentUnavailableView {
             Label(String(localized: "No Favorites"), systemImage: "star")
         } description: {
             Text("Save frequently used queries, or link a folder of .sql files to share with your team.")
         } actions: {
-            Button(String(localized: "Link a Folder...")) {
-                addLinkedFolder()
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var noMatchState: some View {
-        ContentUnavailableView.search(text: searchText)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: - Bottom Toolbar
-
-    private var bottomToolbar: some View {
-        HStack(spacing: 8) {
-            Menu {
-                Button(String(localized: "New Query")) {
-                    coordinator?.commandActions?.newTab()
-                }
-                Divider()
-                Button(String(localized: "New Favorite")) {
+            VStack(spacing: 8) {
+                Button(String(localized: "New Favorite…")) {
                     viewModel.createFavorite()
                 }
                 Button(String(localized: "New Folder")) {
                     viewModel.createFolder()
                 }
-                Divider()
-                Button(String(localized: "Add Linked SQL Folder...")) {
+                Button(String(localized: "Link a Folder…")) {
                     addLinkedFolder()
                 }
-                if LicenseManager.shared.isFeatureAvailable(.teamLibrary) {
-                    Divider()
-                    Button(String(localized: "Publish Saved Queries to Team...")) {
-                        publishSavedQueriesToTeam()
-                    }
-                }
-            } label: {
-                Image(systemName: "plus")
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help(String(localized: "New Query, favorite, or folder"))
-
-            Spacer()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func noSearchMatchState(_ term: String) -> some View {
+        ContentUnavailableView.search(text: term)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// A filter miss is not a failed search, so it never borrows the search placeholder's "check
+    /// the spelling" advice. The filter control stays on screen above this, which is the reset.
+    private var noFilterMatchState: some View {
+        ContentUnavailableView {
+            Label(String(localized: "No Matching Favorites"), systemImage: "line.3.horizontal.decrease.circle")
+        } description: {
+            Text("No favorites match the selected environment.")
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func addLinkedFolder() {
@@ -618,105 +631,17 @@ internal struct FavoritesTabView: View {
         panel.allowsMultipleSelection = false
         panel.message = String(localized: "Choose a folder containing .sql files")
 
-        guard let window = NSApp.keyWindow else { return }
+        guard let window = AlertHelper.resolveWindow(nil) else { return }
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
-            let path = PathPortability.contractHome(url.path)
-            let existing = LinkedSQLFolderStorage.shared.loadFolders()
-            guard !existing.contains(where: { $0.path == path }) else { return }
-            LinkedSQLFolderStorage.shared.addFolder(LinkedSQLFolder(path: path))
-            SQLFolderWatcher.shared.reload()
-        }
-    }
-}
-
-private struct FavoriteNodeRow: View {
-    let node: FavoriteNode
-    let connectionId: UUID
-    let viewModel: FavoritesSidebarViewModel
-    @FocusState.Binding var isRenameFocused: Bool
-
-    var body: some View {
-        switch node.content {
-        case .favorite(let favorite):
-            FavoriteRowView(favorite: favorite)
-                .tag(FavoriteSelection.node(id: node.id))
-        case .folder(let folder):
-            DisclosureGroup(isExpanded: folderExpansion(folder)) {
-                childRows
-            } label: {
-                folderLabel(folder)
-            }
-            .tag(FavoriteSelection.node(id: node.id))
-        case .linkedFolder(let linkedFolder):
-            DisclosureGroup(isExpanded: linkedExpansion) {
-                childRows
-            } label: {
-                LinkedFolderRowLabel(folder: linkedFolder)
-            }
-            .tag(FavoriteSelection.node(id: node.id))
-        case .linkedSubfolder(_, let displayName, _):
-            DisclosureGroup(isExpanded: linkedExpansion) {
-                childRows
-            } label: {
-                LinkedSubfolderRowLabel(displayName: displayName)
-            }
-            .tag(FavoriteSelection.node(id: node.id))
-        case .linkedFavorite(let linked):
-            LinkedFavoriteRowView(favorite: linked)
-                .tag(FavoriteSelection.node(id: node.id))
-        }
-    }
-
-    @ViewBuilder
-    private var childRows: some View {
-        if let children = node.children {
-            ForEach(children) { child in
-                FavoriteNodeRow(
-                    node: child,
-                    connectionId: connectionId,
-                    viewModel: viewModel,
-                    isRenameFocused: $isRenameFocused
+            MainActor.assumeIsolated {
+                guard case .alreadyLinked(let name) = viewModel.addLinkedFolder(at: url) else { return }
+                AlertHelper.showInfoSheet(
+                    title: String(localized: "This folder is already linked"),
+                    message: String(format: String(localized: "%@ is already in the favorites list."), name),
+                    window: window
                 )
             }
-        }
-    }
-
-    private func folderExpansion(_ folder: SQLFavoriteFolder) -> Binding<Bool> {
-        Binding(
-            get: { FavoritesExpansionState.shared.isFolderExpanded(folder.id, for: connectionId) },
-            set: { FavoritesExpansionState.shared.setFolderExpanded(folder.id, expanded: $0, for: connectionId) }
-        )
-    }
-
-    private var linkedExpansion: Binding<Bool> {
-        Binding(
-            get: { FavoritesExpansionState.shared.isLinkedNodeExpanded(node.id, for: connectionId) },
-            set: { FavoritesExpansionState.shared.setLinkedNodeExpanded(node.id, expanded: $0, for: connectionId) }
-        )
-    }
-
-    @ViewBuilder
-    private func folderLabel(_ folder: SQLFavoriteFolder) -> some View {
-        if viewModel.renamingFolderId == folder.id {
-            HStack(spacing: 4) {
-                Image(systemName: "folder")
-                TextField(
-                    "",
-                    text: Binding(
-                        get: { viewModel.renamingFolderName },
-                        set: { viewModel.renamingFolderName = $0 }
-                    )
-                )
-                .textFieldStyle(.roundedBorder)
-                .accessibilityLabel(String(localized: "Folder name"))
-                .focused($isRenameFocused)
-                .onSubmit { viewModel.commitRenameFolder(folder) }
-                .onExitCommand { viewModel.renamingFolderId = nil }
-                .onAppear { isRenameFocused = true }
-            }
-        } else {
-            Label(folder.name, systemImage: "folder")
         }
     }
 }

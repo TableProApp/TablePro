@@ -3,7 +3,7 @@ import Foundation
 import TableProDatabase
 import TableProModels
 
-final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
+nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     private let actor = PostgreSQLActor()
     private let host: String
     private let port: Int
@@ -33,6 +33,7 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     func connect() async throws {
         try await LocalNetworkPermission.shared.ensureAccess(for: host)
         try await actor.connect(host: host, port: port, user: user, password: password, database: database, ssl: ssl)
+        _ = try? await actor.execute("SET standard_conforming_strings = on")
         serverVersion = await actor.serverVersion()
     }
 
@@ -335,16 +336,14 @@ private actor PostgreSQLActor {
         // Close existing connection if reconnecting
         if let conn { PQfinish(conn); self.conn = nil }
 
-        let escapedHost = escapeConnParam(host)
-        let escapedUser = escapeConnParam(user)
-        let escapedPass = escapeConnParam(password)
-        let escapedDb = escapeConnParam(database)
-
-        var connStr = "host='\(escapedHost)' port='\(port)' dbname='\(escapedDb)' " +
-            "user='\(escapedUser)' password='\(escapedPass)' connect_timeout='10' sslmode='\(ssl.postgresSSLMode)'"
-        if let caPath = ssl.existingCACertificatePath {
-            connStr += " sslrootcert='\(escapeConnParam(caPath))'"
-        }
+        let connStr = PostgreSQLConnectionString.build(
+            host: host,
+            port: port,
+            database: database,
+            user: user,
+            password: password,
+            ssl: ssl
+        )
 
         let connection = PQconnectdb(connStr)
 
@@ -355,11 +354,6 @@ private actor PostgreSQLActor {
         }
 
         self.conn = connection
-    }
-
-    private func escapeConnParam(_ value: String) -> String {
-        value.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
     }
 
     func close() {
@@ -612,7 +606,7 @@ private actor PostgreSQLActor {
     }
 }
 
-enum PGBeginStreamResult: Sendable {
+nonisolated enum PGBeginStreamResult: Sendable {
     case tuples([ColumnInfo])
     case commandOk(affectedRows: Int)
 }
@@ -651,7 +645,7 @@ nonisolated private func pgOidToTypeName(_ oid: UInt32) -> String {
     }
 }
 
-private struct RawPGResult: Sendable {
+nonisolated private struct RawPGResult: Sendable {
     let columns: [String]
     let columnTypes: [String]
     let rows: [[String?]]
@@ -662,7 +656,7 @@ private struct RawPGResult: Sendable {
 
 // MARK: - Errors
 
-enum PostgreSQLError: Error, LocalizedError {
+nonisolated enum PostgreSQLError: Error, LocalizedError {
     case connectionFailed(String)
     case notConnected
     case queryFailed(String)

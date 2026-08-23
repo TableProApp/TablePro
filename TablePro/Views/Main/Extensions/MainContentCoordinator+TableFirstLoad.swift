@@ -8,7 +8,21 @@ import TableProPluginKit
 
 extension MainContentCoordinator {
     func openTableTabQuery(tabId: UUID, trigger: TableLoadTrigger = .userInitiated) async {
-        guard await prepareTableTabFirstLoad(tabId: tabId) else { return }
+        let tracer = TableLoadTracer.shared
+        let token = tracer.activeToken(for: tabId)
+        if let token { tracer.stage(.prepareFirstLoad, token: token) }
+
+        guard await prepareTableTabFirstLoad(tabId: tabId) else {
+            if let token {
+                tracer.anomaly(
+                    .preparationAbandoned,
+                    token: token,
+                    detail: "cancelled=\(Task.isCancelled)"
+                )
+                tracer.finish(token: token, outcome: "prepareAbandoned")
+            }
+            return
+        }
         executeTableTabQueryDirectly(trigger: trigger)
     }
 
@@ -32,12 +46,18 @@ extension MainContentCoordinator {
             return true
         }
 
-        await loadSchemaColumns(for: tableName, schema: tab.tableContext.schemaName)
+        let tracer = TableLoadTracer.shared
+        let token = tracer.activeToken(for: tabId)
+        let schemaName = tab.tableContext.schemaName
+        if let token { tracer.stage(.schemaColumnsBegin, token: token) }
+        await loadSchemaColumns(for: tableName, scope: scope(for: tab))
+        if let token { tracer.stage(.schemaColumnsEnd, token: token) }
 
         guard !Task.isCancelled,
               tabManager.selectedTabId == tabId,
               let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
-              tabManager.tabs[index].tableContext.tableName == tableName else { return false }
+              tabManager.tabs[index].tableContext.tableName == tableName,
+              tabManager.tabs[index].tableContext.schemaName == schemaName else { return false }
 
         let restoreApplied = applyPendingRestoredViewState(at: index)
         let sortApplied = restoreApplied ? false : applyResolvedDefaultSort(at: index, hint: hint)
@@ -75,12 +95,15 @@ extension MainContentCoordinator {
             tab.pendingRestoredSort ?? [],
             in: effectiveResultColumns(for: tab)
         )
-        let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
+        // The persisted page index counts pages of the size it was taken in, so reading it in
+        // today's default would land the tab on rows it was never showing.
+        let pageSize = tab.restoredPageSize ?? AppSettingsManager.shared.dataGrid.defaultPageSize
         let page = max(1, tab.restoredPage ?? 1)
 
         tabManager.mutate(at: index) { tab in
             tab.pendingRestoredSort = nil
             tab.restoredPage = nil
+            tab.restoredPageSize = nil
             if !resolvedSort.isEmpty {
                 tab.sortState = SortState(columns: resolvedSort, source: .user)
             }

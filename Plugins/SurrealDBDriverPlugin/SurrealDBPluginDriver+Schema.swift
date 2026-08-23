@@ -42,6 +42,11 @@ extension SurrealDBPluginDriver {
         _ = try await run(statement, scope: SurrealScope(namespace: nil, database: nil))
     }
 
+    func dropSchema(name: String) async throws {
+        let statement = "REMOVE DATABASE " + SurrealQL.quoteIdentifier(name) + ";"
+        _ = try await run(statement, scope: SurrealScope(namespace: currentNamespace, database: nil))
+    }
+
     // MARK: - Tables
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {

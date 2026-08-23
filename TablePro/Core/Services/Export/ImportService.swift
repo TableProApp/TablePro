@@ -27,15 +27,17 @@ struct ImportState {
 
 @MainActor @Observable
 final class ImportService {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ImportService")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ImportService")
 
     var state = ImportState()
 
     private let connection: DatabaseConnection
+    private let historyRecorder: QueryHistoryRecording
     private var currentProgress: PluginImportProgress?
 
-    init(connection: DatabaseConnection) {
+    init(connection: DatabaseConnection, historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared) {
         self.connection = connection
+        self.historyRecorder = historyRecorder
     }
 
     // MARK: - Cancellation
@@ -124,6 +126,8 @@ final class ImportService {
         defer { statusObservation.invalidate() }
 
         let result: PluginImportResult
+        let startedAt = Date()
+        let operationStart = ContinuousClock.Instant.now
         do {
             result = try await plugin.performImport(
                 source: source,
@@ -133,16 +137,27 @@ final class ImportService {
         } catch {
             state.errorMessage = error.localizedDescription
 
-            QueryHistoryManager.shared.recordQuery(
-                query: "-- Import from \(url.lastPathComponent) (\(progress.processedStatements) statements before failure)",
-                connectionId: connection.id,
-                databaseName: DatabaseManager.shared.activeDatabaseName(for: connection),
-                executionTime: 0,
-                rowCount: progress.processedStatements,
-                wasSuccessful: false,
-                errorMessage: error.localizedDescription
+            // An import the user cancelled is not a failed import, and the query paths already
+            // keep cancellations out of history for the same reason.
+            guard !(error is PluginImportCancellationError) else { throw error }
+
+            await historyRecorder.record(
+                QueryHistoryRecordRequest(
+                    query: "-- Import from \(url.lastPathComponent) (\(progress.processedStatements) statements before failure)",
+                    connectionId: connection.id,
+                    databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
+                    databaseType: connection.type,
+                    source: .dataImport,
+                    executionTime: Date().timeIntervalSince(startedAt),
+                    rowCount: -1,
+                    wasSuccessful: false,
+                    errorMessage: error.localizedDescription
+                )
             )
 
+            reportImportFinished(
+                .failed(reason: error.localizedDescription), connection: connection, startedAt: operationStart
+            )
             throw error
         }
 
@@ -151,16 +166,45 @@ final class ImportService {
         state.estimatedTotalStatements = result.executedStatements + result.skippedStatements
         state.progress = 1.0
 
-        QueryHistoryManager.shared.recordQuery(
-            query: "-- Import from \(url.lastPathComponent) (\(result.executedStatements) statements)",
-            connectionId: connection.id,
-            databaseName: DatabaseManager.shared.activeDatabaseName(for: connection),
-            executionTime: result.executionTime,
-            rowCount: result.executedStatements,
-            wasSuccessful: true,
-            errorMessage: nil
+        await historyRecorder.record(
+            QueryHistoryRecordRequest(
+                query: "-- Import from \(url.lastPathComponent) (\(result.executedStatements) statements)",
+                connectionId: connection.id,
+                databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
+                databaseType: connection.type,
+                source: .dataImport,
+                executionTime: result.executionTime,
+                rowCount: -1,
+                wasSuccessful: true
+            )
+        )
+
+        reportImportFinished(
+            .succeeded(OperationSummary(statementCount: result.executedStatements)),
+            connection: connection,
+            startedAt: operationStart
         )
 
         return result
+    }
+
+    /// An import the user cancelled reports nothing, matching what history already does with one
+    /// and for the same reason: they stopped it, so they know.
+    private func reportImportFinished(
+        _ outcome: OperationOutcome,
+        connection: DatabaseConnection,
+        startedAt: ContinuousClock.Instant
+    ) {
+        OperationCompletionReporter.shared.report(
+            OperationCompletion(
+                kind: .dataImport,
+                owner: .connection(connection.id),
+                connectionId: connection.id,
+                connectionName: connection.name,
+                databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
+                elapsed: startedAt.duration(to: .now),
+                outcome: outcome
+            )
+        )
     }
 }

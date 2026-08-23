@@ -16,29 +16,28 @@ final class MetadataConnectionPool {
     }
 
     private struct Key: Hashable, Sendable {
-        let connectionId: UUID
-        let database: String
-        let schema: String?
+        let scope: DatabaseScope
         let workload: Workload
     }
 
     @MainActor
     private final class Entry {
         let driver: DatabaseDriver
-        let ownsDriver: Bool
         var lastUsed: Date
         var inFlightCount: Int
         var closeWhenIdle: Bool
         private var tail: Task<Void, Never> = Task {}
 
-        init(driver: DatabaseDriver, ownsDriver: Bool = true) {
+        init(driver: DatabaseDriver) {
             self.driver = driver
-            self.ownsDriver = ownsDriver
             self.lastUsed = Date()
             self.inFlightCount = 0
             self.closeWhenIdle = false
         }
 
+        /// The work runs in its own task so the next caller can queue behind it, so
+        /// cancelling the caller has to be forwarded explicitly or a stopped query
+        /// would keep running with nobody waiting on it.
         func runSerially<T: Sendable>(
             _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
         ) async throws -> T {
@@ -46,10 +45,14 @@ final class MetadataConnectionPool {
             let driver = self.driver
             let work = Task { @MainActor () async throws -> T in
                 await previous.value
+                try Task.checkCancellation()
                 return try await body(driver)
             }
             tail = Task { @MainActor in _ = try? await work.value }
-            return try await work.value
+            return try await withTaskCancellationHandler(
+                operation: { try await work.value },
+                onCancel: { work.cancel() }
+            )
         }
     }
 
@@ -57,19 +60,16 @@ final class MetadataConnectionPool {
     private var pending: [Key: Task<Void, Error>] = [:]
     private let maxPerConnection = 6
     private let operationTimeoutSeconds: Double = 15
+    private let preparationTimeoutSeconds: Double = 60
 
     private init() {}
 
     func withDriver<T: Sendable>(
-        connectionId: UUID,
-        database: String,
-        schema: String? = nil,
+        scope: DatabaseScope,
         workload: Workload = .interactive,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
-        let entry = try await acquireEntry(
-            connectionId: connectionId, database: database, schema: schema, workload: workload
-        )
+        let entry = try await acquireEntry(scope: scope, workload: workload)
         entry.inFlightCount += 1
         entry.lastUsed = Date()
         defer { releaseEntry(entry) }
@@ -77,25 +77,24 @@ final class MetadataConnectionPool {
     }
 
     func closeAll(connectionId: UUID) {
-        for key in pending.keys where key.connectionId == connectionId {
+        for key in pending.keys where key.scope.connectionId == connectionId {
             pending[key]?.cancel()
             pending.removeValue(forKey: key)
         }
-        for key in entries.keys where key.connectionId == connectionId {
+        for key in entries.keys where key.scope.connectionId == connectionId {
             closeOrDeferEntry(forKey: key)
         }
     }
 
     private func releaseEntry(_ entry: Entry) {
         entry.inFlightCount -= 1
-        if entry.inFlightCount == 0, entry.closeWhenIdle, entry.ownsDriver {
+        if entry.inFlightCount == 0, entry.closeWhenIdle {
             entry.driver.disconnect()
         }
     }
 
     private func closeOrDeferEntry(forKey key: Key) {
         guard let entry = entries.removeValue(forKey: key) else { return }
-        guard entry.ownsDriver else { return }
         if entry.inFlightCount == 0 {
             entry.driver.disconnect()
         } else {
@@ -103,21 +102,9 @@ final class MetadataConnectionPool {
         }
     }
 
-    private func acquireEntry(
-        connectionId: UUID,
-        database: String,
-        schema: String?,
-        workload: Workload
-    ) async throws -> Entry {
-        if let session = DatabaseManager.shared.session(for: connectionId),
-           session.connection.type.supportsConnectionPooling == false {
-            guard let driver = session.driver, driver.status == .connected else {
-                throw DatabaseError.notConnected
-            }
-            return Entry(driver: driver, ownsDriver: false)
-        }
-
-        let key = Key(connectionId: connectionId, database: database, schema: schema, workload: workload)
+    private func acquireEntry(scope: DatabaseScope, workload: Workload) async throws -> Entry {
+        let connectionId = scope.connectionId
+        let key = Key(scope: scope, workload: workload)
         if let entry = entries[key], entry.driver.status == .connected {
             return entry
         }
@@ -151,13 +138,13 @@ final class MetadataConnectionPool {
     }
 
     private func openEntry(key: Key) async throws -> Entry {
-        guard let session = DatabaseManager.shared.session(for: key.connectionId) else {
+        guard let session = DatabaseManager.shared.session(for: key.scope.connectionId) else {
             throw DatabaseError.notConnected
         }
         var connection = session.effectiveConnection ?? session.connection
         let plan = Self.planConnection(
             configuredDatabase: connection.database,
-            targetDatabase: key.database,
+            targetDatabase: key.scope.database,
             authenticationIsDatabaseScoped: connection.type.authenticationIsDatabaseScoped
         )
         connection.database = plan.connectDatabase
@@ -169,14 +156,17 @@ final class MetadataConnectionPool {
         )
         do {
             try await Self.connect(driver, database: plan.connectDatabase, timeoutSeconds: operationTimeoutSeconds)
-            try? await driver.applyQueryTimeout(AppSettingsManager.shared.general.queryTimeoutSeconds)
-            await DatabaseManager.shared.executeStartupCommands(
-                session.connection.startupCommands, on: driver, connectionName: session.connection.name
+            try await Self.prepareSession(
+                driver,
+                queryTimeoutSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds,
+                startupCommands: session.connection.startupCommands,
+                connectionName: session.connection.name,
+                timeoutSeconds: preparationTimeoutSeconds
             )
             if let database = plan.switchDatabase {
                 try await Self.switchDatabase(driver, to: database, timeoutSeconds: operationTimeoutSeconds)
             }
-            if let schema = key.schema {
+            if let schema = key.scope.schema {
                 try await Self.switchSchema(driver, to: schema, timeoutSeconds: operationTimeoutSeconds)
             }
         } catch {
@@ -232,7 +222,30 @@ final class MetadataConnectionPool {
             timeoutSeconds: timeoutSeconds,
             timeoutMessage: String(format: String(localized: "Switching to schema '%@' timed out."), schema)
         ) {
-            try await switchable.switchSchema(to: schema)
+            try await switchable.switchSchemaIfNeeded(to: schema)
+        }
+    }
+
+    /// The startup commands are the user's own SQL and the query timeout can be a statement of its own,
+    /// so neither belongs under the single-round-trip budget the other steps use. They still need a
+    /// deadline: a hang here never resolves `pending[key]`, and a later reader joining that entry stays
+    /// suspended with no error and no log line at all.
+    static func prepareSession(
+        _ driver: DatabaseDriver,
+        queryTimeoutSeconds: Int,
+        startupCommands: String?,
+        connectionName: String,
+        timeoutSeconds: Double
+    ) async throws {
+        try await bounded(
+            driver: driver,
+            timeoutSeconds: timeoutSeconds,
+            timeoutMessage: String(localized: "Preparing the metadata connection timed out.")
+        ) {
+            try? await driver.applyQueryTimeout(queryTimeoutSeconds)
+            await DatabaseManager.shared.executeStartupCommands(
+                startupCommands, on: driver, connectionName: connectionName
+            )
         }
     }
 
@@ -256,8 +269,8 @@ final class MetadataConnectionPool {
     }
 
     private func evictIdleIfNeeded(for connectionId: UUID) {
-        let live = entries.filter { $0.key.connectionId == connectionId }
-        let pendingCount = pending.keys.filter { $0.connectionId == connectionId }.count
+        let live = entries.filter { $0.key.scope.connectionId == connectionId }
+        let pendingCount = pending.keys.filter { $0.scope.connectionId == connectionId }.count
         guard live.count + pendingCount >= maxPerConnection else { return }
         let oldestIdle = live
             .filter { $0.value.inFlightCount == 0 }

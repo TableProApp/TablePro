@@ -7,7 +7,10 @@ import Foundation
 import TableProPluginKit
 
 extension QueryExecutionCoordinator {
-    func executeMultipleStatements(_ statements: [String], bypassRowLimit: Bool = false) {
+    func executeMultipleStatements(
+        _ statements: [SQLStatementScanner.ExecutableStatement],
+        bypassRowLimit: Bool = false
+    ) {
         executeMultipleStatementsWithParameters(statements, parameters: [], bypassRowLimit: bypassRowLimit)
     }
 
@@ -31,7 +34,9 @@ extension QueryExecutionCoordinator {
         sql: String,
         index: Int,
         baseQuery: String,
-        baseQueryParameterValues: [String?]? = nil
+        baseQueryParameterValues: [String?]? = nil,
+        tabId: UUID,
+        anchor: StatementAnchor? = nil
     ) -> ResultSet {
         let tableName = parent.extractTableName(from: sql)
         let rows = TableRows.from(
@@ -39,95 +44,110 @@ extension QueryExecutionCoordinator {
             columns: result.columns.map { String($0) },
             columnTypes: result.columnTypes
         )
-        let resultSet = ResultSet(label: tableName ?? "Result \(index + 1)", tableRows: rows)
+        let resultSet = ResultSet(
+            label: ResultSet.label(tableName: tableName, anchor: anchor, index: index),
+            tableRows: rows
+        )
+        resultSet.statementAnchor = anchor
         resultSet.executionTime = result.executionTime
         resultSet.rowsAffected = result.rowsAffected
         resultSet.statusMessage = result.statusMessage
-        resultSet.tableName = tableName
         if !result.columns.isEmpty {
             resultSet.isTruncated = result.isTruncated
             resultSet.baseQuery = baseQuery
             resultSet.baseQueryParameterValues = baseQueryParameterValues
         }
+        resultSet.origin = statementOrigin(sql: sql, tabId: tabId, producesRows: !result.columns.isEmpty)
         return resultSet
+    }
+
+    /// Each statement in a multi-statement run targets its own table, so each result carries its
+    /// own identity. Nothing fetches key columns for these statements, so the origin says so and
+    /// the result is read-only until something does. Inheriting the previous run's keys made an
+    /// UPDATE match by another table's key names, and calling them "no keys" would hand the
+    /// generator a whole-row WHERE that changes every duplicate row.
+    private func statementOrigin(sql: String, tabId: UUID, producesRows: Bool) -> ResultOrigin? {
+        guard let tab = parent.tabManager.tabs.first(where: { $0.id == tabId }) else { return nil }
+        let resolved = parent.resolveTableEditability(tab: tab, sql: sql)
+        return ResultOrigin(
+            tableName: resolved.tableName,
+            schemaName: tab.tableContext.schemaName,
+            databaseName: historyDatabaseName(tabId: tabId),
+            primaryKeyColumns: [],
+            isEditable: resolved.isEditable && producesRows,
+            isView: tab.tableContext.isView,
+            keysResolved: false
+        )
     }
 
     func recordStatementHistory(
         sql: String,
         result: QueryResult,
         connection: DatabaseConnection,
+        databaseName: String,
         parameterValues: [QueryParameter]? = nil
     ) {
         let historySQL = sql.hasSuffix(";") ? sql : sql + ";"
-        QueryHistoryManager.shared.recordQuery(
-            query: historySQL,
-            connectionId: connection.id,
-            databaseName: parent.activeDatabaseName,
-            executionTime: result.executionTime,
-            rowCount: result.rows.count,
-            wasSuccessful: true,
-            errorMessage: nil,
-            parameterValues: parameterValues
+        recordHistory(
+            QueryHistoryRecordRequest(
+                query: historySQL,
+                connectionId: connection.id,
+                databaseName: databaseName,
+                databaseType: connection.type,
+                source: .editor,
+                executionTime: result.executionTime,
+                rowCount: result.rows.count,
+                wasSuccessful: true
+            )
         )
     }
 
     func applyMultiStatementResults(
         tabId: UUID,
-        capturedGeneration: Int,
+        claim: TabExecutionClaim,
         cumulativeTime: TimeInterval,
         totalRowsAffected: Int,
-        lastSelectResult: QueryResult?,
-        lastSelectSQL: String?,
         newResultSets: [ResultSet]
     ) {
-        parent.currentQueryTask = nil
-        parent.toolbarState.setExecuting(false)
+        guard parent.tabExecution.settle(claim) else { return }
+        parent.retireQueryTask(for: claim)
         parent.toolbarState.lastQueryDuration = cumulativeTime
 
-        if capturedGeneration != parent.queryGeneration {
-            parent.tabManager.mutate(tabId: tabId) { $0.execution.isExecuting = false }
-            return
-        }
+        /// Once for the batch, never once per statement, and below the settle gate rather than at
+        /// the call site: a superseded batch has its results dropped here, and a notification
+        /// raised outside this guard would announce a result the user will never be shown.
+        reportOperation(
+            kind: .queryBatch,
+            claim: claim,
+            outcome: .succeeded(
+                OperationSummary(rowsAffected: totalRowsAffected, statementCount: newResultSets.count)
+            )
+        )
+
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
             return
         }
 
         let currentTab = parent.tabManager.tabs[idx]
-        let resolvedTableName: String?
-        if let selectResult = lastSelectResult {
-            let safeColumns = selectResult.columns.map { String($0) }
-            let safeColumnTypes = selectResult.columnTypes
-            let safeRows = selectResult.rows
-            if currentTab.tabType == .table, let existing = currentTab.tableContext.tableName {
-                resolvedTableName = existing
-            } else {
-                resolvedTableName = lastSelectSQL.flatMap { parent.extractTableName(from: $0) }
-            }
+        let activeResult = newResultSets.last
+        let activeOrigin = activeResult?.origin
 
-            parent.setActiveTableRows(
-                TableRows.from(queryRows: safeRows, columns: safeColumns, columnTypes: safeColumnTypes),
-                for: currentTab.id
-            )
-        } else {
-            resolvedTableName = nil
-            parent.setActiveTableRows(TableRows(), for: currentTab.id)
-        }
+        parent.flushBufferToActiveResult(tabId: currentTab.id, pinnedOnly: true)
+        parent.setActiveTableRows(activeResult?.tableRows ?? TableRows(), for: currentTab.id)
 
         parent.tabManager.mutate(at: idx) { tab in
-            if lastSelectResult != nil {
-                tab.tableContext.tableName = resolvedTableName
-                tab.tableContext.isEditable = resolvedTableName != nil && tab.tableContext.isEditable
-            } else {
-                if tab.tabType != .table {
-                    tab.tableContext.tableName = nil
-                }
+            if tab.tabType == .query {
+                tab.tableContext.tableName = activeOrigin?.tableName
+                tab.tableContext.schemaName = activeOrigin?.schemaName
+                tab.tableContext.primaryKeyColumns = activeOrigin?.primaryKeyColumns ?? []
+                tab.tableContext.isEditable = activeOrigin?.isEditable ?? false
+            } else if activeOrigin?.tableName == nil {
                 tab.tableContext.isEditable = false
             }
 
             tab.schemaVersion += 1
             tab.execution.executionTime = cumulativeTime
             tab.execution.rowsAffected = totalRowsAffected
-            tab.execution.isExecuting = false
             tab.execution.lastExecutedAt = Date()
             tab.execution.errorMessage = nil
 
@@ -136,7 +156,7 @@ extension QueryExecutionCoordinator {
                 tab.display.isResultsCollapsed = false
             }
 
-            let activeResultSet = newResultSets.last
+            let activeResultSet = activeResult
             if activeResultSet?.isTruncated == true {
                 tab.pagination.hasMoreRows = true
                 tab.pagination.isLoadingMore = false

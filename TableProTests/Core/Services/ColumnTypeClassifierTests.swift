@@ -932,4 +932,62 @@ struct ColumnTypeClassifierTests {
             #expect(isText(classifier.classify(rawTypeName: "varchar(255)")))
         }
     }
+
+    @Suite("Array Types")
+    struct ArrayTypes {
+        private let classifier = ColumnTypeClassifier()
+
+        private func element(_ rawTypeName: String) -> ColumnType? {
+            classifier.classify(rawTypeName: rawTypeName).arrayElement
+        }
+
+        @Test("A bracket suffix classifies the element type")
+        func classifiesElementType() {
+            #expect(element("text[]") == .text(rawType: "text"))
+            #expect(element("integer[]") == .integer(rawType: "integer"))
+            #expect(element("numeric[]") == .decimal(rawType: "numeric"))
+            #expect(element("boolean[]") == .boolean(rawType: "boolean"))
+            #expect(element("timestamptz[]") == .timestamp(rawType: "timestamptz"))
+            #expect(element("uuid[]") == .text(rawType: "uuid"))
+        }
+
+        @Test("An enum array keeps the element's enum classification")
+        func classifiesEnumArray() {
+            #expect(element("ENUM[]")?.isEnumType == true)
+            #expect(element("ENUM[](mood)")?.isEnumType == true)
+        }
+
+        @Test("The raw type name survives classification")
+        func preservesRawTypeName() {
+            #expect(classifier.classify(rawTypeName: "ENUM[](mood)").rawType == "ENUM[](mood)")
+            #expect(classifier.classify(rawTypeName: "text[]").rawType == "text[]")
+        }
+
+        @Test("Element editing is offered for scalar elements only")
+        func gatesElementEditing() {
+            #expect(classifier.classify(rawTypeName: "ENUM[]").supportsElementEditing)
+            #expect(classifier.classify(rawTypeName: "text[]").supportsElementEditing)
+            #expect(classifier.classify(rawTypeName: "integer[]").supportsElementEditing)
+            #expect(!classifier.classify(rawTypeName: "jsonb[]").supportsElementEditing)
+            #expect(!classifier.classify(rawTypeName: "bytea[]").supportsElementEditing)
+            #expect(!classifier.classify(rawTypeName: "text").supportsElementEditing)
+        }
+
+        @Test("Array badges and display names name the element")
+        func describesElement() {
+            #expect(classifier.classify(rawTypeName: "text[]").badgeLabel == "string[]")
+            #expect(classifier.classify(rawTypeName: "ENUM[]").badgeLabel == "enum[]")
+            #expect(classifier.classify(rawTypeName: "text[]").displayName == "Text Array")
+        }
+
+        @Test("Types that are not bracket arrays keep their existing classification")
+        func leavesOtherTypesAlone() {
+            #expect(classifier.classify(rawTypeName: "ARRAY").isJsonType)
+            #expect(classifier.classify(rawTypeName: "Array(String)").isJsonType)
+            #expect(classifier.classify(rawTypeName: "ENUM").isEnumType)
+            #expect(classifier.classify(rawTypeName: "ENUM(mood)").isEnumType)
+            #expect(classifier.classify(rawTypeName: "SET('a','b')").isSetType)
+            #expect(classifier.classify(rawTypeName: "[]").arrayElement == nil)
+        }
+    }
 }

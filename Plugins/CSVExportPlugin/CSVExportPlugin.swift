@@ -8,7 +8,7 @@ import SwiftUI
 import TableProPluginKit
 
 @Observable
-final class CSVExportPlugin: ExportFormatPlugin, SettablePlugin {
+final class CSVExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "CSV Export"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Export data to CSV format"
@@ -29,6 +29,7 @@ final class CSVExportPlugin: ExportFormatPlugin, SettablePlugin {
 
     required init() { loadSettings() }
 
+    @MainActor
     func settingsView() -> AnyView? {
         AnyView(CSVExportOptionsView(plugin: self))
     }

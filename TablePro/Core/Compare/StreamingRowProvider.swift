@@ -10,7 +10,9 @@ import Foundation
 import TableProPluginKit
 
 internal final class StreamingRowProvider: DataRowProviding {
-    private var iterator: AsyncThrowingStream<PluginStreamElement, Error>.AsyncIterator
+    /// The merge join awaits one `nextRow()` at a time, so the iterator is only ever advanced
+    /// from a single task. Region isolation cannot see that invariant across the `next()` hop.
+    nonisolated(unsafe) private var iterator: AsyncThrowingStream<PluginStreamElement, Error>.AsyncIterator
     private var columns: [String]
     private var buffer: [DataRow] = []
     private var bufferIndex = 0

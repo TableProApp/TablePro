@@ -32,6 +32,8 @@ struct GridValueFilterState: Equatable {
 
     func filter(forColumn dataIndex: Int) -> ColumnValueFilter? { filters[dataIndex] }
 
+    func columnName(forColumn dataIndex: Int) -> String? { columnNames[dataIndex] }
+
     mutating func set(_ filter: ColumnValueFilter, columnName: String, forColumn dataIndex: Int) {
         filters[dataIndex] = filter
         columnNames[dataIndex] = columnName
@@ -47,10 +49,14 @@ struct GridValueFilterState: Equatable {
         columnNames.removeAll()
     }
 
-    mutating func prune(againstColumns columns: [String]) {
+    @discardableResult
+    mutating func prune(againstColumns columns: [String]) -> Bool {
+        var removedAny = false
         for (dataIndex, name) in columnNames where dataIndex >= columns.count || columns[dataIndex] != name {
             filters.removeValue(forKey: dataIndex)
             columnNames.removeValue(forKey: dataIndex)
+            removedAny = true
         }
+        return removedAny
     }
 }

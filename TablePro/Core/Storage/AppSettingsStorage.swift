@@ -10,7 +10,7 @@ import Foundation
 import os
 
 /// Persistent storage for app settings
-final class AppSettingsStorage {
+final class AppSettingsStorage: Sendable {
     static let shared = AppSettingsStorage()
     private static let logger = Logger(subsystem: "com.TablePro", category: "AppSettingsStorage")
 
@@ -31,6 +31,7 @@ final class AppSettingsStorage {
         static let ai = "com.TablePro.settings.ai"
         static let sync = "com.TablePro.settings.sync"
         static let mcp = "com.TablePro.settings.mcp"
+        static let notifications = "com.TablePro.settings.notifications"
         static let hasCompletedOnboarding = "com.TablePro.settings.hasCompletedOnboarding"
         static let startupReopenMigration = "com.TablePro.settings.didMigrateStartupToReopenLast"
         static let jsonFieldHeightMigration = "com.TablePro.settings.didMigrateJsonFieldHeightKey"
@@ -156,6 +157,14 @@ final class AppSettingsStorage {
 
     // MARK: - MCP Settings
 
+    func loadNotifications() -> NotificationSettings {
+        load(key: Keys.notifications, default: .default)
+    }
+
+    func saveNotifications(_ settings: NotificationSettings) {
+        save(settings, key: Keys.notifications)
+    }
+
     func loadMCP() -> MCPSettings {
         load(key: Keys.mcp, default: .default)
     }
@@ -220,6 +229,7 @@ final class AppSettingsStorage {
         saveMCP(.default)
         defaults.removeObject(forKey: PreferenceKeys.selectedSettingsPane.name)
         defaults.removeObject(forKey: PreferenceKeys.rowInspectorJsonFieldHeight.name)
+        defaults.removeObject(forKey: PreferenceKeys.rowInspectorTextFieldHeight.name)
         defaults.removeObject(forKey: SidebarPersistenceKey.defaultLayout)
     }
 

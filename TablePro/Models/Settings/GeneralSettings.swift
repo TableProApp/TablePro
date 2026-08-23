@@ -27,6 +27,7 @@ enum AppLanguage: String, Codable, CaseIterable, Identifiable {
     case vietnamese = "vi"
     case chineseSimplified = "zh-Hans"
     case chineseTraditional = "zh-Hant"
+    case korean = "ko"
     case turkish = "tr"
 
     var id: String { rawValue }
@@ -38,6 +39,7 @@ enum AppLanguage: String, Codable, CaseIterable, Identifiable {
         case .vietnamese: return "Tiếng Việt"
         case .chineseSimplified: return "简体中文"
         case .chineseTraditional: return "繁體中文"
+        case .korean: return "한국어"
         case .turkish: return "Türkçe"
         }
     }
@@ -69,6 +71,14 @@ struct GeneralSettings: Codable, Equatable {
     /// Whether to show database object comments in the sidebar and data grid headers
     var showObjectComments: Bool
 
+    /// Whether sidebar rows show a type icon before the object name
+    var showObjectIcons: Bool
+    /// Whether the window shows the workspace rail listing every open connection and database
+    var showWorkspaceRail: Bool
+
+    /// How tall sidebar rows are drawn, following the system Appearance setting unless overridden
+    var sidebarRowSize: SidebarRowSizePreference
+
     static let `default` = GeneralSettings(
         startupBehavior: .reopenLast,
         language: .system,
@@ -76,7 +86,10 @@ struct GeneralSettings: Codable, Equatable {
         queryTimeoutSeconds: 60,
         shareAnalytics: true,
         showRecentTables: false,
-        showObjectComments: true
+        showObjectComments: true,
+        showObjectIcons: true,
+        showWorkspaceRail: true,
+        sidebarRowSize: .matchSystem
     )
 
     init(
@@ -86,7 +99,10 @@ struct GeneralSettings: Codable, Equatable {
         queryTimeoutSeconds: Int = 60,
         shareAnalytics: Bool = true,
         showRecentTables: Bool = false,
-        showObjectComments: Bool = true
+        showObjectComments: Bool = true,
+        showObjectIcons: Bool = true,
+        showWorkspaceRail: Bool = true,
+        sidebarRowSize: SidebarRowSizePreference = .matchSystem
     ) {
         self.startupBehavior = startupBehavior
         self.language = language
@@ -95,6 +111,9 @@ struct GeneralSettings: Codable, Equatable {
         self.shareAnalytics = shareAnalytics
         self.showRecentTables = showRecentTables
         self.showObjectComments = showObjectComments
+        self.showObjectIcons = showObjectIcons
+        self.showWorkspaceRail = showWorkspaceRail
+        self.sidebarRowSize = sidebarRowSize
     }
 
     init(from decoder: Decoder) throws {
@@ -106,5 +125,10 @@ struct GeneralSettings: Codable, Equatable {
         shareAnalytics = try container.decodeIfPresent(Bool.self, forKey: .shareAnalytics) ?? true
         showRecentTables = try container.decodeIfPresent(Bool.self, forKey: .showRecentTables) ?? false
         showObjectComments = try container.decodeIfPresent(Bool.self, forKey: .showObjectComments) ?? true
+        showObjectIcons = try container.decodeIfPresent(Bool.self, forKey: .showObjectIcons) ?? true
+        showWorkspaceRail = try container.decodeIfPresent(Bool.self, forKey: .showWorkspaceRail) ?? true
+        sidebarRowSize = try container.decodeIfPresent(
+            SidebarRowSizePreference.self, forKey: .sidebarRowSize
+        ) ?? .matchSystem
     }
 }

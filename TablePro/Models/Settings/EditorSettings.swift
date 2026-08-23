@@ -75,6 +75,9 @@ struct EditorSettings: Codable, Equatable {
     var vimModeEnabled: Bool
     var uppercaseKeywords: Bool
     var queryParametersEnabled: Bool
+    var codeFoldingEnabled: Bool
+    var highlightCurrentStatement: Bool
+    var showStatementRunControls: Bool
     var jsonViewerPreferredMode: JSONViewMode
 
     static let `default` = EditorSettings(
@@ -85,6 +88,9 @@ struct EditorSettings: Codable, Equatable {
         vimModeEnabled: false,
         uppercaseKeywords: false,
         queryParametersEnabled: true,
+        codeFoldingEnabled: true,
+        highlightCurrentStatement: true,
+        showStatementRunControls: true,
         jsonViewerPreferredMode: .text
     )
 
@@ -96,6 +102,9 @@ struct EditorSettings: Codable, Equatable {
         vimModeEnabled: Bool = false,
         uppercaseKeywords: Bool = false,
         queryParametersEnabled: Bool = true,
+        codeFoldingEnabled: Bool = true,
+        highlightCurrentStatement: Bool = true,
+        showStatementRunControls: Bool = true,
         jsonViewerPreferredMode: JSONViewMode = .text
     ) {
         self.showLineNumbers = showLineNumbers
@@ -105,6 +114,9 @@ struct EditorSettings: Codable, Equatable {
         self.vimModeEnabled = vimModeEnabled
         self.uppercaseKeywords = uppercaseKeywords
         self.queryParametersEnabled = queryParametersEnabled
+        self.codeFoldingEnabled = codeFoldingEnabled
+        self.highlightCurrentStatement = highlightCurrentStatement
+        self.showStatementRunControls = showStatementRunControls
         self.jsonViewerPreferredMode = jsonViewerPreferredMode
     }
 
@@ -117,6 +129,9 @@ struct EditorSettings: Codable, Equatable {
         vimModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .vimModeEnabled) ?? false
         uppercaseKeywords = try container.decodeIfPresent(Bool.self, forKey: .uppercaseKeywords) ?? false
         queryParametersEnabled = try container.decodeIfPresent(Bool.self, forKey: .queryParametersEnabled) ?? true
+        codeFoldingEnabled = try container.decodeIfPresent(Bool.self, forKey: .codeFoldingEnabled) ?? true
+        highlightCurrentStatement = try container.decodeIfPresent(Bool.self, forKey: .highlightCurrentStatement) ?? true
+        showStatementRunControls = try container.decodeIfPresent(Bool.self, forKey: .showStatementRunControls) ?? true
         jsonViewerPreferredMode = try container.decodeIfPresent(JSONViewMode.self, forKey: .jsonViewerPreferredMode) ?? .text
     }
 

@@ -41,22 +41,12 @@ extension MainContentCoordinator {
             return String(localized: "Navigating to another page will discard all unsaved changes.")
         case .filter:
             return String(localized: "Applying or clearing filters will reload data and discard all unsaved changes.")
+        case .resultSwitch:
+            return String(localized: "Showing another result will discard all unsaved changes.")
         }
     }
 
     // MARK: - Error Alerts
-
-    /// Show query execution error as a sheet
-    /// - Parameters:
-    ///   - error: The error that occurred
-    ///   - window: Parent window (optional)
-    func showQueryError(_ error: Error, window: NSWindow?) {
-        AlertHelper.showErrorSheet(
-            title: String(localized: "Query Execution Failed"),
-            message: error.localizedDescription,
-            window: window
-        )
-    }
 
     /// Show save changes error as a sheet
     /// - Parameters:

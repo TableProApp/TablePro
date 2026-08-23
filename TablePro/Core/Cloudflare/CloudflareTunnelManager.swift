@@ -136,8 +136,8 @@ actor CloudflareTunnelManager: TunnelManaging {
     /// or was force-quit. Verifies each recorded PID still points at cloudflared
     /// before signalling it, so a recycled PID is never killed.
     func sweepStalePidsIfNeeded() {
-        defer { UserDefaults.standard.removeObject(forKey: Self.stalePidsDefaultsKey) }
-        guard let data = UserDefaults.standard.data(forKey: Self.stalePidsDefaultsKey),
+        defer { AppStorageEnvironment.shared.defaults.removeObject(forKey: Self.stalePidsDefaultsKey) }
+        guard let data = AppStorageEnvironment.shared.defaults.data(forKey: Self.stalePidsDefaultsKey),
               let records = try? JSONDecoder().decode([CloudflaredPidRecord].self, from: data) else {
             return
         }
@@ -254,12 +254,12 @@ actor CloudflareTunnelManager: TunnelManaging {
     private func persistPidRecords() {
         let records = Array(pidRecords.values)
         guard !records.isEmpty else {
-            UserDefaults.standard.removeObject(forKey: Self.stalePidsDefaultsKey)
+            AppStorageEnvironment.shared.defaults.removeObject(forKey: Self.stalePidsDefaultsKey)
             return
         }
         do {
             let data = try JSONEncoder().encode(records)
-            UserDefaults.standard.set(data, forKey: Self.stalePidsDefaultsKey)
+            AppStorageEnvironment.shared.defaults.set(data, forKey: Self.stalePidsDefaultsKey)
         } catch {
             Self.logger.error("Failed to persist cloudflared PID records, leaked processes may survive to next launch: \(error.localizedDescription, privacy: .public)")
         }

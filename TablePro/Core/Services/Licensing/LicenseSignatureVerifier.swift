@@ -10,7 +10,7 @@ import os
 import Security
 
 /// Verifies RSA-SHA256 signatures on license payloads using the embedded public key
-final class LicenseSignatureVerifier {
+final class LicenseSignatureVerifier: @unchecked Sendable {
     static let shared = LicenseSignatureVerifier()
 
     private let publicKey: SecKey?
@@ -32,9 +32,11 @@ final class LicenseSignatureVerifier {
             throw LicenseError.signatureInvalid
         }
 
-        // Encode the data portion as canonical JSON (same as server)
+        // Encode the data portion as canonical JSON (same as server). The server signs
+        // json_encode($data, JSON_UNESCAPED_SLASHES) over a ksort'ed array, so the slash must
+        // stay raw here or a signed field containing one never verifies.
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let dataJSON = try encoder.encode(payload.data)
 
         guard let signatureData = Data(base64Encoded: payload.signature) else {

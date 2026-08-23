@@ -8,6 +8,7 @@
 //  field-detection options shown in this sheet.
 //
 
+import AppKit
 import Combine
 import os
 import SwiftUI
@@ -63,6 +64,16 @@ struct RowImportSheet: View {
     @State private var showErrorDialog = false
     @State private var importTask: Task<Void, Never>?
 
+    /// Tables this sheet created, against the CREATE that made each one. A failed import leaves its
+    /// table behind, so a retry has to know it already owns that table rather than trying to create
+    /// it a second time and failing on the name.
+    @State private var createdTables: [String: String] = [:]
+
+    /// The window this sheet is hosted in, used for presenting its alerts.
+    /// Avoids `NSApp.keyWindow`, which when a result is presented is the progress sheet being
+    /// torn down in the same transaction, and AppKit ends a sheet's children with it (#2314).
+    @State private var hostWindow: NSWindow?
+
     var body: some View {
         VStack(spacing: 0) {
             headerView
@@ -87,6 +98,11 @@ struct RowImportSheet: View {
                 .padding()
         }
         .frame(width: 720, height: 640)
+        .background {
+            WindowAccessor { window in
+                hostWindow = window
+            }
+        }
         .task {
             await loadTables()
             await loadNewColumns()
@@ -107,14 +123,19 @@ struct RowImportSheet: View {
                     .interactiveDismissDisabled()
             }
         }
-        .sheet(isPresented: $showSuccessDialog, onDismiss: {
-            isPresented = false
-            AppCommands.shared.refreshData.send(connection.id)
-        }) {
-            ImportSuccessView(result: importResult) { showSuccessDialog = false }
+        .onChange(of: showSuccessDialog) { _, isShowing in
+            guard isShowing else { return }
+            TransferResultAlert.presentImportSuccess(result: importResult, window: hostWindow) {
+                showSuccessDialog = false
+                isPresented = false
+                AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
+            }
         }
-        .sheet(isPresented: $showErrorDialog) {
-            ImportErrorView(error: importError) { showErrorDialog = false }
+        .onChange(of: showErrorDialog) { _, isShowing in
+            guard isShowing else { return }
+            TransferResultAlert.presentImportFailure(error: importError, window: hostWindow) {
+                showErrorDialog = false
+            }
         }
     }
 
@@ -190,16 +211,16 @@ struct RowImportSheet: View {
     }
 
     private var footerView: some View {
-        HStack {
-            Button("Cancel") { isPresented = false }
-                .keyboardShortcut(.cancelAction)
+        DialogFooter {
             if let message = validationMessage {
                 Text(message)
                     .font(.caption)
                     .foregroundStyle(.red)
                     .lineLimit(2)
             }
-            Spacer()
+        } actions: {
+            Button("Cancel") { isPresented = false }
+                .keyboardShortcut(.cancelAction)
             Button("Import") { performImport() }
                 .buttonStyle(.borderedProminent)
                 .disabled(!canImport)
@@ -243,9 +264,10 @@ struct RowImportSheet: View {
     private var mappingTable: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                Toggle("", isOn: allMappingsIncluded)
+                Toggle(String(localized: "Import all fields"), isOn: allMappingsIncluded)
                     .labelsHidden()
                     .help(String(localized: "Import all fields"))
+                    .accessibilityLabel(Text("Import all fields"))
                     .frame(width: 16)
                 Text("Field")
                     .font(.caption)
@@ -314,11 +336,11 @@ struct RowImportSheet: View {
                 Text("Key")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .frame(width: 30)
+                    .frame(minWidth: 30)
                 Text("Null")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .frame(width: 30)
+                    .frame(minWidth: 30)
                 Text("Default")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -369,11 +391,11 @@ struct RowImportSheet: View {
             .disabled(!row.include)
             Toggle("", isOn: columnBinding(row).isPrimaryKey)
                 .labelsHidden()
-                .frame(width: 30)
+                .frame(minWidth: 30)
                 .disabled(!row.include)
             Toggle("", isOn: columnBinding(row).isNullable)
                 .labelsHidden()
-                .frame(width: 30)
+                .frame(minWidth: 30)
                 .disabled(!row.include)
             TextField("", text: columnBinding(row).defaultValue)
                 .textFieldStyle(.roundedBorder)
@@ -615,7 +637,7 @@ struct RowImportSheet: View {
         importTask = Task {
             do {
                 if let createTableSQL {
-                    try await createTable(sql: createTableSQL)
+                    try await prepareTable(named: targetTable, sql: createTableSQL)
                 }
                 let result = try await service.importFile(
                     from: fileURL,
@@ -639,6 +661,40 @@ struct RowImportSheet: View {
                 }
             }
         }
+    }
+
+    @MainActor
+    private func prepareTable(named tableName: String, sql: String) async throws {
+        switch NewTableImportPlanner.plan(
+            forTable: tableName, createTableSQL: sql, alreadyCreated: createdTables
+        ) {
+        case .create:
+            try await createTable(sql: sql)
+            createdTables[tableName] = sql
+        case .reuseAfterClearing:
+            try await clearRows(of: tableName)
+        case .nameTakenWithDifferentColumns:
+            throw PluginImportError.importFailed(
+                String(
+                    format: String(localized: "The table %@ was already created with different columns. Choose another name."),
+                    tableName
+                )
+            )
+        }
+    }
+
+    @MainActor
+    private func clearRows(of tableName: String) async throws {
+        guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
+            throw DatabaseError.notConnected
+        }
+        let generator = try SQLStatementGenerator(
+            tableName: tableName,
+            columns: [],
+            primaryKeyColumns: [],
+            databaseType: connection.type
+        )
+        _ = try await driver.execute(query: generator.deleteAllRowsStatement())
     }
 
     private func createTable(sql: String) async throws {

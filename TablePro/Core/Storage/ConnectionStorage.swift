@@ -14,7 +14,7 @@ import TableProSyncTransport
 @MainActor
 final class ConnectionStorage {
     static let shared = ConnectionStorage()
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionStorage")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionStorage")
 
     private let connectionsKey = "com.TablePro.connections"
     private let migratedToFileKey = "com.TablePro.connectionsMigratedToFile"
@@ -27,6 +27,10 @@ final class ConnectionStorage {
     /// In-memory cache to avoid re-decoding JSON from file on every access
     private var cachedConnections: [DatabaseConnection]?
 
+    /// Whether the file on disk is the one TablePro last wrote. False once it has been edited by
+    /// something else, which is the signal to refuse to run a connection's password source.
+    private(set) var storeIsTrusted = true
+
     private let fileURL: URL
 
     private let keychain: any KeychainStoring
@@ -36,7 +40,7 @@ final class ConnectionStorage {
         userDefaults: UserDefaults = .standard,
         syncTracker: SyncChangeTracker = .shared,
         appSettings: @escaping @autoclosure () -> AppSettingsStorage = .shared,
-        keychain: any KeychainStoring = KeychainHelper.shared
+        keychain: any KeychainStoring = AppStorageEnvironment.shared.keychain
     ) {
         self.fileURL = fileURL
         self.defaults = userDefaults
@@ -48,10 +52,7 @@ final class ConnectionStorage {
     }
 
     nonisolated static func defaultFileURL() -> URL {
-        let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first ?? FileManager.default.temporaryDirectory
+        let appSupport = AppStorageEnvironment.shared.applicationSupportRoot
         let dir = appSupport.appendingPathComponent("TablePro", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("connections.json")
@@ -78,7 +79,24 @@ final class ConnectionStorage {
         if let cached = cachedConnections { return cached }
 
         guard let data = try? Data(contentsOf: fileURL) else {
+            storeIsTrusted = true
             return []
+        }
+
+        switch ConnectionStoreIntegrity.shared.verify(data, fileURL: fileURL) {
+        case .trusted:
+            storeIsTrusted = true
+        case .unstamped:
+            // An install that predates the tag. Adopt the file as it stands, which is the only
+            // option without a prior baseline, and stamp it so later edits are detectable.
+            ConnectionStoreIntegrity.shared.stamp(data, fileURL: fileURL)
+            storeIsTrusted = true
+        case .modified:
+            Self.logger.warning("connections.json changed outside TablePro; password sources will not run")
+            storeIsTrusted = false
+        case .unavailable:
+            Self.logger.warning("No connection store integrity key; password sources will not run")
+            storeIsTrusted = false
         }
 
         do {
@@ -125,6 +143,9 @@ final class ConnectionStorage {
         do {
             let data = try encoder.encode(storedConnections)
             try data.write(to: fileURL, options: .atomic)
+            // Trust follows the tag. If no tag could be written, later edits are undetectable,
+            // so the store is not treated as trusted.
+            storeIsTrusted = ConnectionStoreIntegrity.shared.stamp(data, fileURL: fileURL)
             cachedConnections = nil
             return true
         } catch {
@@ -242,12 +263,13 @@ final class ConnectionStorage {
     }
 
     /// Delete a connection
-    func deleteConnection(_ connection: DatabaseConnection) {
+    @discardableResult
+    func deleteConnection(_ connection: DatabaseConnection) -> Bool {
         var connections = loadConnections()
         connections.removeAll { $0.id == connection.id }
         guard saveConnections(connections) else {
             Self.logger.error("Aborted deleteConnection: persistence failed for \(connection.id, privacy: .public)")
-            return
+            return false
         }
         if !connection.localOnly && !connection.isSample {
             syncTracker.markDeleted(.connection, id: connection.id.uuidString)
@@ -265,27 +287,29 @@ final class ConnectionStorage {
         let secureFieldIds = Self.secureFieldIds(for: connection.type)
         deleteAllPluginSecureFields(for: connection.id, fieldIds: secureFieldIds)
 
-        let appSettings = appSettingsProvider()
-        appSettings.saveLastDatabase(nil, for: connection.id)
-        appSettings.saveLastSchema(nil, for: connection.id)
-
-        FavoriteTablesStorage.shared.removeFavorites(for: connection.id)
-        FilterSettingsStorage.shared.removeFilters(for: connection.id)
-        DatabaseTreeFilterStorage.shared.removeFilter(for: connection.id)
-        RecentlyClosedTabStore.shared.removeEntries(for: connection.id)
+        ConnectionLocalState.purge(
+            connectionIds: [connection.id],
+            origin: .local,
+            appSettings: appSettingsProvider()
+        )
         Task {
             await SQLFavoriteManager.shared.removeFavoritesAndFolders(for: connection.id)
+            await QueryHistoryManager.shared.clear(
+                matching: QueryHistoryFilter(scope: .connection(connection.id))
+            )
         }
+        return true
     }
 
     /// Batch-delete multiple connections and clean up their Keychain entries
-    func deleteConnections(_ connectionsToDelete: [DatabaseConnection]) {
+    @discardableResult
+    func deleteConnections(_ connectionsToDelete: [DatabaseConnection]) -> Bool {
         let idsToDelete = Set(connectionsToDelete.map(\.id))
         var all = loadConnections()
         all.removeAll { idsToDelete.contains($0.id) }
         guard saveConnections(all) else {
             Self.logger.error("Aborted deleteConnections: persistence failed for \(idsToDelete.count, privacy: .public) connection(s)")
-            return
+            return false
         }
         for conn in connectionsToDelete where !conn.localOnly && !conn.isSample {
             syncTracker.markDeleted(.connection, id: conn.id.uuidString)
@@ -302,19 +326,21 @@ final class ConnectionStorage {
             deleteSOCKSProxyPassword(for: conn.id)
             let fields = Self.secureFieldIds(for: conn.type)
             deleteAllPluginSecureFields(for: conn.id, fieldIds: fields)
-            let appSettings = appSettingsProvider()
-            appSettings.saveLastDatabase(nil, for: conn.id)
-            appSettings.saveLastSchema(nil, for: conn.id)
-            FavoriteTablesStorage.shared.removeFavorites(for: conn.id)
         }
-        FilterSettingsStorage.shared.removeFilters(for: idsToDelete)
-        DatabaseTreeFilterStorage.shared.removeFilters(for: idsToDelete)
-        RecentlyClosedTabStore.shared.removeEntries(for: idsToDelete)
+        ConnectionLocalState.purge(
+            connectionIds: idsToDelete,
+            origin: .local,
+            appSettings: appSettingsProvider()
+        )
         Task {
             for conn in connectionsToDelete {
                 await SQLFavoriteManager.shared.removeFavoritesAndFolders(for: conn.id)
+                await QueryHistoryManager.shared.clear(
+                    matching: QueryHistoryFilter(scope: .connection(conn.id))
+                )
             }
         }
+        return true
     }
 
     /// Duplicate a connection with a new UUID and "(Copy)" suffix

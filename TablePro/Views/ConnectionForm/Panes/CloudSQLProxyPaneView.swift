@@ -92,7 +92,7 @@ struct CloudSQLProxyPaneView: View {
                 .frame(minHeight: 96)
                 .overlay(
                     RoundedRectangle(cornerRadius: 4)
-                        .stroke(Color.secondary.opacity(0.3))
+                        .stroke(Color(nsColor: .separatorColor))
                 )
             Text("Stored in the macOS Keychain and written to a temporary file only while the proxy runs.")
                 .font(.caption)
@@ -135,7 +135,7 @@ struct CloudSQLProxyPaneView: View {
                 prompt: Text("Automatic")
             )
             HStack {
-                Button("Choose...") {
+                Button("Choose…") {
                     chooseBinary()
                 }
                 .controlSize(.small)
@@ -143,7 +143,7 @@ struct CloudSQLProxyPaneView: View {
                     ProgressView()
                         .controlSize(.small)
                 } else {
-                    Button("Download cloud-sql-proxy...") {
+                    Button("Download cloud-sql-proxy…") {
                         viewModel.downloadBinary()
                     }
                     .controlSize(.small)
@@ -183,7 +183,8 @@ struct CloudSQLProxyPaneView: View {
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         panel.directoryURL = URL(fileURLWithPath: "/usr/local/bin")
-        if panel.runModal() == .OK, let url = panel.url {
+        panel.presentAsSheet(for: NSApp.keyWindow) { url in
+            guard let url else { return }
             coordinator.cloudSQLProxy.state.binaryPath = url.path
         }
     }

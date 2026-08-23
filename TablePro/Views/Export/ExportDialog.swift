@@ -7,12 +7,15 @@
 //
 
 import AppKit
+import os
 import SwiftUI
 import TableProPluginKit
 import UniformTypeIdentifiers
 
 /// Main export dialog view
 struct ExportDialog: View {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "ExportDialog")
+
     @Binding var isPresented: Bool
     let mode: ExportMode
     var sidebarTables: [TableInfo] = []
@@ -23,15 +26,21 @@ struct ExportDialog: View {
     @State private var databaseItems: [ExportDatabaseItem] = []
     @State private var isLoading = true
     @State private var isExporting = false
+    @State private var exportStartedAt: ContinuousClock.Instant?
     @State private var showProgressDialog = false
     @State private var showSuccessDialog = false
     @State private var exportedFileURL: URL?
     @State private var settingsSnapshot: PluginSettingsSnapshot?
     @State private var exportSucceeded = false
 
+    /// The window this dialog is hosted in, used for presenting its alerts and panels.
+    /// Avoids `NSApp.keyWindow`, which when a result is presented is the progress sheet being
+    /// torn down in the same transaction, and AppKit ends a sheet's children with it (#2314).
+    @State private var hostWindow: NSWindow?
+
     // MARK: - User Preferences
 
-    @AppStorage("hideExportSuccessDialog") private var hideSuccessDialog = false
+    @AppStorage("hideExportSuccessDialog", store: AppStorageEnvironment.shared.defaults) private var hideSuccessDialog = false
 
     // MARK: - Export Service
 
@@ -61,11 +70,11 @@ struct ExportDialog: View {
         return 0
     }
 
-    private var preselectedTables: Set<String> {
-        if case .tables(_, let tables) = mode {
-            return tables
+    private var preselection: ExportPreselection {
+        if case .tables(_, let preselection) = mode {
+            return preselection
         }
-        return []
+        return .tables([])
     }
 
     // MARK: - Body
@@ -91,6 +100,11 @@ struct ExportDialog: View {
         }
         .frame(width: dialogWidth)
         .background(Color(nsColor: .windowBackgroundColor))
+        .background {
+            WindowAccessor { window in
+                hostWindow = window
+            }
+        }
         .onAppear {
             let available = availableFormats
             if let lastFormatId = TransferDialogStorage.shared.loadLastExportFormatId(),
@@ -145,18 +159,15 @@ struct ExportDialog: View {
             .interactiveDismissDisabled()
             .onExitCommand { }
         }
-        .sheet(isPresented: $showSuccessDialog) {
-            ExportSuccessView(
-                onOpenFolder: {
+        .onChange(of: showSuccessDialog) { _, isShowing in
+            guard isShowing else { return }
+            TransferResultAlert.presentExportSuccess(window: hostWindow) { choice in
+                showSuccessDialog = false
+                if choice == .openFolder {
                     openContainingFolder()
-                    showSuccessDialog = false
-                    isPresented = false
-                },
-                onClose: {
-                    showSuccessDialog = false
-                    isPresented = false
                 }
-            )
+                isPresented = false
+            }
         }
     }
 
@@ -241,7 +252,7 @@ struct ExportDialog: View {
                     Spacer()
                     ProgressView()
                         .scaleEffect(0.8)
-                    Text("Loading databases...")
+                    Text("Loading databases…")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .padding(.top, 8)
@@ -357,33 +368,6 @@ struct ExportDialog: View {
             }
 
             Spacer(minLength: 0)
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("File name")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
-                HStack(spacing: 4) {
-                    TextField("export", text: $config.fileName)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.body)
-
-                    Text(".\(fileExtension)")
-                        .foregroundStyle(.secondary)
-                        .font(.system(.body, design: .monospaced))
-                        .lineLimit(1)
-                        .fixedSize()
-                }
-
-                if let validationError = fileNameValidationError {
-                    Text(validationError)
-                        .font(.subheadline)
-                        .foregroundStyle(.red)
-                }
-            }
-            .padding(16)
         }
     }
 
@@ -412,7 +396,7 @@ struct ExportDialog: View {
                 }
             }
 
-            Button("Export...") {
+            Button("Export…") {
                 Task {
                     await performExport()
                 }
@@ -451,7 +435,7 @@ struct ExportDialog: View {
     }
 
     private var isExportDisabled: Bool {
-        if isExporting || !isFileNameValid || availableFormats.isEmpty {
+        if isExporting || availableFormats.isEmpty {
             return true
         }
         if case .streamingQuery = mode {
@@ -474,53 +458,6 @@ struct ExportDialog: View {
         case "mql": return String(localized: "MongoDB query language. Use to import into MongoDB.")
         default: return ""
         }
-    }
-
-    /// Windows reserved device names (case-insensitive)
-    private static let windowsReservedNames: Set<String> = [
-        "CON", "PRN", "AUX", "NUL",
-        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
-    ]
-
-    /// Returns a validation error message if the filename is invalid, nil if valid
-    private var fileNameValidationError: String? {
-        let name = config.fileName.trimmingCharacters(in: .whitespaces)
-
-        if name.isEmpty {
-            return String(localized: "Filename cannot be empty")
-        }
-
-        // Invalid filesystem characters (covers macOS, Windows, and Linux)
-        let invalidChars = CharacterSet(charactersIn: "/\\:*?\"<>|")
-        if name.rangeOfCharacter(from: invalidChars) != nil {
-            return String(localized: "Filename contains invalid characters: / \\ : * ? \" < > |")
-        }
-
-        // Prevent path traversal attempts and special directory names
-        if name == "." || name == ".." ||
-            name.hasPrefix("../") || name.hasPrefix("..\\") ||
-            name.hasSuffix("/..") || name.hasSuffix("\\..") ||
-            name.contains("/../") || name.contains("\\..\\") {
-            return String(localized: "Filename cannot be '.' or '..' or contain path traversal")
-        }
-
-        let baseName = name.components(separatedBy: ".").first ?? name
-        if Self.windowsReservedNames.contains(baseName.uppercased()) {
-            return String(format: String(localized: "'%@' is a reserved Windows device name"), baseName)
-        }
-
-        // Check filename length (255 bytes is common limit on most filesystems)
-        if name.utf8.count > 255 {
-            return String(localized: "Filename is too long (max 255 bytes)")
-        }
-
-        return nil
-    }
-
-    /// Validates that the filename is not empty and contains no invalid filesystem characters
-    private var isFileNameValid: Bool {
-        fileNameValidationError == nil
     }
 
     private func resetOptionValues() {
@@ -550,18 +487,49 @@ struct ExportDialog: View {
         exportSucceeded = true
         TransferDialogStorage.shared.saveLastExportFormatId(config.formatId)
         settingsSnapshot = nil
+        reportExportFinished(.succeeded(OperationSummary(fileURL: exportedFileURL)))
+    }
+
+    /// Both export entry points converge here, so the completion is reported once whichever route
+    /// ran. Cancellation is caught separately by each and deliberately reports nothing.
+    private func reportExportFinished(_ outcome: OperationOutcome) {
+        guard let startedAt = exportStartedAt else { return }
+        exportStartedAt = nil
+        OperationCompletionReporter.shared.report(
+            OperationCompletion(
+                kind: .dataExport,
+                owner: .connection(connection.id),
+                connectionId: connection.id,
+                connectionName: connection.name,
+                databaseName: exportScope?.database,
+                elapsed: startedAt.duration(to: .now),
+                outcome: outcome
+            )
+        )
     }
 
     /// Instantly populate the current database from sidebar tables (no network).
+    ///
+    /// The sidebar lists exactly what the export scope already points at, so the rows carry
+    /// no qualifier. Naming the database here would reach the export data source as a schema
+    /// on the engines that group by schema, which is a different container.
     private func populateFromSidebarTables() {
         guard !sidebarTables.isEmpty else { return }
+        /// These rows are the sidebar's, so they belong to the database being browsed. When the
+        /// dialog is scoped somewhere else they are the wrong tables under the right name, and a
+        /// failed load would leave them on screen looking like that database's contents.
+        guard preselection.scopedDatabase == nil else { return }
         let dbName = connection.database
         let tableItems = sidebarTables.map { table in
             ExportTableItem(
                 name: table.name,
-                databaseName: dbName,
+                databaseName: "",
                 type: table.type,
-                isSelected: preselectedTables.contains(table.name)
+                isSelected: preselection.selects(
+                    table: table.name,
+                    inContainer: .database(dbName),
+                    isCurrentContainer: true
+                )
             )
         }
         let item = ExportDatabaseItem(
@@ -605,7 +573,7 @@ struct ExportDialog: View {
             let grouping = PluginManager.shared.databaseGroupingStrategy(for: dbType)
             switch grouping {
             case .bySchema, .hierarchicalSchema:
-                let schemas = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+                let schemas = try await withExportDriver { driver in
                     try await driver.fetchSchemas()
                 }
                 let defaultSchema = PluginManager.shared.defaultSchemaName(for: dbType)
@@ -615,7 +583,11 @@ struct ExportDialog: View {
                     let tableItems = tables.map { table in
                         let priorRow = priorRows["\(schema).\(table.name)"]
                         let selected = priorRow?.isSelected
-                            ?? (isDefaultSchema && preselectedTables.contains(table.name))
+                            ?? preselection.selects(
+                                table: table.name,
+                                inContainer: .schema(database: exportDatabaseName, schema: schema),
+                                isCurrentContainer: isDefaultSchema
+                            )
                         return ExportTableItem(
                             name: table.name,
                             databaseName: schema,
@@ -628,7 +600,7 @@ struct ExportDialog: View {
                         items.append(ExportDatabaseItem(
                             name: schema,
                             tables: tableItems,
-                            isExpanded: isDefaultSchema
+                            isExpanded: isDefaultSchema || preselection.containerNames.contains(schema)
                         ))
                     }
                 }
@@ -645,16 +617,21 @@ struct ExportDialog: View {
                 )
                 if let dbItem { items.append(dbItem) }
             case .byDatabase:
-                let databases = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+                let databases = try await withExportDriver { driver in
                     try await driver.fetchDatabases()
                 }
+                let tablesByDatabase = try await fetchTablesGroupedByDatabase()
                 for dbName in databases {
-                    let tables = try await fetchTablesForDatabase(dbName)
+                    let tables = tablesByDatabase[dbName] ?? []
                     let isCurrentDB = dbName == connection.database
                     let tableItems = tables.map { table in
                         let priorRow = priorRows["\(dbName).\(table.name)"]
                         let selected = priorRow?.isSelected
-                            ?? (isCurrentDB && preselectedTables.contains(table.name))
+                            ?? preselection.selects(
+                                table: table.name,
+                                inContainer: .database(dbName),
+                                isCurrentContainer: isCurrentDB
+                            )
                         return ExportTableItem(
                             name: table.name,
                             databaseName: dbName,
@@ -667,7 +644,7 @@ struct ExportDialog: View {
                         items.append(ExportDatabaseItem(
                             name: dbName,
                             tables: tableItems,
-                            isExpanded: isCurrentDB
+                            isExpanded: isCurrentDB || preselection.containerNames.contains(dbName)
                         ))
                     }
                 }
@@ -684,8 +661,10 @@ struct ExportDialog: View {
             )
             isLoading = false
 
-            if preselectedTables.count == 1, let first = preselectedTables.first {
-                config.fileName = first
+            if let singleTable = preselection.singleTableName {
+                config.fileName = singleTable
+            } else if preselection.containerNames.count == 1, let container = preselection.containerNames.first {
+                config.fileName = container
             } else if !connection.database.isEmpty {
                 config.fileName = connection.database
             }
@@ -694,7 +673,7 @@ struct ExportDialog: View {
             AlertHelper.showErrorSheet(
                 title: String(localized: "Export Error"),
                 message: String(format: String(localized: "Failed to load databases: %@"), error.localizedDescription),
-                window: nil
+                window: hostWindow
             )
         }
     }
@@ -703,7 +682,7 @@ struct ExportDialog: View {
         name: String,
         priorRows: [String: ExportRowSnapshot] = [:]
     ) async throws -> ExportDatabaseItem? {
-        let tables = try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+        let tables = try await withExportDriver { driver in
             try await driver.fetchTables()
         }
         let tableItems = tables.map { table in
@@ -712,7 +691,11 @@ struct ExportDialog: View {
                 name: table.name,
                 databaseName: "",
                 type: table.type,
-                isSelected: priorRow?.isSelected ?? preselectedTables.contains(table.name),
+                isSelected: priorRow?.isSelected ?? preselection.selects(
+                    table: table.name,
+                    inContainer: .database(name),
+                    isCurrentContainer: true
+                ),
                 optionValues: priorRow?.optionValues ?? []
             )
         }
@@ -721,13 +704,17 @@ struct ExportDialog: View {
     }
 
     private func fetchTablesForSchema(_ schema: String) async throws -> [TableInfo] {
-        try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+        try await withExportDriver { driver in
             try await driver.fetchTables(schema: schema)
         }
     }
 
-    private func fetchTablesForDatabase(_ database: String) async throws -> [TableInfo] {
-        try await DatabaseManager.shared.withMetadataDriver(connectionId: connection.id, workload: .bulk) { driver in
+    /// One server-wide read for every database. The query carries no WHERE clause, so a
+    /// connection per database would return the same rows and only cost a connect, and a
+    /// database the user can list but not open becomes an empty group instead of an error
+    /// that fails the whole dialog.
+    private func fetchTablesGroupedByDatabase() async throws -> [String: [TableInfo]] {
+        try await withExportDriver { driver in
             let query = """
                 SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE
                 FROM information_schema.TABLES
@@ -735,23 +722,27 @@ struct ExportDialog: View {
                 """
             let result = try await driver.execute(query: query)
 
-            return result.rows.compactMap { row -> TableInfo? in
+            var grouped: [String: [TableInfo]] = [:]
+            for row in result.rows {
                 guard row.count >= 2,
                       let rowSchema = row[0].asText,
-                      rowSchema == database,
                       let name = row[1].asText else {
-                    return nil
+                    continue
                 }
                 let typeStr = row.count > 2 ? (row[2].asText ?? "BASE TABLE") : "BASE TABLE"
                 let type: TableInfo.TableType = typeStr.uppercased().contains("VIEW") ? .view : .table
-                return TableInfo(name: name, type: type, rowCount: nil)
+                grouped[rowSchema, default: []].append(TableInfo(name: name, type: type, rowCount: nil))
             }
+            return grouped
         }
     }
 
     @MainActor
     private func performExport() async {
-        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
+        guard let window = hostWindow else {
+            Self.logger.warning("No host window captured, cannot present the file panel")
+            return
+        }
 
         let savePanel = NSSavePanel()
         savePanel.canCreateDirectories = true
@@ -787,34 +778,61 @@ struct ExportDialog: View {
         }
     }
 
+    /// The database this dialog exports from. Its connection carries the database the sheet
+    /// was opened against, and `resolvedScope` falls back to where the user is browsing when
+    /// that connection has no database of its own.
+    private var exportScope: DatabaseScope? {
+        DatabaseManager.shared.resolvedScope(database: connection.database, schema: nil, for: connection.id)
+    }
+
+    /// The name of that database, for the container refs the preselection is matched against.
+    private var exportDatabaseName: String {
+        exportScope?.database ?? connection.database
+    }
+
+    /// Every list in this dialog reads from the database it will export from, not from wherever
+    /// the sidebar happens to be browsing. Those were the same connection until a container in
+    /// another database could be exported, and then the dialog listed one database's schemas while
+    /// `exportScope` pointed at another.
+    private func withExportDriver<T: Sendable>(
+        workload: MetadataConnectionPool.Workload = .bulk,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
+    ) async throws -> T {
+        guard let scope = exportScope else { throw ExportError.notConnected }
+        return try await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: workload, body)
+    }
+
+    private func showExportError(_ error: Error) {
+        reportExportFinished(.failed(reason: error.localizedDescription))
+        AlertHelper.showErrorSheet(
+            title: String(localized: "Export Error"),
+            message: error.localizedDescription,
+            window: hostWindow
+        )
+    }
+
     @MainActor
     private func startExport(to url: URL) async {
-        guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Export Error"),
-                message: String(localized: "Not connected to database"),
-                window: nil
-            )
+        guard let scope = exportScope else {
+            showExportError(ExportError.notConnected)
             return
         }
+        let route = DatabaseManager.shared.executionRoute(for: scope)
 
         isExporting = true
+        exportStartedAt = .now
         exportedFileURL = url
-
-        let service = ExportService(
-            driver: driver,
-            databaseType: connection.type
-        )
-        exportService = service
-
         showProgressDialog = true
 
         do {
-            try await service.export(
-                tables: exportableTables,
-                config: config,
-                to: url
-            )
+            try await DatabaseManager.shared.withScopedDriver(
+                scope: scope,
+                route: route,
+                workload: .bulk,
+                cancellation: .untracked
+            ) { driver in
+                try await runTableExport(on: driver, to: url)
+            }
 
             showProgressDialog = false
             isExporting = false
@@ -831,33 +849,55 @@ struct ExportDialog: View {
         } catch {
             showProgressDialog = false
             isExporting = false
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Export Error"),
-                message: error.localizedDescription,
-                window: nil
-            )
+            showExportError(error)
         }
+    }
+
+    /// The whole export runs inside the scoped lease, so every statement it issues lands on
+    /// the database the dialog was opened for rather than wherever the shared driver was
+    /// last parked by another tab.
+    @MainActor
+    private func runTableExport(on driver: DatabaseDriver, to url: URL) async throws {
+        let service = ExportService(driver: driver, databaseType: connection.type)
+        exportService = service
+        try await service.export(tables: exportableTables, config: config, to: url)
+    }
+
+    @MainActor
+    private func runStreamingExport(on driver: DatabaseDriver, query: String, to url: URL) async throws {
+        let service = ExportService(driver: driver, databaseType: connection.type)
+        exportService = service
+        try await service.exportStreamingQuery(query: query, config: config, to: url)
     }
 
     @MainActor
     private func startQueryResultsExport(to url: URL) async {
         isExporting = true
+        exportStartedAt = .now
         exportedFileURL = url
         showProgressDialog = true
 
         do {
-            let service: ExportService
             switch mode {
             case .streamingQuery(_, let query, _):
-                guard let driver = DatabaseManager.shared.driver(for: connection.id) else { return }
-                service = ExportService(driver: driver, databaseType: connection.type)
-                exportService = service
-                try await service.exportStreamingQuery(query: query, config: config, to: url)
+                guard let scope = exportScope else { throw ExportError.notConnected }
+                let route = DatabaseManager.shared.executionRoute(for: scope)
+                try await DatabaseManager.shared.withScopedDriver(
+                    scope: scope,
+                    route: route,
+                    workload: .bulk,
+                    cancellation: .untracked
+                ) { driver in
+                    try await runStreamingExport(on: driver, query: query, to: url)
+                }
             case .queryResults(_, let tableRows, _):
-                service = ExportService(databaseType: connection.type)
+                let service = ExportService(databaseType: connection.type)
                 exportService = service
                 try await service.exportQueryResults(tableRows: tableRows, config: config, to: url)
             default:
+                showProgressDialog = false
+                isExporting = false
+                exportStartedAt = nil
                 return
             }
 
@@ -876,11 +916,7 @@ struct ExportDialog: View {
         } catch {
             showProgressDialog = false
             isExporting = false
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Export Error"),
-                message: error.localizedDescription,
-                window: nil
-            )
+            showExportError(error)
         }
     }
 
@@ -902,6 +938,6 @@ struct ExportDialog: View {
 
     return ExportDialog(
         isPresented: .constant(true),
-        mode: .tables(connection: connection, preselectedTables: ["users"])
+        mode: .tables(connection: connection, preselection: .tables(["users"]))
     )
 }

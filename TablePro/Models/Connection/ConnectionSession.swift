@@ -26,8 +26,12 @@ struct ConnectionSession: Identifiable {
     var pendingTruncates: Set<String> = []
     var pendingDeletes: Set<String> = []
     var tableOperationOptions: [String: TableOperationOptions] = [:]
-    var currentSchema: String?
-    var currentDatabase: String?
+    /// Where the user is browsing: what the sidebar lists and where a new tab opens.
+    /// It is not where an open tab queries. A tab carries its own database and schema,
+    /// and resolving an operation through these instead is how a tab ends up running
+    /// against another database.
+    var browseSchema: String?
+    var browseDatabase: String?
 
     @MainActor
     var tables: [TableInfo] {
@@ -37,8 +41,8 @@ struct ConnectionSession: Identifiable {
     /// In-memory password for prompt-for-password connections. Never persisted to disk.
     var cachedPassword: String?
 
-    var activeDatabase: String {
-        currentDatabase ?? connection.database
+    var resolvedBrowseDatabase: String {
+        browseDatabase ?? connection.database
     }
 
     // Metadata
@@ -82,8 +86,8 @@ struct ConnectionSession: Identifiable {
     /// database/schema desired state that `clearCachedData()` preserves for reconnect.
     mutating func clearAllState() {
         clearCachedData()
-        currentDatabase = nil
-        currentSchema = nil
+        browseDatabase = nil
+        browseSchema = nil
     }
 
     /// Compares fields used by ContentView's body to avoid unnecessary SwiftUI re-renders.
@@ -97,7 +101,7 @@ struct ConnectionSession: Identifiable {
             && pendingTruncates == other.pendingTruncates
             && pendingDeletes == other.pendingDeletes
             && tableOperationOptions == other.tableOperationOptions
-            && currentSchema == other.currentSchema
-            && currentDatabase == other.currentDatabase
+            && browseSchema == other.browseSchema
+            && browseDatabase == other.browseDatabase
     }
 }

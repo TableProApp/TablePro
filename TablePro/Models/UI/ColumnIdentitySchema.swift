@@ -7,6 +7,7 @@ import AppKit
 
 struct ColumnIdentitySchema: Equatable {
     static let rowNumberIdentifier = NSUserInterfaceItemIdentifier("__rowNumber__")
+
     static let dataColumnPrefix = "dataColumn-"
 
     let identifiers: [NSUserInterfaceItemIdentifier]

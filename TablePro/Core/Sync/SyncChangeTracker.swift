@@ -11,7 +11,7 @@ import os
 import TableProSyncTransport
 
 /// Tracks dirty entities and deletions for sync
-final class SyncChangeTracker {
+final class SyncChangeTracker: Sendable {
     static let shared = SyncChangeTracker()
     private static let logger = Logger(subsystem: "com.TablePro", category: "SyncChangeTracker")
 

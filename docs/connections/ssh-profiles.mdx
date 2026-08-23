@@ -1,0 +1,41 @@
+---
+title: SSH Profiles
+description: Save SSH tunnel configurations as reusable profiles shared across connections
+---
+
+One bastion, many connections. A profile holds the server (host, port, username), the authentication method, the two-factor settings, and the jump hosts, so every connection through that bastion stops repeating them. How the tunnel itself behaves is on [SSH Tunneling](/connections/ssh-tunneling).
+
+## Create a profile
+
+<Steps>
+  <Step title="Open any connection's SSH Tunnel pane">
+    **Create New Profile…** sits beside the **Profile** picker.
+  </Step>
+  <Step title="Fill in the server and authentication fields">
+    The same fields an inline config has, plus a name.
+  </Step>
+  <Step title="Click Create">
+    The profile now appears in the **Profile** picker of every connection.
+  </Step>
+</Steps>
+
+<Frame caption="Creating an SSH profile">
+  <img className="block dark:hidden" src="/images/ssh-profile-create.png" alt="Creating an SSH profile" />
+  <img className="hidden dark:block" src="/images/ssh-profile-create-dark.png" alt="Creating an SSH profile" />
+</Frame>
+
+**Save Current as Profile…** converts a connection that already has an inline config. Picking a profile swaps the inline fields for a read-only **Profile Details** summary; **Inline Configuration** in the same picker brings them back for a tunnel that belongs to one connection alone.
+
+## Test a profile
+
+**Test Connection** in the profile editor runs the handshake, verifies the host key, and authenticates, without touching a database. Success turns the button into a green checkmark reading **Connected**; failure marks it with a red X and prints the error beside it. An interactive prompt, a verification code for instance, appears here exactly as it would on connect.
+
+## Edit and delete
+
+**Edit Profile…** opens the selected profile, and **Delete Profile** is at the bottom of that editor. The password, key passphrase, and TOTP secret are read from the profile at connect time, so correcting one there reaches every connection using it.
+
+Deleting a profile leaves the connections that used it pointing at nothing. Each shows **Selected SSH profile no longer exists.** on its SSH Tunnel pane, with a **Switch to Inline Configuration** button, until it is given a tunnel config again.
+
+## iCloud Sync
+
+Profiles sync across Macs with iCloud Sync on and the **SSH Profiles** toggle set in **Settings > Account**. Passwords, key passphrases, and TOTP secrets stay in the local Keychain unless the **Passwords** toggle, nested under **Connections**, is on too, and that covers newly saved credentials only: re-save an existing password to include it.

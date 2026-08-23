@@ -11,6 +11,9 @@ import TableProPluginKit
 private let saveChangesLogger = Logger(subsystem: "com.TablePro", category: "RowEditingCoordinator")
 
 extension RowEditingCoordinator {
+    /// The scope is read once, before the destructive-delete sheet and the authorization
+    /// prompt, so moving the selection to another database while either is open cannot
+    /// retarget the statements that were generated for the edited tab.
     func saveChanges(
         pendingTruncates: inout Set<String>,
         pendingDeletes: inout Set<String>,
@@ -25,6 +28,11 @@ extension RowEditingCoordinator {
             return
         }
 
+        guard let scope = parent.selectedTabScope else {
+            failSave(message: String(localized: "Not connected to database"))
+            return
+        }
+
         let allStatements: [ParameterizedStatement]
         do {
             allStatements = try parent.assemblePendingStatements(
@@ -33,22 +41,12 @@ extension RowEditingCoordinator {
                 tableOperationOptions: tableOperationOptions
             )
         } catch {
-            if let index = parent.tabManager.selectedTabIndex {
-                parent.tabManager.mutate(at: index) { $0.execution.errorMessage = error.localizedDescription }
-            }
-            parent.saveCompletionContinuation?.resume(returning: false)
-            parent.saveCompletionContinuation = nil
+            failSave(message: error.localizedDescription)
             return
         }
 
         guard !allStatements.isEmpty else {
-            if let index = parent.tabManager.selectedTabIndex {
-                parent.tabManager.mutate(at: index) {
-                    $0.execution.errorMessage = String(localized: "Could not generate SQL for changes.")
-                }
-            }
-            parent.saveCompletionContinuation?.resume(returning: false)
-            parent.saveCompletionContinuation = nil
+            failSave(message: String(localized: "Could not generate SQL for changes."))
             return
         }
 
@@ -78,13 +76,12 @@ extension RowEditingCoordinator {
                 )
                 guard confirmed else {
                     if hasPendingTableOps {
-                        DatabaseManager.shared.updateSession(connId) { session in
-                            session.pendingTruncates = snapshotTruncates
-                            session.pendingDeletes = snapshotDeletes
-                            for (table, opts) in snapshotOptions {
-                                session.tableOperationOptions[table] = opts
-                            }
-                        }
+                        restorePendingTableOperations(
+                            connectionId: connId,
+                            truncates: snapshotTruncates,
+                            deletes: snapshotDeletes,
+                            options: snapshotOptions
+                        )
                     }
                     parent.saveCompletionContinuation?.resume(returning: false)
                     parent.saveCompletionContinuation = nil
@@ -110,6 +107,7 @@ extension RowEditingCoordinator {
                 var opts = snapshotOptions
                 executeCommitStatements(
                     allStatements,
+                    scope: scope,
                     clearTableOps: hasPendingTableOps,
                     pendingTruncates: &truncs,
                     pendingDeletes: &dels,
@@ -117,25 +115,25 @@ extension RowEditingCoordinator {
                 )
             case .denied(let reason):
                 if hasPendingTableOps {
-                    DatabaseManager.shared.updateSession(connId) { session in
-                        session.pendingTruncates = snapshotTruncates
-                        session.pendingDeletes = snapshotDeletes
-                        for (table, opts) in snapshotOptions {
-                            session.tableOperationOptions[table] = opts
-                        }
-                    }
+                    restorePendingTableOperations(
+                        connectionId: connId,
+                        truncates: snapshotTruncates,
+                        deletes: snapshotDeletes,
+                        options: snapshotOptions
+                    )
                 }
-                if let index = parent.tabManager.selectedTabIndex {
-                    parent.tabManager.mutate(at: index) { $0.execution.errorMessage = reason }
-                }
-                parent.saveCompletionContinuation?.resume(returning: false)
-                parent.saveCompletionContinuation = nil
+                failSave(message: reason)
             }
         }
     }
 
+    /// Every statement, the rollback and the foreign-key re-enable run inside one
+    /// `withScopedDriver` lease, so they all reach the same handle on the tab's own
+    /// database. Everything else stays outside it: the connection's driver gate is not
+    /// reentrant, so refreshing or re-running a query from inside the body would deadlock.
     private func executeCommitStatements(
         _ statements: [ParameterizedStatement],
+        scope: DatabaseScope,
         clearTableOps: Bool,
         pendingTruncates: inout Set<String>,
         pendingDeletes: inout Set<String>,
@@ -157,6 +155,7 @@ extension RowEditingCoordinator {
             && deletedTables.union(truncatedTables).contains { tableName in
                 tableOperationOptions[tableName]?.ignoreForeignKeys == true
             }
+        let foreignKeyEnableStatements = fkWasDisabled ? parent.fkEnableStatements(for: dbType) : []
 
         var capturedOptions: [String: TableOperationOptions] = [:]
         for table in deletedTables.union(truncatedTables) {
@@ -171,61 +170,43 @@ extension RowEditingCoordinator {
             }
         }
 
+        let route = DatabaseManager.shared.executionRoute(for: scope)
+
         Task { [weak self, parent] in
             guard let self else { return }
             let overallStartTime = Date()
+            let operationStart = ContinuousClock.Instant.now
+            let savingTabId = parent.tabManager.selectedTabId
 
             do {
-                guard let driver = DatabaseManager.shared.driver(for: parent.connectionId) else {
-                    if let index = parent.tabManager.selectedTabIndex {
-                        parent.tabManager.mutate(at: index) {
-                            $0.execution.errorMessage = String(localized: "Not connected to database")
-                        }
-                    }
-                    throw DatabaseError.notConnected
+                let executionTimes = try await DatabaseManager.shared.withScopedDriver(
+                    scope: scope,
+                    route: route,
+                    cancellation: .protectedWrite
+                ) { driver in
+                    try await Self.runStatementsInTransaction(
+                        validStatements,
+                        mode: .readWrite,
+                        foreignKeyEnableStatements: foreignKeyEnableStatements,
+                        on: driver
+                    )
                 }
 
-                let useTransaction = driver.supportsTransactions
-
-                if useTransaction {
-                    try await driver.beginTransaction(mode: .readWrite)
-                }
-
-                do {
-                    for statement in validStatements {
-                        let statementStartTime = Date()
-                        if statement.parameters.isEmpty {
-                            _ = try await driver.execute(query: statement.sql)
-                        } else {
-                            _ = try await driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
-                        }
-
-                        let executionTime = Date().timeIntervalSince(statementStartTime)
-
-                        let historySQL = statement.sql.trimmingCharacters(in: .whitespacesAndNewlines)
-                        QueryHistoryManager.shared.recordQuery(
+                for (statement, executionTime) in zip(validStatements, executionTimes) {
+                    let historySQL = statement.sql.trimmingCharacters(in: .whitespacesAndNewlines)
+                    parent.recordHistory(
+                        QueryHistoryRecordRequest(
                             query: historySQL.hasSuffix(";") ? historySQL : historySQL + ";",
                             connectionId: conn.id,
-                            databaseName: parent.activeDatabaseName,
+                            databaseName: scope.database,
+                            databaseType: conn.type,
+                            schemaName: scope.schema,
+                            source: .rowEdit,
                             executionTime: executionTime,
-                            rowCount: 0,
-                            wasSuccessful: true,
-                            errorMessage: nil
+                            rowCount: -1,
+                            wasSuccessful: true
                         )
-                    }
-
-                    if useTransaction {
-                        try await driver.commitTransaction()
-                    }
-                } catch {
-                    if useTransaction {
-                        do {
-                            try await driver.rollbackTransaction()
-                        } catch {
-                            saveChangesLogger.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
-                        }
-                    }
-                    throw error
+                    )
                 }
 
                 parent.changeManager.clearChangesAndUndoHistory()
@@ -263,46 +244,53 @@ extension RowEditingCoordinator {
                     Task { [parent] in await parent.refreshTables() }
                 }
 
-                if parent.tabManager.selectedTabIndex != nil && !parent.tabManager.tabs.isEmpty {
+                if let savedTabIndex = parent.tabManager.selectedTabIndex, !parent.tabManager.tabs.isEmpty {
+                    /// An insert or a delete changes the number this tab is reporting, so a count
+                    /// the user asked for before the save no longer describes the table. Without
+                    /// retiring it the reload's automatic count refuses to replace it, and the bar
+                    /// keeps the pre-save total with no `Count Exactly` offered to correct it.
+                    parent.tabManager.mutate(at: savedTabIndex) { $0.pagination.retireDerivedRowCount() }
                     parent.runQuery()
                 }
 
                 parent.saveCompletionContinuation?.resume(returning: true)
                 parent.saveCompletionContinuation = nil
+                reportSaveFinished(
+                    .succeeded(OperationSummary(rowsAffected: validStatements.count)),
+                    connection: conn,
+                    database: scope.database,
+                    tabId: savingTabId,
+                    startedAt: operationStart
+                )
             } catch {
                 let executionTime = Date().timeIntervalSince(overallStartTime)
-
-                if fkWasDisabled, let driver = DatabaseManager.shared.driver(for: parent.connectionId) {
-                    for statement in parent.fkEnableStatements(for: dbType) {
-                        do {
-                            _ = try await driver.execute(query: statement)
-                        } catch {
-                            saveChangesLogger.warning("Failed to re-enable foreign key checks with statement '\(statement, privacy: .public)': \(error.localizedDescription, privacy: .public)")
-                        }
-                    }
-                }
-
-                let allSQL = validStatements.map { $0.sql }.joined(separator: "; ")
-                QueryHistoryManager.shared.recordQuery(
-                    query: allSQL,
-                    connectionId: conn.id,
-                    databaseName: parent.activeDatabaseName,
-                    executionTime: executionTime,
-                    rowCount: 0,
-                    wasSuccessful: false,
-                    errorMessage: error.localizedDescription
+                reportSaveFinished(
+                    .failed(reason: error.localizedDescription),
+                    connection: conn,
+                    database: scope.database,
+                    tabId: savingTabId,
+                    startedAt: operationStart
                 )
 
-                let diagnosis = DatabaseWriteRejectionDiagnosis.classify(error)
-
-                if let index = parent.tabManager.selectedTabIndex {
-                    parent.tabManager.mutate(at: index) {
-                        $0.execution.errorMessage = String(
-                            format: String(localized: "Save failed: %@"),
-                            DatabaseWriteRejectionDiagnosis.formatted(error)
+                for statement in validStatements {
+                    let historySQL = statement.sql.trimmingCharacters(in: .whitespacesAndNewlines)
+                    parent.recordHistory(
+                        QueryHistoryRecordRequest(
+                            query: historySQL.hasSuffix(";") ? historySQL : historySQL + ";",
+                            connectionId: conn.id,
+                            databaseName: scope.database,
+                            databaseType: conn.type,
+                            schemaName: scope.schema,
+                            source: .rowEdit,
+                            executionTime: executionTime,
+                            rowCount: -1,
+                            wasSuccessful: false,
+                            errorMessage: error.localizedDescription
                         )
-                    }
+                    )
                 }
+
+                let diagnosis = DatabaseWriteRejectionDiagnosis.classify(error)
 
                 AlertHelper.showErrorSheet(
                     title: String(localized: "Save Failed"),
@@ -312,18 +300,115 @@ extension RowEditingCoordinator {
                 )
 
                 if clearTableOps {
-                    DatabaseManager.shared.updateSession(conn.id) { session in
-                        session.pendingTruncates = truncatedTables
-                        session.pendingDeletes = deletedTables
-                        for (table, opts) in capturedOptions {
-                            session.tableOperationOptions[table] = opts
-                        }
-                    }
+                    restorePendingTableOperations(
+                        connectionId: conn.id,
+                        truncates: truncatedTables,
+                        deletes: deletedTables,
+                        options: capturedOptions
+                    )
                 }
 
-                parent.saveCompletionContinuation?.resume(returning: false)
-                parent.saveCompletionContinuation = nil
+                failSave(
+                    message: String(
+                        format: String(localized: "Save failed: %@"),
+                        DatabaseWriteRejectionDiagnosis.formatted(error)
+                    )
+                )
             }
         }
+    }
+
+    /// The rollback and the foreign-key re-enable are part of the same lease as the
+    /// statements: resolving a driver again afterwards can reach a handle that has
+    /// already been released, or one sitting on another database.
+    nonisolated static func runStatementsInTransaction(
+        _ statements: [ParameterizedStatement],
+        mode: PluginTransactionAccessMode,
+        foreignKeyEnableStatements: [String] = [],
+        on driver: DatabaseDriver
+    ) async throws -> [TimeInterval] {
+        let useTransaction = driver.supportsTransactions
+        if useTransaction {
+            try await driver.beginTransaction(mode: mode)
+        }
+
+        var executionTimes: [TimeInterval] = []
+        do {
+            for statement in statements {
+                let statementStartTime = Date()
+                if statement.parameters.isEmpty {
+                    _ = try await driver.execute(query: statement.sql)
+                } else {
+                    _ = try await driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
+                }
+                executionTimes.append(Date().timeIntervalSince(statementStartTime))
+            }
+
+            if useTransaction {
+                try await driver.commitTransaction()
+            }
+        } catch {
+            if useTransaction {
+                do {
+                    try await driver.rollbackTransaction()
+                } catch {
+                    saveChangesLogger.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
+                }
+            }
+            for statement in foreignKeyEnableStatements {
+                do {
+                    _ = try await driver.execute(query: statement)
+                } catch {
+                    saveChangesLogger.warning("Failed to re-enable foreign key checks with statement '\(statement, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+                }
+            }
+            throw error
+        }
+        return executionTimes
+    }
+
+    private func failSave(message: String) {
+        if let index = parent.tabManager.selectedTabIndex {
+            parent.tabManager.mutate(at: index) { $0.execution.errorMessage = message }
+        }
+        parent.saveCompletionContinuation?.resume(returning: false)
+        parent.saveCompletionContinuation = nil
+    }
+
+    private func restorePendingTableOperations(
+        connectionId: UUID,
+        truncates: Set<String>,
+        deletes: Set<String>,
+        options: [String: TableOperationOptions]
+    ) {
+        DatabaseManager.shared.updateSession(connectionId) { session in
+            session.pendingTruncates = truncates
+            session.pendingDeletes = deletes
+            for (table, opts) in options {
+                session.tableOperationOptions[table] = opts
+            }
+        }
+    }
+}
+
+fileprivate extension RowEditingCoordinator {
+    /// The save is owned by the tab that started it, not by whichever tab is selected when it
+    /// lands: `failSave` writes into the selected tab, so keying a completion off that would
+    /// attribute a slow save to a tab the user switched to while waiting.
+    func reportSaveFinished(
+        _ outcome: OperationOutcome,
+        connection: DatabaseConnection,
+        database: String?,
+        tabId: UUID?,
+        startedAt: ContinuousClock.Instant
+    ) {
+        guard let tabId else { return }
+        parent.reportOperation(
+            kind: .rowSave,
+            tabId: tabId,
+            startedAt: startedAt,
+            databaseName: database,
+            outcome: outcome
+        )
     }
 }

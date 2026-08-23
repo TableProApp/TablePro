@@ -30,15 +30,13 @@ struct ListTablesChatTool: ChatTool {
         let schema = ChatToolArgumentDecoder.optionalString(input, key: "schema")
         let includeRowCounts = ChatToolArgumentDecoder.optionalBool(input, key: "include_row_counts", default: false)
 
-        if let database {
-            _ = try await context.bridge.switchDatabase(connectionId: connectionId, database: database)
-        }
-        if let schema {
-            _ = try await context.bridge.switchSchema(connectionId: connectionId, schema: schema)
-        }
-
-        let payload = try await context.bridge.listTables(
+        let scope = try await context.bridge.resolveScope(
             connectionId: connectionId,
+            database: database,
+            schema: schema
+        )
+        let payload = try await context.bridge.listTables(
+            scope: scope,
             includeRowCounts: includeRowCounts
         )
         return ChatToolResult(content: payload.jsonString(prettyPrinted: true))

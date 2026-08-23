@@ -4,410 +4,721 @@ import TableProPluginKit
 import XCTest
 
 final class MCPProtocolDispatcherTests: XCTestCase {
-    func testMethodNotFoundReturnsErrorResponse() async throws {
-        let store = MCPSessionStore()
-        let session = try await store.create()
-        let sessionId = await session.id
-        let dispatcher = MCPProtocolDispatcher(
-            handlers: [InitializeHandler(), PingHandler()],
-            sessionStore: store,
-            progressSink: StubProgressSink()
+    private let alice = MCPProtocolTestSupport.makePrincipal(
+        fingerprint: "alice",
+        tokenId: UUID(uuidString: "AAAAAAAA-0000-0000-0000-000000000001"),
+        scopes: [.toolsRead, .toolsWrite]
+    )
+    private let bob = MCPProtocolTestSupport.makePrincipal(
+        fingerprint: "bob",
+        tokenId: UUID(uuidString: "BBBBBBBB-0000-0000-0000-000000000002"),
+        scopes: [.toolsRead, .toolsWrite]
+    )
+
+    func testUnknownMethodIsMethodNotFoundWithHttpNotFound() async throws {
+        let sink = try await dispatch(
+            MCPProtocolTestSupport.makeModernRequest(method: "unknown/method"),
+            handlers: [StubTestHandler()]
         )
 
-        let request = MCPProtocolTestSupport.makeRequest(
-            id: .number(1),
-            method: "unknown/method"
-        )
-        let (exchange, sink) = MCPProtocolTestSupport.makeExchange(
-            message: request,
-            sessionId: sessionId
-        )
+        let errorValue = try await sink.errorEnvelope()
+        let error = try XCTUnwrap(errorValue)
+        XCTAssertEqual(error.code, JsonRpcErrorCode.methodNotFound)
+        XCTAssertEqual(error.code, -32_601)
 
-        await dispatcher.dispatch(exchange)
-        await sink.waitForCompletion()
+        let status = await sink.firstJsonStatus()
+        XCTAssertEqual(status?.code, 404)
 
-        let decoded = try await sink.firstJsonMessage()
-        guard case .errorResponse(let envelope) = decoded else {
-            XCTFail("Expected error response, got \(String(describing: decoded))")
+        guard case .errorResponse(let envelope)? = try await sink.firstJsonMessage() else {
+            XCTFail("Expected an error response")
             return
         }
-        XCTAssertEqual(envelope.error.code, JsonRpcErrorCode.methodNotFound)
         XCTAssertEqual(envelope.id, .number(1))
     }
 
-    func testUninitializedSessionRejectsNonInitializeMethods() async throws {
-        let store = MCPSessionStore()
-        let session = try await store.create()
-        let sessionId = await session.id
-        let dispatcher = MCPProtocolDispatcher(
-            handlers: [InitializeHandler(), StubToolsListHandler()],
-            sessionStore: store,
-            progressSink: StubProgressSink()
+    func testARequestWithoutAPrincipalIsUnauthenticated() async throws {
+        let sink = try await dispatch(
+            MCPProtocolTestSupport.makeModernRequest(method: StubTestHandler.method),
+            handlers: [StubTestHandler()],
+            principal: nil
         )
 
-        let request = MCPProtocolTestSupport.makeRequest(
-            id: .number(2),
-            method: "tools/list"
+        let errorValue = try await sink.errorEnvelope()
+        let error = try XCTUnwrap(errorValue)
+        XCTAssertEqual(error.code, JsonRpcErrorCode.unauthenticated)
+
+        let status = await sink.firstJsonStatus()
+        XCTAssertEqual(status?.code, 401)
+
+        let challenge = await sink.firstHeaderValue(named: "WWW-Authenticate")
+        XCTAssertNotNil(challenge)
+        XCTAssertTrue(challenge?.hasPrefix("Bearer") ?? false)
+    }
+
+    func testAMissingScopeIsRefusedWithAChallengeThatNamesTheScopes() async throws {
+        let sink = try await dispatch(
+            MCPProtocolTestSupport.makeModernRequest(method: StubScopedHandler.method),
+            handlers: [StubScopedHandler()],
+            principal: MCPProtocolTestSupport.makePrincipal(scopes: [.toolsRead])
         )
+
+        let errorValue = try await sink.errorEnvelope()
+        let error = try XCTUnwrap(errorValue)
+        XCTAssertEqual(error.code, JsonRpcErrorCode.forbidden)
+
+        let status = await sink.firstJsonStatus()
+        XCTAssertEqual(status?.code, 403)
+
+        let challengeValue = await sink.firstHeaderValue(named: "WWW-Authenticate")
+        let challenge = try XCTUnwrap(challengeValue)
+        XCTAssertTrue(challenge.contains("error=\"insufficient_scope\""))
+        XCTAssertTrue(challenge.contains("scope=\"admin tools:write\""))
+
+        let required = error.data?["requiredScopes"]?.arrayValue?.compactMap(\.stringValue)
+        XCTAssertEqual(required, ["admin", "tools:write"])
+    }
+
+    func testAPartiallyScopedPrincipalStillLearnsWhichScopeIsMissing() async throws {
+        let sink = try await dispatch(
+            MCPProtocolTestSupport.makeModernRequest(method: StubScopedHandler.method),
+            handlers: [StubScopedHandler()],
+            principal: MCPProtocolTestSupport.makePrincipal(scopes: [.toolsRead, .toolsWrite])
+        )
+
+        let challengeValue = await sink.firstHeaderValue(named: "WWW-Authenticate")
+        let challenge = try XCTUnwrap(challengeValue)
+        XCTAssertTrue(challenge.contains("admin"))
+    }
+
+    func testAHandlerThatFailsNeverLeaksTheConnectionDetailsItFailedOn() async throws {
+        let secret = "postgres://root:hunter2@db.internal:5432/app"
+        let handler = StubTestHandler(
+            behavior: .failDriver(StubDriverError(detail: "FATAL: could not connect to \(secret)"))
+        )
+        let sink = try await dispatch(
+            MCPProtocolTestSupport.makeModernRequest(method: StubTestHandler.method),
+            handlers: [handler]
+        )
+
+        let errorValue = try await sink.errorEnvelope()
+        let error = try XCTUnwrap(errorValue)
+        XCTAssertEqual(error.code, JsonRpcErrorCode.internalError)
+
+        let body = await sink.firstJsonBodyText()
+        for leak in ["db.internal", "5432", "root", "hunter2", "postgres://"] {
+            XCTAssertFalse(body.contains(leak), "response body leaked \(leak)")
+        }
+    }
+
+    func testAProtocolErrorFromAHandlerIsPassedThroughUnchanged() async throws {
+        let handler = StubTestHandler(behavior: .failProtocol(.invalidParams(detail: "table is required")))
+        let sink = try await dispatch(
+            MCPProtocolTestSupport.makeModernRequest(method: StubTestHandler.method),
+            handlers: [handler]
+        )
+
+        let errorValue = try await sink.errorEnvelope()
+        let error = try XCTUnwrap(errorValue)
+        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
+
+        let status = await sink.firstJsonStatus()
+        XCTAssertEqual(status?.code, 400)
+    }
+
+    func testTwoPrincipalsMayShareTheSameRequestIdWithoutCollapsing() async throws {
+        let handler = StubTestHandler(behavior: .waitForCancellation)
+        let dispatcher = MCPProtocolTestSupport.makeDispatcher(handlers: [handler])
+        let request = MCPProtocolTestSupport.makeModernRequest(id: .number(1), method: StubTestHandler.method)
+        let (aliceExchange, aliceSink) = MCPProtocolTestSupport.makeExchange(message: request, principal: alice)
+        let (bobExchange, bobSink) = MCPProtocolTestSupport.makeExchange(message: request, principal: bob)
+
+        async let aliceRun: Void = dispatcher.dispatch(aliceExchange)
+        async let bobRun: Void = dispatcher.dispatch(bobExchange)
+
+        let inflight = await waitForInflight(dispatcher, count: 2)
+        XCTAssertEqual(inflight, 2)
+
+        let cancelledAlice = await dispatcher.cancel(
+            requestId: .number(1),
+            principal: alice,
+            reason: .clientRequested("stop")
+        )
+        XCTAssertTrue(cancelledAlice)
+        await aliceSink.waitForCompletion()
+
+        let aliceErrorValue = try await aliceSink.errorEnvelope()
+        let aliceError = try XCTUnwrap(aliceErrorValue)
+        XCTAssertEqual(aliceError.code, JsonRpcErrorCode.requestCancelled)
+
+        let bobWrites = await bobSink.jsonWrites.count
+        XCTAssertEqual(bobWrites, 0)
+
+        let stillInflight = await dispatcher.inflightCount()
+        XCTAssertEqual(stillInflight, 1)
+
+        let cancelledBob = await dispatcher.cancel(
+            requestId: .number(1),
+            principal: bob,
+            reason: .clientRequested(nil)
+        )
+        XCTAssertTrue(cancelledBob)
+        await bobSink.waitForCompletion()
+        _ = await aliceRun
+        _ = await bobRun
+    }
+
+    func testAnInFlightEntryIsReleasedWhenTheHandlerReturns() async throws {
+        let dispatcher = MCPProtocolTestSupport.makeDispatcher(handlers: [StubTestHandler()])
         let (exchange, sink) = MCPProtocolTestSupport.makeExchange(
-            message: request,
-            sessionId: sessionId
+            message: MCPProtocolTestSupport.makeModernRequest(method: StubTestHandler.method),
+            principal: alice
         )
 
         await dispatcher.dispatch(exchange)
         await sink.waitForCompletion()
 
-        let decoded = try await sink.firstJsonMessage()
-        guard case .errorResponse(let envelope) = decoded else {
-            XCTFail("Expected error response, got \(String(describing: decoded))")
-            return
-        }
-        XCTAssertEqual(envelope.error.code, JsonRpcErrorCode.invalidRequest)
+        let inflight = await dispatcher.inflightCount()
+        XCTAssertEqual(inflight, 0)
     }
 
-    func testInitializeCreatesSessionAndNotificationTransitionsToReady() async throws {
-        let store = MCPSessionStore()
-        let dispatcher = MCPProtocolDispatcher(
-            handlers: [InitializeHandler()],
-            sessionStore: store,
-            progressSink: StubProgressSink()
+    func testAModernResultDeclaresItsTypeAndTheServerIdentity() async throws {
+        let sink = try await dispatch(
+            MCPProtocolTestSupport.makeModernRequest(method: StubTestHandler.method),
+            handlers: [StubTestHandler()]
         )
 
-        let eventStream = await store.events
-        let collectorTask = Task<MCPSessionId?, Never> {
-            for await event in eventStream {
-                if case .created(let id) = event {
-                    return id
-                }
-            }
-            return nil
-        }
+        let resultValue = try await sink.successResult()
+        let result = try XCTUnwrap(resultValue)
+        XCTAssertEqual(result["resultType"]?.stringValue, "complete")
+        XCTAssertEqual(result["ok"]?.boolValue, true)
+        XCTAssertEqual(result["_meta"]?[MCPMetaKeys.serverInfo]?["name"]?.stringValue, "tablepro")
+        XCTAssertNil(result["serverInfo"])
 
-        let initRequest = MCPProtocolTestSupport.makeRequest(
-            id: .number(10),
-            method: "initialize",
-            params: .object([
-                "protocolVersion": .string("2025-03-26"),
-                "clientInfo": .object(["name": .string("client-x")]),
-                "capabilities": .object([:])
-            ])
-        )
-        let (initExchange, initSink) = MCPProtocolTestSupport.makeExchange(message: initRequest)
-
-        await dispatcher.dispatch(initExchange)
-        await initSink.waitForCompletion()
-
-        let initResponse = try await initSink.firstJsonMessage()
-        guard case .successResponse = initResponse else {
-            XCTFail("Expected success response, got \(String(describing: initResponse))")
-            return
-        }
-
-        let sessionCount = await store.count()
-        XCTAssertEqual(sessionCount, 1)
-
-        guard let createdId = await collectorTask.value else {
-            XCTFail("Expected the dispatcher to have created a session")
-            return
-        }
-        guard let session = await store.session(id: createdId) else {
-            XCTFail("Expected to find created session in store")
-            return
-        }
-        let sessionId = await session.id
-
-        let stateAfterInitialize = await session.state
-        XCTAssertEqual(stateAfterInitialize, .initializing)
-
-        let initializedNotification = MCPProtocolTestSupport.makeNotification(
-            method: "notifications/initialized"
-        )
-        let (notifExchange, notifSink) = MCPProtocolTestSupport.makeExchange(
-            message: initializedNotification,
-            sessionId: sessionId
-        )
-
-        await dispatcher.dispatch(notifExchange)
-        await notifSink.waitForCompletion()
-
-        let stateAfterNotification = await session.state
-        XCTAssertEqual(stateAfterNotification, .ready)
-
-        let acceptedCount = await notifSink.acceptedCount
-        XCTAssertEqual(acceptedCount, 1)
+        let status = await sink.firstJsonStatus()
+        XCTAssertEqual(status?.code, 200)
     }
 
-    func testAuthScopeCheckRejectsInsufficientScopes() async throws {
-        let store = MCPSessionStore()
-        let session = try await store.create()
-        let sessionId = await session.id
-        try await session.transitionToReady()
-
-        let dispatcher = MCPProtocolDispatcher(
-            handlers: [ScopedToolsCallHandler()],
-            sessionStore: store,
-            progressSink: StubProgressSink()
+    func testAModernRequestWithoutMetaIsInvalidParams() async throws {
+        let sink = try await dispatch(
+            MCPProtocolTestSupport.makeRequest(method: StubTestHandler.method, params: .object([:])),
+            handlers: [StubTestHandler()]
         )
 
-        let principal = MCPProtocolTestSupport.makePrincipal(scopes: [.toolsRead])
-        let request = MCPProtocolTestSupport.makeRequest(
-            id: .number(3),
-            method: "tools/call"
+        let errorValue = try await sink.errorEnvelope()
+        let error = try XCTUnwrap(errorValue)
+        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
+
+        let status = await sink.firstJsonStatus()
+        XCTAssertEqual(status?.code, 400)
+    }
+
+    func testAnUnsupportedProtocolVersionIsRefusedBeforeTheHandlerRuns() async throws {
+        let handler = StubTestHandler()
+        let request = MCPProtocolTestSupport.makeModernRequest(
+            method: StubTestHandler.method,
+            protocolVersion: MCPProtocolVersion("2025-03-26")
+        )
+        let sink = try await dispatch(request, handlers: [handler])
+
+        let errorValue = try await sink.errorEnvelope()
+        let error = try XCTUnwrap(errorValue)
+        XCTAssertEqual(error.code, JsonRpcErrorCode.unsupportedProtocolVersion)
+        XCTAssertEqual(error.data?["requested"]?.stringValue, "2025-03-26")
+
+        let started = await handler.started.value()
+        XCTAssertFalse(started)
+    }
+
+    func testALegacyClientIsRefusedAModernOnlyMethod() async throws {
+        let adapter = MCPLegacyEraAdapter()
+        let sessionId = try await establishLegacySession(adapter: adapter, principal: alice)
+        let sink = try await dispatch(
+            MCPProtocolTestSupport.makeRequest(method: StubModernOnlyHandler.method),
+            handlers: [StubModernOnlyHandler()],
+            principal: alice,
+            legacyAdapter: adapter,
+            legacySessionId: sessionId
+        )
+
+        let errorValue = try await sink.errorEnvelope()
+        let error = try XCTUnwrap(errorValue)
+        XCTAssertEqual(error.code, JsonRpcErrorCode.methodNotFound)
+
+        let status = await sink.firstJsonStatus()
+        XCTAssertEqual(status?.code, 404)
+    }
+
+    func testAModernClientReachesAModernOnlyMethod() async throws {
+        let sink = try await dispatch(
+            MCPProtocolTestSupport.makeModernRequest(method: StubModernOnlyHandler.method),
+            handlers: [StubModernOnlyHandler()]
+        )
+
+        let resultValue = try await sink.successResult()
+        let result = try XCTUnwrap(resultValue)
+        XCTAssertEqual(result["resultType"]?.stringValue, "complete")
+    }
+
+    func testALegacyResultCarriesNoModernEnvelopeFields() async throws {
+        let adapter = MCPLegacyEraAdapter()
+        let sessionId = try await establishLegacySession(adapter: adapter, principal: alice)
+        let handler = StubToolsListHandler(
+            behavior: .returning(.complete(["tools": .array([])], cacheHint: .privateFor(seconds: 300)))
+        )
+        let sink = try await dispatch(
+            MCPProtocolTestSupport.makeRequest(method: StubToolsListHandler.method),
+            handlers: [handler],
+            principal: alice,
+            legacyAdapter: adapter,
+            legacySessionId: sessionId
+        )
+
+        let resultValue = try await sink.successResult()
+        let result = try XCTUnwrap(resultValue)
+        XCTAssertNotNil(result["tools"])
+        XCTAssertNil(result["resultType"])
+        XCTAssertNil(result["ttlMs"])
+        XCTAssertNil(result["cacheScope"])
+        XCTAssertNil(result["_meta"])
+    }
+
+    func testALegacyInitializeIsAnsweredWithoutAModernEnvelope() async throws {
+        let sink = try await dispatch(
+            MCPProtocolTestSupport.makeRequest(
+                method: "initialize",
+                params: .object([
+                    "protocolVersion": .string(MCPProtocolVersion.v20251125.rawValue),
+                    "capabilities": .object([:]),
+                    "clientInfo": .object(["name": .string("OldClient"), "version": .string("0.9")])
+                ])
+            ),
+            handlers: [StubTestHandler()]
+        )
+
+        let resultValue = try await sink.successResult()
+        let result = try XCTUnwrap(resultValue)
+        XCTAssertEqual(result["protocolVersion"]?.stringValue, MCPProtocolVersion.v20251125.rawValue)
+        XCTAssertNotNil(result["serverInfo"])
+        XCTAssertNil(result["resultType"])
+    }
+
+    func testALegacyInitializeForAModernVersionIsRefused() async throws {
+        let sink = try await dispatch(
+            MCPProtocolTestSupport.makeRequest(
+                method: "initialize",
+                params: .object(["protocolVersion": .string(MCPProtocolVersion.latest.rawValue)])
+            ),
+            handlers: [StubTestHandler()]
+        )
+
+        let errorValue = try await sink.errorEnvelope()
+        let error = try XCTUnwrap(errorValue)
+        XCTAssertEqual(error.code, JsonRpcErrorCode.unsupportedProtocolVersion)
+    }
+
+    func testACacheableMethodWithoutAHintIsReportedAsImmediatelyStale() async throws {
+        let handler = StubToolsListHandler(behavior: .returning(.complete(["tools": .array([])])))
+        let sink = try await dispatch(
+            MCPProtocolTestSupport.makeModernRequest(method: StubToolsListHandler.method),
+            handlers: [handler]
+        )
+
+        let resultValue = try await sink.successResult()
+        let result = try XCTUnwrap(resultValue)
+        XCTAssertEqual(result["ttlMs"]?.intValue, 0)
+        XCTAssertEqual(result["cacheScope"]?.stringValue, "private")
+    }
+
+    func testACacheableMethodKeepsTheHintItReturned() async throws {
+        let handler = StubToolsListHandler(
+            behavior: .returning(.complete(["tools": .array([])], cacheHint: .publicFor(seconds: 300)))
+        )
+        let sink = try await dispatch(
+            MCPProtocolTestSupport.makeModernRequest(method: StubToolsListHandler.method),
+            handlers: [handler]
+        )
+
+        let resultValue = try await sink.successResult()
+        let result = try XCTUnwrap(resultValue)
+        XCTAssertEqual(result["ttlMs"]?.intValue, 300_000)
+        XCTAssertEqual(result["cacheScope"]?.stringValue, "public")
+    }
+
+    func testAnUncacheableMethodNeverCarriesCacheFields() async throws {
+        let handler = StubToolsCallHandler(
+            behavior: .returning(.complete(["content": .array([])], cacheHint: .publicFor(seconds: 300)))
+        )
+        let sink = try await dispatch(
+            MCPProtocolTestSupport.makeModernRequest(method: StubToolsCallHandler.method),
+            handlers: [handler]
+        )
+
+        let resultValue = try await sink.successResult()
+        let result = try XCTUnwrap(resultValue)
+        XCTAssertNil(result["ttlMs"])
+        XCTAssertNil(result["cacheScope"])
+        XCTAssertEqual(result["resultType"]?.stringValue, "complete")
+    }
+
+    func testARetriedRequestCarryingInputResponsesIsNotCacheable() async throws {
+        let handler = StubResourcesReadHandler(
+            behavior: .returning(.complete(["contents": .array([])], cacheHint: .privateFor(seconds: 60)))
+        )
+        let request = MCPProtocolTestSupport.makeModernRequest(
+            method: StubResourcesReadHandler.method,
+            payload: ["inputResponses": .array([.object(["value": .string("yes")])])]
+        )
+        let sink = try await dispatch(request, handlers: [handler])
+
+        let resultValue = try await sink.successResult()
+        let result = try XCTUnwrap(resultValue)
+        XCTAssertEqual(result["ttlMs"]?.intValue, 0)
+        XCTAssertEqual(result["cacheScope"]?.stringValue, "private")
+    }
+
+    func testAnInterimResultCarriesNoCacheHint() async throws {
+        let interim = MCPResult(kind: .inputRequired, payload: ["inputRequests": .array([])])
+        let handler = StubResourcesReadHandler(behavior: .returning(interim))
+        let sink = try await dispatch(
+            MCPProtocolTestSupport.makeModernRequest(method: StubResourcesReadHandler.method),
+            handlers: [handler]
+        )
+
+        let resultValue = try await sink.successResult()
+        let result = try XCTUnwrap(resultValue)
+        XCTAssertEqual(result["resultType"]?.stringValue, "input_required")
+        XCTAssertNil(result["ttlMs"])
+        XCTAssertNil(result["cacheScope"])
+    }
+
+    func testAMethodThatMayNotAskForInputCannotReturnAnInterimResult() async throws {
+        let interim = MCPResult(kind: .inputRequired, payload: [:])
+        let sink = try await dispatch(
+            MCPProtocolTestSupport.makeModernRequest(method: StubTestHandler.method),
+            handlers: [StubTestHandler(behavior: .returning(interim))]
+        )
+
+        let errorValue = try await sink.errorEnvelope()
+        let error = try XCTUnwrap(errorValue)
+        XCTAssertEqual(error.code, JsonRpcErrorCode.internalError)
+    }
+
+    func testAHandlerThatOverrunsItsDeadlineIsTimedOut() async throws {
+        let gate = ReleaseGate()
+        let sink = try await dispatch(
+            MCPProtocolTestSupport.makeModernRequest(method: StubTestHandler.method),
+            handlers: [StubTestHandler(behavior: .blockUntilReleased(gate))],
+            handlerTimeout: .milliseconds(60),
+            disconnectPollInterval: .milliseconds(20)
+        )
+        await gate.release()
+
+        let errorValue = try await sink.errorEnvelope()
+        let error = try XCTUnwrap(errorValue)
+        XCTAssertEqual(error.code, JsonRpcErrorCode.requestTimeout)
+        XCTAssertEqual(error.code, -33_003)
+    }
+
+    func testClosingTheStreamCancelsTheRequest() async throws {
+        let gate = ReleaseGate()
+        let sink = try await dispatch(
+            MCPProtocolTestSupport.makeModernRequest(method: StubTestHandler.method),
+            handlers: [StubTestHandler(behavior: .blockUntilReleased(gate))],
+            handlerTimeout: .seconds(30),
+            disconnectPollInterval: .milliseconds(20),
+            clientDisconnected: true
+        )
+        await gate.release()
+
+        let errorValue = try await sink.errorEnvelope()
+        let error = try XCTUnwrap(errorValue)
+        XCTAssertEqual(error.code, JsonRpcErrorCode.requestCancelled)
+        XCTAssertEqual(error.code, -33_002)
+    }
+
+    func testAnUnknownNotificationIsAcknowledgedAndDropped() async throws {
+        let sink = try await dispatch(
+            MCPProtocolTestSupport.makeNotification(method: "notifications/initialized"),
+            handlers: [StubTestHandler()]
+        )
+
+        let accepted = await sink.acceptedCount
+        let writes = await sink.jsonWrites.count
+        XCTAssertEqual(accepted, 1)
+        XCTAssertEqual(writes, 0)
+    }
+
+    func testAResponseMessageIsIgnoredAndAcknowledged() async throws {
+        let response = JsonRpcMessage.successResponse(JsonRpcSuccessResponse(id: .number(1), result: .object([:])))
+        let sink = try await dispatch(response, handlers: [StubTestHandler()])
+
+        let accepted = await sink.acceptedCount
+        XCTAssertEqual(accepted, 1)
+    }
+
+    func testACancellationNotificationCancelsTheMatchingRequest() async throws {
+        let handler = StubTestHandler(behavior: .waitForCancellation)
+        let dispatcher = MCPProtocolTestSupport.makeDispatcher(handlers: [handler])
+        let request = MCPProtocolTestSupport.makeModernRequest(id: .number(99), method: StubTestHandler.method)
+        let (exchange, sink) = MCPProtocolTestSupport.makeExchange(message: request, principal: alice)
+
+        async let run: Void = dispatcher.dispatch(exchange)
+        _ = await waitForInflight(dispatcher, count: 1)
+
+        let (cancelExchange, cancelSink) = MCPProtocolTestSupport.makeExchange(
+            message: MCPProtocolTestSupport.makeNotification(
+                method: "notifications/cancelled",
+                params: .object(["requestId": .int(99), "reason": .string("user stopped")])
+            ),
+            principal: alice
+        )
+        await dispatcher.dispatch(cancelExchange)
+        await sink.waitForCompletion()
+
+        let errorValue = try await sink.errorEnvelope()
+        let error = try XCTUnwrap(errorValue)
+        XCTAssertEqual(error.code, JsonRpcErrorCode.requestCancelled)
+
+        let accepted = await cancelSink.acceptedCount
+        XCTAssertEqual(accepted, 1)
+        _ = await run
+    }
+
+    func testACancellationFromAnotherPrincipalIsIgnored() async throws {
+        let handler = StubTestHandler(behavior: .waitForCancellation)
+        let dispatcher = MCPProtocolTestSupport.makeDispatcher(handlers: [handler])
+        let request = MCPProtocolTestSupport.makeModernRequest(id: .number(5), method: StubTestHandler.method)
+        let (exchange, sink) = MCPProtocolTestSupport.makeExchange(message: request, principal: alice)
+
+        async let run: Void = dispatcher.dispatch(exchange)
+        _ = await waitForInflight(dispatcher, count: 1)
+
+        let (cancelExchange, _) = MCPProtocolTestSupport.makeExchange(
+            message: MCPProtocolTestSupport.makeNotification(
+                method: "notifications/cancelled",
+                params: .object(["requestId": .int(5)])
+            ),
+            principal: bob
+        )
+        await dispatcher.dispatch(cancelExchange)
+
+        let stillInflight = await dispatcher.inflightCount()
+        XCTAssertEqual(stillInflight, 1)
+
+        let writes = await sink.jsonWrites.count
+        XCTAssertEqual(writes, 0)
+
+        _ = await dispatcher.cancelAllInflight()
+        await sink.waitForCompletion()
+        _ = await run
+    }
+
+    func testRevokingATokenCancelsItsInFlightRequests() async throws {
+        let handler = StubTestHandler(behavior: .waitForCancellation)
+        let dispatcher = MCPProtocolTestSupport.makeDispatcher(handlers: [handler])
+        let request = MCPProtocolTestSupport.makeModernRequest(id: .number(11), method: StubTestHandler.method)
+        let (exchange, sink) = MCPProtocolTestSupport.makeExchange(message: request, principal: alice)
+
+        async let run: Void = dispatcher.dispatch(exchange)
+        _ = await waitForInflight(dispatcher, count: 1)
+
+        let tokenId = try XCTUnwrap(alice.tokenId)
+        let cancelled = await dispatcher.cancelInflight(matchingTokenId: tokenId)
+        XCTAssertEqual(cancelled, 1)
+
+        await sink.waitForCompletion()
+        let errorValue = try await sink.errorEnvelope()
+        let error = try XCTUnwrap(errorValue)
+        XCTAssertEqual(error.code, JsonRpcErrorCode.requestCancelled)
+        _ = await run
+    }
+
+    private func dispatch(
+        _ message: JsonRpcMessage,
+        handlers: [any MCPMethodHandler],
+        principal: MCPPrincipal? = MCPProtocolTestSupport.makePrincipal(),
+        legacyAdapter: MCPLegacyEraAdapter = MCPLegacyEraAdapter(),
+        legacySessionId: MCPLegacySessionId? = nil,
+        handlerTimeout: Duration = .seconds(330),
+        disconnectPollInterval: Duration = .seconds(60),
+        clientDisconnected: Bool = false
+    ) async throws -> RecordingResponderSink {
+        let dispatcher = MCPProtocolTestSupport.makeDispatcher(
+            handlers: handlers,
+            legacyAdapter: legacyAdapter,
+            handlerTimeout: handlerTimeout,
+            disconnectPollInterval: disconnectPollInterval
         )
         let (exchange, sink) = MCPProtocolTestSupport.makeExchange(
-            message: request,
-            sessionId: sessionId,
+            message: message,
+            principal: principal,
+            legacySessionId: legacySessionId
+        )
+        if clientDisconnected {
+            await sink.disconnectClient()
+        }
+        await dispatcher.dispatch(exchange)
+        await sink.waitForCompletion()
+        return sink
+    }
+
+    private func establishLegacySession(
+        adapter: MCPLegacyEraAdapter,
+        principal: MCPPrincipal
+    ) async throws -> MCPLegacySessionId {
+        let (_, sessionId) = try await adapter.handleInitialize(
+            params: .object([
+                "protocolVersion": .string(MCPProtocolVersion.v20251125.rawValue),
+                "capabilities": .object([:]),
+                "clientInfo": .object(["name": .string("OldClient"), "version": .string("0.9")])
+            ]),
             principal: principal
         )
-
-        await dispatcher.dispatch(exchange)
-        await sink.waitForCompletion()
-
-        let decoded = try await sink.firstJsonMessage()
-        guard case .errorResponse(let envelope) = decoded else {
-            XCTFail("Expected error response, got \(String(describing: decoded))")
-            return
-        }
-        XCTAssertEqual(envelope.error.code, JsonRpcErrorCode.forbidden)
+        return sessionId
     }
 
-    func testCancellationFlowDeliversCancelledError() async throws {
-        let store = MCPSessionStore()
-        let session = try await store.create()
-        let sessionId = await session.id
-        try await session.transitionToReady()
+    private func waitForInflight(_ dispatcher: MCPProtocolDispatcher, count: Int) async -> Int {
+        for _ in 0 ..< 400 {
+            let current = await dispatcher.inflightCount()
+            if current >= count { return current }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        return await dispatcher.inflightCount()
+    }
+}
 
-        let stubHandler = StubMethodHandler(behavior: .waitForCancellation)
-        let dispatcher = MCPProtocolDispatcher(
-            handlers: [stubHandler],
-            sessionStore: store,
-            progressSink: StubProgressSink()
+final class MCPCancelledNotificationFuzzTests: XCTestCase {
+    private static let longIdentifier = String(repeating: "a", count: 8_192)
+
+    private let principal = MCPProtocolTestSupport.makePrincipal(fingerprint: "fuzz")
+
+    private static let hostileRequestIds = [
+        "1e300",
+        "-1e300",
+        "9223372036854775808",
+        "-9223372036854775809",
+        "1.5",
+        "-0.5",
+        "null",
+        "{}",
+        "{\"id\": 1}",
+        "[]",
+        "[1, 2, 3]",
+        "true",
+        "false"
+    ]
+
+    func testAHostileRequestIdIsRejectedInsteadOfTrapping() throws {
+        for raw in Self.hostileRequestIds {
+            let params = try MCPProtocolTestSupport.jsonValue(fromJson: "{\"requestId\": \(raw)}")
+            XCTAssertNil(
+                MCPProtocolDispatcher.cancellationRequestId(in: params),
+                "requestId \(raw) should not resolve to an in-flight key"
+            )
+        }
+    }
+
+    func testAUsableRequestIdIsResolved() throws {
+        let cases: [(String, JsonRpcId)] = [
+            ("0", .number(0)),
+            ("99", .number(99)),
+            ("-99", .number(-99)),
+            ("9223372036854775807", .number(9_223_372_036_854_775_807)),
+            ("\"req-1\"", .string("req-1")),
+            ("\"\(Self.longIdentifier)\"", .string(Self.longIdentifier))
+        ]
+
+        for (raw, expected) in cases {
+            let params = try MCPProtocolTestSupport.jsonValue(fromJson: "{\"requestId\": \(raw)}")
+            XCTAssertEqual(MCPProtocolDispatcher.cancellationRequestId(in: params), expected, "requestId \(raw)")
+        }
+    }
+
+    func testAMissingOrMalformedParamsObjectIsRejected() throws {
+        XCTAssertNil(MCPProtocolDispatcher.cancellationRequestId(in: nil))
+        XCTAssertNil(MCPProtocolDispatcher.cancellationRequestId(in: .object([:])))
+        XCTAssertNil(MCPProtocolDispatcher.cancellationRequestId(in: .string("nope")))
+        XCTAssertNil(MCPProtocolDispatcher.cancellationRequestId(in: .array([.int(1)])))
+        XCTAssertNil(MCPProtocolDispatcher.cancellationRequestId(in: .object(["requestId": .null])))
+    }
+
+    func testHostileCancellationsAreAcknowledgedAndLeaveTheRequestRunning() async throws {
+        let handler = StubTestHandler(behavior: .waitForCancellation)
+        let dispatcher = MCPProtocolTestSupport.makeDispatcher(handlers: [handler])
+        let request = MCPProtocolTestSupport.makeModernRequest(
+            id: .string(Self.longIdentifier),
+            method: StubTestHandler.method
         )
-        let stubMethod = StubMethodHandler.method
+        let (exchange, sink) = MCPProtocolTestSupport.makeExchange(message: request, principal: principal)
 
-        let requestId = JsonRpcId.number(7)
-        let request = MCPProtocolTestSupport.makeRequest(id: requestId, method: stubMethod)
+        async let run: Void = dispatcher.dispatch(exchange)
+        _ = await waitForInflight(dispatcher)
+
+        for raw in Self.hostileRequestIds {
+            let params = try MCPProtocolTestSupport.jsonValue(fromJson: "{\"requestId\": \(raw)}")
+            let acknowledged = await sendCancellation(params: params, to: dispatcher)
+            XCTAssertEqual(acknowledged, 1, "cancellation with requestId \(raw) was not acknowledged")
+
+            let inflight = await dispatcher.inflightCount()
+            XCTAssertEqual(inflight, 1, "cancellation with requestId \(raw) disturbed an unrelated request")
+        }
+
+        let unmatched = await sendCancellation(
+            params: .object(["requestId": .string("some-other-request")]),
+            to: dispatcher
+        )
+        XCTAssertEqual(unmatched, 1)
+
+        let writes = await sink.jsonWrites.count
+        XCTAssertEqual(writes, 0)
+
+        let acknowledged = await sendCancellation(
+            params: .object(["requestId": .string(Self.longIdentifier), "reason": .string("user stopped")]),
+            to: dispatcher
+        )
+        XCTAssertEqual(acknowledged, 1)
+
+        await sink.waitForCompletion()
+        let errorValue = try await sink.errorEnvelope()
+        let error = try XCTUnwrap(errorValue)
+        XCTAssertEqual(error.code, JsonRpcErrorCode.requestCancelled)
+
+        let remaining = await dispatcher.inflightCount()
+        XCTAssertEqual(remaining, 0)
+        _ = await run
+    }
+
+    func testACancellationWithoutAPrincipalIsDroppedButStillAcknowledged() async throws {
+        let dispatcher = MCPProtocolTestSupport.makeDispatcher(handlers: [StubTestHandler()])
         let (exchange, sink) = MCPProtocolTestSupport.makeExchange(
-            message: request,
-            sessionId: sessionId
+            message: MCPProtocolTestSupport.makeNotification(
+                method: "notifications/cancelled",
+                params: .object(["requestId": .int(1)])
+            ),
+            principal: nil
         )
-
-        let dispatchTask = Task {
-            await dispatcher.dispatch(exchange)
-        }
-
-        try await waitUntil(timeoutMs: 2_000) {
-            await stubHandler.started.value()
-        }
-
-        let cancelNotification = MCPProtocolTestSupport.makeNotification(
-            method: "notifications/cancelled",
-            params: .object(["requestId": .int(7)])
-        )
-        let (cancelExchange, cancelSink) = MCPProtocolTestSupport.makeExchange(
-            message: cancelNotification,
-            sessionId: sessionId
-        )
-
-        await dispatcher.dispatch(cancelExchange)
-        await cancelSink.waitForCompletion()
-
-        await dispatchTask.value
-        await sink.waitForCompletion()
-
-        let decoded = try await sink.firstJsonMessage()
-        guard case .errorResponse(let envelope) = decoded else {
-            XCTFail("Expected error response, got \(String(describing: decoded))")
-            return
-        }
-        XCTAssertEqual(envelope.error.code, JsonRpcErrorCode.requestCancelled)
-
-        let observed = await stubHandler.observedCancel.value()
-        XCTAssertTrue(observed)
-    }
-
-    func testInboundResponsesAreIgnored() async throws {
-        let store = MCPSessionStore()
-        let dispatcher = MCPProtocolDispatcher(
-            handlers: [PingHandler()],
-            sessionStore: store,
-            progressSink: StubProgressSink()
-        )
-
-        let response = JsonRpcMessage.successResponse(
-            JsonRpcSuccessResponse(id: .number(99), result: .object([:]))
-        )
-        let (exchange, sink) = MCPProtocolTestSupport.makeExchange(message: response)
 
         await dispatcher.dispatch(exchange)
-        await sink.waitForCompletion()
 
-        let acceptedCount = await sink.acceptedCount
-        XCTAssertEqual(acceptedCount, 1)
-        let jsonWrites = await sink.jsonWrites
-        XCTAssertTrue(jsonWrites.isEmpty)
+        let accepted = await sink.acceptedCount
+        XCTAssertEqual(accepted, 1)
     }
 
-    func testNotificationInitializedTransitionsSessionWithoutResponse() async throws {
-        let store = MCPSessionStore()
-        let session = try await store.create()
-        let sessionId = await session.id
-        let dispatcher = MCPProtocolDispatcher(
-            handlers: [],
-            sessionStore: store,
-            progressSink: StubProgressSink()
-        )
-
-        let stateBefore = await session.state
-        XCTAssertEqual(stateBefore, .initializing)
-
-        let notification = MCPProtocolTestSupport.makeNotification(
-            method: "notifications/initialized"
-        )
+    private func sendCancellation(params: JsonValue, to dispatcher: MCPProtocolDispatcher) async -> Int {
         let (exchange, sink) = MCPProtocolTestSupport.makeExchange(
-            message: notification,
-            sessionId: sessionId
+            message: MCPProtocolTestSupport.makeNotification(method: "notifications/cancelled", params: params),
+            principal: principal
         )
-
         await dispatcher.dispatch(exchange)
-        await sink.waitForCompletion()
-
-        let stateAfter = await session.state
-        XCTAssertEqual(stateAfter, .ready)
-
-        let acceptedCount = await sink.acceptedCount
-        XCTAssertEqual(acceptedCount, 1)
-        let writes = await sink.jsonWrites
-        XCTAssertTrue(writes.isEmpty)
+        return await sink.acceptedCount
     }
 
-    func testConcurrentRequestsInSameSessionAllComplete() async throws {
-        let store = MCPSessionStore()
-        let session = try await store.create()
-        let sessionId = await session.id
-        try await session.transitionToReady()
-
-        let dispatcher = MCPProtocolDispatcher(
-            handlers: [PingHandler()],
-            sessionStore: store,
-            progressSink: StubProgressSink()
-        )
-
-        let count = 5
-        var sinks: [RecordingResponderSink] = []
-        sinks.reserveCapacity(count)
-
-        await withTaskGroup(of: RecordingResponderSink.self) { group in
-            for index in 0..<count {
-                let request = MCPProtocolTestSupport.makeRequest(
-                    id: .number(Int64(index + 1)),
-                    method: "ping"
-                )
-                let (exchange, sink) = MCPProtocolTestSupport.makeExchange(
-                    message: request,
-                    sessionId: sessionId
-                )
-                group.addTask {
-                    await dispatcher.dispatch(exchange)
-                    await sink.waitForCompletion()
-                    return sink
-                }
-            }
-            for await sink in group {
-                sinks.append(sink)
-            }
+    private func waitForInflight(_ dispatcher: MCPProtocolDispatcher) async -> Int {
+        for _ in 0 ..< 400 {
+            let current = await dispatcher.inflightCount()
+            if current >= 1 { return current }
+            try? await Task.sleep(for: .milliseconds(5))
         }
-
-        XCTAssertEqual(sinks.count, count)
-
-        var seenIds = Set<Int64>()
-        for sink in sinks {
-            let decoded = try await sink.firstJsonMessage()
-            guard case .successResponse(let success) = decoded else {
-                XCTFail("Expected success response, got \(String(describing: decoded))")
-                return
-            }
-            guard case .number(let value) = success.id else {
-                XCTFail("Expected numeric id, got \(success.id)")
-                return
-            }
-            seenIds.insert(value)
-        }
-        XCTAssertEqual(seenIds, Set((1...count).map { Int64($0) }))
-    }
-
-    func testHandlerThrowingProtocolErrorYieldsErrorResponse() async throws {
-        let store = MCPSessionStore()
-        let session = try await store.create()
-        let sessionId = await session.id
-        try await session.transitionToReady()
-
-        let stubError = MCPProtocolError.invalidParams(detail: "bad shape")
-        let handler = StubMethodHandler(behavior: .throwProtocolError(stubError))
-        let dispatcher = MCPProtocolDispatcher(
-            handlers: [handler],
-            sessionStore: store,
-            progressSink: StubProgressSink()
-        )
-
-        let request = MCPProtocolTestSupport.makeRequest(
-            id: .number(11),
-            method: StubMethodHandler.method
-        )
-        let (exchange, sink) = MCPProtocolTestSupport.makeExchange(
-            message: request,
-            sessionId: sessionId
-        )
-
-        await dispatcher.dispatch(exchange)
-        await sink.waitForCompletion()
-
-        let decoded = try await sink.firstJsonMessage()
-        guard case .errorResponse(let envelope) = decoded else {
-            XCTFail("Expected error response, got \(String(describing: decoded))")
-            return
-        }
-        XCTAssertEqual(envelope.error.code, JsonRpcErrorCode.invalidParams)
-    }
-
-    func testRequestWithoutSessionIdAndNonInitializeMethodFails() async throws {
-        let store = MCPSessionStore()
-        let dispatcher = MCPProtocolDispatcher(
-            handlers: [PingHandler()],
-            sessionStore: store,
-            progressSink: StubProgressSink()
-        )
-
-        let request = MCPProtocolTestSupport.makeRequest(
-            id: .number(20),
-            method: "ping"
-        )
-        let (exchange, sink) = MCPProtocolTestSupport.makeExchange(
-            message: request,
-            sessionId: nil
-        )
-
-        await dispatcher.dispatch(exchange)
-        await sink.waitForCompletion()
-
-        let decoded = try await sink.firstJsonMessage()
-        guard case .errorResponse(let envelope) = decoded else {
-            XCTFail("Expected error response, got \(String(describing: decoded))")
-            return
-        }
-        XCTAssertEqual(envelope.error.code, JsonRpcErrorCode.sessionNotFound)
-    }
-
-    private func waitUntil(
-        timeoutMs: UInt64,
-        _ predicate: @Sendable () async -> Bool
-    ) async throws {
-        let deadline = Date().addingTimeInterval(Double(timeoutMs) / 1_000.0)
-        while Date() < deadline {
-            if await predicate() { return }
-            try await Task.sleep(nanoseconds: 10_000_000)
-        }
-        if await predicate() { return }
-        XCTFail("Timed out waiting for condition after \(timeoutMs)ms")
+        return await dispatcher.inflightCount()
     }
 }

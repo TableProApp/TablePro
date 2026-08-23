@@ -125,7 +125,7 @@ internal final class CompareSyncSession {
         switch activity {
         case .applying:
             return String(
-                format: String(localized: "Applying to %@..."),
+                format: String(localized: "Applying to %@…"),
                 target?.qualifiedDescription ?? ""
             )
         case .comparing, .connecting:

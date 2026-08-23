@@ -29,6 +29,43 @@ struct ValueDisplayFormatStorageTests {
         #expect(storage.load(for: target) == nil)
     }
 
+    @Test("Explicit Raw format survives reload")
+    func rawOverrideRoundTrip() throws {
+        let (storage, _) = try makeStorage()
+        let target = scope("public", connectionId: UUID())
+
+        storage.save(["id": .raw], for: target)
+
+        #expect(storage.load(for: target) == ["id": .raw])
+    }
+
+    @Test("Explicit Raw overrides automatic UUID detection")
+    func rawOverridesAutomaticDetection() throws {
+        let (storage, _) = try makeStorage()
+        let service = ValueDisplayFormatService(storage: storage)
+        let target = scope("public", connectionId: UUID())
+        service.setAutoDetectedFormats(["id": .uuid], scope: target)
+
+        service.setOverride(.raw, columnKey: "id", scope: target)
+
+        #expect(service.effectiveFormat(columnKey: "id", scope: target) == .raw)
+        #expect(storage.load(for: target) == ["id": .raw])
+    }
+
+    @Test("Duplicate column occurrences persist independent formats")
+    func duplicateColumnOverridesDoNotCollide() throws {
+        let (storage, _) = try makeStorage()
+        let service = ValueDisplayFormatService(storage: storage)
+        let target = scope("public", connectionId: UUID())
+        let keys = ValueDisplayFormatColumnKey.storageKeys(for: ["value", "value"])
+
+        service.setOverride(.uuid, columnKey: keys[0], scope: target)
+        service.setOverride(.raw, columnKey: keys[1], scope: target)
+
+        #expect(service.effectiveFormat(columnKey: keys[0], scope: target) == .uuid)
+        #expect(service.effectiveFormat(columnKey: keys[1], scope: target) == .raw)
+    }
+
     @Test("Same table name in different schemas does not collide")
     func schemasDoNotCollide() throws {
         let (storage, _) = try makeStorage()

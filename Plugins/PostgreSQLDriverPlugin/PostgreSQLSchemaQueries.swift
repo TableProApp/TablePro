@@ -195,6 +195,28 @@ enum PostgreSQLSchemaQueries {
     /// then current schema) before escaping and passing it here. The identity,
     /// generated, and attribute-join fragments come from the connected server's
     /// versioned capabilities.
+    static let enumTypeOidQuery = """
+        SELECT t.oid::text, t.typarray::text, t.typname
+        FROM pg_catalog.pg_type t
+        WHERE t.typtype = 'e'
+        """
+
+    static let enumLabelQuery = """
+        SELECT n.nspname, t.typname, e.enumlabel
+        FROM pg_catalog.pg_type t
+        JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+        JOIN pg_catalog.pg_enum e ON e.enumtypid = t.oid
+        ORDER BY n.nspname, t.typname, e.enumsortorder
+        """
+
+    static let arrayTypeQuery = """
+        SELECT n.nspname, arr.typname, el.typname, el.typtype
+        FROM pg_catalog.pg_type arr
+        JOIN pg_catalog.pg_type el ON el.oid = arr.typelem
+        JOIN pg_catalog.pg_namespace n ON n.oid = arr.typnamespace
+        WHERE arr.typelem <> 0 AND el.typarray = arr.oid
+        """
+
     static func columnsQuery(
         schemaLiteral: String,
         tableLiteral: String?,
@@ -214,7 +236,8 @@ enum PostgreSQLSchemaQueries {
                 c.udt_name,
                 CASE WHEN pk.column_name IS NOT NULL THEN 'YES' ELSE 'NO' END AS is_pk,
                 \(identityProjection),
-                \(generatedProjection)
+                \(generatedProjection),
+                c.udt_schema
             FROM information_schema.columns c
             LEFT JOIN pg_catalog.pg_statio_all_tables st
                 ON st.schemaname = c.table_schema

@@ -6,6 +6,34 @@
 import Foundation
 import TableProPluginKit
 
+struct DatabaseTreeContainerKey: Hashable {
+    let database: String
+    let schema: String?
+    let searchText: String
+}
+
+/// One filtered pass over a container's objects, split by kind. The container row needs the counts
+/// and each group row under it needs one bucket, so both read this rather than filtering the whole
+/// list again per group.
+struct DatabaseTreeObjectBuckets {
+    let tables: [SidebarObjectKind: [TableInfo]]
+    let routines: [SidebarObjectKind: [RoutineInfo]]
+    let triggers: [TriggerInfo]
+
+    var isEmpty: Bool {
+        tables.values.allSatisfy(\.isEmpty) && routines.values.allSatisfy(\.isEmpty) && triggers.isEmpty
+    }
+
+    var itemCounts: [SidebarObjectKind: Int] {
+        var counts = tables.mapValues(\.count)
+        for (kind, list) in routines {
+            counts[kind, default: 0] += list.count
+        }
+        counts[.trigger, default: 0] += triggers.count
+        return counts
+    }
+}
+
 enum DatabaseTreeFilter {
     static func matches(_ query: String, _ candidate: String) -> Bool {
         SidebarNameFilter.matches(query: query, candidate: candidate)
@@ -19,6 +47,60 @@ enum DatabaseTreeFilter {
     static func filteredRoutines(_ routines: [RoutineInfo], searchText: String) -> [RoutineInfo] {
         let matched = SidebarNameFilter.ranked(routines, query: searchText, name: { $0.name })
         return deduplicated(matched, by: \.id)
+    }
+
+    /// A trigger is findable by its own name and by the table it fires for, because a reader who
+    /// knows only the table is exactly the reader the database-level list exists for.
+    static func filteredTriggers(_ triggers: [TriggerInfo], searchText: String) -> [TriggerInfo] {
+        let matched = SidebarNameFilter.ranked(triggers, query: searchText, name: { $0.name })
+        let byTable = searchText.isEmpty
+            ? []
+            : triggers.filter { trigger in
+                guard let table = trigger.table, matches(searchText, table) else { return false }
+                return true
+            }
+        return deduplicated(matched + byTable, by: \.id)
+    }
+
+    static func objectBuckets(
+        tables: [TableInfo],
+        routines: [RoutineInfo],
+        triggers: [TriggerInfo],
+        searchText: String
+    ) -> DatabaseTreeObjectBuckets {
+        var tableBuckets: [SidebarObjectKind: [TableInfo]] = [:]
+        for table in filteredTables(tables, searchText: searchText) {
+            tableBuckets[SidebarObjectKind.resolve(tableType: table.type), default: []].append(table)
+        }
+        var routineBuckets: [SidebarObjectKind: [RoutineInfo]] = [:]
+        for routine in filteredRoutines(routines, searchText: searchText) {
+            routineBuckets[routine.kind.sidebarObjectKind, default: []].append(routine)
+        }
+        return DatabaseTreeObjectBuckets(
+            tables: tableBuckets,
+            routines: routineBuckets,
+            triggers: filteredTriggers(triggers, searchText: searchText)
+        )
+    }
+
+    /// A schema whose tables have not loaded yet cannot be judged, so it stays visible. Reading an
+    /// unloaded schema as an empty one hides it for the whole life of the filter and blanks the
+    /// pane while the search-driven load is still running.
+    static func hierarchicalSchemaIsVisible(
+        _ schema: String,
+        searchText: String,
+        isLoaded: Bool,
+        tables: [TableInfo]
+    ) -> Bool {
+        if matches(searchText, schema) { return true }
+        guard isLoaded else { return true }
+        return !filteredTables(tables, searchText: searchText).isEmpty
+    }
+
+    /// A schema the search matched by name shows everything inside it. Filtering its tables by the
+    /// same query leaves the matched schema reporting no items.
+    static func hierarchicalTables(_ tables: [TableInfo], schema: String, searchText: String) -> [TableInfo] {
+        matches(searchText, schema) ? tables : filteredTables(tables, searchText: searchText)
     }
 
     static func visibleSchemas(

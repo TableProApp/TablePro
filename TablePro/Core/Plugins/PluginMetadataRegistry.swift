@@ -32,7 +32,7 @@ struct PluginMetadataSnapshot: Sendable {
 
     let capabilities: CapabilityFlags
     let schema: SchemaInfo
-    let editor: EditorConfig
+    var editor: EditorConfig
     let connection: ConnectionConfig
 
     struct CapabilityFlags: Sendable {
@@ -48,6 +48,7 @@ struct PluginMetadataSnapshot: Sendable {
         let requiresReconnectForDatabaseSwitch: Bool
         let supportsDropDatabase: Bool
         // `var` with defaults so existing call sites compile without passing these fields
+        var supportsDropSchema: Bool = false
         var supportsAddColumn: Bool = true
         var supportsModifyColumn: Bool = true
         var supportsDropColumn: Bool = true
@@ -57,6 +58,8 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsModifyPrimaryKey: Bool = true
         var supportsTriggers: Bool = false
         var supportsTriggerEditing: Bool = false
+        var supportsRoutines: Bool = false
+        var supportsDatabaseTriggerBrowse: Bool = false
         var defaultSSLMode: SSLMode = .disabled
         var supportsOpportunisticTLS: Bool = true
         var supportsCloudflareTunnel: Bool = true
@@ -149,7 +152,7 @@ struct PluginMetadataSnapshot: Sendable {
     }
 
     struct EditorConfig: Sendable {
-        let sqlDialect: SQLDialectDescriptor?
+        var sqlDialect: SQLDialectDescriptor?
         let statementCompletions: [CompletionEntry]
         let columnTypesByCategory: [String: [String]]
 
@@ -173,6 +176,11 @@ struct PluginMetadataSnapshot: Sendable {
         let category: DatabaseCategory
         let tagline: String
         let hidesBuiltInPassword: Bool
+        /// The driver takes no container name on the connection, so the built-in field would
+        /// be a second, meaningless place to type one: an embedded engine reads it from the
+        /// file it opens, Redis numbers its databases through its own field, and a key-value
+        /// store may have no container at all.
+        let hidesBuiltInDatabase: Bool
         let defaultUnixSocketPath: String?
         let defaultHost: String?
 
@@ -181,6 +189,7 @@ struct PluginMetadataSnapshot: Sendable {
             category: DatabaseCategory = .other,
             tagline: String = "",
             hidesBuiltInPassword: Bool = false,
+            hidesBuiltInDatabase: Bool = false,
             defaultUnixSocketPath: String? = nil,
             defaultHost: String? = nil
         ) {
@@ -188,6 +197,7 @@ struct PluginMetadataSnapshot: Sendable {
             self.category = category
             self.tagline = tagline
             self.hidesBuiltInPassword = hidesBuiltInPassword
+            self.hidesBuiltInDatabase = hidesBuiltInDatabase
             self.defaultUnixSocketPath = defaultUnixSocketPath
             self.defaultHost = defaultHost
         }
@@ -242,7 +252,7 @@ struct PluginMetadataSnapshot: Sendable {
             editorLanguage: editorLanguage, connectionMode: connectionMode,
             supportsDatabaseSwitching: supportsDatabaseSwitching,
             supportsColumnReorder: supportsColumnReorder,
-            capabilities: capabilities, schema: schema, editor: editor, connection: source.connection
+            capabilities: capabilities, schema: schema, editor: editor, connection: connection
         )
     }
 
@@ -352,7 +362,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             booleanLiteralStyle: .numeric,
             likeEscapeStyle: .implicit,
             paginationStyle: .limit,
-            requiresBackslashEscaping: true
+            requiresBackslashEscaping: true,
+            caseSensitivityStyle: .collationDefined
         )
 
         let mysqlColumnTypes: [String: [String]] = [
@@ -407,8 +418,12 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             regexSyntax: .tilde,
             booleanLiteralStyle: .truefalse,
             likeEscapeStyle: .explicit,
-            paginationStyle: .limit
+            paginationStyle: .limit,
+            caseSensitivityStyle: .ilikeOperator
         )
+
+        // Redshift ILIKE only folds ASCII, so it uses LOWER on both sides instead.
+        let redshiftDialect = postgresqlDialect.withCaseSensitivityStyle(.caseFoldFunction)
 
         let postgresqlColumnTypes: [String: [String]] = [
             "Integer": ["SMALLINT", "INTEGER", "BIGINT", "SERIAL", "BIGSERIAL", "SMALLSERIAL"],
@@ -471,7 +486,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             regexSyntax: .unsupported,
             booleanLiteralStyle: .numeric,
             likeEscapeStyle: .explicit,
-            paginationStyle: .limit
+            paginationStyle: .limit,
+            caseSensitivityStyle: .collationDefined
         )
 
         let sqliteColumnTypes: [String: [String]] = [
@@ -528,6 +544,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
+                    supportsRoutines: true,
+                    supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -583,6 +601,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
+                    supportsRoutines: true,
+                    supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -636,9 +656,12 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: true,
                     supportsDropDatabase: true,
+                    supportsDropSchema: true,
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
+                    supportsRoutines: true,
+                    supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -689,6 +712,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: true,
                     supportsDropDatabase: true,
+                    supportsDropSchema: true,
                     defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -705,7 +729,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
-                    sqlDialect: postgresqlDialect,
+                    sqlDialect: redshiftDialect,
                     statementCompletions: [],
                     columnTypesByCategory: postgresqlColumnTypes
                 ),
@@ -721,8 +745,15 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 isDownloadable: false, primaryUrlScheme: "cockroachdb", parameterStyle: .dollar,
                 navigationModel: .standard,
                 explainVariants: [
-                    ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN"),
-                    ExplainVariant(id: "analyze", label: "EXPLAIN ANALYZE", sqlPrefix: "EXPLAIN ANALYZE"),
+                    ExplainVariant(
+                        id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN", format: .cockroachText
+                    ),
+                    ExplainVariant(
+                        id: "analyze",
+                        label: "EXPLAIN ANALYZE",
+                        sqlPrefix: "EXPLAIN ANALYZE",
+                        format: .cockroachText
+                    ),
                 ],
                 pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: ["cockroachdb", "cockroach"],
@@ -743,6 +774,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: true,
                     supportsDropDatabase: true,
+                    supportsDropSchema: true,
                     supportsAddColumn: false,
                     supportsModifyColumn: false,
                     supportsDropColumn: false,
@@ -799,6 +831,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: true,
                     supportsDropDatabase: true,
+                    supportsDropSchema: true,
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
@@ -859,6 +892,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsModifyPrimaryKey: false,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
+                    supportsDatabaseTriggerBrowse: true,
                     supportsCloudflareTunnel: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -935,6 +969,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         }
         if let registryDefault = defaultSnapshots[typeId] {
             resolved = resolved.withIsDownloadable(registryDefault.isDownloadable)
+            Self.adoptCuratedCaseSensitivity(&resolved, registryDefault: registryDefault)
             if Self.declaresLegacySchemaOnlyRouting(resolved, registryDefault: registryDefault) {
                 Logger(subsystem: "com.TablePro", category: "PluginMetadataRegistry").notice(
                     "Plugin '\(typeId, privacy: .public)' declares legacy two-tier switching for a schema-only engine; applying the app's switch routing"
@@ -946,6 +981,23 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         for scheme in resolved.urlSchemes {
             schemeIndex[scheme.lowercased()] = typeId
         }
+    }
+
+    /// A plugin built before case-insensitive matching existed reports `.unsupported`,
+    /// which would leave its engine without the option until the plugin is re-released.
+    /// The app's curated entry knows the engine, so it fills the gap.
+    static func adoptCuratedCaseSensitivity(
+        _ snapshot: inout PluginMetadataSnapshot,
+        registryDefault: PluginMetadataSnapshot
+    ) {
+        guard let dialect = snapshot.editor.sqlDialect,
+              dialect.caseSensitivityStyle == .unsupported,
+              let curated = registryDefault.editor.sqlDialect,
+              curated.caseSensitivityStyle != .unsupported else { return }
+        snapshot.editor.sqlDialect = dialect.withCaseSensitivityStyle(
+            curated.caseSensitivityStyle,
+            caseFoldFunction: curated.caseFoldFunction
+        )
     }
 
     /// A plugin built before its engine moved to schema-only switching still
@@ -1042,9 +1094,10 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         let schemes = driverType.urlSchemes
         let primaryScheme = schemes.first ?? driverType.databaseTypeId.lowercased()
 
-        // Preserve supportsColumnReorder from existing built-in snapshot.
-        // Cannot read from driverType directly — stale plugins without the
-        // property crash with EXC_BAD_INSTRUCTION (missing witness table entry).
+        // A capability with no DriverPlugin static is curated per type, so it has to be carried
+        // over from the built-in snapshot or plugin registration silently resets it to the
+        // struct default. Cannot read these from driverType directly: stale plugins without
+        // the property crash with EXC_BAD_INSTRUCTION (missing witness table entry).
         let existingSnapshot = snapshot(forTypeId: driverType.databaseTypeId)
 
         return PluginMetadataSnapshot(
@@ -1081,6 +1134,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsQueryProgress: driverType.supportsQueryProgress,
                 requiresReconnectForDatabaseSwitch: driverType.requiresReconnectForDatabaseSwitch,
                 supportsDropDatabase: driverType.supportsDropDatabase,
+                supportsDropSchema: driverType.supportsDropSchema,
                 supportsAddColumn: driverType.supportsAddColumn,
                 supportsModifyColumn: driverType.supportsModifyColumn,
                 supportsDropColumn: driverType.supportsDropColumn,
@@ -1090,10 +1144,15 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsModifyPrimaryKey: driverType.supportsModifyPrimaryKey,
                 supportsTriggers: driverType.supportsTriggers,
                 supportsTriggerEditing: driverType.supportsTriggerEditing,
+                supportsRoutines: driverType.supportsRoutines,
+                supportsDatabaseTriggerBrowse: driverType.supportsDatabaseTriggerBrowse,
                 defaultSSLMode: existingSnapshot?.capabilities.defaultSSLMode ?? .disabled,
                 supportsOpportunisticTLS: existingSnapshot?.capabilities.supportsOpportunisticTLS ?? true,
                 supportsCloudflareTunnel: driverType.supportsSSH,
-                supportsClientKeyPassphrase: existingSnapshot?.capabilities.supportsClientKeyPassphrase ?? false
+                supportsClientKeyPassphrase: existingSnapshot?.capabilities.supportsClientKeyPassphrase ?? false,
+                supportsConnectionPooling: existingSnapshot?.capabilities.supportsConnectionPooling ?? true,
+                authenticationIsDatabaseScoped: existingSnapshot?.capabilities
+                    .authenticationIsDatabaseScoped ?? false
             ),
             schema: PluginMetadataSnapshot.SchemaInfo(
                 defaultSchemaName: driverType.defaultSchemaName,
@@ -1121,6 +1180,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 tagline: existingSnapshot?.connection.tagline
                     ?? Self.fallbackTagline(forTypeId: driverType.databaseTypeId),
                 hidesBuiltInPassword: existingSnapshot?.connection.hidesBuiltInPassword ?? false,
+                hidesBuiltInDatabase: existingSnapshot?.connection.hidesBuiltInDatabase ?? false,
                 defaultUnixSocketPath: existingSnapshot?.connection.defaultUnixSocketPath,
                 defaultHost: existingSnapshot?.connection.defaultHost
             )

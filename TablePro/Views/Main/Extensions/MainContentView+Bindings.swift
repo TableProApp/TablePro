@@ -50,27 +50,43 @@ extension MainContentView {
 
         let service = ValueDisplayFormatService.shared
         let connId = coordinator.connection.id
+        let scope = tab.tableContext.scope(connectionId: connId)
+        let storageKeys = ValueDisplayFormatColumnKey.storageKeys(for: tableRows.columns)
+        let activeFormats = InspectorValueDisplayFormatResolver.activeFormats(
+            from: coordinator.dataTabDelegate?.tableViewCoordinator,
+            matching: tableRows.columns
+        )
+        let storedFormats = activeFormats == nil
+            ? storageKeys.map { service.effectiveFormat(columnKey: $0, scope: scope) }
+            : []
 
         for (i, col) in tableRows.columns.enumerated() {
             var value: String?
+            let columnType = i < tableRows.columnTypes.count ? tableRows.columnTypes[i] : nil
+            let format = InspectorValueDisplayFormatResolver.resolve(
+                columnIndex: i,
+                activeFormats: activeFormats,
+                storedFormat: storedFormats.indices.contains(i) ? storedFormats[i] : .raw,
+                columnType: columnType,
+                databaseType: coordinator.connection.type
+            )
             if i < row.count {
                 switch row[i] {
                 case .null:
                     value = nil
                 case .text(let s):
-                    value = s
-                case .bytes(let data):
-                    value = BlobFormattingService.shared.format(data, for: .copy)
+                    value = format == .raw
+                        ? s
+                        : ValueDisplayFormatService.applyFormat(s, format: format)
+                case .bytes(let bytes):
+                    value = format.isApplicable(
+                        to: columnType,
+                        databaseType: coordinator.connection.type
+                    ) ? ValueDisplayFormatService.applyFormat(bytes, format: format) : nil
+                    value = value ?? BlobFormattingService.shared.format(bytes, for: .copy)
                 }
             }
-            let type = i < tableRows.columnTypes.count ? tableRows.columnTypes[i].displayName : "string"
-
-            if let rawValue = value {
-                let format = service.effectiveFormat(columnName: col, scope: tab.tableContext.scope(connectionId: connId))
-                if format != .raw {
-                    value = ValueDisplayFormatService.applyFormat(rawValue, format: format)
-                }
-            }
+            let type = columnType?.displayName ?? "string"
 
             data.append((column: col, value: value, type: type))
         }
@@ -86,9 +102,9 @@ extension MainContentView {
             return selectedInspectorRow?.isEditable ?? false
         }
         guard gridSelectionOwner == .dataGrid,
-              !coordinator.safeModeLevel.blocksAllWrites,
               let tab = coordinator.tabManager.selectedTab,
               tab.tabType == .table || tab.tableContext.tableName != nil,
+              coordinator.canEditActiveResult,
               !coordinator.selectionState.indices.isEmpty else {
             return false
         }
@@ -149,7 +165,8 @@ extension MainContentView {
             schemaVersion: currentTab?.schemaVersion ?? -1,
             metadataVersion: currentTab?.metadataVersion ?? -1,
             resultsViewMode: currentTab?.display.resultsViewMode ?? .data,
-            inspectorRowSourceRevision: coordinator.inspectorRowSourceRevision
+            inspectorRowSourceRevision: coordinator.inspectorRowSourceRevision,
+            gridDisplayRevision: coordinator.gridDisplayRevision
         )
     }
 }
@@ -160,6 +177,38 @@ struct InspectorTrigger: Equatable {
     let metadataVersion: Int
     let resultsViewMode: ResultsViewMode
     let inspectorRowSourceRevision: Int
+    let gridDisplayRevision: Int
+}
+
+enum InspectorValueDisplayFormatResolver {
+    /// The window keeps one grid coordinator, so it can still be pointed at the previously
+    /// selected tab. Its formats are only meaningful while it holds this tab's columns.
+    @MainActor
+    static func activeFormats(
+        from grid: TableViewCoordinator?,
+        matching columns: [String]
+    ) -> [ValueDisplayFormat?]? {
+        guard let grid, grid.tableRowsProvider().columns == columns else { return nil }
+        return grid.columnDisplayFormats
+    }
+
+    static func resolve(
+        columnIndex: Int,
+        activeFormats: [ValueDisplayFormat?]?,
+        storedFormat: ValueDisplayFormat,
+        columnType: ColumnType?,
+        databaseType: DatabaseType
+    ) -> ValueDisplayFormat {
+        let candidate: ValueDisplayFormat
+        if let activeFormats {
+            candidate = activeFormats.indices.contains(columnIndex)
+                ? activeFormats[columnIndex] ?? .raw
+                : .raw
+        } else {
+            candidate = storedFormat
+        }
+        return candidate.isApplicable(to: columnType, databaseType: databaseType) ? candidate : .raw
+    }
 }
 
 /// Lightweight equatable value combining all pending-change sources

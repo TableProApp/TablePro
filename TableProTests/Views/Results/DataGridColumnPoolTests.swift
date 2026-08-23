@@ -14,6 +14,13 @@ import Testing
 struct DataGridColumnPoolTests {
     private func makeTableView() -> NSTableView {
         let tableView = NSTableView()
+        // Mirrors DataGridView. The default style redistributes column widths on resize, which
+        // would silently rewrite the widths these tests assert on, and the default style and
+        // intercell spacing put the columns at different document positions than the grid's, which
+        // is the geometry the window is resolved against.
+        tableView.columnAutoresizingStyle = .noColumnAutoresizing
+        tableView.style = .plain
+        tableView.intercellSpacing = NSSize(width: 1, height: 0)
         let rowNumberColumn = NSTableColumn(identifier: ColumnIdentitySchema.rowNumberIdentifier)
         rowNumberColumn.width = 40
         tableView.addTableColumn(rowNumberColumn)
@@ -326,6 +333,37 @@ struct DataGridColumnPoolTests {
         #expect(widthsByName["name"] == 250)
     }
 
+    @Test("A partial saved layout leaves missing columns automatic")
+    func reconcile_partialSavedLayoutUsesCalculatorForMissingColumns() {
+        let pool = DataGridColumnPool()
+        let tableView = makeTableView()
+        let schema = ColumnIdentitySchema(columns: ["id", "name"])
+        var calculatedNames: [String] = []
+
+        var layout = ColumnLayoutState()
+        layout.columnWidths = ["id": 75]
+
+        pool.reconcile(
+            tableView: tableView,
+            schema: schema,
+            columnTypes: makeColumnTypes(count: 2),
+            savedLayout: layout,
+            isEditable: true,
+            hiddenColumnNames: [],
+            widthCalculator: { name, _ in
+                calculatedNames.append(name)
+                return 200
+            }
+        )
+
+        let widthsByName = Dictionary(
+            uniqueKeysWithValues: dataColumns(in: tableView).map { ($0.headerCell.stringValue, $0.width) }
+        )
+        #expect(widthsByName["id"] == 75)
+        #expect(widthsByName["name"] == 200)
+        #expect(calculatedNames == ["name"])
+    }
+
     @Test("An oversized saved width is clamped to the column ceiling")
     func reconcile_clampsOversizedSavedWidthToColumnCeiling() {
         let pool = DataGridColumnPool()
@@ -604,5 +642,60 @@ struct DataGridColumnPoolTests {
         )
         #expect(dataColumns(in: tableView).count == 3)
         #expect(pool.totalSlots == 3)
+    }
+
+    // MARK: - Column windowing (#1219)
+
+    private func reconcileWide(
+        _ pool: DataGridColumnPool,
+        tableView: NSTableView,
+        count: Int,
+        hidden: Set<String> = []
+    ) {
+        let names = (0..<count).map { "c\($0)" }
+        pool.reconcile(
+            tableView: tableView,
+            schema: ColumnIdentitySchema(columns: names),
+            columnTypes: makeColumnTypes(count: count),
+            savedLayout: nil,
+            isEditable: true,
+            hiddenColumnNames: hidden,
+            widthCalculator: defaultWidthCalculator
+        )
+    }
+
+    @Test("A column the user hid is not presented")
+    func userHiddenColumnIsNotPresented() {
+        let pool = DataGridColumnPool()
+        let tableView = makeTableView()
+
+        reconcileWide(pool, tableView: tableView, count: 20, hidden: ["c3"])
+
+        let presented = dataColumns(in: tableView).filter { pool.presentsColumn($0) }
+        #expect(presented.count == 19)
+        #expect(pool.hasUserHiddenColumns)
+    }
+
+    @Test("A surplus slot from a wider result is not presented")
+    func surplusSlotIsNotPresented() {
+        let pool = DataGridColumnPool()
+        let tableView = makeTableView()
+
+        reconcileWide(pool, tableView: tableView, count: 40)
+        reconcileWide(pool, tableView: tableView, count: 5)
+
+        let presented = dataColumns(in: tableView).filter { pool.presentsColumn($0) }
+        #expect(presented.count == 5)
+    }
+
+    @Test("Detaching removes the pooled columns")
+    func detachRemovesPooledColumns() {
+        let pool = DataGridColumnPool()
+        let tableView = makeTableView()
+
+        reconcileWide(pool, tableView: tableView, count: 60)
+        pool.detachFromTableView()
+
+        #expect(dataColumns(in: tableView).isEmpty)
     }
 }

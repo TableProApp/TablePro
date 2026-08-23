@@ -34,4 +34,14 @@ final class ResizableFieldMetricsTests: XCTestCase {
     func testDefaultJsonHeightIsWithinJsonRange() {
         XCTAssertTrue(ResizableFieldMetrics.jsonHeightRange.contains(ResizableFieldMetrics.defaultJsonHeight))
     }
+
+    func testDefaultTextHeightIsWithinTextRange() {
+        XCTAssertTrue(ResizableFieldMetrics.textHeightRange.contains(ResizableFieldMetrics.defaultTextHeight))
+    }
+
+    func testTextHeightResolvesWithinItsOwnRange() {
+        let textRange = ResizableFieldMetrics.textHeightRange
+        XCTAssertEqual(ResizableFieldMetrics.resolve(base: 110, delta: -500, range: textRange), textRange.lowerBound)
+        XCTAssertEqual(ResizableFieldMetrics.resolve(base: 110, delta: 5_000, range: textRange), textRange.upperBound)
+    }
 }

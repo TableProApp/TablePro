@@ -101,60 +101,6 @@ struct TabSessionRegistryTableRowsTests {
         store.evict(for: UUID())
     }
 
-    @Test("evictAll(except:) evicts other tabs and spares the active one")
-    func evictAllSparesActive() {
-        let store = TabSessionRegistry()
-        let activeId = UUID()
-        let otherId1 = UUID()
-        let otherId2 = UUID()
-
-        let active = TableRows.from(queryRows: [["a"]], columns: ["c"], columnTypes: [.text(rawType: nil)])
-        let other1 = TableRows.from(queryRows: [["b"]], columns: ["c"], columnTypes: [.text(rawType: nil)])
-        let other2 = TableRows.from(queryRows: [["d"]], columns: ["c"], columnTypes: [.text(rawType: nil)])
-
-        store.setTableRows(active, for: activeId)
-        store.setTableRows(other1, for: otherId1)
-        store.setTableRows(other2, for: otherId2)
-
-        store.evictAll(except: activeId)
-
-        #expect(store.isEvicted(activeId) == false)
-        #expect(store.existingTableRows(for: activeId)?.rows.count == 1)
-        #expect(store.isEvicted(otherId1) == true)
-        #expect(store.existingTableRows(for: otherId1)?.rows.isEmpty == true)
-        #expect(store.isEvicted(otherId2) == true)
-    }
-
-    @Test("evictAll(except: nil) evicts every loaded tab")
-    func evictAllNoActiveEvictsAll() {
-        let store = TabSessionRegistry()
-        let id1 = UUID()
-        let id2 = UUID()
-        store.setTableRows(
-            TableRows.from(queryRows: [["a"]], columns: ["c"], columnTypes: [.text(rawType: nil)]),
-            for: id1
-        )
-        store.setTableRows(
-            TableRows.from(queryRows: [["b"]], columns: ["c"], columnTypes: [.text(rawType: nil)]),
-            for: id2
-        )
-
-        store.evictAll(except: nil)
-
-        #expect(store.isEvicted(id1) == true)
-        #expect(store.isEvicted(id2) == true)
-    }
-
-    @Test("evictAll(except:) skips empty tables")
-    func evictAllSkipsEmpty() {
-        let store = TabSessionRegistry()
-        let tabId = UUID()
-        store.setTableRows(TableRows(), for: tabId)
-
-        store.evictAll(except: nil)
-        #expect(store.isEvicted(tabId) == false)
-    }
-
     @Test("setTableRows clears evicted flag")
     func setClearsEvicted() {
         let store = TabSessionRegistry()

@@ -55,7 +55,8 @@ final class DynamoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
             "begins_with", "contains", "size", "attribute_type",
             "attribute_exists", "attribute_not_exists"
         ],
-        dataTypes: ["S", "N", "B", "BOOL", "NULL", "L", "M", "SS", "NS", "BS"]
+        dataTypes: ["S", "N", "B", "BOOL", "NULL", "L", "M", "SS", "NS", "BS"],
+        caseSensitivityStyle: .driverManaged
     )
 
     static let columnTypesByCategory: [String: [String]] = [

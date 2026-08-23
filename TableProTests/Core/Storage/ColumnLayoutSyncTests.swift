@@ -5,8 +5,8 @@
 
 import Foundation
 @testable import TablePro
-import Testing
 import TableProSyncTransport
+import Testing
 
 @Suite("Column layout sync")
 @MainActor
@@ -40,8 +40,9 @@ struct ColumnLayoutSyncTests {
         let (source, _) = try makePersister()
         let tableKey = key()
         var state = ColumnLayoutState()
-        state.columnWidths = ["id": 80, "name": 200]
-        state.columnOrder = ["id", "name"]
+        state.columnWidths = ["id": 80, "created_at": 176]
+        state.columnContentWidths = ["id": 80, "created_at": 160]
+        state.columnOrder = ["id", "created_at"]
         source.save(state, for: tableKey)
 
         let data = try #require(source.rawData(forStorageKey: tableKey.storageKey))
@@ -49,8 +50,9 @@ struct ColumnLayoutSyncTests {
         let (target, _) = try makePersister()
         target.applyRemote(storageKey: tableKey.storageKey, data: data)
 
-        #expect(target.load(for: tableKey)?.columnWidths == ["id": 80, "name": 200])
-        #expect(target.load(for: tableKey)?.columnOrder == ["id", "name"])
+        #expect(target.load(for: tableKey)?.columnWidths == ["id": 80, "created_at": 176])
+        #expect(target.load(for: tableKey)?.columnContentWidths == ["id": 80, "created_at": 160])
+        #expect(target.load(for: tableKey)?.columnOrder == ["id", "created_at"])
     }
 
     @Test("The sync category carries the columnLayout prefix")

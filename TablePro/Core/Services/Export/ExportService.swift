@@ -57,7 +57,7 @@ struct ExportState {
 
 @MainActor @Observable
 final class ExportService {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ExportService")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ExportService")
 
     var state = ExportState()
 

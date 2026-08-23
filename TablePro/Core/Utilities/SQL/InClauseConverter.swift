@@ -38,25 +38,19 @@ internal struct InClauseConverter {
     }
 
     private func formatScalar(_ value: String, type: ColumnType) -> String {
-        switch type {
-        case .integer:
-            if RowValueCopyFormatter.isIntegerLiteral(value) { return value }
-            return quoted(value)
-        case .decimal:
-            if Double(value) != nil { return value }
-            return quoted(value)
-        case .boolean:
-            switch value.lowercased() {
-            case "true", "1", "yes", "on":
+        if type.isBooleanType {
+            guard let synonym = ColumnTypeSQLQuoting.booleanSynonym(for: value) else { return quoted(value) }
+            switch synonym {
+            case .isTrue:
                 return "TRUE"
-            case "false", "0", "no", "off":
+            case .isFalse:
                 return "FALSE"
-            default:
+            @unknown default:
                 return quoted(value)
             }
-        case .blob, .text, .date, .timestamp, .datetime, .json, .enumType, .set, .spatial:
-            return quoted(value)
         }
+        guard ColumnTypeSQLQuoting.isNumericLiteral(value, for: type) else { return quoted(value) }
+        return value
     }
 
     private func quoted(_ value: String) -> String {

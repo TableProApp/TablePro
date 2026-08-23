@@ -8,7 +8,7 @@ import os
 
 @MainActor
 struct TableOperationSQLBuilder {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "TableOperationSQLBuilder")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "TableOperationSQLBuilder")
 
     let connectionId: UUID
     let databaseType: DatabaseType
@@ -111,7 +111,7 @@ struct TableOperationSQLBuilder {
             return "MATERIALIZED VIEW"
         case .foreignTable:
             return "FOREIGN TABLE"
-        case .table, .systemTable, .partitionedTable, .none:
+        case .table, .systemTable, .partitionedTable, .externalTable, .none:
             return "TABLE"
         }
     }

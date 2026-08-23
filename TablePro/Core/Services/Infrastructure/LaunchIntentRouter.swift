@@ -11,7 +11,7 @@ import os
 internal final class LaunchIntentRouter {
     internal static let shared = LaunchIntentRouter()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "LaunchIntentRouter")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "LaunchIntentRouter")
 
     private init() {}
 
@@ -45,6 +45,9 @@ internal final class LaunchIntentRouter {
 
             case .installPlugin(let url):
                 try await installPlugin(url)
+
+            case .openSampleDatabase:
+                SampleDatabaseLauncher.open()
             }
         } catch let error as TabRouterError where error == .userCancelled {
             Self.logger.info("Intent cancelled by user")
@@ -81,15 +84,41 @@ internal final class LaunchIntentRouter {
         WindowOpener.shared.openSettings(tab: .plugins)
     }
 
+    private func connectionId(for intent: LaunchIntent) -> UUID? {
+        switch intent {
+        case .openConnection(let id):
+            return id
+        case .openTable(let id, _, _, _, _):
+            return id
+        case .openQuery(let id, _):
+            return id
+        case .reopenClosedTab(let entry):
+            return entry.connectionId
+        default:
+            return nil
+        }
+    }
+
     private func presentError(_ error: Error, for intent: LaunchIntent) async {
+        if let connectionId = connectionId(for: intent),
+           WindowManager.shared.hasOpenWindow(for: connectionId) {
+            Self.logger.info(
+                "Failure already shown in the connection window connId=\(connectionId, privacy: .public)"
+            )
+            return
+        }
+
         let title: String
         switch intent {
         case .pairIntegration:
             title = String(localized: "Pairing Failed")
         case .installPlugin:
             title = String(localized: "Plugin Installation Failed")
+        /// `openSampleDatabase` presents its own failure through `SampleDatabaseLauncher` and never
+        /// throws out of `route`, so this arm exists to keep the switch exhaustive rather than to
+        /// be reached. Grouped with the connection cases because that is what it opens.
         case .openConnection, .openTable, .openQuery, .openDatabaseURL, .openDatabaseFile,
-             .reopenClosedTab:
+             .reopenClosedTab, .openSampleDatabase:
             title = String(localized: "Connection Failed")
         case .openSQLFile, .openInspectorFile:
             title = String(localized: "Could Not Open File")

@@ -26,15 +26,29 @@ enum ConnectionSwitcherSelection {
     }
 }
 
+/// The two sections list different things, a live session and a saved record, but the list shows one
+/// kind of row, so they are resolved into one before they reach it.
+struct ConnectionSwitcherEntry: Identifiable {
+    let id: UUID
+    let connection: DatabaseConnection
+    let isActive: Bool
+    let isConnected: Bool
+}
+
 struct ConnectionSwitcherPopover: View {
-    @Environment(\.dismiss) private var dismiss
+    /// An explicit closure rather than `@Environment(\.dismiss)`, because the presenter owns the
+    /// surface: `dismiss` reaches a SwiftUI presentation, and this content is hosted in an AppKit
+    /// popover or panel that SwiftUI knows nothing about. `PopoverPresenter` hands every caller the
+    /// same shape.
+    let dismiss: () -> Void
 
     @State private var savedConnections: [DatabaseConnection] = []
     @State private var selectedConnectionId: UUID?
     @State private var searchText = ""
 
-    private static let popoverWidth: CGFloat = 400
-    private static let popoverHeight: CGFloat = 460
+    /// One declaration, read by this view's own frame and by whoever presents it, so the
+    /// surface and its host can never disagree about how big it is.
+    static let contentSize = NSSize(width: 400, height: 460)
 
     private var activeSessions: [UUID: ConnectionSession] {
         DatabaseManager.shared.activeSessions
@@ -76,7 +90,7 @@ struct ConnectionSwitcherPopover: View {
 
             manageButton
         }
-        .frame(width: Self.popoverWidth, height: Self.popoverHeight)
+        .frame(width: Self.contentSize.width, height: Self.contentSize.height)
         .onAppear {
             savedConnections = ConnectionStorage.shared.loadConnections()
             if selectedConnectionId == nil {
@@ -112,51 +126,52 @@ struct ConnectionSwitcherPopover: View {
         }
     }
 
-    private var list: some View {
-        ScrollViewReader { proxy in
-            List(selection: $selectedConnectionId) {
-                if !filteredSessions.isEmpty {
-                    Section {
-                        ForEach(filteredSessions) { session in
-                            connectionRow(
-                                connection: session.connection,
-                                isActive: session.id == currentSessionId,
-                                isConnected: session.status.isConnected
-                            )
-                            .tag(session.id)
-                            .id(session.id)
-                        }
-                    } header: {
-                        Text("ACTIVE CONNECTIONS")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
+    private var sections: [FieldDrivenListSection<ConnectionSwitcherEntry>] {
+        [
+            FieldDrivenListSection(
+                id: "active",
+                title: String(localized: "ACTIVE CONNECTIONS"),
+                items: filteredSessions.map {
+                    ConnectionSwitcherEntry(
+                        id: $0.id,
+                        connection: $0.connection,
+                        isActive: $0.id == currentSessionId,
+                        isConnected: $0.status.isConnected
+                    )
                 }
+            ),
+            FieldDrivenListSection(
+                id: "saved",
+                title: String(localized: "SAVED CONNECTIONS"),
+                items: filteredSaved.map {
+                    ConnectionSwitcherEntry(id: $0.id, connection: $0, isActive: false, isConnected: false)
+                }
+            ),
+        ]
+    }
 
-                if !filteredSaved.isEmpty {
-                    Section {
-                        ForEach(filteredSaved) { connection in
-                            connectionRow(connection: connection, isActive: false, isConnected: false)
-                                .tag(connection.id)
-                                .id(connection.id)
-                        }
-                    } header: {
-                        Text("SAVED CONNECTIONS")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                }
+    /// The search field keeps focus for the whole flow, so the list is a presentation of that
+    /// field's selection rather than a second focusable control. See `FieldDrivenList`.
+    private var list: some View {
+        FieldDrivenList(
+            sections: sections,
+            selection: Binding(
+                get: { selectedConnectionId.map { [$0] } ?? [] },
+                set: { selectedConnectionId = $0.first }
+            ),
+            rowHeight: 40,
+            usesSourceListStyle: true,
+            onSingleClickAction: { activate(connectionId: $0) },
+            onPrimaryAction: { activate(connectionId: $0) },
+            row: { entry in
+                connectionRow(
+                    connection: entry.connection,
+                    isActive: entry.isActive,
+                    isConnected: entry.isConnected
+                )
             }
-            .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onChange(of: selectedConnectionId) { _, newValue in
-                guard let id = newValue else { return }
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    proxy.scrollTo(id)
-                }
-            }
-        }
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var emptyState: some View {
@@ -186,7 +201,7 @@ struct ConnectionSwitcherPopover: View {
             HStack {
                 Image(systemName: "gear")
                     .foregroundStyle(.secondary)
-                Text("Manage Connections...")
+                Text("Manage Connections…")
                     .foregroundStyle(.primary)
                 Spacer()
             }
@@ -209,7 +224,7 @@ struct ConnectionSwitcherPopover: View {
         )
         return HStack(spacing: 8) {
             Circle()
-                .fill(connection.displayColor)
+                .selectionAwareTint(connection.displayColor)
                 .frame(width: 8, height: 8)
 
             VStack(alignment: .leading, spacing: 1) {
@@ -236,11 +251,11 @@ struct ConnectionSwitcherPopover: View {
 
             if isActive {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .selectionAwareTint(.green)
                     .font(.body)
             } else if isConnected {
                 Circle()
-                    .fill(.green)
+                    .selectionAwareTint(.green)
                     .frame(width: 6, height: 6)
             }
 
@@ -251,9 +266,9 @@ struct ConnectionSwitcherPopover: View {
                 .padding(.vertical, 2)
                 .background(Color(nsColor: .separatorColor), in: RoundedRectangle(cornerRadius: 3))
         }
+        .padding(.horizontal, 6)
         .padding(.vertical, 2)
         .contentShape(Rectangle())
-        .onTapGesture { activate(connectionId: connection.id) }
     }
 
     // MARK: - Selection

@@ -11,7 +11,7 @@ import Testing
 
 @Suite("MongoDB Stream Projection")
 struct MongoStreamProjectionTests {
-    private func text(_ value: Any) -> PluginCellValue {
+    private func text(_ value: Any, _ kind: BsonValueKind) -> PluginCellValue {
         PluginCellValue.fromOptional("\(value)")
     }
 

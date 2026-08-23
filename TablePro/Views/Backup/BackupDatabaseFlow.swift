@@ -15,6 +15,9 @@ import UniformTypeIdentifiers
 struct BackupDatabaseFlow: View {
     @Binding var isPresented: Bool
     let connection: DatabaseConnection
+
+    @State private var backupStartedAt: ContinuousClock.Instant?
+    @State private var backupDatabase: String?
     let initialDatabase: String
 
     @State private var service = PostgresDumpService(kind: .backup)
@@ -95,15 +98,44 @@ struct BackupDatabaseFlow: View {
         switch state {
         case .running(let database, _, _, let totalBytes):
             phase = .running(database: database, totalBytes: totalBytes)
+            /// Only on the way in. `startByteSizePolling` re-emits `.running` every 250ms with a
+            /// fresh byte count, so assigning here unconditionally restarted the clock four times
+            /// a second and a twenty minute dump reported as under a second, which the threshold
+            /// then suppressed. Backups would have notified essentially never.
+            if backupStartedAt == nil {
+                backupStartedAt = .now
+                backupDatabase = database
+            }
         case .finished(let database, let fileURL, let bytes):
             phase = .finished(database: database, destination: fileURL, bytes: bytes)
+            reportBackupFinished(.succeeded(OperationSummary(fileURL: fileURL)), database: database)
         case .failed(let message):
             phase = .failed(message: message)
+            reportBackupFinished(.failed(reason: message), database: backupDatabase)
         case .cancelled:
             phase = .cancelled
+            backupStartedAt = nil
+            backupDatabase = nil
         case .idle, .cancelling:
             break
         }
+    }
+
+    private func reportBackupFinished(_ outcome: OperationOutcome, database: String?) {
+        guard let startedAt = backupStartedAt else { return }
+        backupStartedAt = nil
+        backupDatabase = nil
+        OperationCompletionReporter.shared.report(
+            OperationCompletion(
+                kind: .backup,
+                owner: .connection(connection.id),
+                connectionId: connection.id,
+                connectionName: connection.name,
+                databaseName: database,
+                elapsed: startedAt.duration(to: .now),
+                outcome: outcome
+            )
+        )
     }
 
     private func promptForDestination(database: String) async {

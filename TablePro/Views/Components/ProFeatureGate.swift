@@ -53,7 +53,7 @@ struct ProFeatureGateModifier: ViewModifier {
                     Text(feature.featureDescription)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    Button(String(localized: "Activate License...")) {
+                    Button(String(localized: "Activate License…")) {
                         showActivationSheet = true
                     }
                     .buttonStyle(.borderedProminent)
@@ -72,10 +72,11 @@ struct ProFeatureGateModifier: ViewModifier {
                 case .unlicensed:
                     Text("\(feature.displayName) requires a Pro license")
                         .font(.headline)
+                        .accessibilityIdentifier("pro-feature-gate-\(feature.rawValue)")
                     Text(feature.featureDescription)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    Button(String(localized: "Activate License...")) {
+                    Button(String(localized: "Activate License…")) {
                         showActivationSheet = true
                     }
                     .buttonStyle(.borderedProminent)

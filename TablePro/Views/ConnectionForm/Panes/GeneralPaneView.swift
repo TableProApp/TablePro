@@ -18,6 +18,10 @@ struct GeneralPaneView: View {
         PluginManager.shared.connectionMode(for: type)
     }
 
+    private var showsBuiltInDatabaseField: Bool {
+        coordinator.network.showsBuiltInDatabaseField
+    }
+
     var body: some View {
         Form {
             if let parsed = coordinator.clipboardCandidate {
@@ -38,6 +42,7 @@ struct GeneralPaneView: View {
                     prompt: Text(String(localized: "Connection name"))
                 )
                 .focused($nameFocused)
+                .accessibilityIdentifier("connection-form-name")
             }
 
             connectionSection
@@ -70,14 +75,15 @@ struct GeneralPaneView: View {
                         text: $coordinator.network.database,
                         prompt: Text(filePathPrompt)
                     )
-                    Button(String(localized: "Browse...")) {
+                    .accessibilityIdentifier("connection-form-file-path")
+                    Button(String(localized: "Browse…")) {
                         browseForFile()
                     }
                     .controlSize(.small)
                 }
             }
         case .apiOnly:
-            if PluginManager.shared.supportsDatabaseSwitching(for: type) {
+            if showsBuiltInDatabaseField {
                 Section(String(localized: "Connection")) {
                     TextField(
                         containerEntityName,
@@ -91,7 +97,7 @@ struct GeneralPaneView: View {
         case .network:
             Section(String(localized: "Connection")) {
                 hostFieldsView
-                if PluginManager.shared.requiresAuthentication(for: type) {
+                if showsBuiltInDatabaseField {
                     TextField(
                         containerEntityName,
                         text: $coordinator.network.database,
@@ -129,13 +135,14 @@ struct GeneralPaneView: View {
         let connectionFields = coordinator.network.connectionFields
         if coordinator.network.hasHostListField {
             ForEach(connectionFields, id: \.id) { field in
-                if case .hostList = field.fieldType {
+                if case .hostList = field.fieldType, coordinator.network.isFieldVisible(field) {
                     HostListFieldRow(
                         label: field.label,
                         placeholder: field.placeholder,
                         defaultPort: type.defaultPort,
                         value: networkFieldBinding(for: field)
                     )
+                    .accessibilityIdentifier("connection-field-\(field.id)")
                 }
             }
         } else {
@@ -144,12 +151,14 @@ struct GeneralPaneView: View {
                 text: $coordinator.network.host,
                 prompt: Text("localhost")
             )
+            .accessibilityIdentifier("connection-form-host")
             .disabled(usesForwardSocket)
             TextField(
                 String(localized: "Port"),
                 text: $coordinator.network.port,
                 prompt: Text(defaultPortString)
             )
+            .accessibilityIdentifier("connection-form-port")
             .disabled(usesForwardSocket)
         }
         if coordinator.ssh.state.enabled {
@@ -340,7 +349,7 @@ struct GeneralPaneView: View {
 
     private var firstHostListValue: String {
         let fieldId = coordinator.network.connectionFields
-            .first(where: isHostListField)?.id
+            .first { isHostListField($0) && coordinator.network.isFieldVisible($0) }?.id
         guard let fieldId else { return "" }
         return coordinator.network.additionalFieldValues[fieldId] ?? ""
     }
@@ -379,21 +388,26 @@ struct GeneralPaneView: View {
     }
 
     private func browseForFile() {
-        presentFilePanel { path in
+        let types = DatabaseFileTypes.contentTypes(
+            forExtensions: PluginManager.shared.fileExtensions(for: type)
+        )
+        presentFilePanel(contentTypes: types) { path in
             coordinator.network.database = path
         }
     }
 
+    /// Certificates, keys and identity files are not the driver's own file kinds, so this
+    /// panel stays open to any file.
     private func browseForAuthFile(field: ConnectionField) {
-        presentFilePanel { path in
+        presentFilePanel(contentTypes: [.data]) { path in
             coordinator.auth.additionalFieldValues[field.id] = path
         }
     }
 
-    private func presentFilePanel(onSelect: @escaping (String) -> Void) {
+    private func presentFilePanel(contentTypes: [UTType], onSelect: @escaping (String) -> Void) {
         guard let window = NSApp.keyWindow else { return }
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.database, .data]
+        panel.allowedContentTypes = contentTypes
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
 

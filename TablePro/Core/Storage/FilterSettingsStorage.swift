@@ -77,7 +77,7 @@ struct FilterSettings: Codable, Equatable {
 @MainActor
 final class FilterSettingsStorage {
     static let shared = FilterSettingsStorage()
-    private static let logger = Logger(subsystem: "com.TablePro", category: "FilterSettingsStorage")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "FilterSettingsStorage")
 
     private static let legacyLastFiltersKeyPrefix = "com.TablePro.filter.lastFilters."
     private static let legacyKnownFilterKeysKey = "com.TablePro.filter.knownFilterKeys"
@@ -377,36 +377,6 @@ final class FilterSettingsStorage {
         }
     }
 
-    func clearAllLastFilters() {
-        lastFiltersCache.removeAll()
-        browseSearchCache.removeAll()
-
-        let directory = filterStateDirectory
-        ioQueue.async {
-            let fm = FileManager.default
-            do {
-                let files = try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
-                for file in files where file.pathExtension == "json" {
-                    try? fm.removeItem(at: file)
-                }
-            } catch {
-                Self.logger.error("Failed to enumerate filter state directory: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    func customizedStorageKeys() -> [String] {
-        guard let files = try? FileManager.default.contentsOfDirectory(
-            at: filterStateDirectory,
-            includingPropertiesForKeys: nil
-        ) else { return [] }
-
-        return files
-            .filter { $0.pathExtension == "json" }
-            .map { $0.deletingPathExtension().lastPathComponent }
-            .filter { !$0.hasSuffix(".browse") }
-    }
-
     private func fileURL(forKey key: String) -> URL {
         filterStateDirectory.appendingPathComponent("\(key).json")
     }
@@ -426,10 +396,7 @@ final class FilterSettingsStorage {
     }
 
     private static func resolvedFilterStateDirectory() -> URL {
-        let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first ?? FileManager.default.temporaryDirectory
+        let appSupport = AppStorageEnvironment.shared.applicationSupportRoot
         return appSupport
             .appendingPathComponent("TablePro", isDirectory: true)
             .appendingPathComponent("FilterState", isDirectory: true)

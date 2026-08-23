@@ -85,11 +85,11 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
             }
             databaseId = match.uuid
 
-            lock.lock()
-            for db in databases {
-                databaseNameToUuid[db.name] = db.uuid
+            lock.withLock {
+                for db in databases {
+                    databaseNameToUuid[db.name] = db.uuid
+                }
             }
-            lock.unlock()
         }
 
         let client = D1HttpClient(accountId: accountId, apiToken: apiToken, databaseId: databaseId)
@@ -97,18 +97,14 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
         do {
             let details = try await client.getDatabaseDetails()
-            lock.lock()
-            _serverVersion = details.version ?? "D1"
-            lock.unlock()
+            lock.withLock { _serverVersion = details.version ?? "D1" }
         } catch {
             client.invalidateSession()
             Self.logger.error("Connection test failed: \(error.localizedDescription)")
             throw CloudflareD1Error(message: String(localized: "Failed to connect to Cloudflare D1"))
         }
 
-        lock.lock()
-        httpClient = client
-        lock.unlock()
+        lock.withLock { httpClient = client }
 
         Self.logger.debug("Connected to Cloudflare D1 database: \(databaseName)")
     }
@@ -183,9 +179,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
-        lock.lock()
-        let client = httpClient
-        lock.unlock()
+        let client = lock.withLock { httpClient }
         client?.setQueryTimeout(seconds)
     }
 
@@ -317,6 +311,8 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         return allColumns
     }
 
+    var providesBulkForeignKeyFetch: Bool { true }
+
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         let query = """
             SELECT m.name AS table_name, p.id, p."table" AS referenced_table,
@@ -434,24 +430,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
     }
 
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
-        let safeTable = escapeStringLiteral(table)
-        let query = """
-            SELECT name, sql FROM sqlite_master
-            WHERE type = 'trigger' AND tbl_name = '\(safeTable)'
-                AND name NOT GLOB '_cf_*'
-            ORDER BY name
-            """
-        let result = try await execute(query: query)
-
-        return result.rows.compactMap { row -> PluginTriggerInfo? in
-            guard row.count >= 2,
-                  let name = row[0].asText,
-                  let sql = row[1].asText else {
-                return nil
-            }
-            let (timing, event) = TriggerSQLParser.timingAndEvent(from: sql)
-            return PluginTriggerInfo(name: name, timing: timing, event: event, statement: sql)
-        }
+        try await sqliteTriggerList(table: table)
     }
 
     func createTriggerTemplate(table: String, schema: String?) -> String? {
@@ -526,12 +505,12 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
         let databases = try await client.listDatabases()
 
-        lock.lock()
-        databaseNameToUuid.removeAll()
-        for db in databases {
-            databaseNameToUuid[db.name] = db.uuid
+        lock.withLock {
+            databaseNameToUuid.removeAll()
+            for db in databases {
+                databaseNameToUuid[db.name] = db.uuid
+            }
         }
-        lock.unlock()
 
         return databases.map(\.name)
     }
@@ -551,9 +530,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
         let newDb = try await client.createDatabase(name: request.name)
 
-        lock.lock()
-        databaseNameToUuid[newDb.name] = newDb.uuid
-        lock.unlock()
+        lock.withLock { databaseNameToUuid[newDb.name] = newDb.uuid }
     }
 
     func dropDatabase(name: String) async throws {
@@ -561,9 +538,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
             throw CloudflareD1Error.notConnected
         }
 
-        lock.lock()
-        let uuid = databaseNameToUuid[name]
-        lock.unlock()
+        let uuid = lock.withLock { databaseNameToUuid[name] }
 
         guard let databaseId = uuid ?? (isUuid(name) ? name : nil) else {
             throw CloudflareD1Error(message: String(format: String(localized: "Database '%@' not found"), name))
@@ -571,15 +546,11 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
         try await client.deleteDatabase(databaseId: databaseId)
 
-        lock.lock()
-        databaseNameToUuid.removeValue(forKey: name)
-        lock.unlock()
+        lock.withLock { _ = databaseNameToUuid.removeValue(forKey: name) }
     }
 
     func switchDatabase(to database: String) async throws {
-        lock.lock()
-        var uuid = databaseNameToUuid[database]
-        lock.unlock()
+        var uuid = lock.withLock { databaseNameToUuid[database] }
 
         if uuid == nil && isUuid(database) {
             uuid = database
@@ -592,13 +563,13 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
             let databases = try await client.listDatabases()
 
-            lock.lock()
-            databaseNameToUuid.removeAll()
-            for db in databases {
-                databaseNameToUuid[db.name] = db.uuid
+            uuid = lock.withLock {
+                databaseNameToUuid.removeAll()
+                for db in databases {
+                    databaseNameToUuid[db.name] = db.uuid
+                }
+                return databaseNameToUuid[database]
             }
-            uuid = databaseNameToUuid[database]
-            lock.unlock()
         }
 
         guard let resolvedUuid = uuid else {
@@ -607,9 +578,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
             )
         }
 
-        lock.lock()
-        httpClient?.databaseId = resolvedUuid
-        lock.unlock()
+        lock.withLock { httpClient?.databaseId = resolvedUuid }
     }
 
     // MARK: - Identifier Quoting

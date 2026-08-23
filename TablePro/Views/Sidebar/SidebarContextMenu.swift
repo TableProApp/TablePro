@@ -15,9 +15,17 @@ enum SidebarContextMenuLogic {
         clickedTable?.type == .view
     }
 
+    /// AppKit's rule for a contextual menu over a list: a click inside the selection acts on the
+    /// whole selection, a click outside it acts on the row under the pointer and nothing else.
+    static func contextTargets(clickedTable: TableInfo?, selectedTables: Set<TableInfo>) -> [String] {
+        guard let clickedTable else { return selectedTables.map(\.name).sorted() }
+        guard selectedTables.contains(clickedTable) else { return [clickedTable.name] }
+        return selectedTables.map(\.name).sorted()
+    }
+
     static func isReadOnlyKind(_ type: TableInfo.TableType?) -> Bool {
         switch type {
-        case .view, .materializedView, .foreignTable, .systemTable:
+        case .view, .materializedView, .foreignTable, .systemTable, .externalTable:
             return true
         case .table, .partitionedTable, .none:
             return false
@@ -39,6 +47,7 @@ enum SidebarContextMenuLogic {
         case .materializedView: return String(localized: "Drop Materialized View")
         case .foreignTable:     return String(localized: "Drop Foreign Table")
         case .systemTable:      return String(localized: "Drop")
+        case .externalTable:    return String(localized: "Drop External Table")
         case .table, .partitionedTable, .none: return String(localized: "Delete")
         }
     }
@@ -50,138 +59,5 @@ enum SidebarContextMenuLogic {
     ) -> Bool {
         guard !isReadOnly, hasSelection else { return false }
         return !supportedOperations.isEmpty
-    }
-}
-
-struct SidebarContextMenu: View {
-    let clickedTable: TableInfo?
-    let selectedTables: Set<TableInfo>
-    let isReadOnly: Bool
-    let onBatchToggleTruncate: ([String]) -> Void
-    let onBatchToggleDelete: ([String]) -> Void
-    let coordinator: MainContentCoordinator?
-    var activateBeforeAction: (@MainActor () async -> Void)?
-
-    private var hasSelection: Bool {
-        SidebarContextMenuLogic.hasSelection(selectedTables: selectedTables, clickedTable: clickedTable)
-    }
-
-    private var isView: Bool {
-        SidebarContextMenuLogic.isView(clickedTable: clickedTable)
-    }
-
-    private var effectiveTableNames: [String] {
-        if selectedTables.isEmpty, let table = clickedTable {
-            return [table.name]
-        }
-        return selectedTables.map(\.name).sorted()
-    }
-
-    @MainActor
-    private func perform(_ action: @MainActor @escaping () -> Void) {
-        guard let activate = activateBeforeAction else {
-            action()
-            return
-        }
-        Task { @MainActor in
-            await activate()
-            action()
-        }
-    }
-
-    var body: some View {
-        Button("Create New View...") {
-            perform { coordinator?.createView() }
-        }
-        .disabled(isReadOnly)
-
-        Divider()
-
-        if clickedTable != nil {
-            if isView {
-                Button("Edit View Definition") {
-                    perform {
-                        if let viewName = clickedTable?.name {
-                            coordinator?.editViewDefinition(viewName)
-                        }
-                    }
-                }
-                .disabled(isReadOnly)
-            }
-
-            Button("Show Structure") {
-                perform {
-                    if let clickedTable {
-                        coordinator?.openTableTab(clickedTable, showStructure: true, activateGridFocus: true)
-                    }
-                }
-            }
-        }
-
-        Button("View ER Diagram") {
-            perform { coordinator?.showERDiagram() }
-        }
-
-        if hasSelection {
-            Button("Copy Name") {
-                ClipboardService.shared.writeText(effectiveTableNames.joined(separator: ","))
-            }
-
-            Button("Export...") {
-                perform { coordinator?.openExportDialog(preselectedTableNames: Set(effectiveTableNames)) }
-            }
-        }
-
-        if SidebarContextMenuLogic.importVisible(
-            clickedTable: clickedTable,
-            supportsImport: PluginManager.shared.supportsImport(
-                for: coordinator?.connection.type ?? .mysql
-            )
-        ) {
-            ImportMenuItems(
-                formats: PluginManager.shared.importFormatOptions(for: coordinator?.connection.type ?? .mysql),
-                isDisabled: isReadOnly,
-                shortcut: nil,
-                action: { formatId in perform { coordinator?.openImportDialog(formatId: formatId) } }
-            )
-        }
-
-        let maintenanceOps = coordinator?.supportedMaintenanceOperations() ?? []
-        if SidebarContextMenuLogic.maintenanceGroupEnabled(
-            isReadOnly: isReadOnly,
-            hasSelection: hasSelection,
-            supportedOperations: maintenanceOps
-        ) {
-            Menu(String(localized: "Maintenance")) {
-                ForEach(maintenanceOps, id: \.self) { op in
-                    Button(op) {
-                        perform {
-                            if let table = clickedTable?.name {
-                                coordinator?.showMaintenanceSheet(operation: op, tableName: table)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if hasSelection {
-            Divider()
-
-            if SidebarContextMenuLogic.truncateVisible(clickedTable: clickedTable) {
-                Button("Truncate") {
-                    perform { onBatchToggleTruncate(effectiveTableNames) }
-                }
-                .disabled(isReadOnly)
-            }
-
-            Button(
-                SidebarContextMenuLogic.deleteLabel(for: clickedTable?.type),
-                role: .destructive
-            ) {
-                perform { onBatchToggleDelete(effectiveTableNames) }
-            }
-            .disabled(isReadOnly)
-        }
     }
 }

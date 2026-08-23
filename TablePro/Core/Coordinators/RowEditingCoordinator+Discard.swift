@@ -5,15 +5,19 @@
 
 import AppKit
 import Foundation
-import os
 import TableProPluginKit
-
-private let discardLogger = Logger(subsystem: "com.TablePro", category: "RowEditingCoordinator+Discard")
 
 extension RowEditingCoordinator {
     // MARK: - Sidebar Transaction
 
+    /// Edits made in the row inspector belong to the selected tab, so they run on that
+    /// tab's database. The scope is read before the authorization prompt, which awaits a
+    /// sheet and Touch ID and gives the selection time to move somewhere else.
     func executeSidebarChanges(statements: [ParameterizedStatement]) async throws {
+        guard let scope = parent.selectedTabScope else {
+            throw DatabaseError.notConnected
+        }
+
         let sqlPreview = statements.map(\.sql).joined(separator: "\n")
         let kind = OperationKind.from(QueryClassifier.classifyTier(sqlPreview, databaseType: parent.connection.type))
         let decision = await ExecutionGateProvider.shared.authorize(
@@ -31,36 +35,13 @@ extension RowEditingCoordinator {
             throw DatabaseError.queryFailed(decision.deniedReason ?? String(localized: "Operation not permitted"))
         }
 
-        guard let driver = DatabaseManager.shared.driver(for: parent.connectionId) else {
-            throw DatabaseError.notConnected
-        }
-
-        let useTransaction = driver.supportsTransactions
-
-        if useTransaction {
-            try await driver.beginTransaction(mode: kind.declaresWrite ? .readWrite : .serverDefault)
-        }
-
-        do {
-            for stmt in statements {
-                if stmt.parameters.isEmpty {
-                    _ = try await driver.execute(query: stmt.sql)
-                } else {
-                    _ = try await driver.executeParameterized(query: stmt.sql, parameters: stmt.parameters)
-                }
-            }
-            if useTransaction {
-                try await driver.commitTransaction()
-            }
-        } catch {
-            if useTransaction {
-                do {
-                    try await driver.rollbackTransaction()
-                } catch {
-                    discardLogger.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
-                }
-            }
-            throw error
+        let mode: PluginTransactionAccessMode = kind.declaresWrite ? .readWrite : .serverDefault
+        _ = try await DatabaseManager.shared.withScopedDriver(
+            scope: scope,
+            route: DatabaseManager.shared.executionRoute(for: scope),
+            cancellation: .protectedWrite
+        ) { driver in
+            try await Self.runStatementsInTransaction(statements, mode: mode, on: driver)
         }
     }
 

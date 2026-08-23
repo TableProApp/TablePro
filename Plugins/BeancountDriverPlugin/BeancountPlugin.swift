@@ -64,7 +64,8 @@ final class BeancountPlugin: NSObject, TableProPlugin, DriverPlugin {
         regexSyntax: .unsupported,
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .explicit,
-        paginationStyle: .limit
+        paginationStyle: .limit,
+        caseSensitivityStyle: .collationDefined
     )
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {

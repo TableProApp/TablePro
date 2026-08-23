@@ -40,18 +40,18 @@ struct WelcomeActionsPanel: View {
 
             VStack(spacing: 8) {
                 Button(action: onCreateConnection) {
-                    Label(String(localized: "Create Connection..."), systemImage: "plus.circle")
+                    Label(String(localized: "Create Connection…"), systemImage: "plus.circle")
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
 
                 Menu {
-                    Button(String(localized: "Import from URL..."), action: onImportFromURL)
-                    Button(String(localized: "Import from Other App..."), action: onImportFromApp)
-                    Button(String(localized: "Open Project Folder..."), action: onOpenProjectFolder)
+                    Button(String(localized: "Import from URL…"), action: onImportFromURL)
+                    Button(String(localized: "Import from Other App…"), action: onImportFromApp)
+                    Button(String(localized: "Open Project Folder…"), action: onOpenProjectFolder)
                     Divider()
-                    Button(String(localized: "Import Connections..."), action: onImportConnectionsFile)
+                    Button(String(localized: "Import Connections…"), action: onImportConnectionsFile)
                 } label: {
                     Label(String(localized: "Add from Existing"), systemImage: "square.and.arrow.down")
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -82,7 +82,7 @@ struct WelcomeActionsPanel: View {
             Button {
                 updaterBridge.checkForUpdates()
             } label: {
-                Text(String(localized: "Check for Updates..."))
+                Text(String(localized: "Check for Updates…"))
             }
             .buttonStyle(.link)
             .disabled(!updaterBridge.canCheckForUpdates)

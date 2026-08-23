@@ -26,6 +26,7 @@ struct ParsedSchemaMetadata {
     let columnForeignKeys: [String: ForeignKeyInfo]?
     let columnNullable: [String: Bool]
     let primaryKeyColumns: [String]
+    let generatedColumns: Set<String>
     let approximateRowCount: Int?
     let columnEnumValues: [String: [String]]
     let columnComments: [String: String]
@@ -40,24 +41,17 @@ final class QueryExecutor {
         self.connection = connection
     }
 
-    // MARK: - Driver access
-
-    private func resolveDriver() throws -> DatabaseDriver {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
-            throw DatabaseError.notConnected
-        }
-        return driver
-    }
-
     // MARK: - Public orchestrators
 
+    /// The driver is supplied by the caller, which resolved it from the tab's scope.
+    /// Looking it up here would tie every query to whichever database the connection
+    /// happens to be on.
     func executeQuery(
+        driver: DatabaseDriver,
         sql: String,
         parameters: [Any?]? = nil,
         rowCap: Int?
     ) async throws -> QueryFetchResult {
-        let driver = try resolveDriver()
-
         if let parameters {
             return try await Self.fetchQueryDataParameterized(
                 driver: driver,
@@ -122,28 +116,27 @@ final class QueryExecutor {
 
     // MARK: - Schema fetch + parse
 
-    static func fetchTableSchema(connectionId: UUID, tableName: String) async throws -> FetchedTableSchema {
-        let session = DatabaseManager.shared.session(for: connectionId)
+    static func fetchTableSchema(scope: DatabaseScope, tableName: String) async throws -> FetchedTableSchema {
         queryExecutorLog.info(
-            "[fk] schema fetch start table=\(tableName, privacy: .public) db=\(session?.currentDatabase ?? "default", privacy: .public) schema=\(session?.currentSchema ?? "default", privacy: .public)"
+            "[fk] schema fetch start table=\(tableName, privacy: .public) db=\(scope.database, privacy: .public) schema=\(scope.schema ?? "default", privacy: .public)"
         )
         let (columns, approximateRowCount) = try await DatabaseManager.shared.withMetadataDriver(
-            connectionId: connectionId
+            scope: scope
         ) { driver in
             let columns = try await driver.fetchColumns(table: tableName)
             let approximateRowCount = try? await driver.fetchApproximateRowCount(table: tableName)
             return (columns, approximateRowCount)
         }
-        let foreignKeys = await fetchForeignKeys(connectionId: connectionId, tableName: tableName)
+        let foreignKeys = await fetchForeignKeys(scope: scope, tableName: tableName)
         queryExecutorLog.info(
             "[fk] schema fetch done table=\(tableName, privacy: .public) columns=\(columns.count) fks=\(foreignKeys.map { String($0.count) } ?? "failed", privacy: .public)"
         )
         return FetchedTableSchema(columns: columns, foreignKeys: foreignKeys, approximateRowCount: approximateRowCount)
     }
 
-    private static func fetchForeignKeys(connectionId: UUID, tableName: String) async -> [ForeignKeyInfo]? {
+    private static func fetchForeignKeys(scope: DatabaseScope, tableName: String) async -> [ForeignKeyInfo]? {
         do {
-            return try await DatabaseManager.shared.withMetadataDriver(connectionId: connectionId) { driver in
+            return try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
                 try await driver.fetchForeignKeys(table: tableName)
             }
         } catch {
@@ -186,6 +179,7 @@ final class QueryExecutor {
             columnForeignKeys: fks,
             columnNullable: nullable,
             primaryKeyColumns: schema.columns.filter { $0.isPrimaryKey }.map(\.name),
+            generatedColumns: Set(schema.columns.filter(\.isGenerated).map(\.name)),
             approximateRowCount: schema.approximateRowCount,
             columnEnumValues: enumValues,
             columnComments: comments
@@ -207,6 +201,7 @@ final class QueryExecutor {
             columnForeignKeys: nil,
             columnNullable: nullable,
             primaryKeyColumns: primaryKeys,
+            generatedColumns: [],
             approximateRowCount: nil,
             columnEnumValues: [:],
             columnComments: [:]

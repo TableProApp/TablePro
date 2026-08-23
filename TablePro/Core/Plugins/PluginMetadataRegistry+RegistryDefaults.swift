@@ -11,7 +11,8 @@ extension PluginMetadataRegistry {
     func registryPluginDefaults() -> [(typeId: String, snapshot: PluginMetadataSnapshot)] {
         let (
             clickhouseDialect, clickhouseColumnTypes, mssqlDialect, mssqlColumnTypes,
-            oracleDialect, oracleColumnTypes, duckdbDialect, duckdbColumnTypes,
+            oracleDialect, oracleColumnTypes, damengDialect, damengCompletions, damengColumnTypes,
+            duckdbDialect, duckdbColumnTypes,
             cassandraDialect, cassandraColumnTypes, mongoCompletions, mongoColumnTypes,
             etcdCompletions, redisCompletions, redisColumnTypes, d1Dialect, d1ColumnTypes
         ) = registryDefaultIngredients()
@@ -94,6 +95,17 @@ extension PluginMetadataRegistry {
                                 .init(value: "2", label: "2"),
                                 .init(value: "3", label: "3")
                             ])
+                        ),
+                        ConnectionField(
+                            id: "mongoUuidRepresentation",
+                            label: String(localized: "Legacy UUID Encoding"),
+                            fieldType: .dropdown(options: [
+                                .init(value: "", label: String(localized: "Do Not Decode")),
+                                .init(value: "javaLegacy", label: "Java"),
+                                .init(value: "csharpLegacy", label: "C#"),
+                                .init(value: "pythonLegacy", label: "Python")
+                            ]),
+                            section: .advanced
                         )
                     ],
                     category: .document,
@@ -146,14 +158,77 @@ extension PluginMetadataRegistry {
                 connection: PluginMetadataSnapshot.ConnectionConfig(
                     additionalConnectionFields: [
                         ConnectionField(
+                            id: "redisMode",
+                            label: String(localized: "Connection Mode"),
+                            defaultValue: "standalone",
+                            fieldType: .dropdown(options: [
+                                .init(value: "standalone", label: String(localized: "Standalone")),
+                                .init(value: "sentinel", label: String(localized: "Sentinel")),
+                                .init(value: "cluster", label: String(localized: "Cluster")),
+                            ]),
+                            section: .connection
+                        ),
+                        ConnectionField(
+                            id: "redisSentinelHosts",
+                            label: String(localized: "Sentinel Nodes"),
+                            placeholder: "127.0.0.1:26379",
+                            required: true,
+                            fieldType: .hostList,
+                            section: .connection,
+                            visibleWhen: FieldVisibilityRule(fieldId: "redisMode", values: ["sentinel"])
+                        ),
+                        ConnectionField(
+                            id: "redisSentinelMasterName",
+                            label: String(localized: "Primary Group Name"),
+                            placeholder: "mymaster",
+                            required: true,
+                            defaultValue: "mymaster",
+                            section: .connection,
+                            visibleWhen: FieldVisibilityRule(fieldId: "redisMode", values: ["sentinel"])
+                        ),
+                        ConnectionField(
+                            id: "redisClusterHosts",
+                            label: String(localized: "Cluster Seed Nodes"),
+                            placeholder: "127.0.0.1:6379",
+                            required: true,
+                            fieldType: .hostList,
+                            section: .connection,
+                            visibleWhen: FieldVisibilityRule(fieldId: "redisMode", values: ["cluster"])
+                        ),
+                        ConnectionField(
+                            id: "redisSentinelUsername",
+                            label: String(localized: "Sentinel Username"),
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "redisMode", values: ["sentinel"])
+                        ),
+                        ConnectionField(
+                            id: "redisSentinelPassword",
+                            label: String(localized: "Sentinel Password"),
+                            fieldType: .secure,
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "redisMode", values: ["sentinel"])
+                        ),
+                        ConnectionField(
                             id: "redisDatabase",
                             label: String(localized: "Database Index"),
                             defaultValue: "0",
-                            fieldType: .stepper(range: ConnectionField.IntRange(0...15))
-                        )
-                    ],
+                            fieldType: .stepper(range: ConnectionField.IntRange(0...15)),
+                            visibleWhen: FieldVisibilityRule(
+                                fieldId: "redisMode",
+                                values: ["standalone", "sentinel"]
+                            )
+                        ),
+                        ConnectionField(
+                            id: "redisSeparator",
+                            label: String(localized: "Key Separator"),
+                            defaultValue: ":",
+                            fieldType: .text,
+                            section: .advanced
+                        ),
+                    ] + AWSAuthFields.standard() + [AWSAuthFields.elastiCacheReplicationGroupField()],
                     category: .keyValue,
                     tagline: String(localized: "In-memory data store and cache"),
+                    hidesBuiltInDatabase: true,
                     defaultUnixSocketPath: "/var/run/redis/redis.sock"
                 )
             )),
@@ -180,6 +255,7 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: true,
+                    supportsDropSchema: true,
                     supportsRenameColumn: true,
                     defaultSSLMode: .preferred
                 ),
@@ -209,7 +285,8 @@ extension PluginMetadataRegistry {
                             defaultValue: "sql",
                             fieldType: .dropdown(options: [
                                 .init(value: "sql", label: "SQL Server Authentication"),
-                                .init(value: "windows", label: "Windows Authentication (Kerberos)")
+                                .init(value: "windows", label: "Windows Authentication (Kerberos)"),
+                                .init(value: "entra", label: String(localized: "Microsoft Entra ID"))
                             ]),
                             section: .authentication
                         ),
@@ -231,7 +308,7 @@ extension PluginMetadataRegistry {
                         ConnectionField(
                             id: "mssqlSchema", label: "Schema", placeholder: "dbo", defaultValue: "dbo"
                         )
-                    ],
+                    ] + EntraAuthFields.standard(gatedBy: "mssqlAuthMethod", value: "entra"),
                     category: .relational,
                     tagline: String(localized: "Microsoft's enterprise SQL database")
                 )
@@ -295,7 +372,8 @@ extension PluginMetadataRegistry {
                             "CHAR", "VARCHAR", "CLOB", "BYTE", "VARBYTE", "BLOB",
                             "DATE", "TIME", "TIMESTAMP", "INTERVAL", "PERIOD", "JSON", "XML",
                         ],
-                        autoLimitStyle: .top
+                        autoLimitStyle: .top,
+                        caseSensitivityStyle: .unsupported
                     ),
                     statementCompletions: [],
                     columnTypesByCategory: [
@@ -392,7 +470,8 @@ extension PluginMetadataRegistry {
                         booleanLiteralStyle: .truefalse,
                         likeEscapeStyle: .explicit,
                         paginationStyle: .offsetFetch,
-                        offsetFetchOrderBy: ""
+                        offsetFetchOrderBy: "",
+                        caseSensitivityStyle: .regexFlag
                     ),
                     statementCompletions: [],
                     columnTypesByCategory: [
@@ -499,16 +578,76 @@ extension PluginMetadataRegistry {
                     tagline: String(localized: "Enterprise SQL with PL/SQL")
                 )
             )),
+            ("Dameng", PluginMetadataSnapshot(
+                displayName: "Dameng DM8", iconName: "cylinder", defaultPort: 5_236,
+                requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,
+                isDownloadable: true, primaryUrlScheme: "dm", parameterStyle: .questionMark,
+                navigationModel: .standard, explainVariants: [
+                    ExplainVariant(id: "plan", label: "Plan", sqlPrefix: "EXPLAIN", format: .damengText)
+                ],
+                pathFieldRole: .database,
+                supportsHealthMonitor: true, urlSchemes: ["dm"],
+                postConnectActions: [.selectSchemaFromLastSession],
+                brandColorHex: "#C60018",
+                queryLanguageName: "SQL", editorLanguage: .sql,
+                connectionMode: .network, supportsDatabaseSwitching: false,
+                supportsColumnReorder: false,
+                capabilities: PluginMetadataSnapshot.CapabilityFlags(
+                    supportsSchemaSwitching: true,
+                    supportsImport: true,
+                    supportsExport: true,
+                    supportsSSH: true,
+                    supportsSSL: false,
+                    supportsCascadeDrop: true,
+                    supportsForeignKeyDisable: false,
+                    supportsReadOnlyMode: true,
+                    supportsQueryProgress: false,
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: false,
+                    supportsDropSchema: true,
+                    supportsRenameColumn: true,
+                    supportsOpportunisticTLS: false
+                ),
+                schema: PluginMetadataSnapshot.SchemaInfo(
+                    defaultSchemaName: "",
+                    defaultGroupName: "main",
+                    tableEntityName: "Tables",
+                    containerEntityName: "Schema",
+                    defaultPrimaryKeyColumn: nil,
+                    immutableColumns: [],
+                    systemDatabaseNames: [],
+                    systemSchemaNames: ["SYS", "SYSDBA", "SYSAUDITOR", "SYSSSO", "CTISYS"],
+                    fileExtensions: [],
+                    databaseGroupingStrategy: .hierarchicalSchema,
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                ),
+                editor: PluginMetadataSnapshot.EditorConfig(
+                    sqlDialect: damengDialect,
+                    statementCompletions: damengCompletions,
+                    columnTypesByCategory: damengColumnTypes
+                ),
+                connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: [],
+                    category: .relational,
+                    tagline: String(localized: "Enterprise relational database for DM8 deployments")
+                )
+            )),
             ("ClickHouse", PluginMetadataSnapshot(
                 displayName: "ClickHouse", iconName: "clickhouse-icon", defaultPort: 8_123,
                 requiresAuthentication: true, supportsForeignKeys: false, supportsSchemaEditing: true,
                 isDownloadable: true, primaryUrlScheme: "clickhouse", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [
-                    ExplainVariant(id: "plan", label: "Plan", sqlPrefix: "EXPLAIN"),
-                    ExplainVariant(id: "pipeline", label: "Pipeline", sqlPrefix: "EXPLAIN PIPELINE"),
-                    ExplainVariant(id: "ast", label: "AST", sqlPrefix: "EXPLAIN AST"),
-                    ExplainVariant(id: "syntax", label: "Syntax", sqlPrefix: "EXPLAIN SYNTAX"),
-                    ExplainVariant(id: "estimate", label: "Estimate", sqlPrefix: "EXPLAIN ESTIMATE")
+                    ExplainVariant(id: "plan", label: "Plan", sqlPrefix: "EXPLAIN", format: .indentedText),
+                    ExplainVariant(
+                        id: "pipeline", label: "Pipeline", sqlPrefix: "EXPLAIN PIPELINE", format: .indentedText
+                    ),
+                    ExplainVariant(id: "ast", label: "AST", sqlPrefix: "EXPLAIN AST", format: .indentedText),
+                    ExplainVariant(
+                        id: "syntax", label: "Syntax", sqlPrefix: "EXPLAIN SYNTAX", format: .indentedText
+                    ),
+                    ExplainVariant(
+                        id: "estimate", label: "Estimate", sqlPrefix: "EXPLAIN ESTIMATE", format: .indentedText
+                    )
                 ],
                 pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: ["clickhouse", "ch"], postConnectActions: [.selectDatabaseFromLastSession],
@@ -560,16 +699,17 @@ extension PluginMetadataRegistry {
                 isDownloadable: true, primaryUrlScheme: "duckdb", parameterStyle: .dollar,
                 navigationModel: .standard,
                 explainVariants: [
-                    ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN"),
+                    ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN", format: .indentedText),
                 ],
                 pathFieldRole: .database,
-                supportsHealthMonitor: false, urlSchemes: ["duckdb", "quack"], postConnectActions: [],
+                supportsHealthMonitor: false, urlSchemes: ["duckdb", "quack"],
+                postConnectActions: [.selectSchemaFromLastSession],
                 brandColorHex: "#FFD900",
                 queryLanguageName: "SQL", editorLanguage: .sql,
-                connectionMode: .apiOnly, supportsDatabaseSwitching: false,
+                connectionMode: .apiOnly, supportsDatabaseSwitching: true,
                 supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
-                    supportsSchemaSwitching: false,
+                    supportsSchemaSwitching: true,
                     supportsImport: true,
                     supportsExport: true,
                     supportsSSH: false,
@@ -580,19 +720,20 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
-                    supportsRenameColumn: true
+                    supportsRenameColumn: true,
+                    supportsConnectionPooling: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
-                    defaultSchemaName: "public",
+                    defaultSchemaName: "main",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
                     containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
-                    systemDatabaseNames: ["information_schema", "pg_catalog"],
+                    systemDatabaseNames: ["system", "temp"],
                     systemSchemaNames: [],
-                    fileExtensions: ["duckdb", "ddb"],
-                    databaseGroupingStrategy: .flat,
+                    fileExtensions: ["duckdb", "ddb", "parquet", "csv", "tsv", "json", "ndjson"],
+                    databaseGroupingStrategy: .bySchema,
                     structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
@@ -604,7 +745,8 @@ extension PluginMetadataRegistry {
                     additionalConnectionFields: Self.duckdbConnectionFields,
                     category: .analytical,
                     tagline: String(localized: "Embedded and remote analytical SQL"),
-                    hidesBuiltInPassword: true
+                    hidesBuiltInPassword: true,
+                    hidesBuiltInDatabase: true
                 )
             )),
             ("Beancount", PluginMetadataSnapshot(
@@ -670,7 +812,8 @@ extension PluginMetadataRegistry {
                         regexSyntax: .unsupported,
                         booleanLiteralStyle: .numeric,
                         likeEscapeStyle: .explicit,
-                        paginationStyle: .limit
+                        paginationStyle: .limit,
+                        caseSensitivityStyle: .collationDefined
                     ),
                     statementCompletions: [],
                     columnTypesByCategory: [
@@ -894,7 +1037,8 @@ extension PluginMetadataRegistry {
                         ),
                     ],
                     category: .coordination,
-                    tagline: String(localized: "Distributed key-value store for service discovery")
+                    tagline: String(localized: "Distributed key-value store for service discovery"),
+                    hidesBuiltInDatabase: true
                 )
             )),
             ("Cloudflare D1", PluginMetadataSnapshot(
@@ -902,7 +1046,9 @@ extension PluginMetadataRegistry {
                 requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: false,
                 isDownloadable: true, primaryUrlScheme: "d1", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [
-                    ExplainVariant(id: "plan", label: "Query Plan", sqlPrefix: "EXPLAIN QUERY PLAN")
+                    ExplainVariant(
+                        id: "plan", label: "Query Plan", sqlPrefix: "EXPLAIN QUERY PLAN", format: .sqliteQueryPlan
+                    )
                 ],
                 pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: ["d1"], postConnectActions: [],
@@ -960,7 +1106,9 @@ extension PluginMetadataRegistry {
                 requiresAuthentication: false, supportsForeignKeys: true, supportsSchemaEditing: true,
                 isDownloadable: true, primaryUrlScheme: "libsql", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [
-                    ExplainVariant(id: "plan", label: "Query Plan", sqlPrefix: "EXPLAIN QUERY PLAN")
+                    ExplainVariant(
+                        id: "plan", label: "Query Plan", sqlPrefix: "EXPLAIN QUERY PLAN", format: .sqliteQueryPlan
+                    )
                 ],
                 pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: ["libsql"], postConnectActions: [],

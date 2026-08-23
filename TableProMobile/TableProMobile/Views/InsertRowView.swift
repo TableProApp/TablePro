@@ -54,7 +54,9 @@ struct InsertRowView: View {
                                     .foregroundStyle(.secondary)
                                     .italic()
                             } else {
-                                TextField(placeholder(for: column), text: binding(for: index))
+                                TextField(text: binding(for: index), prompt: placeholder(for: column)) {
+                                    Text(verbatim: column.name)
+                                }
                                     .font(.body)
                                     .keyboardType(keyboardType(for: column))
                                     .autocorrectionDisabled()
@@ -90,7 +92,13 @@ struct InsertRowView: View {
                             Text(column.name)
 
                             if column.isPrimaryKey {
-                                Text(isAutoIncrement(column) ? "auto-increment" : "primary key")
+                                Group {
+                                    if isAutoIncrement(column) {
+                                        Text("auto-increment")
+                                    } else {
+                                        Text("primary key")
+                                    }
+                                }
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
@@ -155,10 +163,10 @@ struct InsertRowView: View {
         )
     }
 
-    private func placeholder(for column: ColumnInfo) -> String {
-        if column.isPrimaryKey { return "Auto" }
-        if let defaultValue = column.defaultValue { return "Default: \(defaultValue)" }
-        return column.typeName
+    private func placeholder(for column: ColumnInfo) -> Text {
+        if column.isPrimaryKey { return Text("Auto") }
+        if let defaultValue = column.defaultValue { return Text("Default: \(defaultValue)") }
+        return Text(verbatim: column.typeName)
     }
 
     private func isAutoIncrement(_ column: ColumnInfo) -> Bool {
@@ -178,7 +186,7 @@ struct InsertRowView: View {
     private func insertRow() async {
         guard let session else { return }
 
-        let sql = buildInsertSQL()
+        let sql = buildInsertSQL(driver: session.driver)
 
         switch safeModeLevel.writePermission {
         case .blocked:
@@ -197,7 +205,7 @@ struct InsertRowView: View {
         await executeInsert(sql: sql, session: session)
     }
 
-    private func buildInsertSQL() -> String {
+    private func buildInsertSQL(driver: any DatabaseDriver) -> String {
         var insertColumns: [String] = []
         var insertValues: [String?] = []
 
@@ -219,7 +227,9 @@ struct InsertRowView: View {
 
         return SQLBuilder.buildInsert(
             table: table.name,
+            schema: nil,
             type: databaseType,
+            driver: driver,
             columns: insertColumns,
             values: insertValues
         )

@@ -1,0 +1,54 @@
+---
+title: Query Results
+description: Result tabs, pinning, the row cap, and what a failed or non-SELECT statement shows
+---
+
+import RowCap from "/snippets/row-cap.mdx";
+
+Every statement you run gets its own result tab. The next run reuses an unpinned one rather than adding to the pile, so a tab survives only as long as you leave it unpinned.
+
+<Frame caption="Result tabs above the grid">
+  <img className="block dark:hidden" src="/images/query-results.png" alt="Query result tabs" />
+  <img className="hidden dark:block" src="/images/query-results-dark.png" alt="Query result tabs" />
+</Frame>
+
+## Naming
+
+A result is named after the table it came from. When there is no single table, the statement names itself, and a line comment written above the statement wins over the SQL:
+
+```sql
+-- monthly totals
+SELECT count(*) FROM orders;
+```
+
+names its result tab `monthly totals`. Names longer than 28 characters are truncated with an ellipsis, and a result no statement stands behind falls back to `Result 1`. Rest the pointer on a tab to see the query that produced it, or the error message if it failed.
+
+## Working with the strip
+
+| Action | How |
+|---|---|
+| Switch result | `Cmd+Option+[` and `Cmd+Option+]`, or click the tab |
+| Pin | The pin on the right of the tab, `Cmd+Option+P`, or right-click > **Pin Result** |
+| Close | `Cmd+Shift+W`, or right-click > **Close** |
+| Close the rest | Right-click > **Close Others** |
+| Show or hide the panel | `Cmd+Option+R`, or the toolbar button |
+
+A pinned result moves to the front of the strip, and the next query opens a new tab instead of overwriting it. Pinned tabs cannot be closed or cleared until you unpin them, which is what makes them useful for comparing two runs side by side.
+
+Picking a result moves the editor cursor to the statement that produced it and unfolds that statement if it was collapsed. Picking the result already showing does nothing, so clicking between pinned results never moves the editor under you. A statement you have since edited away leaves the cursor where it is.
+
+The results panel expands itself when a query runs. The toolbar's trash button clears the query and the results together; to keep the query, right-click the results and choose **Clear Results**.
+
+## The row cap
+
+A `SELECT` or `WITH` query with no `LIMIT`, `FETCH FIRST` or `TOP` of its own stops at the row cap.
+
+<RowCap />
+
+When the cap trims a result the status bar reads **Showing N rows** and offers **Fetch All**, which extends the result in place. To skip the cap for one run, press `Cmd+Option+Enter` or choose **Execute Without Limit** from the Execute button's menu.
+
+## Statements that return no rows
+
+INSERT, UPDATE, DELETE and DDL show a success view with the affected row count and the execution time.
+
+A failed statement shows a red banner above the results with the database's own error message and a **Fix with AI** button. See [AI Assistant](/features/ai-assistant).

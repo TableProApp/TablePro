@@ -16,40 +16,35 @@ final class PluginNotificationService {
     static let openPluginSettingsActionId = "openPluginSettings"
     private static let updateFailedCategoryId = "com.TablePro.pluginUpdateFailed"
     private static let failedIdentifierPrefix = identifierPrefix + "failed."
-    private static let logger = Logger(subsystem: "com.TablePro", category: "PluginNotifications")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "PluginNotifications")
 
     private(set) var authorizationStatus: UNAuthorizationStatus = .notDetermined
 
     @ObservationIgnored private var cancellables: Set<AnyCancellable> = []
-    @ObservationIgnored private var didRequestPermission = false
     @ObservationIgnored private var deliveredFailureIdentifiers: Set<String> = []
 
     private init() {}
 
     func setUp() {
         registerCategories()
+        NotificationRouter.shared.register(self, forCategory: Self.updateFailedCategoryId)
         subscribeToEvents()
         Task { await refreshAuthorizationStatus() }
     }
 
+    /// Routed through the one requester in the app. The options a grant carries are frozen by the
+    /// first request ("Subsequent authorization requests don't prompt the person"), so two services
+    /// asking separately would mean whichever asked first silently decided what the other could
+    /// ever do.
     func requestPermissionIfNeeded() async {
-        await refreshAuthorizationStatus()
-        guard authorizationStatus == .notDetermined, !didRequestPermission else { return }
-        didRequestPermission = true
-        do {
-            let granted = try await UNUserNotificationCenter.current()
-                .requestAuthorization(options: [.alert, .badge])
-            Self.logger.info("Notification permission \(granted ? "granted" : "denied")")
-        } catch {
-            Self.logger.error("Notification permission request failed: \(error.localizedDescription)")
-        }
+        _ = await NotificationAuthorization.shared.ensureAuthorized()
         await refreshAuthorizationStatus()
     }
 
     func notifyAutoUpdateFailed(plugins: [RejectedPlugin]) async {
         guard !plugins.isEmpty else { return }
-        await requestPermissionIfNeeded()
-        guard authorizationStatus == .authorized else { return }
+        guard await NotificationAuthorization.shared.ensureAuthorized() else { return }
+        await refreshAuthorizationStatus()
 
         let center = UNUserNotificationCenter.current()
         let incomingIdentifiers = Set(plugins.map(Self.failureIdentifier))
@@ -100,7 +95,7 @@ final class PluginNotificationService {
             intentIdentifiers: [],
             options: []
         )
-        UNUserNotificationCenter.current().setNotificationCategories([failedCategory])
+        NotificationCategoryRegistry.shared.register([failedCategory], owner: "plugins")
     }
 
     private func subscribeToEvents() {
@@ -120,7 +115,19 @@ final class PluginNotificationService {
     }
 
     private func refreshAuthorizationStatus() async {
-        let settings = await UNUserNotificationCenter.current().notificationSettings()
-        authorizationStatus = settings.authorizationStatus
+        authorizationStatus = await NotificationAuthorization.shared.refresh()
+    }
+}
+
+extension PluginNotificationService: NotificationHandling {
+    func presentationOptions(for notification: UNNotification) -> UNNotificationPresentationOptions {
+        [.banner, .list]
+    }
+
+    func handle(_ response: UNNotificationResponse) {
+        let action = response.actionIdentifier
+        guard action == Self.openPluginSettingsActionId || action == UNNotificationDefaultActionIdentifier
+        else { return }
+        WindowOpener.shared.openSettings(tab: .plugins)
     }
 }

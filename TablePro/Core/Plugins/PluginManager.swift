@@ -14,9 +14,9 @@ import TableProPluginKit
 @MainActor @Observable
 final class PluginManager {
     static let shared = PluginManager()
-    static let currentPluginKitVersion = 19
-    static let minimumCompatiblePluginKitVersion = 19
-    static let currentInspectorKitVersion = 1
+    nonisolated static let currentPluginKitVersion = 19
+    nonisolated static let minimumCompatiblePluginKitVersion = 19
+    nonisolated static let currentInspectorKitVersion = 1
     private static let disabledPluginsKey = "com.TablePro.disabledPlugins"
     private static let legacyDisabledPluginsKey = "disabledPlugins"
 
@@ -100,7 +100,7 @@ final class PluginManager {
         set { defaults.set(Array(newValue), forKey: Self.disabledPluginsKey) }
     }
 
-    static let logger = Logger(subsystem: "com.TablePro", category: "PluginManager")
+    nonisolated static let logger = Logger(subsystem: "com.TablePro", category: "PluginManager")
 
     private var pendingPluginURLs: [(url: URL, source: PluginSource)] = []
 
@@ -142,7 +142,7 @@ final class PluginManager {
     }
 
     nonisolated static func defaultUserPluginsDir() -> URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        AppStorageEnvironment.shared.applicationSupportRoot
             .appendingPathComponent("TablePro/Plugins", isDirectory: true)
     }
 
@@ -548,6 +548,14 @@ final class PluginManager {
         }
 
         try validateBundleVersions(bundle)
+
+        if source != .builtIn {
+            let trust = try PluginCodeSignatureVerifier.evaluate(bundle: bundle)
+            if case .developerID(let identity) = trust,
+               !PluginDeveloperTrustStore.shared.isTrusted(identity) {
+                throw PluginError.developerNotTrusted(identity: identity)
+            }
+        }
 
         try PluginBundleLoader.load(bundle)
 

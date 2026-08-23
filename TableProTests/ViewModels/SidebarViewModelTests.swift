@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import TableProPluginKit
 import SwiftUI
 import Testing
 @testable import TablePro
@@ -343,8 +342,8 @@ struct SidebarViewModelMultiSectionTests {
     @MainActor
     func filteredRoutinesByKind() {
         let vm = makeViewModel()
-        let getUser = RoutineInfo(name: "get_user_by_id", schema: "public", kind: .procedure, signature: nil)
-        let calcAge = RoutineInfo(name: "calculate_age", schema: "public", kind: .function, signature: nil)
+        let getUser = RoutineInfo(name: "get_user_by_id", kind: .procedure, schema: "public")
+        let calcAge = RoutineInfo(name: "calculate_age", kind: .function, schema: "public")
         let mixed = [getUser, calcAge]
 
         let procs = vm.filteredRoutines(of: .procedure, from: mixed)
@@ -385,8 +384,8 @@ struct SidebarViewModelMultiSectionTests {
     @MainActor
     func filteredRoutinesSearch() {
         let vm = makeViewModel()
-        let getUser = RoutineInfo(name: "GET_USER_BY_ID", schema: nil, kind: .procedure, signature: nil)
-        let other = RoutineInfo(name: "log_event", schema: nil, kind: .procedure, signature: nil)
+        let getUser = RoutineInfo(name: "GET_USER_BY_ID", kind: .procedure)
+        let other = RoutineInfo(name: "log_event", kind: .procedure)
         vm.searchText = "user"
 
         let procs = vm.filteredRoutines(of: .procedure, from: [getUser, other])
@@ -425,52 +424,6 @@ struct SidebarViewModelMultiSectionTests {
 
         let result = vm.effectiveExpanded(kind: .function, hasMatches: false)
 
-        #expect(result == false)
-    }
-
-    @Test("sectionShouldRender always shows tables")
-    @MainActor
-    func tablesAlwaysShown() {
-        let vm = makeViewModel()
-        let empty: PluginCapabilities = []
-
-        #expect(vm.sectionShouldRender(kind: .table, itemCount: 0, capabilities: empty))
-        #expect(vm.sectionShouldRender(kind: .table, itemCount: 5, capabilities: empty))
-    }
-
-    @Test("sectionShouldRender hides matview when capability missing")
-    @MainActor
-    func hidesMatviewWithoutCapability() {
-        let vm = makeViewModel()
-        let result = vm.sectionShouldRender(
-            kind: .materializedView,
-            itemCount: 10,
-            capabilities: []
-        )
-        #expect(result == false)
-    }
-
-    @Test("sectionShouldRender shows matview when capability present and items exist")
-    @MainActor
-    func showsMatviewWithCapability() {
-        let vm = makeViewModel()
-        let result = vm.sectionShouldRender(
-            kind: .materializedView,
-            itemCount: 3,
-            capabilities: [.materializedViews]
-        )
-        #expect(result == true)
-    }
-
-    @Test("sectionShouldRender hides matview when no items even with capability")
-    @MainActor
-    func hidesEmptyMatviewWithCapability() {
-        let vm = makeViewModel()
-        let result = vm.sectionShouldRender(
-            kind: .materializedView,
-            itemCount: 0,
-            capabilities: [.materializedViews]
-        )
         #expect(result == false)
     }
 

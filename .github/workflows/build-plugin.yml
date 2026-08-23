@@ -13,11 +13,17 @@ on:
         required: true
         type: string
 
+# Declared per job rather than here. resolve-tags reads two integers out of a Swift file and needs
+# nothing, and a workflow-level grant hands it a write token it has no use for.
 permissions:
-  contents: write
+  contents: read
 
-env:
-  XCODE_PROJECT: TablePro.xcodeproj
+# Without this, two runs for the same tag race each other through a delete-and-recreate of the same
+# GitHub Release. Never cancel one in flight: it holds a notarization submission open with Apple and
+# publishes release assets.
+concurrency:
+  group: build-plugin-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   resolve-tags:
@@ -27,10 +33,13 @@ jobs:
       matrix: ${{ steps.tags.outputs.matrix }}
       currentPluginKitVersion: ${{ steps.pkv.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Validate registry update script
         run: python3 .github/scripts/test_update_registry.py
+
+      - name: Check the plugin manifest against the plugin classes
+        run: python3 scripts/ci/check-plugin-manifest.py
 
       - name: Read currentPluginKitVersion
         id: pkv
@@ -61,12 +70,29 @@ jobs:
           JSON='{"include":['
           FIRST=true
           for ITEM in "${RAW_TAGS[@]}"; do
-            ITEM=$(echo "$ITEM" | xargs)
+            ITEM="${ITEM#"${ITEM%%[![:space:]]*}"}"
+            ITEM="${ITEM%"${ITEM##*[![:space:]]}"}"
             TAG=$(echo "$ITEM" | cut -d: -f1)
             PKV=$(echo "$ITEM" | cut -d: -f2 -s)
             if [ -z "$PKV" ]; then
               PKV="$DEFAULT_PKV"
             fi
+
+            # Both values are checked here, on ubuntu, before any macOS job exists to import a
+            # signing certificate. TAG reaches a shell and PKV is spliced unquoted into the JSON
+            # below, and neither had ever been validated: nothing downstream checks the version
+            # format either, and update-registry.py takes --version as an arbitrary string, so a
+            # malformed tag publishes a garbage version into the plugins.json every app reads.
+            # Checked against all 366 existing plugin-* tags: every one matches.
+            if [[ ! "$TAG" =~ ^plugin-[a-z0-9-]+-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Malformed plugin tag: $TAG"
+              exit 1
+            fi
+            if [[ ! "$PKV" =~ ^[0-9]+$ ]]; then
+              echo "::error::Non-numeric pluginKitVersion for $TAG: $PKV"
+              exit 1
+            fi
+
             if [ "$FIRST" = true ]; then FIRST=false; else JSON+=','; fi
             JSON+="{\"tag\":\"$TAG\",\"pluginKitVersion\":$PKV}"
           done
@@ -77,6 +103,8 @@ jobs:
   build-plugin:
     name: "Build ${{ matrix.tag }} (PluginKit ${{ matrix.pluginKitVersion }})"
     needs: resolve-tags
+    permissions:
+      contents: write
     runs-on: macos-26
     timeout-minutes: 30
     strategy:
@@ -85,7 +113,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: true
 
@@ -93,210 +121,92 @@ jobs:
         run: git lfs pull
 
       - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: "26.4.1"
+        uses: ./.github/actions/setup-xcode
+
+      - name: Setup XcodeGen
+        uses: ./.github/actions/setup-xcodegen
 
       - name: Download static libraries
         env:
           GH_TOKEN: ${{ github.token }}
         run: scripts/download-libs.sh
 
-      - name: Import signing certificate
-        env:
-          CERTIFICATES_P12: ${{ secrets.CERTIFICATES_P12 }}
-          CERTIFICATES_PASSWORD: ${{ secrets.CERTIFICATES_PASSWORD }}
-        run: |
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          security create-keychain -p "" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "" "$KEYCHAIN_PATH"
-          echo "$CERTIFICATES_P12" | base64 --decode > $RUNNER_TEMP/certificate.p12
-          security import $RUNNER_TEMP/certificate.p12 -P "$CERTIFICATES_PASSWORD" \
-            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple: -k "" "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain
-
-      - name: Configure notarization
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
-        run: |
-          xcrun notarytool store-credentials "TablePro" \
-            --apple-id "$APPLE_ID" \
-            --team-id "$APPLE_TEAM_ID" \
-            --password "$NOTARY_PASSWORD"
+      # No provisioning profile: a .tableplugin is signed with Developer ID and notarized, and
+      # never carries an embedded profile the way the app does.
+      - name: Set up Apple signing
+        uses: ./.github/actions/apple-signing
+        with:
+          certificate-p12: ${{ secrets.CERTIFICATES_P12 }}
+          certificate-password: ${{ secrets.CERTIFICATES_PASSWORD }}
+          apple-id: ${{ secrets.APPLE_ID }}
+          team-id: ${{ secrets.APPLE_TEAM_ID }}
+          notary-password: ${{ secrets.NOTARY_PASSWORD }}
 
       - name: Resolve plugin info
         id: plugin
         env:
           MATRIX_TAG: ${{ matrix.tag }}
-        run: |
-          TAG="$MATRIX_TAG"
-          PLUGIN_NAME=$(echo "$TAG" | sed -E 's/^plugin-([a-z0-9-]+)-v([0-9].*)$/\1/')
-          VERSION=$(echo "$TAG" | sed -E 's/^plugin-([a-z0-9-]+)-v([0-9].*)$/\2/')
+        # The metadata lives in .github/plugin-registry.json. It used to be a 120-line `case` block
+        # here, which is shell holding data, and seven of its icon values had drifted away from the
+        # plugin classes they describe with nothing to notice.
+        run: python3 scripts/ci/plugin-info.py "$MATRIX_TAG" >> "$GITHUB_OUTPUT"
 
-          case "$PLUGIN_NAME" in
-            oracle)
-              TARGET="OracleDriver"; BUNDLE_ID="com.TablePro.OracleDriver"
-              DISPLAY_NAME="Oracle Driver"; SUMMARY="Oracle Database 12c+ driver via OracleNIO"
-              DB_TYPE_IDS='["Oracle"]'; ICON="server.rack"; BUNDLE_NAME="OracleDriver"
-              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/oracle" ;;
-            clickhouse)
-              TARGET="ClickHouseDriver"; BUNDLE_ID="com.TablePro.ClickHouseDriver"
-              DISPLAY_NAME="ClickHouse Driver"; SUMMARY="ClickHouse OLAP database driver via HTTP interface"
-              DB_TYPE_IDS='["ClickHouse"]'; ICON="chart.bar.xaxis"; BUNDLE_NAME="ClickHouseDriver"
-              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/clickhouse" ;;
-            sqlite)
-              TARGET="SQLiteDriver"; BUNDLE_ID="com.TablePro.SQLiteDriver"
-              DISPLAY_NAME="SQLite Driver"; SUMMARY="SQLite embedded database driver"
-              DB_TYPE_IDS='["SQLite"]'; ICON="internaldrive"; BUNDLE_NAME="SQLiteDriver"
-              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/sqlite" ;;
-            duckdb)
-              TARGET="DuckDBDriver"; BUNDLE_ID="com.TablePro.DuckDBDriver"
-              DISPLAY_NAME="DuckDB Driver"; SUMMARY="DuckDB analytical database driver"
-              DB_TYPE_IDS='["DuckDB"]'; ICON="bird"; BUNDLE_NAME="DuckDBDriver"
-              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/duckdb" ;;
-            beancount)
-              TARGET="BeancountDriver"; BUNDLE_ID="com.TablePro.BeancountDriver"
-              DISPLAY_NAME="Beancount Driver"; SUMMARY="Read-only Beancount ledger driver using user-provided rledger or Python Beancount"
-              DB_TYPE_IDS='["Beancount"]'; ICON="beancount-icon"; BUNDLE_NAME="BeancountDriver"
-              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/beancount" ;;
-            cassandra)
-              TARGET="CassandraDriver"; BUNDLE_ID="com.TablePro.CassandraDriver"
-              DISPLAY_NAME="Cassandra Driver"; SUMMARY="Apache Cassandra and ScyllaDB driver via DataStax C driver"
-              DB_TYPE_IDS='["Cassandra","ScyllaDB"]'; ICON="cassandra-icon"; BUNDLE_NAME="CassandraDriver"
-              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/cassandra" ;;
-            etcd)
-              TARGET="EtcdDriverPlugin"; BUNDLE_ID="com.TablePro.EtcdDriverPlugin"
-              DISPLAY_NAME="etcd Driver"; SUMMARY="etcd v3 key-value store driver with prefix-tree browsing and lease management"
-              DB_TYPE_IDS='["etcd"]'; ICON="etcd-icon"; BUNDLE_NAME="EtcdDriverPlugin"
-              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/etcd" ;;
-            mssql)
-              TARGET="MSSQLDriver"; BUNDLE_ID="com.TablePro.MSSQLDriver"
-              DISPLAY_NAME="MSSQL Driver"; SUMMARY="Microsoft SQL Server driver via FreeTDS"
-              DB_TYPE_IDS='["SQL Server"]'; ICON="mssql-icon"; BUNDLE_NAME="MSSQLDriver"
-              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/mssql" ;;
-            teradata)
-              TARGET="TeradataDriver"; BUNDLE_ID="com.TablePro.TeradataDriver"
-              DISPLAY_NAME="Teradata Driver"; SUMMARY="Teradata Vantage driver via a native Swift TD2 client"
-              DB_TYPE_IDS='["Teradata"]'; ICON="teradata-icon"; BUNDLE_NAME="TeradataDriver"
-              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/teradata" ;;
-            trino)
-              TARGET="TrinoDriverPlugin"; BUNDLE_ID="com.TablePro.TrinoDriverPlugin"
-              DISPLAY_NAME="Trino Driver"; SUMMARY="Trino distributed SQL engine driver via the REST client protocol"
-              DB_TYPE_IDS='["Trino"]'; ICON="trino-icon"; BUNDLE_NAME="TrinoDriverPlugin"
-              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/trino" ;;
-            mongodb)
-              TARGET="MongoDBDriver"; BUNDLE_ID="com.TablePro.MongoDBDriver"
-              DISPLAY_NAME="MongoDB Driver"; SUMMARY="MongoDB document database driver via libmongoc"
-              DB_TYPE_IDS='["MongoDB"]'; ICON="mongodb-icon"; BUNDLE_NAME="MongoDBDriver"
-              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/mongodb" ;;
-            redis)
-              TARGET="RedisDriver"; BUNDLE_ID="com.TablePro.RedisDriver"
-              DISPLAY_NAME="Redis Driver"; SUMMARY="Redis in-memory data store driver via hiredis"
-              DB_TYPE_IDS='["Redis"]'; ICON="redis-icon"; BUNDLE_NAME="RedisDriver"
-              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/redis" ;;
-            cloudflare-d1)
-              TARGET="CloudflareD1DriverPlugin"; BUNDLE_ID="com.TablePro.CloudflareD1DriverPlugin"
-              DISPLAY_NAME="Cloudflare D1 Driver"; SUMMARY="Cloudflare D1 serverless SQLite-compatible database driver via REST API"
-              DB_TYPE_IDS='["Cloudflare D1"]'; ICON="cloudflare-d1-icon"; BUNDLE_NAME="CloudflareD1DriverPlugin"
-              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/cloudflare-d1" ;;
-            libsql)
-              TARGET="LibSQLDriverPlugin"; BUNDLE_ID="com.TablePro.LibSQLDriverPlugin"
-              DISPLAY_NAME="libSQL / Turso Driver"; SUMMARY="libSQL and Turso database support via Hrana HTTP protocol"
-              DB_TYPE_IDS='["libSQL","Turso"]'; ICON="libsql-icon"; BUNDLE_NAME="LibSQLDriverPlugin"
-              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/libsql" ;;
-            dynamodb)
-              TARGET="DynamoDBDriverPlugin"; BUNDLE_ID="com.TablePro.DynamoDBDriverPlugin"
-              DISPLAY_NAME="DynamoDB Driver"; SUMMARY="Amazon DynamoDB driver with PartiQL queries and AWS IAM/Profile/SSO authentication"
-              DB_TYPE_IDS='["DynamoDB"]'; ICON="dynamodb-icon"; BUNDLE_NAME="DynamoDBDriverPlugin"
-              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/dynamodb" ;;
-            elasticsearch)
-              TARGET="ElasticsearchDriverPlugin"; BUNDLE_ID="com.TablePro.ElasticsearchDriverPlugin"
-              DISPLAY_NAME="Elasticsearch Driver"; SUMMARY="Elasticsearch driver via the REST API with a Query DSL console"
-              DB_TYPE_IDS='["Elasticsearch"]'; ICON="elasticsearch-icon"; BUNDLE_NAME="ElasticsearchDriverPlugin"
-              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/elasticsearch" ;;
-            surrealdb)
-              TARGET="SurrealDBDriverPlugin"; BUNDLE_ID="com.TablePro.SurrealDBDriverPlugin"
-              DISPLAY_NAME="SurrealDB Driver"; SUMMARY="SurrealDB driver over the HTTP RPC protocol with SurrealQL"
-              DB_TYPE_IDS='["SurrealDB"]'; ICON="surrealdb-icon"; BUNDLE_NAME="SurrealDBDriverPlugin"
-              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/surrealdb" ;;
-            bigquery)
-              TARGET="BigQueryDriverPlugin"; BUNDLE_ID="com.TablePro.BigQueryDriverPlugin"
-              DISPLAY_NAME="BigQuery Driver"; SUMMARY="Google BigQuery analytics database driver via REST API"
-              DB_TYPE_IDS='["BigQuery"]'; ICON="bigquery-icon"; BUNDLE_NAME="BigQueryDriverPlugin"
-              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/bigquery" ;;
-            snowflake)
-              TARGET="SnowflakeDriverPlugin"; BUNDLE_ID="com.TablePro.SnowflakeDriverPlugin"
-              DISPLAY_NAME="Snowflake Driver"; SUMMARY="Snowflake cloud data warehouse driver via the connector REST protocol"
-              DB_TYPE_IDS='["Snowflake"]'; ICON="snowflake-icon"; BUNDLE_NAME="SnowflakeDriverPlugin"
-              CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/snowflake" ;;
-            xlsx)
-              TARGET="XLSXExport"; BUNDLE_ID="com.TablePro.XLSXExportPlugin"
-              DISPLAY_NAME="XLSX Export"; SUMMARY="Export data to Microsoft Excel XLSX format"
-              DB_TYPE_IDS='null'; ICON="doc.richtext"; BUNDLE_NAME="XLSXExport"
-              CATEGORY="export-format"; HOMEPAGE="https://docs.tablepro.app/features/export" ;;
-            mql)
-              TARGET="MQLExport"; BUNDLE_ID="com.TablePro.MQLExportPlugin"
-              DISPLAY_NAME="MQL Export"; SUMMARY="Export MongoDB data as MQL statements"
-              DB_TYPE_IDS='null'; ICON="doc.text"; BUNDLE_NAME="MQLExport"
-              CATEGORY="export-format"; HOMEPAGE="https://docs.tablepro.app/features/export" ;;
-            sqlimport)
-              TARGET="SQLImport"; BUNDLE_ID="com.TablePro.SQLImportPlugin"
-              DISPLAY_NAME="SQL Import"; SUMMARY="Import data from SQL dump files"
-              DB_TYPE_IDS='null'; ICON="square.and.arrow.down"; BUNDLE_NAME="SQLImport"
-              CATEGORY="import-format"; HOMEPAGE="https://docs.tablepro.app/features/import" ;;
-            *)
-              echo "::error::Unknown plugin name: $PLUGIN_NAME"
-              exit 1 ;;
-          esac
+      - name: Build Dameng native bridge
+        if: ${{ contains(matrix.tag, 'plugin-dameng-') }}
+        run: ./scripts/build-dameng.sh both
 
-          # The app target is the only one with a real version; every plugin,
-          # test, and framework target is pinned to MARKETING_VERSION = 1.0,
-          # and target order in the pbxproj is not stable.
-          MIN_APP_VERSION=$(grep -E 'MARKETING_VERSION\s*=\s*[0-9]' \
-            TablePro.xcodeproj/project.pbxproj \
-            | sed 's/.*MARKETING_VERSION = \(.*\);/\1/' | tr -d ' ' \
-            | grep -v '^1\.0$' | sort -u | head -1)
-          if [ -z "$MIN_APP_VERSION" ] || [ "$MIN_APP_VERSION" = "1.0" ]; then
-            echo "::error::Could not resolve the app MARKETING_VERSION (got '$MIN_APP_VERSION')"
-            exit 1
-          fi
-          DISTINCT_COUNT=$(grep -E 'MARKETING_VERSION\s*=\s*[0-9]' \
-            TablePro.xcodeproj/project.pbxproj \
-            | sed 's/.*MARKETING_VERSION = \(.*\);/\1/' | tr -d ' ' \
-            | grep -v '^1\.0$' | sort -u | wc -l | tr -d ' ')
-          if [ "$DISTINCT_COUNT" != "1" ]; then
-            echo "::error::Expected exactly one non-1.0 MARKETING_VERSION, found $DISTINCT_COUNT"
-            exit 1
-          fi
-
-          {
-            echo "target=$TARGET"
-            echo "bundleId=$BUNDLE_ID"
-            echo "displayName=$DISPLAY_NAME"
-            echo "summary=$SUMMARY"
-            echo "dbTypeIds=$DB_TYPE_IDS"
-            echo "icon=$ICON"
-            echo "bundleName=$BUNDLE_NAME"
-            echo "category=$CATEGORY"
-            echo "homepage=$HOMEPAGE"
-            echo "version=$VERSION"
-            echo "minAppVersion=$MIN_APP_VERSION"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Build Cassandra dependencies
-        if: ${{ contains(matrix.tag, 'plugin-cassandra-') }}
-        run: ./scripts/build-cassandra.sh both
-
+      # NOTARIZE is not optional. Gatekeeper refuses to load an unnotarized plugin bundle
+      # into TablePro, so a build that skips it publishes a driver no user can open.
       - name: Build plugin binaries
         env:
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARIZE: "true"
+          TARGET: ${{ steps.plugin.outputs.target }}
+          VERSION: ${{ steps.plugin.outputs.version }}
+        # One invocation, not one per architecture. The script has always taken "both", and
+        # each invocation regenerates both Xcode projects and wipes build/DerivedData, so calling
+        # it twice threw away everything the first architecture had compiled.
+        run: ./scripts/build-plugin.sh "$TARGET" both "$VERSION"
+
+      # Assert the result rather than trusting the flag. The previous notarization step was
+      # gated on an environment variable nothing defined, so it never ran and nothing noticed
+      # for every plugin release the registry has ever published.
+      # Before anything is published. The registry serves these to users directly, so a bundle
+      # that will not load is a plugin nobody can install.
+      - name: Verify the built bundles load
+        env:
+          BUNDLE_NAME: ${{ steps.plugin.outputs.bundleName }}
         run: |
-          ./scripts/build-plugin.sh "${{ steps.plugin.outputs.target }}" arm64 "${{ steps.plugin.outputs.version }}"
-          ./scripts/build-plugin.sh "${{ steps.plugin.outputs.target }}" x86_64 "${{ steps.plugin.outputs.version }}"
+          set -euo pipefail
+          for ARCH in arm64 x86_64; do
+            WORK="$(mktemp -d)"
+            unzip -oq "build/Plugins/${BUNDLE_NAME}-${ARCH}.zip" -d "$WORK"
+            # Only the native slice can be dlopened on this runner; the other is checked by
+            # `lipo -info` having produced it and by Gatekeeper below.
+            if [ "$ARCH" = "arm64" ]; then
+              scripts/ci/verify-plugin-loads.sh "$WORK"
+            fi
+            rm -rf "$WORK"
+          done
+
+      - name: Verify the built bundles are notarized
+        run: |
+          BUNDLE_NAME="${{ steps.plugin.outputs.bundleName }}"
+          for ARCH in arm64 x86_64; do
+            WORK=$(mktemp -d)
+            unzip -oq "build/Plugins/${BUNDLE_NAME}-${ARCH}.zip" -d "$WORK"
+            PLUGIN="$WORK/${BUNDLE_NAME}.tableplugin"
+            if ! xcrun stapler validate "$PLUGIN"; then
+              echo "::error::${BUNDLE_NAME}-${ARCH} carries no stapled notarization ticket. Gatekeeper refuses to load such a bundle into TablePro."
+              exit 1
+            fi
+            if ! spctl -a -vvv -t open --context context:primary-signature "$PLUGIN" 2>&1 | grep -q "source=Notarized Developer ID"; then
+              echo "::error::Gatekeeper rejects ${BUNDLE_NAME}-${ARCH}:"
+              spctl -a -vvv -t open --context context:primary-signature "$PLUGIN" || true
+              exit 1
+            fi
+            echo "Verified ${BUNDLE_NAME}-${ARCH}: notarized, stapled and accepted by Gatekeeper."
+          done
 
       - name: Verify built PluginKit version matches the release label
         env:
@@ -331,23 +241,16 @@ jobs:
             echo "x86_64=$X86_SHA"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Notarize
-        if: ${{ env.NOTARIZE_PLUGINS == 'true' }}
-        run: |
-          BUNDLE_NAME="${{ steps.plugin.outputs.bundleName }}"
-          for zip in build/Plugins/${BUNDLE_NAME}-*.zip; do
-            xcrun notarytool submit "$zip" --keychain-profile "TablePro" --wait
-          done
-
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           MATRIX_TAG: ${{ matrix.tag }}
           MATRIX_PKV: ${{ matrix.pluginKitVersion }}
+          PLUGIN_VERSION: ${{ steps.plugin.outputs.version }}
         run: |
           TAG="$MATRIX_TAG"
           DISPLAY_NAME="${{ steps.plugin.outputs.displayName }}"
-          VERSION="${{ steps.plugin.outputs.version }}"
+          VERSION="$PLUGIN_VERSION"
           BUNDLE_NAME="${{ steps.plugin.outputs.bundleName }}"
           ARM64_SHA="${{ steps.sha.outputs.arm64 }}"
           X86_SHA="${{ steps.sha.outputs.x86_64 }}"
@@ -371,12 +274,41 @@ jobs:
             exit 1
           fi
 
-          gh release delete "$TAG" --yes 2>/dev/null || true
-          gh release create "$TAG" \
-            --title "$DISPLAY_NAME v$VERSION" \
-            --notes "$RELEASE_BODY" \
-            build/Plugins/${BUNDLE_NAME}-arm64.zip \
-            build/Plugins/${BUNDLE_NAME}-x86_64.zip
+          # Three outcomes, decided before anything is destroyed. The old form deleted the
+          # release and recreated it, so a re-run of an already-published tag briefly left
+          # plugins.json pointing at URLs that 404, and permanently replaced assets that a
+          # published registry entry may point at. release-all-plugins.sh already states the
+          # policy: an existing tag's assets are not to be replaced.
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "$DISPLAY_NAME v$VERSION" \
+              --notes "$RELEASE_BODY" \
+              --latest=false \
+              "build/Plugins/${BUNDLE_NAME}-arm64.zip" \
+              "build/Plugins/${BUNDLE_NAME}-x86_64.zip"
+          else
+            # A release already here is either this same build resumed, or a different binary.
+            # Only the first is safe to continue from.
+            IDENTICAL=true
+            for ARCH in arm64 x86_64; do
+              EXPECTED=$(cut -d' ' -f1 < "build/Plugins/${BUNDLE_NAME}-${ARCH}.zip.sha256")
+              WORK=$(mktemp -d)
+              if gh release download "$TAG" --pattern "${BUNDLE_NAME}-${ARCH}.zip" --dir "$WORK" 2>/dev/null; then
+                PUBLISHED=$(shasum -a 256 "$WORK/${BUNDLE_NAME}-${ARCH}.zip" | cut -d' ' -f1)
+                [ "$PUBLISHED" = "$EXPECTED" ] || IDENTICAL=false
+              else
+                IDENTICAL=false
+              fi
+              rm -rf "$WORK"
+            done
+
+            if [ "$IDENTICAL" = true ]; then
+              echo "Release $TAG already carries these exact binaries; continuing to the registry step."
+            else
+              echo "::error::Release $TAG already exists with different binaries. Refusing to replace assets a published registry entry may point at; bump the patch version and release a new tag."
+              exit 1
+            fi
+          fi
 
       - name: Verify published assets match the PluginKit label
         env:
@@ -418,18 +350,18 @@ jobs:
           done
 
       - name: Update plugin registry
-        if: ${{ env.REGISTRY_DEPLOY_KEY != '' }}
         env:
           REGISTRY_DEPLOY_KEY: ${{ secrets.REGISTRY_DEPLOY_KEY }}
           GH_TOKEN: ${{ github.token }}
           MATRIX_TAG: ${{ matrix.tag }}
           MATRIX_PKV: ${{ matrix.pluginKitVersion }}
+          PLUGIN_VERSION: ${{ steps.plugin.outputs.version }}
         run: |
           TAG="$MATRIX_TAG"
           BUNDLE_NAME="${{ steps.plugin.outputs.bundleName }}"
           BUNDLE_ID="${{ steps.plugin.outputs.bundleId }}"
           DISPLAY_NAME="${{ steps.plugin.outputs.displayName }}"
-          VERSION="${{ steps.plugin.outputs.version }}"
+          VERSION="$PLUGIN_VERSION"
           SUMMARY="${{ steps.plugin.outputs.summary }}"
           DB_TYPE_IDS='${{ steps.plugin.outputs.dbTypeIds }}'
           MIN_APP_VERSION="${{ steps.plugin.outputs.minAppVersion }}"

@@ -1,0 +1,43 @@
+---
+title: Notifications
+description: Which finished operations notify you, how long work has to run first, and what the notification carries
+---
+
+You only get told when the result is somewhere you are not. That means TablePro behind another window or in another Space, the window minimized, or the tab that ran the work not the one on screen. Work you cancelled yourself never notifies, and neither does anything that finished faster than the threshold.
+
+<Frame caption="The Notifications tab in Settings">
+  <img className="block dark:hidden" src="/images/settings-notifications.png" alt="Notifications settings tab" />
+  <img className="hidden dark:block" src="/images/settings-notifications-dark.png" alt="Notifications settings tab" />
+</Frame>
+
+**Settings > Notifications** changes any of it.
+
+| Setting | Default | Covers |
+| --- | --- | --- |
+| **Notify when long-running work finishes** | On | The master switch for every kind in this table |
+| **Only after** | 20 seconds | How long work has to run to count: 5, 10, 20 or 30 seconds, or 1, 2, 5 or 10 minutes |
+| **Queries** | On | Editor queries, including Explain |
+| **Statement batches** | On | Execute All Statements, as one notification for the batch |
+| **Row edits** | On | Saving edited rows |
+| **Structure changes** | On | Applying table structure changes |
+| **Imports** | On | File imports |
+| **Exports** | On | Exports, including streaming exports |
+| **Backups** | On | Database dumps |
+| **Fetch all rows** | On | Loading every row of a truncated result |
+| **AI and MCP queries** | On | Queries an AI assistant or MCP client runs |
+
+Keep **Only after** below the [query timeout](/customization/general-settings#query-timeout), or a query that times out finishes before its notification is due.
+
+## What a notification carries
+
+The connection name is the title, the database is the subtitle, and the body is the outcome with a duration: "1,204 rows in 3m 12s", or "Failed after 2m 45s" with the reason. A failure adds a **Copy Error** button, and anything that wrote a file adds **Show in Finder**. Clicking the notification brings TablePro forward on the tab that ran the work.
+
+Banners group by connection. Re-running the same kind of work in the same tab replaces that tab's earlier banner instead of stacking a second one.
+
+## The tab dot
+
+A tab whose work finished while you were looking elsewhere carries a dot beside its name until you select it. That dot is not a notification: it appears whatever the settings say, and whether or not you ever granted permission.
+
+## Permission
+
+macOS asks the first time there is actually something to tell you, not at launch. Refuse, or turn TablePro off in **System Settings > Notifications**, and this tab says so with a button that opens the right pane; TablePro bounces its Dock icon in place of the banner. Sound and alert style are per-app System Settings options, so this tab does not repeat them.

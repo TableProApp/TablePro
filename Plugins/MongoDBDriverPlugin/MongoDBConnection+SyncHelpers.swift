@@ -482,10 +482,15 @@ extension MongoDBConnection {
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) -> MongoStreamProjection {
         let columns = BsonDocumentFlattener.unionColumns(from: sample)
-        let columnTypeNames = BsonDocumentFlattener
-            .columnTypes(for: columns, documents: sample)
-            .map { bsonTypeToStreamString($0) }
-        let projection = MongoStreamProjection(columns: columns, columnTypeNames: columnTypeNames)
+        let kinds = BsonDocumentFlattener.columnKinds(
+            for: columns, documents: sample, representation: uuidRepresentation
+        )
+        let columnTypeNames = kinds.map {
+            BsonDocumentFlattener.typeName(for: $0, representation: uuidRepresentation)
+        }
+        let projection = MongoStreamProjection(
+            columns: columns, columnTypeNames: columnTypeNames, kinds: kinds
+        )
 
         continuation.yield(.header(projection.header))
 
@@ -496,11 +501,8 @@ extension MongoDBConnection {
         return projection
     }
 
-    private func streamCellValue(_ value: Any) -> PluginCellValue {
-        if let data = value as? Data {
-            return .bytes(data)
-        }
-        return PluginCellValue.fromOptional(BsonDocumentFlattener.stringValue(for: value))
+    private func streamCellValue(_ value: Any, kind: BsonValueKind) -> PluginCellValue {
+        BsonDocumentFlattener.cellValue(for: value, kind: kind, representation: uuidRepresentation)
     }
 
     private func cleanup(_ state: MongoStreamState) {
@@ -517,21 +519,5 @@ extension MongoDBConnection {
         if let col { mongoc_collection_destroy(col) }
     }
 
-    private func bsonTypeToStreamString(_ type: Int32) -> String {
-        switch type {
-        case 1: return "FLOAT"
-        case 2: return "VARCHAR"
-        case 3: return "JSON"
-        case 4: return "JSON"
-        case 5: return "BLOB"
-        case 7: return "VARCHAR"
-        case 8: return "BOOLEAN"
-        case 9: return "TIMESTAMP"
-        case 10: return "VARCHAR"
-        case 16: return "INTEGER"
-        case 18: return "BIGINT"
-        default: return "VARCHAR"
-        }
-    }
 }
 #endif

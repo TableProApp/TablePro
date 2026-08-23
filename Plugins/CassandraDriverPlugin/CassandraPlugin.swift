@@ -33,6 +33,8 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let urlSchemes: [String] = ["cassandra", "cql", "scylladb", "scylla"]
     static let requiresAuthentication = false
     static let supportsForeignKeys = false
+    static let supportsRoutines = true
+    static let supportsDatabaseTriggerBrowse = true
     static let brandColorHex = "#26A0D8"
     static let queryLanguageName = "CQL"
     static let supportsDatabaseSwitching = true
@@ -94,7 +96,8 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin {
             booleanLiteralStyle: .truefalse,
             likeEscapeStyle: .explicit,
             paginationStyle: .limit,
-            autoLimitStyle: .limit
+            autoLimitStyle: .limit,
+            caseSensitivityStyle: .unsupported
         )
     }
 
@@ -188,15 +191,11 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         )
 
         if let keyspace {
-            stateLock.lock()
-            _currentKeyspace = keyspace
-            stateLock.unlock()
+            stateLock.withLock { _currentKeyspace = keyspace }
         }
 
         if let version = try? await connectionActor.serverVersion() {
-            stateLock.lock()
-            _cachedVersion = version
-            stateLock.unlock()
+            stateLock.withLock { _cachedVersion = version }
         }
 
         let caps = CassandraCapabilities(
@@ -536,9 +535,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
 
     func switchDatabase(to database: String) async throws {
         try await connectionActor.switchKeyspace(database)
-        stateLock.lock()
-        _currentKeyspace = database
-        stateLock.unlock()
+        stateLock.withLock { _currentKeyspace = database }
     }
 
     // MARK: - Schemas (Cassandra uses keyspaces, not schemas)
@@ -569,7 +566,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
 
     // MARK: - Private Helpers
 
-    private func resolveKeyspace(_ schema: String?) -> String {
+    func resolveKeyspace(_ schema: String?) -> String {
         if let schema, !schema.isEmpty { return schema }
         stateLock.lock()
         defer { stateLock.unlock() }

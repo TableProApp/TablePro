@@ -381,7 +381,7 @@ struct FilterSQLGeneratorTests {
         #expect(result == "`active` = 0")
     }
 
-    @Test("Numeric value generates unquoted number")
+    @Test("Numeric value without a known column type falls back to the shape heuristic")
     func testNumericValue() {
         let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(

@@ -14,99 +14,81 @@ import TableProPluginKit
 
 extension DatabaseManager {
     /// Execute schema changes (ALTER TABLE, CREATE INDEX, etc.) in a transaction.
-    /// The connection, database, and schema all come from the caller's own tab, never
-    /// from ambient session state that another window or tab can move.
+    /// The connection, database and schema all come from the editing tab's own scope,
+    /// never from ambient session state that another window or tab can move.
+    ///
+    /// Authorization sits between two scoped blocks rather than inside one: it awaits a
+    /// confirmation sheet and Touch ID, and holding the connection's driver gate across a
+    /// human prompt would freeze every other tab on that connection.
     func executeSchemaChanges(
         tableName: String,
         changes: [SchemaChange],
         databaseType: DatabaseType,
-        databaseName: String,
-        schemaName: String?,
-        connectionId: UUID
+        scope: DatabaseScope
     ) async throws {
-        guard let driver = driver(for: connectionId) else {
-            throw DatabaseError.notConnected
-        }
+        let route = executionRoute(for: scope)
 
-        try await trackOperation(sessionId: connectionId) {
-            try await pinDatabaseBeforeSchemaChange(
-                databaseName: databaseName,
-                schemaName: schemaName,
-                databaseType: databaseType,
-                connectionId: connectionId
-            )
-
-            // For PostgreSQL PK modification, query the actual constraint name
-            let pkConstraintName = await fetchPrimaryKeyConstraintName(
+        let statements = try await withScopedDriver(
+            scope: scope, route: route, cancellation: .untracked
+        ) { driver in
+            let pkConstraintName = await Self.fetchPrimaryKeyConstraintName(
                 tableName: tableName,
                 databaseType: databaseType,
                 changes: changes,
                 driver: driver
             )
-
             guard let resolvedPluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else {
                 throw DatabaseError.unsupportedOperation
             }
-
             let generator = SchemaStatementGenerator(
                 tableName: tableName,
                 primaryKeyConstraintName: pkConstraintName,
                 pluginDriver: resolvedPluginDriver
             )
-            let statements = try generator.generate(changes: changes)
+            return try generator.generate(changes: changes)
+        }
 
-            let combinedSQL = statements.map(\.sql).joined(separator: "\n")
-            let schemaKind: OperationKind =
-                QueryClassifier.classifyTier(combinedSQL, databaseType: databaseType) == .destructive
-                ? .destructiveQuery : .schemaMutation
-            let authorization = await ExecutionGateProvider.shared.authorize(
-                OperationRequest(
-                    connectionId: connectionId,
-                    databaseType: databaseType,
-                    sql: combinedSQL,
-                    kind: schemaKind,
-                    caller: .userInterface,
-                    capabilities: .interactiveUser,
-                    operationDescription: String(localized: "Apply Schema Changes")
-                )
+        let combinedSQL = statements.map(\.sql).joined(separator: "\n")
+        let schemaKind: OperationKind =
+            QueryClassifier.classifyTier(combinedSQL, databaseType: databaseType) == .destructive
+            ? .destructiveQuery : .schemaMutation
+        let authorization = await ExecutionGateProvider.shared.authorize(
+            OperationRequest(
+                connectionId: scope.connectionId,
+                databaseType: databaseType,
+                sql: combinedSQL,
+                kind: schemaKind,
+                caller: .userInterface,
+                capabilities: .interactiveUser,
+                operationDescription: String(localized: "Apply Schema Changes")
             )
-            guard case .authorized = authorization else {
-                throw DatabaseError.queryFailed(
-                    authorization.deniedReason ?? String(localized: "Schema change was not authorized")
-                )
-            }
+        )
+        guard case .authorized = authorization else {
+            throw DatabaseError.queryFailed(
+                authorization.deniedReason ?? String(localized: "Schema change was not authorized")
+            )
+        }
 
+        let executionTimes: [TimeInterval] = try await withScopedDriver(
+            scope: scope,
+            route: route,
+            cancellation: .protectedWrite
+        ) { driver in
             let useTransaction = driver.supportsTransactions
-
             if useTransaction {
                 try await driver.beginTransaction(mode: schemaKind.declaresWrite ? .readWrite : .serverDefault)
             }
-
             do {
+                var measured: [TimeInterval] = []
                 for stmt in statements {
+                    let startedAt = Date()
                     _ = try await driver.execute(query: stmt.sql)
+                    measured.append(Date().timeIntervalSince(startedAt))
                 }
-
                 if useTransaction {
                     try await driver.commitTransaction()
                 }
-
-                let connId = connectionId
-                let dbName = self.activeSessions[connectionId]?.activeDatabase ?? ""
-                for stmt in statements {
-                    QueryHistoryManager.shared.recordQuery(
-                        query: stmt.sql.hasSuffix(";") ? stmt.sql : stmt.sql + ";",
-                        connectionId: connId,
-                        databaseName: dbName,
-                        executionTime: 0,
-                        rowCount: 0,
-                        wasSuccessful: true
-                    )
-                }
-
-                await MainActor.run {
-                    AppCommands.shared.refreshData.send(connectionId)
-                }
+                return measured
             } catch {
                 if useTransaction {
                     do {
@@ -118,60 +100,31 @@ extension DatabaseManager {
                 throw DatabaseError.queryFailed("Schema change failed: \(error.localizedDescription)")
             }
         }
-    }
 
-    /// Point the shared session driver at the database and schema the edited table
-    /// belongs to. Sibling tabs on the same connection move that driver, so a save must
-    /// re-pin before it writes. A failed pin aborts the save: a misdirected DDL is
-    /// silent and often irreversible, unlike a misdirected read.
-    ///
-    /// Switching database on a schema-grouped engine drops the driver back to the engine's
-    /// default schema, and those drivers qualify their DDL with whatever schema they are
-    /// currently on, so the schema has to be restored before any statement is generated.
-    private func pinDatabaseBeforeSchemaChange(
-        databaseName: String,
-        schemaName: String?,
-        databaseType: DatabaseType,
-        connectionId: UUID
-    ) async throws {
-        guard !databaseName.isEmpty,
-              !pluginManager.requiresReconnectForDatabaseSwitch(for: databaseType),
-              databaseName != activeSessions[connectionId]?.activeDatabase
-        else {
-            return
-        }
-
-        let targetSchema = resolvedSchemaName(schemaName, for: connectionId)
-
-        do {
-            try await switchDatabase(to: databaseName, for: connectionId, persist: false)
-            try await restoreSchemaAfterDatabasePin(targetSchema, for: connectionId)
-        } catch {
-            throw DatabaseError.queryFailed(
-                String(
-                    format: String(localized: "Could not switch to database %@ before applying schema changes: %@"),
-                    databaseName,
-                    error.localizedDescription
+        let databaseTypeForHistory = databaseType
+        for (index, stmt) in statements.enumerated() {
+            await historyRecorder.record(
+                QueryHistoryRecordRequest(
+                    query: stmt.sql.hasSuffix(";") ? stmt.sql : stmt.sql + ";",
+                    connectionId: scope.connectionId,
+                    databaseName: scope.database,
+                    databaseType: databaseTypeForHistory,
+                    schemaName: scope.schema,
+                    source: .structureDDL,
+                    executionTime: executionTimes.indices.contains(index) ? executionTimes[index] : 0,
+                    rowCount: -1,
+                    wasSuccessful: true
                 )
             )
         }
-    }
 
-    private func restoreSchemaAfterDatabasePin(_ targetSchema: String?, for connectionId: UUID) async throws {
-        guard let targetSchema, !targetSchema.isEmpty,
-              let schemaDriver = driver(for: connectionId) as? SchemaSwitchable,
-              schemaDriver.currentSchema != targetSchema
-        else {
-            return
-        }
-
-        try await switchSchema(to: targetSchema, for: connectionId)
+        AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: scope.connectionId, scope: scope))
     }
 
     /// Query the actual primary key constraint name for PostgreSQL.
     /// Returns nil if the database is not PostgreSQL, no PK modification is pending,
     /// or the query fails (caller falls back to `{table}_pkey` convention).
-    private func fetchPrimaryKeyConstraintName(
+    private static func fetchPrimaryKeyConstraintName(
         tableName: String,
         databaseType: DatabaseType,
         changes: [SchemaChange],

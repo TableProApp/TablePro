@@ -10,9 +10,20 @@ import TableProPluginKit
 extension TableViewCoordinator {
     // MARK: - Cell Interaction
 
+    /// Whether a cell is on screen for something to anchor to.
+    ///
+    /// A data cell is drawn rather than mounted, so the row being on screen is what answers this;
+    /// `view(atColumn:row:makeIfNecessary:)` is always nil now and every guard that still asked it
+    /// closed the editor or popover it was guarding (#2381).
+    func presentsCell(row: Int, tableColumnIndex: Int) -> Bool {
+        guard let tableView, row >= 0, row < tableView.numberOfRows else { return false }
+        guard presentsColumn(atTableColumnIndex: tableColumnIndex) else { return false }
+        return tableView.rowView(atRow: row, makeIfNecessary: false) != nil
+    }
+
     func handleCellInteraction(row: Int, tableColumn: Int, columnIndex: Int, tableView: NSTableView) {
         guard let context = makeCellContext(row: row, columnIndex: columnIndex) else { return }
-        guard tableView.view(atColumn: tableColumn, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: tableColumn) else { return }
 
         switch CellInteractionResolver().resolve(context) {
         case .blocked:
@@ -43,10 +54,9 @@ extension TableViewCoordinator {
         let columnName = tableRows.columns[columnIndex]
         let columnType = columnIndex < tableRows.columnTypes.count ? tableRows.columnTypes[columnIndex] : nil
         let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
-        let override = ValueDisplayFormatService.shared.effectiveFormat(
-            columnName: columnName,
-            scope: tableScope
-        )
+        let override = columnIndex < columnDisplayFormats.count
+            ? columnDisplayFormats[columnIndex]
+            : nil
 
         return CellContext(
             columnType: columnType,
@@ -86,6 +96,8 @@ extension TableViewCoordinator {
 
         if columnType.isBooleanType {
             showDropdownMenu(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+        } else if columnType.supportsElementEditing {
+            showArrayEditorPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
         } else if let values = tableRows.columnEnumValues[columnName], !values.isEmpty {
             if columnType.isSetType {
                 showSetPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
@@ -98,6 +110,8 @@ extension TableViewCoordinator {
             showBlobEditorPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
         } else if columnType.isDateType {
             showDateTimePickerPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+        } else if columnType.isEnumOrSetType {
+            beginEditing(displayRow: row, column: columnIndex)
         }
     }
 
@@ -125,13 +139,14 @@ extension TableViewCoordinator {
         column: Int,
         columnIndex: Int
     ) {
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
         let currentValue = cellValue(at: row, column: columnIndex) ?? ""
         let dbType = databaseType ?? .mysql
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
-        PopoverPresenter.show(
+        dismissActiveCellEditorPopover()
+        activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,
             of: tableView
         ) { [weak self] dismiss in

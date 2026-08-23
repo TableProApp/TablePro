@@ -11,6 +11,7 @@ import CodeEditSourceEditor
 import CodeEditTextView
 import Combine
 import SwiftUI
+import TableProPluginKit
 
 // MARK: - SQLEditorView
 
@@ -24,15 +25,26 @@ struct SQLEditorView: View {
     var connectionAIPolicy: AIConnectionPolicy?
     var tabID: UUID?
     var claimFocusOnAppear: Bool = false
+    /// Called once the editor has latched a focus claim. The owner's one-shot intent is cleared
+    /// here rather than on its own `onAppear`, which fires before this subtree renders.
+    var onFocusClaimed: (() -> Void)?
+    var restoredCursorRange: NSRange?
+    var pendingStatementJump: StatementAnchor?
+    var onStatementJumpHandled: (() -> Void)?
+    var restoredFoldRanges: [Range<Int>]?
+    var onFoldRangesChanged: (([Range<Int>]) -> Void)?
     @Binding var vimMode: VimMode
     var onCloseTab: (() -> Void)?
     var onExecuteQuery: (() -> Void)?
+    var onRunStatement: ((String, Int) -> Bool)?
+    /// A tab runs one thing at a time, so the gutter's run controls go dim for the length of a query.
+    var isExecuting: Bool = false
     var onAIExplain: ((String) -> Void)?
     var onAIOptimize: ((String) -> Void)?
     var onSaveAsFavorite: ((String) -> Void)?
 
     @State private var editorState = SourceEditorState()
-    @State private var completionAdapter = SQLCompletionAdapter(schemaProvider: nil, databaseType: nil)
+    @State private var completionAdapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: nil)
     @State private var coordinator = SQLEditorCoordinator()
     @State private var editorConfiguration = makeConfiguration()
     @State private var favoritesCancellables: Set<AnyCancellable> = []
@@ -42,6 +54,9 @@ struct SQLEditorView: View {
         // Keep callbacks fresh on every parent re-render
         coordinator.onCloseTab = onCloseTab
         coordinator.onExecuteQuery = onExecuteQuery
+        coordinator.onRunStatement = onRunStatement
+        coordinator.setStatementRunControlsEnabled(!isExecuting)
+        coordinator.setStatementHighlightEnabled(AppSettingsManager.shared.editor.highlightCurrentStatement)
         coordinator.onAIExplain = onAIExplain
         coordinator.onAIOptimize = onAIOptimize
         coordinator.onSaveAsFavorite = onSaveAsFavorite
@@ -52,6 +67,13 @@ struct SQLEditorView: View {
         coordinator.connectionId = connectionId
         if claimFocusOnAppear {
             coordinator.scheduleEditorFocusClaim()
+            onFocusClaimed?()
+        }
+        if let restoredCursorRange {
+            coordinator.scheduleCursorRestore(restoredCursorRange)
+        }
+        if let restoredFoldRanges {
+            coordinator.scheduleFoldRestore(restoredFoldRanges)
         }
 
         return SourceEditor(
@@ -59,11 +81,20 @@ struct SQLEditorView: View {
             language: PluginManager.shared.editorLanguage(for: databaseType ?? .mysql).treeSitterLanguage,
             configuration: editorConfiguration,
             state: $editorState,
+            foldProvider: FoldProviderResolver.provider(for: databaseType ?? .mysql),
             coordinators: [coordinator],
             completionDelegate: completionAdapter
         )
         .accessibilityLabel(String(localized: "SQL query editor"))
         .accessibilityIdentifier("sql-editor-textview")
+        /// Applied on change rather than while building the view: this is an event, and an editor that is already
+        /// mounted never rebuilds from scratch to notice a new value. Cleared whether or not the statement was still
+        /// there, so a request that cannot be honoured does not sit pending and block the next one.
+        .onChange(of: pendingStatementJump) { _, newValue in
+            guard let newValue else { return }
+            coordinator.jumpToStatement(newValue)
+            onStatementJumpHandled?()
+        }
         .onChange(of: editorState.cursorPositions) { _, newValue in
             guard let positions = newValue else { return }
             // Skip cursor propagation when the editor doesn't have focus
@@ -81,6 +112,12 @@ struct SQLEditorView: View {
                 }
             }
             cursorPositions = positions
+        }
+        .onChange(of: editorState.collapsedFoldRanges) { _, newValue in
+            onFoldRangesChanged?(newValue ?? [])
+        }
+        .onChange(of: tabID) { _, _ in
+            coordinator.repointFolds(to: restoredFoldRanges)
         }
         .onChange(of: connectionId) { _, _ in
             completionAdapter.configure(schemaProvider: schemaProvider, databaseType: databaseType)
@@ -103,7 +140,6 @@ struct SQLEditorView: View {
         }
         .onDisappear {
             teardownFavoritesObserver()
-            coordinator.destroy()
         }
         .onChange(of: coordinator.vimMode) { _, newMode in
             vimMode = newMode
@@ -113,9 +149,6 @@ struct SQLEditorView: View {
     // MARK: - Initialization
 
     private func initializeEditor() {
-        if coordinator.isDestroyed {
-            coordinator.revive()
-        }
         completionAdapter.configure(schemaProvider: schemaProvider, databaseType: databaseType)
         setupFavoritesObserver()
     }
@@ -177,10 +210,10 @@ struct SQLEditorView: View {
             layout: .init(
                 contentInsets: NSEdgeInsets(top: 0, left: 0, bottom: 8, right: 0)
             ),
-            peripherals: .init(
-                showGutter: ThemeEngine.shared.showLineNumbers,
-                showMinimap: false,
-                showFoldingRibbon: false
+            peripherals: EditorPeripherals.editor(
+                lineNumbers: ThemeEngine.shared.showLineNumbers,
+                folding: AppSettingsManager.shared.editor.codeFoldingEnabled,
+                statementRunControls: AppSettingsManager.shared.editor.showStatementRunControls
             )
         )
     }

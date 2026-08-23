@@ -6,6 +6,7 @@ enum SSHTunnelError: Error, LocalizedError {
     case authenticationFailed(String)
     case noAvailablePort
     case channelOpenFailed(String)
+    case hostKeyRejected(String)
     case tunnelClosed
 
     var errorDescription: String? {
@@ -15,6 +16,7 @@ enum SSHTunnelError: Error, LocalizedError {
         case .authenticationFailed(let msg): return "SSH authentication failed: \(msg)"
         case .noAvailablePort: return "No available local port for SSH tunnel"
         case .channelOpenFailed(let msg): return "SSH channel open failed: \(msg)"
+        case .hostKeyRejected(let msg): return msg
         case .tunnelClosed: return "SSH tunnel is closed"
         }
     }

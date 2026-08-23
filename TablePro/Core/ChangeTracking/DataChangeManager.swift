@@ -39,7 +39,7 @@ struct UndoResult {
 /// when multiple queries complete simultaneously (e.g., rapid sorting over SSH tunnel)
 @MainActor @Observable
 final class DataChangeManager: ChangeManaging {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "DataChangeManager")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "DataChangeManager")
 
     private(set) var pending = PendingChanges()
     var hasChanges: Bool = false
@@ -55,6 +55,9 @@ final class DataChangeManager: ChangeManaging {
     var primaryKeyColumns: [String] = []
     /// First PK column, for contexts that need a single column (paste, filters)
     var primaryKeyColumn: String? { primaryKeyColumns.first }
+    /// Columns the server computes. They reject any written value, so they are
+    /// never editable and never appear in a generated INSERT or UPDATE.
+    var generatedColumns: Set<String> = []
     var databaseType: DatabaseType?
     var pluginDriver: (any PluginDatabaseDriver)?
 
@@ -105,6 +108,7 @@ final class DataChangeManager: ChangeManaging {
         self.columns = columns
         self.primaryKeyColumns = primaryKeyColumns
         self.databaseType = databaseType
+        self.generatedColumns = []
 
         pending.clear()
         undoManagerProvider?()?.removeAllActions(withTarget: self)
@@ -117,6 +121,10 @@ final class DataChangeManager: ChangeManaging {
 
     func setPrimaryKeyColumns(_ primaryKeyColumns: [String]) {
         self.primaryKeyColumns = primaryKeyColumns
+    }
+
+    func setGeneratedColumns(_ generatedColumns: Set<String>) {
+        self.generatedColumns = generatedColumns
     }
 
     // MARK: - Change Tracking
@@ -433,6 +441,7 @@ final class DataChangeManager: ChangeManaging {
             columns: columns,
             primaryKeyColumns: primaryKeyColumns,
             databaseType: databaseType,
+            generatedColumns: generatedColumns,
             dialect: PluginManager.shared.sqlDialect(for: databaseType),
             quoteIdentifier: pluginDriver?.quoteIdentifier
         )

@@ -69,6 +69,42 @@ struct HostKeyStoreTests {
         #expect(result == .mismatch(expected: expectedFingerprint, actual: actualFingerprint))
     }
 
+    @Test("A different key type for a known host is a mismatch, not a first-use prompt")
+    func testDifferentKeyTypeForKnownHostIsMismatch() {
+        let path = makeTempFilePath()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+
+        let store = HostKeyStore(filePath: path)
+        let trustedKey = makeTestKey(0xEE)
+        let attackerKey = makeTestKey(0xEF)
+
+        store.trust(hostname: "example.com", port: 22, key: trustedKey, keyType: "ssh-ed25519")
+
+        let result = store.verify(keyData: attackerKey, keyType: "ssh-rsa", hostname: "example.com", port: 22)
+        #expect(
+            result == .mismatch(
+                expected: HostKeyStore.fingerprint(of: trustedKey),
+                actual: HostKeyStore.fingerprint(of: attackerKey)
+            )
+        )
+    }
+
+    @Test("A host trusted under two key types verifies either one")
+    func testTrustedKeyOfEitherTypeVerifies() {
+        let path = makeTempFilePath()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+
+        let store = HostKeyStore(filePath: path)
+        let rsaKey = makeTestKey(0x11)
+        let edKey = makeTestKey(0x22)
+
+        store.trust(hostname: "example.com", port: 22, key: rsaKey, keyType: "ssh-rsa")
+        store.trust(hostname: "example.com", port: 22, key: edKey, keyType: "ssh-ed25519")
+
+        #expect(store.verify(keyData: rsaKey, keyType: "ssh-rsa", hostname: "example.com", port: 22) == .trusted)
+        #expect(store.verify(keyData: edKey, keyType: "ssh-ed25519", hostname: "example.com", port: 22) == .trusted)
+    }
+
     @Test("Remove a host key then verify returns .unknown")
     func testRemove() {
         let path = makeTempFilePath()

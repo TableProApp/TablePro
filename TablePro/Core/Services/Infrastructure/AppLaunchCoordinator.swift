@@ -13,7 +13,7 @@ import os
 internal final class AppLaunchCoordinator {
     internal static let shared = AppLaunchCoordinator()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "AppLaunchCoordinator")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "AppLaunchCoordinator")
     internal static let collectionWindow: Duration = .milliseconds(150)
 
     private(set) var phase: LaunchPhase = .launching
@@ -28,6 +28,7 @@ internal final class AppLaunchCoordinator {
 
     internal func didFinishLaunching() {
         hasFinishedLaunching = true
+        deliver(UITestLaunchEnvironment.launchIntents)
         let deadline = Date().addingTimeInterval(0.150)
         phase = .collectingIntents(deadline: deadline)
         deadlineTask = Task { [weak self] in
@@ -51,6 +52,10 @@ internal final class AppLaunchCoordinator {
                 return intent
             }
         }
+        /// Unconditional, even when nothing parsed: LaunchServices treats every `open` request as a
+        /// launch and puts a running background process back in the Dock, so the role has to be
+        /// re-applied on arrival rather than only when the URL turns out to mean something.
+        AppActivationPolicyController.shared.adoptIntents(intents, isLaunching: !hasFinishedLaunching)
         deliver(intents)
     }
 
@@ -58,6 +63,7 @@ internal final class AppLaunchCoordinator {
         guard let connectionIdString = activity.userInfo?["connectionId"] as? String,
               let connectionId = UUID(uuidString: connectionIdString) else { return }
         let table = activity.userInfo?["tableName"] as? String
+        AppActivationPolicyController.shared.adoptUserSession()
 
         if let table {
             deliver([.openTable(
@@ -72,7 +78,10 @@ internal final class AppLaunchCoordinator {
         }
     }
 
+    /// Reaching for the app itself is the gesture that makes a machine-started process the person's
+    /// own, so it keeps its Dock icon and menu bar from here on however it started.
     internal func handleReopen(hasVisibleWindows: Bool) -> Bool {
+        AppActivationPolicyController.shared.adoptUserSession()
         if hasVisibleWindows { return true }
         showWelcomeWindow()
         return false
@@ -84,9 +93,7 @@ internal final class AppLaunchCoordinator {
         guard !intents.isEmpty else { return }
         if phase.isAcceptingIntents {
             pendingIntents.append(contentsOf: intents)
-            for window in NSApp.windows where Self.isWelcomeWindow(window) {
-                window.orderOut(nil)
-            }
+            WindowOpener.shared.closeWelcome()
         } else {
             Task { [weak self] in
                 guard let self else { return }
@@ -118,10 +125,14 @@ internal final class AppLaunchCoordinator {
 
     private func dismissWelcomeIfMainWindowVisible() {
         guard NSApp.windows.contains(where: { Self.isMainWindow($0) && $0.isVisible }) else { return }
-        WindowOpener.shared.orderOutWelcome()
+        WindowOpener.shared.closeWelcome()
     }
 
+    /// A launch nobody asked for opens nothing, whatever the startup behaviour says. Reopening the
+    /// last session, or falling back to the welcome window, would put the person's connections on
+    /// screen because a client asked a question.
     private func runStartupBehaviorIfNeeded(skipping intents: [LaunchIntent]) {
+        guard AppActivationPolicyController.shared.origin == .user else { return }
         guard intents.isEmpty else { return }
 
         let general = AppSettingsStorage.shared.loadGeneral()
@@ -136,39 +147,34 @@ internal final class AppLaunchCoordinator {
     }
 
     private func reopenLastSession() {
-        guard !NSApp.windows.contains(where: { Self.isMainWindow($0) }) else { return }
+        guard !NSApp.windows.contains(where: {
+            ConnectionWindowIdentity.isConnectionWindow($0.identifier?.rawValue)
+        }) else { return }
 
         let connectionIds = LastOpenConnectionsStorage.shared.load()
         guard !connectionIds.isEmpty else { return }
 
-        let connectionsById = Dictionary(
-            ConnectionStorage.shared.loadConnections().map { ($0.id, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        var openedAny = false
-        for connectionId in connectionIds {
-            guard let connection = connectionsById[connectionId] else { continue }
+        let knownIds = Set(ConnectionStorage.shared.loadConnections().map(\.id))
+        var frontWindow: NSWindow?
+        for connectionId in connectionIds where knownIds.contains(connectionId) {
             WindowManager.shared.openTab(
-                payload: EditorTabPayload(connectionId: connectionId, intent: .restoreOrDefault)
+                payload: EditorTabPayload(connectionId: connectionId, intent: .restoreOrDefault),
+                activate: false,
+                autoConnect: true
             )
-            openedAny = true
-            Task {
-                do {
-                    try await DatabaseManager.shared.ensureConnected(connection)
-                } catch {
-                    Self.logger.error(
-                        "[restore] reopen connect failed for \(connectionId, privacy: .public): \(error.localizedDescription, privacy: .public)"
-                    )
-                }
+            if frontWindow == nil {
+                frontWindow = WindowManager.shared.window(for: connectionId)
             }
         }
 
-        if openedAny {
-            WindowOpener.shared.orderOutWelcome()
-        }
+        guard let frontWindow else { return }
+        WindowOpener.shared.closeWelcome()
+        frontWindow.makeKeyAndOrderFront(nil)
+        AppActivationPolicyController.shared.activate()
     }
 
     private func finalizeWindowsIfNoVisibleMain(intents: [LaunchIntent]) {
+        guard AppActivationPolicyController.shared.origin == .user else { return }
         guard intents.isEmpty else { return }
         guard !NSApp.windows.contains(where: { Self.isMainWindow($0) && $0.isVisible }) else { return }
         showWelcomeWindow()
@@ -177,13 +183,11 @@ internal final class AppLaunchCoordinator {
     // MARK: - Window Identification
 
     internal static func isMainWindow(_ window: NSWindow) -> Bool {
-        guard let raw = window.identifier?.rawValue else { return false }
-        return raw == "main" || raw.hasPrefix("main-")
+        ConnectionWindowIdentity.isPrimaryWindow(window.identifier?.rawValue)
     }
 
     internal static func isWelcomeWindow(_ window: NSWindow) -> Bool {
-        guard let raw = window.identifier?.rawValue else { return false }
-        return raw == SceneId.welcome || raw.hasPrefix("\(SceneId.welcome)-")
+        ConnectionWindowIdentity.isWelcomeWindow(window.identifier?.rawValue)
     }
 
     private func showWelcomeWindow() {

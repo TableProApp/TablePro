@@ -1,0 +1,80 @@
+---
+title: Connections strip
+description: Switch between every connection and database you have open from a narrow strip on the leading edge of the window
+---
+
+Click an icon in the strip down the leading edge and you land back where you left off, on the tab you last used there. Each icon is one connection plus the database you are browsing in it, so two connections make two icons and moving one to a second database makes three. Clicking an entry returns you to it on the tab you last used there, and closes nothing.
+
+<Frame caption="The connections strip beside the object browser, with two connections open">
+  <img className="block dark:hidden" src="/images/workspace-rail.png" alt="Connections strip" />
+  <img className="hidden dark:block" src="/images/workspace-rail-dark.png" alt="Connections strip" />
+</Frame>
+
+The strip is on by default and appears once a second entry exists. Hide it with **View > Hide Connections**, `Cmd+Option+0`, or **Settings > General > Sidebar > Show connections**.
+
+## What an entry shows
+
+The icon is the database engine's symbol, tinted with the connection's color, so staging and production are distinguishable without hovering. Under it is the database that entry browses, shortened in the middle when long. Hovering gives the full connection name, host, and database; VoiceOver reads that plus the connection's state. The entry you are in is highlighted, in each window separately.
+
+On servers that group objects by schema, an entry stands for a schema. On a single-file or single-database engine, such as SQLite, DuckDB, or BigQuery, a connection has one entry, under the connection's name.
+
+## Icon states
+
+Shape carries the state, not just color.
+
+| Icon | State | What to do |
+|------|-------|------------|
+| Engine symbol | Connected, or connecting | Nothing |
+| Filled warning triangle | The last connect failed | Click the entry: the pane carries the driver's own error, **Try Again**, and **Copy Details** |
+| Bolt in a circle | The session ended, tabs kept | Click the entry, then **Reconnect** on the pane, or **Database > Reconnect** |
+
+## When an entry appears
+
+Switching database adds an entry only when the one you are leaving has work in it: a table open, a query you typed, a file you opened, or edits you have not saved.
+
+| You are on `app` and switch to `logs` | Result |
+|---|---|
+| A table is open in `app` | `app` stays, `logs` is added |
+| Only an empty query tab is open | `app` becomes `logs` |
+| `logs` is already listed | The existing `logs` entry activates |
+
+An entry goes away when its last tab closes and you are no longer browsing it; one you still have work in is never removed. The set is per session, so relaunching starts from the databases your restored tabs use.
+
+## Switching
+
+Between two connections, the window switches connection and returns you to the tab you last used there; between two databases of one connection, the sidebar moves and the tabs stay. An entry with nothing open moves the sidebar only, and clicking the entry you are in does nothing. No tab is ever closed or retargeted by a switch: each one keeps querying the database it was opened against.
+
+The strip takes the keyboard too. Click into it, then arrow keys move the highlight, typing jumps to a name, and `Return` opens the entry you land on.
+
+## Windows
+
+One window hosts every connection you have open, and the tab strip below the toolbar lists only the current connection's tabs. Opening a table or query on a connection already open adds a tab there rather than opening a second window.
+
+To put two connections side by side, right-click an entry and choose **Open in New Window**. It moves with its tabs, its session, and anything unsaved. The item is absent when the window has no other connection left to show.
+
+A first window opens at 1200x800 and goes no smaller than 720x480; later windows reuse the last size and position. Whether a new one joins a tab group follows **Prefer tabs when opening documents** in System Settings > Desktop & Dock. Inside a group, **Window > Move Tab to New Window** and **Window > Merge All Windows** apply; both dim outside one. Those are macOS window tabs, which hold whole windows, not the editor tab strip, which holds one connection's editors.
+
+## Closing and disconnecting
+
+Right-click an entry and choose **Close “\<name\>”** to close the connection: every tab across every database it has open, its session, and all of its entries. Unsaved work is confirmed first, and the window closes too if that was its last connection. Middle-clicking does the same without the menu, and **File > Close Connection** does it for the connection on screen. Nothing is lost for good: reopen the connection, from the connection list or **Database > Switch Connection…**, and its tabs come back as they were.
+
+**Disconnect**, on the same menu while the connection is live, ends the session and keeps everything else. No window closes, no entry disappears, and the tabs are saved first; the connection shows a Reconnect pane in their place until **Database > Reconnect**, or the pane's own button, brings both back. **Database > Disconnect** does the same for the connection on screen, asking first when a query is running or changes are unsaved. Nothing reconnects on its own, and a connection you disconnected is not reopened at the next launch.
+
+## Reordering
+
+Drag entries to arrange them. The order is shared by every window, kept across launches, and an entry returns to its slot when you reopen it. Until you drag anything, entries follow the order their connections opened, one connection's databases grouped by name.
+
+## Keys
+
+| Action | Shortcut |
+|--------|----------|
+| Toggle connections | `Cmd+Option+0` |
+| Show previous connection | `Ctrl+Cmd+Up` |
+| Show next connection | `Ctrl+Cmd+Down` |
+
+Previous and next move through the strip in display order, not the order things opened. Rebind them in **Settings > Keyboard**; if either chord is already yours for something else, your assignment wins and the command stays unbound until you free it.
+
+## Related
+
+- [Query Tabs](/features/tabs) for what a tab is bound to and what survives a restart
+- [Open Quickly](/features/open-quickly) for searching inside one connection or across all of them

@@ -1,16 +1,14 @@
 name: iOS Tests
 
 on:
+  # No paths filter here on purpose. See the note in macos-tests.yml: a workflow skipped by a
+  # paths filter never reports, so a required check would hang on every unrelated pull request.
   pull_request:
-    paths:
-      - "TableProMobile/**"
-      - "Packages/TableProCore/**"
-      - "Libs/**"
-      - ".github/workflows/ios-tests.yml"
   push:
     branches: [main]
     paths:
       - "TableProMobile/**"
+      - "Configs/**"
       - "Packages/TableProCore/**"
       - "Libs/**"
       - ".github/workflows/ios-tests.yml"
@@ -21,22 +19,56 @@ concurrency:
   group: ios-tests-${{ github.ref }}
   cancel-in-progress: true
 
+# A downgrade or an exact match is always allowed for a called workflow; only asking for more than
+# the caller holds fails at run creation. Declaring read cannot break a caller, and it stops every
+# job here from inheriting a write token if the repository default is ever flipped.
+permissions:
+  contents: read
+
 env:
   XCODE_PROJECT: TableProMobile/TableProMobile.xcodeproj
   XCODE_SCHEME: TableProMobile
   TEST_DESTINATION: "platform=iOS Simulator,name=iPhone 17 Pro,OS=latest"
 
 jobs:
+  changes:
+    name: Detect relevant changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether the iOS suite needs to run
+        id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        # Shared with macos-tests.yml; see scripts/ci/detect-changed-paths.sh.
+        run: |
+          set -euo pipefail
+          RUN=$(scripts/ci/detect-changed-paths.sh \
+            --event "$EVENT_NAME" \
+            --base "$BASE_SHA" \
+            'TableProMobile/' 'Configs/' 'Packages/TableProCore/' 'Libs/' 'scripts/' \
+            '\.github/actions/' '\.github/workflows/ios-tests\.yml$')
+          echo "run=$RUN" >> "$GITHUB_OUTPUT"
+
   test:
     name: Run iOS Tests
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: macos-26
     timeout-minutes: 25
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
           xcode-version: '26.4.1'
 
@@ -63,13 +95,17 @@ jobs:
           echo "::error::$device_name simulator is not available and the runtime download failed."
           exit 1
 
-      # Secrets.xcconfig is gitignored. Tests do not need analytics keys, so the
-      # checked-in example template is enough for the project to resolve.
-      - name: Stub Secrets.xcconfig
-        run: cp TableProMobile/Secrets.xcconfig.example TableProMobile/Secrets.xcconfig
+      - name: Setup XcodeGen
+        uses: ./.github/actions/setup-xcodegen
+
+      # The iOS project only. The macOS spec names Libs/dylibs/*.dylib by path and XcodeGen
+      # validates that at generation time, so generating it here failed before the static
+      # libraries were even downloaded, and nothing in this job builds it.
+      - name: Generate Xcode project
+        run: scripts/generate-project.sh ios
 
       - name: Cache static libraries
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: Libs
           # Include C bridge stub headers in the cache key so the iOS xcframework set
@@ -103,7 +139,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ios-test-results
           path: TestResults.xcresult
@@ -121,3 +157,27 @@ jobs:
             -scheme "$XCODE_SCHEME" \
             -skipPackagePluginValidation 2>&1 \
             | grep -E "iOS Simulator.*iPhone" || true
+
+  # The one check to mark required on main. See the note in macos-tests.yml.
+  gate:
+    name: iOS Tests Gate
+    if: always()
+    needs: [changes, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require the suite to have passed or been skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          set -euo pipefail
+          echo "suite results: $RESULTS"
+          for result in $RESULTS; do
+              case "$result" in
+                  success|skipped) ;;
+                  *)
+                      echo "The iOS suite reported '$result'." >&2
+                      exit 1
+                      ;;
+              esac
+          done

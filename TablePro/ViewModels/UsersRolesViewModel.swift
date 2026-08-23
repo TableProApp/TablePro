@@ -62,7 +62,7 @@ final class UsersRolesViewModel {
         var restrictsBrowsing = false
     }
 
-    static let logger = Logger(subsystem: "com.TablePro", category: "UsersRolesViewModel")
+    nonisolated static let logger = Logger(subsystem: "com.TablePro", category: "UsersRolesViewModel")
     static let scopeSearchLimit = 200
 
     let connectionId: UUID
@@ -221,7 +221,7 @@ final class UsersRolesViewModel {
                 databases: databases,
                 catalog: snapshot.catalog,
                 restrictsBrowsing: capabilities.restrictsBrowsing,
-                currentDatabase: DatabaseManager.shared.activeSessions[connectionId]?.activeDatabase,
+                currentDatabase: DatabaseManager.shared.activeSessions[connectionId]?.resolvedBrowseDatabase,
                 loader: loader
             )
 

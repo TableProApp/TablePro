@@ -4,15 +4,62 @@ import TableProPluginKit
 import XCTest
 
 final class MCPProtocolErrorTests: XCTestCase {
-    func testSessionNotFoundMapping() {
-        let error = MCPProtocolError.sessionNotFound()
-        XCTAssertEqual(error.code, JsonRpcErrorCode.sessionNotFound)
+    private func header(_ error: MCPProtocolError, _ name: String) -> String? {
+        error.extraHeaders.first { $0.0.lowercased() == name.lowercased() }?.1
+    }
+
+    func testHeaderMismatchIsTheSpecCodeWithBadRequest() {
+        let error = MCPProtocolError.headerMismatch(detail: "Mcp-Name header is required for tools/call")
+        XCTAssertEqual(error.code, -32_020)
+        XCTAssertEqual(error.code, JsonRpcErrorCode.headerMismatch)
+        XCTAssertEqual(error.httpStatus, .badRequest)
+        XCTAssertTrue(error.message.contains("Mcp-Name"))
+    }
+
+    func testMissingRequiredClientCapabilityListsTheCapabilities() {
+        let error = MCPProtocolError.missingRequiredClientCapability(["elicitation"])
+        XCTAssertEqual(error.code, -32_021)
+        XCTAssertEqual(error.httpStatus, .badRequest)
+        XCTAssertEqual(
+            error.data?["requiredCapabilities"]?.arrayValue?.compactMap(\.stringValue),
+            ["elicitation"]
+        )
+    }
+
+    func testUnsupportedProtocolVersionListsTheSupportedVersions() {
+        let error = MCPProtocolError.unsupportedProtocolVersion(requested: "2024-11-05")
+        XCTAssertEqual(error.code, -32_022)
+        XCTAssertEqual(error.httpStatus, .badRequest)
+        XCTAssertEqual(
+            error.data?["supported"]?.arrayValue?.compactMap(\.stringValue),
+            MCPProtocolVersion.supportedRawValues
+        )
+        XCTAssertEqual(error.data?["requested"]?.stringValue, "2024-11-05")
+    }
+
+    func testUnsupportedProtocolVersionOmitsRequestedWhenUnknown() {
+        let error = MCPProtocolError.unsupportedProtocolVersion(requested: nil)
+        XCTAssertNil(error.data?["requested"])
+        XCTAssertNotNil(error.data?["supported"])
+    }
+
+    func testMethodNotFoundCarriesHttp404() {
+        let error = MCPProtocolError.methodNotFound(method: "tools/teleport")
+        XCTAssertEqual(error.code, JsonRpcErrorCode.methodNotFound)
         XCTAssertEqual(error.httpStatus, .notFound)
     }
 
-    func testMissingSessionIdMapping() {
-        let error = MCPProtocolError.missingSessionId()
-        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidRequest)
+    func testNotFoundIsInvalidParams() {
+        let error = MCPProtocolError.notFound(detail: "No such resource")
+        XCTAssertEqual(error.code, -32_602)
+        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
+        XCTAssertEqual(error.httpStatus, .badRequest)
+        XCTAssertEqual(error.message, "No such resource")
+    }
+
+    func testInvalidParamsMapping() {
+        let error = MCPProtocolError.invalidParams(detail: "expected object")
+        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
         XCTAssertEqual(error.httpStatus, .badRequest)
     }
 
@@ -29,43 +76,48 @@ final class MCPProtocolErrorTests: XCTestCase {
         XCTAssertEqual(error.httpStatus, .badRequest)
     }
 
-    func testMethodNotFoundIsHttp200() {
-        let error = MCPProtocolError.methodNotFound(method: "tools/foo")
-        XCTAssertEqual(error.code, JsonRpcErrorCode.methodNotFound)
-        XCTAssertEqual(error.httpStatus, .ok)
-    }
-
-    func testInvalidParamsIsHttp200() {
-        let error = MCPProtocolError.invalidParams(detail: "expected object")
-        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
-        XCTAssertEqual(error.httpStatus, .ok)
-    }
-
     func testInternalErrorMapping() {
         let error = MCPProtocolError.internalError(detail: "boom")
         XCTAssertEqual(error.code, JsonRpcErrorCode.internalError)
         XCTAssertEqual(error.httpStatus, .internalServerError)
     }
 
-    func testUnauthenticatedIncludesWwwAuthenticate() {
-        let error = MCPProtocolError.unauthenticated(challenge: "Bearer realm=\"x\"")
+    func testUnauthenticatedCarriesABearerChallenge() {
+        let error = MCPProtocolError.unauthenticated()
         XCTAssertEqual(error.code, JsonRpcErrorCode.unauthenticated)
         XCTAssertEqual(error.httpStatus, .unauthorized)
-        let header = error.extraHeaders.first { $0.0.lowercased() == "www-authenticate" }
-        XCTAssertNotNil(header)
-        XCTAssertEqual(header?.1, "Bearer realm=\"x\"")
+        XCTAssertEqual(header(error, "WWW-Authenticate"), "Bearer realm=\"TablePro\"")
     }
 
-    func testTokenInvalidIncludesWwwAuthenticate() {
+    func testTokenInvalidNamesTheInvalidTokenError() {
         let error = MCPProtocolError.tokenInvalid()
         XCTAssertEqual(error.httpStatus, .unauthorized)
-        XCTAssertTrue(error.extraHeaders.contains { $0.0.lowercased() == "www-authenticate" })
+        XCTAssertEqual(header(error, "WWW-Authenticate"), "Bearer realm=\"TablePro\", error=\"invalid_token\"")
     }
 
-    func testTokenExpiredIncludesWwwAuthenticate() {
+    func testTokenExpiredDescribesTheExpiry() throws {
         let error = MCPProtocolError.tokenExpired()
+        XCTAssertEqual(error.code, JsonRpcErrorCode.expired)
         XCTAssertEqual(error.httpStatus, .unauthorized)
-        XCTAssertTrue(error.extraHeaders.contains { $0.0.lowercased() == "www-authenticate" })
+        let challenge = try XCTUnwrap(header(error, "WWW-Authenticate"))
+        XCTAssertTrue(challenge.contains("error=\"invalid_token\""))
+        XCTAssertTrue(challenge.contains("error_description=\"token expired\""))
+    }
+
+    func testInsufficientScopeEmitsAStructuredChallengeAndData() throws {
+        let error = MCPProtocolError.insufficientScope(
+            required: [.toolsWrite, .toolsRead],
+            reason: "tools/call requires tools:write"
+        )
+        XCTAssertEqual(error.code, JsonRpcErrorCode.forbidden)
+        XCTAssertEqual(error.httpStatus, .forbidden)
+        let challenge = try XCTUnwrap(header(error, "WWW-Authenticate"))
+        XCTAssertTrue(challenge.contains("error=\"insufficient_scope\""))
+        XCTAssertTrue(challenge.contains("scope=\"tools:read tools:write\""))
+        XCTAssertEqual(
+            error.data?["requiredScopes"]?.arrayValue?.compactMap(\.stringValue),
+            ["tools:read", "tools:write"]
+        )
     }
 
     func testForbiddenMapping() {
@@ -74,9 +126,14 @@ final class MCPProtocolErrorTests: XCTestCase {
         XCTAssertEqual(error.httpStatus, .forbidden)
     }
 
-    func testRateLimitedMapping() {
-        let error = MCPProtocolError.rateLimited()
-        XCTAssertEqual(error.httpStatus, .tooManyRequests)
+    func testRateLimitedIncludesRetryAfterOnlyWhenPositive() {
+        let withRetry = MCPProtocolError.rateLimited(retryAfterSeconds: 30)
+        XCTAssertEqual(withRetry.code, JsonRpcErrorCode.rateLimited)
+        XCTAssertEqual(withRetry.httpStatus, .tooManyRequests)
+        XCTAssertEqual(header(withRetry, "Retry-After"), "30")
+
+        XCTAssertNil(header(MCPProtocolError.rateLimited(), "Retry-After"))
+        XCTAssertNil(header(MCPProtocolError.rateLimited(retryAfterSeconds: 0), "Retry-After"))
     }
 
     func testPayloadTooLargeMapping() {
@@ -86,43 +143,96 @@ final class MCPProtocolErrorTests: XCTestCase {
     }
 
     func testNotAcceptableMapping() {
-        let error = MCPProtocolError.notAcceptable()
-        XCTAssertEqual(error.httpStatus, .notAcceptable)
+        XCTAssertEqual(MCPProtocolError.notAcceptable().httpStatus, .notAcceptable)
     }
 
-    func testUnsupportedMediaTypeMapping() {
-        let error = MCPProtocolError.unsupportedMediaType()
-        XCTAssertEqual(error.httpStatus, .unsupportedMediaType)
+    func testMethodNotAllowedAdvertisesTheAllowedMethods() {
+        let error = MCPProtocolError.methodNotAllowed(allow: "POST, OPTIONS")
+        XCTAssertEqual(error.httpStatus, .methodNotAllowed)
+        XCTAssertEqual(header(error, "Allow"), "POST, OPTIONS")
     }
 
-    func testServiceUnavailableMapping() {
-        let error = MCPProtocolError.serviceUnavailable()
-        XCTAssertEqual(error.httpStatus, .serviceUnavailable)
+    func testCancelledAndTimedOutRequestsStayOnHttp200() {
+        XCTAssertEqual(MCPProtocolError.requestCancelled().code, JsonRpcErrorCode.requestCancelled)
+        XCTAssertEqual(MCPProtocolError.requestCancelled().httpStatus, .ok)
+        XCTAssertEqual(MCPProtocolError.requestTimeout(detail: "tools/call").code, JsonRpcErrorCode.requestTimeout)
+        XCTAssertEqual(MCPProtocolError.requestTimeout(detail: "tools/call").httpStatus, .ok)
     }
 
-    func testToJsonRpcErrorResponseRoundTrip() {
-        let protocolError = MCPProtocolError.sessionNotFound()
+    func testServiceUnavailableAndServerDisabledMapping() {
+        XCTAssertEqual(MCPProtocolError.serviceUnavailable().code, JsonRpcErrorCode.serverError)
+        XCTAssertEqual(MCPProtocolError.serviceUnavailable().httpStatus, .serviceUnavailable)
+        XCTAssertEqual(MCPProtocolError.serverDisabled().code, JsonRpcErrorCode.serverDisabled)
+        XCTAssertEqual(MCPProtocolError.serverDisabled().httpStatus, .serviceUnavailable)
+    }
+
+    func testToJsonRpcErrorResponseCarriesIdCodeAndData() {
+        let protocolError = MCPProtocolError.unsupportedProtocolVersion(requested: "1999-01-01")
         let response = protocolError.toJsonRpcErrorResponse(id: .number(7))
         XCTAssertEqual(response.id, .number(7))
-        XCTAssertEqual(response.error.code, JsonRpcErrorCode.sessionNotFound)
-        XCTAssertEqual(response.error.message, "Session not found")
+        XCTAssertEqual(response.error.code, JsonRpcErrorCode.unsupportedProtocolVersion)
+        XCTAssertEqual(response.error.message, "Unsupported protocol version")
+        XCTAssertNotNil(response.error.data?["supported"])
     }
 
     func testToJsonRpcErrorResponseWithNilId() {
-        let protocolError = MCPProtocolError.parseError(detail: "x")
-        let response = protocolError.toJsonRpcErrorResponse(id: nil)
+        let response = MCPProtocolError.parseError(detail: "x").toJsonRpcErrorResponse(id: nil)
         XCTAssertNil(response.id)
         XCTAssertEqual(response.error.code, JsonRpcErrorCode.parseError)
     }
 
-    func testEqualityIgnoresHeadersAndStatus() {
-        let lhs = MCPProtocolError(code: -1, message: "x", httpStatus: .ok)
-        let rhs = MCPProtocolError(
+    func testEqualityComparesStatusAndHeaders() {
+        let base = MCPProtocolError(code: -1, message: "x", httpStatus: .ok)
+        let differentStatus = MCPProtocolError(code: -1, message: "x", httpStatus: .badRequest)
+        let differentHeaders = MCPProtocolError(
             code: -1,
             message: "x",
-            httpStatus: .badRequest,
-            extraHeaders: [("X", "Y")]
+            httpStatus: .ok,
+            extraHeaders: [("Retry-After", "1")]
         )
-        XCTAssertEqual(lhs, rhs)
+
+        XCTAssertEqual(base, MCPProtocolError(code: -1, message: "x", httpStatus: .ok))
+        XCTAssertNotEqual(base, differentStatus)
+        XCTAssertNotEqual(base, differentHeaders)
+    }
+
+    func testSpecificationCodesLiveInTheReservedRange() {
+        for code in JsonRpcErrorCode.specificationDefined {
+            XCTAssertTrue(
+                JsonRpcErrorCode.isSpecificationReserved(code),
+                "\(code) must sit inside the range the specification reserves"
+            )
+        }
+        XCTAssertEqual(
+            JsonRpcErrorCode.specificationDefined,
+            [
+                JsonRpcErrorCode.headerMismatch,
+                JsonRpcErrorCode.missingRequiredClientCapability,
+                JsonRpcErrorCode.unsupportedProtocolVersion
+            ]
+        )
+    }
+
+    func testTableProCodesLeftTheImplementationDefinedBlock() {
+        let tableProCodes = [
+            JsonRpcErrorCode.serverError,
+            JsonRpcErrorCode.sessionNotFound,
+            JsonRpcErrorCode.requestCancelled,
+            JsonRpcErrorCode.requestTimeout,
+            JsonRpcErrorCode.tooLarge,
+            JsonRpcErrorCode.serverDisabled,
+            JsonRpcErrorCode.forbidden,
+            JsonRpcErrorCode.expired,
+            JsonRpcErrorCode.unauthenticated,
+            JsonRpcErrorCode.rateLimited
+        ]
+        for code in tableProCodes {
+            XCTAssertTrue(JsonRpcErrorCode.tableProRange.contains(code), "\(code) must be a -33xxx code")
+            XCTAssertFalse(
+                JsonRpcErrorCode.legacyImplementationRange.contains(code),
+                "\(code) must have left the -32000 block"
+            )
+            XCTAssertFalse(JsonRpcErrorCode.isSpecificationReserved(code), "\(code) must not squat a spec code")
+        }
     }
 }

@@ -29,7 +29,7 @@ final class CustomSlashCommandStorage {
 
     static let syncCategory = "customSlashCommands"
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "CustomSlashCommandStorage")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CustomSlashCommandStorage")
     private static let defaultsKey = "ai.customSlashCommands.v1"
     private let defaults: UserDefaults
     private let syncTracker: SyncChangeTracker

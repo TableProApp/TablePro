@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import AppKit
 import Combine
 import SwiftUI
 
@@ -49,7 +50,7 @@ extension WelcomeWindowView {
                 vm.exportConnections(connections)
             } label: {
                 Label(
-                    String(format: String(localized: "Export %d Connections to File..."), connections.count),
+                    String(format: String(localized: "Export %d Connections to File…"), connections.count),
                     systemImage: "square.and.arrow.up"
                 )
             }
@@ -59,7 +60,7 @@ extension WelcomeWindowView {
                     vm.publishToTeamCatalog(connections)
                 } label: {
                     Label(
-                        String(format: String(localized: "Publish %d Connections to Team Catalog..."), connections.count),
+                        String(format: String(localized: "Publish %d Connections to Team Catalog…"), connections.count),
                         systemImage: "person.2.fill"
                     )
                 }
@@ -70,7 +71,7 @@ extension WelcomeWindowView {
                     vm.publishConnectionsToTeamLibrary(connections)
                 } label: {
                     Label(
-                        String(format: String(localized: "Publish %d Connections to Team Library..."), connections.count),
+                        String(format: String(localized: "Publish %d Connections to Team Library…"), connections.count),
                         systemImage: "books.vertical.fill"
                     )
                 }
@@ -127,13 +128,25 @@ extension WelcomeWindowView {
             Label(String(localized: "Connect"), systemImage: "play.fill")
         }
 
+        if ConnectionMenuPolicy.showsDisconnect(
+            status: DatabaseManager.shared.session(for: connection.id)?.status ?? .disconnected
+        ) {
+            Button(role: .destructive) {
+                Task {
+                    await ConnectionDisconnectAction.disconnect(
+                        connectionId: connection.id,
+                        connectionName: connection.name,
+                        presentingWindow: NSApp.keyWindow
+                    )
+                }
+            } label: {
+                Label(String(localized: "Disconnect"), systemImage: "cable.connector.slash")
+            }
+        }
+
         Divider()
 
-        Button {
-            WindowOpener.shared.openConnectionForm(editing: connection.id)
-        } label: {
-            Label(String(localized: "Edit"), systemImage: "pencil")
-        }
+        editConnectionButton(for: connection)
 
         Button { vm.duplicateConnection(connection) } label: {
             Label(String(localized: "Duplicate"), systemImage: "doc.on.doc")
@@ -142,7 +155,7 @@ extension WelcomeWindowView {
         Divider()
 
         Button { CompareSyncLauncher.open(prefillSource: connection.id) } label: {
-            Label(String(localized: "Compare/Sync with..."), systemImage: "arrow.left.arrow.right.square")
+            Label(String(localized: "Compare/Sync with…"), systemImage: "arrow.left.arrow.right.square")
         }
 
         Divider()
@@ -176,7 +189,7 @@ extension WelcomeWindowView {
                     sshPassword: sshPw,
                     sshProfile: sshProfile
                 )
-                ClipboardService.shared.writeText(url)
+                ClipboardService.shared.writeSecretText(url)
             } label: {
                 Label(String(localized: "Copy Connection String"), systemImage: "link")
             }
@@ -201,14 +214,14 @@ extension WelcomeWindowView {
             Button {
                 vm.exportConnections([connection])
             } label: {
-                Label(String(localized: "Export to File..."), systemImage: "square.and.arrow.up")
+                Label(String(localized: "Export to File…"), systemImage: "square.and.arrow.up")
             }
 
             if LicenseManager.shared.isFeatureAvailable(.teamCatalog) {
                 Button {
                     vm.publishToTeamCatalog([connection])
                 } label: {
-                    Label(String(localized: "Publish to Team Catalog..."), systemImage: "person.2.fill")
+                    Label(String(localized: "Publish to Team Catalog…"), systemImage: "person.2.fill")
                 }
             }
 
@@ -216,7 +229,7 @@ extension WelcomeWindowView {
                 Button {
                     vm.publishConnectionsToTeamLibrary([connection])
                 } label: {
-                    Label(String(localized: "Publish to Team Library..."), systemImage: "books.vertical.fill")
+                    Label(String(localized: "Publish to Team Library…"), systemImage: "books.vertical.fill")
                 }
             }
         }
@@ -251,6 +264,20 @@ extension WelcomeWindowView {
 
         Divider()
 
+        deleteConnectionButton(for: connection)
+    }
+
+    @ViewBuilder
+    func editConnectionButton(for connection: DatabaseConnection) -> some View {
+        Button {
+            WindowOpener.shared.openConnectionForm(editing: connection.id)
+        } label: {
+            Label(String(localized: "Edit"), systemImage: "pencil")
+        }
+    }
+
+    @ViewBuilder
+    func deleteConnectionButton(for connection: DatabaseConnection) -> some View {
         Button(role: .destructive) {
             vm.requestDeleteConnections([connection])
         } label: {
@@ -291,7 +318,7 @@ extension WelcomeWindowView {
                 vm.pendingMoveToNewGroup = targets
                 vm.activeSheet = .newGroup(parentId: nil)
             } label: {
-                Label(String(localized: "New Group..."), systemImage: "folder.badge.plus")
+                Label(String(localized: "New Group…"), systemImage: "folder.badge.plus")
             }
         }
     }
@@ -299,7 +326,7 @@ extension WelcomeWindowView {
     @ViewBuilder
     var newConnectionContextMenu: some View {
         Button(action: { WindowOpener.shared.openConnectionForm() }) {
-            Label("New Connection...", systemImage: "plus")
+            Label("New Connection…", systemImage: "plus")
         }
 
         Divider()
@@ -307,13 +334,13 @@ extension WelcomeWindowView {
         Button {
             vm.importConnectionsFromFile()
         } label: {
-            Label(String(localized: "Import Connections..."), systemImage: "square.and.arrow.down")
+            Label(String(localized: "Import Connections…"), systemImage: "square.and.arrow.down")
         }
 
         Button {
             vm.importConnectionsFromApp()
         } label: {
-            Label(String(localized: "Import from Other App..."), systemImage: "square.and.arrow.down.on.square")
+            Label(String(localized: "Import from Other App…"), systemImage: "square.and.arrow.down.on.square")
         }
     }
 }

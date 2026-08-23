@@ -85,6 +85,11 @@ final class RecentTablesStore {
         return updated
     }
 
+    func removeEntries(for connectionId: UUID) {
+        defaults.removeObject(forKey: PreferenceKeys.recentTables(connectionId: connectionId).name)
+        defaults.removeObject(forKey: legacyKeyPrefix + connectionId.uuidString)
+    }
+
     static func merged(_ entry: RecentTableEntry, into existing: [RecentTableEntry]) -> [RecentTableEntry] {
         var result = existing.filter { $0.id != entry.id }
         result.insert(entry, at: 0)

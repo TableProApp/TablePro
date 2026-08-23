@@ -6,7 +6,7 @@
 import Foundation
 import os
 
-final class CopilotChatProvider: ChatTransport {
+final class CopilotChatProvider: ChatTransport, @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotChatProvider")
 
     private var conversationId: String?
@@ -123,14 +123,14 @@ final class CopilotChatProvider: ChatTransport {
         }
     }
 
-    func fetchAvailableModels() async throws -> [String] {
+    func fetchAvailableModels() async throws -> [AIModelInfo] {
         guard let client = await CopilotService.shared.client else {
             throw CopilotError.serverNotRunning
         }
         let models = try await client.fetchCopilotModels()
         let chatModels = models.filter { $0.scopes?.contains("chat-panel") ?? false }
         let sorted = chatModels.sorted { ($0.isChatDefault ?? false) && !($1.isChatDefault ?? false) }
-        return sorted.map(\.id)
+        return sorted.map { AIModelInfo(id: $0.id, displayName: $0.modelName) }
     }
 
     func testConnection() async throws -> Bool {

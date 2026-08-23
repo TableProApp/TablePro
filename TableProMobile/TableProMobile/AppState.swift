@@ -32,6 +32,7 @@ final class AppState {
     var pendingTableName: String?
     var pendingImportURL: URL?
     let connectionManager: ConnectionManager
+    let backgroundRelease: BackgroundReleaseCoordinator
     let syncCoordinator = IOSSyncCoordinator()
     let sshProvider: IOSSSHProvider
     let secureStore: KeychainSecureStore
@@ -46,11 +47,13 @@ final class AppState {
         self.secureStore = secureStore
         let sshProvider = IOSSSHProvider(secureStore: secureStore)
         self.sshProvider = sshProvider
-        self.connectionManager = ConnectionManager(
+        let connectionManager = ConnectionManager(
             driverFactory: driverFactory,
             secureStore: secureStore,
             sshProvider: sshProvider
         )
+        self.connectionManager = connectionManager
+        self.backgroundRelease = BackgroundReleaseCoordinator(connectionManager: connectionManager)
         loadPersistedData()
 
         guard !TestRuntime.isActive else { return }

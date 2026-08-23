@@ -57,6 +57,12 @@ struct TableRows: Sendable {
         return rows[index]
     }
 
+    /// Releases the row payload while keeping the schema needed to render and reload the table.
+    mutating func discardRowsKeepingMetadata() {
+        rows = []
+        indexByID = [:]
+    }
+
     @discardableResult
     mutating func edit(row: Int, column: Int, value: PluginCellValue) -> Delta {
         guard row >= 0, row < rows.count else { return .none }

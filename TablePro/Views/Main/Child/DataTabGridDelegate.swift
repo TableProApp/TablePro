@@ -31,6 +31,14 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         onSortStateChanged?(state)
     }
 
+    func dataGridDisplayOrderChanged() {
+        coordinator?.gridDisplayRevision &+= 1
+    }
+
+    func dataGridDisplayFormatChanged() {
+        coordinator?.gridDisplayRevision &+= 1
+    }
+
     func dataGridAddRow() {
         onAddRow?()
     }
@@ -53,6 +61,10 @@ final class DataTabGridDelegate: DataGridViewDelegate {
 
     func dataGridPasteRows() {
         coordinator?.pasteRows()
+    }
+
+    func dataGridCanPasteRows() -> Bool {
+        coordinator?.commandActions?.canPasteRows ?? false
     }
 
     func dataGridDuplicateRow() {

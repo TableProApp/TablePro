@@ -34,7 +34,7 @@ extension AIChatViewModel {
         let task: Task<Void, Never> = Task { [weak self] in
             let columns: [ColumnInfo]
             do {
-                columns = try await DatabaseManager.shared.withMetadataDriver(connectionId: connId) { driver in
+                columns = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connId) { driver in
                     try await driver.fetchColumns(table: tableName)
                 }
             } catch {
@@ -43,7 +43,7 @@ extension AIChatViewModel {
             }
             let fkMap: [String: [ForeignKeyInfo]]
             do {
-                fkMap = try await DatabaseManager.shared.withMetadataDriver(connectionId: connId) { driver in
+                fkMap = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connId) { driver in
                     try await driver.fetchForeignKeys(forTables: [tableName])
                 }
             } catch {
@@ -107,7 +107,7 @@ extension AIChatViewModel {
                 let name = table.name
                 group.addTask {
                     do {
-                        let cols = try await DatabaseManager.shared.withMetadataDriver(connectionId: connId, workload: .bulk) { driver in
+                        let cols = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connId, workload: .bulk) { driver in
                             try await driver.fetchColumns(table: name)
                         }
                         return (name, cols)
@@ -127,7 +127,7 @@ extension AIChatViewModel {
         let needsFKFetch = tablesToFetch.contains { foreignKeysByTable[$0.name] == nil }
         guard needsFKFetch else { return }
         do {
-            let fkMap = try await DatabaseManager.shared.withMetadataDriver(connectionId: connId, workload: .bulk) { driver in
+            let fkMap = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connId, workload: .bulk) { driver in
                 try await driver.fetchForeignKeys(forTables: tablesToFetch.map(\.name))
             }
             for (name, fks) in fkMap {
@@ -142,7 +142,7 @@ extension AIChatViewModel {
         guard let connection else { return nil }
         return PromptContext(
             databaseType: connection.type,
-            databaseName: services.databaseManager.activeDatabaseName(for: connection),
+            databaseName: services.databaseManager.browseDatabaseName(for: connection),
             tables: tables,
             columnsByTable: columnsByTable,
             foreignKeys: foreignKeysByTable,

@@ -5,6 +5,11 @@
 
 import Foundation
 
+struct ColumnLayoutClearTarget: Equatable {
+    let tabId: UUID
+    let tableKey: ColumnLayoutTableKey
+}
+
 extension MainContentCoordinator {
     var selectedTabHiddenColumns: Set<String> {
         guard let tab = tabManager.selectedTab else { return [] }
@@ -62,22 +67,40 @@ extension MainContentCoordinator {
     func applyColumnGeometry(from geometry: ColumnLayoutState, toTabId tabId: UUID) {
         guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
         tabManager.mutate(at: index) { $0.columnLayout.applyGeometry(from: geometry) }
-        tabSessionRegistry.session(for: tabId)?.columnLayout.applyGeometry(from: geometry)
     }
 
     func clearColumnLayoutForSelectedTable() {
-        guard let tab = tabManager.selectedTab, let key = columnLayoutTableKey(for: tab) else { return }
-        FileColumnLayoutPersister.shared.clear(for: key)
+        guard let target = selectedColumnLayoutClearTarget() else { return }
+        clearColumnLayout(target)
+    }
+
+    func selectedColumnLayoutClearTarget() -> ColumnLayoutClearTarget? {
+        guard let tab = tabManager.selectedTab,
+              let tableKey = columnLayoutTableKey(for: tab) else { return nil }
+        return ColumnLayoutClearTarget(tabId: tab.id, tableKey: tableKey)
+    }
+
+    func clearColumnLayout(_ target: ColumnLayoutClearTarget) {
+        if tabManager.selectedTabId == target.tabId,
+           dataTabDelegate?.tableViewCoordinator?.columnLayoutKey == target.tableKey {
+            dataTabDelegate?.tableViewCoordinator?.resetColumnWidthOwnership()
+        }
+        FileColumnLayoutPersister.shared.clearGeometry(for: target.tableKey)
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == target.tabId }),
+              columnLayoutTableKey(for: tabManager.tabs[index]) == target.tableKey else { return }
+        tabManager.mutate(at: index) { tab in
+            tab.columnLayout.resetGeometry()
+        }
     }
 
     func resetColumns() {
         guard let index = tabManager.selectedTabIndex else { return }
+        dataTabDelegate?.tableViewCoordinator?.resetColumnWidthOwnership()
         let tab = tabManager.tabs[index]
         if let key = columnLayoutTableKey(for: tab) {
             FileColumnLayoutPersister.shared.clear(for: key)
         }
         tabManager.mutate(at: index) { $0.columnLayout = ColumnLayoutState() }
-        tabSessionRegistry.session(for: tab.id)?.columnLayout = ColumnLayoutState()
         requeryWithColumnScope(debounced: false)
     }
 
@@ -93,8 +116,7 @@ extension MainContentCoordinator {
 
     func rebuildSelectedTableQueryForHiddenColumnsIfNeeded() async {
         guard let tab = tabManager.selectedTab,
-              !tab.columnLayout.hiddenColumns.isEmpty,
-              tab.tableContext.databaseName.isEmpty || tab.tableContext.databaseName == activeDatabaseName else { return }
+              !tab.columnLayout.hiddenColumns.isEmpty else { return }
 
         await rebuildSelectedTableColumnScopedQuery()
     }
@@ -109,8 +131,6 @@ extension MainContentCoordinator {
         var hidden = tabManager.tabs[index].columnLayout.hiddenColumns
         mutate(&hidden)
         tabManager.mutate(at: index) { $0.columnLayout.hiddenColumns = hidden }
-        let tabId = tabManager.tabs[index].id
-        tabSessionRegistry.session(for: tabId)?.columnLayout.hiddenColumns = hidden
         if persist {
             persistTabHiddenColumns(tabManager.tabs[index])
         }

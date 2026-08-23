@@ -18,11 +18,21 @@ private enum ToolbarPrincipalLayout {
 /// Displays environment badge, connection status, safe-mode badge, and execution indicator.
 struct ToolbarPrincipalContent: View {
     var state: ConnectionToolbarState
-    var onSwitchDatabase: (() -> Void)?
+    var connectionId: UUID?
+    weak var coordinator: MainContentCoordinator?
     var onCancelQuery: (() -> Void)?
     var onSafeModeChange: ((SafeModeLevel) -> Void)?
 
     @State private var showingAllTags = false
+    @State private var schemaService = SchemaService.shared
+
+    /// The sidebar's own reload, reported where every other piece of background activity is. It
+    /// used to sit at the bottom of the sidebar, which the HIG reserves for nothing critical
+    /// because a window can be moved so that edge is off screen.
+    private var isRefreshingSchema: Bool {
+        guard let connectionId else { return false }
+        return schemaService.isRefreshing(connectionId: connectionId)
+    }
 
     var body: some View {
         let tags = TagStorage.shared.tags(for: state.tagIds)
@@ -33,12 +43,11 @@ struct ToolbarPrincipalContent: View {
             ConnectionStatusView(
                 databaseType: state.databaseType,
                 databaseVersion: state.databaseVersion,
-                chipText: state.chipText,
-                databaseGroupingStrategy: state.databaseGroupingStrategy,
+                scopeComponents: state.scopeComponents,
                 connectionName: state.connectionName,
                 displayColor: state.displayColor,
                 safeModeLevel: state.safeModeLevel,
-                onSwitchDatabase: onSwitchDatabase
+                coordinator: coordinator
             )
 
             SafeModeBadgeView(safeModeLevel: Binding(
@@ -47,12 +56,15 @@ struct ToolbarPrincipalContent: View {
             ))
 
             ExecutionIndicatorView(
-                isExecuting: state.isExecuting,
+                isExecuting: coordinator?.tabExecution.isAnyExecuting ?? false,
                 lastDuration: state.lastQueryDuration,
                 clickHouseProgress: state.clickHouseProgress,
                 lastClickHouseProgress: state.lastClickHouseProgress,
                 onCancel: onCancelQuery
             )
+
+            DelayedProgressIndicator(isActive: isRefreshingSchema)
+                .accessibilityLabel(String(localized: "Refreshing"))
         }
         .padding(.horizontal, ToolbarPrincipalLayout.edgePadding)
     }
@@ -95,13 +107,19 @@ struct ToolbarPrincipalContent: View {
         }
     }
 
+    /// A tag with no colour fills with `clear`, and a label derived from a transparent fill comes
+    /// back white and disappears, so an uncoloured tag takes the standard control fill instead of
+    /// a derived one.
     private func tagBadge(_ tag: ConnectionTag) -> some View {
         Text(tag.name.uppercased())
             .font(.caption.weight(.semibold))
-            .foregroundStyle(.white)
+            .foregroundStyle(tag.color.isDefault ? .primary : Color.legibleForeground(on: tag.color.color))
             .lineLimit(1)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(tag.color.color, in: Capsule())
+            .background(
+                tag.color.isDefault ? Color(nsColor: .quaternarySystemFill) : tag.color.color,
+                in: Capsule()
+            )
     }
 }

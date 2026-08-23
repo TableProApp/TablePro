@@ -20,6 +20,11 @@ final class LibPQDriverCore: @unchecked Sendable {
 
     var onPostConnect: (@Sendable () async -> Void)?
 
+    /// Set by `LibPQBackedDriver` for the span of one connect, so every driver built on this
+    /// core reports its handshake steps without having to thread a parameter through its own
+    /// `connect()` and duplicate the setup each one does around it.
+    var stageReporter: ConnectionStageReporter?
+
     var serverVersion: String? { libpqConnection?.serverVersion() }
     var serverVersionNumber: Int32 { libpqConnection?.serverVersionNumber() ?? 0 }
 
@@ -47,7 +52,7 @@ final class LibPQDriverCore: @unchecked Sendable {
             suppressServerSideCancel: singleConnectionMode
         )
 
-        try await pqConn.connect()
+        try await pqConn.connect(reportingStage: stageReporter ?? { _ in })
         libpqConnection = pqConn
 
         switch await probeSchema(pqConn, query: PostgreSQLSchemaQueries.currentSchema) {
@@ -136,6 +141,10 @@ final class LibPQDriverCore: @unchecked Sendable {
         libpqConnection?.setPostgisOidMap(map)
     }
 
+    func setEnumOidMap(_ map: [UInt32: String]) {
+        libpqConnection?.setEnumOidMap(map)
+    }
+
     func applyQueryTimeout(_ seconds: Int) async throws {
         let ms = seconds * 1_000
         _ = try await execute(query: "SET statement_timeout = '\(ms)'")
@@ -191,6 +200,14 @@ protocol LibPQBackedDriver: PluginDatabaseDriver {
 extension LibPQBackedDriver {
     func connect() async throws {
         try await core.connect()
+    }
+
+    /// Routes back through `connect()` rather than calling the core directly, so a driver that
+    /// overrides `connect()` to probe catalogs or remap errors still runs its own version.
+    func connect(reportingStage report: @escaping ConnectionStageReporter) async throws {
+        core.stageReporter = report
+        defer { core.stageReporter = nil }
+        try await connect()
     }
 
     func disconnect() {

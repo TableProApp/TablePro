@@ -83,4 +83,36 @@ struct DriverSSLConfigurationTests {
         let missing = DriverSSLConfiguration(mode: .verifyFull, caCertificatePath: "/does/not/exist.pem")
         #expect(missing.existingCACertificatePath == nil)
     }
+
+    @Test("client certificate and key are used without requiring server verification")
+    func clientCertificateIndependentOfVerification() {
+        let certPath = NSTemporaryDirectory() + "tablepro-cert-\(UUID().uuidString).pem"
+        let keyPath = NSTemporaryDirectory() + "tablepro-key-\(UUID().uuidString).pem"
+        FileManager.default.createFile(atPath: certPath, contents: Data("cert".utf8))
+        FileManager.default.createFile(atPath: keyPath, contents: Data("key".utf8))
+        defer {
+            try? FileManager.default.removeItem(atPath: certPath)
+            try? FileManager.default.removeItem(atPath: keyPath)
+        }
+
+        let ssl = DriverSSLConfiguration(
+            mode: .require,
+            clientCertificatePath: certPath,
+            clientKeyPath: keyPath
+        )
+        #expect(ssl.existingClientCertificatePath == certPath)
+        #expect(ssl.existingClientKeyPath == keyPath)
+    }
+
+    @Test("missing or empty client certificate paths resolve to nil")
+    func clientCertificateMissing() {
+        let absent = DriverSSLConfiguration(
+            mode: .verifyFull,
+            clientCertificatePath: "/does/not/exist.pem",
+            clientKeyPath: ""
+        )
+        #expect(absent.existingClientCertificatePath == nil)
+        #expect(absent.existingClientKeyPath == nil)
+        #expect(DriverSSLConfiguration(mode: .require).existingClientCertificatePath == nil)
+    }
 }

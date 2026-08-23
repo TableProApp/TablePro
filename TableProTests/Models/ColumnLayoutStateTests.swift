@@ -16,6 +16,7 @@ struct ColumnLayoutStateTests {
     func defaultEmptyWidths() {
         let state = ColumnLayoutState()
         #expect(state.columnWidths.isEmpty)
+        #expect(state.columnContentWidths == nil)
     }
 
     @Test("Default has nil column order")
@@ -114,11 +115,13 @@ struct ColumnLayoutStateTests {
 
         var incoming = ColumnLayoutState()
         incoming.columnWidths = ["id": 120, "name": 200]
+        incoming.columnContentWidths = ["id": 112, "name": 192]
         incoming.columnOrder = ["name", "id"]
 
         layout.applyGeometry(from: incoming)
 
         #expect(layout.columnWidths == ["id": 120, "name": 200])
+        #expect(layout.columnContentWidths == ["id": 112, "name": 192])
         #expect(layout.columnOrder == ["name", "id"])
     }
 

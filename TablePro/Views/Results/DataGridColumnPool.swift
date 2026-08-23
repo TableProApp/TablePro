@@ -10,15 +10,64 @@ final class DataGridColumnPool {
     private var pooledColumns: [NSTableColumn] = []
     private weak var attachedTableView: NSTableView?
 
+    /// Columns the user hid, kept apart from the ones the window unmounts so a window slide can
+    /// never bring a hidden column back.
+    private var userHiddenIdentifiers: Set<NSUserInterfaceItemIdentifier> = []
+    /// Slots the current result actually uses. The pool only grows, so the surplus slots past the
+    /// result's column count stay attached and hidden, and windowing must never mount one.
+    private var activeIdentifiers: Set<NSUserInterfaceItemIdentifier> = []
+
     var totalSlots: Int { pooledColumns.count }
 
     func attach(to tableView: NSTableView) {
         attachedTableView = tableView
     }
 
+    /// Whether the result presents this column at all, which is a different question from whether
+    /// the window currently has it mounted.
+    ///
+    /// `isHidden` answers both at once, and everything that asks "which columns is the user
+    /// looking at" (copy, find, cell navigation, size-all) means this one. Reading `isHidden`
+    /// there silently narrows those to the columns near the viewport.
+    func presentsColumn(_ column: NSTableColumn) -> Bool {
+        activeIdentifiers.contains(column.identifier) && !userHiddenIdentifiers.contains(column.identifier)
+    }
+
+    var hasUserHiddenColumns: Bool { !userHiddenIdentifiers.isEmpty }
+
+    /// Whether this position in `tableColumns` holds one of the columns the result presents.
+    ///
+    /// The row-number column is an attached column too, and the pool keeps the surplus slots of a
+    /// previously wider result attached and hidden, so no fixed position answers this.
+    func presentsColumn(atTableColumnIndex index: Int, in tableView: NSTableView) -> Bool {
+        guard index >= 0, index < tableView.tableColumns.count else { return false }
+        return presentsColumn(tableView.tableColumns[index])
+    }
+
+    func firstPresentedColumnIndex(in tableView: NSTableView) -> Int? {
+        tableView.tableColumns.firstIndex { presentsColumn($0) }
+    }
+
+    func lastPresentedColumnIndex(in tableView: NSTableView) -> Int? {
+        tableView.tableColumns.lastIndex { presentsColumn($0) }
+    }
+
+    func nextPresentedColumnIndex(after index: Int, in tableView: NSTableView) -> Int? {
+        let start = max(0, index + 1)
+        guard start < tableView.tableColumns.count else { return nil }
+        return tableView.tableColumns[start...].firstIndex { presentsColumn($0) }
+    }
+
+    func previousPresentedColumnIndex(before index: Int, in tableView: NSTableView) -> Int? {
+        let end = min(max(0, index), tableView.tableColumns.count)
+        guard end > 0 else { return nil }
+        return tableView.tableColumns[..<end].lastIndex { presentsColumn($0) }
+    }
+
     func detachFromTableView() {
         guard let tableView = attachedTableView else { return }
-        for column in pooledColumns where tableView.tableColumns.contains(column) {
+        let attached = Set(tableView.tableColumns.map(\.identifier))
+        for column in pooledColumns where attached.contains(column.identifier) {
             tableView.removeTableColumn(column)
         }
         attachedTableView = nil
@@ -36,6 +85,7 @@ final class DataGridColumnPool {
     ) {
         attach(to: tableView)
         let visibleCount = schema.columnNames.count
+        activeIdentifiers = Set(schema.identifiers)
 
         growBackingPoolIfNeeded(to: visibleCount)
 
@@ -61,6 +111,11 @@ final class DataGridColumnPool {
                     isEditable: isEditable
                 )
                 let hidden = hiddenFromLayout.contains(columnName) || hiddenColumnNames.contains(columnName)
+                if hidden {
+                    userHiddenIdentifiers.insert(column.identifier)
+                } else {
+                    userHiddenIdentifiers.remove(column.identifier)
+                }
                 if column.isHidden != hidden {
                     column.isHidden = hidden
                 }

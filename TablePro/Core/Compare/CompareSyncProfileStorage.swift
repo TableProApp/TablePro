@@ -23,7 +23,7 @@ internal struct CompareSyncProfile: Codable, Hashable, Identifiable {
     }
 }
 
-internal final class CompareSyncProfileStorage {
+internal final class CompareSyncProfileStorage: @unchecked Sendable {
     internal static let shared = CompareSyncProfileStorage()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "CompareSyncProfileStorage")

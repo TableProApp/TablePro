@@ -27,7 +27,7 @@ struct TriggerEditorView: View {
     @State private var isApplying = false
     @State private var errorMessage: String?
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage("structureCodeFontSize") private var fontSize: Double = 13
+    @AppStorage("structureCodeFontSize", store: AppStorageEnvironment.shared.defaults) private var fontSize: Double = 13
 
     init(connection: DatabaseConnection, tableName: String, mode: Mode, initialSQL: String, onClose: @escaping () -> Void) {
         self.connection = connection
@@ -46,7 +46,8 @@ struct TriggerEditorView: View {
                 $sql,
                 language: PluginManager.shared.editorLanguage(for: connection.type).treeSitterLanguage,
                 configuration: editorConfiguration,
-                state: $editorState
+                state: $editorState,
+                foldProvider: FoldProviderResolver.provider(for: connection.type)
             )
             if let errorMessage {
                 Divider()
@@ -126,7 +127,10 @@ struct TriggerEditorView: View {
             ),
             behavior: .init(isEditable: true),
             layout: .init(contentInsets: NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)),
-            peripherals: .init(showGutter: true, showMinimap: false, showFoldingRibbon: false)
+            peripherals: EditorPeripherals.inline(
+                lineNumbers: true,
+                folding: AppSettingsManager.shared.editor.codeFoldingEnabled
+            )
         )
     }
 }

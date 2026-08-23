@@ -160,4 +160,37 @@ struct DatabaseManagerTunnelTests {
         #expect(tunneled.port == 62_000)
         #expect(tunneled.additionalFields[DatabaseConnection.sshForwardUnixSocketPathKey] == nil)
     }
+
+    @Test("Exhausted tunnel recovery removes the session instead of leaving a spinner")
+    func exhaustedRecoveryRemovesTheSession() {
+        let connection = DatabaseConnection(
+            name: "dead tunnel",
+            host: "db.internal",
+            port: 5_432,
+            type: .postgresql
+        )
+        var session = ConnectionSession(connection: connection)
+        session.status = .connecting
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+
+        DatabaseManager.shared.failTunnelRecovery(
+            connectionId: connection.id,
+            disconnectedMessage: "The SSH tunnel closed.",
+            attempts: 10
+        )
+
+        #expect(DatabaseManager.shared.activeSessions[connection.id] == nil)
+
+        let reason = DatabaseManager.shared.disconnectReason(for: connection.id)
+        #expect(reason?.message == "The SSH tunnel closed.")
+        #expect(reason?.failureReason?.contains("10") == true)
+
+        let snapshot = ConnectionSessionSnapshot(exists: false, hasDriver: false, disconnectInfo: reason)
+        let phase = ConnectionWindowPhaseMachine.onSessionChanged(
+            phase: .connecting,
+            session: snapshot,
+            ownsAttempt: false
+        )
+        #expect(phase != .connecting)
+    }
 }

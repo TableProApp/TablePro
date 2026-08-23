@@ -1,0 +1,339 @@
+{
+  "$comment": [
+    "The release metadata for every plugin published to the registry, keyed by the slug in its",
+    "git tag (plugin-<slug>-v<version>). This is data the repo owns nowhere else: the summary,",
+    "the category and the homepage exist only here, and the slug-to-target mapping has no",
+    "derivation rule (mssql -> MSSQLDriver, cloudflare-d1 -> CloudflareD1DriverPlugin).",
+    "",
+    "'icon' and 'databaseTypeIds' do exist elsewhere, in the plugin's own DriverPlugin class,",
+    "and scripts/ci/check-plugin-manifest.py fails if the two disagree. Seven icons here were",
+    "already wrong when that check was first run.",
+    "",
+    "The 8 plugins absent from this file are the ones bundled inside the app and never published",
+    "",
+    "'bundled' marks a plugin that also ships inside the app. Those six can still be published",
+    "individually when users on an already-shipped app need a fix sooner, but a bulk ABI re-release",
+    "skips them, because their binaries ride with the next app release.",
+    "to the registry: MySQL, PostgreSQL, CSV/JSON/SQL export, CSV/JSON import, CSV inspector."
+  ],
+  "plugins": {
+    "beancount": {
+      "target": "BeancountDriver",
+      "bundleName": "BeancountDriver",
+      "bundleId": "com.TablePro.BeancountDriver",
+      "bundled": false,
+      "displayName": "Beancount Driver",
+      "summary": "Read-only Beancount ledger driver using user-provided rledger or Python Beancount",
+      "databaseTypeIds": [
+        "Beancount"
+      ],
+      "icon": "beancount-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/beancount"
+    },
+    "bigquery": {
+      "target": "BigQueryDriverPlugin",
+      "bundleName": "BigQueryDriverPlugin",
+      "bundleId": "com.TablePro.BigQueryDriverPlugin",
+      "bundled": false,
+      "displayName": "BigQuery Driver",
+      "summary": "Google BigQuery analytics database driver via REST API",
+      "databaseTypeIds": [
+        "BigQuery"
+      ],
+      "icon": "bigquery-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/bigquery"
+    },
+    "cassandra": {
+      "target": "CassandraDriver",
+      "bundleName": "CassandraDriver",
+      "bundleId": "com.TablePro.CassandraDriver",
+      "bundled": false,
+      "displayName": "Cassandra Driver",
+      "summary": "Apache Cassandra and ScyllaDB driver via DataStax C driver",
+      "databaseTypeIds": [
+        "Cassandra",
+        "ScyllaDB"
+      ],
+      "icon": "cassandra-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/cassandra"
+    },
+    "clickhouse": {
+      "target": "ClickHouseDriver",
+      "bundleName": "ClickHouseDriver",
+      "bundleId": "com.TablePro.ClickHouseDriver",
+      "bundled": true,
+      "displayName": "ClickHouse Driver",
+      "summary": "ClickHouse OLAP database driver via HTTP interface",
+      "databaseTypeIds": [
+        "ClickHouse"
+      ],
+      "icon": "clickhouse-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/clickhouse"
+    },
+    "cloudflare-d1": {
+      "target": "CloudflareD1DriverPlugin",
+      "bundleName": "CloudflareD1DriverPlugin",
+      "bundleId": "com.TablePro.CloudflareD1DriverPlugin",
+      "bundled": false,
+      "displayName": "Cloudflare D1 Driver",
+      "summary": "Cloudflare D1 serverless SQLite-compatible database driver via REST API",
+      "databaseTypeIds": [
+        "Cloudflare D1"
+      ],
+      "icon": "cloudflare-d1-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/cloudflare-d1"
+    },
+    "dameng": {
+      "target": "DamengDriver",
+      "bundleName": "DamengDriver",
+      "bundleId": "com.TablePro.DamengDriver",
+      "bundled": false,
+      "displayName": "Dameng Driver",
+      "summary": "Dameng DM8 database driver via a native wire client",
+      "databaseTypeIds": [
+        "Dameng"
+      ],
+      "icon": "cylinder",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/dameng"
+    },
+    "duckdb": {
+      "target": "DuckDBDriver",
+      "bundleName": "DuckDBDriver",
+      "bundleId": "com.TablePro.DuckDBDriver",
+      "bundled": false,
+      "displayName": "DuckDB Driver",
+      "summary": "DuckDB analytical database driver",
+      "databaseTypeIds": [
+        "DuckDB"
+      ],
+      "icon": "duckdb-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/duckdb"
+    },
+    "dynamodb": {
+      "target": "DynamoDBDriverPlugin",
+      "bundleName": "DynamoDBDriverPlugin",
+      "bundleId": "com.TablePro.DynamoDBDriverPlugin",
+      "bundled": false,
+      "displayName": "DynamoDB Driver",
+      "summary": "Amazon DynamoDB driver with PartiQL queries and AWS IAM/Profile/SSO authentication",
+      "databaseTypeIds": [
+        "DynamoDB"
+      ],
+      "icon": "dynamodb-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/dynamodb"
+    },
+    "elasticsearch": {
+      "target": "ElasticsearchDriverPlugin",
+      "bundleName": "ElasticsearchDriverPlugin",
+      "bundleId": "com.TablePro.ElasticsearchDriverPlugin",
+      "bundled": false,
+      "displayName": "Elasticsearch Driver",
+      "summary": "Elasticsearch driver via the REST API with a Query DSL console",
+      "databaseTypeIds": [
+        "Elasticsearch"
+      ],
+      "icon": "elasticsearch-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/elasticsearch"
+    },
+    "etcd": {
+      "target": "EtcdDriverPlugin",
+      "bundleName": "EtcdDriverPlugin",
+      "bundleId": "com.TablePro.EtcdDriverPlugin",
+      "bundled": false,
+      "displayName": "etcd Driver",
+      "summary": "etcd v3 key-value store driver with prefix-tree browsing and lease management",
+      "databaseTypeIds": [
+        "etcd"
+      ],
+      "icon": "etcd-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/etcd"
+    },
+    "libsql": {
+      "target": "LibSQLDriverPlugin",
+      "bundleName": "LibSQLDriverPlugin",
+      "bundleId": "com.TablePro.LibSQLDriverPlugin",
+      "bundled": false,
+      "displayName": "libSQL / Turso Driver",
+      "summary": "libSQL and Turso database support via Hrana HTTP protocol",
+      "databaseTypeIds": [
+        "libSQL",
+        "Turso"
+      ],
+      "icon": "libsql-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/libsql"
+    },
+    "mongodb": {
+      "target": "MongoDBDriver",
+      "bundleName": "MongoDBDriver",
+      "bundleId": "com.TablePro.MongoDBDriver",
+      "bundled": false,
+      "displayName": "MongoDB Driver",
+      "summary": "MongoDB document database driver via libmongoc",
+      "databaseTypeIds": [
+        "MongoDB"
+      ],
+      "icon": "mongodb-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/mongodb"
+    },
+    "mql": {
+      "target": "MQLExport",
+      "bundleName": "MQLExport",
+      "bundleId": "com.TablePro.MQLExportPlugin",
+      "bundled": true,
+      "displayName": "MQL Export",
+      "summary": "Export MongoDB data as MQL statements",
+      "databaseTypeIds": null,
+      "icon": "leaf",
+      "category": "export-format",
+      "homepage": "https://docs.tablepro.app/features/import-export"
+    },
+    "mssql": {
+      "target": "MSSQLDriver",
+      "bundleName": "MSSQLDriver",
+      "bundleId": "com.TablePro.MSSQLDriver",
+      "bundled": false,
+      "displayName": "MSSQL Driver",
+      "summary": "Microsoft SQL Server driver via FreeTDS",
+      "databaseTypeIds": [
+        "SQL Server"
+      ],
+      "icon": "mssql-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/mssql"
+    },
+    "oracle": {
+      "target": "OracleDriver",
+      "bundleName": "OracleDriver",
+      "bundleId": "com.TablePro.OracleDriver",
+      "bundled": false,
+      "displayName": "Oracle Driver",
+      "summary": "Oracle Database 12c+ driver via OracleNIO",
+      "databaseTypeIds": [
+        "Oracle"
+      ],
+      "icon": "oracle-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/oracle"
+    },
+    "redis": {
+      "target": "RedisDriver",
+      "bundleName": "RedisDriver",
+      "bundleId": "com.TablePro.RedisDriver",
+      "bundled": true,
+      "displayName": "Redis Driver",
+      "summary": "Redis in-memory data store driver via hiredis",
+      "databaseTypeIds": [
+        "Redis"
+      ],
+      "icon": "redis-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/redis"
+    },
+    "snowflake": {
+      "target": "SnowflakeDriverPlugin",
+      "bundleName": "SnowflakeDriverPlugin",
+      "bundleId": "com.TablePro.SnowflakeDriverPlugin",
+      "bundled": false,
+      "displayName": "Snowflake Driver",
+      "summary": "Snowflake cloud data warehouse driver via the connector REST protocol",
+      "databaseTypeIds": [
+        "Snowflake"
+      ],
+      "icon": "snowflake-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/snowflake"
+    },
+    "sqlimport": {
+      "target": "SQLImport",
+      "bundleName": "SQLImport",
+      "bundleId": "com.TablePro.SQLImportPlugin",
+      "bundled": true,
+      "displayName": "SQL Import",
+      "summary": "Import data from SQL dump files",
+      "databaseTypeIds": null,
+      "icon": "doc.text",
+      "category": "import-format",
+      "homepage": "https://docs.tablepro.app/features/import-export"
+    },
+    "sqlite": {
+      "target": "SQLiteDriver",
+      "bundleName": "SQLiteDriver",
+      "bundleId": "com.TablePro.SQLiteDriver",
+      "bundled": true,
+      "displayName": "SQLite Driver",
+      "summary": "SQLite embedded database driver",
+      "databaseTypeIds": [
+        "SQLite"
+      ],
+      "icon": "sqlite-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/sqlite"
+    },
+    "surrealdb": {
+      "target": "SurrealDBDriverPlugin",
+      "bundleName": "SurrealDBDriverPlugin",
+      "bundleId": "com.TablePro.SurrealDBDriverPlugin",
+      "bundled": false,
+      "displayName": "SurrealDB Driver",
+      "summary": "SurrealDB driver over the HTTP RPC protocol with SurrealQL",
+      "databaseTypeIds": [
+        "SurrealDB"
+      ],
+      "icon": "surrealdb-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/surrealdb"
+    },
+    "teradata": {
+      "target": "TeradataDriver",
+      "bundleName": "TeradataDriver",
+      "bundleId": "com.TablePro.TeradataDriver",
+      "bundled": false,
+      "displayName": "Teradata Driver",
+      "summary": "Teradata Vantage driver via a native Swift TD2 client",
+      "databaseTypeIds": [
+        "Teradata"
+      ],
+      "icon": "teradata-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/teradata"
+    },
+    "trino": {
+      "target": "TrinoDriverPlugin",
+      "bundleName": "TrinoDriverPlugin",
+      "bundleId": "com.TablePro.TrinoDriverPlugin",
+      "bundled": false,
+      "displayName": "Trino Driver",
+      "summary": "Trino distributed SQL engine driver via the REST client protocol",
+      "databaseTypeIds": [
+        "Trino"
+      ],
+      "icon": "trino-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/trino"
+    },
+    "xlsx": {
+      "target": "XLSXExport",
+      "bundleName": "XLSXExport",
+      "bundleId": "com.TablePro.XLSXExportPlugin",
+      "bundled": true,
+      "displayName": "XLSX Export",
+      "summary": "Export data to Microsoft Excel XLSX format",
+      "databaseTypeIds": null,
+      "icon": "tablecells",
+      "category": "export-format",
+      "homepage": "https://docs.tablepro.app/features/import-export"
+    }
+  }
+}

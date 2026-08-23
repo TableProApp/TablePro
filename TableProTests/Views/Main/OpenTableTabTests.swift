@@ -48,7 +48,7 @@ struct OpenTableTabTests {
         )
         defer { coordinator.teardown() }
 
-        try tabManager.addPreviewTableTab(tableName: "users", databaseType: connection.type, databaseName: "db_a")
+        try tabManager.addTableTab(tableName: "users", databaseType: connection.type, databaseName: "db_a", isPreview: true)
         #expect(tabManager.tabs.count == 1)
 
         coordinator.openTableTab("orders")
@@ -119,7 +119,7 @@ struct OpenTableTabTests {
         )
         defer { coordinator.teardown() }
 
-        try tabManager.addPreviewTableTab(tableName: "users", databaseType: connection.type, databaseName: "db_a")
+        try tabManager.addTableTab(tableName: "users", databaseType: connection.type, databaseName: "db_a", isPreview: true)
         let tabId = tabManager.selectedTab?.id
 
         coordinator.openTableTab("users")
@@ -136,7 +136,7 @@ struct OpenTableTabTests {
     func bareTableNameResolvesActiveSchema() {
         let connection = TestFixtures.makeConnection(type: .postgresql)
         var session = ConnectionSession(connection: connection)
-        session.currentSchema = "sales"
+        session.browseSchema = "sales"
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
@@ -160,7 +160,7 @@ struct OpenTableTabTests {
     func explicitSchemaWinsOverActiveSchema() {
         let connection = TestFixtures.makeConnection(type: .postgresql)
         var session = ConnectionSession(connection: connection)
-        session.currentSchema = "sales"
+        session.browseSchema = "sales"
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
@@ -203,7 +203,7 @@ struct OpenTableTabTests {
     func previewTabIsReusable() throws {
         let coordinator = Self.makeCoordinator()
         defer { coordinator.teardown() }
-        try coordinator.tabManager.addPreviewTableTab(tableName: "users", databaseType: .mysql, databaseName: "db")
+        try coordinator.tabManager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "db", isPreview: true)
         #expect(coordinator.isActiveTabReusable == true)
     }
 
@@ -260,7 +260,7 @@ struct OpenTableTabTests {
     func promoteClearsPreviewFlag() throws {
         let coordinator = Self.makeCoordinator()
         defer { coordinator.teardown() }
-        try coordinator.tabManager.addPreviewTableTab(tableName: "users", databaseType: .mysql, databaseName: "db")
+        try coordinator.tabManager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "db", isPreview: true)
         #expect(coordinator.tabManager.selectedTab?.isPreview == true)
 
         coordinator.promotePreviewTab()
@@ -292,7 +292,7 @@ struct OpenTableTabTests {
         )
         defer { coordinator.teardown() }
 
-        try tabManager.addPreviewTableTab(tableName: "users", databaseType: connection.type, databaseName: "db_a")
+        try tabManager.addTableTab(tableName: "users", databaseType: connection.type, databaseName: "db_a", isPreview: true)
 
         coordinator.openTableTab(
             TableInfo(name: "orders", type: .table, rowCount: nil),
@@ -354,7 +354,7 @@ struct OpenTableTabTests {
             includeSiblings: true
         )
 
-        #expect(activated == false)
+        #expect(activated == nil)
         #expect(tabManager.selectedTab?.tableContext.tableName == "orders")
     }
 
@@ -383,7 +383,7 @@ struct OpenTableTabTests {
             includeSiblings: true
         )
 
-        #expect(activated == true)
+        #expect(activated == .currentCoordinator)
         #expect(tabManager.selectedTab?.tableContext.tableName == "users")
         #expect(tabManager.selectedTab?.display.resultsViewMode == .structure)
     }
@@ -416,6 +416,56 @@ struct OpenTableTabTests {
         defer { coordinator.teardown() }
         coordinator.tabManager.addTab(databaseName: "db")
         #expect(coordinator.selectedTabHoldsProtectedContent == false)
+    }
+
+    /// Single-clicking another table reuses a preview tab in place. The reuse gate consulted the
+    /// data-grid change manager and the query text but never the tab's staged ALTERs, so a preview
+    /// tab holding a renamed column was retargeted with no prompt of any kind and the work was gone.
+    @Test("Staged structure edits hold a preview tab against reuse")
+    @MainActor
+    func stagedStructureEditsAreProtected() throws {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        try coordinator.tabManager.addTableTab(
+            tableName: "users", databaseType: .mysql, databaseName: "db_a", isPreview: true
+        )
+        guard let id = coordinator.tabManager.selectedTabId else {
+            Issue.record("expected a selected tab")
+            return
+        }
+        #expect(coordinator.selectedTabHoldsProtectedContent == false)
+
+        let session = TestFixtures.makeStructureSession()
+        coordinator.structureSessions[id] = session
+        session.changeManager.loadSchema(
+            tableName: "users", columns: [], indexes: [], foreignKeys: [], primaryKey: []
+        )
+        session.changeManager.addNewColumn()
+
+        #expect(coordinator.selectedTabHoldsProtectedContent)
+        #expect(coordinator.isActiveTabReusable == false)
+    }
+
+    /// A retarget keeps the tab id and changes what it means, so the caches keyed on that id
+    /// describe a table the tab no longer shows. The session used to survive, and went on raising
+    /// an unsaved-changes prompt naming the previous table.
+    @Test("Retargeting a tab releases the structure session keyed to it")
+    @MainActor
+    func retargetReleasesTheStructureSession() throws {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        try coordinator.tabManager.addTableTab(
+            tableName: "users", databaseType: .mysql, databaseName: "db_a", isPreview: true
+        )
+        guard let id = coordinator.tabManager.selectedTabId else {
+            Issue.record("expected a selected tab")
+            return
+        }
+        coordinator.structureSessions[id] = TestFixtures.makeStructureSession()
+
+        _ = try coordinator.tabManager.replaceTabContent(tableName: "orders", databaseName: "db_a")
+
+        #expect(coordinator.structureSessions[id] == nil)
     }
 
     @Test("A table tab with pending cell edits holds protected content")
@@ -454,6 +504,118 @@ struct OpenTableTabTests {
         defer { coordinator.teardown() }
         coordinator.tabManager.addCreateTableTab(databaseName: "db")
         #expect(coordinator.selectedTabHoldsProtectedContent == false)
+    }
+
+    // MARK: - Keeping a tab (issue #2235)
+
+    /// The gesture that says "keep this one" lands on a table the sidebar has already previewed,
+    /// so it has to reach a tab that exists rather than only tabs it creates.
+    @Test("forceNonPreview promotes the already-open preview tab it activates")
+    @MainActor
+    func forceNonPreviewPromotesTheActivatedTab() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(
+            tableName: "users", databaseType: connection.type, databaseName: "db_a", isPreview: true
+        )
+        #expect(tabManager.selectedTab?.isPreview == true)
+
+        coordinator.openTableTab("users", forceNonPreview: true)
+
+        #expect(tabManager.tabs.count == 1)
+        #expect(tabManager.selectedTab?.isPreview == false)
+        #expect(coordinator.isActiveTabReusable == false)
+    }
+
+    /// Keeping one table's tab is what lets the next table have its own, which is the whole of the
+    /// reporter's A then B then A sequence.
+    @Test("After a promotion, opening a second table adds a tab instead of replacing")
+    @MainActor
+    func promotedTabIsNotReplacedByTheNextOpen() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let tabManager = QueryTabManager()
+        var opened: [EditorTabPayload] = []
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+        coordinator.openTabInNewWindow = { opened.append($0) }
+
+        try tabManager.addTableTab(
+            tableName: "users", databaseType: connection.type, databaseName: "db_a", isPreview: true
+        )
+        coordinator.openTableTab("users", forceNonPreview: true)
+        coordinator.openTableTab("orders")
+
+        #expect(tabManager.tabs.count == 1)
+        #expect(tabManager.selectedTab?.tableContext.tableName == "users")
+        #expect(opened.count == 1)
+        #expect(opened.first?.tableName == "orders")
+        #expect(opened.first?.forcesNewTab == false)
+    }
+
+    @Test("Open in New Tab hands the new-tab intent to the payload")
+    @MainActor
+    func forceNewTabCarriesTheIntentOnThePayload() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let tabManager = QueryTabManager()
+        var opened: [EditorTabPayload] = []
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+        coordinator.openTabInNewWindow = { opened.append($0) }
+
+        try tabManager.addTableTab(tableName: "users", databaseType: connection.type, databaseName: "db_a")
+
+        coordinator.openTableTab("users", forceNewTab: true)
+
+        #expect(opened.count == 1)
+        #expect(opened.first?.tableName == "users")
+        #expect(opened.first?.forcesNewTab == true)
+        #expect(opened.first?.isPreview == false)
+    }
+
+    /// Array order would send a click on the table you are looking at to the other copy of it.
+    @Test("Activating a duplicated table keeps the tab that is already selected")
+    @MainActor
+    func activatingADuplicatedTableKeepsTheSelectedTab() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(tableName: "users", databaseType: connection.type, databaseName: "db_a")
+        let firstTabId = try #require(tabManager.selectedTabId)
+        try tabManager.addTableTab(
+            tableName: "users", databaseType: connection.type, databaseName: "db_a", allowsDuplicate: true
+        )
+        let secondTabId = try #require(tabManager.selectedTabId)
+        #expect(firstTabId != secondTabId)
+
+        coordinator.openTableTab("users")
+
+        #expect(tabManager.tabs.count == 2)
+        #expect(tabManager.selectedTabId == secondTabId)
     }
 
     @MainActor

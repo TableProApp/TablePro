@@ -137,6 +137,8 @@ struct PluginGrantSQLBuilderTests {
             return "\(database(db)).*"
         case let .table(db, _, table), let .column(db, _, table, _):
             return "\(database(db)).\(mysqlQuote(table))"
+        @unknown default:
+            return nil
         }
     }
 

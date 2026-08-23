@@ -28,7 +28,7 @@ enum DefaultSortResolver {
         var columnsOut: [SortColumn] = []
         for name in names {
             guard let index = allColumns.firstIndex(of: name) else { continue }
-            columnsOut.append(SortColumn(columnIndex: index, direction: .ascending))
+            columnsOut.append(SortColumn(columnIndex: index, direction: .ascending, columnName: name))
         }
         guard !columnsOut.isEmpty else { return SortState() }
         return SortState(columns: columnsOut, source: .defaultSort)

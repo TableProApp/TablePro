@@ -2,6 +2,7 @@ import Foundation
 import os
 import TableProDatabase
 import TableProModels
+import TableProOracleCore
 
 @MainActor
 @Observable
@@ -9,12 +10,20 @@ final class ConnectionFormViewModel {
     enum KeyInputMode: String, CaseIterable {
         case file = "Import File"
         case paste = "Paste Key"
+
+        var displayName: LocalizedStringResource {
+            switch self {
+            case .file: LocalizedStringResource("Import File")
+            case .paste: LocalizedStringResource("Paste Key")
+            }
+        }
     }
 
     struct TestResult: Sendable {
         let success: Bool
         let message: String
         let recovery: String?
+        var suggestedOracleMode: OracleConnectionOptions.IdentifierMode?
     }
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionFormViewModel")
@@ -30,7 +39,23 @@ final class ConnectionFormViewModel {
     var password = ""
     var database = ""
     var sslEnabled = false
+    var sslMode: SSLConfiguration.SSLMode = .disable
     var mssqlSSLMode: SSLConfiguration.SSLMode = .disable
+    var oracleSSLMode: SSLConfiguration.SSLMode = .disable
+
+    // Client certificates
+    var certificateSummaries: [CertificateRole: String] = [:]
+    var certificateError: String?
+    var pastedCertificate = ""
+    var pkcs12Password = ""
+    @ObservationIgnored var pendingCertificates: [CertificateRole: String] = [:]
+    @ObservationIgnored var removedCertificates: Set<CertificateRole> = []
+    @ObservationIgnored var pendingPKCS12: Data?
+    @ObservationIgnored let certificateStore: any CertificateMaterialStoring = CertificateMaterialStore()
+    var oracleConnectionType: OracleConnectionOptions.IdentifierMode = .service
+    var oracleServiceName = ""
+    var oracleSID = ""
+    var oracleRole: OracleConnectionOptions.Role = .normal
 
     // Organization
     var groupId: UUID?
@@ -82,6 +107,12 @@ final class ConnectionFormViewModel {
         // (MSSQLSSLMapping treats verify* as "require"). Matches what the driver actually does.
         let storedMode = conn.sslConfiguration?.mode ?? .disable
         mssqlSSLMode = (storedMode == .verifyCa || storedMode == .verifyFull) ? .require : storedMode
+        oracleSSLMode = storedMode
+        sslMode = conn.sslConfiguration?.mode ?? (conn.sslEnabled ? .require : .disable)
+        oracleConnectionType = OracleConnectionOptions.identifierMode(from: conn.additionalFields)
+        oracleServiceName = conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.serviceName] ?? ""
+        oracleSID = conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.sid] ?? ""
+        oracleRole = OracleConnectionOptions.role(from: conn.additionalFields)
         sshEnabled = conn.sshEnabled
         groupId = conn.groupId
         tagId = conn.tagId
@@ -304,7 +335,12 @@ final class ConnectionFormViewModel {
                 sshEnabled: sshEnabled
             )
             let classified = ErrorClassifier.classify(error, context: context)
-            testResult = TestResult(success: false, message: classified.message, recovery: classified.recovery)
+            testResult = TestResult(
+                success: false,
+                message: classified.message,
+                recovery: classified.recovery,
+                suggestedOracleMode: classified.suggestedOracleMode
+            )
         }
     }
 
@@ -313,6 +349,8 @@ final class ConnectionFormViewModel {
     func save(appState: AppState, secureStore: any SecureStore) -> DatabaseConnection? {
         let connection = buildConnection()
         var storageFailed = false
+
+        persistCertificates(for: connection.id)
 
         if type == .duckdb {
             if duckDBInMemory {
@@ -370,7 +408,15 @@ final class ConnectionFormViewModel {
         credentialError = nil
     }
 
-    private func buildConnection() -> DatabaseConnection {
+    private var effectiveSSLEnabled: Bool {
+        switch type {
+        case .mssql: return mssqlSSLMode != .disable
+        case .oracle: return oracleSSLMode != .disable
+        default: return sslMode != .disable
+        }
+    }
+
+    func buildConnection() -> DatabaseConnection {
         var conn = DatabaseConnection(
             id: existingConnection?.id ?? UUID(),
             name: name.isEmpty ? (selectedFileURL?.lastPathComponent ?? host) : name,
@@ -380,12 +426,26 @@ final class ConnectionFormViewModel {
             username: username,
             database: database,
             sshEnabled: sshEnabled,
-            sslEnabled: type == .mssql ? (mssqlSSLMode != .disable) : sslEnabled,
+            sslEnabled: effectiveSSLEnabled,
             groupId: groupId,
             tagIds: tagId.map { [$0] } ?? []
         )
+        conn.additionalFields = existingConnection?.additionalFields ?? [:]
+        conn.sslConfiguration = existingConnection?.sslConfiguration
+
+        if usesCertificateSection {
+            conn.sslConfiguration = sslConfigurationPreservingCertificates(mode: sslMode)
+        }
         if type == .mssql {
-            conn.sslConfiguration = SSLConfiguration(mode: mssqlSSLMode)
+            conn.sslConfiguration = sslConfigurationPreservingCertificates(mode: mssqlSSLMode)
+        }
+        if type == .oracle {
+            conn.sslConfiguration = sslConfigurationPreservingCertificates(mode: oracleSSLMode)
+            conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.connectionType] =
+                oracleConnectionType.rawValue
+            conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.serviceName] = oracleServiceName
+            conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.sid] = oracleSID
+            conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.role] = oracleRole.rawValue
         }
         conn.safeModeLevel = safeModeLevel
         if sshEnabled {
@@ -399,5 +459,15 @@ final class ConnectionFormViewModel {
             )
         }
         return conn
+    }
+
+    private func sslConfigurationPreservingCertificates(mode: SSLConfiguration.SSLMode) -> SSLConfiguration {
+        let existing = existingConnection?.sslConfiguration
+        return SSLConfiguration(
+            mode: mode,
+            caCertificatePath: existing?.caCertificatePath,
+            clientCertificatePath: existing?.clientCertificatePath,
+            clientKeyPath: existing?.clientKeyPath
+        )
     }
 }

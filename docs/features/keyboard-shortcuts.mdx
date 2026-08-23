@@ -3,7 +3,18 @@ title: Keyboard Shortcuts
 description: Every keyboard shortcut in TablePro, plus how to rebind them in Settings > Keyboard
 ---
 
-Defaults are listed below. Most shortcuts are rebindable in **Settings > Keyboard**; see [Customizing shortcuts](#customizing-shortcuts). The same key can do different things depending on focus: `Cmd+[` indents in the editor and pages back in the data grid.
+Focus decides what a key does: `Cmd+[` indents in the SQL editor and pages back in the data grid, and neither one shadows the other. Everything here is the shipped default, and most of it is rebindable in **Settings > Keyboard**.
+
+## Same key, different pane
+
+| Key | In the SQL editor | In the data grid |
+|-----|-------------------|------------------|
+| `Cmd+[` and `Cmd+]` | Indent and outdent | Previous and next page |
+| `Cmd+F` | Find in the text | Find in the loaded rows |
+| `Cmd+Delete` | Delete to the start of the line | Delete the selected rows |
+| `Option+Delete` | Delete the previous word | Truncate the tables selected in the sidebar |
+
+The grid meanings come back the moment you click into the grid, and `Delete` on its own always deletes the selected rows. `Cmd+W` follows the same rule across the whole window; see [Tabs and windows](#tabs-and-windows).
 
 ## Essential
 
@@ -11,31 +22,37 @@ Defaults are listed below. Most shortcuts are rebindable in **Settings > Keyboar
 |--------|----------|
 | Execute query | `Cmd+Enter` |
 | New connection | `Cmd+N` |
-| [Quick Switcher](/features/quick-switcher) | `Cmd+Shift+O` |
+| [Open Quickly](/features/open-quickly) | `Cmd+Shift+O` |
 | Open database switcher | `Cmd+K` |
 | Query history | `Cmd+Y` |
 | Settings | `Cmd+,` |
 | Close tab / window | `Cmd+W` |
 | Quit | `Cmd+Q` |
 
-## SQL Editor
+## SQL editor
 
-### Query Execution
+### Query execution
 
 | Action | Shortcut |
 |--------|----------|
 | Execute query | `Cmd+Enter` |
 | Execute all statements | `Cmd+Shift+Enter` |
 | Execute query without limit | `Cmd+Option+Enter` |
+| Run statement and advance | `Ctrl+Cmd+Enter` |
+| Previous statement | `Ctrl+Cmd+Left` |
+| Next statement | `Ctrl+Cmd+Right` |
 | Cancel query | `Cmd+.` |
 | Explain query | `Cmd+Option+E` |
 | Explain with AI | `Cmd+L` |
 | Optimize with AI | `Cmd+Option+L` |
 | Format query | `Cmd+Shift+L` |
+| Toggle fold at cursor | `Cmd+Option+Left` |
+| Fold all | `Cmd+Option+Shift+Left` |
+| Unfold all | `Cmd+Option+Shift+Right` |
 | Preview SQL | `Cmd+Shift+P` |
 | Save as favorite | `Cmd+D` |
 
-### File Operations
+### File operations
 
 | Action | Shortcut |
 |--------|----------|
@@ -43,7 +60,7 @@ Defaults are listed below. Most shortcuts are rebindable in **Settings > Keyboar
 | Save file | `Cmd+S` |
 | Save As | `Cmd+Shift+S` |
 
-### Text Editing and Find
+### Text editing and find
 
 | Action | Shortcut |
 |--------|----------|
@@ -54,6 +71,8 @@ Defaults are listed below. Most shortcuts are rebindable in **Settings > Keyboar
 | Delete line | `Cmd+Shift+K` |
 | Move line up | `Option+Up` |
 | Move line down | `Option+Down` |
+| Extend selection to previous statement | `Option+Shift+Up` |
+| Extend selection to next statement | `Option+Shift+Down` |
 | Show completions | `Ctrl+Space` |
 | Find | `Cmd+F` |
 | Find next | `Cmd+G` |
@@ -63,7 +82,7 @@ Every row except Find Next and Find Previous is built into the editor and cannot
 
 ## Data Grid
 
-### Navigation and Selection
+### Navigation and selection
 
 | Action | Shortcut |
 |--------|----------|
@@ -81,6 +100,7 @@ Every row except Find Next and Find Previous is built into the editor and cannot
 | Action | Shortcut |
 |--------|----------|
 | Edit cell | `Enter` |
+| Insert a line break while editing | `Option+Enter` |
 | Cancel edit | `Escape` |
 | Add row | `Cmd+Shift+N` |
 | Duplicate row | `Cmd+Shift+D` |
@@ -91,7 +111,7 @@ Every row except Find Next and Find Previous is built into the editor and cannot
 | Undo change | `Cmd+Z` |
 | Redo change | `Cmd+Shift+Z` |
 
-Truncate table opens a dialog with **Cascade** and **Ignore foreign key checks**, then marks the tables as a pending truncate that `Cmd+S` runs.
+Truncate table opens a dialog with **Cascade** and **Ignore foreign key checks**, then stages a pending truncate that `Cmd+S` runs.
 
 ### Clipboard
 
@@ -104,7 +124,7 @@ Truncate table opens a dialog with **Cascade** and **Ignore foreign key checks**
 | Copy as JSON | `Cmd+Option+J` |
 | Paste | `Cmd+V` |
 
-With a drag-selected cell range, `Cmd+C` copies the range as TSV. With a single focused cell it copies that value. Otherwise it copies the selected rows as TSV.
+`Cmd+C` copies a drag-selected range as TSV, a single focused cell as its value, and otherwise the selected rows as TSV.
 
 ### Pagination
 
@@ -115,27 +135,29 @@ With a drag-selected cell range, `Cmd+C` copies the range as TSV. With a single 
 | First page | `Cmd+Option+Up` |
 | Last page | `Cmd+Option+Down` |
 
-<Note>
-`Cmd+[` and `Cmd+]` page the data grid. In the SQL editor the same keys indent and outdent. Focus decides which fires.
-</Note>
-
 ### Filtering
 
 | Action | Shortcut |
 |--------|----------|
-| Toggle filter panel (table tab) | `Cmd+F` |
+| Find | `Cmd+F` |
+| Next match | `Return` or `Cmd+G` |
+| Previous match | `Cmd+Shift+G` |
+| Close the find bar | `Escape` |
+| Toggle filter bar (table tab) | `Cmd+Option+F` |
 | Apply filters | `Cmd+Enter` |
 
-See [Filtering](/features/filtering) for the filter panel itself.
+See [Filtering](/features/filtering) for the filter bar itself.
 
-### Import and Export
+### Import and export
 
 | Action | Shortcut |
 |--------|----------|
 | Export | `Cmd+Shift+E` |
 | Import | `Cmd+Shift+I` |
 
-## Tabs and Windows
+## Tabs and windows
+
+`Cmd+W` closes whatever is in front. In a connection window that is the current editor tab, and the File menu reads **Close Tab**. Settings, Integrations, a JSON or PHP viewer, and the welcome window have no tabs, so it closes the window and the menu reads **Close Window**. While the connections strip holds the keyboard it closes the highlighted connection, and the menu names it.
 
 | Action | Shortcut |
 |--------|----------|
@@ -149,6 +171,8 @@ See [Filtering](/features/filtering) for the filter panel itself.
 | Previous tab | `Cmd+Shift+[` |
 | Next tab | `Cmd+Shift+]` |
 | Minimize | `Cmd+M` |
+| Zoom | none |
+| Move tab to new window | none |
 
 ## Connections
 
@@ -161,22 +185,32 @@ See [Filtering](/features/filtering) for the filter panel itself.
 | New database (database switcher open) | `Cmd+N` |
 | Refresh | `Cmd+R` |
 
-## Sidebar, Panels, and View
+## Sidebar, panels, and view
 
 | Action | Shortcut |
 |--------|----------|
-| Toggle sidebar (listed as Toggle Table Browser in **Settings > Keyboard**) | `Cmd+0` |
-| Focus sidebar filter | `Cmd+Option+F` |
-| Show Tables sidebar | `Cmd+Option+1` |
-| Show Favorites sidebar | `Cmd+Option+2` |
-| Toggle inspector panel | `Cmd+Option+I` |
+| Back | `Ctrl+Cmd+[` |
+| Forward | `Ctrl+Cmd+]` |
+| Toggle sidebar | `Cmd+0` |
+| Toggle connections | `Cmd+Option+0` |
+| Show previous connection | `Ctrl+Cmd+Up` |
+| Show next connection | `Ctrl+Cmd+Down` |
+| Focus sidebar filter | `Ctrl+Cmd+Option+F` |
+| Move from the sidebar filter into the object list | `Down` |
+| Move between objects in the sidebar | `Up` / `Down` |
+| Keep the selected table's tab (same as double-clicking it) | `Return` |
+| Expand or collapse the selected container | `Right` / `Left` |
+| Clear the sidebar selection | `Escape` |
+| Toggle inspector | `Cmd+Option+I` |
 | Toggle results | `Cmd+Option+R` |
-| Query history | `Cmd+Y` |
+| Toggle history | `Cmd+Y` |
 | Increase text size (editor font) | `Cmd+=` |
 | Decrease text size (editor font) | `Cmd+-` |
 | Toggle full screen | `Ctrl+Cmd+F` |
 
-### Result Tabs
+With the sidebar focused, typing the first letters of an object's name jumps to it.
+
+### Result tabs
 
 | Action | Shortcut |
 |--------|----------|
@@ -185,11 +219,11 @@ See [Filtering](/features/filtering) for the filter panel itself.
 | Pin result | `Cmd+Option+P` |
 | Close result tab | `Cmd+Shift+W` |
 
-### Query History Panel
+### Query history drawer
 
-With the panel open (`Cmd+Y`): `Return` loads the selected entry in the editor, `Delete` removes it, `Cmd+C` copies its query.
+With the drawer open (`Cmd+Y`) and its entry list focused, `Return` loads the selected entry into the editor, `Delete` removes it, and `Cmd+C` copies its query. `Cmd+Y` hides the drawer again.
 
-## Welcome Window
+## Welcome window
 
 | Action | Shortcut |
 |--------|----------|
@@ -202,9 +236,9 @@ With the panel open (`Cmd+Y`): `Return` loads the selected entry in the editor, 
 | Collapse group | `Ctrl+H` |
 | Expand group | `Ctrl+L` |
 
-`Ctrl+J`/`Ctrl+N` and `Ctrl+K`/`Ctrl+P` also move the selection in the [Quick Switcher](/features/quick-switcher).
+`Ctrl+J`/`Ctrl+N` and `Ctrl+K`/`Ctrl+P` also move the selection in [Open Quickly](/features/open-quickly), where `Cmd+Enter` and `Option+Enter` open the selected item in a new tab.
 
-## CSV Inspector
+## CSV inspector
 
 | Action | Shortcut |
 |--------|----------|
@@ -221,27 +255,27 @@ With the panel open (`Cmd+Y`): `Return` loads the selected entry in the editor, 
 
 See [CSV Inspector](/features/csv-inspector).
 
-## Vim Mode
+## Vim mode
 
 Turn on Vim mode in **Settings > Editor**. Vim keys apply only in the SQL editor; the data grid keeps its shortcuts, and `Cmd+Enter` runs the query in any mode. See [Vim Mode](/features/vim-mode) for the key reference.
 
-## Customizing Shortcuts
+## Customizing shortcuts
 
-Open **Settings > Keyboard** (`Cmd+,`). Each action has a recorder field: click it and press the new combination. The menu bar updates immediately. Use the search field to filter actions, press `Delete` in a recorder field to clear a binding, click the curved-arrow button next to a changed shortcut to restore that one action, or **Reset to Defaults** to restore all. See [Settings](/customization/settings) for the other tabs.
+Open **Settings > Keyboard** (`Cmd+,`). Each action has a recorder field: click it and press the new combination, and the menu bar updates immediately. Actions are listed under their own names there: the sidebar toggle is Toggle Table Browser. Filter with the search field, press `Delete` in a recorder field to clear a binding, click the curved-arrow button beside a changed shortcut to restore that one, or **Reset to Defaults** to restore all.
 
 <Frame caption="Keyboard shortcut customization">
   <img className="block dark:hidden" src="/images/settings-keyboard.png" alt="Keyboard settings" />
   <img className="hidden dark:block" src="/images/settings-keyboard-dark.png" alt="Keyboard settings" />
 </Frame>
 
-If a combination is already used by another action in the same context, TablePro shows a dialog naming that action: **Cancel** keeps the existing assignment, **Reassign** moves the shortcut and clears it from the other action. Editor and data grid shortcuts can share a key without conflict because focus decides which fires.
+A combination already taken by another action in the same context raises a dialog naming it: **Cancel** keeps the existing assignment, **Reassign** moves the shortcut and clears it from the other action. Editor and grid actions can share a key without conflict.
 
 Menu actions need a modifier (`Cmd`, `Option`, `Ctrl`, or `Shift`); function keys `F1` through `F12` work bare, as do grid actions that read the key directly, like Preview FK Reference (`Space`).
 
-<Warning>
-Some shortcuts cannot be reassigned: editor built-ins (like `Cmd+/`), tab selection (`Cmd+1` through `Cmd+9`), text size (`Cmd+=`, `Cmd+-`), and macOS system shortcuts, which TablePro reads live from System Settings. The recorder warns if you try.
-</Warning>
+<Info>
+Some shortcuts cannot be reassigned: editor built-ins such as `Cmd+/`, tab selection (`Cmd+1` through `Cmd+9`), text size (`Cmd+=`, `Cmd+-`), Find (`Cmd+F`), and macOS system shortcuts, which are read live from System Settings. The recorder warns if you try.
+</Info>
 
-## Outside the App
+## Outside the app
 
-TablePro can be driven without app shortcuts at all: the Raycast extension, the `tablepro://` URL scheme, and MCP clients are covered in the [External API](/external-api/index) section.
+Drive the app with no keyboard at all: the Raycast extension, the `tablepro://` URL scheme, and MCP clients are covered in the [External API](/external-api) section.

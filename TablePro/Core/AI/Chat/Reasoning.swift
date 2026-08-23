@@ -34,19 +34,18 @@ enum ReasoningEffort: String, Codable, Sendable, CaseIterable, Identifiable {
         }
     }
 
-    var anthropicAdaptiveEffort: String? {
+    var anthropicEffortValue: String {
         switch self {
-        case .minimal: return nil
-        case .low:     return "low"
-        case .medium:  return "medium"
-        case .high:    return "high"
-        case .xhigh:   return "maximum"
+        case .minimal, .low: return "low"
+        case .medium:        return "medium"
+        case .high:          return "high"
+        case .xhigh:         return "xhigh"
         }
     }
 
-    var anthropicBudgetTokens: Int? {
+    var anthropicBudgetTokens: Int {
         switch self {
-        case .minimal: return nil
+        case .minimal: return 1_024
         case .low:     return 2_048
         case .medium:  return 8_192
         case .high:    return 16_384

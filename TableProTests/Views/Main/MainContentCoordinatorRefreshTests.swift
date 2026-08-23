@@ -81,7 +81,7 @@ struct MainContentCoordinatorRefreshTests {
     ) -> Task<Void, Never> {
         let inFlight = Task<Void, Never> { _ = try? await Task.sleep(for: .seconds(60)) }
         coordinator.currentQueryTask = inFlight
-        tabManager.tabs[index].execution.isExecuting = true
+        _ = coordinator.tabExecution.claim(tabManager.tabs[index].id)
         tabManager.tabs[index].execution.lastExecutedAt = Date()
         return inFlight
     }
@@ -95,15 +95,15 @@ struct MainContentCoordinatorRefreshTests {
             return
         }
         let staleTask = simulateInFlightQuery(coordinator, tabManager, at: idx)
-        let initialGeneration = coordinator.queryGeneration
+        let initialEpoch = coordinator.tabExecution.contentEpoch(for: tabId)
 
         coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
         defer { coordinator.currentQueryTask?.cancel() }
 
         #expect(staleTask.isCancelled == true)
-        #expect(coordinator.queryGeneration == initialGeneration + 2)
+        #expect(coordinator.tabExecution.contentEpoch(for: tabId) != initialEpoch)
         #expect(coordinator.currentQueryTask != nil)
-        #expect(tabManager.tabs[idx].execution.isExecuting == true)
+        #expect(coordinator.tabExecution.isExecuting(tabId) == true)
     }
 
     @Test("Refresh on an idle table tab starts an execution")
@@ -115,14 +115,14 @@ struct MainContentCoordinatorRefreshTests {
             return
         }
         tabManager.tabs[idx].execution.lastExecutedAt = Date()
-        let initialGeneration = coordinator.queryGeneration
+        let initialEpoch = coordinator.tabExecution.contentEpoch(for: tabId)
 
         coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
         defer { coordinator.currentQueryTask?.cancel() }
 
-        #expect(coordinator.queryGeneration == initialGeneration + 2)
+        #expect(coordinator.tabExecution.contentEpoch(for: tabId) != initialEpoch)
         #expect(coordinator.currentQueryTask != nil)
-        #expect(tabManager.tabs[idx].execution.isExecuting == true)
+        #expect(coordinator.tabExecution.isExecuting(tabId) == true)
     }
 
     @Test("Refresh rebuilds the table query from current state before executing")
@@ -153,14 +153,14 @@ struct MainContentCoordinatorRefreshTests {
         let inFlight = Task<Void, Never> { _ = try? await Task.sleep(for: .seconds(60)) }
         defer { inFlight.cancel() }
         coordinator.currentQueryTask = inFlight
-        tabManager.tabs[idx].execution.isExecuting = true
-        let initialGeneration = coordinator.queryGeneration
+        _ = coordinator.tabExecution.claim(tabId)
+        let initialEpoch = coordinator.tabExecution.contentEpoch(for: tabId)
 
         coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
 
         #expect(inFlight.isCancelled == false)
-        #expect(coordinator.queryGeneration == initialGeneration)
-        #expect(tabManager.tabs[idx].execution.isExecuting == true)
+        #expect(coordinator.tabExecution.contentEpoch(for: tabId) == initialEpoch)
+        #expect(coordinator.tabExecution.isExecuting(tabId) == true)
     }
 
     @Test("Refresh in structure view leaves execution state untouched")
@@ -174,13 +174,13 @@ struct MainContentCoordinatorRefreshTests {
         tabManager.tabs[idx].display.resultsViewMode = .structure
         let staleTask = simulateInFlightQuery(coordinator, tabManager, at: idx)
         defer { staleTask.cancel() }
-        let initialGeneration = coordinator.queryGeneration
+        let initialEpoch = coordinator.tabExecution.contentEpoch(for: tabId)
 
         coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
 
         #expect(staleTask.isCancelled == false)
-        #expect(coordinator.queryGeneration == initialGeneration)
-        #expect(tabManager.tabs[idx].execution.isExecuting == true)
+        #expect(coordinator.tabExecution.contentEpoch(for: tabId) == initialEpoch)
+        #expect(coordinator.tabExecution.isExecuting(tabId) == true)
     }
 
     @Test("cancelCurrentQuery leaves the driver alone when no query is in flight")
@@ -189,6 +189,42 @@ struct MainContentCoordinatorRefreshTests {
             let (coordinator, _) = makeCoordinator(connection: connection)
 
             coordinator.cancelCurrentQuery()
+
+            #expect(driver.cancelQueryCallCount == 0)
+        }
+    }
+
+    @Test("A finished row count leaves no handle that fakes an in-flight query")
+    func cancelWithStaleRowCountHandleDoesNotTouchDriver() {
+        withInjectedDriver { connection, driver in
+            let (coordinator, tabManager) = makeCoordinator(connection: connection)
+            let tabId = addTableTab(to: tabManager)
+            coordinator.setRowCountTask(Task<Void, Never> {}, token: UUID(), for: tabId)
+
+            coordinator.cancelCurrentQuery()
+
+            #expect(driver.cancelQueryCallCount == 0)
+            #expect(coordinator.rowCountTasks.isEmpty)
+        }
+    }
+
+    @Test("Refreshing an idle table tab twice never issues a stray driver cancel")
+    func repeatedIdleRefreshNeverCancelsDriver() {
+        withInjectedDriver { connection, driver in
+            let (coordinator, tabManager) = makeCoordinator(connection: connection)
+            let tabId = addTableTab(to: tabManager)
+            guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+                Issue.record("expected tab to exist")
+                return
+            }
+            tabManager.tabs[idx].execution.lastExecutedAt = Date()
+
+            for _ in 0..<4 {
+                coordinator.setRowCountTask(Task<Void, Never> {}, token: UUID(), for: tabId)
+                coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
+                coordinator.currentQueryTask?.cancel()
+                coordinator.currentQueryTask = nil
+            }
 
             #expect(driver.cancelQueryCallCount == 0)
         }
@@ -241,11 +277,11 @@ struct MainContentCoordinatorRefreshTests {
         handler.refresh = { refreshCalled = true }
         coordinator.structureActions = handler
 
-        let initialGeneration = coordinator.queryGeneration
+        let initialEpoch = coordinator.tabExecution.contentEpoch(for: tabId)
         coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
 
         #expect(refreshCalled == true)
-        #expect(coordinator.queryGeneration == initialGeneration)
+        #expect(coordinator.tabExecution.contentEpoch(for: tabId) == initialEpoch)
         #expect(coordinator.currentQueryTask == nil)
     }
 
@@ -262,15 +298,15 @@ struct MainContentCoordinatorRefreshTests {
             coordinator.refreshCoalesceTask?.cancel()
             coordinator.currentQueryTask?.cancel()
         }
-        let initialGeneration = coordinator.queryGeneration
+        let initialEpoch = coordinator.tabExecution.contentEpoch(for: tabId)
 
         coordinator.requestRefresh(hasPendingTableOps: false, onDiscard: {})
-        let generationAfterLeading = coordinator.queryGeneration
+        let epochAfterLeading = coordinator.tabExecution.contentEpoch(for: tabId)
         coordinator.requestRefresh(hasPendingTableOps: false, onDiscard: {})
-        let generationAfterSecond = coordinator.queryGeneration
+        let epochAfterSecond = coordinator.tabExecution.contentEpoch(for: tabId)
 
-        #expect(generationAfterLeading == initialGeneration + 2)
-        #expect(generationAfterSecond == generationAfterLeading)
+        #expect(epochAfterLeading != initialEpoch)
+        #expect(epochAfterSecond == epochAfterLeading)
         #expect(coordinator.refreshPendingTrailing == true)
         #expect(coordinator.refreshCoalesceTask != nil)
     }
@@ -287,11 +323,11 @@ struct MainContentCoordinatorRefreshTests {
         defer { coordinator.currentQueryTask?.cancel() }
 
         coordinator.requestRefresh(hasPendingTableOps: false, onDiscard: {})
-        let generationAfterLeading = coordinator.queryGeneration
+        let epochAfterLeading = coordinator.tabExecution.contentEpoch(for: tabId)
 
         try? await Task.sleep(for: .milliseconds(400))
 
-        #expect(coordinator.queryGeneration == generationAfterLeading)
+        #expect(coordinator.tabExecution.contentEpoch(for: tabId) == epochAfterLeading)
         #expect(coordinator.refreshPendingTrailing == false)
         #expect(coordinator.refreshCoalesceTask == nil)
     }

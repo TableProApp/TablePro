@@ -44,25 +44,44 @@ enum ValueDisplayFormat: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    /// Returns applicable formats for a given column type.
-    /// Always includes `.raw` as the first option.
-    static func applicableFormats(for columnType: ColumnType?) -> [ValueDisplayFormat] {
-        guard let columnType else { return [.raw] }
+    func isApplicable(to columnType: ColumnType?, databaseType: DatabaseType? = nil) -> Bool {
+        if self == .raw { return true }
+        guard let columnType else { return false }
 
         let typeKey: String
         switch columnType {
         case .blob: typeKey = "blob"
         case .text: typeKey = "text"
         case .integer: typeKey = "integer"
-        default: return [.raw]
+        default: return false
         }
 
-        var result: [ValueDisplayFormat] = [.raw]
-        for format in allCases where format != .raw {
-            if format.applicableColumnTypes.contains(typeKey) {
-                result.append(format)
-            }
+        if self == .uuid, databaseType == .mongodb, columnType.isBlobType {
+            return false
         }
-        return result
+        return applicableColumnTypes.contains(typeKey)
+    }
+
+    /// Returns applicable formats for a given column type.
+    /// Always includes `.raw` as the first option.
+    static func applicableFormats(
+        for columnType: ColumnType?,
+        databaseType: DatabaseType? = nil
+    ) -> [ValueDisplayFormat] {
+        allCases.filter { $0.isApplicable(to: columnType, databaseType: databaseType) }
+    }
+}
+
+enum ValueDisplayFormatColumnKey {
+    static func storageKeys(for columns: [String]) -> [String] {
+        let counts = columns.reduce(into: [String: Int]()) { $0[$1, default: 0] += 1 }
+        var occurrences: [String: Int] = [:]
+
+        return columns.map { name in
+            let occurrence = occurrences[name, default: 0]
+            occurrences[name] = occurrence + 1
+            guard counts[name, default: 0] > 1 else { return name }
+            return "\u{0}column:\(occurrence):\(name)"
+        }
     }
 }

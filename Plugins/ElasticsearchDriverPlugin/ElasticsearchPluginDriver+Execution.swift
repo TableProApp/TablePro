@@ -78,7 +78,7 @@ extension ElasticsearchPluginDriver {
     ) async throws -> [[String: Any]] {
         if parsed.from + parsed.size <= Self.maxResultWindow {
             var body = ElasticsearchQueryBuilder.searchBody(
-                for: parsed, fields: fields, size: parsed.size, caseInsensitive: supportsCaseInsensitiveSearch
+                for: parsed, fields: fields, size: parsed.size, supportsCaseInsensitive: supportsCaseInsensitiveSearch
             )
             body["from"] = parsed.from
             Self.logger.debug("POST /\(index, privacy: .public)/_search body=\(Self.jsonString(body), privacy: .public)")
@@ -121,7 +121,7 @@ extension ElasticsearchPluginDriver {
             try Task.checkCancellation()
             var body = ElasticsearchQueryBuilder.searchBody(
                 for: parsed, fields: fields, size: Self.deepPageBatchSize,
-                tiebreaker: true, searchAfter: searchAfter, caseInsensitive: supportsCaseInsensitiveSearch
+                tiebreaker: true, searchAfter: searchAfter, supportsCaseInsensitive: supportsCaseInsensitiveSearch
             )
             body["pit"] = ["id": pit, "keep_alive": Self.pitKeepAlive]
             let response = try await conn.search(index: nil, body: body)

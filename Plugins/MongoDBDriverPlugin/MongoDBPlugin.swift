@@ -72,6 +72,17 @@ final class MongoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
             label: "Replica Set",
             section: .advanced
         ),
+        ConnectionField(
+            id: "mongoUuidRepresentation",
+            label: String(localized: "Legacy UUID Encoding"),
+            fieldType: .dropdown(options: [
+                .init(value: "", label: String(localized: "Do Not Decode")),
+                .init(value: "javaLegacy", label: "Java"),
+                .init(value: "csharpLegacy", label: "C#"),
+                .init(value: "pythonLegacy", label: "Python"),
+            ]),
+            section: .advanced
+        ),
     ]
 
     // MARK: - UI/Capability Metadata
@@ -105,6 +116,7 @@ final class MongoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let defaultPrimaryKeyColumn: String? = "_id"
 
     static let sqlDialect: SQLDialectDescriptor? = nil
+    static let caseSensitivityStyle: SQLDialectDescriptor.CaseSensitivityStyle = .driverManaged
 
     static var statementCompletions: [CompletionEntry] {
         [
@@ -129,7 +141,13 @@ final class MongoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
             CompletionEntry(label: ".findOneAndReplace", insertText: ".findOneAndReplace"),
             CompletionEntry(label: ".findOneAndDelete", insertText: ".findOneAndDelete"),
             CompletionEntry(label: ".countDocuments", insertText: ".countDocuments"),
-            CompletionEntry(label: ".createIndex", insertText: ".createIndex")
+            CompletionEntry(label: ".createIndex", insertText: ".createIndex"),
+            CompletionEntry(label: "ObjectId", insertText: "ObjectId"),
+            CompletionEntry(label: "ISODate", insertText: "ISODate"),
+            CompletionEntry(label: "NumberLong", insertText: "NumberLong"),
+            CompletionEntry(label: "NumberDecimal", insertText: "NumberDecimal"),
+            CompletionEntry(label: "BinData", insertText: "BinData"),
+            CompletionEntry(label: "UUID", insertText: "UUID")
         ]
     }
 

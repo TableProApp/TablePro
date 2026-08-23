@@ -208,12 +208,10 @@ final class HranaHttpClient: @unchecked Sendable {
     }
 
     private func performRequest(url: URL, body: Data) async throws -> Data {
-        lock.lock()
+        let session = lock.withLock { self.session }
         guard let session else {
-            lock.unlock()
             throw HranaHttpError(message: String(localized: "Not connected to database"))
         }
-        lock.unlock()
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -254,9 +252,7 @@ final class HranaHttpClient: @unchecked Sendable {
             self.lock.unlock()
         }
 
-        lock.lock()
-        currentTask = nil
-        lock.unlock()
+        lock.withLock { currentTask = nil }
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw HranaHttpError(message: "Invalid response from server")

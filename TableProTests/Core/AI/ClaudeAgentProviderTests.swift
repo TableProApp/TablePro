@@ -157,6 +157,40 @@ struct ClaudeAgentCLITests {
     }
 }
 
+@Suite("ClaudeAgentDisclosure")
+struct ClaudeAgentDisclosureTests {
+    @Test("Every note carries text and a unique identifier")
+    func notesAreWellFormed() {
+        let notes = ClaudeAgentDisclosure.notes
+        #expect(!notes.isEmpty)
+        #expect(Set(notes.map(\.id)).count == notes.count)
+        #expect(notes.allSatisfy { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+        #expect(!ClaudeAgentDisclosure.supportedAlternative.isEmpty)
+    }
+
+    @Test("The unsupported path and the subscription terms are called out as cautions")
+    func termsAndSupportAreCautions() {
+        let cautions = ClaudeAgentDisclosure.notes.filter { $0.severity == .caution }.map(\.id)
+        #expect(cautions.contains("terms"))
+        #expect(cautions.contains("unsupported-path"))
+    }
+
+    @Test("Cautions are listed before the supporting details")
+    func cautionsComeFirst() {
+        let severities = ClaudeAgentDisclosure.notes.map(\.severity)
+        let firstDetail = severities.firstIndex(of: .detail) ?? severities.count
+        #expect(!severities[firstDetail...].contains(.caution))
+    }
+
+    @Test("The note about ignored API keys matches what the CLI environment does")
+    func ignoredAPIKeyNoteMatchesBehaviour() {
+        #expect(ClaudeAgentDisclosure.notes.contains { $0.id == "api-key-ignored" })
+        let environment = ClaudeAgentCLI().environment()
+        #expect(environment["ANTHROPIC_API_KEY"] == nil)
+        #expect(environment["ANTHROPIC_AUTH_TOKEN"] == nil)
+    }
+}
+
 @Suite("AgentCLIDiscovery")
 struct AgentCLIDiscoveryTests {
     @Test("The first executable candidate wins")

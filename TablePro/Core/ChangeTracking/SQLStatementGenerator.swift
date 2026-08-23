@@ -11,7 +11,7 @@ import os
 import TableProPluginKit
 
 /// A parameterized SQL statement with placeholders and bound values
-struct ParameterizedStatement {
+struct ParameterizedStatement: @unchecked Sendable {
     let sql: String
     let parameters: [Any?]
 }
@@ -23,6 +23,9 @@ struct SQLStatementGenerator {
     let tableName: String
     let columns: [String]
     let primaryKeyColumns: [String]
+    /// Server-computed columns. They reject any written value, so they are
+    /// dropped from every INSERT and UPDATE this generator produces.
+    let generatedColumns: Set<String>
     let databaseType: DatabaseType
     let parameterStyle: ParameterStyle
     private let quoteIdentifierFn: (String) -> String
@@ -32,6 +35,7 @@ struct SQLStatementGenerator {
         columns: [String],
         primaryKeyColumns: [String],
         databaseType: DatabaseType,
+        generatedColumns: Set<String> = [],
         parameterStyle: ParameterStyle? = nil,
         dialect: SQLDialectDescriptor? = nil,
         quoteIdentifier: ((String) -> String)? = nil
@@ -39,6 +43,7 @@ struct SQLStatementGenerator {
         self.tableName = tableName
         self.columns = columns
         self.primaryKeyColumns = primaryKeyColumns
+        self.generatedColumns = generatedColumns
         self.databaseType = databaseType
         self.parameterStyle = parameterStyle ?? Self.defaultParameterStyle(for: databaseType)
         if let quoteIdentifier {
@@ -143,6 +148,7 @@ struct SQLStatementGenerator {
 
             guard index < columns.count else { continue }
             let columnName = columns[index]
+            guard !generatedColumns.contains(columnName) else { continue }
 
             nonDefaultColumns.append(quoteIdentifierFn(columnName))
 
@@ -222,7 +228,9 @@ struct SQLStatementGenerator {
     {
         guard !change.cellChanges.isEmpty else { return nil }
 
-        let nonDefaultChanges = change.cellChanges.filter { $0.newValue != .text("__DEFAULT__") }
+        let nonDefaultChanges = change.cellChanges.filter {
+            $0.newValue != .text("__DEFAULT__") && !generatedColumns.contains($0.columnName)
+        }
 
         guard !nonDefaultChanges.isEmpty else { return nil }
 
@@ -252,8 +260,11 @@ struct SQLStatementGenerator {
     func generateUpdateSQL(for change: RowChange) -> ParameterizedStatement? {
         guard !change.cellChanges.isEmpty else { return nil }
 
+        let writableChanges = change.cellChanges.filter { !generatedColumns.contains($0.columnName) }
+        guard !writableChanges.isEmpty else { return nil }
+
         var parameters: [Any?] = []
-        let setClauses = change.cellChanges.map { cellChange -> String in
+        let setClauses = writableChanges.map { cellChange -> String in
             switch cellChange.newValue {
             case .text(let s) where s == "__DEFAULT__":
                 return "\(quoteIdentifierFn(cellChange.columnName)) = DEFAULT"

@@ -2,7 +2,7 @@
 //  CommandActionsBulkCloseTests.swift
 //  TableProTests
 //
-//  Covers the bulk tab-close commands: which sibling windows they target and
+//  Covers the bulk tab-close commands: which of the connection's tabs they target and
 //  that the surviving window empties in place instead of closing (#1972).
 //
 
@@ -71,40 +71,37 @@ struct CommandActionsBulkCloseTests {
 
     // MARK: - Database scope
 
-    @Test("a sibling window on another database is offered for closing")
-    func canCloseTabsForOtherDatabasesWhenSiblingIsForeign() {
+    /// A connection keeps one tab list now, so the scope of a database-scoped close is that list.
+    /// These used to spread a connection's tabs over sibling windows and check that the command
+    /// reached across them, which is a shape the app can no longer be in.
+    @Test("a tab on another database is offered for closing")
+    func canCloseTabsForOtherDatabasesWhenATabIsForeign() {
         let connection = TestFixtures.makeConnection(database: "db_a")
         let current = makeWindow(connection: connection)
-        let sibling = makeWindow(connection: connection)
-        defer {
-            current.coordinator.teardown()
-            sibling.coordinator.teardown()
-        }
+        defer { current.coordinator.teardown() }
 
         current.coordinator.tabManager.addTab(initialQuery: "SELECT 1", databaseName: "db_a")
-        sibling.coordinator.tabManager.addTab(initialQuery: "SELECT 2", databaseName: "db_b")
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 2", databaseName: "db_b")
 
-        #expect(current.actions.activeDatabaseName == "db_a")
+        #expect(current.actions.browseDatabaseName == "db_a")
         #expect(current.actions.canCloseTabsForOtherDatabases)
     }
 
-    @Test("nothing is offered when every sibling is on the active database")
+    @Test("nothing is offered when every tab is on the active database")
     func cannotCloseTabsForOtherDatabasesWhenAllMatch() {
         let connection = TestFixtures.makeConnection(database: "db_a")
         let current = makeWindow(connection: connection)
-        let sibling = makeWindow(connection: connection)
-        defer {
-            current.coordinator.teardown()
-            sibling.coordinator.teardown()
-        }
+        defer { current.coordinator.teardown() }
 
         current.coordinator.tabManager.addTab(initialQuery: "SELECT 1", databaseName: "db_a")
-        sibling.coordinator.tabManager.addTab(initialQuery: "SELECT 2", databaseName: "db_a")
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 2", databaseName: "db_a")
 
         #expect(!current.actions.canCloseTabsForOtherDatabases)
     }
 
-    @Test("another connection's window is never a database-scoped target")
+    /// Another connection's tabs are out of scope by construction rather than by a filter: they
+    /// live in that connection's own tab list, which this command never reads.
+    @Test("another connection's tabs are never a database-scoped target")
     func otherConnectionsAreOutOfScope() {
         let connection = TestFixtures.makeConnection(database: "db_a")
         let otherConnection = TestFixtures.makeConnection(database: "db_b")
@@ -119,6 +116,111 @@ struct CommandActionsBulkCloseTests {
         unrelated.coordinator.tabManager.addTab(initialQuery: "SELECT 2", databaseName: "db_b")
 
         #expect(!current.actions.canCloseTabsForOtherDatabases)
+        #expect(unrelated.actions.canCloseTabsForOtherDatabases == false)
+    }
+
+    // MARK: - Schema scope
+
+    /// Only `.table` tabs are given a schema, so on a schema-switching engine every query tab
+    /// named no container. Comparing that nil against the browsed name made all of them foreign,
+    /// and the command closed the user's whole editor with no prompt.
+    @Test("query tabs are never foreign on a schema-switching engine")
+    func queryTabsAreNotForeignOnASchemaSwitchingEngine() {
+        let connection = TestFixtures.makeConnection(database: "ORCL", type: .oracle)
+        let current = makeWindow(connection: connection)
+        defer { current.coordinator.teardown() }
+
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 1 FROM dual", databaseName: "ORCL")
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 2 FROM dual", databaseName: "ORCL")
+
+        #expect(PluginManager.shared.containerSwitchTarget(for: .oracle) == .schema)
+        #expect(!current.actions.canCloseTabsForOtherDatabases)
+    }
+
+    @Test("a table tab in another schema is still offered for closing")
+    func tableTabInAnotherSchemaIsStillForeign() throws {
+        let connection = TestFixtures.makeConnection(database: "ORCL", type: .oracle)
+        let current = makeWindow(connection: connection)
+        defer { current.coordinator.teardown() }
+
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 1 FROM dual", databaseName: "ORCL")
+        try current.coordinator.tabManager.addTableTab(
+            tableName: "EMPLOYEES", databaseType: .oracle, databaseName: "ORCL", schemaName: "HR"
+        )
+
+        #expect(current.actions.canCloseTabsForOtherDatabases)
+    }
+
+    /// The same rule on a database-switching engine: a tab that never got a database is in no
+    /// database rather than in another one.
+    @Test("a tab with no database of its own is not foreign")
+    func tabWithoutADatabaseIsNotForeign() {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let current = makeWindow(connection: connection)
+        defer { current.coordinator.teardown() }
+
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 1")
+
+        #expect(!current.actions.canCloseTabsForOtherDatabases)
+    }
+
+    /// A tab holds a container only when it has work as well as a name, which is the rule the
+    /// workspace rail applies. So an untouched scratch tab on another database is left alone even
+    /// though it can name where it is.
+    @Test("an empty scratch tab on another database is left alone")
+    func emptyScratchTabOnAnotherDatabaseSurvives() {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let current = makeWindow(connection: connection)
+        defer { current.coordinator.teardown() }
+
+        current.coordinator.tabManager.addTab(databaseName: "db_b")
+
+        #expect(!current.actions.canCloseTabsForOtherDatabases)
+    }
+
+    /// The enablement flag and the close itself read the same victim list, so this drives the real
+    /// command and checks what survives rather than trusting the boolean.
+    @Test("closing for other schemas keeps the query tabs and closes the foreign table tab")
+    func closingForOtherSchemasKeepsQueryTabs() async throws {
+        let connection = TestFixtures.makeConnection(database: "ORCL", type: .oracle)
+        let current = makeWindow(connection: connection)
+        defer { current.coordinator.teardown() }
+
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 1 FROM dual", databaseName: "ORCL")
+        try current.coordinator.tabManager.addTableTab(
+            tableName: "EMPLOYEES", databaseType: .oracle, databaseName: "ORCL", schemaName: "HR"
+        )
+        #expect(current.coordinator.tabManager.tabs.count == 2)
+
+        current.actions.closeTabsForOtherDatabases()
+
+        var spins = 0
+        while current.coordinator.tabManager.tabs.count > 1, spins < 500 {
+            await Task.yield()
+            spins += 1
+        }
+
+        #expect(current.coordinator.tabManager.tabs.count == 1)
+        #expect(current.coordinator.tabManager.tabs.first?.tabType == .query)
+    }
+
+    // MARK: - Container wording
+
+    /// Both titles were computed and then never used: the menu items carry hardcoded literals and
+    /// `applyDynamicTitle` had no case for either selector.
+    @Test("container commands are worded for the dimension the engine switches")
+    func containerCommandTitlesFollowTheSwitchTarget() {
+        let schemaEngine = makeWindow(connection: TestFixtures.makeConnection(database: "ORCL", type: .oracle))
+        let databaseEngine = makeWindow(connection: TestFixtures.makeConnection(database: "db_a", type: .mysql))
+        defer {
+            schemaEngine.coordinator.teardown()
+            databaseEngine.coordinator.teardown()
+        }
+
+        #expect(schemaEngine.actions.closeTabsForOtherDatabasesTitle == "Close Tabs for Other Schemas")
+        #expect(schemaEngine.actions.openContainerSwitcherTitle == "Open Schema…")
+        #expect(databaseEngine.actions.closeTabsForOtherDatabasesTitle == "Close Tabs for Other Databases")
+        #expect(databaseEngine.actions.openContainerSwitcherTitle == "Open Database…")
     }
 
     // MARK: - Enablement

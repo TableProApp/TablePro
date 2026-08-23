@@ -94,11 +94,11 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let versionResult = try await localBackend.executeQuery("SELECT sqlite_version()")
         let version = versionResult.rows.first?.first?.asText ?? "SQLite"
 
-        lock.lock()
-        _dbHandleForInterrupt = rawHandle != 0 ? OpaquePointer(bitPattern: rawHandle) : nil
-        _serverVersion = version
-        backend = .local(localBackend)
-        lock.unlock()
+        lock.withLock {
+            _dbHandleForInterrupt = rawHandle != 0 ? OpaquePointer(bitPattern: rawHandle) : nil
+            _serverVersion = version
+            backend = .local(localBackend)
+        }
 
         Self.logger.debug("Connected to local libSQL database file")
     }
@@ -126,18 +126,14 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 ?? sqliteVersion.rows.first?.first?.stringValue
                 ?? "libSQL"
 
-            lock.lock()
-            _serverVersion = version
-            lock.unlock()
+            lock.withLock { _serverVersion = version }
         } catch {
             client.invalidateSession()
             Self.logger.error("Connection test failed: \(error.localizedDescription)")
             throw LibSQLError(message: String(localized: "Failed to connect to libSQL database"))
         }
 
-        lock.lock()
-        backend = .remote(client)
-        lock.unlock()
+        lock.withLock { backend = .remote(client) }
 
         Self.logger.debug("Connected to libSQL database: \(normalized)")
     }
@@ -389,6 +385,8 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return allColumns
     }
 
+    var providesBulkForeignKeyFetch: Bool { true }
+
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         let query = """
             SELECT m.name AS table_name, p.id, p."table" AS referenced_table,
@@ -506,23 +504,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
-        let safeTable = escapeStringLiteral(table)
-        let query = """
-            SELECT name, sql FROM sqlite_master
-            WHERE type = 'trigger' AND tbl_name = '\(safeTable)'
-            ORDER BY name
-            """
-        let result = try await execute(query: query)
-
-        return result.rows.compactMap { row -> PluginTriggerInfo? in
-            guard row.count >= 2,
-                  let name = row[0].asText,
-                  let sql = row[1].asText else {
-                return nil
-            }
-            let (timing, event) = TriggerSQLParser.timingAndEvent(from: sql)
-            return PluginTriggerInfo(name: name, timing: timing, event: event, statement: sql)
-        }
+        try await sqliteTriggerList(table: table)
     }
 
     var supportsTransactionalDDL: Bool { true }

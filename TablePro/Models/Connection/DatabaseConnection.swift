@@ -36,6 +36,7 @@ extension DatabaseType {
     static let redis = DatabaseType(rawValue: "Redis")
     static let mssql = DatabaseType(rawValue: "SQL Server")
     static let oracle = DatabaseType(rawValue: "Oracle")
+    static let dameng = DatabaseType(rawValue: "Dameng")
     static let clickhouse = DatabaseType(rawValue: "ClickHouse")
     static let duckdb = DatabaseType(rawValue: "DuckDB")
     static let cassandra = DatabaseType(rawValue: "Cassandra")
@@ -189,33 +190,6 @@ extension DatabaseType {
         return raw.isEmpty ? nil : raw
     }
 
-    var brandColor: Color {
-        switch rawValue {
-        case "MySQL": Color(hex: "00758F")
-        case "MariaDB": Color(hex: "C0765A")
-        case "PostgreSQL": Color(hex: "336791")
-        case "Redshift": Color(hex: "527FFF")
-        case "CockroachDB": Color(hex: "6933FF")
-        case "PGlite": Color(hex: "F4B942")
-        case "SQLite": Color(hex: "0F80CC")
-        case "SQL Server": Color(hex: "CC2927")
-        case "Oracle": Color(hex: "C74634")
-        case "MongoDB": Color(hex: "00684A")
-        case "Redis": Color(hex: "FF4438")
-        case "ClickHouse": Color(hex: "FFCC01")
-        case "DuckDB": Color(hex: "FFC827")
-        case "Cassandra": Color(hex: "1287B1")
-        case "ScyllaDB": Color(hex: "00C9C2")
-        case "etcd": Color(hex: "419EDA")
-        case "Cloudflare D1": Color(hex: "F38020")
-        case "libSQL", "Turso": Color(hex: "4FF8D2")
-        case "DynamoDB": Color(hex: "4053D6")
-        case "BigQuery": Color(hex: "4285F4")
-        case "Beancount": Color(hex: "3F7D20")
-        default: Color.accentColor
-        }
-    }
-
     var requiresAuthentication: Bool {
         PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.requiresAuthentication ?? true
     }
@@ -230,6 +204,29 @@ extension DatabaseType {
 
     var supportsTriggerEditing: Bool {
         PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsTriggerEditing ?? false
+    }
+
+    var supportsRoutines: Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsRoutines ?? false
+    }
+
+    var supportsDatabaseTriggerBrowse: Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?
+            .capabilities.supportsDatabaseTriggerBrowse ?? false
+    }
+
+    /// The object kinds the sidebar should offer a section for even before any have been fetched.
+    /// It never subtracts: a kind whose driver returned rows is listed whatever this says.
+    var declaredObjectKinds: Set<SidebarObjectKind> {
+        var kinds: Set<SidebarObjectKind> = []
+        if supportsRoutines {
+            kinds.insert(.procedure)
+            kinds.insert(.function)
+        }
+        if supportsDatabaseTriggerBrowse {
+            kinds.insert(.trigger)
+        }
+        return kinds
     }
 
     var supportsSchemaEditing: Bool {

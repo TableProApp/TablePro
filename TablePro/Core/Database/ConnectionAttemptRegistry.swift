@@ -23,6 +23,9 @@ struct ConnectionAttemptRegistry {
         generations.removeValue(forKey: connectionId)
     }
 
+    /// Safe to return nothing only because every caller runs it last, after validating through
+    /// `isCurrent`. `TabExecutionRegistry.settle` is the same operation one level down and returns
+    /// the answer instead, because its completion sites validate after releasing and cannot.
     mutating func finish(_ generation: Int, for connectionId: UUID) {
         guard generations[connectionId] == generation else { return }
         generations.removeValue(forKey: connectionId)

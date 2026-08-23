@@ -19,8 +19,11 @@ extension TableViewCoordinator {
         guard row >= 0, columnIndex >= 0, columnIndex < tableRows.columns.count else { return .blocked }
         guard !changeManager.isRowDeleted(row) else { return .blocked }
 
+        let columnName = tableRows.columns[columnIndex]
+        if changeManager.generatedColumns.contains(columnName) { return .blocked }
+
         let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
-        if immutable.contains(tableRows.columns[columnIndex]) { return .blocked }
+        if immutable.contains(columnName) { return .blocked }
 
         if columnIndex < tableRows.columnTypes.count {
             let ct = tableRows.columnTypes[columnIndex]
@@ -53,13 +56,24 @@ extension TableViewCoordinator {
         false
     }
 
+    /// A grid that will not take a keystroke and says nothing reads as broken. When the refusal has
+    /// a reason the pointer already carries it as the grid's tooltip, and the beep is AppKit's own
+    /// way of saying the attempt was heard and declined.
+    func refuseEditIfExplained() {
+        guard !isEditable, editRefusalMessage != nil else { return }
+        NSSound.beep()
+    }
+
     func beginCellEdit(row: Int, tableColumnIndex: Int) {
         guard let tableView else { return }
         guard tableColumnIndex >= 0, tableColumnIndex < tableView.numberOfColumns else { return }
         let column = tableView.tableColumns[tableColumnIndex]
         guard column.identifier != ColumnIdentitySchema.rowNumberIdentifier else { return }
         guard let columnIndex = dataColumnIndex(from: column.identifier) else { return }
-        guard case .editable(let value) = editEligibility(row: row, columnIndex: columnIndex) else { return }
+        guard case .editable(let value) = editEligibility(row: row, columnIndex: columnIndex) else {
+            refuseEditIfExplained()
+            return
+        }
         showOverlayEditor(
             tableView: tableView,
             row: row,
@@ -77,6 +91,9 @@ extension TableViewCoordinator {
         }
         guard let editor = overlayEditor else { return }
 
+        editor.onRemove = { [weak self] in
+            self?.flushPendingCellPresentationRefresh()
+        }
         editor.onCommit = { [weak self] row, columnIndex, newValue in
             self?.commitCellEdit(row: row, columnIndex: columnIndex, newValue: newValue)
         }
@@ -92,37 +109,22 @@ extension TableViewCoordinator {
             overlayViewer = CellOverlayViewer()
         }
         guard let viewer = overlayViewer else { return }
+        viewer.onRemove = { [weak self] in
+            self?.flushPendingCellPresentationRefresh()
+        }
         overlayEditor?.dismiss(commit: false)
         viewer.show(in: tableView, row: row, column: column, columnIndex: columnIndex, value: value)
     }
 
     func handleOverlayTabNavigation(row: Int, column: Int, forward: Bool) {
-        guard let tableView = tableView else { return }
+        guard let tableView = tableView,
+              let target = tabNavigationTarget(from: (row, column), forward: forward, in: tableView)
+        else { return }
 
-        var nextColumn = forward ? column + 1 : column - 1
-        var nextRow = row
-
-        if forward {
-            if nextColumn >= tableView.numberOfColumns {
-                nextColumn = DataGridView.firstDataTableColumnIndex
-                nextRow += 1
-            }
-            if nextRow >= tableView.numberOfRows {
-                nextRow = tableView.numberOfRows - 1
-                nextColumn = tableView.numberOfColumns - 1
-            }
-        } else {
-            if !DataGridView.isDataTableColumn(nextColumn) {
-                nextColumn = tableView.numberOfColumns - 1
-                nextRow -= 1
-            }
-            if nextRow < 0 {
-                nextRow = 0
-                nextColumn = DataGridView.firstDataTableColumnIndex
-            }
-        }
-
+        let nextRow = target.row
+        let nextColumn = target.column
         tableView.selectRowIndexes(IndexSet(integer: nextRow), byExtendingSelection: false)
+        scrollColumnToVisible(tableColumnIndex: nextColumn)
 
         guard let nextColumnIndex = DataGridView.dataColumnIndex(
                 for: nextColumn,
@@ -140,5 +142,28 @@ extension TableViewCoordinator {
             columnIndex: nextColumnIndex,
             value: value
         )
+    }
+
+    /// Tab walks the presented columns and wraps onto the next row's first, Shift+Tab onto the
+    /// previous row's last. Both ends are resolved rather than assumed: the window's spacers and
+    /// the pool's surplus slots are attached columns too, so neither end of `tableColumns` holds a
+    /// data column and a fixed position lands on a spacer that swallows the keystroke.
+    private func tabNavigationTarget(
+        from cell: (row: Int, column: Int),
+        forward: Bool,
+        in tableView: NSTableView
+    ) -> (row: Int, column: Int)? {
+        if forward {
+            if let next = nextPresentedColumnIndex(after: cell.column) {
+                return (cell.row, next)
+            }
+            guard cell.row + 1 < tableView.numberOfRows, let first = firstPresentedColumnIndex() else { return nil }
+            return (cell.row + 1, first)
+        }
+        if let previous = previousPresentedColumnIndex(before: cell.column) {
+            return (cell.row, previous)
+        }
+        guard cell.row > 0, let last = lastPresentedColumnIndex() else { return nil }
+        return (cell.row - 1, last)
     }
 }

@@ -17,7 +17,8 @@ struct AdvancedPaneView: View {
             externalAccess: $coordinator.advanced.externalAccess,
             localOnly: $coordinator.advanced.localOnly,
             databaseType: coordinator.network.type,
-            additionalConnectionFields: coordinator.advanced.advancedFields
+            additionalConnectionFields: coordinator.advanced.advancedFields,
+            visibilityValues: coordinator.allAdditionalFieldValues
         )
     }
 }

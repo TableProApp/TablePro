@@ -15,51 +15,57 @@ import Foundation
 import os
 import TableProMSSQLCore
 
-private let freetdsLogger = Logger(subsystem: "com.TablePro", category: "FreeTDSConnection")
+nonisolated private let freetdsLogger = Logger(subsystem: "com.TablePro", category: "FreeTDSConnection")
 
-private let freetdsErrorLock = NSLock()
-private var freetdsConnectionErrors: [UnsafeRawPointer: String] = [:]
-private var freetdsGlobalError = ""
-
-private func freetdsGetError(for dbproc: UnsafeMutablePointer<DBPROCESS>?) -> String {
-    freetdsErrorLock.lock()
-    defer { freetdsErrorLock.unlock() }
-    if let dbproc {
-        return freetdsConnectionErrors[UnsafeRawPointer(dbproc)] ?? freetdsGlobalError
-    }
-    return freetdsGlobalError
+private struct FreeTDSErrorState {
+    var perConnection: [UInt: String] = [:]
+    var global = ""
 }
 
-private func freetdsClearError(for dbproc: UnsafeMutablePointer<DBPROCESS>?) {
-    freetdsErrorLock.lock()
-    defer { freetdsErrorLock.unlock() }
-    if let dbproc {
-        freetdsConnectionErrors[UnsafeRawPointer(dbproc)] = nil
-    } else {
-        freetdsGlobalError = ""
+nonisolated private let freetdsErrors = OSAllocatedUnfairLock(initialState: FreeTDSErrorState())
+
+nonisolated private func freetdsConnectionKey(_ dbproc: UnsafeMutablePointer<DBPROCESS>) -> UInt {
+    UInt(bitPattern: UnsafeRawPointer(dbproc))
+}
+
+nonisolated private func freetdsGetError(for dbproc: UnsafeMutablePointer<DBPROCESS>?) -> String {
+    let key = dbproc.map(freetdsConnectionKey)
+    return freetdsErrors.withLock { state in
+        guard let key else { return state.global }
+        return state.perConnection[key] ?? state.global
     }
 }
 
-private func freetdsSetError(_ msg: String, for dbproc: UnsafeMutablePointer<DBPROCESS>?, overwrite: Bool = false) {
-    freetdsErrorLock.lock()
-    defer { freetdsErrorLock.unlock() }
-    if let dbproc {
-        let key = UnsafeRawPointer(dbproc)
-        if overwrite || (freetdsConnectionErrors[key]?.isEmpty ?? true) {
-            freetdsConnectionErrors[key] = msg
+nonisolated private func freetdsClearError(for dbproc: UnsafeMutablePointer<DBPROCESS>?) {
+    let key = dbproc.map(freetdsConnectionKey)
+    freetdsErrors.withLock { state in
+        guard let key else {
+            state.global = ""
+            return
         }
-    } else if overwrite || freetdsGlobalError.isEmpty {
-        freetdsGlobalError = msg
+        state.perConnection[key] = nil
     }
 }
 
-private func freetdsUnregister(_ dbproc: UnsafeMutablePointer<DBPROCESS>) {
-    freetdsErrorLock.lock()
-    defer { freetdsErrorLock.unlock() }
-    freetdsConnectionErrors.removeValue(forKey: UnsafeRawPointer(dbproc))
+nonisolated private func freetdsSetError(_ msg: String, for dbproc: UnsafeMutablePointer<DBPROCESS>?, overwrite: Bool = false) {
+    let key = dbproc.map(freetdsConnectionKey)
+    freetdsErrors.withLock { state in
+        guard let key else {
+            if overwrite || state.global.isEmpty { state.global = msg }
+            return
+        }
+        if overwrite || (state.perConnection[key]?.isEmpty ?? true) {
+            state.perConnection[key] = msg
+        }
+    }
 }
 
-private let freetdsInitOnce: Void = {
+nonisolated private func freetdsUnregister(_ dbproc: UnsafeMutablePointer<DBPROCESS>) {
+    let key = freetdsConnectionKey(dbproc)
+    freetdsErrors.withLock { $0.perConnection[key] = nil }
+}
+
+nonisolated private let freetdsInitOnce: Void = {
     _ = dbinit()
     _ = dberrhandle { dbproc, _, dberr, _, dberrstr, oserrstr in
         var msg = "db-lib error \(dberr)"
@@ -82,7 +88,7 @@ private let freetdsInitOnce: Void = {
     }
 }()
 
-private func freetdsDispatchAsync<T: Sendable>(
+nonisolated private func freetdsDispatchAsync<T: Sendable>(
     on queue: DispatchQueue,
     execute work: @escaping @Sendable () throws -> T
 ) async throws -> T {
@@ -98,7 +104,7 @@ private func freetdsDispatchAsync<T: Sendable>(
     }
 }
 
-private func freetdsDispatchAsync(
+nonisolated private func freetdsDispatchAsync(
     on queue: DispatchQueue,
     execute work: @escaping @Sendable () throws -> Void
 ) async throws {
@@ -126,6 +132,7 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     private var _isCancelled = false
 
     private static let kerberosEnvLock = NSLock()
+    private static let freetdsConfEnvLock = NSLock()
     private static let deadlineQueue = DispatchQueue(label: "com.TablePro.freetds.connect-deadline", qos: .userInitiated)
     private static let connectDeadlineMarginSeconds = 5
 
@@ -189,6 +196,21 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         _ = dbsetlversion(login, UInt8(DBVERSION_74))
         _ = dbsetlogintime(Int32(options.loginTimeoutSeconds))
 
+        // Entra ID replaces the user name and password with an access token in the LOGIN7
+        // FEDAUTH feature extension. Not macOS-only: iOS links the same patched FreeTDS.
+        if options.authMethod == .entra {
+            guard let token = options.fedAuthToken, !token.isEmpty else {
+                throw MSSQLCoreError.connectionFailed(
+                    String(localized: "No Microsoft Entra ID access token was supplied.")
+                )
+            }
+            guard dbsetlfedauthtoken(login, token) == SUCCEED else {
+                throw MSSQLCoreError.connectionFailed(
+                    String(localized: "The Microsoft Entra ID access token was rejected by the driver.")
+                )
+            }
+        }
+
         #if os(macOS)
         // Windows Auth cross-realm: FreeTDS otherwise builds its own SPN and only canonicalizes a
         // short hostname (via getaddrinfo), never applying [domain_realm] to pick the realm. We
@@ -200,8 +222,11 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         #endif
 
         freetdsClearError(for: nil)
-        let serverName = "\(options.host):\(options.port)"
-        guard let proc = withKerberosEnvironmentIfNeeded({ dbopen(login, serverName) }) else {
+        let verifies = options.certificateVerification != .none
+        let serverName = verifies ? MSSQLFreeTDSConfig.serverEntryName : "\(options.host):\(options.port)"
+        guard let proc = withFreeTDSConfigIfNeeded({
+            self.withKerberosEnvironmentIfNeeded { dbopen(login, serverName) }
+        }) else {
             let detail = freetdsGetError(for: nil)
             let msg = detail.isEmpty ? "Check host, port, credentials, and TLS settings" : detail
             if let kind = MSSQLTLSClassifier.classifySSLError(detail) {
@@ -213,6 +238,47 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
             throw MSSQLCoreError.connectionFailed("Failed to connect to \(options.host):\(options.port): \(msg)")
         }
         return proc
+    }
+
+    /// A verifying mode needs `ca file` and `check certificate hostname`, which dblib cannot set.
+    /// The generated config is written 0600 and FREETDSCONF points at it only for this dbopen, so
+    /// a machine's own freetds.conf is untouched on every other connection.
+    private func withFreeTDSConfigIfNeeded(
+        _ body: () -> UnsafeMutablePointer<DBPROCESS>?
+    ) -> UnsafeMutablePointer<DBPROCESS>? {
+        guard options.certificateVerification != .none else { return body() }
+
+        let contents = MSSQLFreeTDSConfig.configuration(
+            host: options.host,
+            port: options.port,
+            encryptionFlag: options.encryptionFlag,
+            verification: options.certificateVerification,
+            caCertificatePath: options.caCertificatePath
+        )
+
+        let path = NSTemporaryDirectory() + "tablepro-freetds-\(UUID().uuidString).conf"
+        guard let data = contents.data(using: .utf8),
+              FileManager.default.createFile(
+                  atPath: path,
+                  contents: data,
+                  attributes: [.posixPermissions: 0o600]
+              ) else {
+            return body()
+        }
+
+        Self.freetdsConfEnvLock.lock()
+        let previous = getenv("FREETDSCONF").map { String(cString: $0) }
+        setenv("FREETDSCONF", path, 1)
+        defer {
+            if let previous {
+                setenv("FREETDSCONF", previous, 1)
+            } else {
+                unsetenv("FREETDSCONF")
+            }
+            Self.freetdsConfEnvLock.unlock()
+            try? FileManager.default.removeItem(atPath: path)
+        }
+        return body()
     }
 
     private func withKerberosEnvironmentIfNeeded(
@@ -607,7 +673,7 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     }
 }
 
-private extension MSSQLLoginField {
+nonisolated private extension MSSQLLoginField {
     var dbsetName: Int32 {
         switch self {
         case .user: return Int32(DBSETUSER)

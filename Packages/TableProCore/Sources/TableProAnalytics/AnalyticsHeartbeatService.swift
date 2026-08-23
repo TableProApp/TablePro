@@ -29,6 +29,9 @@ public final class AnalyticsHeartbeatService {
 
     private static let lastHeartbeatKey = "com.TablePro.analytics.lastHeartbeatDate"
 
+    /// Injected so a sandboxed run keeps its cooldown stamp out of the real defaults domain.
+    private let defaults: UserDefaults
+
     private let session: URLSession = {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 15
@@ -49,13 +52,15 @@ public final class AnalyticsHeartbeatService {
         analyticsUrl: URL = URL(string: "https://api.tablepro.app/v1/analytics")!, // swiftlint:disable:this force_unwrapping
         heartbeatInterval: TimeInterval = 24 * 60 * 60,
         initialDelay: TimeInterval = 10,
-        cooldownInterval: TimeInterval = 20 * 60 * 60
+        cooldownInterval: TimeInterval = 20 * 60 * 60,
+        defaults: UserDefaults = .standard
     ) {
         self.provider = provider
         self.analyticsUrl = analyticsUrl
         self.heartbeatInterval = heartbeatInterval
         self.initialDelay = initialDelay
         self.cooldownInterval = cooldownInterval
+        self.defaults = defaults
     }
 
     // MARK: - Public API
@@ -141,13 +146,13 @@ public final class AnalyticsHeartbeatService {
     }
 
     private func isCooldownElapsed() -> Bool {
-        guard let last = UserDefaults.standard.object(forKey: Self.lastHeartbeatKey) as? Date else {
+        guard let last = defaults.object(forKey: Self.lastHeartbeatKey) as? Date else {
             return true
         }
         return Date().timeIntervalSince(last) >= cooldownInterval
     }
 
     private func recordHeartbeatTimestamp() {
-        UserDefaults.standard.set(Date(), forKey: Self.lastHeartbeatKey)
+        defaults.set(Date(), forKey: Self.lastHeartbeatKey)
     }
 }

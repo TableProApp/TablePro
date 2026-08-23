@@ -13,6 +13,7 @@ protocol DataGridViewDelegate: AnyObject {
     func dataGridDeleteRows(_ indices: Set<Int>)
     func dataGridCopyRows(_ indices: Set<Int>)
     func dataGridPasteRows()
+    func dataGridCanPasteRows() -> Bool
     func dataGridUndo()
     func dataGridRedo()
     func dataGridAddRow()
@@ -36,13 +37,18 @@ protocol DataGridViewDelegate: AnyObject {
     func dataGridDidRemoveRows(at indices: IndexSet)
     func dataGridDidReplaceAllRows()
     func dataGridAttach(tableViewCoordinator: TableViewCoordinator)
+    func dataGridDisplayOrderChanged()
+    func dataGridDisplayFormatChanged()
 }
 
 extension DataGridViewDelegate {
+    func dataGridDisplayOrderChanged() {}
+    func dataGridDisplayFormatChanged() {}
     func dataGridDidEditCell(row: Int, column: Int, newValue: String?) {}
     func dataGridDeleteRows(_ indices: Set<Int>) {}
     func dataGridCopyRows(_ indices: Set<Int>) {}
     func dataGridPasteRows() {}
+    func dataGridCanPasteRows() -> Bool { false }
     func dataGridUndo() {}
     func dataGridRedo() {}
     func dataGridAddRow() {}

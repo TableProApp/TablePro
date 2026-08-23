@@ -65,6 +65,57 @@ struct ClearQueryResultsTests {
         #expect(coordinator.canClearActiveQueryResults == true)
     }
 
+    @Test("Clearing results also drops a query plan")
+    @MainActor
+    func clearDropsExplainResult() throws {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+
+        coordinator.tabManager.addTab(databaseName: "db")
+        let index = try #require(coordinator.tabManager.selectedTabIndex)
+        let plan = ExplainResultSetFactory.make(
+            rawText: "Seq Scan on orders", plan: nil, sql: "EXPLAIN SELECT 1", executionTime: 0.4
+        )
+        coordinator.tabManager.mutate(at: index) { tab in
+            tab.display.resultSets = [plan]
+            tab.display.activeResultSetId = plan.id
+        }
+
+        coordinator.clearActiveQueryResults()
+
+        let tab = try #require(coordinator.tabManager.selectedTab)
+        #expect(tab.display.resultSets.isEmpty)
+        #expect(tab.display.activeExplainResult == nil)
+    }
+
+    @Test("Clearing results drops an unpinned plan but keeps a pinned result")
+    @MainActor
+    func clearDropsExplainResultWithPinnedResults() throws {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+
+        coordinator.tabManager.addTab(databaseName: "db")
+        let tabId = try #require(coordinator.tabManager.selectedTab?.id)
+        let index = try #require(coordinator.tabManager.selectedTabIndex)
+
+        let pinned = ResultSet(label: "Result 1")
+        pinned.isPinned = true
+        let plan = ExplainResultSetFactory.make(
+            rawText: "Seq Scan on orders", plan: nil, sql: "EXPLAIN SELECT 1", executionTime: 0.4
+        )
+        coordinator.tabManager.mutate(at: index) { tab in
+            tab.display.resultSets = [pinned, plan]
+            tab.display.activeResultSetId = plan.id
+        }
+
+        coordinator.clearActiveQueryResults()
+
+        let tab = try #require(coordinator.tabManager.selectedTab)
+        #expect(tab.display.resultSets.map(\.id) == [pinned.id])
+        #expect(tab.display.activeExplainResult == nil)
+        #expect(tabId == tab.id)
+    }
+
     @Test("Cannot clear results on a table tab")
     @MainActor
     func cannotClearOnTableTab() throws {

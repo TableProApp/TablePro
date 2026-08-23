@@ -3,11 +3,37 @@ title: EXPLAIN Visualization
 description: View query execution plans as diagrams, trees, or raw output
 ---
 
-Click **Explain** in the query editor toolbar, or use **Query > Explain Query** (default shortcut `Cmd+Option+E`), to get the execution plan for the current query.
+**EXPLAIN** estimates. **EXPLAIN ANALYZE** runs the query and reports what actually happened. Choose between them from the dropdown beside **Explain** in the query editor toolbar, or use **Query > Explain Query** (`Cmd+Option+E`); engines with a single variant show a plain button instead.
 
-Databases with multiple EXPLAIN variants show a dropdown: PostgreSQL offers **EXPLAIN** (estimated plan) and **EXPLAIN ANALYZE** (runs the query and shows actual timing); MySQL and MariaDB offer **EXPLAIN** and **EXPLAIN (JSON)**. Databases with a single variant, like SQLite or DuckDB, show a plain Explain button.
+The plan arrives as a result tab next to your query results, so going back to the data costs nothing, and pinning that tab keeps a plan while you try another query. Typing an `EXPLAIN` statement in the editor and running it opens the same viewer.
 
-Typing an `EXPLAIN`, `EXPLAIN ANALYZE`, `EXPLAIN FORMAT=JSON`, or MariaDB's `ANALYZE FORMAT=JSON` statement in the editor and running it opens the same plan viewer, as long as the plan comes back in a single column. Multi-column plans like MySQL's plain `EXPLAIN` table stay in the results grid.
+<Frame caption="MySQL EXPLAIN ANALYZE diagram">
+  <img
+    className="block dark:hidden"
+    src="/images/mysql-explain-analyze.png"
+    alt="MySQL EXPLAIN ANALYZE rendered as a plan diagram"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/mysql-explain-analyze-dark.png"
+    alt="MySQL EXPLAIN ANALYZE rendered as a plan diagram"
+  />
+</Frame>
+
+## Finding the expensive step
+
+Every node carries a badge for its own share of the plan's total cost, taken after its children's cost is subtracted, so it marks where the work sits rather than where it accumulates.
+
+| Badge | Share of the plan's cost |
+|---|---|
+| Green circle | up to 5% |
+| Yellow diamond | over 5% |
+| Orange triangle | over 20% |
+| Red warning triangle | over 50% |
+
+Shape escalates alongside color, so the badge still reads with the system **Differentiate Without Color** setting on.
+
+Then compare estimate against measurement. A node whose **Rows** estimate is orders of magnitude from its **Actual Rows** is why the planner chose that shape, so refresh the table's statistics before rewriting the query. On PostgreSQL a **Loops** value above 1 means the node ran once per row of its parent, which makes **Actual Time** the per-loop figure rather than the total.
 
 <Frame caption="EXPLAIN diagram view">
   <img
@@ -22,11 +48,13 @@ Typing an `EXPLAIN`, `EXPLAIN ANALYZE`, `EXPLAIN FORMAT=JSON`, or MariaDB's `ANA
   />
 </Frame>
 
-## View Modes
+## View modes
 
-Toggle between three views using the segmented control above the results:
+The segmented control above the results switches between three views. A plan the parser cannot read as a tree has no control at all and shows the raw output under a banner saying so.
 
-**Diagram** shows the plan as boxes connected by arrows, top to bottom. Nodes are color-coded by cost: green (cheap) to red (expensive). Click a node to see full details in a popover. Zoom controls are in the bottom-right corner.
+### Diagram
+
+Boxes joined by arrows, top to bottom. Zoom with a trackpad pinch, a two-finger double tap, or Cmd and scroll; the controls in the bottom-right corner zoom, reset to 100%, and fit the plan to the window. Right-click copies a step, and the export button saves the diagram as a PNG.
 
 <Frame caption="EXPLAIN tree view">
   <img
@@ -41,42 +69,46 @@ Toggle between three views using the segmented control above the results:
   />
 </Frame>
 
-**Tree** shows the plan as an expandable outline list. Click a row to see its properties in the detail panel below. Cost and row estimates are shown on the right side of each row.
+### Tree
 
-**Raw** shows the original EXPLAIN output as text, with a copy button and a font size stepper in the toolbar. When the plan includes timing, planning and execution times are shown next to the view switcher.
+An expandable outline with **Operation**, **Cost**, **Rows**, and **Actual Time** columns. Drag a column edge to resize it and the width is remembered. Clicking a header sorts the steps under each parent without flattening the plan. Arrow keys move between steps, right-click copies one, and the divider resizes the detail panel.
 
-## Database Support
+### Raw
 
-| Database | Variants | Output |
-|----------|----------|--------|
-| PostgreSQL | EXPLAIN, EXPLAIN ANALYZE | JSON, parsed into diagram and tree |
-| Redshift | EXPLAIN, EXPLAIN ANALYZE | PostgreSQL's `EXPLAIN (FORMAT JSON)`, read by the PostgreSQL plan parser |
-| CockroachDB | EXPLAIN, EXPLAIN ANALYZE | Text plan, parsed into diagram and tree |
-| MySQL / MariaDB | EXPLAIN, EXPLAIN (JSON) | JSON variant parsed into diagram and tree; plain EXPLAIN stays in the results grid |
-| SQLite | Explain | EXPLAIN QUERY PLAN, parsed into diagram and tree |
-| ClickHouse | Plan, Pipeline, AST, Syntax, Estimate | Indented text, parsed into diagram and tree |
-| DuckDB | Explain | Indented text, parsed into diagram and tree |
-| Cloudflare D1 | Query Plan | EXPLAIN QUERY PLAN, raw text |
-| LibSQL / Turso | Query Plan | EXPLAIN QUERY PLAN, raw text |
-| Snowflake | Explain (Text) | Raw text |
-| Trino | Explain (Logical), Explain (Distributed), Explain (IO), Explain (Validate), Explain Analyze | Raw text |
-| SurrealDB | Explain, Explain Full | Raw text |
-| BigQuery | Dry Run (Cost) | Dry run cost estimate |
-| MongoDB | Explain | `explain` runCommand with execution stats |
+The original EXPLAIN output as text, with a copy button and a font size stepper. Planning and execution times, where the plan reports them, sit beside the view switcher in every mode.
+
+## Node details
+
+Selecting a node in either view fills the detail panel:
+
+| Field | What it holds |
+|---|---|
+| **Table** | The relation this step reads |
+| **Cost** | `startup..total`, or the total alone when that is all the plan carries |
+| **Rows**, **Width** | Estimated row count and row width |
+| **Actual Time**, **Actual Rows**, **Loops** | Present only on a measured plan |
+| **Details** | Everything else the driver reported: join type, index name, filter conditions, sort keys |
+
+Properties the driver reported as false or zero are left out of **Details**.
+
+## Database support
+
+| Database | Variants | Diagram and tree |
+|---|---|---|
+| PostgreSQL, PGlite, Redshift | EXPLAIN, EXPLAIN ANALYZE | From `EXPLAIN (FORMAT JSON)` |
+| CockroachDB | EXPLAIN, EXPLAIN ANALYZE | From the text plan |
+| MySQL | EXPLAIN, EXPLAIN (JSON) | From JSON, and from a typed `EXPLAIN FORMAT=TREE` or `EXPLAIN ANALYZE`. Plain EXPLAIN stays in the results grid |
+| MariaDB | EXPLAIN, EXPLAIN (JSON) | From JSON, including a typed `ANALYZE FORMAT=JSON`. Plain EXPLAIN stays in the results grid |
+| SQLite, Cloudflare D1, libSQL / Turso | Query Plan | From `EXPLAIN QUERY PLAN` |
+| ClickHouse | Plan, Pipeline, AST, Syntax, Estimate | From the indented text |
+| DuckDB | Explain | From the indented text |
+| Snowflake | Explain (Text) | Raw text only |
+| Trino | Logical, Distributed, IO, Validate, Analyze | Raw text only |
+| SurrealDB | Explain, Explain Full | Raw text only |
+| BigQuery | Dry Run (Cost) | A dry run cost estimate, no plan |
+| MongoDB | Explain | The `explain` runCommand with execution stats |
 | Redis | Explain | `DEBUG OBJECT` for the command's key |
 
-## Plan Details
-
-Each node in the plan shows:
-
-- **Operation**: Seq Scan, Index Scan, Hash Join, Nested Loop, Sort, etc.
-- **Table**: which table the operation accesses
-- **Cost**: startup and total cost estimates (PostgreSQL format: 0.00..45.18)
-- **Rows**: estimated number of rows
-- **Actual time**: real execution time per node (EXPLAIN ANALYZE only)
-
-Click a node to see all properties including join type, index name, filter conditions, and sort keys.
-
-<Note>
-EXPLAIN does not execute the query. EXPLAIN ANALYZE executes it and shows actual timing; use it cautiously on production systems.
-</Note>
+<Warning>
+`EXPLAIN` does not run the query. `EXPLAIN ANALYZE` does, so on a production server it costs whatever the query costs. Safe Mode asks before an EXPLAIN too, whichever way you started it, and the Stop button cancels one that is taking too long.
+</Warning>

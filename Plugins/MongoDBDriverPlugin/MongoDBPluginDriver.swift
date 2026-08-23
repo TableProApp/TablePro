@@ -5,12 +5,16 @@
 
 import Foundation
 import os
+import TableProNumberFormatting
 import TableProPluginKit
 
 final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
     private var mongoConnection: MongoDBConnection?
     private var currentDb: String
+    private let columnKindLock = NSLock()
+    private var columnKindsByCollection: [String: [String: BsonValueKind]] = [:]
+    private var fieldPathKindsByCollection: [String: [String: BsonValueKind]] = [:]
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MongoDBPluginDriver")
 
@@ -33,7 +37,12 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     init(config: DriverConnectionConfig) {
         self.config = config
         self.currentDb = config.database
+        self.uuidRepresentation = MongoDBUuidRepresentation.resolve(
+            config.additionalFields["mongoUuidRepresentation"]
+        )
     }
+
+    private let uuidRepresentation: MongoDBUuidRepresentation
 
     private static let systemDatabases: Set<String> = ["admin", "local", "config"]
 
@@ -76,7 +85,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             useSrv: useSrv,
             authMechanism: authMechanism,
             replicaSet: replicaSet,
-            extraUriParams: extraParams
+            extraUriParams: extraParams,
+            uuidRepresentation: uuidRepresentation
         )
 
         try await conn.connect()
@@ -209,6 +219,61 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .map { PluginTableInfo(name: $0, type: "table", rowCount: nil) }
     }
 
+    private func executeWrite(
+        kind: MongoWriteKind,
+        collection: String,
+        filter: String,
+        document: String,
+        options: MongoWriteOptions,
+        conn: MongoDBConnection,
+        db: String,
+        startTime: Date
+    ) async throws -> PluginQueryResult {
+        var fields: [String] = []
+        if options.upsert { fields.append("\"upsert\": true") }
+        if let arrayFilters = options.arrayFilters { fields.append("\"arrayFilters\": \(arrayFilters)") }
+        if let hint = options.hint { fields.append("\"hint\": \(hint)") }
+        let extras = fields.isEmpty ? "" : ", " + fields.joined(separator: ", ")
+
+        if kind == .findOneAndUpdate {
+            let command = """
+                {"findAndModify": "\(escapeJsonString(collection))", "query": \(filter), \
+                "update": \(document), "new": true\(extras)}
+                """
+            let docs = try await conn.runCommand(command, database: db)
+            return buildPluginResult(from: docs.isEmpty ? [] : [docs[0]], startTime: startTime)
+        }
+
+        let command = """
+            {"update": "\(escapeJsonString(collection))", \
+            "updates": [{"q": \(filter), "u": \(document), "multi": \(kind == .updateMany)\(extras)}]}
+            """
+        let result = try await conn.runCommand(command, database: db)
+        let modified = (result.first?["nModified"] as? Int64)
+            ?? (result.first?["nModified"] as? Int).map(Int64.init) ?? 0
+        let upserted = (result.first?["upserted"] as? [Any])?.count ?? 0
+        let affected = Int(modified) + upserted
+
+        return PluginQueryResult(
+            columns: ["modifiedCount", "upsertedCount"], columnTypeNames: ["Int64", "Int64"],
+            rows: [[.text(String(modified)), .text(String(upserted))]], rowsAffected: affected,
+            executionTime: Date().timeIntervalSince(startTime)
+        )
+    }
+
+    func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath] {
+        guard let conn = mongoConnection else {
+            throw MongoDBPluginError.notConnected
+        }
+
+        let docs = try await conn.find(
+            database: currentDb, collection: table,
+            filter: "{}", sort: nil, projection: nil, skip: 0, limit: max(1, limit)
+        ).docs
+
+        return BsonDocumentFlattener.fieldPaths(from: docs, representation: uuidRepresentation)
+    }
+
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         guard let conn = mongoConnection else {
             throw MongoDBPluginError.notConnected
@@ -216,7 +281,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let docs = try await conn.find(
             database: currentDb, collection: table,
-            filter: "{}", sort: nil, projection: nil, skip: 0, limit: 50
+            filter: "{}", sort: nil, projection: nil, skip: 0, limit: MongoStreamProjection.sampleSize
         ).docs
 
         let enumMap = (try? await fetchJsonSchemaEnums(conn: conn, table: table)) ?? [:]
@@ -231,10 +296,15 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         let columns = BsonDocumentFlattener.unionColumns(from: docs)
-        let types = BsonDocumentFlattener.columnTypes(for: columns, documents: docs)
+        let kinds = BsonDocumentFlattener.columnKinds(
+            for: columns, documents: docs, representation: uuidRepresentation
+        )
+        rememberColumnKinds(kinds, for: columns, collection: table)
 
         return columns.enumerated().map { index, name in
-            let typeName = bsonTypeToString(types[index])
+            let typeName = BsonDocumentFlattener.typeName(
+                for: kinds[index], representation: uuidRepresentation
+            )
             return PluginColumnInfo(
                 name: name, dataType: typeName, isNullable: name != "_id", isPrimaryKey: name == "_id",
                 defaultValue: nil, extra: nil, charset: nil, collation: nil, comment: nil,
@@ -354,24 +424,24 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchFilteredRowCount(
         table: String,
-        filters: [(column: String, op: String, value: String)],
+        queryFilters: [PluginQueryFilter],
         logicMode: String
     ) async throws -> Int? {
-        try await documentCount(table: table, filters: filters, logicMode: logicMode, background: true)
+        try await documentCount(table: table, filters: queryFilters, logicMode: logicMode, background: true)
     }
 
     func fetchExactRowCount(
         table: String,
         schema: String?,
-        filters: [(column: String, op: String, value: String)],
+        queryFilters: [PluginQueryFilter],
         logicMode: String
     ) async throws -> Int? {
-        try await documentCount(table: table, filters: filters, logicMode: logicMode, background: false)
+        try await documentCount(table: table, filters: queryFilters, logicMode: logicMode, background: false)
     }
 
     private func documentCount(
         table: String,
-        filters: [(column: String, op: String, value: String)],
+        filters: [PluginQueryFilter],
         logicMode: String,
         background: Bool
     ) async throws -> Int? {
@@ -379,7 +449,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw MongoDBPluginError.notConnected
         }
 
-        let filterJson = MongoDBQueryBuilder().buildFilterDocument(from: filters, logicMode: logicMode)
+        let filterJson = MongoDBQueryBuilder(columnKinds: filterKinds(for: table))
+            .buildFilterDocument(from: filters, logicMode: logicMode)
         let count = try await conn.countDocuments(
             database: currentDb, collection: table, filter: filterJson, background: background
         )
@@ -627,6 +698,14 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let cmd = "\"findAndModify\": \"\(escapeJsonString(collection))\", \"query\": \(filter), \"update\": \(update)"
             return "db.runCommand({\"explain\": {\(cmd)}, \"verbosity\": \"executionStats\"})"
 
+        case .write(let kind, let collection, let filter, let document, _):
+            let multi = kind == .updateMany
+            if kind == .findOneAndUpdate {
+                let cmd = "\"findAndModify\": \"\(escapeJsonString(collection))\", \"query\": \(filter), \"update\": \(document)"
+                return "db.runCommand({\"explain\": {\(cmd)}, \"verbosity\": \"executionStats\"})"
+            }
+            return "db.runCommand({\"explain\": {\"update\": \"\(escapeJsonString(collection))\", \"updates\": [{\"q\": \(filter), \"u\": \(document), \"multi\": \(multi)}]}, \"verbosity\": \"executionStats\"})"
+
         case .findOneAndReplace(let collection, let filter, let replacement):
             let cmd = "\"findAndModify\": \"\(escapeJsonString(collection))\", \"query\": \(filter), \"update\": \(replacement)"
             return "db.runCommand({\"explain\": {\(cmd)}, \"verbosity\": \"executionStats\"})"
@@ -669,16 +748,18 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func buildFilteredQuery(
         table: String,
-        filters: [(column: String, op: String, value: String)],
+        schema: String?,
+        queryFilters: [PluginQueryFilter],
         logicMode: String,
         sortColumns: [(columnIndex: Int, ascending: Bool)],
         columns: [String],
         limit: Int,
-        offset: Int
+        offset: Int,
+        columnKinds: [String: PluginColumnKind]
     ) -> String? {
-        let builder = MongoDBQueryBuilder()
+        let builder = MongoDBQueryBuilder(columnKinds: filterKinds(for: table))
         return builder.buildFilteredQuery(
-            collection: table, filters: filters, logicMode: logicMode,
+            collection: table, queryFilters: queryFilters, logicMode: logicMode,
             sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
         )
     }
@@ -692,7 +773,9 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        let generator = MongoDBStatementGenerator(collectionName: table, columns: columns)
+        let generator = MongoDBStatementGenerator(
+            collectionName: table, columns: columns, columnKinds: columnKinds(for: table)
+        )
         return generator.generateStatements(
             from: changes, insertedRowData: insertedRowData,
             deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
@@ -772,18 +855,22 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     rows: [], rowsAffected: 0, executionTime: Date().timeIntervalSince(startTime)
                 )
             }
-            return buildPluginResult(from: result.docs, startTime: startTime, isTruncated: result.isTruncated)
+            return buildPluginResult(
+                from: result.docs, startTime: startTime, isTruncated: result.isTruncated, collection: collection
+            )
 
         case .findOne(let collection, let filter):
             let result = try await conn.find(
                 database: db, collection: collection, filter: filter,
                 sort: nil, projection: nil, skip: 0, limit: 1
             )
-            return buildPluginResult(from: result.docs, startTime: startTime)
+            return buildPluginResult(from: result.docs, startTime: startTime, collection: collection)
 
         case .aggregate(let collection, let pipeline):
             let result = try await conn.aggregate(database: db, collection: collection, pipeline: pipeline)
-            return buildPluginResult(from: result.docs, startTime: startTime, isTruncated: result.isTruncated)
+            return buildPluginResult(
+                from: result.docs, startTime: startTime, isTruncated: result.isTruncated, collection: collection
+            )
 
         case .countDocuments(let collection, let filter):
             let count = try await conn.countDocuments(
@@ -911,6 +998,12 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let docs = try await conn.runCommand(cmd, database: db)
             return buildPluginResult(from: docs.isEmpty ? [] : [docs[0]], startTime: startTime)
 
+        case .write(let kind, let collection, let filter, let document, let options):
+            return try await executeWrite(
+                kind: kind, collection: collection, filter: filter, document: document,
+                options: options, conn: conn, db: db, startTime: startTime
+            )
+
         case .findOneAndReplace(let collection, let filter, let replacement):
             let cmd = "{\"findAndModify\": \"\(escapeJsonString(collection))\", \"query\": \(filter), \"update\": \(replacement), \"new\": true}"
             let docs = try await conn.runCommand(cmd, database: db)
@@ -964,7 +1057,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func buildPluginResult(
         from documents: [[String: Any]],
         startTime: Date,
-        isTruncated: Bool = false
+        isTruncated: Bool = false,
+        collection: String = ""
     ) -> PluginQueryResult {
         if documents.isEmpty {
             return PluginQueryResult(
@@ -975,9 +1069,15 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         let columns = BsonDocumentFlattener.unionColumns(from: documents)
-        let bsonTypes = BsonDocumentFlattener.columnTypes(for: columns, documents: documents)
-        let typeNames = bsonTypes.map { bsonTypeToString($0) }
-        let rows = BsonDocumentFlattener.flatten(documents: documents, columns: columns)
+        let kinds = BsonDocumentFlattener.columnKinds(
+            for: columns, documents: documents, representation: uuidRepresentation
+        )
+        rememberColumnKinds(kinds, for: columns, collection: collection)
+        rememberFieldPathKinds(from: documents, collection: collection)
+        let typeNames = kinds.map { BsonDocumentFlattener.typeName(for: $0, representation: uuidRepresentation) }
+        let rows = BsonDocumentFlattener.flatten(
+            documents: documents, columns: columns, kinds: kinds, representation: uuidRepresentation
+        )
 
         return PluginQueryResult(
             columns: columns, columnTypeNames: typeNames,
@@ -988,23 +1088,6 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     // MARK: - Helpers
-
-    private func bsonTypeToString(_ type: Int32) -> String {
-        switch type {
-        case 1: return "FLOAT"
-        case 2: return "VARCHAR"
-        case 3: return "JSON"
-        case 4: return "JSON"
-        case 5: return "BLOB"
-        case 7: return "VARCHAR"
-        case 8: return "BOOLEAN"
-        case 9: return "TIMESTAMP"
-        case 10: return "VARCHAR"
-        case 16: return "INTEGER"
-        case 18: return "BIGINT"
-        default: return "VARCHAR"
-        }
-    }
 
     private func escapeJsonString(_ value: String) -> String {
         var result = ""
@@ -1028,13 +1111,56 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func prettyJson(_ value: Any) -> String {
-        let sanitized = BsonDocumentFlattener.sanitizeForJson(value)
-        guard JSONSerialization.isValidJSONObject(sanitized),
-              let data = try? JSONSerialization.data(withJSONObject: sanitized, options: [.sortedKeys, .prettyPrinted]),
-              let json = String(data: data, encoding: .utf8) else {
+        let sanitized = BsonDocumentFlattener.sanitizeForJson(value, representation: uuidRepresentation)
+        guard let json = NumberText.json(
+            from: sanitized, prettyPrinted: true, preservesFloatingPointForm: true
+        ) else {
             return String(describing: value)
         }
-        return json.replacingOccurrences(of: "    ", with: "  ")
+        return json
+    }
+
+    private func rememberColumnKinds(_ kinds: [BsonValueKind], for columns: [String], collection: String) {
+        guard !collection.isEmpty else { return }
+        var byName: [String: BsonValueKind] = [:]
+        for (index, name) in columns.enumerated() where index < kinds.count {
+            byName[name] = kinds[index]
+        }
+        let key = columnKindKey(collection)
+        columnKindLock.withLock { columnKindsByCollection[key] = byName }
+    }
+
+    private func columnKinds(for collection: String) -> [String: BsonValueKind] {
+        let key = columnKindKey(collection)
+        return columnKindLock.withLock { columnKindsByCollection[key] ?? [:] }
+    }
+
+    /// Recorded from the documents a browse already fetched, on the session driver that will
+    /// build the filter. Sampling through `sampleFieldPaths` cannot do it: that call is routed
+    /// through `MetadataConnectionPool`, so it lands on a different driver instance whose cache
+    /// the filter path never reads.
+    private func rememberFieldPathKinds(from documents: [[String: Any]], collection: String) {
+        guard !collection.isEmpty, !documents.isEmpty else { return }
+        let sampled = Array(documents.prefix(MongoStreamProjection.sampleSize))
+        let kinds = BsonDocumentFlattener.fieldPathKinds(from: sampled, representation: uuidRepresentation)
+        guard !kinds.isEmpty else { return }
+        let key = columnKindKey(collection)
+        columnKindLock.withLock { fieldPathKindsByCollection[key] = kinds }
+    }
+
+    /// Kinds a filter can be typed against: the flat columns the grid shows, plus every nested
+    /// path the picker offers. Without the nested half, a filter on a nested Date or ObjectId is
+    /// compared as a string and MongoDB's type bracketing returns nothing.
+    private func filterKinds(for collection: String) -> [String: BsonValueKind] {
+        let key = columnKindKey(collection)
+        return columnKindLock.withLock {
+            (fieldPathKindsByCollection[key] ?? [:]).merging(columnKindsByCollection[key] ?? [:]) { _, top in top }
+        }
+    }
+
+    /// Two databases can hold a collection of the same name with different field types.
+    private func columnKindKey(_ collection: String) -> String {
+        "\(currentDb)\u{0}\(collection)"
     }
 }
 

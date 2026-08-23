@@ -1,0 +1,1033 @@
+name: TablePro
+
+# TablePro.xcodeproj is generated from this file and is not in git.
+# Run scripts/generate-project.sh after changing anything here, and after
+# adding, moving, or deleting a source file.
+
+options:
+  minimumXcodeGenVersion: "2.46.0"
+  projectFormat: xcode16_0
+  defaultConfig: Release
+  developmentLanguage: en
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+  groupSortPosition: top
+  transitivelyLinkDependencies: false
+  localPackagesGroup: Packages
+  deploymentTarget:
+    macOS: "14.0"
+
+configs:
+  Debug: debug
+  Release: release
+
+# Project-wide and per-configuration build settings live in these files.
+# Per-target settings live below, next to the target that needs them.
+configFiles:
+  Debug: Configs/Debug.xcconfig
+  Release: Configs/Release.xcconfig
+
+settings:
+  base:
+    CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED: YES
+    DEAD_CODE_STRIPPING: YES
+
+fileGroups:
+  - Configs
+  - project.yml
+
+packages:
+  CodeEditSourceEditor:
+    path: LocalPackages/CodeEditSourceEditor
+  CodeEditLanguages:
+    path: LocalPackages/CodeEditLanguages
+  # Reached transitively by CodeEditSourceEditor, but the app links its product
+  # directly, so it has to be declared here too.
+  CodeEditTextView:
+    path: LocalPackages/CodeEditTextView
+  TableProCore:
+    path: Packages/TableProCore
+  TableProOracle:
+    path: Packages/TableProOracle
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    majorVersion: 2.9.5
+  swift-certificates:
+    url: https://github.com/apple/swift-certificates
+    majorVersion: 1.19.0
+  Yams:
+    url: https://github.com/jpsim/Yams
+    majorVersion: 5.1.0
+
+# Every .tableplugin bundle is this template plus a folder name and a principal class.
+# Plugins that link a C library add their search paths and OTHER_LDFLAGS themselves.
+targetTemplates:
+  DriverPlugin:
+    type: bundle
+    platform: macOS
+    sources:
+      - path: Plugins/${folder}
+        excludes:
+          - Info.plist
+          - README.md
+    dependencies:
+      - target: TableProPluginKit
+        embed: false
+        link: true
+    scheme: {}
+    settings:
+      base:
+        COMBINE_HIDPI_IMAGES: YES
+        CURRENT_PROJECT_VERSION: 1
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: Plugins/${folder}/Info.plist
+        INFOPLIST_KEY_NSPrincipalClass: $(PRODUCT_MODULE_NAME).${principalClass}
+        LD_RUNPATH_SEARCH_PATHS:
+          - $(inherited)
+          - "@executable_path/../Frameworks"
+        MARKETING_VERSION: "1.0"
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.${target_name}
+        PRODUCT_NAME: $(TARGET_NAME)
+        SKIP_INSTALL: YES
+        WRAPPER_EXTENSION: tableplugin
+
+targets:
+
+  # ─── Application ──────────────────────────────────────────────────────────────
+
+  TablePro:
+    type: application
+    platform: macOS
+    sources:
+      - path: TablePro
+        excludes:
+          # main() lives here, and it belongs to the tablepro-mcp helper. The rest of
+          # CLI/ compiles into the app too, so TableProTests can drive the real proxy.
+          - CLI/BridgeMain.swift
+          # Copied whole below. A plain glob flattens it into Resources/ and the
+          # inventory then cannot find its texts/ directory.
+          - Resources/ThirdPartyLicenses
+      - path: TablePro/Resources/ThirdPartyLicenses
+        type: folder
+        buildPhase: resources
+    configFiles:
+      Debug: Configs/Version.xcconfig
+      Release: Configs/Version.xcconfig
+    dependencies:
+      - target: TableProPluginKit
+        embed: true
+        codeSign: true
+        removeHeaders: true
+      # Embedded rather than reached through an absolute rpath into the source tree.
+      # TablePro.debug.dylib and the MySQL, PostgreSQL and Redis plugins all link
+      # @rpath/libssl.3.dylib and @rpath/libcrypto.3.dylib, and both dylibs already carry an
+      # @rpath install name, so @executable_path/../Frameworks resolves them once they are here.
+      # Without this the app only launched from a checkout that had Libs/dylibs on disk, which is
+      # what made the sharded test jobs abort with SIGABRT before XCTest could connect (#2334).
+      # A release build was already self-contained: build-release.sh copies them in.
+      #
+      # codeSign matters as much as embed. create-openssl-dylibs.sh leaves them ad-hoc signed, and
+      # codesign refuses a bundle whose nested code carries a different identity from the app:
+      # "code object is not signed at all, in subcomponent libcrypto.3.dylib". A plain copy-files
+      # phase does not re-sign, so this built only until download-libs.sh next regenerated the
+      # dylibs. CI never saw it, because every CI build passes CODE_SIGNING_ALLOWED=NO.
+      #
+      # link: false keeps this to embedding and signing. A framework dependency links by default,
+      # which would put both into Link Binary With Libraries and change what the app links against;
+      # the app reaches them through @rpath from TablePro.debug.dylib and the plugins, as before.
+      - framework: Libs/dylibs/libssl.3.dylib
+        embed: true
+        codeSign: true
+        link: false
+      - framework: Libs/dylibs/libcrypto.3.dylib
+        embed: true
+        codeSign: true
+        link: false
+      - target: mcp-server
+        embed: true
+        codeSign: true
+        removeHeaders: false
+        copy:
+          destination: executables
+      # Plugins shipped inside the app bundle. Everything else under Plugins/ is
+      # published to the registry and is built by its own scheme or by AllPlugins.
+      - target: MySQLDriver
+        embed: true
+        copy: { destination: plugins }
+      - target: PostgreSQLDriver
+        embed: true
+        copy: { destination: plugins }
+      - target: SQLiteDriver
+        embed: true
+        copy: { destination: plugins }
+      - target: ClickHouseDriver
+        embed: true
+        copy: { destination: plugins }
+      - target: RedisDriver
+        embed: true
+        copy: { destination: plugins }
+      - target: CSVExport
+        embed: true
+        copy: { destination: plugins }
+      - target: JSONExport
+        embed: true
+        copy: { destination: plugins }
+      - target: SQLExport
+        embed: true
+        copy: { destination: plugins }
+      - target: XLSXExport
+        embed: true
+        copy: { destination: plugins }
+      - target: MQLExport
+        embed: true
+        copy: { destination: plugins }
+      - target: SQLImport
+        embed: true
+        copy: { destination: plugins }
+      - target: JSONImport
+        embed: true
+        copy: { destination: plugins }
+      - target: CSVImport
+        embed: true
+        copy: { destination: plugins }
+      - target: CSVInspectorPlugin
+        embed: true
+        copy: { destination: plugins }
+      - package: CodeEditSourceEditor
+      - package: CodeEditLanguages
+      - package: CodeEditTextView
+      - package: Sparkle
+      - package: Yams
+      - package: swift-certificates
+        product: X509
+      - package: TableProCore
+        products: [TableProAnalytics, TableProImport, TableProNumberFormatting, TableProSyncTransport]
+    settings:
+      base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
+        CODE_SIGN_IDENTITY: Apple Development
+        DEVELOPMENT_TEAM: $(TABLEPRO_DEVELOPMENT_TEAM)
+        ENABLE_APP_SANDBOX: NO
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_PREVIEWS: YES
+        GENERATE_INFOPLIST_FILE: YES
+        HEADER_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/TablePro/Core/SSH/CLibSSH2/include
+        INFOPLIST_FILE: TablePro/Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: TablePro
+        INFOPLIST_KEY_CFBundleIconFile: AppIcon
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
+        LD_RUNPATH_SEARCH_PATHS:
+          - $(inherited)
+          - "@executable_path/../Frameworks"
+          # No $(SRCROOT)/Libs/dylibs here. The two dylibs are copied into Contents/Frameworks
+          # above, so @executable_path/../Frameworks resolves them and the built app no
+          # longer depends on the checkout it was built from.
+        LIBRARY_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Libs/dylibs
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -Wl,-w
+          - -force_load
+          - $(SRCROOT)/Libs/libssh2.a
+          - -lssl.3
+          - -lcrypto.3
+          - -lz
+        PRODUCT_BUNDLE_IDENTIFIER: $(TABLEPRO_APP_BUNDLE_IDENTIFIER)
+        PRODUCT_NAME: $(TARGET_NAME)
+        PROVISIONING_PROFILE_SPECIFIER: $(TABLEPRO_PROVISIONING_PROFILE)
+        REGISTER_APP_GROUPS: YES
+        SWIFT_APPROACHABLE_CONCURRENCY: YES
+        SWIFT_EMIT_LOC_STRINGS: YES
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/TablePro/Core/SSH/CLibSSH2
+        SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
+      configs:
+        Debug:
+          # Drops iCloud so a free Apple team can sign a local build.
+          CODE_SIGN_ENTITLEMENTS: TablePro/TablePro.Debug.entitlements
+        Release:
+          CODE_SIGN_ENTITLEMENTS: TablePro/TablePro.entitlements
+          COPY_PHASE_STRIP: YES
+          DEPLOYMENT_POSTPROCESSING: YES
+
+  # ─── Plugin ABI ───────────────────────────────────────────────────────────────
+
+  TableProPluginKit:
+    type: framework
+    platform: macOS
+    sources:
+      - path: Plugins/TableProPluginKit
+    scheme: {}
+    settings:
+      base:
+        # Swift Library Evolution. Removing this breaks every already-built plugin.
+        BUILD_LIBRARY_FOR_DISTRIBUTION: YES
+        CURRENT_PROJECT_VERSION: 1
+        DEFINES_MODULE: YES
+        DYLIB_COMPATIBILITY_VERSION: 1
+        DYLIB_CURRENT_VERSION: 1
+        DYLIB_INSTALL_NAME_BASE: "@rpath"
+        GENERATE_INFOPLIST_FILE: YES
+        INSTALL_PATH: $(LOCAL_LIBRARY_DIR)/Frameworks
+        LD_RUNPATH_SEARCH_PATHS:
+          - $(inherited)
+          - "@executable_path/../Frameworks"
+        MARKETING_VERSION: "1.0"
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.TableProPluginKit
+        PRODUCT_NAME: $(TARGET_NAME:c99extidentifier)
+        SKIP_INSTALL: YES
+        SWIFT_EMIT_LOC_STRINGS: YES
+
+  # ─── MCP stdio bridge, embedded in the app as Contents/MacOS/tablepro-mcp ─────
+
+  mcp-server:
+    type: tool
+    platform: macOS
+    # The helper shares the wire format and the per-request metadata types with the
+    # app but compiles its own entry point. Wire and Meta come in whole, so a file
+    # added to either directory reaches this target instead of silently breaking it.
+    sources:
+      - TablePro/CLI/BridgeMain.swift
+      - TablePro/CLI/BridgeProxy.swift
+      - TablePro/CLI/Handshake.swift
+      - TablePro/Core/MCP/Auth/MCPAuthChallenge.swift
+      - TablePro/Core/MCP/Auth/MCPScope.swift
+      - TablePro/Core/MCP/Lifecycle/MCPHandshakeFile.swift
+      - TablePro/Core/MCP/Meta
+      - TablePro/Core/MCP/Support/MCPBase64Sentinel.swift
+      - TablePro/Core/MCP/Transport/MCPBridgeLogger.swift
+      - TablePro/Core/MCP/Transport/MCPMessageTransport.swift
+      - TablePro/Core/MCP/Transport/MCPProtocolError.swift
+      - TablePro/Core/MCP/Transport/MCPStreamableHttpClientTransport.swift
+      - TablePro/Core/MCP/Transport/MCPUpstreamCredentials.swift
+      - TablePro/Core/MCP/Wire
+      - TablePro/Core/Services/Infrastructure/BackgroundLaunchFlag.swift
+    scheme: {}
+    settings:
+      base:
+        ENABLE_HARDENED_RUNTIME: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.tablepro-mcp
+        PRODUCT_NAME: tablepro-mcp
+        SWIFT_APPROACHABLE_CONCURRENCY: YES
+        SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
+
+  # ─── Tests ────────────────────────────────────────────────────────────────────
+
+  TableProTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - TableProTests
+      # Plugin logic under test. Plugin bundles load at runtime, so the test bundle
+      # compiles the pure-logic files its suites cover.
+      - Plugins/BeancountDriverPlugin/BeancountIncludeResolver.swift
+      - Plugins/BeancountDriverPlugin/BeancountPluginDriver+Projection.swift
+      - Plugins/BeancountDriverPlugin/BeancountPluginDriver+PythonScript.swift
+      - Plugins/BeancountDriverPlugin/BeancountPluginDriver.swift
+      - Plugins/BigQueryDriverPlugin/BigQueryAuth.swift
+      - Plugins/BigQueryDriverPlugin/BigQueryConnection.swift
+      - Plugins/BigQueryDriverPlugin/BigQueryOAuthServer.swift
+      - Plugins/BigQueryDriverPlugin/BigQueryQueryBuilder.swift
+      - Plugins/BigQueryDriverPlugin/BigQueryStatementGenerator.swift
+      - Plugins/BigQueryDriverPlugin/BigQueryTypeMapper.swift
+      - Plugins/CSVImportPlugin/CSVImportOptions.swift
+      - Plugins/CSVImportPlugin/CSVImportParsing.swift
+      - Plugins/CSVInspectorPlugin/CSVDocument.swift
+      - Plugins/CSVInspectorPlugin/CSVRowStore.swift
+      - Plugins/CSVInspectorPlugin/CSVWriter.swift
+      - Plugins/ClickHouseDriverPlugin/ClickHouseCapabilities.swift
+      - Plugins/ClickHouseDriverPlugin/ClickHouseCredentials.swift
+      - Plugins/ClickHouseDriverPlugin/ClickHouseGeneratedColumnClassification.swift
+      - Plugins/ClickHouseDriverPlugin/ClickHousePlugin.swift
+      - Plugins/ClickHouseDriverPlugin/ClickHousePluginDriver+Http.swift
+      - Plugins/ClickHouseDriverPlugin/ClickHousePluginDriver+Schema.swift
+      - Plugins/ClickHouseDriverPlugin/ClickHousePluginDriver+TableOperations.swift
+      - Plugins/ClickHouseDriverPlugin/ClickHouseTableOperations.swift
+      - Plugins/DamengDriverPlugin/DamengParameterBinder.swift
+      - Plugins/DamengDriverPlugin/DamengStatementClassifier.swift
+      - Plugins/DuckDBDriverPlugin/DuckDBFileKinds.swift
+      - Plugins/DuckDBDriverPlugin/DuckDBPositionParser.swift
+      - Plugins/DuckDBDriverPlugin/DuckDBSchemaQueries.swift
+      - Plugins/DuckDBDriverPlugin/DuckDBTypeRendering.swift
+      - Plugins/DuckDBDriverPlugin/DuckDBViewDefinition.swift
+      - Plugins/DuckDBDriverPlugin/QuackConnectBuilder.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBQueryBuilder.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBStatementGenerator.swift
+      - Plugins/ElasticsearchDriverPlugin/ElasticsearchConsoleParser.swift
+      - Plugins/ElasticsearchDriverPlugin/ElasticsearchMappingFlattener.swift
+      - Plugins/ElasticsearchDriverPlugin/ElasticsearchQueryBuilder.swift
+      - Plugins/ElasticsearchDriverPlugin/ElasticsearchStatementGenerator.swift
+      - Plugins/EtcdDriverPlugin/EtcdCommandParser.swift
+      - Plugins/EtcdDriverPlugin/EtcdQueryBuilder.swift
+      - Plugins/EtcdDriverPlugin/EtcdStatementGenerator.swift
+      - Plugins/JSONImportPlugin/JSONImportOptions.swift
+      - Plugins/JSONImportPlugin/JSONImportOptionsView.swift
+      - Plugins/JSONImportPlugin/JSONImportParsing.swift
+      - Plugins/JSONImportPlugin/JSONImportPlugin.swift
+      - Plugins/MSSQLDriverPlugin/MSSQLObjectQueries.swift
+      - Plugins/MSSQLDriverPlugin/MSSQLLoginParameters.swift
+      - Plugins/MSSQLDriverPlugin/MSSQLSSLMapping.swift
+      - Plugins/MQLExportPlugin/MQLExportHelpers.swift
+      - Plugins/MongoDBDriverPlugin/BsonDocumentFlattener.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBDecimal128.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBAuthSourceResolver.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBCreateDatabasePlan.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBFilterClause.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBFilterValue.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBFindLimitPolicy.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBJsonNumber.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBNameValidator.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBQueryBuilder.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBSSLMapping.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBStatementGenerator.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBTimeoutPolicy.swift
+      - Plugins/MongoDBDriverPlugin/MongoStreamProjection.swift
+      - Plugins/OracleDriverPlugin/OracleObjectQueries.swift
+      - Plugins/MySQLDriverPlugin/MySQLColumnDefinitionSQL.swift
+      - Plugins/MySQLDriverPlugin/MySQLGeneratedColumnClassification.swift
+      - Plugins/MySQLDriverPlugin/MySQLObjectQueries.swift
+      - Plugins/MySQLDriverPlugin/MySQLQueryTimeoutStatement.swift
+      - Plugins/MySQLDriverPlugin/MySQLSocketTimeout.swift
+      - Plugins/MySQLDriverPlugin/MySQLStatementClassification.swift
+      - Plugins/MySQLDriverPlugin/MySQLTransactionStatement.swift
+      - Plugins/PostgreSQLDriverPlugin/ColumnQueryShape.swift
+      - Plugins/PostgreSQLDriverPlugin/LibPQByteaDecoder.swift
+      - Plugins/PostgreSQLDriverPlugin/LibPQSSLMapping.swift
+      - Plugins/PostgreSQLDriverPlugin/PostGISSpatialRewrite.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogPresence.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLObjectQueries.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLSchemaQueries.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLSystemDatabases.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLTableListingLadder.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLTransactionStatement.swift
+      - Plugins/PostgreSQLDriverPlugin/RedshiftExternalSchemaQueries.swift
+      - Plugins/PostgreSQLDriverPlugin/RedshiftSchemaQueries.swift
+      - Plugins/RedisDriverPlugin/RedisArgumentCodec.swift
+      - Plugins/RedisDriverPlugin/RedisAuthCommand.swift
+      - Plugins/RedisDriverPlugin/RedisClusterAggregator.swift
+      - Plugins/RedisDriverPlugin/RedisClusterCursor.swift
+      - Plugins/RedisDriverPlugin/RedisClusterRedirect.swift
+      - Plugins/RedisDriverPlugin/RedisClusterTopology.swift
+      - Plugins/RedisDriverPlugin/RedisCommandParser.swift
+      - Plugins/RedisDriverPlugin/RedisCommandRouting.swift
+      - Plugins/RedisDriverPlugin/RedisConnectionMode.swift
+      - Plugins/RedisDriverPlugin/RedisDatabaseIndex.swift
+      - Plugins/RedisDriverPlugin/RedisKeySlot.swift
+      - Plugins/RedisDriverPlugin/RedisKeySummary.swift
+      - Plugins/RedisDriverPlugin/RedisMultiShardPlanner.swift
+      - Plugins/RedisDriverPlugin/RedisQueryBuilder.swift
+      - Plugins/RedisDriverPlugin/RedisReply.swift
+      - Plugins/RedisDriverPlugin/RedisSentinelResolver.swift
+      - Plugins/RedisDriverPlugin/RedisStatementGenerator.swift
+      - Plugins/RedisDriverPlugin/RedisTopologyDiagnostics.swift
+      - Plugins/SQLImportPlugin/SQLImportFailure.swift
+      - Plugins/SQLImportPlugin/SQLImportOptions.swift
+      - Plugins/SQLImportPlugin/SQLImportOptionsView.swift
+      - Plugins/SQLImportPlugin/SQLImportPlugin.swift
+      - Plugins/SnowflakeDriverPlugin/SnowflakeAuth.swift
+      - Plugins/SnowflakeDriverPlugin/SnowflakeBindingEncoder.swift
+      - Plugins/SnowflakeDriverPlugin/SnowflakeDDLGenerator.swift
+      - Plugins/SnowflakeDriverPlugin/SnowflakeError.swift
+      - Plugins/SnowflakeDriverPlugin/SnowflakeHTTPRetry.swift
+      - Plugins/SnowflakeDriverPlugin/SnowflakeHeartbeat.swift
+      - Plugins/SnowflakeDriverPlugin/SnowflakeMFATokenStore.swift
+      - Plugins/SnowflakeDriverPlugin/SnowflakeSchemaQueries.swift
+      - Plugins/SnowflakeDriverPlugin/SnowflakeStatementGenerator.swift
+      - Plugins/SnowflakeDriverPlugin/SnowflakeTypeMapper.swift
+      - Plugins/SurrealDBDriverPlugin/SurrealCBOR.swift
+      - Plugins/SurrealDBDriverPlugin/SurrealCellCoder.swift
+      - Plugins/SurrealDBDriverPlugin/SurrealDBConnectionConfig.swift
+      - Plugins/SurrealDBDriverPlugin/SurrealDBConnectionFields.swift
+      - Plugins/SurrealDBDriverPlugin/SurrealDBError.swift
+      - Plugins/SurrealDBDriverPlugin/SurrealFieldKind.swift
+      - Plugins/SurrealDBDriverPlugin/SurrealInfoParser.swift
+      - Plugins/SurrealDBDriverPlugin/SurrealQL.swift
+      - Plugins/SurrealDBDriverPlugin/SurrealQueryBuilder.swift
+      - Plugins/SurrealDBDriverPlugin/SurrealRowFlattener.swift
+      - Plugins/SurrealDBDriverPlugin/SurrealStatementGenerator.swift
+      - Plugins/SurrealDBDriverPlugin/SurrealValue+Display.swift
+      - Plugins/SurrealDBDriverPlugin/SurrealValue.swift
+    dependencies:
+      - target: TablePro
+      - package: TableProCore
+        products: [TableProMSSQLCore, TableProNumberFormatting]
+    settings:
+      base:
+        CURRENT_PROJECT_VERSION: 1
+        GENERATE_INFOPLIST_FILE: YES
+        HEADER_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/TablePro/Core/SSH/CLibSSH2/include
+        MARKETING_VERSION: "1.0"
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.TableProTests
+        PRODUCT_NAME: $(TARGET_NAME)
+        STRING_CATALOG_GENERATE_SYMBOLS: NO
+        SWIFT_APPROACHABLE_CONCURRENCY: YES
+        SWIFT_EMIT_LOC_STRINGS: NO
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/TablePro/Core/SSH/CLibSSH2
+        SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
+
+  TableProUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - TableProUITests
+    dependencies:
+      - target: TablePro
+    settings:
+      base:
+        CURRENT_PROJECT_VERSION: 1
+        GENERATE_INFOPLIST_FILE: YES
+        MARKETING_VERSION: "1.0"
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.TableProUITests
+        PRODUCT_NAME: $(TARGET_NAME)
+        STRING_CATALOG_GENERATE_SYMBOLS: NO
+        SWIFT_APPROACHABLE_CONCURRENCY: YES
+        SWIFT_EMIT_LOC_STRINGS: NO
+        SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
+
+  # ─── Plugins bundled in the app ───────────────────────────────────────────────
+
+  MySQLDriver:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: MySQLDriverPlugin
+      principalClass: MySQLPlugin
+    settings:
+      base:
+        HEADER_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Plugins/MySQLDriverPlugin/CMariaDB/include
+        LD_RUNPATH_SEARCH_PATHS:
+          - $(inherited)
+          - "@executable_path/../Frameworks"
+          - $(SRCROOT)/Libs/dylibs
+        LIBRARY_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Libs
+          - $(SRCROOT)/Libs/dylibs
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -force_load
+          - $(SRCROOT)/Libs/libmariadb.a
+          - -lssl.3
+          - -lcrypto.3
+          - -liconv
+          - -lz
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/MySQLDriverPlugin/CMariaDB
+
+  PostgreSQLDriver:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: PostgreSQLDriverPlugin
+      principalClass: PostgreSQLPlugin
+    settings:
+      base:
+        HEADER_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Plugins/PostgreSQLDriverPlugin/CLibPQ/include
+        LD_RUNPATH_SEARCH_PATHS:
+          - $(inherited)
+          - "@executable_path/../Frameworks"
+          - $(SRCROOT)/Libs/dylibs
+        LIBRARY_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Libs
+          - $(SRCROOT)/Libs/dylibs
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -force_load
+          - $(SRCROOT)/Libs/libpq.a
+          - $(SRCROOT)/Libs/libpgcommon.a
+          - $(SRCROOT)/Libs/libpgport.a
+          - -lssl.3
+          - -lcrypto.3
+          - -lz
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/PostgreSQLDriverPlugin/CLibPQ
+
+  SQLiteDriver:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: SQLiteDriverPlugin
+      principalClass: SQLitePlugin
+    settings:
+      base:
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -lsqlite3
+
+  ClickHouseDriver:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: ClickHouseDriverPlugin
+      principalClass: ClickHousePlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
+
+  RedisDriver:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: RedisDriverPlugin
+      principalClass: RedisPlugin
+    settings:
+      base:
+        HEADER_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Plugins/RedisDriverPlugin/CRedis/include
+        LD_RUNPATH_SEARCH_PATHS:
+          - $(inherited)
+          - "@executable_path/../Frameworks"
+          - $(SRCROOT)/Libs/dylibs
+        LIBRARY_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Libs
+          - $(SRCROOT)/Libs/dylibs
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -force_load
+          - $(SRCROOT)/Libs/libhiredis.a
+          - -force_load
+          - $(SRCROOT)/Libs/libhiredis_ssl.a
+          - -lssl.3
+          - -lcrypto.3
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/RedisDriverPlugin/CRedis
+
+  CSVExport:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: CSVExportPlugin
+      principalClass: CSVExportPlugin
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.CSVExportPlugin
+
+  JSONExport:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: JSONExportPlugin
+      principalClass: JSONExportPlugin
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.JSONExportPlugin
+
+  SQLExport:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: SQLExportPlugin
+      principalClass: SQLExportPlugin
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.SQLExportPlugin
+
+  XLSXExport:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: XLSXExportPlugin
+      principalClass: XLSXExportPlugin
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.XLSXExportPlugin
+
+  MQLExport:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: MQLExportPlugin
+      principalClass: MQLExportPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.MQLExportPlugin
+
+  SQLImport:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: SQLImportPlugin
+      principalClass: SQLImportPlugin
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.SQLImportPlugin
+
+  JSONImport:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: JSONImportPlugin
+      principalClass: JSONImportPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.JSONImportPlugin
+
+  CSVImport:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: CSVImportPlugin
+      principalClass: CSVImportPlugin
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.CSVImportPlugin
+
+  CSVInspectorPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: CSVInspectorPlugin
+      principalClass: CSVInspectorPlugin
+
+  # ─── Plugins published to the registry ────────────────────────────────────────
+
+  BeancountDriver:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: BeancountDriverPlugin
+      principalClass: BeancountPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
+    settings:
+      base:
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -lsqlite3
+
+  BigQueryDriverPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: BigQueryDriverPlugin
+      principalClass: BigQueryPlugin
+
+  CassandraDriver:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: CassandraDriverPlugin
+      principalClass: CassandraPlugin
+    settings:
+      base:
+        HEADER_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Plugins/CassandraDriverPlugin/CCassandra/include
+        LD_RUNPATH_SEARCH_PATHS:
+          - $(inherited)
+          - "@executable_path/../Frameworks"
+          - $(SRCROOT)/Libs/dylibs
+        LIBRARY_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Libs
+          - $(SRCROOT)/Libs/dylibs
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -force_load
+          - $(SRCROOT)/Libs/libcassandra.a
+          - -force_load
+          - $(SRCROOT)/Libs/libuv.a
+          - -lssl.3
+          - -lcrypto.3
+          - -lc++
+          - -lz
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/CassandraDriverPlugin/CCassandra
+
+  CloudflareD1DriverPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: CloudflareD1DriverPlugin
+      principalClass: CloudflareD1Plugin
+
+  DuckDBDriver:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: DuckDBDriverPlugin
+      principalClass: DuckDBPlugin
+    settings:
+      base:
+        # Links no OpenSSL dylib, so no Libs/dylibs search path.
+        HEADER_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Plugins/DuckDBDriverPlugin/CDuckDB/include
+        LIBRARY_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Libs
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -force_load
+          - $(SRCROOT)/Libs/libduckdb.a
+          - -lc++
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/DuckDBDriverPlugin/CDuckDB
+
+  DynamoDBDriverPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: DynamoDBDriverPlugin
+      principalClass: DynamoDBPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
+
+  DamengDriver:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: DamengDriverPlugin
+      principalClass: DamengPlugin
+    settings:
+      base:
+        HEADER_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Plugins/DamengDriverPlugin/CDameng
+        LIBRARY_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Native/DamengBridge/lib
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -force_load
+          - $(SRCROOT)/Native/DamengBridge/lib/libdameng_bridge.a
+          - -framework
+          - Security
+          - -framework
+          - CoreFoundation
+          - -liconv
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/DamengDriverPlugin/CDameng
+
+  DamengDriverTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Plugins/DamengDriverPlugin
+        excludes:
+          - Info.plist
+          - README.md
+      - Plugins/DamengDriverPluginTests
+    dependencies:
+      - target: TableProPluginKit
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        HEADER_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Plugins/DamengDriverPlugin/CDameng
+        LIBRARY_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Native/DamengBridge/lib
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -force_load
+          - $(SRCROOT)/Native/DamengBridge/lib/libdameng_bridge.a
+          - -framework
+          - Security
+          - -framework
+          - CoreFoundation
+          - -liconv
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/DamengDriverPlugin/CDameng
+
+  ElasticsearchDriverPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: ElasticsearchDriverPlugin
+      principalClass: ElasticsearchPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
+
+  EtcdDriverPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: EtcdDriverPlugin
+      principalClass: EtcdPlugin
+
+  LibSQLDriverPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: LibSQLDriverPlugin
+      principalClass: LibSQLPlugin
+    settings:
+      base:
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -lsqlite3
+
+  MSSQLDriver:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: MSSQLDriverPlugin
+      principalClass: MSSQLPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProMSSQLCore
+    settings:
+      base:
+        HEADER_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Plugins/MSSQLDriverPlugin/CFreeTDS/include
+        LD_RUNPATH_SEARCH_PATHS:
+          - $(inherited)
+          - "@executable_path/../Frameworks"
+          - $(SRCROOT)/Libs/dylibs
+        LIBRARY_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Libs
+          - $(SRCROOT)/Libs/dylibs
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -force_load
+          - $(SRCROOT)/Libs/libsybdb.a
+          - -lssl.3
+          - -lcrypto.3
+          - -liconv
+          - -framework
+          - GSS
+          - -lcom_err
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/MSSQLDriverPlugin/CFreeTDS
+
+  MongoDBDriver:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: MongoDBDriverPlugin
+      principalClass: MongoDBPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
+    settings:
+      base:
+        HEADER_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Plugins/MongoDBDriverPlugin/CLibMongoc/include
+          - $(SRCROOT)/Plugins/MongoDBDriverPlugin/CLibMongoc/include/libbson-1.0
+          - $(SRCROOT)/Plugins/MongoDBDriverPlugin/CLibMongoc/include/libmongoc-1.0
+        LD_RUNPATH_SEARCH_PATHS:
+          - $(inherited)
+          - "@executable_path/../Frameworks"
+          - $(SRCROOT)/Libs/dylibs
+        LIBRARY_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Libs
+          - $(SRCROOT)/Libs/dylibs
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -force_load
+          - $(SRCROOT)/Libs/libmongoc.a
+          - -force_load
+          - $(SRCROOT)/Libs/libbson.a
+          - -lssl.3
+          - -lcrypto.3
+          - -lresolv
+          - -lz
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/MongoDBDriverPlugin/CLibMongoc
+
+  OracleDriver:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: OracleDriverPlugin
+      principalClass: OraclePlugin
+    dependencies:
+      - package: TableProOracle
+        product: TableProOracleCore
+
+  SnowflakeDriverPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: SnowflakeDriverPlugin
+      principalClass: SnowflakePlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
+
+  SurrealDBDriverPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: SurrealDBDriverPlugin
+      principalClass: SurrealDBPlugin
+
+  TeradataDriver:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: TeradataDriverPlugin
+      principalClass: TeradataPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProTeradataCore
+
+  TrinoDriverPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: TrinoDriverPlugin
+      principalClass: TrinoPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProTrinoCore
+
+# Compile-checks every plugin, including the registry-only ones the app does not
+# embed. CI builds this scheme so a registry plugin cannot rot between releases.
+aggregateTargets:
+  AllPlugins:
+    targets:
+      - BeancountDriver
+      - BigQueryDriverPlugin
+      - CSVExport
+      - CSVImport
+      - CSVInspectorPlugin
+      - CassandraDriver
+      - ClickHouseDriver
+      - CloudflareD1DriverPlugin
+      - DamengDriver
+      - DuckDBDriver
+      - DynamoDBDriverPlugin
+      - ElasticsearchDriverPlugin
+      - EtcdDriverPlugin
+      - JSONExport
+      - JSONImport
+      - LibSQLDriverPlugin
+      - MQLExport
+      - MSSQLDriver
+      - MongoDBDriver
+      - MySQLDriver
+      - OracleDriver
+      - PostgreSQLDriver
+      - RedisDriver
+      - SQLExport
+      - SQLImport
+      - SQLiteDriver
+      - SnowflakeDriverPlugin
+      - SurrealDBDriverPlugin
+      - TeradataDriver
+      - TrinoDriverPlugin
+      - XLSXExport
+    scheme: {}
+
+schemes:
+  DamengDriverTests:
+    build:
+      targets:
+        DamengDriverTests: test
+      buildImplicitDependencies: true
+    test:
+      config: Debug
+      targets:
+        - name: DamengDriverTests
+
+  TablePro:
+    build:
+      targets:
+        TablePro: all
+      parallelizeBuild: true
+      buildImplicitDependencies: true
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - name: TableProTests
+          parallelizable: true
+        - name: TableProUITests
+          parallelizable: true
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+      revealArchiveInOrganizer: true

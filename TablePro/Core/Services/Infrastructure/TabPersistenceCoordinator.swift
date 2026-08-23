@@ -22,67 +22,86 @@ internal struct RestoreResult {
 
 @MainActor @Observable
 internal final class TabPersistenceCoordinator {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
+    nonisolated internal static let logger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
     let connectionId: UUID
 
     @ObservationIgnored private var saveTask: Task<Void, Never>?
+
+    /// Whether this window has ever had a tab of its own. Only a window that held tabs can report
+    /// that the user closed them all; one that never saw any is not evidence of anything. A window
+    /// left over from a disconnect is exactly that case, and treating its empty tab list as an
+    /// instruction deleted the state the disconnect had just saved.
+    private(set) var hasObservedTabs = false
 
     init(connectionId: UUID) {
         self.connectionId = connectionId
     }
 
-    // MARK: - Save
-
-    internal func saveNow(tabs: [QueryTab], selectedTabId: UUID?) {
-        saveNow(windowedTabs: tabs.map { (tab: $0, windowGroupIndex: 0) }, selectedTabId: selectedTabId)
+    internal func markObservedTabs() {
+        hasObservedTabs = true
     }
 
-    /// An automatic save never deletes. A window that has not restored yet, a connection still
-    /// waiting on its driver, and a window torn down during quit all present an empty tab list
-    /// that says nothing about what the user wants kept, so treating it as a delete instruction
-    /// destroys drafts the user never closed. Only `clearForUserClosedAllTabs()` removes state.
-    internal func saveNow(windowedTabs: [(tab: QueryTab, windowGroupIndex: Int)], selectedTabId: UUID?) {
-        guard !windowedTabs.isEmpty else {
-            Self.logger.debug("[persist] saveNow skipped empty tab set connId=\(self.connectionId, privacy: .public)")
+    // MARK: - Save
+
+    /// An automatic save never deletes, and never runs before a restore has told it what is on
+    /// disk. A workspace that has not bootstrapped yet, a connection still waiting on its driver,
+    /// and a window torn down during quit all present a tab list that says nothing about what the
+    /// user wants kept. Only `clearForUserClosedAllTabs()` removes state.
+    internal func saveNow(tabs: [QueryTab], selectedTabId: UUID?) {
+        guard let payload = writablePayload(tabs: tabs, selectedTabId: selectedTabId, path: "saveNow") else {
             return
         }
-        let persisted = windowedTabs.map { $0.tab.toPersistedTab(windowGroupIndex: $0.windowGroupIndex) }
-        let normalizedSelectedId = windowedTabs.contains(where: { $0.tab.id == selectedTabId })
-            ? selectedTabId : windowedTabs.first?.tab.id
-        let active = currentActiveDatabaseAndSchema()
         scheduleSave(
-            tabs: persisted,
-            selectedTabId: normalizedSelectedId,
-            lastActiveDatabase: active.database,
-            lastActiveSchema: active.schema
+            tabs: payload.tabs,
+            selectedTabId: payload.selectedTabId,
+            lastActiveDatabase: payload.database,
+            lastActiveSchema: payload.schema
         )
     }
 
     internal func saveNowSync(tabs: [QueryTab], selectedTabId: UUID?) {
-        saveNowSync(windowedTabs: tabs.map { (tab: $0, windowGroupIndex: 0) }, selectedTabId: selectedTabId)
-    }
-
-    internal func saveNowSync(windowedTabs: [(tab: QueryTab, windowGroupIndex: Int)], selectedTabId: UUID?) {
-        guard !windowedTabs.isEmpty else {
-            Self.logger.debug("[persist] saveNowSync skipped empty tab set connId=\(self.connectionId, privacy: .public)")
+        guard let payload = writablePayload(tabs: tabs, selectedTabId: selectedTabId, path: "saveNowSync") else {
             return
         }
-        let persisted = windowedTabs.map { $0.tab.toPersistedTab(windowGroupIndex: $0.windowGroupIndex) }
-        let normalizedSelectedId = windowedTabs.contains(where: { $0.tab.id == selectedTabId })
-            ? selectedTabId : windowedTabs.first?.tab.id
-        let active = currentActiveDatabaseAndSchema()
+        saveTask?.cancel()
+        saveTask = nil
         TabDiskActor.saveSync(
             connectionId: connectionId,
-            tabs: persisted,
-            selectedTabId: normalizedSelectedId,
-            lastActiveDatabase: active.database,
-            lastActiveSchema: active.schema
+            tabs: payload.tabs,
+            selectedTabId: payload.selectedTabId,
+            lastActiveDatabase: payload.database,
+            lastActiveSchema: payload.schema
         )
+    }
+
+    /// The one gate every save passes. Writing a partial list over a full saved set is how tabs
+    /// that were never restored get erased, so a save is refused until a restore has run.
+    private func writablePayload(
+        tabs: [QueryTab],
+        selectedTabId: UUID?,
+        path: String
+    ) -> (tabs: [PersistedTab], selectedTabId: UUID?, database: String?, schema: String?)? {
+        guard !tabs.isEmpty else {
+            Self.logger.debug(
+                "[persist] \(path, privacy: .public) skipped empty tab set connId=\(self.connectionId, privacy: .public)"
+            )
+            return nil
+        }
+        guard hasObservedTabs else {
+            Self.logger.info(
+                "[persist] \(path, privacy: .public) withheld before restore connId=\(self.connectionId, privacy: .public)"
+            )
+            return nil
+        }
+        let normalizedSelectedId = tabs.contains(where: { $0.id == selectedTabId })
+            ? selectedTabId : tabs.first?.id
+        let active = currentActiveDatabaseAndSchema()
+        return (tabs.map { $0.toPersistedTab() }, normalizedSelectedId, active.database, active.schema)
     }
 
     private func currentActiveDatabaseAndSchema() -> (database: String?, schema: String?) {
         guard let session = DatabaseManager.shared.session(for: connectionId) else { return (nil, nil) }
-        return (session.currentDatabase, session.currentSchema)
+        return (session.browseDatabase, session.browseSchema)
     }
 
     // MARK: - Clear
@@ -112,19 +131,22 @@ internal final class TabPersistenceCoordinator {
         let selectedId = selectedTabId
         let activeDatabase = lastActiveDatabase
         let activeSchema = lastActiveSchema
+        let writeToken = TabDiskActor.issueWriteToken(for: connId)
         Self.logger.debug("[persist] saveNow queued tabCount=\(tabsCopy.count) connId=\(connId, privacy: .public)")
 
         saveTask = Task {
             guard !Task.isCancelled else { return }
             let t0 = Date()
             do {
-                try await TabDiskActor.shared.save(
+                let didWrite = try await TabDiskActor.shared.save(
                     connectionId: connId,
                     tabs: tabsCopy,
                     selectedTabId: selectedId,
                     lastActiveDatabase: activeDatabase,
-                    lastActiveSchema: activeSchema
+                    lastActiveSchema: activeSchema,
+                    writeToken: writeToken
                 )
+                guard didWrite else { return }
                 Self.logger.debug("[persist] saveNow written tabCount=\(tabsCopy.count) connId=\(connId, privacy: .public) ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
             } catch is CancellationError {
                 return
@@ -137,30 +159,31 @@ internal final class TabPersistenceCoordinator {
     // MARK: - Restore
 
     internal func restoreFromDisk() async -> RestoreResult {
-        guard let state = await TabDiskActor.shared.load(connectionId: connectionId) else {
-            return RestoreResult(tabs: [], selectedTabId: nil, source: .none)
-        }
+        let state = await TabDiskActor.shared.load(connectionId: connectionId)
 
-        guard !state.tabs.isEmpty else {
+        /// The write gate opens once the disk has been read, whether or not it held anything:
+        /// knowing the file is empty is as much knowledge as knowing what was in it. Opening it
+        /// only on a non-empty read would refuse every save a brand new connection ever makes.
+        hasObservedTabs = true
+
+        guard let state, !state.tabs.isEmpty else {
             return RestoreResult(tabs: [], selectedTabId: nil, source: .none)
         }
 
         let defaultPageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
         var restoredTabs = state.tabs.map { QueryTab(from: $0, defaultPageSize: defaultPageSize) }
-        for index in restoredTabs.indices {
-            guard let url = restoredTabs[index].content.sourceFileURL else { continue }
-            if let loaded = FileTextLoader.load(url) {
-                restoredTabs[index].content.savedFileContent = loaded.content
-                restoredTabs[index].content.loadMtime = (try? FileManager.default
-                    .attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
-            }
-        }
+        FileTabBaseline.hydrate(&restoredTabs)
+        RestoredHiddenColumns.hydrate(
+            &restoredTabs,
+            connectionId: connectionId,
+            persister: FileColumnLayoutPersister.shared
+        )
         return RestoreResult(
             tabs: restoredTabs,
             selectedTabId: state.selectedTabId,
             source: .disk,
             lastActiveDatabase: state.lastActiveDatabase,
-            lastActiveSchema: state.lastActiveSchema
+            lastActiveSchema: state.lastActiveSchema,
         )
     }
 }

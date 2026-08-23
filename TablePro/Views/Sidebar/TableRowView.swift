@@ -14,6 +14,7 @@ enum TableRowLogic {
         case .foreignTable:     return "link"
         case .systemTable:      return "tablecells.badge.ellipsis"
         case .partitionedTable: return "rectangle.split.3x1"
+        case .externalTable:    return "externaldrive.connected.to.line.below"
         }
     }
 
@@ -25,7 +26,12 @@ enum TableRowLogic {
         case .foreignTable:     return String(localized: "Foreign Table")
         case .systemTable:      return String(localized: "System Table")
         case .partitionedTable: return String(localized: "Partitioned Table")
+        case .externalTable:    return String(localized: "External Table")
         }
+    }
+
+    static func showsLeadingIcon(showObjectIcons: Bool, isPendingTruncate: Bool, isPendingDelete: Bool) -> Bool {
+        showObjectIcons || isPendingTruncate || isPendingDelete
     }
 
     static func accessibilityLabel(table: TableInfo, isPendingDelete: Bool, isPendingTruncate: Bool, isFavorite: Bool = false) -> String {
@@ -58,16 +64,28 @@ struct TableRow: View {
         return comment
     }
 
+    private var showsObjectIcon: Bool {
+        AppSettingsManager.shared.general.showObjectIcons
+    }
+
+    private var showsLeadingIcon: Bool {
+        TableRowLogic.showsLeadingIcon(
+            showObjectIcons: showsObjectIcon,
+            isPendingTruncate: isPendingTruncate,
+            isPendingDelete: isPendingDelete
+        )
+    }
+
     @ViewBuilder
     private var pendingStateBadge: some View {
         if isPendingDelete {
             Image(systemName: "minus.circle.fill")
                 .font(.caption)
-                .foregroundStyle(.red)
+                .selectionAwareTint(.red)
         } else if isPendingTruncate {
             Image(systemName: "exclamationmark.circle.fill")
                 .font(.caption)
-                .foregroundStyle(.orange)
+                .selectionAwareTint(.orange)
         }
     }
 
@@ -88,32 +106,28 @@ struct TableRow: View {
                     }
                 }
             } icon: {
-                Image(systemName: TableRowLogic.iconName(for: table.type))
-                    .sidebarTint(Color.accentColor)
-                    .frame(width: 16)
-                    .overlay(alignment: .bottomTrailing) {
-                        pendingStateBadge
-                    }
+                if showsObjectIcon {
+                    Image(systemName: TableRowLogic.iconName(for: table.type))
+                        .selectionAwareTint(Color.accentColor)
+                        .frame(width: 16)
+                        .overlay(alignment: .bottomTrailing) {
+                            pendingStateBadge
+                        }
+                } else {
+                    pendingStateBadge
+                        .frame(width: 16)
+                }
             }
+            .sidebarRowIcon(visible: showsLeadingIcon)
 
             Spacer(minLength: 4)
 
             if let onToggleFavorite {
-                let starVisible = isFavorite || isHovered
-                Button(action: onToggleFavorite) {
-                    Image(systemName: isFavorite ? "star.fill" : "star")
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(isFavorite ? Color.yellow : Color.secondary)
-                        .contentShape(Rectangle())
-                        .frame(width: 20, height: 20)
-                }
-                .buttonStyle(.plain)
-                .opacity(starVisible ? 1 : 0)
-                .allowsHitTesting(starVisible)
-                .accessibilityHidden(true)
-                .help(isFavorite
-                      ? String(localized: "Remove from Favorites")
-                      : String(localized: "Add to Favorites"))
+                FavoriteStarButton(
+                    isFavorite: isFavorite,
+                    isRowHovered: isHovered,
+                    toggle: onToggleFavorite
+                )
             }
         }
         .onHover { isHovered = $0 }
@@ -127,23 +141,5 @@ struct TableRow: View {
             )
         )
         .modifier(FavoriteAccessibilityAction(isFavorite: isFavorite, toggle: onToggleFavorite))
-    }
-}
-
-private struct FavoriteAccessibilityAction: ViewModifier {
-    let isFavorite: Bool
-    let toggle: (() -> Void)?
-
-    func body(content: Content) -> some View {
-        if let toggle {
-            content.accessibilityAction(
-                named: isFavorite
-                    ? Text("Remove from Favorites")
-                    : Text("Add to Favorites"),
-                toggle
-            )
-        } else {
-            content
-        }
     }
 }

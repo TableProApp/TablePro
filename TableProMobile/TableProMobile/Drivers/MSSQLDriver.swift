@@ -2,8 +2,9 @@ import Foundation
 import TableProDatabase
 import TableProModels
 import TableProMSSQLCore
+import TableProPluginKit
 
-private extension MSSQLRawResult {
+nonisolated private extension MSSQLRawResult {
     nonisolated func toQueryResult(executionTime: TimeInterval) -> QueryResult {
         let columnInfos = columns.enumerated().map { idx, col in
             ColumnInfo(name: col.name, typeName: col.type.canonicalName, ordinalPosition: idx)
@@ -18,8 +19,10 @@ private extension MSSQLRawResult {
     }
 }
 
-final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
-    private let conn: FreeTDSConnection
+nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
+    nonisolated(unsafe) private var conn: FreeTDSConnection
+    private let options: MSSQLConnectionOptions
+    private let additionalFields: [String: String]
     private let host: String
     private let authMethod: MSSQLAuthMethod
 
@@ -46,6 +49,8 @@ final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
             authMethod: authMethod
         )
         self.conn = FreeTDSConnection(options: options)
+        self.options = options
+        self.additionalFields = connection.additionalFields
         self.host = connection.host
         self.authMethod = authMethod
         self.currentSchema = options.schema
@@ -60,6 +65,14 @@ final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
     func connect() async throws {
         guard authMethod != .windows else {
             throw DatabaseError(message: String(localized: "Windows Authentication (Kerberos) isn't supported on iOS yet. Use SQL Server Authentication, or connect from the Mac app."))
+        }
+        // The token is fetched asynchronously and FreeTDSConnection takes its options at init, so
+        // an Entra connection is rebuilt here once the token is in hand.
+        if authMethod == .entra {
+            var entraOptions = options
+            entraOptions.fedAuthToken = try await EntraCredentialResolver.shared
+                .accessToken(fields: additionalFields)
+            conn = FreeTDSConnection(options: entraOptions)
         }
         try await LocalNetworkPermission.shared.ensureAccess(for: host)
         do {
@@ -290,7 +303,7 @@ final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 }
 
-private extension Array {
+nonisolated private extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
     }

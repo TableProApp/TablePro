@@ -152,7 +152,15 @@ extension SourceEditorConfiguration {
                 .clear
             }
 
+            (controller.textView as? SourceEditorTextView)?.statementHighlightColor = theme.statementHighlight
+
             controller.gutterView.textColor = theme.text.color.withAlphaComponent(0.35)
+            controller.gutterView.statementRunRibbon.glyphColor = theme.text.color.withAlphaComponent(0.35)
+            controller.gutterView.statementRunRibbon.hoveredGlyphColor = theme.text.color
+            controller.gutterView.foldingRibbon.chevronColor = theme.text.color.withAlphaComponent(0.35)
+            controller.gutterView.foldingRibbon.collapsedChevronColor = theme.text.color.withAlphaComponent(0.65)
+            controller.gutterView.foldingRibbon.hoveredChevronColor = theme.text.color
+            controller.gutterView.foldingRibbon.foldExtentColor = theme.text.color.withAlphaComponent(0.2)
             controller.gutterView.selectedLineTextColor = theme.text.color
             controller.gutterView.selectedLineColor = if useThemeBackground {
                 theme.lineHighlight

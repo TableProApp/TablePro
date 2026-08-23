@@ -52,7 +52,7 @@ struct FKNavigationTests {
         try tabManager.addTableTab(
             tableName: "orders",
             databaseType: connection.type,
-            databaseName: coordinator.activeDatabaseName
+            databaseName: coordinator.browseDatabaseName
         )
         #expect(tabManager.tabs.count == 1)
 
@@ -79,7 +79,7 @@ struct FKNavigationTests {
         try tabManager.addTableTab(
             tableName: "users",
             databaseType: connection.type,
-            databaseName: coordinator.activeDatabaseName
+            databaseName: coordinator.browseDatabaseName
         )
         let tabId = tabManager.selectedTab?.id
         #expect(tabManager.tabs.count == 1)
@@ -97,7 +97,7 @@ struct FKNavigationTests {
     func nilReferencedSchemaResolvesActiveSchema() throws {
         let connection = TestFixtures.makeConnection(database: "db_a", type: .postgresql)
         var session = ConnectionSession(connection: connection)
-        session.currentSchema = "sales"
+        session.browseSchema = "sales"
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
@@ -113,7 +113,7 @@ struct FKNavigationTests {
         try tabManager.addTableTab(
             tableName: "orders",
             databaseType: connection.type,
-            databaseName: coordinator.activeDatabaseName
+            databaseName: coordinator.browseDatabaseName
         )
 
         let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
@@ -136,7 +136,7 @@ struct FKNavigationTests {
         )
         defer { coordinator.teardown() }
 
-        tabManager.addTab(initialQuery: "SELECT * FROM orders", databaseName: coordinator.activeDatabaseName)
+        tabManager.addTab(initialQuery: "SELECT * FROM orders", databaseName: coordinator.browseDatabaseName)
         tabManager.mutate(at: 0) { $0.execution.lastExecutedAt = Date() }
         let originalTabId = tabManager.selectedTab?.id
 
@@ -169,7 +169,7 @@ struct FKNavigationTests {
         )
         defer { coordinator.teardown() }
 
-        tabManager.addTab(initialQuery: "SELECT 1", databaseName: coordinator.activeDatabaseName)
+        tabManager.addTab(initialQuery: "SELECT 1", databaseName: coordinator.browseDatabaseName)
         let originalTabId = tabManager.selectedTab?.id
 
         var opened: [EditorTabPayload] = []
@@ -201,7 +201,7 @@ struct FKNavigationTests {
         try tabManager.addTableTab(
             tableName: "orders",
             databaseType: connection.type,
-            databaseName: coordinator.activeDatabaseName
+            databaseName: coordinator.browseDatabaseName
         )
         coordinator.changeManager.hasChanges = true
 
@@ -246,14 +246,14 @@ struct FKNavigationTests {
 
         originTabManager.addTab(
             initialQuery: "SELECT * FROM orders",
-            databaseName: originCoordinator.activeDatabaseName
+            databaseName: originCoordinator.browseDatabaseName
         )
         originTabManager.mutate(at: 0) { $0.execution.lastExecutedAt = Date() }
 
         try targetTabManager.addTableTab(
             tableName: "users",
             databaseType: connection.type,
-            databaseName: targetCoordinator.activeDatabaseName
+            databaseName: targetCoordinator.browseDatabaseName
         )
         targetTabManager.mutate(at: 0) {
             $0.filterState.filters = [TableFilter(columnName: "id", filterOperator: .equal, value: "42")]
@@ -303,14 +303,14 @@ struct FKNavigationTests {
 
         originTabManager.addTab(
             initialQuery: "SELECT * FROM orders",
-            databaseName: originCoordinator.activeDatabaseName
+            databaseName: originCoordinator.browseDatabaseName
         )
         originTabManager.mutate(at: 0) { $0.execution.lastExecutedAt = Date() }
 
         try targetTabManager.addTableTab(
             tableName: "users",
             databaseType: connection.type,
-            databaseName: targetCoordinator.activeDatabaseName
+            databaseName: targetCoordinator.browseDatabaseName
         )
         targetTabManager.mutate(at: 0) {
             $0.filterState.filters = [TableFilter(columnName: "id", filterOperator: .equal, value: "42")]
@@ -346,7 +346,7 @@ struct FKNavigationTests {
         try originTabManager.addTableTab(
             tableName: "users",
             databaseType: connection.type,
-            databaseName: originCoordinator.activeDatabaseName
+            databaseName: originCoordinator.browseDatabaseName
         )
         originTabManager.mutate(at: 0) {
             $0.filterState.filters = [TableFilter(columnName: "id", filterOperator: .equal, value: "42")]
@@ -355,7 +355,7 @@ struct FKNavigationTests {
         try originTabManager.addTableTab(
             tableName: "orders",
             databaseType: connection.type,
-            databaseName: originCoordinator.activeDatabaseName
+            databaseName: originCoordinator.browseDatabaseName
         )
 
         var opened: [EditorTabPayload] = []
@@ -383,13 +383,13 @@ struct FKNavigationTests {
 
         let ordersKey = ColumnLayoutTableKey(
             connectionId: connection.id,
-            databaseName: coordinator.activeDatabaseName,
+            databaseName: coordinator.browseDatabaseName,
             schemaName: nil,
             tableName: "orders"
         )
         let usersKey = ColumnLayoutTableKey(
             connectionId: connection.id,
-            databaseName: coordinator.activeDatabaseName,
+            databaseName: coordinator.browseDatabaseName,
             schemaName: nil,
             tableName: "users"
         )
@@ -399,7 +399,7 @@ struct FKNavigationTests {
             FilterSettingsStorage.shared.clearLastFilters(
                 for: "orders",
                 connectionId: connection.id,
-                databaseName: coordinator.activeDatabaseName,
+                databaseName: coordinator.browseDatabaseName,
                 schemaName: nil
             )
         }
@@ -408,7 +408,7 @@ struct FKNavigationTests {
         try tabManager.addTableTab(
             tableName: "orders",
             databaseType: connection.type,
-            databaseName: coordinator.activeDatabaseName
+            databaseName: coordinator.browseDatabaseName
         )
         let outgoingFilter = TableFilter(columnName: "status", filterOperator: .equal, value: "open")
         tabManager.mutate(at: 0) {
@@ -425,10 +425,346 @@ struct FKNavigationTests {
         let savedForOrders = FilterSettingsStorage.shared.loadLastFilters(
             for: "orders",
             connectionId: connection.id,
-            databaseName: coordinator.activeDatabaseName,
+            databaseName: coordinator.browseDatabaseName,
             schemaName: nil
         )
         #expect(savedForOrders.contains { $0.columnName == "status" && $0.value == "open" })
+    }
+
+    @Test("An in-place hop records the source view, and Back restores it")
+    @MainActor
+    func inPlaceHopRecordsHistoryAndBackRestoresIt() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(
+            tableName: "orders",
+            databaseType: connection.type,
+            databaseName: coordinator.browseDatabaseName
+        )
+        let outgoingFilter = TableFilter(columnName: "status", filterOperator: .equal, value: "open")
+        tabManager.mutate(at: 0) {
+            $0.filterState.filters = [outgoingFilter]
+            $0.filterState.commit = .all
+            $0.pagination.pageSize = 100
+            $0.pagination.currentPage = 3
+        }
+        #expect(coordinator.canNavigateBack == false)
+
+        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+
+        #expect(tabManager.selectedTab?.tableContext.tableName == "users")
+        #expect(coordinator.canNavigateBack)
+        #expect(coordinator.canNavigateForward == false)
+
+        coordinator.navigateBack()
+
+        #expect(tabManager.tabs.count == 1)
+        #expect(tabManager.selectedTab?.tableContext.tableName == "orders")
+        #expect(tabManager.selectedTab?.filterState.appliedFilters.first?.value == "open")
+        #expect(tabManager.selectedTab?.restoredPage == 3)
+        #expect(tabManager.selectedTab?.restoredPageSize == 100)
+        #expect(coordinator.canNavigateBack == false)
+        #expect(coordinator.canNavigateForward)
+    }
+
+    @Test("Forward returns to the reference Back stepped away from")
+    @MainActor
+    func forwardReturnsToTheReference() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(
+            tableName: "orders",
+            databaseType: connection.type,
+            databaseName: coordinator.browseDatabaseName
+        )
+
+        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        coordinator.navigateBack()
+        #expect(tabManager.selectedTab?.tableContext.tableName == "orders")
+
+        coordinator.navigateForward()
+
+        #expect(tabManager.selectedTab?.tableContext.tableName == "users")
+        #expect(tabManager.selectedTab?.filterState.appliedFilters.first?.value == "42")
+        #expect(coordinator.canNavigateForward == false)
+        #expect(coordinator.canNavigateBack)
+    }
+
+    @Test("A hop after Back discards the forward stack")
+    @MainActor
+    func hopAfterBackTruncatesForward() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(
+            tableName: "orders",
+            databaseType: connection.type,
+            databaseName: coordinator.browseDatabaseName
+        )
+
+        let users = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
+        coordinator.navigateToFKReference(value: "42", fkInfo: users, openInNewTab: false)
+        coordinator.navigateBack()
+        #expect(coordinator.canNavigateForward)
+
+        let regions = TestFixtures.makeForeignKeyInfo(referencedTable: "regions", referencedColumn: "id")
+        coordinator.navigateToFKReference(value: "7", fkInfo: regions, openInNewTab: false)
+
+        #expect(tabManager.selectedTab?.tableContext.tableName == "regions")
+        #expect(coordinator.canNavigateForward == false)
+        #expect(coordinator.canNavigateBack)
+    }
+
+    @Test("A hop that opens its own tab leaves the source tab with no history")
+    @MainActor
+    func newTabHopRecordsNoHistory() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(
+            tableName: "orders",
+            databaseType: connection.type,
+            databaseName: coordinator.browseDatabaseName
+        )
+        var opened: [EditorTabPayload] = []
+        coordinator.openTabInNewWindow = { opened.append($0) }
+
+        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: true)
+
+        #expect(opened.count == 1)
+        #expect(tabManager.selectedTab?.tableContext.tableName == "orders")
+        #expect(coordinator.canNavigateBack == false)
+    }
+
+    @Test("Clicking the reference the tab already shows records no second entry")
+    @MainActor
+    func repeatedSameReferenceRecordsOnce() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(
+            tableName: "users",
+            databaseType: connection.type,
+            databaseName: coordinator.browseDatabaseName
+        )
+
+        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        #expect(coordinator.canNavigateBack)
+
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        coordinator.navigateBack()
+
+        #expect(coordinator.canNavigateBack == false)
+    }
+
+    @Test("Back stands down while the tab holds unsaved edits")
+    @MainActor
+    func backIsUnavailableWithPendingEdits() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(
+            tableName: "orders",
+            databaseType: connection.type,
+            databaseName: coordinator.browseDatabaseName
+        )
+
+        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        #expect(coordinator.canNavigateBack)
+
+        coordinator.changeManager.hasChanges = true
+
+        #expect(coordinator.canNavigateBack == false)
+        coordinator.navigateBack()
+        #expect(tabManager.selectedTab?.tableContext.tableName == "users")
+    }
+
+    @Test("Closing a tab takes its history with it")
+    @MainActor
+    func closingATabDropsItsHistory() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(
+            tableName: "orders",
+            databaseType: connection.type,
+            databaseName: coordinator.browseDatabaseName
+        )
+        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        let tabId = try #require(tabManager.selectedTab?.id)
+        #expect(coordinator.navigationHistories[tabId]?.canGoBack == true)
+
+        coordinator.closeTabsByUser(ids: [tabId])
+
+        #expect(coordinator.navigationHistories[tabId] == nil)
+    }
+
+    @Test("A sidebar open that reuses the tab records the view it replaced")
+    @MainActor
+    func sidebarRetargetRecordsHistory() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(
+            tableName: "orders",
+            databaseType: connection.type,
+            databaseName: coordinator.browseDatabaseName,
+            isPreview: true
+        )
+        #expect(coordinator.canNavigateBack == false)
+
+        coordinator.openTableTab("customers")
+
+        #expect(tabManager.selectedTab?.tableContext.tableName == "customers")
+        #expect(coordinator.canNavigateBack)
+
+        coordinator.navigateBack()
+
+        #expect(tabManager.selectedTab?.tableContext.tableName == "orders")
+    }
+
+    @Test("Back restores the page size even for a view recorded on the first page")
+    @MainActor
+    func backRestoresPageSizeOnFirstPage() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(
+            tableName: "orders",
+            databaseType: connection.type,
+            databaseName: coordinator.browseDatabaseName
+        )
+        tabManager.mutate(at: 0) {
+            $0.pagination.pageSize = 500
+            $0.pagination.currentPage = 1
+        }
+
+        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        coordinator.navigateBack()
+
+        #expect(tabManager.selectedTab?.tableContext.tableName == "orders")
+        #expect(tabManager.selectedTab?.restoredPageSize == 500)
+    }
+
+    @Test("A pending row anchor belongs to one tab and no other tab can take it")
+    @MainActor
+    func rowAnchorIsKeyedByTab() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        let owning = UUID()
+        let other = UUID()
+        coordinator.pendingRowAnchors[owning] = ["id": "4021"]
+
+        #expect(coordinator.pendingRowAnchors[other] == nil)
+        #expect(coordinator.pendingRowAnchors.removeValue(forKey: owning) == ["id": "4021"])
+        #expect(coordinator.pendingRowAnchors[owning] == nil)
+    }
+
+    @Test("Retargeting a tab drops a row anchor its navigation never used")
+    @MainActor
+    func retargetDropsAStaleRowAnchor() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(
+            tableName: "orders",
+            databaseType: connection.type,
+            databaseName: coordinator.browseDatabaseName
+        )
+        let tabId = try #require(tabManager.selectedTab?.id)
+        coordinator.pendingRowAnchors[tabId] = ["id": "4021"]
+
+        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+
+        #expect(coordinator.pendingRowAnchors[tabId] == nil)
     }
 
     @Test("An in-place hop cancels the outgoing tab's in-flight load")
@@ -447,7 +783,7 @@ struct FKNavigationTests {
         try tabManager.addTableTab(
             tableName: "orders",
             databaseType: connection.type,
-            databaseName: coordinator.activeDatabaseName
+            databaseName: coordinator.browseDatabaseName
         )
         guard let tabId = tabManager.selectedTab?.id else {
             Issue.record("expected a selected tab")
@@ -484,7 +820,7 @@ struct FKNavigationTests {
         try tabManager.addTableTab(
             tableName: "orders",
             databaseType: connection.type,
-            databaseName: coordinator.activeDatabaseName
+            databaseName: coordinator.browseDatabaseName
         )
         let tabId = tabManager.tabs[0].id
         tabManager.mutate(at: 0) { $0.tableContext.primaryKeyColumns = ["id"] }
