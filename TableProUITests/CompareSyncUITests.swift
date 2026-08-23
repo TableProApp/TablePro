@@ -1,89 +1,60 @@
 import XCTest
 
+/// The test sandbox carries no license, so this run sees exactly what an unlicensed user sees:
+/// `Compare & Sync Databases…` stays enabled, because a Pro feature the user can buy has to be
+/// discoverable, and choosing it explains the gate instead of opening the window.
+///
+/// The suite this replaces asserted on the window itself, on a `popUpButtons` value of
+/// "Choose a connection" and on a Compare button, none of which exist: the window never opens
+/// without a license, and the rebuilt toolbar spells its placeholder "Choose Source". It could not
+/// pass on any machine. The window's own contract now lives in `CompareSyncSessionTests` and
+/// `CompareEndpointSideTests`, which reach it without a license.
 final class CompareSyncUITests: UITestCase {
-    private func launchAndOpenCompareSync() throws -> XCUIApplication {
-        let app = try launchApp()
+    private let licenseAlertMessage = "Compare & Sync requires a license"
 
+    private func openCompareSyncMenuItem(in app: XCUIApplication) -> XCUIElement {
         let menuBar = app.menuBars.firstMatch
-        XCTAssertTrue(menuBar.waitForExistence(timeout: 10))
+        XCTAssertTrue(menuBar.waitToExist(timeout: 10))
         menuBar.menuBarItems["Database"].click()
         menuBar.menuItems["Compare"].click()
+        return menuBar.menuItems["Compare & Sync Databases…"]
+    }
 
-        let item = menuBar.menuItems["Compare & Sync Databases…"]
+    func testCompareSyncIsReachableFromTheDatabaseMenu() throws {
+        let app = try launchApp()
+
+        let item = openCompareSyncMenuItem(in: app)
         XCTAssertTrue(
-            item.waitForExistence(timeout: 5),
+            item.waitToExist(timeout: 10),
             "Compare & Sync must be reachable from Database > Compare"
         )
-        guard item.isEnabled else {
-            throw XCTSkip("Compare & Sync is licence gated and unavailable in this build")
-        }
+        XCTAssertTrue(
+            item.isEnabled,
+            "A feature the user can buy stays enabled, so choosing it can explain what it needs"
+        )
+    }
+
+    /// The gate is enforced when the window is asked for rather than when the menu is validated, so
+    /// this is the only place the refusal can be observed.
+    func testChoosingItWithoutALicenseExplainsTheGateInsteadOfOpeningTheWindow() throws {
+        let app = try launchApp()
+
+        let item = openCompareSyncMenuItem(in: app)
+        XCTAssertTrue(item.waitToExist(timeout: 10))
         item.click()
-        return app
-    }
 
-    private func compareWindow(in app: XCUIApplication) -> XCUIElement {
-        app.windows["Compare & Sync"]
-    }
-
-    func testCompareSyncOpensFromFileMenu() throws {
-        let app = try launchAndOpenCompareSync()
-
+        let message = app.staticTexts[licenseAlertMessage]
         XCTAssertTrue(
-            compareWindow(in: app).waitForExistence(timeout: 10),
-            "Choosing the menu item must open the Compare & Sync window"
+            message.waitToExist(timeout: 10),
+            "An unlicensed run must say what Compare & Sync needs"
         )
-    }
-
-    func testBannerStatesNothingHasBeenWrittenBeforeAnyRun() throws {
-        let app = try launchAndOpenCompareSync()
-        let window = compareWindow(in: app)
-        XCTAssertTrue(window.waitForExistence(timeout: 10))
-
-        let banner = window.staticTexts["Comparing only. Nothing has been written."]
-        XCTAssertTrue(
-            banner.waitForExistence(timeout: 5),
-            "The window must say nothing has been written until the user applies"
-        )
-    }
-
-    func testCompareIsDisabledUntilBothEndpointsAreChosen() throws {
-        let app = try launchAndOpenCompareSync()
-        let window = compareWindow(in: app)
-        XCTAssertTrue(window.waitForExistence(timeout: 10))
-
-        let compareButton = window.buttons["Compare"]
-        XCTAssertTrue(compareButton.waitForExistence(timeout: 5))
         XCTAssertFalse(
-            compareButton.isEnabled,
-            "Compare must stay disabled while no target is chosen, so the write side is always deliberate"
+            app.windows["Compare & Sync"].exists,
+            "Nothing may open the comparison window without a license"
         )
-    }
 
-    func testTargetPickerStartsWithNoConnectionChosen() throws {
-        let app = try launchAndOpenCompareSync()
-        let window = compareWindow(in: app)
-        XCTAssertTrue(window.waitForExistence(timeout: 10))
-
-        let placeholders = window.popUpButtons.matching(
-            NSPredicate(format: "value == %@", "Choose a connection")
-        )
-        XCTAssertGreaterThanOrEqual(
-            placeholders.count, 2,
-            "Neither source nor target may be preselected"
-        )
-    }
-
-    func testSwapIsDisabledWhenNoEndpointIsChosen() throws {
-        let app = try launchAndOpenCompareSync()
-        let window = compareWindow(in: app)
-        XCTAssertTrue(window.waitForExistence(timeout: 10))
-
-        let swap = window.buttons.matching(
-            NSPredicate(format: "label CONTAINS[c] %@", "Swap")
-        ).firstMatch
-        guard swap.waitForExistence(timeout: 5) else {
-            throw XCTSkip("Swap control not exposed to accessibility in this build")
-        }
-        XCTAssertFalse(swap.isEnabled, "Swap has nothing to swap before an endpoint is chosen")
+        let dialog = app.dialogs.firstMatch
+        guard dialog.exists, dialog.buttons["Cancel"].exists else { return }
+        dialog.buttons["Cancel"].click()
     }
 }

@@ -28,6 +28,12 @@ internal enum CompareEndpointSide: Hashable {
         }
     }
 
+    /// What the toolbar button reads before anything is chosen. Neither side is preselected, so
+    /// the write side of a comparison is always something the user named.
+    internal var placeholderTitle: String {
+        String(format: String(localized: "Choose %@"), title)
+    }
+
     internal var caption: String {
         switch self {
         case .source: return String(localized: "Will not change")

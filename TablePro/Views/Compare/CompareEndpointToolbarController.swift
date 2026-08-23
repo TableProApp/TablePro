@@ -61,7 +61,7 @@ internal final class CompareEndpointToolbarController: NSObject {
 
     private func apply(_ side: CompareEndpointSide, to item: NSToolbarItem) {
         let endpoint = endpoint(for: side)
-        item.title = endpoint?.qualifiedDescription ?? String(format: String(localized: "Choose %@"), side.title)
+        item.title = endpoint?.qualifiedDescription ?? side.placeholderTitle
         item.toolTip = endpoint?.fullDescription ?? side.caption
     }
 
