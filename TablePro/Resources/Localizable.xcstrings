@@ -3606,6 +3606,9 @@
     "%1$@ %2$@ is dropped and recreated, so anything depending on it fails until it exists again." : {
 
     },
+    "%1$@ → %2$@" : {
+
+    },
     "%1$@ → %2$@ · %3$@ runs before, %4$@ now" : {
       "comment" : "Regression detail: prior duration, recent duration, prior count, recent count",
       "localizations" : {
@@ -3899,6 +3902,9 @@
       }
     },
     "%1$d of %2$d allowed for this run" : {
+
+    },
+    "%1$d of %2$d included" : {
 
     },
     "%1$d of %2$d rows, %3$d marked for deletion" : {
@@ -4416,6 +4422,9 @@
         }
       }
     },
+    "%d included" : {
+
+    },
     "%d left out" : {
 
     },
@@ -4619,6 +4628,9 @@
           }
         }
       }
+    },
+    "%d of 1 table will be compared." : {
+
     },
     "%d plugin(s) could not be loaded" : {
       "extractionState" : "stale",
@@ -4869,6 +4881,9 @@
           }
         }
       }
+    },
+    "%d statements would destroy data and are not allowed yet." : {
+
     },
     "%d-%d of ? rows" : {
       "extractionState" : "stale",
@@ -7464,6 +7479,15 @@
         }
       }
     },
+    "1 statement stays out of this run and %@ keeps what it has for it." : {
+
+    },
+    "1 statement would destroy data and is not allowed yet." : {
+
+    },
+    "1 statement, %d will run." : {
+
+    },
     "1 year" : {
       "localizations" : {
         "ko" : {
@@ -8591,6 +8615,9 @@
         }
       }
     },
+    "A comparison is already running." : {
+
+    },
     "A connection can use one connection method at a time. Disable the other methods to use %@." : {
       "localizations" : {
         "ko" : {
@@ -9006,6 +9033,9 @@
           }
         }
       }
+    },
+    "A run is already in progress." : {
+
     },
     "A SELECT to export. Use instead of 'tables'." : {
 
@@ -15236,6 +15266,16 @@
         }
       }
     },
+    "Applied to %@ at %@. 1 statement." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Applied to %1$@ at %2$@. 1 statement."
+          }
+        }
+      }
+    },
     "Applied when opening a table. Click a column header to override." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -15316,6 +15356,9 @@
       }
     },
     "Apply %1$d statements to %2$@?" : {
+
+    },
+    "Apply 1 statement to %@?" : {
 
     },
     "Apply a row limit when running queries and cap results at the configured row count" : {
@@ -19266,6 +19309,9 @@
         }
       }
     },
+    "Build the SQL that brings the target in line" : {
+
+    },
     "Building chart" : {
       "localizations" : {
         "ko" : {
@@ -22873,6 +22919,18 @@
 
     },
     "Choose a source and a target, then compare them." : {
+
+    },
+    "Choose a source or a target first." : {
+
+    },
+    "Choose a source to compare from." : {
+
+    },
+    "Choose a target to compare against." : {
+
+    },
+    "Choose a target to write to." : {
 
     },
     "Choose AI provider and model" : {
@@ -27886,6 +27944,12 @@
     "Compare structure or data between two connections and generate the sync script." : {
 
     },
+    "Compare the two databases" : {
+
+    },
+    "Compare the two databases first." : {
+
+    },
     "Compare/Sync with…" : {
 
     },
@@ -27898,6 +27962,9 @@
           }
         }
       }
+    },
+    "Compared %@. 1 difference. Nothing has been written." : {
+
     },
     "Compared columns" : {
 
@@ -56875,6 +56942,9 @@
     "Generate Script" : {
 
     },
+    "Generate the script first." : {
+
+    },
     "Generate the script to see exactly what would run." : {
 
     },
@@ -58196,6 +58266,9 @@
           }
         }
       }
+    },
+    "Has Differences" : {
+
     },
     "Has unsaved changes" : {
       "localizations" : {
@@ -61496,7 +61569,10 @@
         }
       }
     },
-    "Include at least one object, then generate the script." : {
+    "Include at least one object to generate a script for it." : {
+
+    },
+    "Include at least one table to generate a script for it." : {
 
     },
     "Include column headers" : {
@@ -61675,6 +61751,9 @@
 
     },
     "Include Every Table" : {
+
+    },
+    "Include every table in this group" : {
 
     },
     "Include in iCloud Sync" : {
@@ -70416,6 +70495,9 @@
         }
       }
     },
+    "Make the target the source and the source the target" : {
+
+    },
     "Making %@ NOT NULL fails if any existing row holds NULL." : {
 
     },
@@ -77346,6 +77428,9 @@
     "No Comparison Yet" : {
 
     },
+    "No comparison yet." : {
+
+    },
     "No compatible build is available yet. This plugin will update automatically once one is published." : {
       "localizations" : {
         "ko" : {
@@ -80771,6 +80856,9 @@
         }
       }
     },
+    "No tables were compared. Choose the tables to compare, then press Compare." : {
+
+    },
     "No Tables Yet" : {
 
     },
@@ -81233,6 +81321,9 @@
       }
     },
     "Not compared" : {
+
+    },
+    "Not Compared" : {
 
     },
     "Not Compared Yet" : {
@@ -82119,6 +82210,9 @@
       }
     },
     "Nothing in this script destroys data in %@." : {
+
+    },
+    "Nothing is running." : {
 
     },
     "Nothing is selected to apply." : {
@@ -102615,6 +102709,9 @@
           }
         }
       }
+    },
+    "Run the script against the target" : {
+
     },
     "Run the statement and report actual timings (default false)" : {
 
@@ -123698,6 +123795,9 @@
     "The schema change to make, in plain language" : {
 
     },
+    "The script already ran. Compare again to see where the target stands." : {
+
+    },
     "The secret manager did not return valid JSON." : {
       "localizations" : {
         "ko" : {
@@ -123916,6 +124016,9 @@
           }
         }
       }
+    },
+    "The source and the target are the same database." : {
+
     },
     "The source driver cannot stream rows for a comparison." : {
 
@@ -124836,6 +124939,9 @@
 
     },
     "These rows come from a view, which cannot be edited." : {
+
+    },
+    "These two engines cannot share a script." : {
 
     },
     "This %1$@ has no %2$@ yet." : {
@@ -136108,6 +136214,9 @@
 
     },
     "What to Compare" : {
+
+    },
+    "What to compare, and how" : {
 
     },
     "What to do with the transaction" : {

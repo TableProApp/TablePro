@@ -45,6 +45,7 @@ internal final class CompareSyncWindowController: NSWindowController,
         self?.endpointsChanged()
     }
     private weak var modeControl: NSSegmentedControl?
+    private weak var searchToolbarItem: NSSearchToolbarItem?
 
     internal static func present(prefillSource connectionId: UUID?) {
         let controller = controllers[connectionId] ?? CompareSyncWindowController(prefillSource: connectionId)
@@ -309,16 +310,38 @@ internal final class CompareSyncWindowController: NSWindowController,
         return item
     }
 
-    private func searchItem(_ identifier: NSToolbarItem.Identifier) -> NSToolbarItem {
+    /// `NSSearchToolbarItem` stretches past `preferredWidthForSearchField` to absorb whatever slack
+    /// the toolbar has: measured at 325pt in a 1400pt window against a preferred 240, which is why
+    /// the field swallowed a third of the toolbar. The preferred width is documented as the width
+    /// it takes "whenever it gets the keyboard focus", not a cap, so the cap has to be a real
+    /// constraint on the field. `NSSearchToolbarItem.h`: "If specifying custom width constraints to
+    /// the search field, they should not conflict with this value", so both are the same number.
+    ///
+    /// The field is configured before it is assigned, which is the order the header asks for:
+    /// "While inside the toolbar item, the field properties and layout constraints are managed by
+    /// the item. The field should be configured before assigned."
+    private func searchItem(_ identifier: NSToolbarItem.Identifier) -> NSSearchToolbarItem {
+        let field = NSSearchField()
+        field.sendsWholeSearchString = false
+        field.sendsSearchStringImmediately = true
+        field.placeholderString = String(localized: "Filter by name")
+        field.target = self
+        field.action = #selector(searchChanged(_:))
+        field.stringValue = session.searchText
+
         let item = NSSearchToolbarItem(itemIdentifier: identifier)
-        item.label = String(localized: "Search")
-        item.paletteLabel = String(localized: "Search")
-        item.toolTip = String(localized: "Filter results by name")
-        item.searchField.sendsWholeSearchString = false
-        item.searchField.target = self
-        item.searchField.action = #selector(searchChanged(_:))
+        item.label = String(localized: "Filter")
+        item.paletteLabel = String(localized: "Filter")
+        item.toolTip = String(localized: "Show only the objects whose name contains this text")
+        item.searchField = field
+        item.preferredWidthForSearchField = Self.searchFieldWidth
+        field.widthAnchor.constraint(lessThanOrEqualToConstant: Self.searchFieldWidth).isActive = true
+        item.visibilityPriority = .low
+        searchToolbarItem = item
         return item
     }
+
+    private static let searchFieldWidth: CGFloat = 220
 
     // MARK: - Actions
 
@@ -357,6 +380,15 @@ internal final class CompareSyncWindowController: NSWindowController,
         session.cancelRunningWork()
     }
 
+    /// Edit > Find > Find… already owns Command F and routes by nil target, so the Compare window
+    /// answers that command rather than declaring a second binding for the same idea: two menu
+    /// items sharing a key equivalent leaves one of them permanently dead.
+    /// `beginSearchInteraction` is AppKit's own entry point, and it works even once the item has
+    /// been clipped into the overflow menu.
+    @objc internal func performFind(_ sender: Any?) {
+        searchToolbarItem?.beginSearchInteraction()
+    }
+
     @objc private func modeChanged(_ sender: NSSegmentedControl) {
         let index = sender.selectedSegment
         guard CompareSyncMode.allCases.indices.contains(index) else { return }
@@ -377,15 +409,17 @@ internal final class CompareSyncWindowController: NSWindowController,
         endpointMenus.refreshTitles()
     }
 
+    /// Only the Group By menu, found by identifier. Walking every `NSMenuToolbarItem` also reached
+    /// the Source and Target popups and rewrote their checkmarks from a grouping value.
     @objc private func groupingChanged(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String,
               let grouping = CompareGrouping(rawValue: raw) else { return }
         session.grouping = grouping
-        window?.toolbar?.items
-            .compactMap { $0 as? NSMenuToolbarItem }
-            .forEach { menuItem in
-                menuItem.menu.items.forEach { $0.state = ($0.representedObject as? String) == raw ? .on : .off }
-            }
+        let item = window?.toolbar?.items.first { $0.itemIdentifier == .compareGrouping }
+        guard let menu = (item as? NSMenuToolbarItem)?.menu else { return }
+        for entry in menu.items {
+            entry.state = (entry.representedObject as? String) == raw ? .on : .off
+        }
     }
 
     @objc private func searchChanged(_ sender: NSSearchField) {
@@ -432,6 +466,8 @@ internal final class CompareSyncWindowController: NSWindowController,
             return session.isBusy ? String(localized: "A comparison is already running.") : nil
         case #selector(stopComparison(_:)):
             return session.isBusy ? nil : String(localized: "Nothing is running.")
+        case #selector(performFind(_:)):
+            return searchToolbarItem == nil ? String(localized: "The filter field is not in the toolbar.") : nil
         default:
             return nil
         }
@@ -442,17 +478,21 @@ internal final class CompareSyncWindowController: NSWindowController,
     /// states" rather than repeating the control's name.
     private func describe(_ item: any NSValidatedUserInterfaceItem, reason: String?) {
         guard let toolbarItem = item as? NSToolbarItem else { return }
-        toolbarItem.toolTip = reason ?? purpose(of: toolbarItem.itemIdentifier)
+        /// An identifier with no purpose of its own keeps whatever tooltip it was built with. The
+        /// Source and Target items carry the unshortened scope there, and blanking it would undo
+        /// the only place the full path is still readable.
+        guard let text = reason ?? purpose(of: toolbarItem.itemIdentifier) else { return }
+        toolbarItem.toolTip = text
     }
 
-    private func purpose(of identifier: NSToolbarItem.Identifier) -> String {
+    private func purpose(of identifier: NSToolbarItem.Identifier) -> String? {
         switch identifier {
         case .compareRun: return String(localized: "Compare the two databases")
         case .compareGenerate: return String(localized: "Build the SQL that brings the target in line")
         case .compareApply: return String(localized: "Run the script against the target")
         case .compareSwap: return String(localized: "Make the target the source and the source the target")
         case .compareOptions: return String(localized: "What to compare, and how")
-        default: return ""
+        default: return nil
         }
     }
 
