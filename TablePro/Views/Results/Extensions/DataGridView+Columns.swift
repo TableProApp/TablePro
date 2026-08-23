@@ -37,6 +37,7 @@ extension TableViewCoordinator {
 
         guard DataGridAccessibility.isActive,
               presentsColumn(column),
+              mountsAccessibilityCell(forRow: row),
               let dataColumn = dataColumnIndex(from: column.identifier) else { return nil }
         let cell = (tableView.makeView(withIdentifier: DataGridCellAccessibilityView.reuseIdentifier, owner: nil)
             as? DataGridCellAccessibilityView) ?? DataGridCellAccessibilityView()

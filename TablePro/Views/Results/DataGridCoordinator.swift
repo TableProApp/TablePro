@@ -433,6 +433,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var settingsCancellable: AnyCancellable?
     var themeCancellable: AnyCancellable?
     private var accessibilityActivationObserver: (any NSObjectProtocol)?
+    private var accessibilityMountedRows = NSRange(location: 0, length: 0)
     private var lastDataGridSettings: DataGridSettings
 
     @Binding var selectedRowIndices: Set<Int>
@@ -534,9 +535,9 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     /// The grid mounts no view for a data cell, so a client that attaches mid-session finds a table
-    /// of empty cells until the rows are built again. The reload is deferred off the accessibility
-    /// query that raised the flag, because rebuilding the rows inside it would re-enter the tree
-    /// AppKit is walking.
+    /// of empty cells until the visible rows are built again. The remount is deferred off the
+    /// accessibility query that raised the flag, because rebuilding rows inside it would re-enter
+    /// the tree AppKit is walking.
     private func observeAccessibilityActivation() {
         accessibilityActivationObserver = NotificationCenter.default.addObserver(
             forName: DataGridAccessibility.didActivateNotification,
@@ -544,9 +545,37 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             queue: nil
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.tableView?.reloadData()
+                self?.remountAccessibilityCells()
             }
         }
+    }
+
+    /// Whether this row is one an assistive client can be reading right now.
+    ///
+    /// Walking the accessibility tree makes `NSTableView` prepare every row of the page, not the
+    /// twenty-five on screen, and it asks for a view for each one. Mounting a cell there put 9,000
+    /// views and a 21,000 element tree behind a 1,000-row page, which is the cost `#2381` removed
+    /// and enough to starve the app of the main thread. Only the viewport mounts, and scrolling
+    /// mounts what it brings into view.
+    func mountsAccessibilityCell(forRow row: Int) -> Bool {
+        guard let tableView else { return false }
+        return NSLocationInRange(row, tableView.rows(in: tableView.visibleRect))
+    }
+
+    /// Rebuilds the cells for the rows now on screen. A row prepared while it was off screen was
+    /// answered with no view and is never asked again, so the rows a scroll reveals have to be
+    /// reloaded rather than waited for.
+    func remountAccessibilityCells() {
+        guard DataGridAccessibility.isActive, let tableView else { return }
+        let visible = tableView.rows(in: tableView.visibleRect)
+        guard visible.length > 0, !NSEqualRanges(visible, accessibilityMountedRows) else { return }
+        let upperBound = min(visible.location + visible.length, tableView.numberOfRows)
+        guard visible.location >= 0, upperBound > visible.location, tableView.numberOfColumns > 0 else { return }
+        accessibilityMountedRows = visible
+        tableView.reloadData(
+            forRowIndexes: IndexSet(integersIn: visible.location..<upperBound),
+            columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)
+        )
     }
 
     func releaseData() {
@@ -595,6 +624,9 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         let tableRows = tableRowsProvider()
         cachedRowCount = displayIDs?.count ?? tableRows.count
         cachedColumnCount = tableRows.columns.count
+        /// A reload throws away the cells that were mounted, so the record of which rows carry one
+        /// has to go with them or the next scroll decides there is nothing to remount.
+        accessibilityMountedRows = NSRange(location: 0, length: 0)
         resizeRowNumberColumnForCurrentRange()
     }
 
@@ -899,7 +931,20 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                 self?.schedulePrewarmResume()
             }
         }
-        scrollObservers = [start, end]
+        /// The clip view rather than the scroll view's live-scroll pair, because it is the only one
+        /// that also reports a programmatic scroll: `scrollRowToVisible`, which is how VoiceOver
+        /// reaches a row that is not on screen.
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        let bounds = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.remountAccessibilityCells()
+            }
+        }
+        scrollObservers = [start, end, bounds]
     }
 
     private func detachScrollObservers() {

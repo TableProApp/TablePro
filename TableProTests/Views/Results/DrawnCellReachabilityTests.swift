@@ -169,6 +169,21 @@ struct DrawnCellReachabilityTests {
         #expect(cell.accessibilityRole() == .staticText)
     }
 
+    /// Walking the tree makes `NSTableView` prepare every row of the page and ask for a view for
+    /// each one, so mounting on preparation alone put 9,000 views and a 21,000 element tree behind a
+    /// 1,000-row page and starved the app of the main thread.
+    @Test("A row below the viewport mounts no cell")
+    func aRowBelowTheViewportMountsNothing() throws {
+        DataGridAccessibility.isActive = true
+        defer { DataGridAccessibility.isActive = false }
+        let grid = makeGrid(columns: ["id"], rows: 200)
+        let tableView = try #require(grid.coordinator.tableView)
+        let column = try #require(grid.coordinator.firstPresentedColumnIndex())
+
+        #expect(tableView.view(atColumn: column, row: 0, makeIfNecessary: true) is DataGridCellAccessibilityView)
+        #expect(tableView.view(atColumn: column, row: 199, makeIfNecessary: true) == nil)
+    }
+
     /// The value is read through rather than stored, so an edit is spoken without anything having to
     /// remember to stand the cell down first. A committed cell edit takes this exact path.
     @Test("An edited cell is read back without any invalidation")
