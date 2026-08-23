@@ -38,12 +38,7 @@ class DataGridRowView: NSTableRowView {
     }
 
     /// Repaints one cell, the way a mounted cell view repainted itself.
-    ///
-    /// The accessibility elements carry the cell's value, so a repaint has to stand them down too,
-    /// or VoiceOver keeps reading what the cell said before the edit. A committed cell edit takes
-    /// this path, so it is the ordinary case rather than a rare one.
     func redrawCell(atTableColumnIndex tableColumnIndex: Int) {
-        accessibilityCellsAreStale = true
         guard let tableView = coordinator?.tableView else {
             contentView.needsDisplay = true
             return
@@ -56,85 +51,27 @@ class DataGridRowView: NSTableRowView {
 
     func redrawCells() {
         contentView.needsDisplay = true
-        accessibilityCellsAreStale = true
     }
 
     // MARK: - Accessibility
 
-    /// One element per data column, vended as this row's accessibility children.
-    ///
-    /// A mounted cell view was its own accessibility element and AppKit built the AXCell tree from
-    /// those. Drawn cells have no view to carry that, so the row vends the elements itself, which is
-    /// what `NSAccessibilityElement` exists for. Owned for the row's lifetime and reconfigured in
-    /// place, because an element handed to an assistive client must not be replaced underneath it.
-    private var accessibilityCells: [NSAccessibilityElement] = []
-    /// Accessibility is pull-based, so the elements are built when something asks for them and never
-    /// on the draw path. Building them there cost a formatted value per column per repaint, which is
-    /// 500 of them on a wide result every time the selection moved, with nothing reading the result
-    /// unless an assistive client is attached.
-    private var accessibilityCellsAreStale = true
-
-    private func rebuildAccessibilityCellsIfStale() {
-        guard accessibilityCellsAreStale else { return }
-        rebuildAccessibilityCells()
-    }
-
-    private func rebuildAccessibilityCells() {
-        accessibilityCellsAreStale = false
-        guard let coordinator, let tableView = coordinator.tableView else { return }
-        let columnCount = coordinator.identitySchema.totalDataColumns
-        if accessibilityCells.count != columnCount {
-            accessibilityCells = (0..<columnCount).map { _ in NSAccessibilityElement() }
-        }
-
-        for dataColumn in 0..<columnCount {
-            let element = accessibilityCells[dataColumn]
-            element.setAccessibilityRole(.cell)
-            element.setAccessibilityParent(self)
-            element.setAccessibilityRowIndexRange(NSRange(location: rowIndex, length: 1))
-            element.setAccessibilityColumnIndexRange(NSRange(location: dataColumn, length: 1))
-
-            let text = coordinator.accessibilityText(row: rowIndex, columnIndex: dataColumn) ?? ""
-            element.setAccessibilityValue(text)
-            element.setAccessibilityLabel(
-                String(
-                    format: String(localized: "Row %d, column %d: %@"),
-                    rowIndex + 1,
-                    dataColumn + 1,
-                    text
-                )
-            )
-
-            if let position = coordinator.tableColumnIndex(for: dataColumn) {
-                let columnRect = tableView.rect(ofColumn: position)
-                element.setAccessibilityFrameInParentSpace(
-                    NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: bounds.height)
-                )
-            }
-        }
-    }
-
-    func accessibilityCell(forDataColumn dataColumn: Int) -> NSAccessibilityElement? {
-        rebuildAccessibilityCellsIfStale()
-        guard accessibilityCells.indices.contains(dataColumn) else { return nil }
-        return accessibilityCells[dataColumn]
-    }
-
-    override func accessibilityChildren() -> [Any]? {
-        rebuildAccessibilityCellsIfStale()
-        return accessibilityCells.map { $0 as Any }
-    }
-
     override func accessibilityRole() -> NSAccessibility.Role? { .row }
 
+    /// The row answers for every point it covers that no cell does: the row-number column, and the
+    /// width past the last column on a result narrower than the grid.
+    ///
+    /// AppKit's own hit test descends into subviews, and `contentView` covers the whole row, so a
+    /// point outside every cell used to resolve to a view that is not in the accessibility tree. A
+    /// client reads an element outside the row's subtree as the row not being reachable there, which
+    /// is what a mounted cell view left behind when it covered only its own column.
     override func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        DataGridAccessibility.markActive()
         guard let window else { return super.accessibilityHitTest(point) }
         let local = convert(window.convertPoint(fromScreen: point), from: nil)
-        rebuildAccessibilityCellsIfStale()
-        for element in accessibilityCells where element.accessibilityFrameInParentSpace().contains(local) {
-            return element
+        for subview in subviews where subview !== contentView && subview.frame.contains(local) {
+            if let hit = subview.accessibilityHitTest(point) { return hit }
         }
-        return super.accessibilityHitTest(point)
+        return bounds.contains(local) ? self : nil
     }
 
     /// The click a cell view used to take for itself: the in-cell accessory, then a double click.
@@ -780,6 +717,19 @@ final class DataGridRowContentView: NSView {
 
     override var isFlipped: Bool { true }
     override var allowsVibrancy: Bool { false }
+
+    /// Chrome, not content. The row publishes one accessibility element per data column and this
+    /// view carries none of them, so leaving it in the tree puts a nameless group between the row
+    /// and its cells and lets an accessibility hit test land on it.
+    override func isAccessibilityElement() -> Bool { false }
+
+    /// AppKit hit-tests down the view hierarchy, and this view covers the whole row, so every point
+    /// in the row that no cell covers used to resolve to it. The row is the answer there; forwarding
+    /// keeps the one implementation. The row never calls back into `super` while it has a window, so
+    /// this cannot loop.
+    override func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        rowView?.accessibilityHitTest(point) ?? super.accessibilityHitTest(point)
+    }
 
     /// The separators go down in a second pass, after every cell, because a cell fills its whole
     /// rect for a modified or find-match tint and would paint over a line drawn beside it. AppKit's

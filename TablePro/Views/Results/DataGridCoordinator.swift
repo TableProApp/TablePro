@@ -432,6 +432,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     var settingsCancellable: AnyCancellable?
     var themeCancellable: AnyCancellable?
+    private var accessibilityActivationObserver: (any NSObjectProtocol)?
     private var lastDataGridSettings: DataGridSettings
 
     @Binding var selectedRowIndices: Set<Int>
@@ -488,6 +489,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         updateCache()
 
         observeThemeChanges()
+        observeAccessibilityActivation()
 
         settingsCancellable = AppEvents.shared.dataGridSettingsChanged
             .receive(on: RunLoop.main)
@@ -531,6 +533,22 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             }
     }
 
+    /// The grid mounts no view for a data cell, so a client that attaches mid-session finds a table
+    /// of empty cells until the rows are built again. The reload is deferred off the accessibility
+    /// query that raised the flag, because rebuilding the rows inside it would re-enter the tree
+    /// AppKit is walking.
+    private func observeAccessibilityActivation() {
+        accessibilityActivationObserver = NotificationCenter.default.addObserver(
+            forName: DataGridAccessibility.didActivateNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.tableView?.reloadData()
+            }
+        }
+    }
+
     func releaseData() {
         prewarmTask?.cancel()
         prewarmTask = nil
@@ -544,6 +562,10 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         settingsCancellable = nil
         themeCancellable?.cancel()
         themeCancellable = nil
+        if let accessibilityActivationObserver {
+            NotificationCenter.default.removeObserver(accessibilityActivationObserver)
+        }
+        accessibilityActivationObserver = nil
         visualIndex.clear()
         displayCache.removeAll()
         columnDisplayFormats = []

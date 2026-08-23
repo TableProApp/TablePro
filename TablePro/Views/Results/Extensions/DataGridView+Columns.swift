@@ -12,23 +12,37 @@ extension TableViewCoordinator {
         autoreleasepool { viewForCell(in: tableView, column: tableColumn, row: row) }
     }
 
-    /// Only the row-number column still mounts a view.
+    /// Only the row-number column mounts a view, until something reads the grid through
+    /// accessibility.
     ///
     /// A data cell is drawn by its row instead. `NSTableView` builds one cell view per column per
     /// prepared row whatever the viewport shows, so a 500-column result carried 12,500 views and
     /// 837MB of them; returning nil here leaves 26 views in the whole table and 3.9MB (#2381).
+    ///
+    /// A table view's `AXCell` tree comes from cell views alone, so a session with an assistive
+    /// client attached pays that cost back and gets a cell it can read. See
+    /// `DataGridCellAccessibilityView`.
     private func viewForCell(in tableView: NSTableView, column tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard let column = tableColumn else { return nil }
-        guard column.identifier == ColumnIdentitySchema.rowNumberIdentifier else { return nil }
+        guard column.identifier != ColumnIdentitySchema.rowNumberIdentifier else {
+            let tableRows = tableRowsProvider()
+            return cellRegistry.makeRowNumberCell(
+                in: tableView,
+                row: row,
+                pageOffset: paginationOffsetProvider(),
+                cachedRowCount: displayIDs?.count ?? tableRows.count,
+                visualState: visualState(for: row)
+            )
+        }
 
-        let tableRows = tableRowsProvider()
-        return cellRegistry.makeRowNumberCell(
-            in: tableView,
-            row: row,
-            pageOffset: paginationOffsetProvider(),
-            cachedRowCount: displayIDs?.count ?? tableRows.count,
-            visualState: visualState(for: row)
-        )
+        guard DataGridAccessibility.isActive,
+              presentsColumn(column),
+              let dataColumn = dataColumnIndex(from: column.identifier) else { return nil }
+        let cell = (tableView.makeView(withIdentifier: DataGridCellAccessibilityView.reuseIdentifier, owner: nil)
+            as? DataGridCellAccessibilityView) ?? DataGridCellAccessibilityView()
+        cell.identifier = DataGridCellAccessibilityView.reuseIdentifier
+        cell.configure(coordinator: self, row: row, dataColumn: dataColumn)
+        return cell
     }
 
     /// What one data cell looks like, for the row that draws it.

@@ -21,7 +21,7 @@ private final class ReachabilityLayoutPersister: ColumnLayoutPersisting {
 /// nil. Twelve guards still asked it before opening an editor or a popover, and every one of them
 /// returned early: the JSON, blob, PHP, date, enum, set, array, dropdown and type-picker editors
 /// were all unreachable. `presentsCell(row:tableColumnIndex:)` is the single replacement (#2381).
-@Suite("Drawn cell reachability")
+@Suite("Drawn cell reachability", .serialized)
 @MainActor
 struct DrawnCellReachabilityTests {
     /// Holds the window: `TableViewCoordinator.tableView` is weak both ways, so a suite that
@@ -85,6 +85,7 @@ struct DrawnCellReachabilityTests {
     /// cell, so anything still asking it is dead code.
     @Test("No data cell mounts a view any more")
     func dataCellsMountNoView() throws {
+        DataGridAccessibility.isActive = false
         let coordinator = makeGrid(columns: ["id", "name"]).coordinator
         let tableView = try #require(coordinator.tableView)
         let dataColumn = try #require(coordinator.firstPresentedColumnIndex())
@@ -131,37 +132,119 @@ struct DrawnCellReachabilityTests {
         coordinator.repaintRows(IndexSet(integer: -1))
     }
 
-    /// A drawn cell has no view of its own, so the row vends the accessibility element that carries
-    /// the value. Repainting one cell has to stand that element down as well, or VoiceOver keeps
-    /// reading what the cell said before the edit. A committed cell edit takes this exact path.
-    @Test("Repainting one cell refreshes the value VoiceOver reads")
-    func repaintingOneCellRefreshesItsAccessibilityValue() throws {
-        let columns = ["id", "name"]
-        var current = TableRows.from(
-            queryRows: [columns.map { PluginCellValue.text("before-\($0)") }],
-            columns: columns,
-            columnTypes: Array(repeating: ColumnType.text(rawType: "TEXT"), count: columns.count)
-        )
-        let coordinator = makeGrid(columns: columns, rows: 1).coordinator
-        coordinator.tableRowsProvider = { current }
-        coordinator.updateCache()
+    // MARK: - Accessibility
 
-        let tableView = try #require(coordinator.tableView)
-        tableView.reloadData()
-        let rowView = try #require(tableView.rowView(atRow: 0, makeIfNecessary: true) as? DataGridRowView)
-        let before = (rowView.accessibilityChildren()?.first as? NSAccessibilityElement)?.accessibilityValue() as? String
-        #expect(before?.contains("before") == true)
+    private func mountedCell(
+        in grid: Grid,
+        row: Int = 0
+    ) throws -> DataGridCellAccessibilityView? {
+        let tableView = try #require(grid.coordinator.tableView)
+        let column = try #require(grid.coordinator.firstPresentedColumnIndex())
+        return tableView.view(atColumn: column, row: row, makeIfNecessary: true) as? DataGridCellAccessibilityView
+    }
+
+    /// The whole point of drawing the cells: a result with hundreds of columns builds no view for
+    /// any of them. Nothing has asked this grid an accessibility question, so nothing mounts.
+    @Test("A data cell mounts no view until something reads the grid")
+    func noCellViewIsMountedWhileAccessibilityIsIdle() throws {
+        DataGridAccessibility.isActive = false
+        let grid = makeGrid(columns: ["id", "name"])
+
+        #expect(try mountedCell(in: grid) == nil)
+    }
+
+    /// `NSTableView` builds its `AXCell` tree from cell views and from nothing else, so a drawn cell
+    /// can only speak through one. Measured: an `NSAccessibilityElement` published by the row never
+    /// reaches the tree, whichever attribute carries the text and however it is parented, and AppKit
+    /// puts its own blank placeholder there instead.
+    @Test("A cell mounts a view carrying its value once accessibility is active")
+    func anActiveClientGetsACellItCanRead() throws {
+        DataGridAccessibility.isActive = true
+        defer { DataGridAccessibility.isActive = false }
+        let grid = makeGrid(columns: ["id", "name"])
+
+        let cell = try #require(try mountedCell(in: grid))
+
+        #expect(cell.accessibilityValue() as? String == "id-0")
+        #expect(cell.accessibilityRole() == .staticText)
+    }
+
+    /// The value is read through rather than stored, so an edit is spoken without anything having to
+    /// remember to stand the cell down first. A committed cell edit takes this exact path.
+    @Test("An edited cell is read back without any invalidation")
+    func anEditedCellReadsItsNewValue() throws {
+        DataGridAccessibility.isActive = true
+        defer { DataGridAccessibility.isActive = false }
+        let columns = ["id"]
+        var current = TableRows.from(
+            queryRows: [[PluginCellValue.text("before")]],
+            columns: columns,
+            columnTypes: [ColumnType.text(rawType: "TEXT")]
+        )
+        let grid = makeGrid(columns: columns, rows: 1)
+        grid.coordinator.tableRowsProvider = { current }
+        grid.coordinator.updateCache()
+        let cell = try #require(try mountedCell(in: grid))
+        #expect(cell.accessibilityValue() as? String == "before")
 
         current = TableRows.from(
-            queryRows: [columns.map { _ in PluginCellValue.text("after") }],
+            queryRows: [[PluginCellValue.text("after")]],
             columns: columns,
-            columnTypes: Array(repeating: ColumnType.text(rawType: "TEXT"), count: columns.count)
+            columnTypes: [ColumnType.text(rawType: "TEXT")]
         )
-        coordinator.invalidateDisplayCache()
-        let dataColumn = try #require(coordinator.firstPresentedColumnIndex())
-        rowView.redrawCell(atTableColumnIndex: dataColumn)
+        grid.coordinator.invalidateDisplayCache()
 
-        let after = (rowView.accessibilityChildren()?.first as? NSAccessibilityElement)?.accessibilityValue() as? String
-        #expect(after == "after", "the element still held the pre-edit value")
+        #expect(cell.accessibilityValue() as? String == "after")
+    }
+
+    /// The row still draws every cell and still handles every click, so the view mounted over it
+    /// must be transparent to the mouse or the in-cell accessories and the double click to edit go
+    /// to a view that does nothing with them.
+    @Test("The mounted cell takes no clicks")
+    func theMountedCellIsTransparentToTheMouse() throws {
+        DataGridAccessibility.isActive = true
+        defer { DataGridAccessibility.isActive = false }
+        let grid = makeGrid(columns: ["id"])
+        let cell = try #require(try mountedCell(in: grid))
+
+        #expect(cell.hitTest(NSPoint(x: cell.bounds.midX, y: cell.bounds.midY)) == nil)
+    }
+
+    @Test("The view that draws the cells stays out of the accessibility tree")
+    func theDrawingViewIsNotAnAccessibilityElement() throws {
+        let rowView = DataGridRowView()
+        let content = try #require(rowView.subviews.first as? DataGridRowContentView)
+
+        #expect(content.isAccessibilityElement() == false)
+    }
+
+    /// The row covers more than its cells do: the row-number column at one end and, on a result
+    /// narrower than the grid, the empty width past the last column at the other. AppKit's own hit
+    /// test descends into subviews and the view that draws the cells covers the whole row, so a
+    /// point outside every cell resolved to a view that is not in the tree at all.
+    @Test("An accessibility hit test past the last column lands on the row itself")
+    func aHitTestPastTheLastColumnReturnsTheRow() throws {
+        let grid = makeGrid(columns: ["id", "name"], rows: 1)
+        let tableView = try #require(grid.coordinator.tableView)
+        let rowView = try #require(tableView.rowView(atRow: 0, makeIfNecessary: true) as? DataGridRowView)
+        let lastColumn = try #require(grid.coordinator.lastPresentedColumnIndex())
+        let pastEverything = tableView.rect(ofColumn: lastColumn).maxX + 20
+
+        let hit = rowView.accessibilityHitTest(
+            screenPoint(x: pastEverything, in: rowView, of: tableView, window: grid.window)
+        )
+
+        #expect(hit as? NSView === rowView)
+    }
+
+    private func screenPoint(
+        x horizontal: CGFloat,
+        in rowView: DataGridRowView,
+        of tableView: NSTableView,
+        window: NSWindow
+    ) -> NSPoint {
+        let inRow = rowView.convert(NSPoint(x: horizontal, y: 0), from: tableView)
+        let centred = NSPoint(x: inRow.x, y: rowView.bounds.midY)
+        return window.convertPoint(toScreen: rowView.convert(centred, to: nil))
     }
 }

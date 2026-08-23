@@ -527,19 +527,37 @@ final class KeyHandlingTableView: NSTableView {
         NSAccessibility.post(element: element, notification: .focusedUIElementChanged)
     }
 
-    /// The accessibility element standing for one drawn cell.
-    private func accessibilityCellElement(row: Int, tableColumnIndex: Int) -> NSAccessibilityElement? {
-        guard let coordinator,
-              tableColumnIndex >= 0, tableColumnIndex < tableColumns.count,
-              let dataColumn = coordinator.dataColumnIndex(from: tableColumns[tableColumnIndex].identifier),
-              let rowView = rowView(atRow: row, makeIfNecessary: false) as? DataGridRowView else { return nil }
-        return rowView.accessibilityCell(forDataColumn: dataColumn)
+    /// What stands for one cell: the view mounted for accessibility, which exists only once a
+    /// client has asked the grid anything. Asking marks accessibility active, so the first such
+    /// question is also what brings the views into being.
+    private func accessibilityCellElement(row: Int, tableColumnIndex: Int) -> Any? {
+        DataGridAccessibility.markActive()
+        return view(atColumn: tableColumnIndex, row: row, makeIfNecessary: false) as? DataGridCellAccessibilityView
     }
 
-    /// VoiceOver's table navigation asks for a cell by coordinate, which AppKit answered from the
-    /// cell views. It now comes from the row that draws them.
     override func accessibilityCell(forColumn column: Int, row: Int) -> Any? {
         accessibilityCellElement(row: row, tableColumnIndex: column) ?? super.accessibilityCell(forColumn: column, row: row)
+    }
+
+    /// Anything walking the tree reaches here, which is the grid's signal that a client is attached.
+    override func accessibilityChildren() -> [Any]? {
+        DataGridAccessibility.markActive()
+        return super.accessibilityChildren()
+    }
+
+    /// `NSTableView` answers an accessibility hit test itself and stops at a cell, so a point inside
+    /// a row but outside every column resolved to the table rather than to the row: an ancestor
+    /// rather than a descendant, which a client reads as the row not being reachable at that point.
+    /// A result narrower than the grid leaves most of each row in exactly that state.
+    override func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        DataGridAccessibility.markActive()
+        guard let window else { return super.accessibilityHitTest(point) }
+        let local = convert(window.convertPoint(fromScreen: point), from: nil)
+        let index = row(at: local)
+        guard index >= 0, let rowView = rowView(atRow: index, makeIfNecessary: false) else {
+            return super.accessibilityHitTest(point)
+        }
+        return rowView.accessibilityHitTest(point) ?? rowView
     }
 
     override func accessibilitySelectedCells() -> [Any]? {
