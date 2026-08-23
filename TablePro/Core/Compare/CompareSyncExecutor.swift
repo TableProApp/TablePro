@@ -62,6 +62,23 @@ internal struct CompareSyncRunResult {
     internal let rolledBack: Bool
     internal let cancelled: Bool
 
+    /// Set when the statements ran but the transaction could not be committed, which leaves the
+    /// target in whatever state the engine decided rather than in either of the two the user
+    /// expects.
+    internal let commitFailure: String?
+
+    internal init(
+        outcomes: [SyncStatementOutcome],
+        rolledBack: Bool,
+        cancelled: Bool,
+        commitFailure: String? = nil
+    ) {
+        self.outcomes = outcomes
+        self.rolledBack = rolledBack
+        self.cancelled = cancelled
+        self.commitFailure = commitFailure
+    }
+
     internal var executedCount: Int {
         outcomes.filter { $0.succeeded }.count
     }
@@ -188,15 +205,29 @@ internal actor CompareSyncExecutor {
 
         let shouldRollback = usesTransaction
             && (cancelled || (stopped && settings.errorHandling == .stopAndRollback))
+        var commitFailure: String?
         if usesTransaction {
             if shouldRollback {
                 try? await driver.rollbackTransaction()
             } else {
-                try await driver.commitTransaction()
+                /// A commit that throws used to propagate past the whole run, so the result was
+                /// discarded and the user got an error with no record of which statements had
+                /// already executed. The failure belongs in the result, not instead of it.
+                do {
+                    try await driver.commitTransaction()
+                } catch {
+                    Self.logger.error("Sync commit failed: \(error.localizedDescription, privacy: .public)")
+                    commitFailure = error.localizedDescription
+                }
             }
         }
 
-        return CompareSyncRunResult(outcomes: outcomes, rolledBack: shouldRollback, cancelled: cancelled)
+        return CompareSyncRunResult(
+            outcomes: outcomes,
+            rolledBack: shouldRollback,
+            cancelled: cancelled,
+            commitFailure: commitFailure
+        )
     }
 
     private static let progressBatchSize: Int64 = 25

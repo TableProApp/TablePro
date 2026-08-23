@@ -74,6 +74,10 @@ internal extension CompareRunner {
         }
         guard !byTable.isEmpty else { return [] }
 
+        /// `session.sourceSnapshots` is filled by the structure path only, so reading it here left
+        /// the graph empty and the ordering fell back to alphabetical: `order_items` before
+        /// `orders`, which is exactly the foreign key failure this ordering exists to prevent.
+        /// The data path records its own snapshots when it builds the plans.
         let foreignKeys = CompareRunner.foreignKeyMap(from: session.sourceSnapshots)
         let nodes = byTable.map { ForeignKeyTopologicalSort.Table(name: $0.plan.table, schema: $0.plan.schema) }
         let parentFirst = ForeignKeyTopologicalSort
@@ -106,19 +110,28 @@ internal extension CompareRunner {
         )
         try Task.checkCancellation()
 
-        let targetByName = Dictionary(
-            targetReads.map { ($0.table.name.lowercased(), $0) }, uniquingKeysWith: { first, _ in first }
+        /// Keyed on schema and name, not name alone: two schemas of one database can hold the same
+        /// table, and pairing on the bare name took the shared column set from the wrong
+        /// counterpart while reading rows from the right one.
+        let options = session.structureOptions
+        let targetByKey = Dictionary(
+            targetReads.map { (options.matchKey(name: $0.table.name, schema: $0.table.schema), $0) },
+            uniquingKeysWith: { first, _ in first }
         )
         let previous = Dictionary(
             session.dataPlans.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }
         )
 
+        session.sourceSnapshots = Dictionary(
+            sourceReads.compactMap { $0.snapshot }.map { ($0.qualifiedName, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
         var plans: [DataComparePlan] = []
         for read in sourceReads {
             guard read.failure == nil else { continue }
-            guard let counterpart = targetByName[read.table.name.lowercased()], counterpart.failure == nil else {
-                continue
-            }
+            let pairKey = options.matchKey(name: read.table.name, schema: read.table.schema)
+            guard let counterpart = targetByKey[pairKey], counterpart.failure == nil else { continue }
             let targetNames = Set(counterpart.columns.map { $0.name.lowercased() })
             let shared = read.columns.filter { targetNames.contains($0.name.lowercased()) }
             let schema = read.table.schema ?? context.source.schema
@@ -128,6 +141,7 @@ internal extension CompareRunner {
             var plan = DataComparePlan(
                 table: read.table.name,
                 schema: schema,
+                targetSchema: counterpart.table.schema ?? context.target.schema,
                 columns: shared.map { $0.name },
                 columnDescriptors: shared.map {
                     KeyColumnDescriptor(name: $0.name, dataType: $0.dataType, collation: $0.collation)

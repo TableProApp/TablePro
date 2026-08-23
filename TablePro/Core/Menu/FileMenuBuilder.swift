@@ -30,10 +30,6 @@ enum FileMenuBuilder {
                 shortcut: .manageConnections,
                 keyboard: keyboard
             ),
-            MenuItemFactory.item(
-                String(localized: "Compare & Sync Databases…"),
-                action: #selector(AppDelegate.compareAndSyncDatabases(_:))
-            ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
                 String(localized: "Open File…"),

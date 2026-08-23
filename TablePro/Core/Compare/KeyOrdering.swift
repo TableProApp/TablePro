@@ -69,15 +69,25 @@ internal struct KeyOrdering {
         key.contains { if case .null = $0 { return true } else { return false } }
     }
 
+    /// The row's identity, which is what excluding one row from a sync keys on, so two different
+    /// composite keys must never render the same. Joining with ", " made ("a", "b, c") and
+    /// ("a, b", "c") identical and silently excluded the wrong row. A unit separator cannot appear
+    /// in a key value.
+    internal static func identity(of key: [PluginCellValue]) -> String {
+        key.map(component(of:)).joined(separator: "\u{1F}")
+    }
+
+    /// What a person reads. Ambiguity is fine here, because nothing keys on it.
     internal static func description(of key: [PluginCellValue]) -> String {
-        key.map { value in
-            switch value {
-            case .null: return "NULL"
-            case .text(let text): return text
-            case .bytes(let data): return data.base64EncodedString()
-            }
+        key.map(component(of:)).joined(separator: ", ")
+    }
+
+    private static func component(of value: PluginCellValue) -> String {
+        switch value {
+        case .null: return "NULL"
+        case .text(let text): return text
+        case .bytes(let data): return data.base64EncodedString()
         }
-        .joined(separator: ", ")
     }
 
     internal static func orders(for keyColumns: [String], descriptors: [KeyColumnDescriptor]) -> [ColumnOrder] {

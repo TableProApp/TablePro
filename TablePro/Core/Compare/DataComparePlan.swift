@@ -17,6 +17,10 @@ import TableProPluginKit
 internal struct DataComparePlan: Identifiable, Hashable, Sendable {
     internal let table: String
     internal let schema: String?
+
+    /// The counterpart's schema, which is not always the source's. Reading the target with the
+    /// source's schema name is how a comparison of `audit.users` read `public.users`' columns.
+    internal let targetSchema: String?
     internal var columns: [String]
     internal var columnDescriptors: [KeyColumnDescriptor]
     internal var generatedColumns: Set<String>
@@ -29,6 +33,7 @@ internal struct DataComparePlan: Identifiable, Hashable, Sendable {
     internal init(
         table: String,
         schema: String?,
+        targetSchema: String? = nil,
         columns: [String],
         columnDescriptors: [KeyColumnDescriptor] = [],
         generatedColumns: Set<String> = [],
@@ -40,6 +45,7 @@ internal struct DataComparePlan: Identifiable, Hashable, Sendable {
     ) {
         self.table = table
         self.schema = schema
+        self.targetSchema = targetSchema ?? schema
         self.columns = columns
         self.columnDescriptors = columnDescriptors
         /// Normalised here rather than at the call site: every comparison is case-insensitive, and

@@ -49,6 +49,7 @@ internal struct RowDiffEntry: Identifiable, Hashable, Sendable {
     internal let id: UUID
     internal let kind: RowDiffKind
     internal let keyDescription: String
+    internal let keyIdentity: String
     internal let sourceRow: DataRow?
     internal let targetRow: DataRow?
     internal let cellDifferences: [CellDifference]
@@ -57,6 +58,7 @@ internal struct RowDiffEntry: Identifiable, Hashable, Sendable {
         id: UUID = UUID(),
         kind: RowDiffKind,
         keyDescription: String,
+        keyIdentity: String? = nil,
         sourceRow: DataRow?,
         targetRow: DataRow?,
         cellDifferences: [CellDifference] = []
@@ -64,6 +66,7 @@ internal struct RowDiffEntry: Identifiable, Hashable, Sendable {
         self.id = id
         self.kind = kind
         self.keyDescription = keyDescription
+        self.keyIdentity = keyIdentity ?? keyDescription
         self.sourceRow = sourceRow
         self.targetRow = targetRow
         self.cellDifferences = cellDifferences
@@ -188,6 +191,7 @@ internal struct DataDiffEngine {
         RowDiffEntry(
             kind: .insert,
             keyDescription: KeyOrdering.description(of: entry.key),
+            keyIdentity: KeyOrdering.identity(of: entry.key),
             sourceRow: entry.row,
             targetRow: nil
         )
@@ -197,6 +201,7 @@ internal struct DataDiffEngine {
         RowDiffEntry(
             kind: .delete,
             keyDescription: entry.map { KeyOrdering.description(of: $0.key) } ?? "",
+            keyIdentity: entry.map { KeyOrdering.identity(of: $0.key) } ?? "",
             sourceRow: nil,
             targetRow: entry?.row
         )
@@ -219,6 +224,7 @@ internal struct DataDiffEngine {
         return RowDiffEntry(
             kind: differences.isEmpty ? .identical : .update,
             keyDescription: KeyOrdering.description(of: source.key),
+            keyIdentity: KeyOrdering.identity(of: source.key),
             sourceRow: source.row,
             targetRow: target.row,
             cellDifferences: differences
@@ -245,12 +251,18 @@ internal extension DataDiffEngine {
             skippedNullKeyCount += 1
         }
 
+        /// Only differences are retained. Keeping identical rows too meant a table with 100,000
+        /// matching rows and ten differences near the end filled the retained list with matches and
+        /// dropped every difference, so the pane reported a count and listed nothing. The identical
+        /// count stays exact and the pane reports it as a number rather than as rows.
         mutating func add(_ entry: RowDiffEntry) {
             switch entry.kind {
             case .insert: insertCount += 1
             case .update: updateCount += 1
             case .delete: deleteCount += 1
-            case .identical: identicalCount += 1
+            case .identical:
+                identicalCount += 1
+                return
             }
             guard entries.count < limit else {
                 truncated = true

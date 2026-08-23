@@ -6,10 +6,14 @@ final class CompareSyncUITests: UITestCase {
 
         let menuBar = app.menuBars.firstMatch
         XCTAssertTrue(menuBar.waitForExistence(timeout: 10))
-        menuBar.menuBarItems["File"].click()
+        menuBar.menuBarItems["Database"].click()
+        menuBar.menuItems["Compare"].click()
 
         let item = menuBar.menuItems["Compare & Sync Databases…"]
-        XCTAssertTrue(item.waitForExistence(timeout: 5), "Compare & Sync must be reachable from the File menu")
+        XCTAssertTrue(
+            item.waitForExistence(timeout: 5),
+            "Compare & Sync must be reachable from Database > Compare"
+        )
         guard item.isEnabled else {
             throw XCTSkip("Compare & Sync is licence gated and unavailable in this build")
         }

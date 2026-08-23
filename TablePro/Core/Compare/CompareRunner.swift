@@ -39,7 +39,7 @@ internal struct CompareRunner {
             session.activity = .connecting
             defer { session.activity = .idle }
             do {
-                let context = try await resolveContext()
+                let context = try resolveContext()
                 if let refusal = try await capabilityRefusal(context) {
                     session.errorMessage = refusal
                     return
@@ -69,7 +69,7 @@ internal struct CompareRunner {
             session.activity = .comparing
             defer { session.activity = .idle }
             do {
-                let context = try await resolveContext()
+                let context = try resolveContext()
                 let built: [SyncStatement]
                 switch session.mode {
                 case .structure:
@@ -109,7 +109,9 @@ internal struct CompareRunner {
             }
 
             do {
-                let context = try await resolveContext()
+                /// Resolved for its validation: it throws when a connection has gone away, which
+                /// must stop the run before anything is written.
+                _ = try resolveContext()
                 session.hasWrittenToTarget = true
                 let statements = session.statements
                 let settings = session.executionSettings
@@ -129,7 +131,6 @@ internal struct CompareRunner {
                         progress: runProgress
                     )
                 }
-                _ = context
                 session.runResult = result
                 session.lastAction = .applied(
                     Date(), target: target.qualifiedDescription, statements: result.executedCount

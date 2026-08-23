@@ -28,7 +28,7 @@ internal struct StructureDiffEngine {
         var handled: Set<String> = []
 
         for snapshot in source {
-            let key = options.matchKey(snapshot.name)
+            let key = options.matchKey(name: snapshot.name, schema: snapshot.schema)
             handled.insert(key)
             guard let counterpart = targetByKey[key] else {
                 results.append(TableDiffResult(
@@ -41,7 +41,7 @@ internal struct StructureDiffEngine {
             results.append(compareTable(source: snapshot, target: counterpart))
         }
 
-        for snapshot in target where !handled.contains(options.matchKey(snapshot.name)) {
+        for snapshot in target where !handled.contains(options.matchKey(name: snapshot.name, schema: snapshot.schema)) {
             results.append(TableDiffResult(
                 tableName: snapshot.name,
                 schema: snapshot.schema,
@@ -85,7 +85,10 @@ internal struct StructureDiffEngine {
     }
 
     private func indexByMatchKey(_ snapshots: [TableStructureSnapshot]) -> [String: TableStructureSnapshot] {
-        Dictionary(snapshots.map { (options.matchKey($0.name), $0) }, uniquingKeysWith: { first, _ in first })
+        Dictionary(
+            snapshots.map { (options.matchKey(name: $0.name, schema: $0.schema), $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
     }
 
     private func columnOrderNotes(

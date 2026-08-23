@@ -84,7 +84,7 @@ internal struct CompareRowService {
             )
             let collector = SyncStatementCollector()
             _ = try await engine.compare(source: sourceProvider, target: targetProvider) { entry in
-                guard !excludedKeys.contains(entry.keyDescription) else { return }
+                guard !excludedKeys.contains(entry.keyIdentity) else { return }
                 collector.append(entry, table: table, schema: schema, writeColumns: writeColumns, builder: builder)
             }
             return collector.statements
@@ -118,7 +118,7 @@ internal struct CompareRowService {
             keyDescriptors: plan.keyDescriptors
         )
         let sourceSchema = source.schema ?? plan.schema
-        let targetSchema = target.schema ?? plan.schema
+        let targetSchema = plan.targetSchema
         let readColumns = plan.readColumns
         let keyColumns = plan.keyColumns
         let table = plan.table

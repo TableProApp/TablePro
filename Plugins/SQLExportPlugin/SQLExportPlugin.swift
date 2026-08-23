@@ -35,6 +35,14 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
     var ddlFailures: [String] = []
     var metadataWarnings: [String] = []
 
+    /// A dump refers to its tables unqualified whenever every selected table lives in one
+    /// container, which is what makes it restorable into any database. Qualifying became necessary
+    /// only once an export could span two containers holding the same table name: unqualified there
+    /// means one schema's rows land in the other's table. The CREATE statements come back from the
+    /// driver verbatim and cannot be qualified without rewriting engine DDL, so a spanning export
+    /// says so rather than shipping a dump whose three phases disagree.
+    var exportSpansContainers = false
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLExportPlugin")
 
     required init() { loadSettings() }
@@ -68,6 +76,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
     ) async throws -> ExportFormatResult {
         ddlFailures = []
         metadataWarnings = []
+        exportSpansContainers = false
 
         let actualDestination: URL
         let gzipTempURL: URL?
@@ -95,6 +104,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             let columnsByTable = await prefetchColumns(tables: tables, dataSource: dataSource)
             let fkMap = await prefetchForeignKeys(tables: tables, dataSource: dataSource)
             let sortedTables = topologicallySort(tables, fkMap: fkMap)
+            noteContainerSpan(of: sortedTables)
 
             try writeDropPhase(sortedTables: sortedTables, dataSource: dataSource, to: fileHandle)
             try await writeDependentTypesAndSequences(
@@ -406,13 +416,24 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         return orderedNames.compactMap { groups[$0] }
     }
 
+    private func noteContainerSpan(of tables: [PluginExportTable]) {
+        let containers = Set(tables.map { $0.containerName ?? "" })
+        exportSpansContainers = containers.count > 1
+        guard exportSpansContainers else { return }
+        metadataWarnings.append(
+            "Warning: this export spans \(containers.count) databases or schemas. Table references are "
+                + "qualified, but CREATE TABLE comes from the server unqualified, so restore it into the "
+                + "matching database or schema."
+        )
+    }
+
     private func qualifiedRef(
         schema: String,
         table: String,
         dataSource: any PluginExportDataSource
     ) -> String {
         let quotedTable = dataSource.quoteIdentifier(table)
-        guard !schema.isEmpty else { return quotedTable }
+        guard exportSpansContainers, !schema.isEmpty else { return quotedTable }
         return "\(dataSource.quoteIdentifier(schema)).\(quotedTable)"
     }
 

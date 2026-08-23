@@ -217,6 +217,21 @@ internal struct CompareApplySheetView: View {
                 )
             }
 
+            if let commitFailure = result.commitFailure {
+                Label {
+                    Text(String(
+                        format: String(
+                            localized: "The statements ran but the transaction could not be committed: %@"
+                        ),
+                        commitFailure
+                    ))
+                    .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: "exclamationmark.octagon.fill")
+                }
+                .foregroundStyle(CompareStatusStyle.error)
+            }
+
             if result.cancelled {
                 noticeLabel(
                     String(localized: "Cancelled before the script finished."),
@@ -334,7 +349,7 @@ internal struct CompareApplySheetView: View {
         HStack(spacing: 12) {
             if session.unacknowledgedHazardCount > 0 {
                 Label {
-                    Text("Allow or drop every held-back statement before applying.")
+                    Text("Allow every held-back statement on the Warnings tab, or exclude the objects that produced them, before applying.")
                         .fixedSize(horizontal: false, vertical: true)
                 } icon: {
                     Image(systemName: "hand.raised.fill")

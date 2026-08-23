@@ -189,7 +189,6 @@ internal final class CompareEndpointMenuBuilder: NSObject, NSMenuDelegate {
             return
         }
         let base = CompareSyncEndpoint.from(connection: connection, database: database)
-        menu.addItem(pick(endpoint: base, side: side, title: String(localized: "All schemas")))
 
         let key = "\(connectionId.uuidString)|\(database)"
         guard let schemas = schemasByEndpoint[key] else {
@@ -197,8 +196,14 @@ internal final class CompareEndpointMenuBuilder: NSObject, NSMenuDelegate {
             load(schemasFor: base, connection: connection, key: key, menu: menu)
             return
         }
-        guard !schemas.isEmpty else { return }
-        menu.addItem(.separator())
+        /// There is deliberately no "All schemas". Comparing every schema at once reads two
+        /// schemas' same-named tables as one object, and the generated ALTER carries no schema of
+        /// its own, so it would land on whichever schema the connection happens to be on. An
+        /// endpoint on a schema-capable engine names exactly one schema.
+        guard !schemas.isEmpty else {
+            menu.addItem(pick(endpoint: base, side: side, title: database))
+            return
+        }
         for schema in schemas {
             menu.addItem(pick(endpoint: base.withSchema(schema), side: side, title: schema))
         }

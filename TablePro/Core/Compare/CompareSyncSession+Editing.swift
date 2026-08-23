@@ -78,15 +78,15 @@ internal extension CompareSyncSession {
     /// cap the script is built from a fresh streamed pass, so an unseen row is included by
     /// definition; the pane says as much rather than implying the list is the whole difference.
     func isRowIncluded(_ entry: RowDiffEntry, in plan: DataComparePlan) -> Bool {
-        !plan.excludedRowKeys.contains(entry.keyDescription)
+        !plan.excludedRowKeys.contains(entry.keyIdentity)
     }
 
     func setRowIncluded(_ included: Bool, entry: RowDiffEntry, planId: String) {
         guard let index = dataPlans.firstIndex(where: { $0.id == planId }) else { return }
         if included {
-            dataPlans[index].excludedRowKeys.remove(entry.keyDescription)
+            dataPlans[index].excludedRowKeys.remove(entry.keyIdentity)
         } else {
-            dataPlans[index].excludedRowKeys.insert(entry.keyDescription)
+            dataPlans[index].excludedRowKeys.insert(entry.keyIdentity)
         }
         invalidateScript()
     }

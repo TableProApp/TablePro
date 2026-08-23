@@ -26,6 +26,16 @@ internal extension StructureCompareOptions {
         return ignoreIdentifierCase ? trimmed.lowercased() : trimmed
     }
 
+    /// Two schemas of one database can hold the same table name, so the name alone cannot identify
+    /// a table. Matching on it collapsed `public.users` and `audit.users` onto one result, diffed
+    /// both against whichever target arrived first, and never reported the other as target-only.
+    /// The schema joins the key only when both sides carry one, so a schemaless engine is
+    /// unaffected.
+    func matchKey(name: String, schema: String?) -> String {
+        guard let schema, !schema.isEmpty else { return matchKey(name) }
+        return "\(matchKey(schema))\u{1F}\(matchKey(name))"
+    }
+
     func normalizedText(_ value: String?) -> String? {
         guard let value else { return nil }
         var result = value

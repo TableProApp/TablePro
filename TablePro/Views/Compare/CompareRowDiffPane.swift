@@ -85,7 +85,25 @@ internal struct CompareRowDiffPane: View {
             Divider()
             filterBar
             if plan.summary?.truncatedEntries == true {
-                truncationNotice
+                notice(String(
+                    localized: "This list is a capped preview. Apply covers every difference, not only the rows listed here."
+                ))
+            }
+            if let skipped = plan.summary?.skippedNullKeyCount, skipped > 0 {
+                notice(String(
+                    format: String(
+                        localized: "%d rows hold NULL in a key column and were left out. Choose a key with no NULLs to compare them."
+                    ),
+                    skipped
+                ))
+            }
+            if filter == .same, plan.summary?.identicalCount ?? 0 > 0 {
+                notice(String(
+                    format: String(
+                        localized: "%d rows match. Matching rows are counted, not listed, so a difference is never crowded out of this list."
+                    ),
+                    plan.summary?.identicalCount ?? 0
+                ))
             }
             Divider()
             entryList(plan)
@@ -189,9 +207,12 @@ internal struct CompareRowDiffPane: View {
         .padding(.vertical, 6)
     }
 
-    private var truncationNotice: some View {
+    /// A row whose key holds NULL has no identity a merge join can use, so it is left out of the
+    /// comparison and out of the sync. That used to be counted and never shown, so the pane
+    /// reported no differences and the user concluded the two tables matched.
+    private func notice(_ text: String) -> some View {
         Label {
-            Text("This list is a capped preview. Apply covers every difference, not only the rows listed here.")
+            Text(text)
         } icon: {
             Image(systemName: "info.circle.fill")
         }
