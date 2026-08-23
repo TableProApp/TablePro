@@ -18,6 +18,7 @@ private final class RoutineMockDriver: DatabaseDriver, @unchecked Sendable {
     var proceduresToReturn: [RoutineInfo] = []
     var functionsToReturn: [RoutineInfo] = []
 
+    var triggersToReturn: [TriggerInfo] = []
     var proceduresCallCount = 0
     var functionsCallCount = 0
     var tablesCallCount = 0
@@ -76,14 +77,16 @@ private final class RoutineMockDriver: DatabaseDriver, @unchecked Sendable {
     func commitTransaction() async throws {}
     func rollbackTransaction() async throws {}
 
-    func fetchProcedures(schema: String?) async throws -> [RoutineInfo] {
+    /// One catalog read answers both kinds, so both counters move together. They stay separate so
+    /// a test can still assert which kinds came back.
+    func fetchRoutines(schema: String?) async throws -> [RoutineInfo] {
         proceduresCallCount += 1
-        return proceduresToReturn
+        functionsCallCount += 1
+        return proceduresToReturn + functionsToReturn
     }
 
-    func fetchFunctions(schema: String?) async throws -> [RoutineInfo] {
-        functionsCallCount += 1
-        return functionsToReturn
+    func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo] {
+        triggersToReturn
     }
 }
 
@@ -145,11 +148,7 @@ private final class FailingRoutineDriver: DatabaseDriver, @unchecked Sendable {
     func commitTransaction() async throws {}
     func rollbackTransaction() async throws {}
 
-    func fetchProcedures(schema: String?) async throws -> [RoutineInfo] {
-        throw NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "boom"])
-    }
-
-    func fetchFunctions(schema: String?) async throws -> [RoutineInfo] {
+    func fetchRoutines(schema: String?) async throws -> [RoutineInfo] {
         throw NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "boom"])
     }
 }
@@ -253,14 +252,9 @@ private final class BlockingAuxiliaryDriver: DatabaseDriver, @unchecked Sendable
     func commitTransaction() async throws {}
     func rollbackTransaction() async throws {}
 
-    func fetchProcedures(schema: String?) async throws -> [RoutineInfo] {
+    func fetchRoutines(schema: String?) async throws -> [RoutineInfo] {
         await routinesGate.wait()
-        return proceduresToReturn
-    }
-
-    func fetchFunctions(schema: String?) async throws -> [RoutineInfo] {
-        await routinesGate.wait()
-        return functionsToReturn
+        return proceduresToReturn + functionsToReturn
     }
 }
 
@@ -275,10 +269,10 @@ struct SchemaServiceRoutinesTests {
         let driver = RoutineMockDriver(connection: connection)
         driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "users")]
         driver.proceduresToReturn = [
-            RoutineInfo(name: "add_user", schema: "public", kind: .procedure, signature: nil)
+            RoutineInfo(name: "add_user", kind: .procedure, schema: "public")
         ]
         driver.functionsToReturn = [
-            RoutineInfo(name: "user_count", schema: "public", kind: .function, signature: "int")
+            RoutineInfo(name: "user_count", kind: .function, schema: "public", argumentSignature: "int")
         ]
 
         await service.load(connectionId: connectionId, driver: driver, connection: connection)
@@ -298,10 +292,10 @@ struct SchemaServiceRoutinesTests {
         let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
         let driver = RoutineMockDriver(connection: connection)
         driver.proceduresToReturn = [
-            RoutineInfo(name: "p1", schema: nil, kind: .procedure, signature: nil)
+            RoutineInfo(name: "p1", kind: .procedure)
         ]
         driver.functionsToReturn = [
-            RoutineInfo(name: "f1", schema: nil, kind: .function, signature: nil)
+            RoutineInfo(name: "f1", kind: .function)
         ]
 
         await service.load(connectionId: connectionId, driver: driver, connection: connection)
@@ -342,10 +336,10 @@ struct SchemaServiceRoutinesTests {
         let driver = RoutineMockDriver(connection: connection)
         driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "users")]
         driver.proceduresToReturn = [
-            RoutineInfo(name: "p1", schema: nil, kind: .procedure, signature: nil)
+            RoutineInfo(name: "p1", kind: .procedure)
         ]
         driver.functionsToReturn = [
-            RoutineInfo(name: "f1", schema: nil, kind: .function, signature: nil)
+            RoutineInfo(name: "f1", kind: .function)
         ]
         await service.load(connectionId: connectionId, driver: driver, connection: connection)
         #expect(service.procedures(for: connectionId).map(\.name) == ["p1"])
@@ -367,7 +361,7 @@ struct SchemaServiceRoutinesTests {
         let driver = RoutineMockDriver(connection: connection)
         driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "t")]
         driver.proceduresToReturn = [
-            RoutineInfo(name: "p", schema: nil, kind: .procedure, signature: nil)
+            RoutineInfo(name: "p", kind: .procedure)
         ]
 
         await service.load(connectionId: connectionId, driver: driver, connection: connection)
@@ -388,10 +382,10 @@ struct SchemaServiceRoutinesTests {
         let driver = BlockingAuxiliaryDriver(connection: connection)
         driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "users")]
         driver.proceduresToReturn = [
-            RoutineInfo(name: "add_user", schema: "public", kind: .procedure, signature: nil)
+            RoutineInfo(name: "add_user", kind: .procedure, schema: "public")
         ]
         driver.functionsToReturn = [
-            RoutineInfo(name: "user_count", schema: "public", kind: .function, signature: "int")
+            RoutineInfo(name: "user_count", kind: .function, schema: "public", argumentSignature: "int")
         ]
         driver.schemasToReturn = ["public"]
 
@@ -425,27 +419,45 @@ struct SchemaServiceRoutinesTests {
         }
     }
 
-    @Test("reloadProcedures refreshes only procedures")
-    func reloadProceduresOnly() async {
+    /// One catalog read answers both kinds. Asking twice was two round trips per schema for an
+    /// answer one query already held.
+    @Test("reloadRoutines refreshes both kinds in one catalog read")
+    func reloadRoutinesIssuesOneRead() async {
         let service = SchemaService()
         let connectionId = UUID()
         let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
         let driver = RoutineMockDriver(connection: connection)
+        driver.proceduresToReturn = [RoutineInfo(name: "p1", kind: .procedure)]
+        driver.functionsToReturn = [RoutineInfo(name: "f1", kind: .function)]
+        await service.load(connectionId: connectionId, driver: driver, connection: connection)
+        let firstCount = driver.proceduresCallCount
+
         driver.proceduresToReturn = [
-            RoutineInfo(name: "p1", schema: nil, kind: .procedure, signature: nil)
+            RoutineInfo(name: "p1", kind: .procedure),
+            RoutineInfo(name: "p2", kind: .procedure)
+        ]
+        driver.functionsToReturn = [RoutineInfo(name: "f2", kind: .function)]
+        await service.reloadRoutines(connectionId: connectionId, driver: driver)
+
+        #expect(driver.proceduresCallCount == firstCount + 1)
+        #expect(service.procedures(for: connectionId).map(\.name) == ["p1", "p2"])
+        #expect(service.functions(for: connectionId).map(\.name) == ["f2"])
+    }
+
+    /// A trigger list is its own fetch behind its own state, so a driver that returns none is not
+    /// the same as one that never answered.
+    @Test("reloadTriggers caches the database-wide trigger list")
+    func reloadTriggersCaches() async {
+        let service = SchemaService()
+        let connectionId = UUID()
+        let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
+        let driver = RoutineMockDriver(connection: connection)
+        driver.triggersToReturn = [
+            TriggerInfo(name: "audit", timing: "BEFORE", event: "INSERT", statement: "", table: "orders")
         ]
         await service.load(connectionId: connectionId, driver: driver, connection: connection)
-        let firstProcCount = driver.proceduresCallCount
-        let firstFuncCount = driver.functionsCallCount
 
-        driver.proceduresToReturn = [
-            RoutineInfo(name: "p1", schema: nil, kind: .procedure, signature: nil),
-            RoutineInfo(name: "p2", schema: nil, kind: .procedure, signature: nil)
-        ]
-        await service.reloadProcedures(connectionId: connectionId, driver: driver)
-
-        #expect(driver.proceduresCallCount == firstProcCount + 1)
-        #expect(driver.functionsCallCount == firstFuncCount)
-        #expect(service.procedures(for: connectionId).map(\.name) == ["p1", "p2"])
+        #expect(service.triggers(for: connectionId).map(\.name) == ["audit"])
+        #expect(service.triggers(for: connectionId).first?.table == "orders")
     }
 }

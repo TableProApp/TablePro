@@ -484,4 +484,57 @@ struct PersistedTabRoundTripTests {
         let decoded = try JSONDecoder().decode(PersistedTab.self, from: Data(json.utf8))
         #expect(decoded.title == "auth.users")
     }
+
+    /// The viewer tab is addressing only: it persists what identifies the object and refetches the
+    /// source on restore. An overload's identity has to survive, or a restored tab reopens whichever
+    /// routine shares its name.
+    @Test("An object source tab round-trips the reference that identifies its object")
+    func objectSourceTabRoundTripsItsReference() throws {
+        let objectRef = DatabaseObjectRef(
+            kind: .function,
+            name: "transform",
+            database: "shop",
+            schema: "public",
+            identity: "16401",
+            argumentSignature: "(geometry, integer)",
+            attributes: [ObjectAttribute(label: "Volatility", value: "IMMUTABLE")]
+        )
+        let tab = PersistedTab(
+            id: UUID(),
+            title: "Function: public.transform(geometry, integer)",
+            query: "",
+            tabType: .objectSource,
+            tableName: nil,
+            databaseName: "shop",
+            schemaName: "public",
+            objectRef: objectRef
+        )
+
+        let data = try JSONEncoder().encode(tab)
+        let decoded = try JSONDecoder().decode(PersistedTab.self, from: data)
+
+        #expect(decoded.tabType == .objectSource)
+        #expect(decoded.objectRef == objectRef)
+        #expect(decoded.objectRef?.identity == "16401")
+        #expect(decoded.objectRef?.displayIdentity == "public.transform(geometry, integer)")
+    }
+
+    /// The source itself is never persisted, so a restored tab shows the definition as it is now
+    /// rather than the copy that was on screen at quit.
+    @Test("An object source tab persists no source text")
+    func objectSourceTabPersistsNoSource() throws {
+        let tab = PersistedTab(
+            id: UUID(),
+            title: "Trigger: audit",
+            query: "",
+            tabType: .objectSource,
+            tableName: nil,
+            objectRef: DatabaseObjectRef(
+                kind: .trigger, name: "audit", database: "shop", schema: "public", table: "orders"
+            )
+        )
+        let json = String(decoding: try JSONEncoder().encode(tab), as: UTF8.self)
+        #expect(!json.contains("CREATE"))
+        #expect(json.contains("orders"))
+    }
 }

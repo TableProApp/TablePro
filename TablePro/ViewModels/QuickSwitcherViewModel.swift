@@ -282,6 +282,9 @@ internal final class QuickSwitcherViewModel {
             }
         }
 
+        items += routineItems(connectionId: connectionId, database: activeDatabase)
+        items += triggerItems(connectionId: connectionId, database: activeDatabase)
+
         let favorites = await services.sqlFavoriteManager.fetchFavorites(connectionId: connectionId)
         for favorite in favorites {
             items.append(QuickSwitcherItem(
@@ -942,6 +945,37 @@ internal final class QuickSwitcherViewModel {
         )
     }
 
+    /// Reads the sidebar's own cache rather than querying. The switcher opens over a connection
+    /// whose objects the tree has already loaded, and a fresh catalog read per keystroke session
+    /// would make opening the panel wait on the server.
+    private func routineItems(connectionId: UUID, database: String?) -> [QuickSwitcherItem] {
+        let routines = SchemaService.shared.routines(for: connectionId)
+        let labels = RoutineDisplayLabel.labels(for: routines)
+        return routines.map { routine in
+            QuickSwitcherItem(
+                id: "routine_\(routine.id)",
+                name: labels[routine.id] ?? routine.name,
+                kind: routine.kind == .procedure ? .procedure : .function,
+                subtitle: routine.schema ?? database ?? "",
+                schemaName: routine.schema,
+                objectRef: DatabaseObjectRef(routine: routine, database: database ?? "")
+            )
+        }
+    }
+
+    private func triggerItems(connectionId: UUID, database: String?) -> [QuickSwitcherItem] {
+        SchemaService.shared.triggers(for: connectionId).map { trigger in
+            QuickSwitcherItem(
+                id: "trigger_\(trigger.id)",
+                name: trigger.name,
+                kind: .trigger,
+                subtitle: trigger.table ?? trigger.schema ?? database ?? "",
+                schemaName: trigger.schema,
+                objectRef: DatabaseObjectRef(trigger: trigger, database: database ?? "")
+            )
+        }
+    }
+
     nonisolated static func databaseDisplayName(
         _ databaseName: String?,
         pathFieldRole: PathFieldRole
@@ -954,7 +988,8 @@ internal final class QuickSwitcherViewModel {
 
 private extension QuickSwitcherItemKind {
     static let displayOrder: [QuickSwitcherItemKind] = [
-        .table, .view, .systemTable, .database, .schema, .savedQuery, .queryHistory
+        .table, .view, .systemTable, .database, .schema,
+        .procedure, .function, .trigger, .savedQuery, .queryHistory
     ]
 
     var rankWeight: Double {
@@ -964,6 +999,9 @@ private extension QuickSwitcherItemKind {
         case .systemTable: return 0.85
         case .database: return 0.95
         case .schema: return 0.93
+        case .procedure: return 0.92
+        case .function: return 0.92
+        case .trigger: return 0.91
         case .savedQuery: return 0.9
         case .queryHistory: return 0.7
         }
@@ -976,6 +1014,9 @@ private extension QuickSwitcherItemKind {
         case .systemTable: return String(localized: "System Tables")
         case .database: return String(localized: "Databases")
         case .schema: return String(localized: "Schemas")
+        case .procedure: return String(localized: "Procedures")
+        case .function: return String(localized: "Functions")
+        case .trigger: return String(localized: "Triggers")
         case .savedQuery: return String(localized: "Saved Queries")
         case .queryHistory: return String(localized: "Recent Queries")
         }

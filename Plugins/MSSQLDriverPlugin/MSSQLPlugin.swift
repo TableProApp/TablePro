@@ -192,6 +192,8 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsDropDatabase = true
     static let supportsDropSchema = true
     static let supportsTriggers = true
+    static let supportsRoutines = true
+    static let supportsDatabaseTriggerBrowse = true
     static let supportsTriggerEditing = true
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {

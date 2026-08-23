@@ -15,6 +15,9 @@ internal enum QuickSwitcherItemKind: String, Hashable, Sendable {
     case systemTable
     case database
     case schema
+    case procedure
+    case function
+    case trigger
     case savedQuery
     case queryHistory
 }
@@ -107,6 +110,8 @@ internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
     /// with no schema at all: the tab-reuse check compares schemas, so "Switch to Tab" opened a
     /// duplicate of a table that was already open under an explicit schema.
     var schemaName: String?
+    /// Set on a routine or trigger row, which opens its source rather than a table tab.
+    var objectRef: DatabaseObjectRef?
     var target: QuickSwitcherTarget?
 
     /// The frecency identity of a table, produced identically by the two places that record one:
@@ -133,6 +138,9 @@ internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
         case .systemTable: return "gearshape"
         case .database: return "cylinder"
         case .schema: return "folder"
+        case .procedure: return "curlybraces.square"
+        case .function: return "function"
+        case .trigger: return "bolt"
         case .savedQuery: return "star"
         case .queryHistory: return "clock.arrow.circlepath"
         }
@@ -146,6 +154,9 @@ internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
         case .systemTable: return String(localized: "System Table")
         case .database: return String(localized: "Database")
         case .schema: return String(localized: "Schema")
+        case .procedure: return String(localized: "Procedure")
+        case .function: return String(localized: "Function")
+        case .trigger: return String(localized: "Trigger")
         case .savedQuery: return String(localized: "Saved Query")
         case .queryHistory: return String(localized: "History")
         }

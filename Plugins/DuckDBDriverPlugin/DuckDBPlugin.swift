@@ -87,6 +87,7 @@ final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static let supportsDatabaseSwitching = true
     static let supportsSchemaSwitching = true
+    static let supportsRoutines = true
     static let databaseGroupingStrategy: GroupingStrategy = .bySchema
     static let defaultSchemaName = "main"
     static let systemDatabaseNames: [String] = ["system", "temp"]

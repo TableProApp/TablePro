@@ -70,9 +70,9 @@ The two `switch_` tools move what the user sees in TablePro. To run one statemen
 | `search_schema` | `connection_id`, `term` (`limit`, `database`, `schema`) | `term`, `matches[]` (`kind` is `table` or `column`, plus `name`, `table`, `schema`, `object_type`, `data_type`), `is_truncated`. Table matches first |
 | `list_indexes` | `connection_id` (`table`, `database`, `schema`) | `database`, `schema`, `tables[]` of `{ table, indexes[] }`. Tables with no index are left out |
 | `list_foreign_keys` | `connection_id` (`table`, `database`, `schema`) | `database`, `schema`, `tables[]` of `{ table, foreign_keys[] }` |
-| `list_triggers` | `connection_id`, `table` (`database`, `schema`) | `table`, `triggers[]` (`name`, `timing`, `event`, `statement`, `is_enabled`), sorted by name |
+| `list_triggers` | `connection_id` (`table`, `database`, `schema`) | `triggers[]` (`name`, `table`, `schema`, `timing`, `event`, `orientation`, `statement`, `definition`, `is_enabled`), sorted by table then name, plus `table` when one was named |
 | `get_view_definition` | `connection_id`, `view` (`database`, `schema`) | `view`, `schema`, `definition` |
-| `list_routines` | `connection_id` (`kind`, `database`, `schema`) | `routines[]` (`name`, `kind`, `schema`, `qualified_name`, `signature`) |
+| `list_routines` | `connection_id` (`kind`, `database`, `schema`) | `routines[]` (`name`, `kind`, `schema`, `qualified_name`, `signature`, `return_type`, `language`) |
 | `list_partitions` | `connection_id`, `table` (`database`, `schema`) | `table`, `partitions[]`, shaped like `list_tables` entries |
 | `get_table_statistics` | `connection_id`, `table` (`database`, `schema`) | `table` plus whatever the engine records: `data_size_bytes`, `index_size_bytes`, `total_size_bytes`, `average_row_length`, `row_count`, `comment`, `engine`, `collation`, `created_at`, `updated_at` |
 | `get_database_statistics` | `connection_id` (`database`) | `databases[]` (`name`, `table_count`, `size_bytes`, `is_system_database`), sorted by name |
@@ -81,7 +81,7 @@ The two `switch_` tools move what the user sees in TablePro. To run one statemen
 
 `include_row_counts` defaults to `false`. Counts come from engine statistics rather than `COUNT(*)`, and are fetched one table at a time, so `list_tables` skips them when the schema holds more than 200 objects.
 
-`search_schema` locates a column without describing every table; its `limit` runs 1 to 500, default 50. `list_routines` takes `kind` as `procedure` or `function`, omitted for both.
+`search_schema` locates a column without describing every table; its `limit` runs 1 to 500, default 50. `list_routines` takes `kind` as `procedure` or `function`, omitted for both, and its `signature` is the argument list, not the return type. `list_triggers` takes `table` to scope to one table, omitted for every trigger in the schema.
 
 ## Reading data
 

@@ -85,6 +85,8 @@ final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsDropDatabase = true
     static let supportsDropSchema = true
     static let supportsTriggers = true
+    static let supportsRoutines = true
+    static let supportsDatabaseTriggerBrowse = true
     static let supportsTriggerEditing = true
 
     static let sqlDialect: SQLDialectDescriptor? = PostgreSQLDialect.descriptor

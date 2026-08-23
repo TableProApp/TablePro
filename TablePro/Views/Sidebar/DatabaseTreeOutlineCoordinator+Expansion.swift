@@ -111,7 +111,7 @@ extension DatabaseTreeOutlineCoordinator {
             restoreObjectGroupExpansion(under: node)
         case .objectKindSection, .containerObjectKindSection, .hierarchicalSchemaSection:
             restorePartitionExpansion(under: node)
-        case .recentSection, .recentTable, .database, .table, .routine, .status,
+        case .recentSection, .recentTable, .database, .table, .routine, .trigger, .status,
              .redisKeysSection, .redisNode:
             break
         }
@@ -162,7 +162,7 @@ extension DatabaseTreeOutlineCoordinator {
             } else {
                 windowState?.expandedTreeTables.remove(key)
             }
-        case .recentTable, .routine, .status, .redisNode:
+        case .recentTable, .routine, .trigger, .status, .redisNode:
             break
         }
     }
@@ -184,7 +184,7 @@ extension DatabaseTreeOutlineCoordinator {
             loadPartitions(ref)
         case .hierarchicalSchemaSection(let schema):
             loadHierarchicalSchemaTables(schema)
-        case .recentSection, .recentTable, .routine, .status,
+        case .recentSection, .recentTable, .routine, .trigger, .status,
              .objectKindSection, .containerObjectKindSection,
              .redisKeysSection, .redisNode:
             break
@@ -233,6 +233,9 @@ extension DatabaseTreeOutlineCoordinator {
         }
         if isIdle(service.routinesLoadState(connectionId: connectionId, database: database, schema: schema)) {
             Task { await service.loadRoutines(connectionId: connectionId, database: database, schema: schema) }
+        }
+        if isIdle(service.triggersLoadState(connectionId: connectionId, database: database, schema: schema)) {
+            Task { await service.loadTriggers(connectionId: connectionId, database: database, schema: schema) }
         }
     }
 

@@ -206,6 +206,29 @@ extension DatabaseType {
         PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsTriggerEditing ?? false
     }
 
+    var supportsRoutines: Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsRoutines ?? false
+    }
+
+    var supportsDatabaseTriggerBrowse: Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?
+            .capabilities.supportsDatabaseTriggerBrowse ?? false
+    }
+
+    /// The object kinds the sidebar should offer a section for even before any have been fetched.
+    /// It never subtracts: a kind whose driver returned rows is listed whatever this says.
+    var declaredObjectKinds: Set<SidebarObjectKind> {
+        var kinds: Set<SidebarObjectKind> = []
+        if supportsRoutines {
+            kinds.insert(.procedure)
+            kinds.insert(.function)
+        }
+        if supportsDatabaseTriggerBrowse {
+            kinds.insert(.trigger)
+        }
+        return kinds
+    }
+
     var supportsSchemaEditing: Bool {
         PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.supportsSchemaEditing ?? true
     }

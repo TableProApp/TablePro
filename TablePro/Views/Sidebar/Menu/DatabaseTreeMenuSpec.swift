@@ -76,6 +76,8 @@ internal enum DatabaseTreeMenuSpec {
             )
         case .routine(let ref):
             return routineItems(ref)
+        case .trigger(let ref):
+            return triggerItems(ref)
         case .objectKindSection(let kind):
             return objectKindItems(kind, context: context)
         case .containerObjectKindSection(let group):
@@ -165,14 +167,24 @@ internal enum DatabaseTreeMenuSpec {
 
     private static func routineItems(_ ref: DatabaseTreeRoutineRef) -> [DatabaseTreeMenuItem] {
         var items: [DatabaseTreeMenuItem] = [.command(String(localized: "Copy Name"), .copyText(ref.routine.name))]
-        if let signature = ref.routine.signature, !signature.isEmpty {
+        if let signature = ref.routine.argumentSignature, !signature.isEmpty {
             items.append(.command(
                 String(localized: "Copy with Signature"),
-                .copyText("\(ref.routine.name)\(signature)")
+                .copyText(RoutineDisplayLabel.copyableSignature(for: ref.routine))
             ))
         }
         items.append(.separator)
-        items.append(.command(String(localized: "Show DDL"), .showRoutineDDL(ref)))
+        items.append(.command(String(localized: "Show DDL"), .showObjectSource(ref.objectRef)))
+        return items
+    }
+
+    private static func triggerItems(_ ref: DatabaseTreeTriggerRef) -> [DatabaseTreeMenuItem] {
+        var items: [DatabaseTreeMenuItem] = [.command(String(localized: "Copy Name"), .copyText(ref.trigger.name))]
+        if let table = ref.trigger.table, !table.isEmpty {
+            items.append(.command(String(localized: "Copy Table Name"), .copyText(table)))
+        }
+        items.append(.separator)
+        items.append(.command(String(localized: "Show DDL"), .showObjectSource(ref.objectRef)))
         return items
     }
 

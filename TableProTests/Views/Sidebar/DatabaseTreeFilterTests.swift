@@ -10,7 +10,7 @@ struct DatabaseTreeFilterTests {
     }
 
     private func routine(_ name: String) -> RoutineInfo {
-        RoutineInfo(name: name, schema: "public", kind: .function, signature: nil)
+        RoutineInfo(name: name, kind: .function, schema: "public")
     }
 
     @Test("filteredTables returns every table and deduplicates when search is empty")
@@ -145,17 +145,28 @@ struct DatabaseTreeFilterTests {
             table("users")
         ]
         let routines = [
-            RoutineInfo(name: "order_audit", schema: "public", kind: .procedure, signature: nil),
+            RoutineInfo(name: "order_audit", kind: .procedure, schema: "public"),
             routine("calc_total")
         ]
-        let buckets = DatabaseTreeFilter.objectBuckets(tables: tables, routines: routines, searchText: "ord")
+        let triggers = [
+            TriggerInfo(name: "order_guard", timing: "BEFORE", event: "INSERT", statement: "", table: "orders"),
+            TriggerInfo(name: "unrelated", timing: "AFTER", event: "DELETE", statement: "", table: "users")
+        ]
+        let buckets = DatabaseTreeFilter.objectBuckets(
+            tables: tables, routines: routines, triggers: triggers, searchText: "ord"
+        )
 
         #expect(buckets.tables[.table]?.map(\.name) == ["orders"])
         #expect(buckets.tables[.view]?.map(\.name) == ["order_totals"])
         #expect(buckets.routines[.procedure]?.map(\.name) == ["order_audit"])
         #expect(buckets.routines[.function] == nil)
-        #expect(buckets.itemCounts == [.table: 1, .view: 1, .procedure: 1])
+        #expect(buckets.triggers.map(\.name) == ["order_guard"])
+        #expect(buckets.itemCounts == [.table: 1, .view: 1, .procedure: 1, .trigger: 1])
         #expect(!buckets.isEmpty)
-        #expect(DatabaseTreeFilter.objectBuckets(tables: tables, routines: routines, searchText: "zzz").isEmpty)
+        #expect(
+            DatabaseTreeFilter.objectBuckets(
+                tables: tables, routines: routines, triggers: triggers, searchText: "zzz"
+            ).isEmpty
+        )
     }
 }

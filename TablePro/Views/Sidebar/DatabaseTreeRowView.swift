@@ -36,6 +36,9 @@ struct DatabaseTreeRowContext {
     var isExternalSchema: @MainActor (String, String) -> Bool = { _, _ in false }
     /// The plugin decides what a table is called, so a section header cannot hardcode "Tables".
     var objectKindTitle: @MainActor (SidebarObjectKind) -> String = { $0.pluralDisplayName }
+    /// Whether a routine's row shows its bare name or its signature depends on the other rows in
+    /// its section, which only the node builder can see, so the row asks rather than deciding.
+    var routineDisplayLabel: @MainActor (DatabaseTreeRoutineRef) -> String = { $0.routine.name }
 }
 
 struct DatabaseTreeRowView: View {
@@ -82,7 +85,9 @@ struct DatabaseTreeRowView: View {
         case .table(let ref):
             tableRow(ref)
         case .routine(let ref):
-            RoutineRowView(routine: ref.routine)
+            RoutineRowView(routine: ref.routine, displayLabel: context.routineDisplayLabel(ref))
+        case .trigger(let ref):
+            TriggerRowView(trigger: ref.trigger)
         case .status(let status):
             statusRow(status)
         case .objectKindSection(let kind):

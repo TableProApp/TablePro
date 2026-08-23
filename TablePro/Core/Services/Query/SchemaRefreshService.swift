@@ -204,15 +204,18 @@ final class SchemaRefreshService {
             guard let scope = metadataDriverProvider.browseScope(for: connectionId) else {
                 throw DatabaseError.notConnected
             }
+            let browsesTriggers = databaseManager?.session(for: connectionId)?
+                .connection.type.supportsDatabaseTriggerBrowse ?? false
             let reloaded = try await metadataDriverProvider.withMetadataDriver(
                 scope: scope,
                 workload: .bulk
             ) { [schemaService] driver in
-                /// Both run, and neither short circuits the other: a failed procedure fetch must
-                /// not skip the function fetch that would still have succeeded.
-                let procedures = await schemaService.reloadProcedures(connectionId: connectionId, driver: driver)
-                let functions = await schemaService.reloadFunctions(connectionId: connectionId, driver: driver)
-                return procedures && functions
+                /// Both run, and neither short circuits the other: a failed routine fetch must
+                /// not skip the trigger fetch that would still have succeeded.
+                let routines = await schemaService.reloadRoutines(connectionId: connectionId, driver: driver)
+                guard browsesTriggers else { return routines }
+                let triggers = await schemaService.reloadTriggers(connectionId: connectionId, driver: driver)
+                return routines && triggers
             }
             /// Recording the new scope says the loaded routines belong to it. A reload that failed
             /// left the previous schema's routines in place, so claiming coverage there would pin

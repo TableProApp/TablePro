@@ -33,6 +33,8 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let urlSchemes: [String] = ["cassandra", "cql", "scylladb", "scylla"]
     static let requiresAuthentication = false
     static let supportsForeignKeys = false
+    static let supportsRoutines = true
+    static let supportsDatabaseTriggerBrowse = true
     static let brandColorHex = "#26A0D8"
     static let queryLanguageName = "CQL"
     static let supportsDatabaseSwitching = true
@@ -564,7 +566,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
 
     // MARK: - Private Helpers
 
-    private func resolveKeyspace(_ schema: String?) -> String {
+    func resolveKeyspace(_ schema: String?) -> String {
         if let schema, !schema.isEmpty { return schema }
         stateLock.lock()
         defer { stateLock.unlock() }

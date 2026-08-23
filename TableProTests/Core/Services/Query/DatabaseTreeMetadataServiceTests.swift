@@ -18,6 +18,7 @@ struct DatabaseTreeMetadataServiceTests {
         let keys = DatabaseTreeMetadataService.connectionObjectKeys(
             tableKeys: [tableOnly, shared],
             routineKeys: [routineOnly, shared],
+            triggerKeys: [ObjectsKey](),
             connectionId: connectionId
         )
 
@@ -32,10 +33,28 @@ struct DatabaseTreeMetadataServiceTests {
         let keys = DatabaseTreeMetadataService.connectionObjectKeys(
             tableKeys: [ObjectsKey](),
             routineKeys: [routineOnly],
+            triggerKeys: [ObjectsKey](),
             connectionId: connectionId
         )
 
         #expect(keys == [routineOnly])
+    }
+
+    /// A trigger key with no table or routine key beside it is still this connection's, and the
+    /// teardown that walks these keys has to reach it or its state outlives the connection.
+    @Test("connectionObjectKeys includes a trigger key with no matching table or routine key")
+    func includesOrphanTriggerKey() {
+        let connectionId = UUID()
+        let triggerOnly = ObjectsKey(connectionId: connectionId, database: "shop", schema: "audit")
+
+        let keys = DatabaseTreeMetadataService.connectionObjectKeys(
+            tableKeys: [ObjectsKey](),
+            routineKeys: [ObjectsKey](),
+            triggerKeys: [triggerOnly],
+            connectionId: connectionId
+        )
+
+        #expect(keys == [triggerOnly])
     }
 
     @Test("connectionObjectKeys excludes keys from other connections")
@@ -48,6 +67,7 @@ struct DatabaseTreeMetadataServiceTests {
         let keys = DatabaseTreeMetadataService.connectionObjectKeys(
             tableKeys: [mine, theirs],
             routineKeys: [theirs],
+            triggerKeys: [ObjectsKey](),
             connectionId: connectionId
         )
 
