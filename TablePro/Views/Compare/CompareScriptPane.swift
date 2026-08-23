@@ -39,8 +39,18 @@ internal struct CompareScriptPane: View {
             if heldBackStatements.isEmpty {
                 editor(script: script)
             } else {
-                VSplitView {
+                /// `VSplitView` gets no divider cursor once it is hosted inside SwiftUI: AppKit's
+                /// cursor-rect system never fires there, so the divider drags while the pointer
+                /// never changes. `AutosavingSplitView` sits on `ResizeCursorSplitViewController`,
+                /// which is why every other divider in this window is one.
+                AutosavingSplitView(
+                    autosaveName: "com.TablePro.CompareSync.script",
+                    isVertical: false,
+                    primaryMinimum: 120,
+                    secondaryMinimum: 160
+                ) {
                     hazardList
+                } secondary: {
                     editor(script: script)
                 }
             }
@@ -113,15 +123,24 @@ internal struct CompareScriptPane: View {
         session.statements.map { $0.sql }.joined(separator: "\n")
     }
 
+    /// `database` is the whole file path on SQLite and DuckDB, so Save… prefilled
+    /// `/Users/…/Chinook.sqlite-sync`. `databaseLabel` is the shortened name the rest of the window
+    /// already shows.
     private var exportFileName: String {
-        guard let target = session.target, !target.database.isEmpty else { return "sync" }
-        return "\(target.database)-sync"
+        guard let target = session.target, !target.databaseLabel.isEmpty else { return "sync" }
+        return "\(target.databaseLabel)-sync"
     }
 
+    /// One statement reads "1 statement". The count that carries the noun is the first argument and
+    /// the second is bare, so the singular is chosen here rather than in the format string.
     private var statementSummary: String {
-        String(
+        let total = session.statements.count
+        guard total != 1 else {
+            return String(format: String(localized: "1 statement, %d will run."), session.runnableStatementCount)
+        }
+        return String(
             format: String(localized: "%1$d statements, %2$d will run."),
-            session.statements.count, session.runnableStatementCount
+            total, session.runnableStatementCount
         )
     }
 
@@ -147,14 +166,12 @@ internal struct CompareScriptPane: View {
         }
     }
 
+    /// The one reason Generate Script is unavailable, rather than this pane's own second guess at it.
+    /// `scriptDisabledReason` already carries the cross-engine refusal, the missing comparison and
+    /// the empty selection, and it is what the toolbar item's tooltip reads.
     private var emptyDescription: String {
-        if session.mode == .structure, !session.canGenerateStructureScript, let notice = session.crossEngineNotice {
-            return notice
-        }
-        guard session.selectedObjectCount > 0 else {
-            return String(localized: "Include at least one object, then generate the script.")
-        }
-        return String(localized: "Generate the script to see exactly what would run.")
+        session.scriptDisabledReason
+            ?? String(localized: "Generate the script to see exactly what would run.")
     }
 }
 
@@ -164,7 +181,7 @@ internal struct CompareHeldBackStatementRow: View {
 
     internal var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Toggle(isOn: allowanceBinding) {
+            Toggle(isOn: CompareHazardAllowance.binding(for: statement, in: session)) {
                 Text(statement.summary)
                     .font(.callout)
             }
@@ -195,8 +212,14 @@ internal struct CompareHeldBackStatementRow: View {
         }
         .padding(.vertical, 4)
     }
+}
 
-    private var allowanceBinding: Binding<Bool> {
+/// One writer for the allowance set, because the script pane and the Apply sheet both offer it. Two
+/// copies of the same insert-or-remove is how the two surfaces drift apart, and this set is what
+/// stands between a DROP COLUMN and the target.
+internal enum CompareHazardAllowance {
+    @MainActor
+    internal static func binding(for statement: SyncStatement, in session: CompareSyncSession) -> Binding<Bool> {
         Binding(
             get: { session.executionSettings.allowedHazardStatementIds.contains(statement.id) },
             set: { allowed in

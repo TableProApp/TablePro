@@ -88,6 +88,7 @@ internal final class CompareEndpointMenuBuilder: NSObject, NSMenuDelegate {
         for (side, item) in items {
             let endpoint = side == .source ? session.source : session.target
             item.title = endpoint?.qualifiedDescription ?? String(format: chooseFormat, side.title)
+            item.toolTip = endpoint?.fullDescription ?? side.caption
         }
     }
 
@@ -159,17 +160,20 @@ internal final class CompareEndpointMenuBuilder: NSObject, NSMenuDelegate {
             return
         }
         guard !databases.isEmpty else {
+            let endpoint = CompareSyncEndpoint.from(connection: connection)
             menu.addItem(pick(
-                endpoint: CompareSyncEndpoint.from(connection: connection),
+                endpoint: endpoint,
                 side: side,
-                title: connection.database ?? connection.name
+                title: endpoint.databaseLabel.isEmpty ? connection.name : endpoint.databaseLabel,
+                toolTip: endpoint.fullDescription
             ))
             return
         }
         for database in databases {
             let endpoint = CompareSyncEndpoint.from(connection: connection, database: database)
             if PluginManager.shared.supportsSchemaSwitching(for: connection.type) {
-                let item = NSMenuItem(title: database, action: nil, keyEquivalent: "")
+                let item = NSMenuItem(title: endpoint.databaseLabel, action: nil, keyEquivalent: "")
+                item.toolTip = database
                 let submenu = NSMenu()
                 submenu.delegate = self
                 submenu.identifier = NSUserInterfaceItemIdentifier(
@@ -178,7 +182,7 @@ internal final class CompareEndpointMenuBuilder: NSObject, NSMenuDelegate {
                 item.submenu = submenu
                 menu.addItem(item)
             } else {
-                menu.addItem(pick(endpoint: endpoint, side: side, title: database))
+                menu.addItem(pick(endpoint: endpoint, side: side, title: endpoint.databaseLabel, toolTip: database))
             }
         }
     }
@@ -209,9 +213,15 @@ internal final class CompareEndpointMenuBuilder: NSObject, NSMenuDelegate {
         }
     }
 
-    private func pick(endpoint: CompareSyncEndpoint, side: Side, title: String) -> NSMenuItem {
+    private func pick(
+        endpoint: CompareSyncEndpoint,
+        side: Side,
+        title: String,
+        toolTip: String? = nil
+    ) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: #selector(select(_:)), keyEquivalent: "")
         item.target = self
+        item.toolTip = toolTip ?? endpoint.fullDescription
         item.representedObject = CompareEndpointSelection(side: side, endpoint: endpoint)
         let current = side == .source ? session.source : session.target
         item.state = current?.id == endpoint.id ? .on : .off

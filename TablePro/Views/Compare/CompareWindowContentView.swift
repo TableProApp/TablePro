@@ -19,22 +19,27 @@ internal struct CompareWindowContentView: View {
     internal var onApply: () -> Void
 
     internal var body: some View {
-        VStack(spacing: 0) {
-            CompareStatusStrip(session: session)
-            Divider()
-            AutosavingSplitView(
-                autosaveName: "com.TablePro.CompareSync.main",
-                primaryMinimum: 320,
-                secondaryMinimum: 360
-            ) {
-                resultsPane
-            } secondary: {
-                CompareDetailView(
-                    session: session,
-                    onCompare: onCompare,
-                    onGenerateScript: onGenerateScript
-                )
-            }
+        AutosavingSplitView(
+            autosaveName: "com.TablePro.CompareSync.main",
+            primaryMinimum: 260,
+            secondaryMinimum: 360,
+            primaryThicknessFraction: 0.33,
+            primaryAutomaticMaximum: 576
+        ) {
+            resultsPane
+        } secondary: {
+            CompareDetailView(
+                session: session,
+                onCompare: onCompare,
+                onGenerateScript: onGenerateScript
+            )
+        }
+        /// The HIG's sanctioned use of a bottom bar, and the reason this one carries no action:
+        /// "use it only to display a small amount of information directly related to a window's
+        /// contents... For example, Finder uses a bottom bar (called the status bar) to display the
+        /// total number of items in a window, the number of selected items".
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            CompareStatusBar(session: session)
         }
         .frame(minWidth: 720, minHeight: 460)
     }
@@ -82,12 +87,12 @@ internal struct CompareStatusStrip: View {
             Spacer(minLength: 12)
 
             if session.isBusy {
-                CompareProgressView(session: session, showsMessages: false)
+                CompareProgressView(session: session)
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(.bar)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
     }
 

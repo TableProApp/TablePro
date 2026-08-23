@@ -8,6 +8,9 @@
 //  would stream every row of every table before the user had chosen anything, so
 //  the list says why it is empty rather than looking broken.
 //
+//  Search and grouping are the session's, not this view's: the same toolbar
+//  controls drive both modes, so they have to mean the same thing in both.
+//
 
 import SwiftUI
 
@@ -15,86 +18,114 @@ internal struct CompareDataPlansView: View {
     @Bindable internal var session: CompareSyncSession
     internal let onCompare: () -> Void
 
-    @State private var sortOrder = [KeyPathComparator(\DataComparePlan.id)]
+    @State private var sortOrder = [KeyPathComparator(\CompareDataPlanRow.tableName)]
 
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
     internal var body: some View {
-        if session.dataPlans.isEmpty {
-            emptyState
-        } else {
-            plansTable
-        }
-    }
-
-    // MARK: - Table
-
-    private var plansTable: some View {
-        Table(
-            session.dataPlans.sorted(using: sortOrder),
-            selection: $session.selectedPlanId,
-            sortOrder: $sortOrder
-        ) {
-            TableColumn("Include") { plan in
-                Toggle(String(localized: "Include this table in the comparison"), isOn: enabledBinding(plan))
-                    .labelsHidden()
-                    .toggleStyle(.checkbox)
-                    .disabled(!plan.isComparable)
-                    .help(plan.unavailableReason ?? String(localized: "Include this table in the comparison"))
-                    .accessibilityIdentifier("compare.plans.include.\(plan.id)")
-            }
-            .width(min: 56, ideal: 64)
-
-            TableColumn("Table", value: \.id) { plan in
-                Text(plan.id)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .help(plan.id)
-            }
-
-            TableColumn("Key") { plan in
-                keyCell(plan)
-            }
-
-            TableColumn("Insert") { plan in
-                countCell(plan.summary?.insertCount, kind: .insert)
-            }
-
-            TableColumn("Update") { plan in
-                countCell(plan.summary?.updateCount, kind: .update)
-            }
-
-            TableColumn("Delete") { plan in
-                countCell(plan.summary?.deleteCount, kind: .delete)
-            }
-
-            TableColumn("Same") { plan in
-                countCell(plan.summary?.identicalCount, kind: .identical)
-            }
-        }
-        .contextMenu(forSelectionType: DataComparePlan.ID.self) { selection in
-            planCommands(for: selection)
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            selectionHeader
+        VStack(spacing: 0) {
+            CompareMessageBanner(session: session)
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
     @ViewBuilder
-    private func planCommands(for selection: Set<String>) -> some View {
+    private var content: some View {
+        if session.dataPlans.isEmpty {
+            emptyState
+        } else {
+            planList
+        }
+    }
+
+    // MARK: - List
+
+    private var planList: some View {
+        let visible = CompareDataPlanGrouping.matching(session.dataPlans, searchText: session.searchText)
+        return VStack(spacing: 0) {
+            selectionHeader
+            Divider()
+            if visible.isEmpty {
+                ContentUnavailableView.search(text: session.searchText)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                plansTable(visible)
+            }
+        }
+    }
+
+    private func plansTable(_ visible: [DataComparePlan]) -> some View {
+        let groups = CompareDataPlanGrouping.groups(
+            from: visible, grouping: session.grouping, sortedUsing: sortOrder
+        )
+        let flatRows = CompareDataPlanGrouping.rows(from: visible, sortedUsing: sortOrder)
+
+        return Table(of: CompareDataPlanRow.self, selection: $session.selectedPlanId, sortOrder: $sortOrder) {
+            TableColumn("Include") { row in
+                includeCell(row)
+            }
+            .width(min: 56, ideal: 64)
+
+            TableColumn("Table", value: \.tableName) { row in
+                Text(row.tableName)
+                    .fontWeight(row.isGroup ? .semibold : .regular)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(row.tableName)
+            }
+
+            TableColumn("Key") { row in
+                keyCell(row)
+            }
+
+            TableColumn("Insert") { row in
+                countCell(row.insertCount, kind: .insert)
+            }
+
+            TableColumn("Update") { row in
+                countCell(row.updateCount, kind: .update)
+            }
+
+            TableColumn("Delete") { row in
+                countCell(row.deleteCount, kind: .delete)
+            }
+
+            TableColumn("Same") { row in
+                countCell(row.identicalCount, kind: .identical)
+            }
+        } rows: {
+            if session.grouping == .none {
+                ForEach(flatRows) { row in
+                    SwiftUI.TableRow(row)
+                }
+            } else {
+                ForEach(groups) { group in
+                    DisclosureTableRow(group.header) {
+                        ForEach(group.rows) { row in
+                            SwiftUI.TableRow(row)
+                        }
+                    }
+                }
+            }
+        }
+        .contextMenu(forSelectionType: CompareDataPlanRow.ID.self) { selection in
+            planCommands(for: selection, groups: groups)
+        }
+    }
+
+    @ViewBuilder
+    private func planCommands(for selection: Set<String>, groups: [CompareDataPlanGroup]) -> some View {
+        let selected = Set(CompareDataPlanGrouping.planIds(in: selection, groups: groups))
         let comparable = session.dataPlans
-            .filter { selection.contains($0.id) && $0.isComparable }
+            .filter { selected.contains($0.id) && $0.isComparable }
             .map { $0.id }
         Button("Include") {
-            for id in comparable {
-                session.setPlanEnabled(true, for: id)
-            }
+            setEnabled(true, forIds: comparable)
         }
         .disabled(comparable.isEmpty)
         Button("Exclude") {
-            for id in comparable {
-                session.setPlanEnabled(false, for: id)
-            }
+            setEnabled(false, forIds: comparable)
         }
         .disabled(comparable.isEmpty)
         Divider()
@@ -142,17 +173,57 @@ internal struct CompareDataPlansView: View {
         session.dataPlans.filter { $0.isEnabled }.count
     }
 
+    /// A total of one has to read "of 1 table". The counted noun follows the second argument, which
+    /// a plural variation on the format string cannot reach, so the sentence carries its own
+    /// singular the way the app's other counted confirmations do.
     private var selectionSummary: String {
-        String(
+        let total = session.dataPlans.count
+        guard total != 1 else {
+            return String(format: String(localized: "%d of 1 table will be compared."), enabledPlanCount)
+        }
+        return String(
             format: String(localized: "%1$d of %2$d tables will be compared."),
-            enabledPlanCount, session.dataPlans.count
+            enabledPlanCount, total
         )
     }
 
     // MARK: - Cells
 
+    /// A group is three-valued: some of its tables in, some out. macOS has no mixed state for a
+    /// `Toggle`, so a plain `Bool` would render "five of six" exactly like "none".
     @ViewBuilder
-    private func keyCell(_ plan: DataComparePlan) -> some View {
+    private func includeCell(_ row: CompareDataPlanRow) -> some View {
+        switch row.kind {
+        case .group(let memberIds):
+            if !memberIds.isEmpty {
+                TristateCheckbox(
+                    state: groupInclusionState(memberIds),
+                    accessibilityLabel: String(localized: "Include every table in this group"),
+                    accessibilityValue: groupInclusionValue(memberIds)
+                ) {
+                    setEnabled(groupInclusionState(memberIds) != .checked, forIds: memberIds)
+                }
+                .accessibilityIdentifier("compare.plans.includeGroup.\(row.id)")
+            }
+        case .plan(let plan):
+            Toggle(String(localized: "Include this table in the comparison"), isOn: enabledBinding(plan))
+                .labelsHidden()
+                .toggleStyle(.checkbox)
+                .disabled(!plan.isComparable)
+                .help(plan.unavailableReason ?? String(localized: "Include this table in the comparison"))
+                .accessibilityIdentifier("compare.plans.include.\(plan.id)")
+        }
+    }
+
+    @ViewBuilder
+    private func keyCell(_ row: CompareDataPlanRow) -> some View {
+        if let plan = row.plan {
+            planKeyCell(plan)
+        }
+    }
+
+    @ViewBuilder
+    private func planKeyCell(_ plan: DataComparePlan) -> some View {
         if let reason = plan.unavailableReason {
             Label {
                 Text(reason)
@@ -187,10 +258,36 @@ internal struct CompareDataPlansView: View {
         return CompareStatusStyle.tint(for: kind)
     }
 
+    // MARK: - Inclusion
+
     private func enabledBinding(_ plan: DataComparePlan) -> Binding<Bool> {
         Binding(
             get: { plan.isEnabled },
             set: { session.setPlanEnabled($0, for: plan.id) }
+        )
+    }
+
+    private func setEnabled(_ enabled: Bool, forIds ids: [String]) {
+        for id in ids {
+            session.setPlanEnabled(enabled, for: id)
+        }
+    }
+
+    private func enabledMemberCount(_ memberIds: [String]) -> Int {
+        let enabled = Set(session.dataPlans.filter { $0.isEnabled }.map { $0.id })
+        return memberIds.filter { enabled.contains($0) }.count
+    }
+
+    private func groupInclusionState(_ memberIds: [String]) -> TristateCheckbox.State {
+        let enabled = enabledMemberCount(memberIds)
+        guard enabled > 0 else { return .unchecked }
+        return enabled == memberIds.count ? .checked : .mixed
+    }
+
+    private func groupInclusionValue(_ memberIds: [String]) -> String {
+        String(
+            format: String(localized: "%1$d of %2$d included"),
+            enabledMemberCount(memberIds), memberIds.count
         )
     }
 
@@ -200,11 +297,20 @@ internal struct CompareDataPlansView: View {
         ContentUnavailableView {
             Label("No Tables Yet", systemImage: "tablecells")
         } description: {
-            Text("Compare lists the tables both sides share. Choose the tables to compare, then press Compare.")
+            Text(emptyDescription)
         } actions: {
             Button("Compare", action: onCompare)
                 .disabled(!session.canCompare)
                 .accessibilityIdentifier("compare.plans.compare")
         }
+    }
+
+    /// Why Compare is unavailable beats a generic invitation to press it, which is what the HIG asks
+    /// for when a command cannot be carried out.
+    private var emptyDescription: String {
+        session.compareDisabledReason
+            ?? String(
+                localized: "Compare lists the tables both sides share. Choose the tables to compare, then press Compare."
+            )
     }
 }

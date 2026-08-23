@@ -84,6 +84,9 @@ internal final class CompareSyncSession {
     internal var lastAction: CompareSyncLastAction = .none
     internal var progress: Progress?
     internal var hasWrittenToTarget = false
+
+    /// True once a script has run against the target, until the next comparison.
+    internal var isStaleAfterApply = false
     internal var runTask: Task<Void, Never>?
     internal var pendingSelection: Set<String> = []
 
@@ -111,10 +114,7 @@ internal final class CompareSyncSession {
     }
 
     internal var canCompare: Bool {
-        guard let source, let target else { return false }
-        guard target.canBeWrittenTo else { return false }
-        guard activity == .idle else { return false }
-        return source.id != target.id
+        compareDisabledReason == nil
     }
 
     internal var canGenerateStructureScript: Bool {
@@ -148,14 +148,26 @@ internal final class CompareSyncSession {
         case .none:
             return String(localized: "Comparing only. Nothing has been written.")
         case .compared(let date, let differences):
+            /// The count is not the first argument, so a plural variation on the format string
+            /// cannot key on it; the singular is chosen here instead. Without this the strip read
+            /// "1 differences".
+            let time = Self.timeFormatter.string(from: date)
+            guard differences != 1 else {
+                return String(
+                    format: String(localized: "Compared %@. 1 difference. Nothing has been written."), time
+                )
+            }
             return String(
                 format: String(localized: "Compared %@. %d differences. Nothing has been written."),
-                Self.timeFormatter.string(from: date), differences
+                time, differences
             )
         case .applied(let date, let name, let statements):
+            let time = Self.timeFormatter.string(from: date)
+            guard statements != 1 else {
+                return String(format: String(localized: "Applied to %@ at %@. 1 statement."), name, time)
+            }
             return String(
-                format: String(localized: "Applied to %@ at %@. %d statements."),
-                name, Self.timeFormatter.string(from: date), statements
+                format: String(localized: "Applied to %@ at %@. %d statements."), name, time, statements
             )
         }
     }
@@ -199,17 +211,69 @@ internal final class CompareSyncSession {
     }
 
     internal var canBuildScript: Bool {
-        guard activity == .idle else { return false }
-        switch mode {
-        case .structure:
-            return selectedObjectCount > 0 && canGenerateStructureScript
-        case .data:
-            return selectedObjectCount > 0
-        }
+        scriptDisabledReason == nil
     }
 
     internal var canApply: Bool {
-        activity == .idle && !statements.isEmpty && target?.canBeWrittenTo == true
+        applyDisabledReason == nil
+    }
+
+    // MARK: - Why an action is unavailable
+
+    /// The HIG asks an app to "show people when a command can't be carried out and help people
+    /// understand why", and to give a disabled control a tooltip naming the unmet precondition
+    /// rather than repeating its own name. Validation used to compute these conditions and throw
+    /// the reason away, returning a bare Bool, so every disabled toolbar item said only what it
+    /// was called.
+    internal var compareDisabledReason: String? {
+        if isBusy { return String(localized: "A comparison is already running.") }
+        guard let source else { return String(localized: "Choose a source to compare from.") }
+        guard let target else { return String(localized: "Choose a target to compare against.") }
+        if let refusal = target.ineligibleAsTargetReason { return refusal }
+        guard source.id != target.id else {
+            return String(localized: "The source and the target are the same database.")
+        }
+        return nil
+    }
+
+    internal var scriptDisabledReason: String? {
+        if isBusy { return String(localized: "A comparison is already running.") }
+        if isStaleAfterApply {
+            return String(localized: "The script already ran. Compare again to see where the target stands.")
+        }
+        if report == nil, dataPlans.isEmpty {
+            return String(localized: "Compare the two databases first.")
+        }
+        if mode == .structure, !canGenerateStructureScript {
+            return crossEngineNotice ?? String(localized: "These two engines cannot share a script.")
+        }
+        guard selectedObjectCount > 0 else {
+            return mode == .structure
+                ? String(localized: "Include at least one object to generate a script for it.")
+                : String(localized: "Include at least one table to generate a script for it.")
+        }
+        return nil
+    }
+
+    internal var applyDisabledReason: String? {
+        if isBusy { return String(localized: "A run is already in progress.") }
+        if isStaleAfterApply {
+            return String(localized: "The script already ran. Compare again to see where the target stands.")
+        }
+        guard target?.canBeWrittenTo == true else {
+            return target?.ineligibleAsTargetReason ?? String(localized: "Choose a target to write to.")
+        }
+        guard !statements.isEmpty else { return String(localized: "Generate the script first.") }
+        guard unacknowledgedHazardCount == 0 else {
+            guard unacknowledgedHazardCount != 1 else {
+                return String(localized: "1 statement would destroy data and is not allowed yet.")
+            }
+            return String(
+                format: String(localized: "%d statements would destroy data and are not allowed yet."),
+                unacknowledgedHazardCount
+            )
+        }
+        return nil
     }
 
     /// A statement carrying an unacknowledged hazard is why Apply stays disabled rather than
@@ -245,6 +309,34 @@ internal final class CompareSyncSession {
         return dataPlans.first { $0.id == selectedPlanId }
     }
 
+    /// What the window's bottom status bar reads. The HIG names a count of a window's contents as
+    /// the sanctioned use of a bottom bar, with Finder's item and selection counts as the example.
+    internal var statusCounts: [CompareStatusCount] {
+        switch mode {
+        case .structure:
+            guard let report else { return [] }
+            return [
+                CompareStatusCount(status: .onlyInSource, count: report.count(of: .onlyInSource)),
+                CompareStatusCount(status: .differs, count: report.count(of: .differs)),
+                CompareStatusCount(status: .onlyInTarget, count: report.count(of: .onlyInTarget)),
+                CompareStatusCount(status: .identical, count: report.count(of: .identical))
+            ]
+        case .data:
+            guard !dataPlans.isEmpty else { return [] }
+            let compared = dataPlans.compactMap { $0.summary }
+            return [
+                CompareStatusCount(status: .onlyInSource, count: compared.reduce(0) { $0 + $1.insertCount }),
+                CompareStatusCount(status: .differs, count: compared.reduce(0) { $0 + $1.updateCount }),
+                CompareStatusCount(status: .onlyInTarget, count: compared.reduce(0) { $0 + $1.deleteCount }),
+                CompareStatusCount(status: .identical, count: compared.reduce(0) { $0 + $1.identicalCount })
+            ]
+        }
+    }
+
+    internal var includedCount: Int {
+        selectedObjectCount
+    }
+
     internal var truncatedPlanNames: [String] {
         dataPlans.filter { $0.summary?.truncatedEntries == true }.map { $0.id }
     }
@@ -255,6 +347,11 @@ internal final class CompareSyncSession {
 
     // MARK: - Lifecycle
 
+    /// `lastAction` is what the banner reads, so it is part of the result and is cleared with it.
+    /// Leaving it behind made the banner claim "52 differences" over a pane reading "No Comparison
+    /// Yet": changing an endpoint correctly discarded the answer, and the banner kept advertising
+    /// it. `hasWrittenToTarget` deliberately survives, because a write already happened and no
+    /// later comparison makes that untrue.
     internal func resetComparison() {
         report = nil
         sourceSnapshots = [:]
@@ -265,7 +362,22 @@ internal final class CompareSyncSession {
         selectedPlanId = nil
         runResult = nil
         errorMessage = nil
+        informationalMessage = nil
+        lastAction = .none
+        isStaleAfterApply = false
         invalidateScript()
+    }
+
+    /// After a run the report describes a target that has since changed, so it is stale rather than
+    /// wrong: it stays on screen to be read, and every action that would write again is withdrawn
+    /// until the user compares once more.
+    internal func markAppliedAndStale() {
+        statements = []
+        actions = [:]
+        for index in dataPlans.indices {
+            dataPlans[index].isEnabled = false
+        }
+        isStaleAfterApply = true
     }
 
     internal func invalidateScript() {
@@ -302,4 +414,14 @@ internal enum CompareGrouping: String, CaseIterable, Hashable {
         case .none: return String(localized: "None")
         }
     }
+}
+
+/// One cell of the bottom status bar. Data mode reuses the structure vocabulary deliberately: an
+/// insert is a row that exists only on the source, a delete only on the target, so the same four
+/// words describe both comparisons and the bar does not change shape between modes.
+internal struct CompareStatusCount: Identifiable, Hashable {
+    internal let status: TableDiffStatus
+    internal let count: Int
+
+    internal var id: String { status.rawValue }
 }

@@ -44,6 +44,7 @@ internal final class CompareSyncWindowController: NSWindowController,
     private lazy var endpointMenus = CompareEndpointMenuBuilder(session: session) { [weak self] in
         self?.endpointsChanged()
     }
+    private weak var modeControl: NSSegmentedControl?
 
     internal static func present(prefillSource connectionId: UUID?) {
         let controller = controllers[connectionId] ?? CompareSyncWindowController(prefillSource: connectionId)
@@ -72,6 +73,7 @@ internal final class CompareSyncWindowController: NSWindowController,
         window.delegate = self
         window.applyAutosaveName(WindowIdentifier.compareSync)
         installToolbar(on: window)
+        installStatusStrip(on: window)
     }
 
     @available(*, unavailable)
@@ -101,6 +103,23 @@ internal final class CompareSyncWindowController: NSWindowController,
         session.source = CompareSyncEndpoint.from(connection: match)
     }
 
+    /// The strip belongs to the window frame, not to the content: it reports what the window is
+    /// doing, so it stays put while the panes scroll and it is not a row the split view has to
+    /// budget for. `NSTitlebarAccessoryViewController`'s `.bottom` means the bottom of the
+    /// *titlebar*, which is exactly this position, directly under the toolbar.
+    private func installStatusStrip(on window: NSWindow) {
+        let hosting = NSHostingController(rootView: CompareStatusStrip(session: session))
+        hosting.sizingOptions = [.preferredContentSize]
+        let accessory = NSTitlebarAccessoryViewController()
+        /// The accessory owns the hosting controller, not just its view. Handing over the bare view
+        /// leaves nothing retaining the controller, and a deallocated `NSHostingController` stops
+        /// updating the SwiftUI it was built from.
+        accessory.addChild(hosting)
+        accessory.view = hosting.view
+        accessory.layoutAttribute = .bottom
+        window.addTitlebarAccessoryViewController(accessory)
+    }
+
     // MARK: - Toolbar
 
     private func installToolbar(on window: NSWindow) {
@@ -113,13 +132,18 @@ internal final class CompareSyncWindowController: NSWindowController,
         window.toolbarStyle = .unified
     }
 
+    /// The HIG's item grouping: what the window is about on the leading edge, view controls in the
+    /// middle, and the actions on the trailing edge, where "items on the trailing edge remain
+    /// visible at all window sizes" and where the one primary action belongs. Compare used to sit
+    /// on the leading edge beside the pickers, which put the primary action in the group reserved
+    /// for identity and made it the first thing to be clipped.
     internal func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
             .compareSource, .compareSwap, .compareTarget,
-            .compareMode, .compareRun,
             .flexibleSpace,
-            .compareGrouping, .compareOptions, .compareSearch,
-            .compareGenerate, .compareApply
+            .compareMode, .compareGrouping, .compareOptions, .compareSearch,
+            .space,
+            .compareGenerate, .compareApply, .compareRun
         ]
     }
 
@@ -152,7 +176,8 @@ internal final class CompareSyncWindowController: NSWindowController,
                 label: String(localized: "Compare"),
                 symbol: "arrow.triangle.2.circlepath",
                 action: #selector(runComparison(_:)),
-                prominent: true
+                prominent: true,
+                visibility: .high
             )
         case .compareGenerate:
             return button(
@@ -166,14 +191,16 @@ internal final class CompareSyncWindowController: NSWindowController,
                 itemIdentifier,
                 label: String(localized: "Apply…"),
                 symbol: "square.and.arrow.down.on.square",
-                action: #selector(applyToTarget(_:))
+                action: #selector(applyToTarget(_:)),
+                visibility: .high
             )
         case .compareOptions:
             return button(
                 itemIdentifier,
                 label: String(localized: "Options"),
                 symbol: "slider.horizontal.3",
-                action: #selector(showOptions(_:))
+                action: #selector(showOptions(_:)),
+                visibility: .low
             )
         case .compareGrouping:
             return groupingItem(itemIdentifier)
@@ -184,21 +211,32 @@ internal final class CompareSyncWindowController: NSWindowController,
         }
     }
 
+    /// `toolTip` is deliberately not the item's own label. The HIG says to "consider offering
+    /// context-sensitive tooltips" with "different text for a control's different states" and, in
+    /// the same breath, to "avoid repeating a control's name in its tooltip". Repeating the name is
+    /// what this did, so a disabled Apply explained nothing. `validateUserInterfaceItem` refreshes
+    /// the tip from the session's reason every time AppKit validates.
     private func button(
         _ identifier: NSToolbarItem.Identifier,
         label: String,
         symbol: String,
         action: Selector,
-        prominent: Bool = false
+        prominent: Bool = false,
+        visibility: NSToolbarItem.VisibilityPriority = .standard
     ) -> NSToolbarItem {
         let item = NSToolbarItem(itemIdentifier: identifier)
         item.label = label
         item.paletteLabel = label
-        item.toolTip = label
         item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
         item.action = action
         item.target = self
         item.isBordered = true
+        item.visibilityPriority = visibility
+        item.menuFormRepresentation = NSMenuItem(title: label, action: action, keyEquivalent: "")
+        item.menuFormRepresentation?.target = self
+        /// macOS 26 is the first release with a prominent toolbar item style. Before it, weight
+        /// comes from position and grouping alone: a hand-tinted bezel would be this app inventing
+        /// chrome, which is what the rebuild set out to remove.
         if prominent, #available(macOS 26.0, *) {
             item.style = .prominent
         }
@@ -213,12 +251,40 @@ internal final class CompareSyncWindowController: NSWindowController,
             action: #selector(modeChanged(_:))
         )
         control.selectedSegment = CompareSyncMode.allCases.firstIndex(of: session.mode) ?? 0
+        modeControl = control
         let item = NSToolbarItem(itemIdentifier: identifier)
-        item.label = String(localized: "Compare")
+        /// Not "Compare": the button beside it already carries that label, and two toolbar items
+        /// reading the same word cannot be told apart in the overflow menu or by VoiceOver.
+        item.label = String(localized: "Mode")
         item.paletteLabel = String(localized: "What to Compare")
         item.toolTip = String(localized: "Compare structure or data")
         item.view = control
+        /// A view-backed item collapses to an inert titled entry in the overflow menu unless it
+        /// supplies its own. Without this, narrowing the window took Structure and Data away with
+        /// no way to switch back.
+        let overflow = NSMenuItem(title: String(localized: "Compare"), action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        for mode in CompareSyncMode.allCases {
+            let entry = NSMenuItem(title: mode.displayName, action: #selector(modePicked(_:)), keyEquivalent: "")
+            entry.target = self
+            entry.representedObject = mode.rawValue
+            entry.state = session.mode == mode ? .on : .off
+            submenu.addItem(entry)
+        }
+        overflow.submenu = submenu
+        item.menuFormRepresentation = overflow
         return item
+    }
+
+    /// The segmented control is seeded once at construction, so anything that writes `session.mode`
+    /// from elsewhere, loading a saved comparison for instance, used to leave the toolbar showing
+    /// the other mode while the panes had already switched.
+    private func syncModeControl() {
+        guard let index = CompareSyncMode.allCases.firstIndex(of: session.mode) else { return }
+        if modeControl?.selectedSegment != index {
+            modeControl?.selectedSegment = index
+        }
+        modeControl?.isEnabled = !session.isBusy
     }
 
     private func groupingItem(_ identifier: NSToolbarItem.Identifier) -> NSToolbarItem {
@@ -273,6 +339,16 @@ internal final class CompareSyncWindowController: NSWindowController,
         endpointsChanged()
     }
 
+    /// Every path that changes an endpoint funnels here, because the toolbar's Source and Target
+    /// titles are rendered once and do not observe the session. Swap used to leave them naming the
+    /// old pair while the strip and the subtitle had already flipped, so the toolbar pointed at the
+    /// wrong database as the one about to be written to.
+    private func endpointsChanged() {
+        session.resetComparison()
+        endpointMenus.refreshTitles()
+        updateSubtitle()
+    }
+
     @objc internal func showOptions(_ sender: Any?) {
         presentOptionsPopover(from: sender)
     }
@@ -284,8 +360,21 @@ internal final class CompareSyncWindowController: NSWindowController,
     @objc private func modeChanged(_ sender: NSSegmentedControl) {
         let index = sender.selectedSegment
         guard CompareSyncMode.allCases.indices.contains(index) else { return }
-        session.mode = CompareSyncMode.allCases[index]
+        adopt(CompareSyncMode.allCases[index])
+    }
+
+    @objc private func modePicked(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let mode = CompareSyncMode(rawValue: raw) else { return }
+        adopt(mode)
+    }
+
+    private func adopt(_ mode: CompareSyncMode) {
+        guard session.mode != mode else { return }
+        session.mode = mode
         session.resetComparison()
+        syncModeControl()
+        endpointMenus.refreshTitles()
     }
 
     @objc private func groupingChanged(_ sender: NSMenuItem) {
@@ -303,9 +392,20 @@ internal final class CompareSyncWindowController: NSWindowController,
         session.searchText = sender.stringValue
     }
 
-    private func endpointsChanged() {
-        session.resetComparison()
-        window?.subtitle = session.directionSentence ?? ""
+    /// `NSWindow.subtitle` is "a secondary line of text that appears in the title bar": contextual
+    /// identity for the window, on the row it shares with toolbar items. It carried the whole
+    /// direction sentence, which restated the status strip word for word and spent titlebar width
+    /// the HIG reserves for controls. `WindowTitleResolver`, the app's own rule for every other
+    /// window, puts the compact scope binding there and nothing else.
+    private func updateSubtitle() {
+        guard let source = session.source, let target = session.target else {
+            window?.subtitle = ""
+            return
+        }
+        window?.subtitle = String(
+            format: String(localized: "%1$@ → %2$@"),
+            source.scopeDescription, target.scopeDescription
+        )
     }
 
     // MARK: - Validation
@@ -313,21 +413,46 @@ internal final class CompareSyncWindowController: NSWindowController,
     /// Every toolbar item is also a menu-bar command, so both validate here. The HIG requires the
     /// menu-bar mirror; this is the single place that decides whether either is available.
     internal func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
-        switch item.action {
+        let reason = disabledReason(for: item.action)
+        describe(item, reason: reason)
+        syncModeControl()
+        return reason == nil
+    }
+
+    private func disabledReason(for action: Selector?) -> String? {
+        switch action {
         case #selector(runComparison(_:)):
-            return session.canCompare
+            return session.compareDisabledReason
         case #selector(generateScript(_:)):
-            return session.canBuildScript
+            return session.scriptDisabledReason
         case #selector(applyToTarget(_:)):
-            return session.canApply
+            return session.applyDisabledReason
         case #selector(swapEndpoints(_:)):
-            return session.canSwap && !session.isBusy
+            guard session.canSwap else { return String(localized: "Choose a source or a target first.") }
+            return session.isBusy ? String(localized: "A comparison is already running.") : nil
         case #selector(stopComparison(_:)):
-            return session.isBusy
-        case #selector(showOptions(_:)):
-            return true
+            return session.isBusy ? nil : String(localized: "Nothing is running.")
         default:
-            return true
+            return nil
+        }
+    }
+
+    /// The tooltip is the reason when there is one and the item's purpose when there is not, which
+    /// is what the HIG means by a tooltip carrying "different text for a control's different
+    /// states" rather than repeating the control's name.
+    private func describe(_ item: any NSValidatedUserInterfaceItem, reason: String?) {
+        guard let toolbarItem = item as? NSToolbarItem else { return }
+        toolbarItem.toolTip = reason ?? purpose(of: toolbarItem.itemIdentifier)
+    }
+
+    private func purpose(of identifier: NSToolbarItem.Identifier) -> String {
+        switch identifier {
+        case .compareRun: return String(localized: "Compare the two databases")
+        case .compareGenerate: return String(localized: "Build the SQL that brings the target in line")
+        case .compareApply: return String(localized: "Run the script against the target")
+        case .compareSwap: return String(localized: "Make the target the source and the source the target")
+        case .compareOptions: return String(localized: "What to compare, and how")
+        default: return ""
         }
     }
 
@@ -349,18 +474,21 @@ internal final class CompareSyncWindowController: NSWindowController,
         window.contentViewController?.presentAsSheet(sheet)
     }
 
+    /// The anchor used to be `(sender as? NSToolbarItem)?.view`, which is nil for a plain
+    /// image-and-action item, so the guard below it returned every time and the whole options
+    /// popover was unreachable. `PopoverPresenter` takes the item itself, and AppKit resolves the
+    /// anchor even when the item has been clipped into the overflow menu.
     private func presentOptionsPopover(from sender: Any?) {
-        guard let window else { return }
-        let content = NSHostingController(rootView: CompareOptionsView(session: session).environment(\.appServices, .live))
-        content.sizingOptions = [.preferredContentSize]
-        let popover = NSPopover()
-        popover.contentViewController = content
-        popover.contentSize = NSSize(width: 420, height: 520)
-        popover.behavior = .transient
-        let anchor = (sender as? NSToolbarItem)?.view
-            ?? window.toolbar?.items.first { $0.itemIdentifier == .compareOptions }?.view
-        guard let anchor else { return }
-        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+        let item = (sender as? NSToolbarItem)
+            ?? window?.toolbar?.items.first { $0.itemIdentifier == .compareOptions }
+        guard let item else { return }
+        PopoverPresenter.show(
+            relativeTo: item,
+            contentSize: NSSize(width: 420, height: 520)
+        ) { _ in
+            CompareOptionsView(session: self.session)
+                .environment(\.appServices, .live)
+        }
     }
 
     private func dismissSheet() {

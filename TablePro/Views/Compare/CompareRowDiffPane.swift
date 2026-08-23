@@ -153,6 +153,10 @@ internal struct CompareRowDiffPane: View {
         .padding(.vertical, 8)
     }
 
+    /// The label is the joined key column list, so `.fixedSize()` on the menu overrode both the
+    /// truncation and the width the pane proposed. A composite key pushed the second menu past the
+    /// detail pane's minimum width, where it was clipped and could not be opened at all. The label
+    /// truncates instead and the full list stays reachable through the tooltip.
     private func columnMenu(
         title: String,
         summary: String,
@@ -169,8 +173,9 @@ internal struct CompareRowDiffPane: View {
             } label: {
                 Label(summary, systemImage: systemImage)
                     .lineLimit(1)
+                    .truncationMode(.middle)
             }
-            .fixedSize()
+            .help(summary)
             .accessibilityIdentifier(identifier)
         }
     }
@@ -249,13 +254,18 @@ internal struct CompareRowDiffPane: View {
             ContentUnavailableView {
                 Label("Not Compared Yet", systemImage: "arrow.clockwise")
             } description: {
-                Text(plan.unavailableReason ?? notComparedDescription)
+                Text(notComparedDescription(for: plan))
             }
         }
     }
 
-    private var notComparedDescription: String {
-        String(localized: "Include this table and compare again to see its rows.")
+    /// The plan's own refusal first, then whatever is keeping Compare itself unavailable, and only
+    /// then the generic invitation. A dimmed action with no reason is what the HIG asks an app not
+    /// to leave a user holding.
+    private func notComparedDescription(for plan: DataComparePlan) -> String {
+        plan.unavailableReason
+            ?? session.compareDisabledReason
+            ?? String(localized: "Include this table and compare again to see its rows.")
     }
 
     // MARK: - Bindings

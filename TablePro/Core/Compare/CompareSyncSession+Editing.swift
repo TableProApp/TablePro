@@ -64,10 +64,14 @@ internal extension CompareSyncSession {
         clearDataSummaries()
     }
 
+    /// A row exclusion is keyed on the row's identity, which only the key columns decide. Changing
+    /// which columns take part in the comparison asks a different question of the same rows, so the
+    /// answers are discarded and the exclusions are not: wiping them threw away every per-row
+    /// decision in every table because one `updated_at` was unticked. `setKeyColumns` does clear
+    /// them, because a new key really does mean different rows.
     func clearDataSummaries() {
         for index in dataPlans.indices {
             dataPlans[index].summary = nil
-            dataPlans[index].excludedRowKeys = []
         }
         invalidateScript()
     }

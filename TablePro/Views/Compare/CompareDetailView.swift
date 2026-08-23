@@ -21,7 +21,11 @@ internal struct CompareDetailView: View {
             paneSelector
             Divider()
             paneContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        /// Without an infinite frame the stack sizes to its content and the split view centres the
+        /// whole block, which put the pane switcher halfway down an empty pane.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var paneSelector: some View {

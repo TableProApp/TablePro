@@ -52,6 +52,18 @@ internal extension CompareRunner {
         session.selectedPlanId = plans.first { $0.isEnabled && $0.isComparable }?.id ?? plans.first?.id
         session.detailPane = .rows
         session.invalidateScript()
+
+        /// Plans start unchecked so a first Compare cannot stream every row of every table, which
+        /// means a first run legitimately reads nothing. Recording that as "0 differences" invited
+        /// the reader to conclude the two databases matched.
+        let comparedAny = plans.contains { $0.isEnabled && $0.isComparable && $0.summary != nil }
+        guard comparedAny else {
+            session.lastAction = .none
+            session.informationalMessage = String(
+                localized: "No tables were compared. Choose the tables to compare, then press Compare."
+            )
+            return
+        }
         session.lastAction = .compared(Date(), differences: session.dataDifferenceTotal)
     }
 

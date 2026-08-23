@@ -20,6 +20,17 @@ internal struct CompareResultsView: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
     internal var body: some View {
+        VStack(spacing: 0) {
+            CompareMessageBanner(session: session)
+            filterBar
+            Divider()
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         let visible = session.visibleResults
         let uncomparable = session.report?.uncomparable ?? []
         if session.report == nil {
@@ -29,6 +40,21 @@ internal struct CompareResultsView: View {
         } else {
             resultsTable(visible: visible, uncomparable: uncomparable)
         }
+    }
+
+    /// Identical objects are hidden by default and the only way back used to be a button inside the
+    /// empty state, which renders only when nothing differs at all. Nothing ever set it back, so the
+    /// first press was permanent for the life of the window.
+    private var filterBar: some View {
+        HStack(spacing: 8) {
+            Toggle("Show Identical Objects", isOn: $session.showsIdentical)
+                .toggleStyle(.checkbox)
+                .accessibilityIdentifier("compare.results.showIdentical")
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(.bar)
     }
 
     // MARK: - Table
@@ -116,15 +142,23 @@ internal struct CompareResultsView: View {
 
     // MARK: - Cells
 
+    /// A group is three-valued, so it cannot be a `Toggle`: macOS has no mixed state for one. Five of
+    /// six included used to render exactly like none included, and the first click then included the
+    /// sixth rather than doing anything the checkbox appeared to offer.
     @ViewBuilder
     private func includeToggle(for row: CompareResultRow) -> some View {
         switch row.kind {
         case .group(let memberIds):
-            Toggle(String(localized: "Include every object in this group"), isOn: groupInclusion(memberIds))
-                .labelsHidden()
-                .toggleStyle(.checkbox)
-                .disabled(memberIds.isEmpty)
+            if !memberIds.isEmpty {
+                TristateCheckbox(
+                    state: groupInclusionState(memberIds),
+                    accessibilityLabel: String(localized: "Include every object in this group"),
+                    accessibilityValue: groupInclusionValue(memberIds)
+                ) {
+                    session.setIncluded(groupInclusionState(memberIds) != .checked, forIds: memberIds)
+                }
                 .accessibilityIdentifier("compare.results.includeGroup.\(row.id)")
+            }
         case .object(let result):
             Toggle(String(localized: "Include this object"), isOn: objectInclusion(result))
                 .labelsHidden()
@@ -167,25 +201,43 @@ internal struct CompareResultsView: View {
         )
     }
 
-    private func groupInclusion(_ memberIds: [String]) -> Binding<Bool> {
-        Binding(
-            get: { !memberIds.isEmpty && memberIds.allSatisfy { session.actions[$0, default: .skip] != .skip } },
-            set: { session.setIncluded($0, forIds: memberIds) }
+    private func includedMemberCount(_ memberIds: [String]) -> Int {
+        memberIds.filter { session.actions[$0, default: .skip] != .skip }.count
+    }
+
+    private func groupInclusionState(_ memberIds: [String]) -> TristateCheckbox.State {
+        let included = includedMemberCount(memberIds)
+        guard included > 0 else { return .unchecked }
+        return included == memberIds.count ? .checked : .mixed
+    }
+
+    private func groupInclusionValue(_ memberIds: [String]) -> String {
+        String(
+            format: String(localized: "%1$d of %2$d included"),
+            includedMemberCount(memberIds), memberIds.count
         )
     }
 
     // MARK: - Empty states
 
+    /// The description says why Compare is unavailable when it is. A generic line over a dimmed
+    /// button leaves the user with no way to work out what is missing, which the HIG asks an app not
+    /// to do.
     private var noReportState: some View {
         ContentUnavailableView {
             Label("No Comparison Yet", systemImage: "arrow.left.arrow.right.circle")
         } description: {
-            Text("Choose a source and a target, then compare them.")
+            Text(noReportDescription)
         } actions: {
             Button("Compare", action: onCompare)
                 .disabled(!session.canCompare)
                 .accessibilityIdentifier("compare.results.compare")
         }
+    }
+
+    private var noReportDescription: String {
+        session.compareDisabledReason
+            ?? String(localized: "Choose a source and a target, then compare them.")
     }
 
     @ViewBuilder
@@ -195,13 +247,6 @@ internal struct CompareResultsView: View {
                 Label("No Differences", systemImage: "equal.circle")
             } description: {
                 Text("Every object that was compared matches.")
-            } actions: {
-                if !session.showsIdentical {
-                    Button("Show Identical Objects") {
-                        session.showsIdentical = true
-                    }
-                    .accessibilityIdentifier("compare.results.showIdentical")
-                }
             }
         } else if !session.searchText.isEmpty {
             ContentUnavailableView.search(text: session.searchText)

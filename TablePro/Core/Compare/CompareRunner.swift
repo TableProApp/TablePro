@@ -112,7 +112,6 @@ internal struct CompareRunner {
                 /// Resolved for its validation: it throws when a connection has gone away, which
                 /// must stop the run before anything is written.
                 _ = try resolveContext()
-                session.hasWrittenToTarget = true
                 let statements = session.statements
                 let settings = session.executionSettings
                 let mode = session.mode
@@ -131,10 +130,18 @@ internal struct CompareRunner {
                         progress: runProgress
                     )
                 }
+                /// Set from the result, not before the run. Setting it up front meant a declined
+                /// authorization or a driver that could not run the script still flipped the status
+                /// strip to "written", next to text that still read "Nothing has been written."
+                session.hasWrittenToTarget = session.hasWrittenToTarget || result.executedCount > 0
                 session.runResult = result
                 session.lastAction = .applied(
                     Date(), target: target.qualifiedDescription, statements: result.executedCount
                 )
+                /// The script just ran, so it describes work the target has already had. Leaving it
+                /// armed left Apply enabled on a stale plan, one click from running the same
+                /// CREATE/ALTER/DELETE a second time.
+                session.markAppliedAndStale()
             } catch {
                 session.errorMessage = error.localizedDescription
             }

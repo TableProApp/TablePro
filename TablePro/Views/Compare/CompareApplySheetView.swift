@@ -69,6 +69,12 @@ internal struct CompareApplySheetView: View {
             Divider()
             actionRow
         }
+        /// Apply is disabled while anything is held back and the action row says to go to Warnings,
+        /// so the sheet opens on the tab that can actually unblock it.
+        .onAppear {
+            guard session.unacknowledgedHazardCount > 0 else { return }
+            pane = .warnings
+        }
     }
 
     // MARK: - Headline
@@ -86,11 +92,14 @@ internal struct CompareApplySheetView: View {
         .padding(16)
     }
 
+    /// The count carries the noun and the target name follows it, so the singular cannot come from a
+    /// plural variation on the format string and is chosen here instead.
     private var headlineText: String {
-        String(
-            format: String(localized: "Apply %1$d statements to %2$@?"),
-            session.runnableStatementCount, targetName
-        )
+        let count = session.runnableStatementCount
+        guard count != 1 else {
+            return String(format: String(localized: "Apply 1 statement to %@?"), targetName)
+        }
+        return String(format: String(localized: "Apply %1$d statements to %2$@?"), count, targetName)
     }
 
     private var targetName: String {
@@ -172,9 +181,16 @@ internal struct CompareApplySheetView: View {
     }
 
     private var heldBackText: String {
-        String(
+        let count = session.unacknowledgedHazardCount
+        guard count != 1 else {
+            return String(
+                format: String(localized: "1 statement stays out of this run and %@ keeps what it has for it."),
+                targetName
+            )
+        }
+        return String(
             format: String(localized: "%1$d statements stay out of this run and %2$@ keeps what it has for them."),
-            session.unacknowledgedHazardCount, targetName
+            count, targetName
         )
     }
 
@@ -286,6 +302,9 @@ internal struct CompareApplySheetView: View {
 
     // MARK: - Warnings
 
+    /// The tab the action row sends people to, so the allowance has to be reachable here. It used to
+    /// render the hazards read-only while Apply stayed disabled until every one of them was allowed,
+    /// and the only checkbox that could allow one lived in the script pane behind this sheet.
     private var warningsPane: some View {
         Group {
             if hazardStatements.isEmpty {
@@ -295,8 +314,14 @@ internal struct CompareApplySheetView: View {
                     Text(String(format: String(localized: "Nothing in this script destroys data in %@."), targetName))
                 }
             } else {
-                List(hazardStatements) { statement in
-                    hazardRow(statement)
+                List {
+                    Section {
+                        ForEach(hazardStatements) { statement in
+                            hazardRow(statement)
+                        }
+                    } footer: {
+                        Text("Allowing a statement applies to this run only. It is never saved.")
+                    }
                 }
                 .listStyle(.inset)
             }
@@ -310,13 +335,7 @@ internal struct CompareApplySheetView: View {
     private func hazardRow(_ statement: SyncStatement) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                Image(systemName: session.executionSettings.canRun(statement) ? "play.circle.fill" : "hand.raised.fill")
-                    .foregroundStyle(session.executionSettings.canRun(statement)
-                        ? CompareStatusStyle.warning
-                        : CompareStatusStyle.error)
-                Text(statement.summary)
-                    .font(.callout)
-                    .lineLimit(1)
+                hazardHeadline(statement)
                 Spacer(minLength: 0)
                 Text(session.executionSettings.canRun(statement)
                     ? String(localized: "Will run")
@@ -341,6 +360,31 @@ internal struct CompareApplySheetView: View {
                 .lineLimit(3)
         }
         .padding(.vertical, 2)
+    }
+
+    /// Only a statement the classifier refuses by default has an allowance to grant. A hazard that
+    /// runs anyway gets a label rather than a checkbox, because a checkbox that cannot stop it would
+    /// say the opposite of what it does.
+    @ViewBuilder
+    private func hazardHeadline(_ statement: SyncStatement) -> some View {
+        if statement.isRefusedByDefault {
+            Toggle(isOn: CompareHazardAllowance.binding(for: statement, in: session)) {
+                Text(statement.summary)
+                    .font(.callout)
+                    .lineLimit(1)
+            }
+            .toggleStyle(.checkbox)
+            .accessibilityIdentifier("compare.apply.allow.\(statement.id.uuidString)")
+        } else {
+            Label {
+                Text(statement.summary)
+                    .font(.callout)
+                    .lineLimit(1)
+            } icon: {
+                Image(systemName: "play.circle.fill")
+            }
+            .foregroundStyle(CompareStatusStyle.warning)
+        }
     }
 
     // MARK: - Actions
