@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tab out of a row's last cell and Shift+Tab out of its first doing nothing.
 - Size All Columns to Fit leaving the far columns of a wide result unreachable.
 - A table with 500 columns pinning a core for 20 seconds and taking a gigabyte to open. (#2381)
+- An empty grid the first time a table is opened in a window with no tabs. (#2342)
+- One table click running its query twice. (#2342)
+- A closed tab leaving its query counted as running. (#2342)
 
 ## [0.67.1] - 2026-08-22
 
