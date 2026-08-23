@@ -7,19 +7,11 @@
 
 import SwiftUI
 
-private struct QueryPlanHistorySheetInput: Identifiable {
-    var id: UUID { context.historyId }
-
-    let context: ExplainPlanHistoryContext
-    let rawText: String
-    let executionTime: TimeInterval?
-    let plan: QueryPlan?
-}
-
 enum QueryPlanViewMode: String, CaseIterable, Identifiable {
     case diagram
     case tree
     case raw
+    case compare
 
     var id: String { rawValue }
 
@@ -28,6 +20,7 @@ enum QueryPlanViewMode: String, CaseIterable, Identifiable {
         case .diagram: return String(localized: "Diagram")
         case .tree: return String(localized: "Tree")
         case .raw: return String(localized: "Raw")
+        case .compare: return String(localized: "Compare")
         }
     }
 }
@@ -74,13 +67,13 @@ struct QueryPlanResultView: View {
     let rawText: String
     let executionTime: TimeInterval?
     let plan: QueryPlan?
-    let historyContext: ExplainPlanHistoryContext?
+    let planContext: QueryPlanContext?
 
     @AppStorage(PreferenceKeys.queryPlanRawFontSize.name) private var fontSize: Double = 13
     @State private var showCopyConfirmation = false
     @State private var copyResetTask: Task<Void, Never>?
-    @State private var historySheetInput: QueryPlanHistorySheetInput?
     @State private var viewMode: QueryPlanViewMode = .diagram
+    @State private var comparison = QueryPlanComparisonModel()
 
     /// Shared by the diagram and the outline, so switching view mode keeps the selected step.
     @State private var selectedNodeId: UUID?
@@ -93,12 +86,20 @@ struct QueryPlanResultView: View {
         rawText: String,
         executionTime: TimeInterval?,
         plan: QueryPlan?,
-        historyContext: ExplainPlanHistoryContext? = nil
+        planContext: QueryPlanContext? = nil
     ) {
         self.rawText = rawText
         self.executionTime = executionTime
         self.plan = plan
-        self.historyContext = historyContext
+        self.planContext = planContext
+    }
+
+    /// Compare is offered only when there is something to compare: a plan the app could read, and a
+    /// run it knows the identity of.
+    private var availableModes: [QueryPlanViewMode] {
+        planContext == nil
+            ? QueryPlanViewMode.allCases.filter { $0 != .compare }
+            : QueryPlanViewMode.allCases
     }
 
     var body: some View {
@@ -107,13 +108,13 @@ struct QueryPlanResultView: View {
             Divider()
             content
         }
-        .sheet(item: $historySheetInput) { input in
-            QueryPlanHistoryView(
-                context: input.context,
-                currentRawText: input.rawText,
-                currentExecutionTime: input.executionTime,
-                currentPlan: input.plan
-            )
+        .task(id: planContext) {
+            guard let planContext else { return }
+            comparison.activate(context: planContext, plan: plan, rawText: rawText)
+        }
+        .onChange(of: availableModes) { _, modes in
+            guard !modes.contains(viewMode) else { return }
+            viewMode = .diagram
         }
     }
 
@@ -142,6 +143,8 @@ struct QueryPlanResultView: View {
                 QueryPlanTreeView(plan: plan, selectedNodeId: $selectedNodeId)
             case .raw:
                 DDLTextView(ddl: rawText, fontSize: $fontSize)
+            case .compare:
+                QueryPlanComparisonView(model: comparison)
             }
         }
     }
@@ -166,22 +169,28 @@ struct QueryPlanResultView: View {
         HStack(spacing: 12) {
             if presentation.plan != nil {
                 Picker("", selection: $viewMode) {
-                    ForEach(QueryPlanViewMode.allCases) { mode in
+                    ForEach(availableModes) { mode in
                         Text(mode.title).tag(mode)
                     }
                 }
                 .pickerStyle(.segmented)
                 .controlSize(.small)
-                .frame(width: 240)
+                .fixedSize()
                 .labelsHidden()
                 .accessibilityIdentifier("query-plan-mode-picker")
+            }
+
+            if viewMode == .compare {
+                baselinePicker
             }
 
             if viewMode == .raw || presentation.plan == nil {
                 fontSizeStepper
             }
 
-            timings
+            if viewMode != .compare {
+                timings
+            }
 
             Spacer()
 
@@ -194,18 +203,6 @@ struct QueryPlanResultView: View {
                 .transition(.opacity)
             }
 
-            if historyContext != nil {
-                Button {
-                    showHistory()
-                } label: {
-                    Label(String(localized: "History"), systemImage: "clock.arrow.circlepath")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .help(String(localized: "Compare this plan with an earlier run"))
-                .accessibilityIdentifier("query-plan-history-button")
-            }
-
             Button(action: copyText) {
                 Label(String(localized: "Copy"), systemImage: "doc.on.doc")
             }
@@ -216,6 +213,52 @@ struct QueryPlanResultView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    /// Which earlier run this plan is measured against. It sits in the pane's own bar beside the
+    /// mode switch, where Xcode's comparison editor puts its revision chooser, so changing the
+    /// baseline never leaves the plan.
+    @ViewBuilder
+    private var baselinePicker: some View {
+        if comparison.baselines.isEmpty {
+            EmptyView()
+        } else {
+            Picker(String(localized: "Baseline"), selection: $comparison.selectedBaselineId) {
+                ForEach(comparison.baselines) { baseline in
+                    if baseline.isPinned {
+                        Label(baselineLabel(baseline), systemImage: "pin.fill").tag(Optional(baseline.id))
+                    } else {
+                        Text(baselineLabel(baseline)).tag(Optional(baseline.id))
+                    }
+                }
+            }
+            .controlSize(.small)
+            .fixedSize()
+            .accessibilityIdentifier("query-plan-baseline-picker")
+
+            if let selected = comparison.selectedBaseline {
+                Button {
+                    comparison.setPinned(!selected.isPinned, snapshotId: selected.id)
+                } label: {
+                    Image(systemName: selected.isPinned ? "pin.fill" : "pin")
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .help(selected.isPinned
+                    ? String(localized: "Stop keeping this plan when history is cleaned up")
+                    : String(localized: "Keep this plan when history is cleaned up"))
+                .accessibilityLabel(selected.isPinned
+                    ? String(localized: "Unpin baseline")
+                    : String(localized: "Pin baseline"))
+                .accessibilityIdentifier("query-plan-baseline-pin")
+            }
+        }
+    }
+
+    private func baselineLabel(_ baseline: QueryPlanSnapshotSummary) -> String {
+        let stamp = baseline.capturedAt.formatted(date: .abbreviated, time: .shortened)
+        let duration = QueryDurationFormatter.string(from: baseline.executionTime)
+        return String(format: String(localized: "%1$@ · %2$@"), stamp, duration)
     }
 
     private var fontSizeStepper: some View {
@@ -267,16 +310,6 @@ struct QueryPlanResultView: View {
             guard !Task.isCancelled else { return }
             withAnimation { showCopyConfirmation = false }
         }
-    }
-
-    private func showHistory() {
-        guard let historyContext else { return }
-        historySheetInput = QueryPlanHistorySheetInput(
-            context: historyContext,
-            rawText: rawText,
-            executionTime: executionTime,
-            plan: plan
-        )
     }
 
     private func formattedDuration(_ duration: TimeInterval) -> String {

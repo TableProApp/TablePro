@@ -39,8 +39,7 @@ struct ExplainResultRouterTests {
         #expect(routed?.rawText == "-> Limit: 5 row(s)\n    -> Sort")
         #expect(routed?.subjectSQL == "SELECT 1")
         #expect(routed?.format == .mysqlComposite)
-        #expect(routed?.variantId?.hasPrefix("__typed_explain__:") == true)
-        #expect(routed?.variantId != "explain")
+        #expect(routed?.variantKey == .typed(preamble: "EXPLAIN ANALYZE"))
     }
 
     @Test("A multi-column plan the app can read routes to the viewer")
@@ -57,7 +56,7 @@ struct ExplainResultRouterTests {
         #expect(routed?.plan != nil)
         #expect(routed?.subjectSQL == "SELECT 1")
         #expect(routed?.format == .sqliteQueryPlan)
-        #expect(routed?.variantId == "plan")
+        #expect(routed?.variantKey == .declared("plan"))
     }
 
     /// MySQL declares an `EXPLAIN` variant, so prefix matching alone would drag its tabular
@@ -154,14 +153,14 @@ struct ExplainResultRouterTests {
                 rows: [[.text("-> Table scan on users")]],
                 databaseType: .mysql,
                 declaredVariants: mysqlVariants
-            )?.variantId
+            )?.variantKey
         }
 
         #expect(identifiers.count == 3)
         #expect(Set(identifiers).count == 3)
-        #expect(identifiers[0] == "explain")
-        #expect(identifiers[1].hasPrefix("__typed_explain__:"))
-        #expect(identifiers[2].hasPrefix("__typed_explain__:"))
+        #expect(identifiers[0] == .declared("explain"))
+        #expect(identifiers[1] == .typed(preamble: "EXPLAIN FORMAT = TREE"))
+        #expect(identifiers[2] == .typed(preamble: "EXPLAIN ANALYZE"))
     }
 
     @Test("Typed history preambles normalize case and spacing")
@@ -169,7 +168,7 @@ struct ExplainResultRouterTests {
         let compact = routeMySQL("EXPLAIN FORMAT=TREE SELECT * FROM users")
         let spaced = routeMySQL("  explain  format = tree  SELECT * FROM users")
 
-        #expect(compact?.variantId == spaced?.variantId)
+        #expect(compact?.variantKey == spaced?.variantKey)
         #expect(compact?.subjectSQL == spaced?.subjectSQL)
     }
 
@@ -177,20 +176,20 @@ struct ExplainResultRouterTests {
     func preservesDeclaredJSONVariant() {
         let routed = routeMySQL("EXPLAIN FORMAT=JSON SELECT * FROM users")
 
-        #expect(routed?.variantId == "explain-json")
+        #expect(routed?.variantKey == .declared("explain-json"))
         #expect(routed?.format == .mysqlComposite)
         #expect(routed?.plan != nil)
     }
 
-    @Test("Typed history discriminator is bounded and hides the preamble")
-    func boundsTypedHistoryDiscriminator() throws {
+    /// A pathological preamble must not grow the stored key, and therefore the index entry, without
+    /// bound. It is truncated rather than hashed, so what is stored stays readable.
+    @Test("A very long typed preamble is bounded")
+    func boundsTypedPreamble() throws {
         let sql = "EXPLAIN " + String(repeating: "OPTION ", count: 1_000) + "SELECT 1"
         let routed = try #require(routeMySQL(sql))
-        let identifier = try #require(routed.variantId)
 
-        #expect(identifier.hasPrefix("__typed_explain__:"))
-        #expect(identifier.count == "__typed_explain__:".count + 64)
-        #expect(!identifier.contains("OPTION"))
+        #expect(routed.variantKey.rawValue.count == QueryPlanVariantKey.maximumLength)
+        #expect(routed.variantKey.rawValue.hasPrefix("sql:EXPLAIN OPTION"))
     }
 
     private func routeMySQL(_ sql: String) -> ExplainResultRouter.RoutedPlan? {

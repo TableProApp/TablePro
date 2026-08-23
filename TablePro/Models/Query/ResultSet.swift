@@ -54,7 +54,10 @@ final class ResultSet: Identifiable {
     /// and history. It carries a plan instead of rows.
     var queryPlan: QueryPlan?
     var explainRawText: String?
-    var explainHistoryContext: ExplainPlanHistoryContext?
+
+    /// Where this plan sits in the statement's saved history, so the plan pane can offer a
+    /// comparison without asking a coordinator anything.
+    var explainPlanContext: QueryPlanContext?
 
     var isExplainResult: Bool { explainRawText != nil }
 

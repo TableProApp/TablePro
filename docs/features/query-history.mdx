@@ -50,13 +50,11 @@ Search matches partial words, so `cust` finds `customers`. Several words must al
 
 **My Queries**, the default, is Editor and Explain. Add **Table Browsing** to see what the app sent while you clicked around a table, **Structure Changes** to review what altered a schema and when.
 
-## EXPLAIN plan captures
+## Saved EXPLAIN plans
 
-A successful EXPLAIN entry can also carry its raw plan output. Open that result's **History** sheet to compare it with earlier compatible runs; see [EXPLAIN Visualization](/features/explain-visualization#compare-earlier-plans).
+A successful EXPLAIN also saves its plan, so a later run of the same query can be compared against it. See [EXPLAIN Visualization](/features/explain-visualization#compare).
 
-The plan capture is attached to the ordinary history entry rather than stored as another row. It follows the same pause, retention and deletion rules: deleting an entry, clearing matching history, pruning it, or deleting its connection removes the plan capture too.
-
-Raw plan output is limited to 2 MB per capture, 1,000 stored captures and 100 MB total. Crossing a total limit removes the oldest plan payloads while keeping their normal history entries. A larger individual result also keeps its normal history entry but skips the plan capture. Parameterized EXPLAIN results never persist their raw plan output.
+Pausing history stops saving plans. Clearing, pruning or deleting history does not delete them: a saved plan outlives the run that produced it, and pinning one exempts it from cleanup entirely. Unpinned plans are pruned oldest first once they pass 100 MB in total.
 
 ## Working with entries
 

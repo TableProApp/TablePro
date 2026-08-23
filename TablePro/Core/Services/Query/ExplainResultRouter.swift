@@ -13,7 +13,7 @@ enum ExplainResultRouter {
         let rawText: String
         let plan: QueryPlan?
         let format: ExplainPlanFormat
-        let variantId: String?
+        let variantKey: QueryPlanVariantKey
         let subjectSQL: String
     }
 
@@ -43,64 +43,52 @@ enum ExplainResultRouter {
         let plan = ExplainPlanParserRegistry.plan(from: text, format: format)
 
         guard columns.count == 1 || plan != nil else { return nil }
+
         let subjectSQL = QueryClassifier.explainedStatement(in: explainSQL) ?? sql
         return RoutedPlan(
             rawText: text,
             plan: plan,
             format: format,
-            variantId: historyVariantIdentifier(
+            variantKey: variantKey(
                 explainSQL: explainSQL,
                 subjectSQL: subjectSQL,
                 declaredVariants: declaredVariants,
-                fallback: variant?.id
+                matched: variant
             ),
             subjectSQL: subjectSQL
         )
     }
 
-    private static func historyVariantIdentifier(
+    /// Which chain of saved plans this run belongs to.
+    ///
+    /// A typed `EXPLAIN (ANALYZE, BUFFERS)` and a plain `EXPLAIN` describe the same statement but
+    /// report different things, so they are separate chains. The options the user typed are the
+    /// only thing that distinguishes them, and they are keyed by their normalized spelling rather
+    /// than by a digest of it, so a stored key stays readable in the picker and in a database
+    /// browser.
+    ///
+    /// A typed statement that happens to spell a variant the driver declares is folded onto that
+    /// variant's key, so running EXPLAIN from the toolbar and typing the same thing by hand share
+    /// one history.
+    private static func variantKey(
         explainSQL: String,
         subjectSQL: String,
         declaredVariants: [ExplainVariant],
-        fallback: String?
-    ) -> String? {
-        guard let subjectRange = explainSQL.range(
-            of: subjectSQL,
-            options: [.literal, .backwards]
-        ) else { return fallback }
+        matched: ExplainVariant?
+    ) -> QueryPlanVariantKey {
+        guard let subjectRange = explainSQL.range(of: subjectSQL, options: [.literal, .backwards]) else {
+            return matched.map { .declared($0.id) } ?? .driverBuilt
+        }
 
-        let preamble = normalizePreamble(String(explainSQL[..<subjectRange.lowerBound]))
-        guard !preamble.isEmpty else { return fallback }
-
+        let preamble = SQLPreambleNormalizer.normalize(String(explainSQL[..<subjectRange.lowerBound]))
+        guard !preamble.isEmpty else {
+            return matched.map { .declared($0.id) } ?? .driverBuilt
+        }
         if let declared = declaredVariants.first(where: {
-            normalizePreamble($0.sqlPrefix) == preamble
+            SQLPreambleNormalizer.normalize($0.sqlPrefix) == preamble
         }) {
-            return declared.id
+            return .declared(declared.id)
         }
-        return "__typed_explain__:\(preamble.sha256)"
-    }
-
-    private static func normalizePreamble(_ sql: String) -> String {
-        var components: [String] = []
-        var token = ""
-
-        func appendToken() {
-            guard !token.isEmpty else { return }
-            components.append(token.uppercased())
-            token.removeAll(keepingCapacity: true)
-        }
-
-        for character in sql {
-            if character.isLetter || character.isNumber || character == "_" {
-                token.append(character)
-            } else {
-                appendToken()
-                if !character.isWhitespace {
-                    components.append(String(character))
-                }
-            }
-        }
-        appendToken()
-        return components.joined(separator: " ")
+        return .typed(preamble: preamble)
     }
 }

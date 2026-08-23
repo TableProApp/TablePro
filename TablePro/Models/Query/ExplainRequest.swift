@@ -12,7 +12,11 @@ struct ExplainRequest: Equatable {
     let sql: String
     let subjectSQL: String
     let format: ExplainPlanFormat
-    let variantId: String?
+
+    /// Which chain of saved plans a run of this request belongs to. Shared with the hand-typed
+    /// path, so the Explain action and the same statement typed into the editor build one history
+    /// rather than two.
+    let variantKey: QueryPlanVariantKey
 
     /// A driver that declares no variants and builds its own statement may return anything,
     /// including a multi-column document. Those results go through the ordinary query pipeline
@@ -33,7 +37,7 @@ struct ExplainRequest: Equatable {
             sql: "\(resolved.sqlPrefix) \(statement)",
             subjectSQL: statement,
             format: ExplainFormatResolver.resolve(declared: resolved.format, databaseType: databaseType),
-            variantId: resolved.id,
+            variantKey: .declared(resolved.id),
             isDriverBuilt: false
         )
     }
@@ -47,7 +51,7 @@ struct ExplainRequest: Equatable {
             sql: sql,
             subjectSQL: subjectSQL ?? sql,
             format: ExplainFormatResolver.resolve(declared: .plainText, databaseType: databaseType),
-            variantId: nil,
+            variantKey: .driverBuilt,
             isDriverBuilt: true
         )
     }

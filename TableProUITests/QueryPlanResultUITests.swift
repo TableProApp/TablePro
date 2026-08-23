@@ -34,7 +34,7 @@ final class QueryPlanResultUITests: UITestCase {
         let modePicker = app.radioGroups["query-plan-mode-picker"].firstMatch
         XCTAssertTrue(
             modePicker.waitToExist(timeout: 10),
-            "A parsed plan must offer the Diagram, Tree and Raw modes"
+            "A parsed plan must offer the Diagram, Tree, Raw and Compare modes"
         )
 
         let canvas = app.descendants(matching: .any).matching(identifier: "query-plan-diagram").firstMatch
@@ -69,90 +69,75 @@ final class QueryPlanResultUITests: UITestCase {
         app.typeKey(.escape, modifierFlags: [])
     }
 
-    func testPlanHistoryComparesAgainstAnEarlierRun() throws {
+    /// Comparing a plan is a mode of the plan pane, not a sheet, so the editor behind it stays
+    /// usable and the comparison survives running the query again. The sample SQLite database makes
+    /// the plan change deterministic: creating an index turns a scan into a search.
+    func testComparingAPlanAgainstAnEarlierRun() throws {
         let app = try launchWithSampleDatabase()
         let subjectSQL = "SELECT * FROM Track WHERE Name = 'For Those About To Rock';"
 
         runExplainAction(subjectSQL, in: app)
         let firstPlan = app.radioGroups["query-plan-mode-picker"].firstMatch
-        XCTAssertTrue(firstPlan.waitToExist(timeout: 20), "The first plan must finish before history is checked")
+        XCTAssertTrue(firstPlan.waitToExist(timeout: 20), "The first plan must finish before it can be a baseline")
 
         createPlanChangingIndex(in: app)
 
         runQuery("EXPLAIN QUERY PLAN \(subjectSQL)", in: app)
-        let historyButton = app.buttons["query-plan-history-button"].firstMatch
+        let modePicker = app.radioGroups["query-plan-mode-picker"].firstMatch
+        XCTAssertTrue(modePicker.waitToExist(timeout: 20), "The second plan must arrive")
+
+        let compareMode = modePicker.radioButtons["Compare"]
         XCTAssertTrue(
-            waitUntilHittable(historyButton, timeout: 20),
-            "The second plan must expose its history action"
+            waitUntilHittable(compareMode, timeout: 10),
+            "A run with an earlier plan behind it must offer Compare as a mode, not a sheet"
         )
-        historyButton.click()
+        compareMode.click()
 
-        let sheet = app.descendants(matching: .any)
-            .matching(identifier: "query-plan-history-sheet").firstMatch
-        XCTAssertTrue(sheet.waitToExist(timeout: 10), "History must open as a comparison sheet")
-
-        let baselines = app.descendants(matching: .any)
-            .matching(identifier: "query-plan-history-baseline-list").firstMatch
-        XCTAssertTrue(baselines.waitToExist(timeout: 10), "The earlier identical run must be listed")
-
-        let baseline = baselines.tableRows.firstMatch
-        XCTAssertTrue(waitUntilHittable(baseline, timeout: 10), "The earlier run must be selectable")
-        baseline.click()
+        let baselinePicker = app.popUpButtons["query-plan-baseline-picker"].firstMatch
         XCTAssertTrue(
-            waitForPredicate(timeout: 5) { baseline.isSelected },
-            "Clicking the earlier run must select it as the comparison baseline"
+            baselinePicker.waitToExist(timeout: 15),
+            "Compare mode must offer the earlier run as a baseline"
         )
 
-        let comparison = app.descendants(matching: .any)
-            .matching(identifier: "query-plan-history-change-list").firstMatch
+        let verdict = app.descendants(matching: .any)
+            .matching(identifier: "query-plan-comparison-verdict").firstMatch
         XCTAssertTrue(
-            comparison.waitToExist(timeout: 10),
-            "Selecting a baseline must produce a structured plan comparison"
+            verdict.waitToExist(timeout: 15),
+            "The comparison must lead with what happened, not with a table of numbers"
         )
+
         XCTAssertTrue(
-            waitForPredicate(timeout: 10) {
-                ["added", "removed", "modified"].contains { kind in
+            waitForPredicate(timeout: 15) {
+                ["added", "removed", "changed"].contains { kind in
                     app.descendants(matching: .any)
-                        .matching(identifier: "query-plan-history-change-\(kind)").firstMatch.exists
+                        .matching(identifier: "query-plan-comparison-change-\(kind)").firstMatch.exists
                 }
             },
             "Creating the index must produce a visible plan-node change"
         )
 
         let evidence = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-        evidence.name = "explain-plan-history-comparison"
+        evidence.name = "explain-plan-comparison"
         evidence.lifetime = .keepAlways
         add(evidence)
 
-        let closeButton = app.buttons["Close"].firstMatch
-        XCTAssertTrue(waitUntilHittable(closeButton, timeout: 5))
-        closeButton.click()
-        XCTAssertTrue(
-            waitForPredicate(timeout: 5) { !sheet.exists },
-            "The history sheet must close before the next query tab opens"
-        )
-
+        /// The explicit Explain action and a hand-typed EXPLAIN have to land in one chain. This run
+        /// is the third of the same statement, so it must see both earlier ones.
         runExplainAction(subjectSQL, in: app)
-        let nextHistoryButton = app.buttons["query-plan-history-button"].firstMatch
-        XCTAssertTrue(
-            waitUntilHittable(nextHistoryButton, timeout: 20),
-            "A later explicit plan must expose its history action"
-        )
-        nextHistoryButton.click()
+        let laterPicker = app.radioGroups["query-plan-mode-picker"].firstMatch
+        XCTAssertTrue(laterPicker.waitToExist(timeout: 20))
+        let laterCompare = laterPicker.radioButtons["Compare"]
+        XCTAssertTrue(waitUntilHittable(laterCompare, timeout: 10))
+        laterCompare.click()
 
-        let persistedBaselines = app.descendants(matching: .any)
-            .matching(identifier: "query-plan-history-baseline-list").firstMatch
-        XCTAssertTrue(persistedBaselines.waitToExist(timeout: 10))
+        let laterBaselines = app.popUpButtons["query-plan-baseline-picker"].firstMatch
+        XCTAssertTrue(laterBaselines.waitToExist(timeout: 15))
+        laterBaselines.click()
         XCTAssertTrue(
-            waitForPredicate(timeout: 10) { persistedBaselines.tableRows.count >= 2 },
-            "Both the earlier explicit plan and typed plan must persist as baselines"
+            waitForPredicate(timeout: 10) { app.menuItems.count >= 2 },
+            "A typed EXPLAIN and the Explain action must build one history, not two"
         )
-        let persistedComparison = app.descendants(matching: .any)
-            .matching(identifier: "query-plan-history-change-list").firstMatch
-        XCTAssertTrue(
-            persistedComparison.waitToExist(timeout: 10),
-            "The persisted typed plan must produce a structured comparison"
-        )
+        app.typeKey(.escape, modifierFlags: [])
     }
 
     // MARK: - Helpers

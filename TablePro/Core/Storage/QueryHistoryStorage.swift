@@ -10,15 +10,12 @@ actor QueryHistoryStorage {
         var pointer: OpaquePointer?
     }
 
-    private enum TransactionCommitResult {
-        case committed
-        case rolledBack
-        case failed
-    }
-
     private var dbHandle = DatabaseHandle()
     private var isPrepared = false
 
+    /// Internal rather than private so `QueryHistoryStorage+PlanSnapshots` can reach it. Splitting a
+    /// type across `+Category` files is what `CLAUDE.md` asks for as a file approaches its length
+    /// limit, and it is what forces this handful of members past `private`.
     var db: OpaquePointer? {
         if !isPrepared {
             isPrepared = true
@@ -35,19 +32,13 @@ actor QueryHistoryStorage {
 
     private let databaseURL: URL
     private let removeDatabaseOnDeinit: Bool
-    private let explainPlanRawByteLimit: Int64
-    private let explainPlanSnapshotLimit: Int
 
     init(
         databaseURL: URL = QueryHistoryStorage.defaultDatabaseURL(),
-        removeDatabaseOnDeinit: Bool = false,
-        explainPlanRawByteLimit: Int64 = ExplainPlanHistoryRecord.maximumTotalRawByteCount,
-        explainPlanSnapshotLimit: Int = ExplainPlanHistoryRecord.maximumStoredSnapshotCount
+        removeDatabaseOnDeinit: Bool = false
     ) {
         self.databaseURL = databaseURL
         self.removeDatabaseOnDeinit = removeDatabaseOnDeinit
-        self.explainPlanRawByteLimit = max(0, explainPlanRawByteLimit)
-        self.explainPlanSnapshotLimit = max(0, explainPlanSnapshotLimit)
     }
 
     static func defaultDatabaseURL() -> URL {
@@ -89,13 +80,16 @@ actor QueryHistoryStorage {
 
         execute("PRAGMA journal_mode=WAL;")
         execute("PRAGMA synchronous=NORMAL;")
+        /// Off by default in SQLite, and `plan_snapshots.history_id` needs it: without it the
+        /// `ON DELETE SET NULL` never fires and a pruned history row leaves a plan pointing at a
+        /// row that no longer exists.
         execute("PRAGMA foreign_keys=ON;")
         sqlite3_busy_timeout(db, 3_000)
 
         createTables()
         migrateIfNeeded()
         createFingerprintIndex()
-        createExplainPlanStorage()
+        createPlanSnapshotStorage()
         protectDatabaseFiles(at: dbPath)
     }
 
@@ -429,104 +423,24 @@ actor QueryHistoryStorage {
         Self.logger.error("Query history SQL \(context, privacy: .public) failed: \(String(cString: message), privacy: .public)")
     }
 
-    @discardableResult
-    private func beginTransaction() -> Bool {
-        guard let db else { return false }
+    private func beginTransaction() {
+        guard let db else { return }
         if sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) != SQLITE_OK {
             logSqliteError(context: "begin")
-            return false
         }
-        return true
     }
 
-    @discardableResult
-    private func commitTransaction() -> TransactionCommitResult {
-        guard let db else { return .failed }
+    private func commitTransaction() {
+        guard let db else { return }
         if sqlite3_exec(db, "COMMIT;", nil, nil, nil) != SQLITE_OK {
             logSqliteError(context: "commit")
-            return rollbackTransaction() ? .rolledBack : .failed
+            sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
         }
-        return .committed
-    }
-
-    @discardableResult
-    private func rollbackTransaction() -> Bool {
-        guard let db else { return false }
-        if sqlite3_exec(db, "ROLLBACK;", nil, nil, nil) != SQLITE_OK {
-            logSqliteError(context: "rollback")
-            return false
-        }
-        return true
     }
 
     // MARK: - Writes
 
     func record(_ entry: QueryHistoryEntry) -> Bool {
-        record(entry, explainPlan: nil)
-    }
-
-    func record(
-        _ entry: QueryHistoryEntry,
-        explainPlan candidate: ExplainPlanHistoryRecord?
-    ) -> Bool {
-        guard db != nil else { return false }
-
-        let explainPlan = candidate.flatMap {
-            entry.wasSuccessful && $0.isWithinStorageLimit ? $0 : nil
-        }
-        if let explainPlan {
-            guard explainPlanContext(explainPlan.context, matches: entry) else {
-                return recordHistoryEntryOnly(entry)
-            }
-            guard beginTransaction() else { return false }
-            guard insertHistoryEntry(entry) else {
-                rollbackTransaction()
-                return false
-            }
-            guard insertExplainPlanSnapshot(explainPlan),
-                  pruneExplainPlanSnapshots(
-                      toRawByteLimit: explainPlanRawByteLimit,
-                      snapshotLimit: explainPlanSnapshotLimit
-                  )
-            else {
-                guard rollbackTransaction() else { return false }
-                return recordHistoryEntryOnly(entry)
-            }
-            switch commitTransaction() {
-            case .committed:
-                break
-            case .rolledBack:
-                return recordHistoryEntryOnly(entry)
-            case .failed:
-                return false
-            }
-        } else {
-            return recordHistoryEntryOnly(entry)
-        }
-
-        finishSuccessfulRecord()
-        return true
-    }
-
-    private func recordHistoryEntryOnly(_ entry: QueryHistoryEntry) -> Bool {
-        guard insertHistoryEntry(entry) else { return false }
-        finishSuccessfulRecord()
-        return true
-    }
-
-    private func explainPlanContext(
-        _ context: ExplainPlanHistoryContext,
-        matches entry: QueryHistoryEntry
-    ) -> Bool {
-        context.historyId == entry.id
-            && context.connectionId == entry.connectionId
-            && context.databaseName == entry.databaseName
-            && context.databaseType == entry.databaseType
-            && context.schemaName == entry.schemaName
-            && context.capturedAt == entry.executedAt
-    }
-
-    private func insertHistoryEntry(_ entry: QueryHistoryEntry) -> Bool {
         guard let db else { return false }
 
         let sql = """
@@ -573,15 +487,12 @@ actor QueryHistoryStorage {
             return false
         }
 
-        return true
-    }
-
-    private func finishSuccessfulRecord() {
         insertsSinceCleanup += 1
         if cachedAutoCleanup, insertsSinceCleanup >= Self.cleanupInsertInterval {
             insertsSinceCleanup = 0
             performCleanup()
         }
+        return true
     }
 
     // MARK: - Reads
@@ -1206,6 +1117,13 @@ actor QueryHistoryStorage {
         }
 
         commitTransaction()
+
+        /// After the commit, so the `ON DELETE SET NULL` on `plan_snapshots.history_id` has already
+        /// run and the byte budget is measured against what survives. Its own statement rather than
+        /// part of the transaction above: a full scan of the plan table has no business holding the
+        /// write lock that every history insert needs.
+        prunePlanSnapshots(toByteLimit: QueryPlanStorageLimits.maximumTotalByteCount)
+
         return sqlite3_total_changes(db) != changesBefore
     }
 

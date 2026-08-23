@@ -16,7 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Procedures, functions and triggers in the quick switcher.
 - Argument signatures on routine rows, shown when two routines in a section share a name.
 - Schema-wide `list_triggers` for MCP clients, and `return_type` and `language` on `list_routines`.
-- Plan history for EXPLAIN, comparing cost, row estimates and node changes against an earlier compatible run. (#2380)
+- Compare, a fourth EXPLAIN plan mode that reports what changed against an earlier run of the same query. (#2380)
+- Pinning a saved EXPLAIN plan, to keep it through history cleanup. (#2380)
 
 ### Changed
 

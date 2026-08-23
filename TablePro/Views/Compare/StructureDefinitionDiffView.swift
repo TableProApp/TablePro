@@ -10,6 +10,9 @@
 import SwiftUI
 
 internal struct StructureDefinitionDiffView: View {
+    internal var title = String(localized: "Definition")
+    internal var sourceLabel = String(localized: "Source")
+    internal var targetLabel = String(localized: "Target")
     internal let sourceLines: [String]
     internal let targetLines: [String]
 
@@ -24,7 +27,7 @@ internal struct StructureDefinitionDiffView: View {
     internal var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("Definition")
+                Text(title)
                     .font(.subheadline.weight(.semibold))
                 Spacer()
                 Picker("", selection: $isUnified) {
@@ -48,8 +51,8 @@ internal struct StructureDefinitionDiffView: View {
     private var splitBody: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                columnHeader(String(localized: "Target"))
-                columnHeader(String(localized: "Source"))
+                columnHeader(targetLabel)
+                columnHeader(sourceLabel)
             }
             ForEach(Array(pairs.enumerated()), id: \.offset) { _, pair in
                 HStack(spacing: 0) {

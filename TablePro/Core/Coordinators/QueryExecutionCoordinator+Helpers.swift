@@ -298,20 +298,21 @@ extension QueryExecutionCoordinator {
     ) {
         let databaseName = historyDatabaseName(tabId: tabId)
         let schemaName = historySchemaName(tabId: tabId)
-        let captureContext = ExplainPlanHistoryContext(
-            historyId: UUID(),
-            subjectQuery: routed.subjectSQL,
-            connectionId: conn.id,
-            databaseName: databaseName,
-            databaseType: conn.type,
-            schemaName: schemaName,
-            variantId: routed.variantId,
-            formatRawValue: routed.format.rawValue,
-            capturedAt: Date()
-        )
-        let historyCapture = ExplainPlanHistoryCapture.make(
-            context: captureContext,
-            rawText: routed.rawText,
+        let historyId = UUID()
+        let captured = QueryPlanCaptureBuilder.make(
+            subjectSQL: routed.subjectSQL,
+            rawPlan: routed.rawText,
+            format: routed.format,
+            variantKey: routed.variantKey,
+            scope: QueryPlanScope(
+                connectionId: conn.id,
+                databaseType: conn.type,
+                databaseName: databaseName,
+                schemaName: schemaName
+            ),
+            executionTime: executionTime,
+            capturedAt: Date(),
+            historyId: historyId,
             queryParameters: queryParameterValues
         )
         parent.flushBufferToActiveResult(tabId: tabId, pinnedOnly: true)
@@ -328,7 +329,7 @@ extension QueryExecutionCoordinator {
                     sql: sql,
                     executionTime: executionTime,
                     anchor: anchor,
-                    historyContext: historyCapture?.context
+                    planContext: captured.context
                 )]
             )
             if tab.display.isResultsCollapsed {
@@ -340,6 +341,7 @@ extension QueryExecutionCoordinator {
 
         recordHistory(
             QueryHistoryRecordRequest(
+                id: historyId,
                 query: historySQL,
                 connectionId: conn.id,
                 databaseName: databaseName,
@@ -349,7 +351,7 @@ extension QueryExecutionCoordinator {
                 executionTime: executionTime,
                 rowCount: rowCount,
                 wasSuccessful: true,
-                explainPlan: historyCapture?.record
+                planCapture: captured.capture
             )
         )
     }

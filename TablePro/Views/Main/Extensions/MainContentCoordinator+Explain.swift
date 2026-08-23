@@ -173,20 +173,25 @@ extension MainContentCoordinator {
                         databaseName: operationDatabaseName(tabId: tabId),
                         outcome: .succeeded(OperationSummary())
                     )
-                    let historyContext = ExplainPlanHistoryContext(
-                        historyId: UUID(),
-                        subjectQuery: request.subjectSQL,
-                        connectionId: conn.id,
-                        databaseName: scope.database,
-                        databaseType: conn.type,
-                        schemaName: scope.schema,
-                        variantId: request.variantId,
-                        formatRawValue: request.format.rawValue,
-                        capturedAt: Date()
-                    )
-                    let historyCapture = ExplainPlanHistoryCapture.make(
-                        context: historyContext,
-                        rawText: rawText
+                    /// The same builder and the same database and schema the history row uses, so a
+                    /// plan captured here and one captured from a hand-typed EXPLAIN land in one
+                    /// chain instead of two that never compare.
+                    let historyId = UUID()
+                    let captured = QueryPlanCaptureBuilder.make(
+                        subjectSQL: request.subjectSQL,
+                        rawPlan: rawText,
+                        format: request.format,
+                        variantKey: request.variantKey,
+                        scope: QueryPlanScope(
+                            connectionId: conn.id,
+                            databaseType: conn.type,
+                            databaseName: queryExecutionCoordinator.historyDatabaseName(tabId: tabId),
+                            schemaName: queryExecutionCoordinator.historySchemaName(tabId: tabId)
+                        ),
+                        executionTime: fetchResult.executionTime,
+                        capturedAt: Date(),
+                        historyId: historyId,
+                        queryParameters: nil
                     )
                     flushBufferToActiveResult(tabId: tabId, pinnedOnly: true)
                     tabManager.mutate(tabId: tabId) { tab in
@@ -202,7 +207,7 @@ extension MainContentCoordinator {
                                 sql: request.sql,
                                 executionTime: fetchResult.executionTime,
                                 anchor: anchor,
-                                historyContext: historyContext
+                                planContext: captured.context
                             )]
                         )
                         if tab.display.isResultsCollapsed {
@@ -214,16 +219,17 @@ extension MainContentCoordinator {
 
                     recordHistory(
                         QueryHistoryRecordRequest(
+                            id: historyId,
                             query: request.sql,
                             connectionId: conn.id,
-                            databaseName: historyContext.databaseName,
+                            databaseName: captured.context.identity.scope.databaseName,
                             databaseType: conn.type,
-                            schemaName: historyContext.schemaName,
+                            schemaName: captured.context.identity.scope.schemaName,
                             source: .explain,
                             executionTime: fetchResult.executionTime,
                             rowCount: fetchResult.rows.count,
                             wasSuccessful: true,
-                            explainPlan: historyCapture.record
+                            planCapture: captured.capture
                         )
                     )
                 }

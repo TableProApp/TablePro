@@ -787,7 +787,7 @@ struct MainEditorContentView: View {
             rawText: resultSet.explainRawText ?? "",
             executionTime: resultSet.executionTime,
             plan: resultSet.queryPlan,
-            historyContext: resultSet.explainHistoryContext
+            planContext: resultSet.explainPlanContext
         )
     }
 

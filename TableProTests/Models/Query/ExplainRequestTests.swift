@@ -38,7 +38,7 @@ struct ExplainRequestTests {
         #expect(request.sql == "EXPLAIN (FORMAT JSON) SELECT 1")
         #expect(request.subjectSQL == "SELECT 1")
         #expect(request.format == .postgresJson)
-        #expect(request.variantId == "explain")
+        #expect(request.variantKey == .declared("explain"))
     }
 
     @Test("An explicit variant overrides the default")
@@ -54,7 +54,7 @@ struct ExplainRequestTests {
 
         #expect(request.sql == "EXPLAIN (ANALYZE, FORMAT JSON) SELECT 1")
         #expect(request.subjectSQL == "SELECT 1")
-        #expect(request.variantId == "analyze")
+        #expect(request.variantKey == .declared("analyze"))
     }
 
     @Test("A driver that declares no variants has no request to build")
@@ -88,7 +88,7 @@ struct ExplainRequestTests {
         #expect(request.sql == "EXPLAIN SELECT 1")
         #expect(request.subjectSQL == "EXPLAIN SELECT 1")
         #expect(request.format == .indentedText)
-        #expect(request.variantId == nil)
+        #expect(request.variantKey == .driverBuilt)
     }
 
     @Test("A driver-built statement retains a separately known subject")
@@ -126,69 +126,142 @@ struct ExplainRequestTests {
         #expect(request.format == .plainText)
     }
 
-    @Test("The result factory retains its history provenance")
+    @Test("The result factory retains the run's plan-history provenance")
     @MainActor
-    func resultFactoryRetainsHistoryContext() {
-        let context = ExplainPlanHistoryContext(
+    func resultFactoryRetainsPlanContext() {
+        let built = QueryPlanCaptureBuilder.make(
+            subjectSQL: "SELECT * FROM users",
+            rawPlan: "[]",
+            format: .postgresJson,
+            variantKey: .declared("analyze"),
+            scope: QueryPlanScope(
+                connectionId: UUID(),
+                databaseType: .postgresql,
+                databaseName: "app",
+                schemaName: "public"
+            ),
+            executionTime: 0.25,
+            capturedAt: Date(timeIntervalSince1970: 1_700_000_000),
             historyId: UUID(),
-            subjectQuery: "SELECT * FROM users",
-            connectionId: UUID(),
-            databaseName: "app",
-            databaseType: .postgresql,
-            schemaName: "public",
-            variantId: "analyze",
-            formatRawValue: ExplainPlanFormat.postgresJson.rawValue,
-            capturedAt: Date(timeIntervalSince1970: 1_700_000_000)
+            queryParameters: nil
         )
         let result = ExplainResultSetFactory.make(
             rawText: "[]",
             plan: nil,
             sql: "EXPLAIN (ANALYZE, FORMAT JSON) SELECT * FROM users",
             executionTime: 0.25,
-            historyContext: context
+            planContext: built.context
         )
 
-        #expect(result.explainHistoryContext == context)
+        #expect(result.explainPlanContext == built.context)
         #expect(result.baseQuery == "EXPLAIN (ANALYZE, FORMAT JSON) SELECT * FROM users")
     }
 
-    @Test("Parameterized plans never persist raw output")
-    func parameterizedPlansDoNotPersistRawOutput() {
-        let context = ExplainPlanHistoryContext(
-            historyId: UUID(),
-            subjectQuery: "EXPLAIN SELECT * FROM users WHERE token = :secret",
-            connectionId: UUID(),
-            databaseName: "app",
-            databaseType: .postgresql,
-            schemaName: "public",
-            variantId: "explain",
-            formatRawValue: ExplainPlanFormat.postgresJson.rawValue,
+    /// A database is free to print bind values into its plan output, so a parameterized run keeps
+    /// its history row and stores no plan. The pane says so rather than showing an empty list.
+    @Test("A parameterized run stores no plan and explains why")
+    func parameterizedRunStoresNoPlan() {
+        let rawPlan = #"[{"Plan":{"Filter":"token = 'must-not-reach-history'"}}]"#
+        let arguments = (
+            subjectSQL: "SELECT * FROM users WHERE token = :secret",
+            format: ExplainPlanFormat.postgresJson,
             capturedAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
-        let rawText = #"[{"Plan":{"Filter":"token = 'must-not-reach-history'"}}]"#
 
-        #expect(ExplainPlanHistoryCapture.make(context: context, rawText: rawText).record.rawText == rawText)
-        #expect(
-            ExplainPlanHistoryCapture.make(
-                context: context,
-                rawText: rawText,
-                queryParameters: [QueryParameter(name: "secret", value: "must-not-reach-history")]
-            ) == nil
+        let unparameterized = QueryPlanCaptureBuilder.make(
+            subjectSQL: arguments.subjectSQL,
+            rawPlan: rawPlan,
+            format: arguments.format,
+            variantKey: .declared("explain"),
+            scope: QueryPlanScope(
+                connectionId: UUID(),
+                databaseType: .postgresql,
+                databaseName: "app",
+                schemaName: "public"
+            ),
+            executionTime: 0.1,
+            capturedAt: arguments.capturedAt,
+            historyId: UUID(),
+            queryParameters: nil
         )
+        #expect(unparameterized.capture?.rawPlan == rawPlan)
+        #expect(unparameterized.context.skipReason == nil)
+        #expect(unparameterized.context.isStored)
+
+        let parameterized = QueryPlanCaptureBuilder.make(
+            subjectSQL: arguments.subjectSQL,
+            rawPlan: rawPlan,
+            format: arguments.format,
+            variantKey: .declared("explain"),
+            scope: QueryPlanScope(
+                connectionId: UUID(),
+                databaseType: .postgresql,
+                databaseName: "app",
+                schemaName: "public"
+            ),
+            executionTime: 0.1,
+            capturedAt: arguments.capturedAt,
+            historyId: UUID(),
+            queryParameters: [QueryParameter(name: "secret", value: "must-not-reach-history")]
+        )
+        #expect(parameterized.capture == nil)
+        #expect(parameterized.context.skipReason == .parameterized)
+        #expect(!parameterized.context.isStored)
+        #expect(!parameterized.context.skipReason!.explanation.isEmpty)
     }
 
-    @Test("Typed EXPLAIN forwards parameters through the raw-output privacy gate")
-    func typedExplainUsesParameterizedCapturePath() throws {
-        let sourceURL = repositoryRoot()
-            .appendingPathComponent("TablePro/Core/Coordinators/QueryExecutionCoordinator+Helpers.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
-        let parameterizedCaptureCall =
-            #"ExplainPlanHistoryCapture\.make\s*\(\s*context:\s*captureContext,"#
-            + #"\s*rawText:\s*routed\.rawText,"#
-            + #"\s*queryParameters:\s*queryParameterValues\s*\)"#
-
-        #expect(source.range(of: parameterizedCaptureCall, options: .regularExpression) != nil)
+    /// A plan bigger than the per-plan cap keeps the history row and reports why it was dropped.
+    @Test("An oversized plan is skipped with a reason")
+    func oversizedPlanIsSkipped() {
+        let built = QueryPlanCaptureBuilder.make(
+            subjectSQL: "SELECT 1",
+            rawPlan: String(repeating: "x", count: QueryPlanStorageLimits.maximumPlanByteCount + 1),
+            format: .postgresJson,
+            variantKey: .declared("explain"),
+            scope: QueryPlanScope(
+                connectionId: UUID(),
+                databaseType: .postgresql,
+                databaseName: "app",
+                schemaName: nil
+            ),
+            executionTime: 0.1,
+            capturedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            historyId: UUID(),
+            queryParameters: nil
+        )
+        #expect(built.capture == nil)
+        #expect(built.context.skipReason == .tooLarge)
     }
+
+    /// Both EXPLAIN paths have to reach one chain. They build the identity through the same builder,
+    /// so the same statement asked the same way hashes to the same identity whatever route it took.
+    @Test("Reformatting a statement keeps it in the same chain")
+    func reformattingKeepsOneChain() {
+        func identity(_ sql: String) -> QueryPlanIdentity {
+            QueryPlanCaptureBuilder.make(
+                subjectSQL: sql,
+                rawPlan: "[]",
+                format: .postgresJson,
+                variantKey: .declared("explain"),
+                scope: QueryPlanScope(
+                    connectionId: connectionId,
+                    databaseType: .postgresql,
+                    databaseName: "app",
+                    schemaName: "public"
+                ),
+                executionTime: 0.1,
+                capturedAt: Date(timeIntervalSince1970: 1_700_000_000),
+                historyId: UUID(),
+                queryParameters: nil
+            ).context.identity
+        }
+
+        #expect(identity("SELECT * FROM users WHERE id = 1")
+            == identity("select *\n  from users\n where id = 2"))
+        #expect(identity("SELECT * FROM users") != identity("SELECT * FROM orders"))
+    }
+
+    private let connectionId = UUID()
 
     private func repositoryRoot() -> URL {
         var directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
