@@ -39,13 +39,7 @@ final class CellOverlayEditor: CellOverlayBase, NSTextViewDelegate {
         textView.textColor = .labelColor
         textView.backgroundColor = .textBackgroundColor
         textView.focusRingType = .none
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.textContainer?.widthTracksTextView = true
-        textView.textContainer?.containerSize = NSSize(
-            width: scrollView.bounds.width,
-            height: CGFloat.greatestFiniteMagnitude
-        )
+        Self.applyCellTextLayout(to: textView)
         textView.delegate = self
         textView.string = value
         textView.selectAll(nil)

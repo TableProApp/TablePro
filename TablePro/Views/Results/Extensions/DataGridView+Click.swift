@@ -10,9 +10,20 @@ import TableProPluginKit
 extension TableViewCoordinator {
     // MARK: - Cell Interaction
 
+    /// Whether a cell is on screen for something to anchor to.
+    ///
+    /// A data cell is drawn rather than mounted, so the row being on screen is what answers this;
+    /// `view(atColumn:row:makeIfNecessary:)` is always nil now and every guard that still asked it
+    /// closed the editor or popover it was guarding (#2381).
+    func presentsCell(row: Int, tableColumnIndex: Int) -> Bool {
+        guard let tableView, row >= 0, row < tableView.numberOfRows else { return false }
+        guard presentsColumn(atTableColumnIndex: tableColumnIndex) else { return false }
+        return tableView.rowView(atRow: row, makeIfNecessary: false) != nil
+    }
+
     func handleCellInteraction(row: Int, tableColumn: Int, columnIndex: Int, tableView: NSTableView) {
         guard let context = makeCellContext(row: row, columnIndex: columnIndex) else { return }
-        guard tableView.view(atColumn: tableColumn, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: tableColumn) else { return }
 
         switch CellInteractionResolver().resolve(context) {
         case .blocked:
@@ -128,7 +139,7 @@ extension TableViewCoordinator {
         column: Int,
         columnIndex: Int
     ) {
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
         let currentValue = cellValue(at: row, column: columnIndex) ?? ""
         let dbType = databaseType ?? .mysql

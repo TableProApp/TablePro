@@ -16,13 +16,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Argument signatures on routine rows, shown when two routines in a section share a name.
 - Schema-wide `list_triggers` for MCP clients, and `return_type` and `language` on `list_routines`.
 
+### Changed
+
+- The data grid draws its cells instead of building a view for each one, so a result with hundreds of columns opens at once and holds a fraction of the memory. (#2381)
+- The data grid draws its own column separators. (#2381)
+- The inline cell editor scrolls a long line instead of wrapping it. (#2381)
+
 ### Fixed
 
+- A second of delay opening the inline editor on a result with hundreds of columns. (#2381)
 - Flickering columns, blank columns, and an unpainted gap while scrolling a result with about 100 columns sideways. (#2381)
 - Find, arrow keys, and the inline editor unable to reach a column scrolled off the side of a wide result.
 - Return opening no editor on a row selected with the arrow keys.
 - Tab out of a row's last cell and Shift+Tab out of its first doing nothing.
 - Size All Columns to Fit leaving the far columns of a wide result unreachable.
+- A table with 500 columns pinning a core for 20 seconds and taking a gigabyte to open. (#2381)
 - One of two PostgreSQL function overloads missing from the sidebar, and Show DDL opening an arbitrary one. (#2383)
 - MySQL Show DDL reading the session database instead of the one being browsed. (#2383)
 - Routine tooltips, VoiceOver labels and Copy with Signature showing a return type in place of the argument list. (#2383)

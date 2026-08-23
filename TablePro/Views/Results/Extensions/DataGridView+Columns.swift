@@ -12,80 +12,104 @@ extension TableViewCoordinator {
         autoreleasepool { viewForCell(in: tableView, column: tableColumn, row: row) }
     }
 
+    /// Only the row-number column still mounts a view.
+    ///
+    /// A data cell is drawn by its row instead. `NSTableView` builds one cell view per column per
+    /// prepared row whatever the viewport shows, so a 500-column result carried 12,500 views and
+    /// 837MB of them; returning nil here leaves 26 views in the whole table and 3.9MB (#2381).
     private func viewForCell(in tableView: NSTableView, column tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard let column = tableColumn else { return nil }
+        guard column.identifier == ColumnIdentitySchema.rowNumberIdentifier else { return nil }
 
         let tableRows = tableRowsProvider()
+        return cellRegistry.makeRowNumberCell(
+            in: tableView,
+            row: row,
+            pageOffset: paginationOffsetProvider(),
+            cachedRowCount: displayIDs?.count ?? tableRows.count,
+            visualState: visualState(for: row)
+        )
+    }
+
+    /// What one data cell looks like, for the row that draws it.
+    ///
+    /// - Parameters:
+    ///   - onEmphasizedSelection: whether the row is drawn as selected, which changes the text
+    ///     colour and stands the modified tint down.
+    func cellAppearance(
+        row: Int,
+        columnIndex: Int,
+        onEmphasizedSelection: Bool
+    ) -> DataGridCellAppearance? {
+        let tableRows = tableRowsProvider()
         let displayCount = displayIDs?.count ?? tableRows.count
+        guard row >= 0, row < displayCount,
+              columnIndex >= 0, columnIndex < cachedColumnCount,
+              let displayRow = displayRow(at: row, in: tableRows),
+              columnIndex < displayRow.values.count else { return nil }
 
-        if column.identifier == ColumnIdentitySchema.rowNumberIdentifier {
-            return cellRegistry.makeRowNumberCell(
-                in: tableView,
-                row: row,
-                pageOffset: paginationOffsetProvider(),
-                cachedRowCount: displayCount,
-                visualState: visualState(for: row)
-            )
-        }
-
-        guard let columnIndex = dataColumnIndex(from: column.identifier) else {
-            return nil
-        }
-
-        guard row >= 0 && row < displayCount,
-              columnIndex >= 0 && columnIndex < cachedColumnCount else {
-            return nil
-        }
-
-        guard let displayRow = displayRow(at: row, in: tableRows),
-              columnIndex < displayRow.values.count else {
-            return nil
-        }
         let rawValue = displayRow.values[columnIndex]
-        let columnType = columnIndex < tableRows.columnTypes.count
-            ? tableRows.columnTypes[columnIndex]
-            : nil
+        let columnType = columnIndex < tableRows.columnTypes.count ? tableRows.columnTypes[columnIndex] : nil
         let formattedValue = displayValue(
             forID: displayRow.id,
             column: columnIndex,
             rawValue: rawValue,
             columnType: columnType
         )
-        let state = visualState(for: row)
 
         let isFocused: Bool = {
             guard let keyTableView = tableView as? KeyHandlingTableView,
                   keyTableView.focusedRow == row,
-                  let tableColumnIndex = tableColumnIndex(for: columnIndex),
-                  keyTableView.focusedColumn == tableColumnIndex else { return false }
+                  let position = tableColumnIndex(for: columnIndex),
+                  keyTableView.focusedColumn == position else { return false }
             return true
         }()
 
-        let presentation = columnPresentation(for: columnIndex, in: tableRows)
+        return DataGridCellAppearance.resolve(
+            kind: columnPresentation(for: columnIndex, in: tableRows).kind,
+            content: DataGridCellContent(
+                displayText: formattedValue ?? "",
+                rawValue: rawValue.asText,
+                placeholder: DataGridCellContent.placeholder(for: rawValue)
+            ),
+            state: DataGridCellState(
+                visualState: visualState(for: row),
+                isFocused: isFocused,
+                isEditable: isEditable,
+                isLargeDataset: isLargeDataset,
+                isCurrentFindMatch: currentFindMatch == FindMatch(displayRow: row, columnIndex: columnIndex),
+                row: row,
+                columnIndex: columnIndex
+            ),
+            palette: cellRegistry.palette,
+            nullDisplayString: cellRegistry.nullDisplayString,
+            onEmphasizedSelection: onEmphasizedSelection,
+            hasOverlay: overlayCell == CellPosition(row: row, column: columnIndex)
+        )
+    }
 
-        let content = DataGridCellContent(
-            displayText: formattedValue ?? "",
-            rawValue: rawValue.asText,
-            placeholder: DataGridCellContent.placeholder(for: rawValue)
-        )
-        let cellState = DataGridCellState(
-            visualState: state,
-            isFocused: isFocused,
-            isEditable: isEditable,
-            isLargeDataset: isLargeDataset,
-            isCurrentFindMatch: currentFindMatch == FindMatch(displayRow: row, columnIndex: columnIndex),
-            row: row,
-            columnIndex: columnIndex
-        )
+    /// What VoiceOver reads for one cell. A placeholder announces itself by name rather than as the
+    /// empty string a sighted reader sees as an italic marker.
+    func accessibilityText(row: Int, columnIndex: Int) -> String? {
+        let tableRows = tableRowsProvider()
+        guard let displayRow = displayRow(at: row, in: tableRows),
+              columnIndex < displayRow.values.count else { return nil }
+        let rawValue = displayRow.values[columnIndex]
+        let columnType = columnIndex < tableRows.columnTypes.count ? tableRows.columnTypes[columnIndex] : nil
+        let text = displayValue(
+            forID: displayRow.id,
+            column: columnIndex,
+            rawValue: rawValue,
+            columnType: columnType
+        ) ?? ""
+        guard text.isEmpty else { return text }
 
-        let cell = cellRegistry.dequeueCell(in: tableView)
-        cell.configure(
-            kind: presentation.kind,
-            content: content,
-            state: cellState,
-            palette: cellRegistry.palette
-        )
-        return cell
+        switch DataGridCellContent.placeholder(for: rawValue) {
+        case .null: return String(localized: "NULL")
+        case .empty: return String(localized: "Empty")
+        case .defaultMarker: return String(localized: "DEFAULT")
+        case .none: return text
+        }
     }
 
     func tableView(_ tableView: NSTableView, typeSelectStringFor tableColumn: NSTableColumn?, row: Int) -> String? {

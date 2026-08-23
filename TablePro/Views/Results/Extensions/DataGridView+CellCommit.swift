@@ -15,17 +15,13 @@ extension TableViewCoordinator {
     }
 
     func commitTypedCellEdit(row: Int, columnIndex: Int, newValue typedNewValue: PluginCellValue) {
-        guard let tableView else { return }
-        guard let delta = recordCellEdit(row: row, columnIndex: columnIndex, newValue: typedNewValue) else { return }
+        guard recordCellEdit(row: row, columnIndex: columnIndex, newValue: typedNewValue) != nil else { return }
 
         invalidateDisplayCache()
         visualIndex.updateRow(row, from: changeManager, displayIDs: displayIDs)
 
         guard let tableColumnIndex = tableColumnIndex(for: columnIndex) else { return }
-        tableView.reloadData(
-            forRowIndexes: IndexSet(integer: row),
-            columnIndexes: IndexSet(integer: tableColumnIndex)
-        )
+        redrawCells(rows: IndexSet(integer: row), tableColumnIndexes: IndexSet(integer: tableColumnIndex))
     }
 
     @discardableResult
