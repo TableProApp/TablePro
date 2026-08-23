@@ -41,7 +41,10 @@ internal final class CompareSyncWindowController: NSWindowController,
 
     private let session = CompareSyncSession()
     private lazy var runner = CompareRunner(session: session)
-    private lazy var endpointMenus = CompareEndpointMenuBuilder(session: session) { [weak self] in
+    private lazy var endpointMenus = CompareEndpointToolbarController(
+        session: session,
+        windowProvider: { [weak self] in self?.window }
+    ) { [weak self] in
         self?.endpointsChanged()
     }
     private weak var modeControl: NSSegmentedControl?

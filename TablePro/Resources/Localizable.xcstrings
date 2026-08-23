@@ -54237,6 +54237,9 @@
         }
       }
     },
+    "Filter by name" : {
+
+    },
     "Filter by only this row" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -54720,9 +54723,6 @@
           }
         }
       }
-    },
-    "Filter results by name" : {
-
     },
     "Filter roles" : {
       "localizations" : {
@@ -110059,6 +110059,9 @@
         }
       }
     },
+    "Show only the objects whose name contains this text" : {
+
+    },
     "Show password" : {
       "localizations" : {
         "ko" : {
@@ -122848,6 +122851,9 @@
 
     },
     "The export file could not be written." : {
+
+    },
+    "The filter field is not in the toolbar." : {
 
     },
     "The folder \"%@\" will be deleted. Items inside will be moved to the parent level." : {
