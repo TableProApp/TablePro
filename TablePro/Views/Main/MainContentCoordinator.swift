@@ -1436,12 +1436,20 @@ final class MainContentCoordinator {
         cancelInFlightQueryTask(reach: .supersededNavigation)
     }
 
-    /// Reset execution state when a query is cancelled. The task handle is retired through the same
-    /// ownership check as any other completion: a cancelled attempt that has already been replaced
-    /// would otherwise take its successor's handle and spinner down with it.
+    /// Reset execution state when a query is cancelled, releasing the tab only if this claim still
+    /// owns it. Settling is that gate and it comes first, exactly as `finishFailedQuery` does for
+    /// the other way an execution ends early.
+    ///
+    /// This used to invalidate by tab id, which releases whatever the tab is running now rather
+    /// than what this claim started. A cancelled execution unwinding after its successor had
+    /// claimed the tab therefore deleted the successor's entry, and the successor's own `settle`
+    /// then refused to apply the rows it had just fetched (#2342).
     @MainActor
     internal func resetExecutionState(claim: TabExecutionClaim, executionTime: TimeInterval) {
-        reportEndedExecutions(tabExecution.invalidate(claim.tabId, reason: .cancelledByUser).map { [$0] } ?? [])
+        guard tabExecution.settle(claim) else { return }
+        reportEndedExecutions([
+            EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
+        ])
         guard currentQueryTaskOwner == claim else { return }
         retireQueryTask(for: claim)
         toolbarState.lastQueryDuration = executionTime

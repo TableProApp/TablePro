@@ -172,14 +172,31 @@ extension MainContentCoordinator {
             connectionId: connectionId
         )
 
-        guard tableLoadTasks[tab.id] == nil else {
+        /// A trace the in-flight load still owns stays open, because that load is the one that will
+        /// close it. Only a trace this call minted is closed here.
+        func noteLoadAlreadyInFlight() {
             guard carriedToken == nil else { return }
             tracer.anomaly(.loadAlreadyInFlight, token: traceToken)
             tracer.finish(token: traceToken, outcome: "loadAlreadyInFlight")
+        }
+
+        guard tableLoadTasks[tab.id] == nil else {
+            noteLoadAlreadyInFlight()
             return
         }
 
         clearAbandonedExecutingFlagIfNeeded(for: tab)
+
+        /// The task slot above stops answering the moment the load hands off to an execution:
+        /// `executeQueryInternal` supersedes, and `supersedeExecution` nils the very slot held by
+        /// the task it is running inside. Every later trigger for the same navigation then found an
+        /// empty slot and scheduled a second identical load, whose predecessor took the successor's
+        /// claim down with it on the way out (#2342). The registry owns the other half of the same
+        /// question, so both halves are asked, and neither alone is enough.
+        guard !tabExecution.isBusy(tab.id) else {
+            noteLoadAlreadyInFlight()
+            return
+        }
 
         guard let session = DatabaseManager.shared.session(for: connectionId),
               session.isConnected else {
