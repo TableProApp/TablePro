@@ -529,6 +529,14 @@ struct BeancountPluginDriverTests {
 
         try Data("pdf".utf8).write(to: directory.appendingPathComponent("receipt.pdf"))
 
+        let padsLedger = directory.appendingPathComponent("pads.beancount")
+        try """
+        2024-01-01 open Equity:Opening-Balances USD
+
+        2024-06-28 pad Assets:Cash Equity:Opening-Balances
+        2024-06-29 balance Assets:Cash 0 USD
+        """.write(to: padsLedger, atomically: true, encoding: .utf8)
+
         let ledger = directory.appendingPathComponent("main.beancount")
         try """
         2024-01-01 commodity USD
@@ -553,6 +561,8 @@ struct BeancountPluginDriverTests {
         2024-01-06 * "Archive" "No postings" #empty ^standalone
           reason: "record only"
 
+        include "pads.beancount"
+
         2024-06-30 close Expenses:Food
         """.write(to: ledger, atomically: true, encoding: .utf8)
 
@@ -575,6 +585,18 @@ struct BeancountPluginDriverTests {
 
         let closes = try await driver.execute(query: "SELECT date, account FROM closes")
         #expect(closes.rows.map { $0.map(\.asText) } == [["2024-06-30", "Expenses:Food"]])
+
+        let pads = try await driver.execute(query: """
+            SELECT date, account, source_account, source_file, line, source_location FROM pads
+            """)
+        #expect(pads.rows.count == 1)
+        let pad = try #require(pads.rows.first)
+        #expect(pad[0].asText == "2024-06-28")
+        #expect(pad[1].asText == "Assets:Cash")
+        #expect(pad[2].asText == "Equity:Opening-Balances")
+        #expect(pad[3].asText?.hasSuffix("pads.beancount") == true)
+        #expect(pad[4].asText == "3")
+        #expect(pad[5].asText?.hasSuffix("pads.beancount:3") == true)
 
         let documents = try await driver.execute(query: "SELECT date, account, path FROM documents")
         #expect(documents.rows.count == 1)

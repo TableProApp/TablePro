@@ -69,6 +69,7 @@ struct BeancountProjectionRows: @unchecked Sendable {
     var documents: [[String: Any]] = []
     var notes: [[String: Any]] = []
     var events: [[String: Any]] = []
+    var pads: [[String: Any]] = []
     var closes: [[String: Any]] = []
     var diagnostics: [[String: Any]] = []
 }
@@ -99,6 +100,7 @@ extension BeancountPluginDriver {
             try loadDocuments(rows.documents, into: writer)
             try loadNotes(rows.notes, into: writer)
             try loadEvents(rows.events, into: writer)
+            try loadPads(rows.pads, into: writer)
             try loadCloses(rows.closes, into: writer)
             try loadDiagnostics(rows.diagnostics, into: writer)
             try loadSourceFiles(sourceFiles, into: writer)
@@ -185,6 +187,15 @@ extension BeancountPluginDriver {
                 date DATE NOT NULL,
                 type TEXT NOT NULL,
                 description TEXT
+            );
+            CREATE TABLE pads (
+                id INTEGER PRIMARY KEY,
+                date DATE NOT NULL,
+                account TEXT NOT NULL,
+                source_account TEXT NOT NULL,
+                source_file TEXT NOT NULL,
+                line INTEGER NOT NULL,
+                source_location TEXT NOT NULL
             );
             CREATE TABLE closes (
                 id INTEGER PRIMARY KEY,
@@ -411,6 +422,38 @@ extension BeancountPluginDriver {
         }
     }
 
+    private static func loadPads(_ rows: [[String: Any]], into writer: BeancountProjectionWriter) throws {
+        var padId = 0
+        for row in rows {
+            guard let date = stringValue(row["date"]),
+                  let account = stringValue(row["account"]),
+                  let sourceAccount = stringValue(row["source_account"]),
+                  let position = sourcePosition(
+                      file: row["filename"],
+                      line: row["lineno"],
+                      formatted: row["location"]
+                  ),
+                  let sourceFile = position.file,
+                  let line = position.line,
+                  let sourceLocation = position.formatted else {
+                continue
+            }
+            padId += 1
+            try writer.insert(sql: """
+                INSERT INTO pads (id, date, account, source_account, source_file, line, source_location)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, values: [
+                    String(padId),
+                    date,
+                    account,
+                    sourceAccount,
+                    sourceFile,
+                    String(line),
+                    sourceLocation
+                ])
+        }
+    }
+
     private static func loadCloses(_ rows: [[String: Any]], into writer: BeancountProjectionWriter) throws {
         var closeId = 0
         for row in rows {
@@ -526,7 +569,7 @@ extension BeancountPluginDriver {
         }
     }
 
-    private static func intValue(_ value: Any?) -> Int? {
+    static func intValue(_ value: Any?) -> Int? {
         switch value {
         case let number as NSNumber:
             return number.intValue

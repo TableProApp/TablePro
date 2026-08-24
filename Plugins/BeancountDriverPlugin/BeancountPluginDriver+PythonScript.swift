@@ -92,6 +92,7 @@ rows = {
     "documents": [],
     "notes": [],
     "events": [],
+    "pads": [],
     "closes": [],
 }
 balances = defaultdict(Decimal)
@@ -160,6 +161,15 @@ for entry in entries:
             "date": date_value(entry.date),
             "type": entry.type,
             "description": entry.description,
+        })
+    elif entry_type == "Pad":
+        rows["pads"].append({
+            "date": date_value(entry.date),
+            "account": entry.account,
+            "source_account": entry.source_account,
+            "filename": source_file(entry.meta),
+            "lineno": source_line(entry.meta),
+            "location": source_location(entry.meta),
         })
     elif entry_type == "Close":
         rows["closes"].append({

@@ -91,6 +91,8 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "SELECT date, account, filename, tags, links FROM #documents ORDER BY date, account"
     private static let notesQuery = "SELECT date, account, comment FROM #notes ORDER BY date, account"
     private static let eventsQuery = "SELECT date, type, description FROM #events ORDER BY date, type"
+    private static let padsQuery =
+        "SELECT date, filename, lineno FROM #entries WHERE type = 'pad' ORDER BY date, id"
     private static let closesQuery =
         "SELECT account, close FROM #accounts WHERE close IS NOT NULL ORDER BY close, account"
     private static let logger = Logger(subsystem: "com.TablePro", category: "BeancountPluginDriver")
@@ -557,6 +559,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 documents: directiveRows(ledgerPath: ledgerPath, bql: documentsQuery, table: "documents"),
                 notes: directiveRows(ledgerPath: ledgerPath, bql: notesQuery, table: "notes"),
                 events: directiveRows(ledgerPath: ledgerPath, bql: eventsQuery, table: "events"),
+                pads: padRows(ledgerPath: ledgerPath),
                 closes: directiveRows(ledgerPath: ledgerPath, bql: closesQuery, table: "closes"),
                 diagnostics: validationDiagnostics(ledgerPath: ledgerPath)
             )
@@ -573,6 +576,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 documents: rows["documents"] ?? [],
                 notes: rows["notes"] ?? [],
                 events: rows["events"] ?? [],
+                pads: rows["pads"] ?? [],
                 closes: rows["closes"] ?? []
             )
         }
@@ -646,6 +650,59 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             logger.warning("Beancount projection left \(table, privacy: .public) empty: \(error)")
             return []
         }
+    }
+
+    private static func padRows(ledgerPath: String) -> [[String: Any]] {
+        var sourceLines: [String: [String]] = [:]
+        var pads: [[String: Any]] = []
+        for row in directiveRows(ledgerPath: ledgerPath, bql: padsQuery, table: "pads") {
+            guard let filename = row["filename"] as? String,
+                  let line = intValue(row["lineno"]),
+                  let date = row["date"] as? String else {
+                logger.warning("Beancount projection skipped a pad whose source directive could not be resolved")
+                continue
+            }
+            let lines: [String]
+            if let cached = sourceLines[filename] {
+                lines = cached
+            } else {
+                guard let contents = try? String(contentsOf: URL(fileURLWithPath: filename), encoding: .utf8) else {
+                    logger.warning("Beancount projection skipped a pad whose source directive could not be resolved")
+                    continue
+                }
+                lines = contents.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+                sourceLines[filename] = lines
+            }
+            guard let accounts = padAccounts(lines: lines, line: line, date: date) else {
+                logger.warning("Beancount projection skipped a pad whose source directive could not be resolved")
+                continue
+            }
+            var enriched = row
+            enriched["account"] = accounts.account
+            enriched["source_account"] = accounts.sourceAccount
+            enriched["location"] = "\(filename):\(line)"
+            pads.append(enriched)
+        }
+        return pads
+    }
+
+    static func padAccounts(
+        lines: [String],
+        line: Int,
+        date: String
+    ) -> (account: String, sourceAccount: String)? {
+        guard line > 0 else { return nil }
+        guard let directive = lines[safe: line - 1] else { return nil }
+        let fields = directive.split(whereSeparator: \.isWhitespace)
+        guard fields.count >= 4,
+              dateComponents(fields[0]) == dateComponents(date),
+              fields[1] == "pad" else { return nil }
+        return (String(fields[2]), String(fields[3]))
+    }
+
+    private static func dateComponents(_ value: some StringProtocol) -> [Int]? {
+        let components = value.split(separator: "-", omittingEmptySubsequences: false).compactMap { Int($0) }
+        return components.count == 3 ? components : nil
     }
 
     private static func validationDiagnostics(ledgerPath: String) -> [[String: Any]] {

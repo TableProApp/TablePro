@@ -103,6 +103,50 @@ struct BeancountProjectionTests {
         #expect(closes.rows.map { $0.map(\.asText) } == [["2024-06-30", "Expenses:Food"]])
     }
 
+    @Test("projects pad directives with source locations")
+    func projectsPads() async throws {
+        let driver = try Self.makeDriver()
+        defer { driver.disconnect() }
+
+        let pads = try await driver.execute(query: """
+            SELECT date, account, source_account, source_file, line, source_location FROM pads
+            """)
+        #expect(pads.rows.map { $0.map(\.asText) } == [[
+            "2024-01-30",
+            "Assets:Cash",
+            "Equity:Opening-Balances",
+            Self.ledgerURL.path,
+            "40",
+            "\(Self.ledgerURL.path):40"
+        ]])
+    }
+
+    @Test("reads pad accounts from the source line")
+    func readsPadAccountsFromSourceLine() throws {
+        let accounts = try #require(BeancountPluginDriver.padAccounts(
+            lines: ["", "  2024-01-30 pad Assets:Cash Equity:Opening-Balances ; opening balance"],
+            line: 2,
+            date: "2024-01-30"
+        ))
+        #expect(accounts.account == "Assets:Cash")
+        #expect(accounts.sourceAccount == "Equity:Opening-Balances")
+        #expect(BeancountPluginDriver.padAccounts(
+            lines: ["2024-1-30 pad Assets:Cash Equity:Opening-Balances"],
+            line: 1,
+            date: "2024-01-30"
+        )?.account == "Assets:Cash")
+        #expect(BeancountPluginDriver.padAccounts(
+            lines: ["2024-01-30 balance Assets:Cash 0 USD"],
+            line: 1,
+            date: "2024-01-30"
+        ) == nil)
+        #expect(BeancountPluginDriver.padAccounts(
+            lines: ["; pad Assets:Other Equity:Other"],
+            line: 1,
+            date: "2024-01-30"
+        ) == nil)
+    }
+
     @Test("projects transaction metadata, posting metadata, tags, and links")
     func projectsMetadataTagsAndLinks() async throws {
         let driver = try Self.makeDriver()
@@ -336,6 +380,16 @@ struct BeancountProjectionTests {
         ],
         events: [
             ["date": "2024-01-01", "type": "location", "description": "Taipei"]
+        ],
+        pads: [
+            [
+                "date": "2024-01-30",
+                "account": "Assets:Cash",
+                "source_account": "Equity:Opening-Balances",
+                "filename": ledgerURL.path,
+                "lineno": 40,
+                "location": "\(ledgerURL.path):40"
+            ]
         ],
         closes: [
             ["account": "Expenses:Food", "close": "2024-06-30"]
