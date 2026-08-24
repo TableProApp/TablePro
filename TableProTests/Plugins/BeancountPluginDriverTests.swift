@@ -543,12 +543,12 @@ struct BeancountPluginDriverTests {
         2024-01-01 commodity USD
           name: "US Dollar"
 
-        2024-01-01 open Assets:Cash USD
+        2024-01-01 open Assets:Cash USD "STRICT"
         2024-01-01 open Expenses:Food USD
 
         2024-01-02 event "location" "Taipei"
 
-        2024-01-03 note Assets:Cash "called the bank"
+        2024-01-03 note Assets:Cash "called the bank" #urgent ^case-1
 
         2024-01-04 document Assets:Cash "receipt.pdf"
 
@@ -559,7 +559,9 @@ struct BeancountPluginDriverTests {
             method: "card"
           Assets:Cash
 
-        2024-01-06 * "Archive" "No postings" #empty ^standalone
+        2024-01-06 balance Assets:Cash -3.00 ~ 0.01 USD
+
+        2024-01-07 * "Archive" "No postings" #empty ^standalone
           reason: "record only"
 
         include "pads.beancount"
@@ -575,14 +577,31 @@ struct BeancountPluginDriverTests {
     }
 
     private static func expectRichDirectives(_ driver: BeancountPluginDriver, ledger: URL) async throws {
+        let booking = try await driver.execute(query: "SELECT booking FROM accounts WHERE name = 'Assets:Cash'")
+        #expect(booking.rows.first?.first?.asText == "STRICT")
+
         let commodities = try await driver.execute(query: "SELECT date, commodity FROM commodities")
         #expect(commodities.rows.map { $0.map(\.asText) } == [["2024-01-01", "USD"]])
 
         let events = try await driver.execute(query: "SELECT date, type, description FROM events")
         #expect(events.rows.map { $0.map(\.asText) } == [["2024-01-02", "location", "Taipei"]])
 
-        let notes = try await driver.execute(query: "SELECT date, account, comment FROM notes")
-        #expect(notes.rows.map { $0.map(\.asText) } == [["2024-01-03", "Assets:Cash", "called the bank"]])
+        let notes = try await driver.execute(query: "SELECT date, account, comment, tags, links FROM notes")
+        #expect(notes.rows.map { $0.map(\.asText) } == [[
+            "2024-01-03", "Assets:Cash", "called the bank", "urgent", "case-1"
+        ]])
+
+        let assertion = try await driver.execute(query: """
+            SELECT tolerance, difference_amount, difference_currency FROM balance_assertions
+            WHERE date = '2024-01-06'
+            """)
+        #expect(assertion.rows.map { $0.map(\.asText) } == [["0.01", "0", "USD"]])
+
+        let directiveMetadata = try await driver.execute(query: """
+            SELECT directive_type, key, value FROM directive_metadata
+            WHERE directive_type = 'commodity' ORDER BY key
+            """)
+        #expect(directiveMetadata.rows.map { $0.map(\.asText) } == [["commodity", "name", "US Dollar"]])
 
         let closes = try await driver.execute(query: "SELECT date, account FROM closes")
         #expect(closes.rows.map { $0.map(\.asText) } == [["2024-06-30", "Expenses:Food"]])
@@ -667,15 +686,15 @@ struct BeancountPluginDriverTests {
         let transactionWithoutPostings = try #require(postingFree.rows.first)
         #expect(transactionWithoutPostings[0].asText != nil)
         #expect(transactionWithoutPostings.dropFirst().prefix(4).map(\.asText) == [
-            "2024-01-06",
+            "2024-01-07",
             "*",
             "Archive",
             "No postings"
         ])
         let sourceFile = try #require(transactionWithoutPostings[5].asText)
         #expect(Self.canonicalPath(URL(fileURLWithPath: sourceFile)) == Self.canonicalPath(ledger))
-        #expect(transactionWithoutPostings[6].asText == "20")
-        #expect(transactionWithoutPostings[7].asText == "\(sourceFile):20")
+        #expect(transactionWithoutPostings[6].asText == "22")
+        #expect(transactionWithoutPostings[7].asText == "\(sourceFile):22")
 
         let postingFreeMetadata = try await driver.execute(query: """
             SELECT metadata.key, metadata.value

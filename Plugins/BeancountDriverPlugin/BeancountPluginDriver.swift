@@ -81,7 +81,8 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private static let postingsQuery =
         "SELECT \(postingsCoreColumns), \(postingsDetailColumns) FROM #postings ORDER BY id"
     private static let postingsCoreQuery = "SELECT \(postingsCoreColumns) FROM #postings ORDER BY id"
-    private static let accountsQuery = "SELECT account, open, currencies FROM #accounts ORDER BY account"
+    private static let accountsQuery = "SELECT account, open, currencies, booking FROM #accounts ORDER BY account"
+    private static let accountsCoreQuery = "SELECT account, open, currencies FROM #accounts ORDER BY account"
     private static let pricesQuery = "SELECT date, currency, amount FROM #prices ORDER BY date, currency"
     private static let balancesQuery =
         "SELECT account, sum(position) AS balance FROM #postings GROUP BY account ORDER BY account"
@@ -517,7 +518,10 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         for _ in 0..<2 {
             let initialGraph = try BeancountIncludeResolver().resolve(fileURL: ledgerURL)
             let initialSignatures = signatures(for: initialGraph.reloadDependencies)
-            let rows = try projectionRows(ledgerPath: ledgerURL.path)
+            let rows = try projectionRows(
+                ledgerPath: ledgerURL.path,
+                sourceFiles: initialGraph.sourceFiles
+            )
             let finalGraph = try BeancountIncludeResolver().resolve(fileURL: ledgerURL)
             guard initialGraph.sourceFiles == finalGraph.sourceFiles,
                   initialGraph.reloadDependencies == finalGraph.reloadDependencies else {
@@ -544,43 +548,132 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    private static func projectionRows(ledgerPath: String) throws -> BeancountProjectionRows {
+    private static func projectionRows(
+        ledgerPath: String,
+        sourceFiles: [URL]
+    ) throws -> BeancountProjectionRows {
+        let details = try BeancountDirectiveDetailsReader.read(sourceFiles: sourceFiles)
         switch try resolveProjectionBackend() {
         case .rledger:
             let transactions = try transactionRows(ledgerPath: ledgerPath)
             let postings = try postingRows(ledgerPath: ledgerPath)
             let pads = padProjection(ledgerPath: ledgerPath)
+            let assertions = balanceRowsByAddingDetails(
+                try query(ledgerPath: ledgerPath, bql: balanceAssertionsQuery),
+                details: details.balances,
+                postings: postings
+            )
             return BeancountProjectionRows(
                 transactions: transactionRowsByAddingPostingDetails(transactions, postings: postings),
                 postings: postings,
-                accounts: try query(ledgerPath: ledgerPath, bql: accountsQuery),
+                accounts: try accountRows(ledgerPath: ledgerPath),
                 prices: try query(ledgerPath: ledgerPath, bql: pricesQuery),
                 balances: try query(ledgerPath: ledgerPath, bql: balancesQuery),
-                balanceAssertions: try query(ledgerPath: ledgerPath, bql: balanceAssertionsQuery),
+                balanceAssertions: assertions,
                 commodities: directiveRows(ledgerPath: ledgerPath, bql: commoditiesQuery, table: "commodities"),
                 documents: directiveRows(ledgerPath: ledgerPath, bql: documentsQuery, table: "documents"),
-                notes: directiveRows(ledgerPath: ledgerPath, bql: notesQuery, table: "notes"),
+                notes: noteRowsByAddingDetails(
+                    directiveRows(ledgerPath: ledgerPath, bql: notesQuery, table: "notes"),
+                    details: details.notes
+                ),
                 events: directiveRows(ledgerPath: ledgerPath, bql: eventsQuery, table: "events"),
                 pads: pads.rows,
                 closes: directiveRows(ledgerPath: ledgerPath, bql: closesQuery, table: "closes"),
+                directiveMetadata: details.metadata,
                 diagnostics: validationDiagnostics(ledgerPath: ledgerPath) + pads.diagnostics
             )
         case .python(let executablePath):
             let rows = try pythonProjectionRows(ledgerPath: ledgerPath, executablePath: executablePath)
+            let postings = rows["postings"] ?? []
             return BeancountProjectionRows(
                 transactions: rows["transactions"] ?? [],
-                postings: rows["postings"] ?? [],
+                postings: postings,
                 accounts: rows["accounts"] ?? [],
                 prices: rows["prices"] ?? [],
                 balances: rows["balances"] ?? [],
-                balanceAssertions: rows["balance_assertions"] ?? [],
+                balanceAssertions: balanceRowsByAddingDetails(
+                    rows["balance_assertions"] ?? [],
+                    details: details.balances,
+                    postings: postings
+                ),
                 commodities: rows["commodities"] ?? [],
                 documents: rows["documents"] ?? [],
-                notes: rows["notes"] ?? [],
+                notes: noteRowsByAddingDetails(rows["notes"] ?? [], details: details.notes),
                 events: rows["events"] ?? [],
                 pads: rows["pads"] ?? [],
-                closes: rows["closes"] ?? []
+                closes: rows["closes"] ?? [],
+                directiveMetadata: details.metadata
             )
+        }
+    }
+
+    private static func accountRows(ledgerPath: String) throws -> [[String: Any]] {
+        do {
+            return try query(ledgerPath: ledgerPath, bql: accountsQuery)
+        } catch {
+            logger.warning("Beancount account booking unavailable, projecting core columns: \(error)")
+            return try query(ledgerPath: ledgerPath, bql: accountsCoreQuery)
+        }
+    }
+
+    static func noteRowsByAddingDetails(
+        _ rows: [[String: Any]],
+        details: [[String: Any]]
+    ) -> [[String: Any]] {
+        var used: Set<Int> = []
+        return rows.map { row in
+            guard let index = details.indices.first(where: { index in
+                !used.contains(index)
+                    && stringValue(details[index]["date"]) == stringValue(row["date"])
+                    && stringValue(details[index]["account"]) == stringValue(row["account"])
+                    && stringValue(details[index]["comment"]) == stringValue(row["comment"])
+            }) else { return row }
+            used.insert(index)
+            return row.merging(details[index], uniquingKeysWith: { _, detail in detail })
+        }
+    }
+
+    static func balanceRowsByAddingDetails(
+        _ rows: [[String: Any]],
+        details: [[String: Any]],
+        postings: [[String: Any]]
+    ) -> [[String: Any]] {
+        var used: Set<Int> = []
+        return rows.map { row in
+            guard let date = stringValue(row["date"]),
+                  let account = stringValue(row["account"]),
+                  let amount = row["amount"] as? [String: Any],
+                  let expectedText = stringValue(amount["number"]),
+                  let currency = stringValue(amount["currency"]),
+                  let expected = Decimal(string: expectedText, locale: Locale(identifier: "en_US_POSIX")) else {
+                return row
+            }
+
+            var enriched = row
+            if let index = details.indices.first(where: { index in
+                !used.contains(index)
+                    && stringValue(details[index]["date"]) == date
+                    && stringValue(details[index]["account"]) == account
+                    && stringValue(details[index]["currency"]) == currency
+            }) {
+                used.insert(index)
+                enriched.merge(details[index], uniquingKeysWith: { _, detail in detail })
+            }
+
+            let actual = postings.reduce(into: Decimal.zero) { total, posting in
+                guard stringValue(posting["account"]) == account,
+                      stringValue(posting["currency"]) == currency,
+                      let postingDate = stringValue(posting["date"]),
+                      postingDate < date,
+                      let numberText = stringValue(posting["number"]),
+                      let number = Decimal(string: numberText, locale: Locale(identifier: "en_US_POSIX")) else {
+                    return
+                }
+                total += number
+            }
+            enriched["difference_amount"] = NSDecimalNumber(decimal: actual - expected).stringValue
+            enriched["difference_currency"] = currency
+            return enriched
         }
     }
 

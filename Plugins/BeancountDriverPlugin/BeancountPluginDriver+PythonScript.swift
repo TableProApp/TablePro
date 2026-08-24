@@ -155,6 +155,8 @@ for entry in entries:
             "date": date_value(entry.date),
             "account": entry.account,
             "comment": entry.comment,
+            "tags": name_list(getattr(entry, "tags", None)),
+            "links": name_list(getattr(entry, "links", None)),
         })
     elif entry_type == "Event":
         rows["events"].append({
@@ -181,6 +183,7 @@ for entry in entries:
             "account": entry.account,
             "open": date_value(entry.date),
             "currencies": list(entry.currencies or []),
+            "booking": getattr(getattr(entry, "booking", None), "value", None),
         })
     elif entry_type == "Price":
         rows["prices"].append({

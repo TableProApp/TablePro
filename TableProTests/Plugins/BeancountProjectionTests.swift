@@ -50,14 +50,19 @@ struct BeancountProjectionTests {
             ["Expenses:Food", "4.00", "USD"]
         ])
 
-        let assertions = try await driver.execute(query: "SELECT date, account, amount, commodity FROM balance_assertions")
-        #expect(assertions.rows.map { $0.map(\.asText) } == [["2024-01-31", "Assets:Cash", "-1004.00", "USD"]])
+        let assertions = try await driver.execute(query: """
+            SELECT date, account, amount, commodity, tolerance, difference_amount, difference_currency
+            FROM balance_assertions
+            """)
+        #expect(assertions.rows.map { $0.map(\.asText) } == [[
+            "2024-01-31", "Assets:Cash", "-1004.00", "USD", "0.01", "0.00", "USD"
+        ]])
 
-        let accounts = try await driver.execute(query: "SELECT name, currencies FROM accounts ORDER BY name")
+        let accounts = try await driver.execute(query: "SELECT name, currencies, booking FROM accounts ORDER BY name")
         #expect(accounts.rows.map { $0.map(\.asText) } == [
-            ["Assets:Cash", "USD"],
-            ["Assets:Stock", "HOOL"],
-            ["Expenses:Food", "USD"]
+            ["Assets:Cash", "USD", "STRICT"],
+            ["Assets:Stock", "HOOL", nil],
+            ["Expenses:Food", "USD", nil]
         ])
 
         let prices = try await driver.execute(query: "SELECT date, commodity, amount, currency FROM prices")
@@ -93,14 +98,62 @@ struct BeancountProjectionTests {
             ["2024-01-03", "Assets:Cash", "/receipts/jan.pdf", "scanned", "batch-1"]
         ])
 
-        let notes = try await driver.execute(query: "SELECT date, account, comment FROM notes")
-        #expect(notes.rows.map { $0.map(\.asText) } == [["2024-01-04", "Assets:Cash", "called the bank"]])
+        let notes = try await driver.execute(query: "SELECT date, account, comment, tags, links FROM notes")
+        #expect(notes.rows.map { $0.map(\.asText) } == [[
+            "2024-01-04", "Assets:Cash", "called the bank", "urgent", "case-1"
+        ]])
 
         let events = try await driver.execute(query: "SELECT date, type, description FROM events")
         #expect(events.rows.map { $0.map(\.asText) } == [["2024-01-01", "location", "Taipei"]])
 
         let closes = try await driver.execute(query: "SELECT date, account FROM closes")
         #expect(closes.rows.map { $0.map(\.asText) } == [["2024-06-30", "Expenses:Food"]])
+    }
+
+    @Test("projects user metadata from non-transaction dated directives")
+    func projectsDirectiveMetadata() async throws {
+        let driver = try Self.makeDriver()
+        defer { driver.disconnect() }
+
+        let metadata = try await driver.execute(query: """
+            SELECT directive_type, date, key, value, source_file, line
+            FROM directive_metadata ORDER BY id
+            """)
+        #expect(metadata.rows.map { $0.map(\.asText) } == [[
+            "commodity", "2024-01-01", "name", "US Dollar", "/ledger/main.beancount", "2"
+        ]])
+    }
+
+    @Test("reads directive details and computes assertion differences")
+    func readsAndCombinesDirectiveDetails() throws {
+        let sourceURL = URL(fileURLWithPath: "/ledger/details.beancount")
+        let details = BeancountDirectiveDetailsReader.read(
+            contents: """
+                2024-01-01 commodity USD
+                  name: "US Dollar"
+                2024-01-02 note Assets:Cash "called bank" #urgent ^case-1
+                2024/1/3 balance Assets:Cash 10.00 ~ 0.05 USD
+                """,
+            sourceURL: sourceURL
+        )
+        #expect(details.notes.first?["tags"] as? [String] == ["urgent"])
+        #expect(details.notes.first?["links"] as? [String] == ["case-1"])
+        #expect(details.balances.first?["tolerance"] as? String == "0.05")
+        #expect(details.metadata.first?["value"] as? String == "US Dollar")
+        #expect(details.metadata.first?["lineno"] as? Int == 2)
+
+        let rows = BeancountPluginDriver.balanceRowsByAddingDetails(
+            [[
+                "date": "2024-01-03", "account": "Assets:Cash",
+                "amount": ["number": "10.00", "currency": "USD"]
+            ]],
+            details: details.balances,
+            postings: [[
+                "date": "2024-01-02", "account": "Assets:Cash", "number": "7.50", "currency": "USD"
+            ]]
+        )
+        #expect(rows.first?["difference_amount"] as? String == "-2.5")
+        #expect(rows.first?["difference_currency"] as? String == "USD")
     }
 
     @Test("projects pad directives with source locations")
@@ -485,7 +538,7 @@ struct BeancountProjectionTests {
             postingRow(transactionID: 2, account: "Assets:Cash", number: "-1000.00", currency: "USD")
         ],
         accounts: [
-            ["account": "Assets:Cash", "open": "2024-01-01", "currencies": ["USD"]],
+            ["account": "Assets:Cash", "open": "2024-01-01", "currencies": ["USD"], "booking": "STRICT"],
             ["account": "Assets:Stock", "open": "2024-01-01", "currencies": ["HOOL"]],
             ["account": "Expenses:Food", "open": "2024-01-01", "currencies": ["USD"]]
         ],
@@ -498,7 +551,11 @@ struct BeancountProjectionTests {
             position(account: "Expenses:Food", number: "4.00", currency: "USD")
         ],
         balanceAssertions: [
-            ["date": "2024-01-31", "account": "Assets:Cash", "amount": ["number": "-1004.00", "currency": "USD"]]
+            [
+                "date": "2024-01-31", "account": "Assets:Cash",
+                "amount": ["number": "-1004.00", "currency": "USD"],
+                "tolerance": "0.01", "difference_amount": "0.00", "difference_currency": "USD"
+            ]
         ],
         commodities: [
             ["date": "2024-01-01", "name": "USD"],
@@ -511,7 +568,10 @@ struct BeancountProjectionTests {
             ]
         ],
         notes: [
-            ["date": "2024-01-04", "account": "Assets:Cash", "comment": "called the bank"]
+            [
+                "date": "2024-01-04", "account": "Assets:Cash", "comment": "called the bank",
+                "tags": ["urgent"], "links": ["case-1"]
+            ]
         ],
         events: [
             ["date": "2024-01-01", "type": "location", "description": "Taipei"]
@@ -529,6 +589,10 @@ struct BeancountProjectionTests {
         closes: [
             ["account": "Expenses:Food", "close": "2024-06-30"]
         ],
+        directiveMetadata: [[
+            "directive_type": "commodity", "date": "2024-01-01", "key": "name", "value": "US Dollar",
+            "filename": "/ledger/main.beancount", "lineno": 2
+        ]],
         diagnostics: [
             [
                 "file": "/ledger/main.beancount", "line": 20, "column": 1, "end_line": 22, "end_column": 1,

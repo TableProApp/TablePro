@@ -5,7 +5,7 @@ description: Backend requirements, the table layout, source locations, includes,
 
 import RegistryPlugin from "/snippets/registry-plugin.mdx";
 
-Install `rledger` or Python Beancount before you connect. The plugin shells out to one of those two and projects the answer into 18 read-only SQL tables.
+Install `rledger` or Python Beancount before you connect. The plugin shells out to one of those two and projects the answer into 19 read-only SQL tables.
 
 <RegistryPlugin name="Beancount" plugin="Beancount Driver" />
 
@@ -67,18 +67,19 @@ Three slashes: the path is absolute. See [Connection URL Reference](/connections
 |-------|----------|
 | `transactions` | Date, flag, payee, narration, source location. Includes transactions with no postings |
 | `postings` | Account, amount, commodity, resolved cost basis (`cost_number`, `cost_currency`), source location |
-| `accounts` | Opened accounts and declared currencies |
+| `accounts` | Opened accounts, declared currencies, and booking methods |
 | `prices` | Price directives |
 | `balances` | Computed account balances by commodity |
-| `balance_assertions` | Beancount balance directives |
+| `balance_assertions` | Expected balance, explicit tolerance, and the booked difference |
 | `commodities` | Commodity directives |
 | `documents` | Document directives, their attached paths, tags, and links |
-| `notes` | Account notes |
+| `notes` | Account notes, tags, and links |
 | `events` | Event type and description directives |
 | `pads` | Pad directives, their target and source accounts, and source locations |
 | `closes` | Close directives |
 | `transaction_metadata`, `posting_metadata` | Metadata key/value pairs |
 | `transaction_tags`, `transaction_links` | Tags and links |
+| `directive_metadata` | User metadata on non-transaction dated directives |
 | `diagnostics` | Validation output from `rledger check` |
 | `source_files` | Parsed ledger and include files |
 
@@ -94,11 +95,15 @@ ORDER BY t.date DESC;
 
 Amounts arrive booked, so thousands separators, arithmetic, cost (`{}`) and price (`@`/`@@`) annotations are resolved before they reach a cell. Metadata values are text, and booleans keep their Beancount spelling of `TRUE` and `FALSE`.
 
+`balance_assertions.difference_amount` is the booked balance immediately before the assertion date minus the expected amount. Its currency is in `difference_currency`; an explicit `~` value is in `tolerance`.
+
 Every ledger file, glob directory, and referenced document is watched by modification date, size, and directory listing. Change one and the next query rebuilds the projection first, so an edit in your text editor lands without reconnecting.
 
 ## Source locations
 
 `transactions`, `postings`, and `pads` carry `source_file`, `line`, and `source_location`, the last formatted `path:line` so it copies, filters, and exports as it stands. A posting points at its own line, not at its transaction's.
+
+`directive_metadata` carries the source location of the metadata line. Transaction and posting metadata stay in their dedicated tables.
 
 The backends disagree about generated entries. For the transaction a `pad` inserts, `rledger` leaves these columns empty and Python Beancount points them at the `pad`.
 
@@ -129,7 +134,7 @@ Table browsing, row counts, and pagination work on a BQL result. SQL parameters 
 - No writes. INSERT, UPDATE, DELETE, and every form of schema editing are rejected. Edit the ledger in a text editor; the next query picks the change up.
 - No import, SSH, SSL, or ledger switching. One connection is one ledger file.
 - BQL needs `rledger` even when the ledger opened on the Python backend. The query is refused. Install `rledger`, or drop the `BQL:` prefix and query the projected tables.
-- Directives outside the 18 tables are not projected. They stay in the source files.
+- Directives outside the 19 tables are not projected. They stay in the source files.
 
 ## Troubleshooting
 
