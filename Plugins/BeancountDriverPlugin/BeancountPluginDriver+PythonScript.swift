@@ -20,6 +20,19 @@ os.environ["BEANCOUNT_LOAD_CACHE_FILENAME"] = os.path.join(cache_directory.name,
 
 from beancount import loader
 
+allow_user_plugins = os.environ.get("TABLEPRO_BEANCOUNT_ALLOW_PYTHON_PLUGINS") == "1"
+disabled_plugins = []
+original_run_transformations = loader.run_transformations
+
+if not allow_user_plugins:
+    def run_transformations_without_user_plugins(entries, parse_errors, options_map, log_timings):
+        disabled_plugins.extend(name for name, _ in options_map.get("plugin", []))
+        safe_options_map = options_map.copy()
+        safe_options_map["plugin"] = []
+        return original_run_transformations(entries, parse_errors, safe_options_map, log_timings)
+
+    loader.run_transformations = run_transformations_without_user_plugins
+
 def date_value(value):
     return value.isoformat() if value is not None else None
 
@@ -94,9 +107,17 @@ rows = {
     "events": [],
     "pads": [],
     "closes": [],
+    "diagnostics": [],
 }
 balances = defaultdict(Decimal)
 transaction_id = 0
+
+for plugin_name in sorted(set(disabled_plugins)):
+    rows["diagnostics"].append({
+        "severity": "warning",
+        "phase": "security",
+        "message": "User-declared Python plugin disabled: " + plugin_name,
+    })
 
 for entry in entries:
     entry_type = type(entry).__name__

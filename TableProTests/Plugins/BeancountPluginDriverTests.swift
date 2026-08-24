@@ -363,6 +363,71 @@ struct BeancountPluginDriverTests {
     }
 
     @Test(
+        "does not execute ledger-declared Python plugins by default",
+        .enabled(if: PythonBeancountLocator.path != nil, "Python Beancount unavailable")
+    )
+    func doesNotExecuteLedgerDeclaredPythonPluginsByDefault() async throws {
+        let python = try #require(PythonBeancountLocator.path)
+        try await Self.withEnvironment([
+            "TABLEPRO_BEANCOUNT_BACKEND": "python",
+            "TABLEPRO_BEANCOUNT_PYTHON": python
+        ]) {
+            let directory = try Self.makeTempDirectory()
+            defer { try? FileManager.default.removeItem(at: directory) }
+
+            let marker = directory.appendingPathComponent("plugin-executed")
+            try Self.writeMarkerPlugin(to: directory)
+            let ledger = directory.appendingPathComponent("main.beancount")
+            try """
+            option "insert_pythonpath" "TRUE"
+            plugin "tablepro_marker_plugin" "\(marker.path)"
+            """.write(to: ledger, atomically: true, encoding: .utf8)
+
+            let driver = BeancountPluginDriver(config: Self.config(ledger))
+            try await driver.connect()
+            defer { driver.disconnect() }
+
+            #expect(!FileManager.default.fileExists(atPath: marker.path))
+            let diagnostics = try await driver.execute(query: """
+                SELECT phase, severity, message FROM diagnostics WHERE phase = 'security'
+                """)
+            #expect(diagnostics.rows.count == 1)
+            #expect(diagnostics.rows.first?[1].asText == "warning")
+            #expect(diagnostics.rows.first?[2].asText?.contains("tablepro_marker_plugin") == true)
+        }
+    }
+
+    @Test(
+        "executes ledger-declared Python plugins after explicit opt-in",
+        .enabled(if: PythonBeancountLocator.path != nil, "Python Beancount unavailable")
+    )
+    func executesLedgerDeclaredPythonPluginsAfterExplicitOptIn() async throws {
+        let python = try #require(PythonBeancountLocator.path)
+        try await Self.withEnvironment([
+            "TABLEPRO_BEANCOUNT_ALLOW_PYTHON_PLUGINS": "1",
+            "TABLEPRO_BEANCOUNT_BACKEND": "python",
+            "TABLEPRO_BEANCOUNT_PYTHON": python
+        ]) {
+            let directory = try Self.makeTempDirectory()
+            defer { try? FileManager.default.removeItem(at: directory) }
+
+            let marker = directory.appendingPathComponent("plugin-executed")
+            try Self.writeMarkerPlugin(to: directory)
+            let ledger = directory.appendingPathComponent("main.beancount")
+            try """
+            option "insert_pythonpath" "TRUE"
+            plugin "tablepro_marker_plugin" "\(marker.path)"
+            """.write(to: ledger, atomically: true, encoding: .utf8)
+
+            let driver = BeancountPluginDriver(config: Self.config(ledger))
+            try await driver.connect()
+            defer { driver.disconnect() }
+
+            #expect(FileManager.default.fileExists(atPath: marker.path))
+        }
+    }
+
+    @Test(
         "executes BQL queries through the rledger executable",
         .enabled(if: RustledgerLocator.path != nil, "rledger executable unavailable")
     )
@@ -758,6 +823,22 @@ struct BeancountPluginDriverTests {
             defer { free(resolvedPath) }
             return String(cString: resolvedPath)
         }
+    }
+
+    private static func writeMarkerPlugin(to directory: URL) throws {
+        try """
+        from pathlib import Path
+
+        __plugins__ = ("write_marker",)
+
+        def write_marker(entries, options_map, marker_path):
+            Path(marker_path).write_text("executed", encoding="utf-8")
+            return entries, []
+        """.write(
+            to: directory.appendingPathComponent("tablepro_marker_plugin.py"),
+            atomically: true,
+            encoding: .utf8
+        )
     }
 
     private static func makeTempDirectory() throws -> URL {

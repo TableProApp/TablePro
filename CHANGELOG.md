@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Ledger-declared Python Beancount plugins are disabled by default; trusted ledgers can opt in with `TABLEPRO_BEANCOUNT_ALLOW_PYTHON_PLUGINS=1`.
 - Autocomplete in a query tab follows that tab's own database and schema.
 - The query editor's database picker names the tab's schema beside its database.
 - The data grid draws its cells instead of building a view for each one, so a result with hundreds of columns opens at once and holds a fraction of the memory. (#2381)

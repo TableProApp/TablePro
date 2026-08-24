@@ -579,7 +579,8 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 notes: rows["notes"] ?? [],
                 events: rows["events"] ?? [],
                 pads: rows["pads"] ?? [],
-                closes: rows["closes"] ?? []
+                closes: rows["closes"] ?? [],
+                diagnostics: rows["diagnostics"] ?? []
             )
         }
     }
