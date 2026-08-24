@@ -5,7 +5,7 @@ description: Backend requirements, the table layout, source locations, includes,
 
 import RegistryPlugin from "/snippets/registry-plugin.mdx";
 
-Install `rledger` or Python Beancount before you connect. The plugin shells out to one of those two and projects the answer into 18 read-only SQL tables.
+Install `rledger` or Python Beancount before you connect. The plugin shells out to one of those two and projects the answer into 21 read-only SQL tables.
 
 <RegistryPlugin name="Beancount" plugin="Beancount Driver" />
 
@@ -77,12 +77,15 @@ Three slashes: the path is absolute. See [Connection URL Reference](/connections
 | `events` | Event type and description directives |
 | `pads` | Pad directives, their target and source accounts, and source locations |
 | `closes` | Close directives |
+| `queries` | Named query directives and their source locations |
+| `custom` | Custom directive type and source location |
+| `custom_values` | Ordered, typed values belonging to each custom directive |
 | `transaction_metadata`, `posting_metadata` | Metadata key/value pairs |
 | `transaction_tags`, `transaction_links` | Tags and links |
 | `diagnostics` | Validation output from `rledger check` |
 | `source_files` | Parsed ledger and include files |
 
-`postings.transaction_id` points at `transactions.id`, and so do `transaction_metadata`, `transaction_tags`, and `transaction_links`. `posting_metadata.posting_id` points at `postings.id`. The rest join by name: an account column against `accounts.name`, a `source_file` column against `source_files.path`.
+`postings.transaction_id` points at `transactions.id`, and so do `transaction_metadata`, `transaction_tags`, and `transaction_links`. `posting_metadata.posting_id` points at `postings.id`, and `custom_values.custom_id` points at `custom.id`. The rest join by name: an account column against `accounts.name`, a `source_file` column against `source_files.path`.
 
 ```sql
 SELECT t.date, t.payee, p.account, p.amount, p.commodity
@@ -94,11 +97,13 @@ ORDER BY t.date DESC;
 
 Amounts arrive booked, so thousands separators, arithmetic, cost (`{}`) and price (`@`/`@@`) annotations are resolved before they reach a cell. Metadata values are text, and booleans keep their Beancount spelling of `TRUE` and `FALSE`.
 
+`custom_values.value_type` is `string`, `date`, `boolean`, `amount`, `account`, or `number`. `value` is the complete readable value; amounts also split into `number` and `currency`, and standalone numbers repeat in `number` so exports do not have to parse the display text.
+
 Every ledger file, glob directory, and referenced document is watched by modification date, size, and directory listing. Change one and the next query rebuilds the projection first, so an edit in your text editor lands without reconnecting.
 
 ## Source locations
 
-`transactions`, `postings`, and `pads` carry `source_file`, `line`, and `source_location`, the last formatted `path:line` so it copies, filters, and exports as it stands. A posting points at its own line, not at its transaction's.
+`transactions`, `postings`, `pads`, `queries`, and `custom` carry `source_file`, `line`, and `source_location`, the last formatted `path:line` so it copies, filters, and exports as it stands. A posting points at its own line, not at its transaction's.
 
 The backends disagree about generated entries. For the transaction a `pad` inserts, `rledger` leaves these columns empty and Python Beancount points them at the `pad`.
 
@@ -129,7 +134,7 @@ Table browsing, row counts, and pagination work on a BQL result. SQL parameters 
 - No writes. INSERT, UPDATE, DELETE, and every form of schema editing are rejected. Edit the ledger in a text editor; the next query picks the change up.
 - No import, SSH, SSL, or ledger switching. One connection is one ledger file.
 - BQL needs `rledger` even when the ledger opened on the Python backend. The query is refused. Install `rledger`, or drop the `BQL:` prefix and query the projected tables.
-- Directives outside the 18 tables are not projected. They stay in the source files.
+- Directives outside the 21 tables are not projected. They stay in the source files.
 
 ## Troubleshooting
 

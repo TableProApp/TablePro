@@ -517,7 +517,10 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         for _ in 0..<2 {
             let initialGraph = try BeancountIncludeResolver().resolve(fileURL: ledgerURL)
             let initialSignatures = signatures(for: initialGraph.reloadDependencies)
-            let rows = try projectionRows(ledgerPath: ledgerURL.path)
+            let rows = try projectionRows(
+                ledgerPath: ledgerURL.path,
+                sourceFiles: initialGraph.sourceFiles
+            )
             let finalGraph = try BeancountIncludeResolver().resolve(fileURL: ledgerURL)
             guard initialGraph.sourceFiles == finalGraph.sourceFiles,
                   initialGraph.reloadDependencies == finalGraph.reloadDependencies else {
@@ -544,7 +547,11 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    private static func projectionRows(ledgerPath: String) throws -> BeancountProjectionRows {
+    private static func projectionRows(
+        ledgerPath: String,
+        sourceFiles: [URL]
+    ) throws -> BeancountProjectionRows {
+        let directives = try BeancountDirectiveProjectionReader.read(sourceFiles: sourceFiles)
         switch try resolveProjectionBackend() {
         case .rledger:
             let transactions = try transactionRows(ledgerPath: ledgerPath)
@@ -563,6 +570,8 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 events: directiveRows(ledgerPath: ledgerPath, bql: eventsQuery, table: "events"),
                 pads: pads.rows,
                 closes: directiveRows(ledgerPath: ledgerPath, bql: closesQuery, table: "closes"),
+                queries: directives.queries,
+                custom: directives.custom,
                 diagnostics: validationDiagnostics(ledgerPath: ledgerPath) + pads.diagnostics
             )
         case .python(let executablePath):
@@ -579,7 +588,9 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 notes: rows["notes"] ?? [],
                 events: rows["events"] ?? [],
                 pads: rows["pads"] ?? [],
-                closes: rows["closes"] ?? []
+                closes: rows["closes"] ?? [],
+                queries: directives.queries,
+                custom: directives.custom
             )
         }
     }

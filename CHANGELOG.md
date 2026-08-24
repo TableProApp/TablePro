@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Named query and typed custom directives as read-only Beancount tables. (#2413)
 - Pad directives as a read-only Beancount table, including their target and source accounts and source locations. (#2399)
 - Compare & Sync between two databases, comparing tables, views, procedures, functions and triggers, or row data. Starter license. (#721)
 - Triggers as a sidebar section, listed per database and schema alongside Procedures and Functions. (#2383)
