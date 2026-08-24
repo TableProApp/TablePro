@@ -123,7 +123,7 @@ internal final class ConnectionWorkspace {
         guard !isReleased, let type = connection?.type else { return }
         let target = PluginManager.shared.containerSwitchTarget(for: type)
         let held = WorkspaceAnchoring.containers(
-            in: MainContentCoordinator.allTabs(for: connectionId),
+            in: sessionState?.coordinator.tabManager.tabs ?? [],
             target: target
         )
         for container in held {

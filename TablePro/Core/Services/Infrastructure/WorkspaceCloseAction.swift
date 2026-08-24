@@ -5,6 +5,7 @@
 
 import AppKit
 import Foundation
+import os
 
 /// The one path a user-requested close of a connections-strip entry takes, from the strip's
 /// contextual menu, a middle click, or Close while the strip holds the keyboard.
@@ -20,6 +21,8 @@ import Foundation
 /// tabs left the row exactly where it was and the command read as doing nothing (#2115).
 @MainActor
 internal enum WorkspaceCloseAction {
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "WorkspaceRail")
+
     internal enum Scope: Equatable {
         case container
         case connection
@@ -42,22 +45,47 @@ internal enum WorkspaceCloseAction {
 
     internal static func close(_ workspace: WorkspaceID) async {
         let containers = listedContainers(of: workspace.connectionId)
+        Self.logger.info(
+            """
+            close container=\(workspace.container, privacy: .public) \
+            listed=[\(containers.joined(separator: " "), privacy: .public)] \
+            scope=\(String(describing: scope(entryCount: containers.count)), privacy: .public)
+            """
+        )
         guard scope(entryCount: containers.count) == .container, !workspace.container.isEmpty else {
             await ConnectionCloseAction.close(connectionId: workspace.connectionId)
             return
         }
-        guard let hosted = WindowManager.shared.workspace(for: workspace.connectionId) else { return }
+        guard let hosted = WindowManager.shared.workspace(for: workspace.connectionId) else {
+            Self.logger.error("close has no hosted workspace container=\(workspace.container, privacy: .public)")
+            return
+        }
 
         let coordinator = hosted.sessionState?.coordinator
         let victims = tabs(in: workspace.container, of: coordinator)
-        guard await confirm(victims, coordinator: coordinator, revealing: workspace) else { return }
-        guard await browseAway(from: workspace, among: containers, coordinator: coordinator) else { return }
+        guard await confirm(victims, coordinator: coordinator, revealing: workspace) else {
+            Self.logger.info("close cancelled at the save prompt container=\(workspace.container, privacy: .public)")
+            return
+        }
+        guard await browseAway(from: workspace, among: containers, coordinator: coordinator) else {
+            Self.logger.error(
+                "close stopped: could not leave container=\(workspace.container, privacy: .public)"
+            )
+            return
+        }
 
         if !victims.isEmpty {
             coordinator?.closeTabsByUser(ids: victims.map(\.id))
         }
         hosted.closeContainer(workspace.container)
         landOnRemainingTab(after: workspace, among: containers, coordinator: coordinator)
+        Self.logger.info(
+            """
+            close done container=\(workspace.container, privacy: .public) \
+            tabsClosed=\(victims.count, privacy: .public) \
+            opened=[\(hosted.openedContainers.sorted().joined(separator: " "), privacy: .public)]
+            """
+        )
     }
 
     /// Shown, then asked, for the same reason a connection close reveals itself first: an alert

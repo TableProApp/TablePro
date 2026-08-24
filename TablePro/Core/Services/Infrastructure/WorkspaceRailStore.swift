@@ -58,7 +58,10 @@ internal enum WorkspaceRailStore {
             hostedConnections: workspacesById.compactMapValues(\.connection),
             storedConnections: Self.storedConnections(for: Array(sessionless)),
             containerTarget: { PluginManager.shared.containerSwitchTarget(for: $0) },
-            tabs: { MainContentCoordinator.allTabs(for: $0) },
+            /// The hosted workspace's own coordinator, never the app-wide registry: that one also
+            /// lists the throwaway coordinators SwiftUI discards mid-body, whose stale copy of a
+            /// closed tab kept a container listed and made a closed entry come back.
+            tabs: { workspacesById[$0]?.sessionState?.coordinator.tabManager.tabs ?? [] },
             openedContainers: { workspacesById[$0]?.openedContainers ?? [] },
             storedOrder: WorkspaceRailOrderStore.shared.order
         )
