@@ -224,7 +224,7 @@ struct ConnectionSwitcherPopover: View {
         )
         return HStack(spacing: 8) {
             Circle()
-                .selectionAwareTint(connection.displayColor)
+                .selectionAwareTint(connection.identityColor?.indicatorColor ?? .secondary)
                 .frame(width: 8, height: 8)
 
             VStack(alignment: .leading, spacing: 1) {

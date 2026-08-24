@@ -75,7 +75,7 @@ internal struct CompareStatusStrip: View {
                 Divider().frame(height: 14)
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(target.color.color)
+                        .fill(target.color.indicatorColor ?? Color.secondary.opacity(0.35))
                         .frame(width: 9, height: 9)
                         .accessibilityHidden(true)
                     Text(String(format: String(localized: "Target: %@"), target.qualifiedDescription))

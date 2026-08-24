@@ -75,8 +75,11 @@ final class ConnectionToolbarState {
     /// everything else follows the engine's switchable containers.
     var databaseGroupingStrategy: GroupingStrategy = .byDatabase
 
-    /// Custom display color for the connection (uses database type color if not set)
-    var displayColor: Color = .init(nsColor: .systemOrange)
+    /// The engine's own colour, which the engine glyph wears on every connection.
+    var brandColor: Color = .init(nsColor: .systemOrange)
+
+    /// The colour the user assigned to this connection, `nil` when they assigned none.
+    var identityColor: ConnectionColor?
 
     /// Current connection state
     var connectionState: ToolbarConnectionState = .disconnected
@@ -172,7 +175,8 @@ final class ConnectionToolbarState {
     func update(from connection: DatabaseConnection) {
         connectionName = connection.name
         databaseType = connection.type
-        displayColor = connection.displayColor
+        brandColor = connection.brandColor
+        identityColor = connection.identityColor
         tagIds = connection.tagIds
         databaseGroupingStrategy = PluginManager.shared.databaseGroupingStrategy(for: connection.type)
         syncFromSession(for: connection)
@@ -226,7 +230,8 @@ final class ConnectionToolbarState {
         currentDatabase = ""
         currentSchema = nil
         databaseGroupingStrategy = .byDatabase
-        displayColor = databaseType.themeColor
+        brandColor = databaseType.themeColor
+        identityColor = nil
         connectionState = .disconnected
         lastQueryDuration = nil
         clickHouseProgress = nil

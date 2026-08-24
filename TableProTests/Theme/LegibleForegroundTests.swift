@@ -45,6 +45,10 @@ struct LegibleForegroundTests {
     /// The palette is the one a tag or a connection can actually be given, resolved in every
     /// appearance the app can render in. `.gray` used to be the one colour left out, and it is the
     /// default a new tag gets.
+    ///
+    /// 3:1 is the right bar for `color` itself, which paints dots, swatches and glyph tints. A fill
+    /// that carries text is held to 4.5:1 by `ConnectionIdentityColorTests`, against `labelledFill`
+    /// rather than against this value: five of these eight hues reach only 3.2:1 to 4.2:1 here.
     @Test("Every connection palette colour keeps a readable label in every appearance")
     func connectionPaletteStaysReadable() {
         for name in Self.appearances {

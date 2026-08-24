@@ -320,6 +320,58 @@ struct SafeModeMigrationTests {
         )
     }
 
+    /// The reconcile used to copy `safeModeLevel` alone, so every other field on a live session
+    /// stayed at whatever it was when the connection was opened. `WorkspaceRailStore.resolve` reads
+    /// `session.connection` for any live session, so a rename or a recolour was invisible in the
+    /// rail until the next reconnect (#2398).
+    @Test("A colour picked while the connection is open reaches the open session")
+    func reconcileAppliesColorToLiveSession() {
+        let id = UUID()
+        let connection = makeConnection(id: id, name: "Production", safeModeLevel: .silent)
+        storage.addConnection(connection)
+
+        let manager = DatabaseManager(connectionStorage: storage)
+        manager.injectSession(ConnectionSession(connection: connection), for: id)
+        defer { manager.removeSession(for: id) }
+
+        var edited = connection
+        edited.color = .red
+        edited.name = "Production (renamed)"
+        storage.updateConnection(edited)
+
+        #expect(manager.session(for: id)?.connection.identityColor == nil)
+
+        manager.reconcileStoredRecord(for: id)
+
+        #expect(manager.session(for: id)?.connection.identityColor == .red)
+        #expect(manager.session(for: id)?.connection.name == "Production (renamed)")
+    }
+
+    /// The session owns the database it switched to; storage still holds the one the connection was
+    /// configured with. Adopting the stored record wholesale would silently move a browsing session
+    /// back to the configured database, so the reconcile has to carry this one field over.
+    @Test("The reconcile keeps the database the session switched to")
+    func reconcileKeepsSwitchedDatabase() {
+        let id = UUID()
+        let connection = makeConnection(id: id, name: "Production", safeModeLevel: .silent)
+        storage.addConnection(connection)
+
+        let manager = DatabaseManager(connectionStorage: storage)
+        var live = connection
+        live.database = "analytics"
+        manager.injectSession(ConnectionSession(connection: live), for: id)
+        defer { manager.removeSession(for: id) }
+
+        var edited = connection
+        edited.color = .blue
+        storage.updateConnection(edited)
+
+        manager.reconcileStoredRecord(for: id)
+
+        #expect(manager.session(for: id)?.connection.database == "analytics")
+        #expect(manager.session(for: id)?.connection.identityColor == .blue)
+    }
+
     @Test("An edit saved from the connection form reaches the open session")
     func reconcileAppliesConnectionFormEditToLiveSession() {
         let id = UUID()
@@ -336,7 +388,7 @@ struct SafeModeMigrationTests {
 
         #expect(manager.session(for: id)?.safeModeLevel == .readOnly)
 
-        manager.reconcileSafeModeLevel(for: id)
+        manager.reconcileStoredRecord(for: id)
 
         #expect(manager.session(for: id)?.safeModeLevel == .safeMode)
         #expect(manager.session(for: id)?.connection.safeModeLevel == .safeMode)
@@ -366,7 +418,7 @@ struct SafeModeMigrationTests {
         storage.updateConnection(editedFirst)
         storage.updateConnection(editedSecond)
 
-        manager.reconcileSafeModeLevel(for: nil)
+        manager.reconcileStoredRecord(for: nil)
 
         #expect(manager.session(for: firstId)?.safeModeLevel == .silent)
         #expect(manager.session(for: secondId)?.safeModeLevel == .alert)
@@ -379,7 +431,7 @@ struct SafeModeMigrationTests {
         storage.addConnection(connection)
 
         let manager = DatabaseManager(connectionStorage: storage)
-        manager.reconcileSafeModeLevel(for: id)
+        manager.reconcileStoredRecord(for: id)
 
         #expect(manager.session(for: id) == nil)
         #expect(storage.loadConnection(id: id)?.safeModeLevel == .readOnly)

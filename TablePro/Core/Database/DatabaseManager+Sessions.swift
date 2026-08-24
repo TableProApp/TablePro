@@ -512,17 +512,41 @@ extension DatabaseManager {
         connectionUpdatedCancellable = AppEvents.shared.connectionUpdated
             .receive(on: RunLoop.main)
             .sink { [weak self] connectionId in
-                self?.reconcileSafeModeLevel(for: connectionId)
+                self?.reconcileStoredRecord(for: connectionId)
             }
     }
 
-    func reconcileSafeModeLevel(for connectionId: UUID?) {
+    func reconcileStoredRecord(for connectionId: UUID?) {
         let targetIds = connectionId.map { [$0] } ?? Array(activeSessions.keys)
         for id in targetIds {
-            guard activeSessions[id] != nil,
+            guard let session = activeSessions[id],
                   let stored = connectionStorage.loadConnection(id: id) else { continue }
+            adoptStoredRecord(stored, keepingRuntimeStateOf: session, for: id)
             setSafeModeLevel(stored.safeModeLevel, for: id)
         }
+    }
+
+    /// The stored record owns every field the connection form can edit. A live session owns only
+    /// what it switched at runtime, which is the browsed database and the safe-mode level, so those
+    /// two are carried over and the rest is taken from storage.
+    ///
+    /// This used to reconcile `safeModeLevel` alone, which left everything else on the session
+    /// frozen at connect time. `WorkspaceRailStore.resolve` reads `session.connection` for any live
+    /// session, so renaming or recolouring a connection changed nothing in the rail until the next
+    /// reconnect (#2398).
+    private func adoptStoredRecord(
+        _ stored: DatabaseConnection,
+        keepingRuntimeStateOf session: ConnectionSession,
+        for connectionId: UUID
+    ) {
+        var reconciled = stored
+        reconciled.database = session.connection.database
+        reconciled.safeModeLevel = session.connection.safeModeLevel
+        guard reconciled != session.connection else { return }
+
+        var updated = session
+        updated.connection = reconciled
+        setSession(updated, for: connectionId)
     }
 
     func setSafeModeLevel(_ level: SafeModeLevel, for connectionId: UUID) {

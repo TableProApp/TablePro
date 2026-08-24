@@ -368,6 +368,10 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     }
 
     /// `nil` is the documented bulk-update payload, so it has to repaint too.
+    ///
+    /// The toolbar takes the record here and not from its panes: `ConnectionToolbarState` is built
+    /// once per session and `refreshPanes` only reassigns SwiftUI root views, so without this line
+    /// the titlebar kept the name and colour the connection had when it was opened (#2398).
     private func handleConnectionRecordChange(_ changedId: UUID?) {
         let stored = ConnectionStorage.shared.loadConnections()
         var repaint = false
@@ -377,6 +381,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             guard let record = stored.first(where: { $0.id == connectionId })
                 ?? DatabaseManager.shared.activeSessions[connectionId]?.connection else { continue }
             workspace.payloadConnection = record
+            workspace.sessionState?.toolbarState.update(from: record)
             refreshPanes(of: workspace)
             if workspaces.selectedConnectionId == connectionId { repaint = true }
         }

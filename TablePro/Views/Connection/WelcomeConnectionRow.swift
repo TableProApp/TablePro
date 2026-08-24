@@ -38,19 +38,37 @@ struct WelcomeConnectionRow: View {
             : String(localized: "Add to Favorites")
     }
 
+    /// A row carries the identity colour beside the name rather than on the engine glyph, which
+    /// stays the engine's own colour. It is a dot and not the toolbar's filled capsule because a
+    /// row can be selected, and a fill of its own would compete with the selection band; the dot
+    /// steps aside through `selectionAwareTint` the way the connection switcher's already does.
+    @ViewBuilder
+    private var identityDot: some View {
+        if let identity = connection.identityColor, let indicator = identity.indicatorColor {
+            Circle()
+                .selectionAwareTint(indicator)
+                .frame(width: 8, height: 8)
+                .accessibilityLabel(String(format: String(localized: "Color: %@"), identity.displayName))
+        }
+    }
+
     var body: some View {
         let meta = metadata
         return HStack {
             connection.type.iconImage
                 .renderingMode(.template)
                 .font(.title3)
-                .foregroundStyle(connection.displayColor)
+                .foregroundStyle(connection.brandColor)
                 .frame(width: 18, height: 18)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(connection.name)
-                    .font(.body)
-                    .foregroundStyle(.primary)
+                HStack(spacing: 6) {
+                    identityDot
+
+                    Text(connection.name)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                }
 
                 HStack(spacing: 6) {
                     Text(connection.connectionSubtitle)

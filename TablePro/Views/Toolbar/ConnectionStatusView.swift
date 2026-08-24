@@ -15,7 +15,8 @@ struct ConnectionStatusView: View {
     let databaseVersion: String?
     let scopeComponents: [ConnectionScopeComponent]
     let connectionName: String
-    let displayColor: Color
+    let brandColor: Color
+    var identityColor: ConnectionColor?
     var safeModeLevel: SafeModeLevel = .silent
     /// The chooser each component opens needs a live connection, and a component anchors its own
     /// popover so the list appears against the word it belongs to rather than against the toolbar
@@ -43,19 +44,38 @@ struct ConnectionStatusView: View {
         HStack(spacing: 6) {
             databaseType.iconImage
                 .renderingMode(.template)
-                .foregroundStyle(displayColor)
+                .foregroundStyle(brandColor)
                 .frame(width: engineIconSize, height: engineIconSize)
 
-            Text(connectionName)
-                .font(.callout.weight(.medium))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .fixedSize(horizontal: true, vertical: false)
+            connectionNameLabel
         }
         .help(connectionTooltip)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(connectionAccessibilityLabel)
+    }
+
+    /// The connection colour's one surface in this window. It fills the name rather than tinting
+    /// the engine glyph beside it, because that glyph is already the engine's own colour and a
+    /// second meaning painted over it reads as a hue shift instead of a signal (#2398). The scope
+    /// chips stay plain for the same reason: one filled shape per window, so the fill means
+    /// exactly one thing.
+    @ViewBuilder
+    private var connectionNameLabel: some View {
+        let name = Text(connectionName)
+            .font(.callout.weight(.medium))
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .fixedSize(horizontal: true, vertical: false)
+
+        if let fill = identityColor?.labelledFill {
+            name
+                .foregroundStyle(Color.legibleForeground(on: fill))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(fill, in: Capsule())
+        } else {
+            name.foregroundStyle(.primary)
+        }
     }
 
     /// Nested scopes read outermost first with a chevron between them, the way Xcode separates its
@@ -168,12 +188,19 @@ struct ConnectionStatusView: View {
         return databaseType.rawValue
     }
 
+    /// The colour rides in the text of both, because a fill that carries meaning cannot be the only
+    /// channel that carries it: the HIG asks for a second cue for anyone who cannot tell red from
+    /// green, and VoiceOver has no way to read a background at all.
     private var connectionTooltip: String {
-        String(format: String(localized: "%@ • %@"), connectionName, formattedDatabaseInfo)
+        let base = String(format: String(localized: "%@ • %@"), connectionName, formattedDatabaseInfo)
+        guard let identityColor else { return base }
+        return String(format: String(localized: "%1$@ • Color: %2$@"), base, identityColor.displayName)
     }
 
     private var connectionAccessibilityLabel: String {
-        String(format: String(localized: "Connection: %@, %@"), connectionName, formattedDatabaseInfo)
+        let base = String(format: String(localized: "Connection: %@, %@"), connectionName, formattedDatabaseInfo)
+        guard let identityColor else { return base }
+        return String(format: String(localized: "%1$@, color %2$@"), base, identityColor.displayName)
     }
 }
 
@@ -194,7 +221,8 @@ private func previewComponent(
         databaseVersion: "11.1.2",
         scopeComponents: [previewComponent(.database, "production_db", "Database")],
         connectionName: "Production Database",
-        displayColor: .cyan
+        brandColor: .cyan,
+        identityColor: .red
     )
     .padding()
     .background(Color(nsColor: .windowBackgroundColor))
@@ -206,7 +234,7 @@ private func previewComponent(
         databaseVersion: "8.0.35",
         scopeComponents: [previewComponent(.database, "dev_db", "Database")],
         connectionName: "Development",
-        displayColor: .orange
+        brandColor: .orange
     )
     .padding()
     .background(Color(nsColor: .windowBackgroundColor))
@@ -221,7 +249,8 @@ private func previewComponent(
             previewComponent(.schema, "public", "Schema"),
         ],
         connectionName: "Analytics DB",
-        displayColor: .blue
+        brandColor: .blue,
+        identityColor: .yellow
     )
     .padding()
     .background(Color(nsColor: .windowBackgroundColor))
@@ -234,7 +263,8 @@ private func previewComponent(
         databaseVersion: "3.45.0",
         scopeComponents: [previewComponent(.database, "chinook.db", "Database", switchable: false)],
         connectionName: "Local",
-        displayColor: .green
+        brandColor: .green,
+        identityColor: .purple
     )
     .padding()
     .background(Color(nsColor: .windowBackgroundColor))
