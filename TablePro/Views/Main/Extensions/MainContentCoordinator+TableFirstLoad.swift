@@ -19,7 +19,7 @@ extension MainContentCoordinator {
                     token: token,
                     detail: "cancelled=\(Task.isCancelled)"
                 )
-                tracer.finish(token: token, outcome: "prepareAbandoned")
+                tracer.finish(token: token, outcome: .prepareAbandoned)
             }
             return
         }

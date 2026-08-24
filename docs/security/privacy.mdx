@@ -142,6 +142,10 @@ The execution log records every authorization decision the app makes, from the U
 
 The hash chain is tamper evident, not tamper proof: anyone who can write the file can recompute every hash after the record they changed. It is a JSON file in Application Support, no sync record type covers it, and no code path uploads it.
 
+The table load history records how long each table load took, so a slowdown can be looked at after it happened rather than only while it is happening. One line per load, holding a timestamp, the app version and build, the macOS version, what started the load, the database type, whether the connection went through SSH, how long each phase took (schema, driver fetch, result conversion, grid reload, and the main run loop after it), how the load ended, any anomalies it reported, and four size ranges: rows, columns, result size, and open tabs. Sizes are ranges such as `101-1000` and `1-10MB`, never exact counts.
+
+Nothing identifying is in it: no query text, no rows, no database, schema or table names, no hostnames, ports or usernames, no connection names or IDs, no file paths, no error messages. It is a `.jsonl` file in Application Support, readable only by you, capped at 7 days and at 10,000 records or 5 MB, whichever comes first. No sync record type covers it and no code path uploads it. Delete the file to clear it.
+
 ### Where it lives on disk
 
 Every path here is under `~/Library/Application Support/TablePro/` unless it says otherwise.
@@ -156,6 +160,7 @@ Every path here is under `~/Library/Application Support/TablePro/` unless it say
 | `ai_chats/` | One JSON file per AI conversation, including the context attached to each turn. |
 | `AIChatImages/` | Images pasted into chat. |
 | `ExecutionAudit.json` | The execution log described in this section. |
+| `TableLoadHistory.jsonl` | The table load history described in this section, 7 days. Mode `0600`. |
 | `mcp-audit.db` | The MCP activity log, 90 days, statements as digests. Mode `0600` inside a `0700` directory. |
 | `mcp-handshake.json` | The bound port and the bridge token, mode `0600`. |
 | `TabState/`, `RecentlyClosedTabs/` | Open and recently closed tabs, including their query text. |

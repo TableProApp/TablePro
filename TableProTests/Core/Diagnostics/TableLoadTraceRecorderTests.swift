@@ -92,7 +92,7 @@ struct TableLoadTraceRecorderTests {
         let first = recorder.begin(tabId: tabId, table: "users", origin: .sidebar, at: instant(0))
         let second = recorder.begin(tabId: tabId, table: "orders", origin: .sidebar, at: instant(50))
 
-        _ = recorder.finish(token: first.token, at: instant(900))
+        _ = recorder.finish(token: first.token, outcome: .completed, at: instant(900))
 
         #expect(recorder.activeToken(for: tabId) == second.token)
     }
@@ -103,7 +103,7 @@ struct TableLoadTraceRecorderTests {
         let tabId = UUID()
         let started = recorder.begin(tabId: tabId, table: "users", origin: .sidebar, at: instant(0))
 
-        let finished = recorder.finish(token: started.token, at: instant(400))
+        let finished = recorder.finish(token: started.token, outcome: .completed, at: instant(400))
         let timing = try #require(finished)
 
         #expect(timing.sinceStart == .milliseconds(400))
@@ -173,7 +173,7 @@ struct TableLoadTraceRecorderTests {
             let token = recorder.begin(
                 tabId: UUID(), table: "t\(index)", origin: .sidebar, at: instant(index + 1)
             ).token
-            _ = recorder.finish(token: token, at: instant(index + 2))
+            _ = recorder.finish(token: token, outcome: .completed, at: instant(index + 2))
         }
 
         #expect(recorder.entry(for: inFlight.token) != nil)
@@ -188,7 +188,7 @@ struct TableLoadTraceRecorderTests {
             let token = recorder.begin(
                 tabId: UUID(), table: "t\(index)", origin: .sidebar, at: instant(index)
             ).token
-            _ = recorder.finish(token: token, at: instant(index))
+            _ = recorder.finish(token: token, outcome: .completed, at: instant(index))
             tokens.append(token)
         }
 
@@ -208,7 +208,7 @@ struct TableLoadTraceRecorderTests {
     func reportsNoEvictionsWhenUnderTheLimit() {
         var recorder = TableLoadTraceRecorder()
         let started = recorder.begin(tabId: UUID(), table: "users", origin: .sidebar, at: instant(0))
-        _ = recorder.finish(token: started.token, at: instant(10))
+        _ = recorder.finish(token: started.token, outcome: .completed, at: instant(10))
         #expect(recorder.takeEvictedSequences().isEmpty)
     }
 

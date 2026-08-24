@@ -113,7 +113,12 @@ extension MainContentCoordinator {
                 saveLastFilters(for: oldTableName)
             }
             if let tabId = tabManager.selectedTabId {
-                let token = TableLoadTracer.shared.begin(tabId: tabId, table: tableName, origin: .inPlace)
+                let token = TableLoadTracer.shared.begin(
+                    tabId: tabId,
+                    table: tableName,
+                    origin: .inPlace,
+                    environment: tableLoadEnvironment
+                )
                 TableLoadTracer.shared.stage(.openTableTab, token: token, detail: "path=inPlace")
             }
             do {
@@ -245,7 +250,12 @@ extension MainContentCoordinator {
             return false
         }
         if let (tab, tabIndex) = tabManager.selectedTabAndIndex {
-            let token = TableLoadTracer.shared.begin(tabId: tab.id, table: tableName, origin: .sidebar)
+            let token = TableLoadTracer.shared.begin(
+                tabId: tab.id,
+                table: tableName,
+                origin: .sidebar,
+                environment: tableLoadEnvironment
+            )
             TableLoadTracer.shared.stage(.openTableTab, token: token, detail: "path=addFirstTab")
             TableLoadTracer.shared.stage(.addFirstTab, token: token)
             tabManager.mutate(at: tabIndex) { tab in
@@ -283,7 +293,12 @@ extension MainContentCoordinator {
         var token: TableLoadTraceToken?
         if let tabId = tabManager.selectedTabId {
             let wasExecuting = tabExecution.isExecuting(tabId)
-            let started = TableLoadTracer.shared.begin(tabId: tabId, table: tableName, origin: .sidebar)
+            let started = TableLoadTracer.shared.begin(
+                tabId: tabId,
+                table: tableName,
+                origin: .sidebar,
+                environment: tableLoadEnvironment
+            )
             token = started
             TableLoadTracer.shared.stage(
                 .openTableTab,
@@ -306,7 +321,7 @@ extension MainContentCoordinator {
             )
         } catch {
             navigationLogger.error("openTableTab replaceTabContent failed: \(error.localizedDescription, privacy: .public)")
-            if let token { TableLoadTracer.shared.finish(token: token, outcome: "replaceFailed") }
+            if let token { TableLoadTracer.shared.finish(token: token, outcome: .replaceFailed) }
             return false
         }
         if let token { TableLoadTracer.shared.stage(.replaceTabContent, token: token) }

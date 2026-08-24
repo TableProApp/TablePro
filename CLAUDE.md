@@ -249,6 +249,7 @@ To ship one: add the record type or field in CloudKit Console (or `xcrun cktool 
 | Recent tables        | UserDefaults     | `RecentTablesStore` (per connection, keyed by database, last 10 each; device-local). Live value held in `SharedSidebarState`, recorded at the `QueryTabManager` open chokepoint. |
 | History drawer state | UserDefaults     | `HistoryPanelPreferencesStorage` (per connection; visibility, connection scope, source/date/outcome filters; device-local). Live value held in `HistoryPanelState.forConnection`, cleared alongside `SharedSidebarState` when a session ends. |
 | Trusted external links | UserDefaults   | `ExternalConnectionTrustStore` (keyed by database type + host + database + username + URL `name`, never the port; loopback hosts only, enforced on read and write). Consulted by `ExternalConnectionGate` before the external-URL confirmation alert. |
+| Table load timings   | JSON lines       | `TableLoadHistoryStore` (`TableLoadHistory.jsonl`, mode `0600`; 7 days, 10,000 records or 5 MB, oldest first; device-local, never uploaded). Written by `TableLoadTracer` through `TableLoadSummarySink`, which is inert under XCTest. Durations and coarse buckets only: no table, schema, host, username, connection id, query text or error message. |
 
 ### Logging & Debugging
 

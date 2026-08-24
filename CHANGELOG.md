@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Triggers as a sidebar section, listed per database and schema alongside Procedures and Functions. (#2383)
 - Read-only source viewer for procedures, functions and triggers, with Copy, Export and Open in Editor. (#2383)
 - Procedures, functions and triggers on MSSQL, Oracle, SQLite, ClickHouse, DuckDB, Snowflake, BigQuery, Cassandra, LibSQL, Cloudflare D1, Teradata and Dameng. (#2383)
+- Local performance history for table loads, kept 7 days in Application Support and never uploaded. (#2395)
 - Procedures, functions and triggers in the quick switcher.
 - Argument signatures on routine rows, shown when two routines in a section share a name.
 - Schema-wide `list_triggers` for MCP clients, and `return_type` and `language` on `list_routines`.

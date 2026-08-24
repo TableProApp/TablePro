@@ -169,6 +169,7 @@ extension MainContentCoordinator {
             tabId: tab.id,
             table: tab.tableContext.tableName ?? "",
             origin: trigger == .restore ? .restore : .programmatic,
+            environment: tableLoadEnvironment,
             connectionId: connectionId
         )
 
@@ -177,7 +178,7 @@ extension MainContentCoordinator {
         func noteLoadAlreadyInFlight() {
             guard carriedToken == nil else { return }
             tracer.anomaly(.loadAlreadyInFlight, token: traceToken)
-            tracer.finish(token: traceToken, outcome: "loadAlreadyInFlight")
+            tracer.finish(token: traceToken, outcome: .loadAlreadyInFlight)
         }
 
         guard tableLoadTasks[tab.id] == nil else {
@@ -201,7 +202,7 @@ extension MainContentCoordinator {
         guard let session = DatabaseManager.shared.session(for: connectionId),
               session.isConnected else {
             tracer.anomaly(.connectionNotReady, token: traceToken)
-            tracer.finish(token: traceToken, outcome: "notConnected")
+            tracer.finish(token: traceToken, outcome: .notConnected)
             pendingLoadTrigger = trigger
             declineTableLoad(for: tab.id)
             return

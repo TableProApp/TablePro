@@ -13,9 +13,12 @@ import os
 /// (`log stream --level debug --predicate 'subsystem == "com.TablePro"'`). Anomalies that
 /// mislead the user are logged at error level and are always captured. Every trace is also
 /// an Instruments interval under Points of Interest.
+///
+/// Both of those are live only, so a finished trace is additionally summarized to `sink`, which
+/// keeps a bounded local history an intermittent slowdown can be looked at in after the fact.
 @MainActor
 internal final class TableLoadTracer {
-    internal static let shared = TableLoadTracer()
+    internal static let shared = TableLoadTracer(sink: TableLoadTracer.defaultSink())
 
     private struct Interval {
         let id: OSSignpostID
@@ -26,13 +29,25 @@ internal final class TableLoadTracer {
 
     private let logger = Logger(subsystem: "com.TablePro", category: "TableLoad")
     private let signposter = OSSignposter(subsystem: "com.TablePro", category: .pointsOfInterest)
+    private let sink: any TableLoadSummarySink
     private var recorder = TableLoadTraceRecorder()
     private var intervals: [Int: Interval] = [:]
     private var handoffs: [String: ContinuousClock.Instant] = [:]
     private var applyScope: TableLoadTraceToken?
     private let clock = ContinuousClock()
 
-    private init() {}
+    internal init(sink: any TableLoadSummarySink) {
+        self.sink = sink
+    }
+
+    /// A unit test that drives a coordinator opens real table tabs and so begins real traces, and
+    /// `AppStorageEnvironment` resolves to the production directory under a unit-test host. Choosing
+    /// the sink here keeps those traces off the developer's own history without the store having to
+    /// know it is being tested.
+    private static func defaultSink() -> any TableLoadSummarySink {
+        guard NSClassFromString("XCTestCase") == nil else { return DiscardingTableLoadSummarySink() }
+        return TableLoadHistoryStore.shared
+    }
 
     /// A sidebar click that opens a new native window tab finishes in a different coordinator, so the
     /// click instant is parked here and picked up by whichever window ends up doing the load. Without
@@ -52,6 +67,7 @@ internal final class TableLoadTracer {
         tabId: UUID,
         table: String,
         origin: TableLoadOrigin,
+        environment: TableLoadEnvironment,
         connectionId: UUID? = nil
     ) -> TableLoadTraceToken {
         let now = clock.now
@@ -66,6 +82,7 @@ internal final class TableLoadTracer {
             tabId: tabId,
             table: table,
             origin: resolvedOrigin,
+            environment: environment,
             at: now,
             startedAt: startedAt
         )
@@ -73,7 +90,7 @@ internal final class TableLoadTracer {
 
         if let superseded {
             report(.supersededByNewNavigation, timing: superseded, detail: "replacedBy=#\(token.sequence)")
-            endInterval(for: superseded.token, outcome: "superseded")
+            endInterval(for: superseded.token, outcome: TableLoadOutcome.superseded.rawValue)
         }
 
         let signpostID = signposter.makeSignpostID()
@@ -86,7 +103,7 @@ internal final class TableLoadTracer {
         logger.debug(
             "\(Self.prefix(token), privacy: .public) +0.0ms START origin=\(origin.rawValue, privacy: .public)"
         )
-        closeEvictedIntervals()
+        drainCompletedTraces()
         return token
     }
 
@@ -95,7 +112,21 @@ internal final class TableLoadTracer {
     private func closeEvictedIntervals() {
         for sequence in recorder.takeEvictedSequences() {
             guard let interval = intervals.removeValue(forKey: sequence) else { continue }
-            signposter.endInterval("TableLoad", interval.state, "evicted")
+            signposter.endInterval("TableLoad", interval.state, "\(TableLoadOutcome.evicted.rawValue)")
+        }
+    }
+
+    /// Stamped on the main actor because the version strings are resolved once per process and the
+    /// timestamp costs nothing, then handed over. The sink never blocks: everything it does with the
+    /// record happens after this returns.
+    private func drainCompletedTraces() {
+        closeEvictedIntervals()
+        let summaries = recorder.takeCompletedSummaries()
+        guard !summaries.isEmpty else { return }
+        let stamp = TableLoadRuntimeStamp.current
+        let recordedAt = Date()
+        for summary in summaries {
+            sink.record(TableLoadPerformanceRecord(summary: summary, stamp: stamp, recordedAt: recordedAt))
         }
     }
 
@@ -124,26 +155,39 @@ internal final class TableLoadTracer {
     }
 
     internal func anomaly(_ anomaly: TableLoadAnomaly, token: TableLoadTraceToken, detail: String? = nil) {
-        guard let timing = recorder.measure(token: token, at: clock.now) else { return }
+        guard let timing = recorder.note(anomaly, token: token, at: clock.now) else { return }
         report(anomaly, timing: timing, detail: detail)
     }
 
     internal func anomaly(_ anomaly: TableLoadAnomaly, tabId: UUID, detail: String? = nil) {
-        guard let timing = recorder.measure(tabId: tabId, at: clock.now) else { return }
+        guard let timing = recorder.note(anomaly, tabId: tabId, at: clock.now) else { return }
         report(anomaly, timing: timing, detail: detail)
     }
 
-    internal func finish(token: TableLoadTraceToken, outcome: String) {
-        guard let timing = recorder.finish(token: token, at: clock.now) else { return }
+    internal func setResultMetrics(_ metrics: TableLoadResultMetrics, token: TableLoadTraceToken) {
+        recorder.setResultMetrics(metrics, token: token)
+    }
+
+    /// `detail` is written to the log and the signpost but never to the history. It is where an
+    /// error's Swift type name still reaches a developer reading `log stream`, while the recorded
+    /// outcome stays a closed set an external report can group by.
+    internal func finish(token: TableLoadTraceToken, outcome: TableLoadOutcome, detail: String? = nil) {
+        guard let timing = recorder.finish(token: token, outcome: outcome, at: clock.now) else { return }
+        let label = Self.label(for: outcome, detail: detail)
         logger.debug(
             """
             \(Self.prefix(timing.token), privacy: .public) \
             +\(Self.milliseconds(timing.sinceStart), privacy: .public)ms \
-            END outcome=\(outcome, privacy: .public)
+            END outcome=\(label, privacy: .public)
             """
         )
-        endInterval(for: timing.token, outcome: outcome)
-        closeEvictedIntervals()
+        endInterval(for: timing.token, outcome: label)
+        drainCompletedTraces()
+    }
+
+    private static func label(for outcome: TableLoadOutcome, detail: String?) -> String {
+        guard let detail, !detail.isEmpty else { return outcome.rawValue }
+        return "\(outcome.rawValue):\(detail)"
     }
 
     internal func activeToken(for tabId: UUID) -> TableLoadTraceToken? {
@@ -218,9 +262,6 @@ internal final class TableLoadTracer {
     }
 
     private static func milliseconds(_ duration: Duration) -> String {
-        let components = duration.components
-        let value = Double(components.seconds) * 1_000
-            + Double(components.attoseconds) / 1_000_000_000_000_000
-        return String(format: "%.1f", value)
+        String(format: "%.1f", TableLoadDuration.milliseconds(duration))
     }
 }

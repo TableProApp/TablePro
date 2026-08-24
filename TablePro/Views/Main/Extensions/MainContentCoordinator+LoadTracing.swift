@@ -6,6 +6,17 @@
 import Foundation
 
 extension MainContentCoordinator {
+    /// Captured when the trace begins rather than read when it ends. `TableLoadTracer` is one
+    /// process-wide singleton and a coordinator belongs to one connection session, so an ending site
+    /// would read whichever session happened to be current instead of the one that ran the load.
+    var tableLoadEnvironment: TableLoadEnvironment {
+        TableLoadEnvironment(
+            databaseTypeId: connection.type.rawValue,
+            usesSSH: connection.sshTunnelMode != .disabled,
+            openTabCount: tabManager.tabs.count
+        )
+    }
+
     func traceExecutionStarted(_ token: TableLoadTraceToken?, epoch: Int, isAutoLoad: Bool) {
         guard let token else { return }
         TableLoadTracer.shared.stage(
@@ -27,16 +38,18 @@ extension MainContentCoordinator {
             detail: "site=\(site) hasInFlightQuery=\(currentQueryTask != nil)"
         )
         guard !tracer.hasStartedExecution(token) else { return }
-        tracer.finish(token: token, outcome: "blocked")
+        tracer.finish(token: token, outcome: .blocked)
     }
 
-    func traceNavigationAbandoned(tabId: UUID, reason: String) {
+    func traceNavigationAbandoned(tabId: UUID, outcome: TableLoadOutcome) {
         let tracer = TableLoadTracer.shared
         guard let token = tracer.activeToken(for: tabId), !tracer.hasStartedExecution(token) else { return }
-        tracer.anomaly(.preparationAbandoned, token: token, detail: reason)
-        tracer.finish(token: token, outcome: reason)
+        tracer.anomaly(.preparationAbandoned, token: token, detail: outcome.rawValue)
+        tracer.finish(token: token, outcome: outcome)
     }
 
+    /// The result's shape is handed over after both fetch stages are stamped, so sampling it for a
+    /// size estimate cannot land inside the interval it is describing.
     func traceFetchCompleted(
         _ token: TableLoadTraceToken?,
         began: ContinuousClock.Instant,
@@ -55,6 +68,10 @@ extension MainContentCoordinator {
                 driverMs=\(Int(result.executionTime * 1_000))
                 """
         )
+        tracer.setResultMetrics(
+            TableLoadResultMetrics(rows: result.rows, columnCount: result.columns.count),
+            token: token
+        )
     }
 
     func traceFetchCancelled(
@@ -67,7 +84,7 @@ extension MainContentCoordinator {
         tracer.stage(.driverFetchBegin, token: token, at: began)
         tracer.stage(.driverFetchEnd, token: token, at: ended)
         tracer.anomaly(.executionCancelled, token: token)
-        tracer.finish(token: token, outcome: "cancelled")
+        tracer.finish(token: token, outcome: .cancelled)
     }
 
     func traceStaleResultDropped(_ token: TableLoadTraceToken?) {
@@ -79,7 +96,7 @@ extension MainContentCoordinator {
             token: token,
             detail: "tabOwnedBy=\(owner.map { "#\($0.sequence)" } ?? "none") cancelled=\(Task.isCancelled)"
         )
-        tracer.finish(token: token, outcome: "staleDropped")
+        tracer.finish(token: token, outcome: .staleDropped)
     }
 
     /// A result whose table no longer matches what the tab shows is the defect the user sees as
@@ -110,7 +127,8 @@ extension MainContentCoordinator {
         return tracer.begin(
             tabId: tabId,
             table: tab.tableContext.tableName ?? tab.title,
-            origin: .reExecute
+            origin: .reExecute,
+            environment: tableLoadEnvironment
         )
     }
 
@@ -118,18 +136,18 @@ extension MainContentCoordinator {
         guard let token else { return }
         let tracer = TableLoadTracer.shared
         tracer.anomaly(.connectionNotReady, token: token, detail: "site=ensureConnected")
-        tracer.finish(token: token, outcome: "notConnected")
+        tracer.finish(token: token, outcome: .notConnected)
     }
 
     func traceExecutionFailed(_ token: TableLoadTraceToken?, error: Error) {
         guard let token else { return }
-        TableLoadTracer.shared.finish(token: token, outcome: "failed:\(type(of: error))")
+        TableLoadTracer.shared.finish(token: token, outcome: .failed, detail: "\(type(of: error))")
     }
 
     /// Ends the trace one run loop turn after the grid reload. `reloadData()` only invalidates,
     /// so the cell work it schedules runs later in the same turn; closing the trace on the next
     /// turn is what makes that cost visible instead of hiding it after the last stage.
-    func scheduleTraceCompletion(_ token: TableLoadTraceToken?, outcome: String) {
+    func scheduleTraceCompletion(_ token: TableLoadTraceToken?, outcome: TableLoadOutcome) {
         TableLoadTracer.shared.endApplyScope()
         guard let token else { return }
         DispatchQueue.main.async {
