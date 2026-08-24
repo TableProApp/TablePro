@@ -348,9 +348,24 @@ enum ConnectionColor: String, CaseIterable, Identifiable, Codable {
     /// The same hue, dimmed only as far as a label sitting on it needs. Use this wherever text is
     /// drawn on the colour; `indicatorColor` stays at full brightness everywhere else, which is
     /// why the picker swatch and the fill can differ by a few percent without disagreeing.
+    ///
+    /// The tuning runs inside a dynamic provider rather than at the point of call, because
+    /// `tunedForLegibleLabel` ends at `NSColor(hue:saturation:brightness:alpha:)`, which is a
+    /// concrete colour in whatever appearance happened to be current. Resolving eagerly froze it:
+    /// measured, a tuned red stayed `#DB393B` in both appearances while an untouched orange still
+    /// moved between `#FF8D28` and `#FF9230`, so half the palette followed a Light/Dark switch and
+    /// half did not. A provider is resolved by AppKit against the appearance it is drawn in, so no
+    /// call site has to remember to observe the colour scheme.
     var labelledFill: Color? {
         guard !isDefault else { return nil }
-        return Color(nsColor: NSColor(color).tunedForLegibleLabel())
+        let palette = color
+        return Color(nsColor: NSColor(name: nil) { appearance in
+            var tuned = NSColor.clear
+            appearance.performAsCurrentDrawingAppearance {
+                tuned = NSColor(palette).tunedForLegibleLabel()
+            }
+            return tuned
+        })
     }
 }
 

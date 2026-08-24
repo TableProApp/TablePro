@@ -347,11 +347,12 @@ struct SafeModeMigrationTests {
         #expect(manager.session(for: id)?.connection.name == "Production (renamed)")
     }
 
-    /// The session owns the database it switched to; storage still holds the one the connection was
-    /// configured with. Adopting the stored record wholesale would silently move a browsing session
-    /// back to the configured database, so the reconcile has to carry this one field over.
-    @Test("The reconcile keeps the database the session switched to")
-    func reconcileKeepsSwitchedDatabase() {
+    /// `reconnectOntoDatabase` builds its reconnect from `session.connection`, so a host, port or
+    /// username edit that reached a live session would let the health monitor silently reconnect an
+    /// open window to a different server. The reconcile carries display fields only; the connect
+    /// target belongs to the next connect the user asks for.
+    @Test("The reconcile never moves a live session's connect target")
+    func reconcileKeepsConnectTarget() {
         let id = UUID()
         let connection = makeConnection(id: id, name: "Production", safeModeLevel: .silent)
         storage.addConnection(connection)
@@ -364,12 +365,19 @@ struct SafeModeMigrationTests {
 
         var edited = connection
         edited.color = .blue
+        edited.host = "production.example.com"
+        edited.port = 5_432
+        edited.username = "someone_else"
         storage.updateConnection(edited)
 
         manager.reconcileStoredRecord(for: id)
 
-        #expect(manager.session(for: id)?.connection.database == "analytics")
-        #expect(manager.session(for: id)?.connection.identityColor == .blue)
+        let session = manager.session(for: id)
+        #expect(session?.connection.identityColor == .blue)
+        #expect(session?.connection.host == "127.0.0.1")
+        #expect(session?.connection.port == 3_306)
+        #expect(session?.connection.username == "root")
+        #expect(session?.connection.database == "analytics")
     }
 
     @Test("An edit saved from the connection form reaches the open session")

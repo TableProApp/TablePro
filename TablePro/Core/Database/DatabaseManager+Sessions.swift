@@ -521,27 +521,31 @@ extension DatabaseManager {
         for id in targetIds {
             guard let session = activeSessions[id],
                   let stored = connectionStorage.loadConnection(id: id) else { continue }
-            adoptStoredRecord(stored, keepingRuntimeStateOf: session, for: id)
+            adoptDisplayFields(from: stored, into: session, for: id)
             setSafeModeLevel(stored.safeModeLevel, for: id)
         }
     }
 
-    /// The stored record owns every field the connection form can edit. A live session owns only
-    /// what it switched at runtime, which is the browsed database and the safe-mode level, so those
-    /// two are carried over and the rest is taken from storage.
+    /// Carries the fields a live session only ever *displays* across from storage, and nothing else.
     ///
-    /// This used to reconcile `safeModeLevel` alone, which left everything else on the session
-    /// frozen at connect time. `WorkspaceRailStore.resolve` reads `session.connection` for any live
-    /// session, so renaming or recolouring a connection changed nothing in the rail until the next
-    /// reconnect (#2398).
-    private func adoptStoredRecord(
-        _ stored: DatabaseConnection,
-        keepingRuntimeStateOf session: ConnectionSession,
+    /// This used to reconcile `safeModeLevel` alone, so everything else stayed frozen at connect
+    /// time. `WorkspaceRailStore.resolve` reads `session.connection` for any live session, which
+    /// made a rename or a recolour invisible in the rail until the next reconnect (#2398).
+    ///
+    /// The allowlist is deliberately narrow, and adopting the whole stored record instead would be
+    /// unsafe: `reconnectOntoDatabase` builds its reconnect from `session.connection`, so letting
+    /// an edited host, port, username or SSH config reach a live session would let the health
+    /// monitor silently reconnect an open window, with its tabs, to a different server. An edit to
+    /// those fields belongs to the next connect the user asks for, not to the one already running.
+    private func adoptDisplayFields(
+        from stored: DatabaseConnection,
+        into session: ConnectionSession,
         for connectionId: UUID
     ) {
-        var reconciled = stored
-        reconciled.database = session.connection.database
-        reconciled.safeModeLevel = session.connection.safeModeLevel
+        var reconciled = session.connection
+        reconciled.name = stored.name
+        reconciled.color = stored.color
+        reconciled.tagIds = stored.tagIds
         guard reconciled != session.connection else { return }
 
         var updated = session

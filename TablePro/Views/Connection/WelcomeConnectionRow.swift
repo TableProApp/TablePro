@@ -42,13 +42,21 @@ struct WelcomeConnectionRow: View {
     /// stays the engine's own colour. It is a dot and not the toolbar's filled capsule because a
     /// row can be selected, and a fill of its own would compete with the selection band; the dot
     /// steps aside through `selectionAwareTint` the way the connection switcher's already does.
+    ///
+    /// An uncoloured connection gets a neutral dot rather than no dot, so every name in the list
+    /// starts at the same x and the column keeps a straight left edge. The connection switcher
+    /// resolves it the same way.
     @ViewBuilder
     private var identityDot: some View {
-        if let identity = connection.identityColor, let indicator = identity.indicatorColor {
-            Circle()
-                .selectionAwareTint(indicator)
-                .frame(width: 8, height: 8)
-                .accessibilityLabel(String(format: String(localized: "Color: %@"), identity.displayName))
+        let identity = connection.identityColor
+        let dot = Circle()
+            .selectionAwareTint(identity?.indicatorColor ?? .secondary)
+            .frame(width: 8, height: 8)
+
+        if let identity {
+            dot.accessibilityLabel(String(format: String(localized: "Color: %@"), identity.displayName))
+        } else {
+            dot.accessibilityHidden(true)
         }
     }
 

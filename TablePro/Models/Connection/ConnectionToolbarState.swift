@@ -171,14 +171,22 @@ final class ConnectionToolbarState {
 
     // MARK: - Update Methods
 
-    /// Update state from a DatabaseConnection model
+    /// Update state from a DatabaseConnection model.
+    ///
+    /// Guarded field by field like every other write on this object. This runs on the
+    /// `connectionUpdated` path, which fires on any connection save and on a bulk `nil` after an
+    /// iCloud pull, so an unguarded write would invalidate every window's toolbar on a change that
+    /// touched nothing it displays.
     func update(from connection: DatabaseConnection) {
-        connectionName = connection.name
-        databaseType = connection.type
-        brandColor = connection.brandColor
-        identityColor = connection.identityColor
-        tagIds = connection.tagIds
-        databaseGroupingStrategy = PluginManager.shared.databaseGroupingStrategy(for: connection.type)
+        if connectionName != connection.name { connectionName = connection.name }
+        if databaseType != connection.type { databaseType = connection.type }
+        if brandColor != connection.brandColor { brandColor = connection.brandColor }
+        if identityColor != connection.identityColor { identityColor = connection.identityColor }
+        if tagIds != connection.tagIds { tagIds = connection.tagIds }
+
+        let strategy = PluginManager.shared.databaseGroupingStrategy(for: connection.type)
+        if databaseGroupingStrategy != strategy { databaseGroupingStrategy = strategy }
+
         syncFromSession(for: connection)
     }
 

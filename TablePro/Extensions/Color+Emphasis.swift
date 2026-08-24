@@ -67,7 +67,7 @@ internal extension NSColor {
 
         var tooDim: CGFloat = 0
         var tooBright = brightness
-        var tuned = NSColor(hue: hue, saturation: saturation, brightness: 0, alpha: alpha)
+        var tuned: NSColor?
         for _ in 0 ..< Self.labelTuningSteps {
             let candidate = NSColor(hue: hue, saturation: saturation, brightness: (tooDim + tooBright) / 2, alpha: alpha)
             if candidate.contrastWithDerivedLabel >= minimumRatio {
@@ -77,7 +77,11 @@ internal extension NSColor {
                 tooBright = (tooDim + tooBright) / 2
             }
         }
-        return tuned
+        /// At the ratios this app asks for, the first candidate always passes and the search only
+        /// refines it. A caller naming a ratio no brightness of this hue can reach would otherwise
+        /// be handed pure black, silently losing the hue, so an unreachable target keeps the colour
+        /// it was given and leaves the contrast decision with the caller.
+        return tuned ?? self
     }
 
     /// Enough halvings of the brightness range to land inside a step no 8-bit channel can express.
