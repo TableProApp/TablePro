@@ -105,7 +105,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         tableView.menu = contextMenu()
         tableView.registerForDraggedTypes([Self.reorderType])
         tableView.setDraggingSourceOperationMask(.move, forLocal: true)
-        tableView.onMiddleClick = { [weak self] row in self?.closeConnection(atRow: row) }
+        tableView.onMiddleClick = { [weak self] row in self?.closeWorkspace(atRow: row) }
         tableView.setAccessibilityIdentifier("workspace-rail")
         tableView.setAccessibilityLabel(String(localized: "Open Connections"))
 
@@ -287,7 +287,8 @@ internal final class WorkspaceRailViewController: NSViewController {
         commit(row: tableView.selectedRow)
     }
 
-    /// Close means the connection highlighted here while the strip holds the keyboard.
+    /// Close means the entry highlighted here while the strip holds the keyboard, and the
+    /// connection when that entry is the only one it has.
     ///
     /// The selector is the window's, deliberately: `performClose:` reaching the responder chain
     /// finds this implementation before the window's whenever the strip is focused, which is the
@@ -297,13 +298,13 @@ internal final class WorkspaceRailViewController: NSViewController {
     @objc
     internal func performClose(_ sender: Any?) {
         guard let workspace = appliedSelection else {
-            /// Nothing highlighted means the strip has no connection to close, not that Close does
+            /// Nothing highlighted means the strip has no entry to close, not that Close does
             /// nothing: swallowing it here would leave the command dead in a window that has tabs,
             /// which is the failure this whole route exists to prevent.
             view.window?.performClose(sender)
             return
         }
-        close(connectionId: workspace.connectionId)
+        close(workspace)
     }
 
     private func commit(row: Int) {
@@ -469,14 +470,41 @@ internal final class WorkspaceRailViewController: NSViewController {
     }
 
     @objc
+    private func closeWorkspace(_ sender: NSMenuItem) {
+        guard let workspace = sender.representedObject as? WorkspaceID else { return }
+        close(workspace)
+    }
+
+    @objc
     private func closeConnection(_ sender: NSMenuItem) {
         guard let workspace = sender.representedObject as? WorkspaceID else { return }
         close(connectionId: workspace.connectionId)
     }
 
-    private func closeConnection(atRow row: Int) {
+    private func closeWorkspace(atRow row: Int) {
         guard entries.indices.contains(row) else { return }
-        close(connectionId: entries[row].workspace.connectionId)
+        close(entries[row].workspace)
+    }
+
+    private func close(_ workspace: WorkspaceID) {
+        Task { await WorkspaceCloseAction.close(workspace) }
+    }
+
+    /// Named after what the engine calls a container, not after the row. "Close “logs”" would read
+    /// as the connection on the one key the app already uses for exactly that, and its translations
+    /// say so: the Turkish for `Close “%@”` is "close %@'s connection".
+    internal static func containerCloseTitle(for entry: WorkspaceRailEntry) -> String {
+        let format = entry.containerTarget == .schema
+            ? String(localized: "Close Schema “%@”")
+            : String(localized: "Close Database “%@”")
+        return String(format: format, entry.container)
+    }
+
+    /// Read from the entries this rail is showing, which is the list the user is looking at.
+    private func closeScope(for workspace: WorkspaceID) -> WorkspaceCloseAction.Scope {
+        guard !workspace.container.isEmpty else { return .connection }
+        let count = entries.count { $0.workspace.connectionId == workspace.connectionId }
+        return WorkspaceCloseAction.scope(entryCount: count)
     }
 
     private func close(connectionId: UUID) {
@@ -507,15 +535,19 @@ internal final class WorkspaceRailViewController: NSViewController {
 // MARK: - CloseCommandNaming
 
 extension WorkspaceRailViewController: CloseCommandNaming {
-    /// The strip's own contextual menu names the connection it would close, and the menu bar has to
-    /// agree with it: the command is the same one.
+    /// The strip's own contextual menu names what it would close, and the menu bar has to agree with
+    /// it word for word: the command is the same one, so an entry that is its connection's only one
+    /// reads "Close Connection" in both, because that is what closing it takes.
     /// nil while nothing is highlighted, so the resolver falls back to the window, which is where
     /// the command goes in that state too.
     internal var closeCommandTitle: String? {
         guard let workspace = appliedSelection,
               let entry = entries.first(where: { $0.workspace == workspace })
         else { return nil }
-        return String(format: String(localized: "Close “%@”"), entry.connection.name)
+        guard closeScope(for: workspace) == .container else {
+            return String(format: String(localized: "Close Connection “%@”"), entry.connection.name)
+        }
+        return Self.containerCloseTitle(for: entry)
     }
 }
 
@@ -551,9 +583,18 @@ extension WorkspaceRailViewController: NSMenuDelegate {
             menu.addItem(.separator())
         }
 
+        if closeScope(for: entry.workspace) == .container {
+            addItem(
+                to: menu,
+                title: Self.containerCloseTitle(for: entry),
+                action: #selector(closeWorkspace(_:)),
+                workspace: entry.workspace
+            )
+        }
+
         addItem(
             to: menu,
-            title: String(format: String(localized: "Close “%@”"), entry.connection.name),
+            title: String(format: String(localized: "Close Connection “%@”"), entry.connection.name),
             action: #selector(closeConnection(_:)),
             workspace: entry.workspace
         )

@@ -86,7 +86,7 @@ extension MainContentCommandActions {
     /// standing after a successful save and made Save mean "cancel" on this path while it meant
     /// "close" on the window path.
     func confirmDiscardingUnsavedWork(victims: [QueryTab] = []) async -> Bool {
-        guard hasUnsavedWorkInConnection else { return true }
+        guard hasUnsavedWork(among: victims) else { return true }
 
         switch await AlertHelper.confirmSaveChanges(
             message: String(localized: "Your changes will be lost if you don't save them."),
@@ -100,6 +100,25 @@ extension MainContentCommandActions {
         case .cancel:
             return false
         }
+    }
+
+    /// What the batch is about to destroy, not what the connection happens to hold.
+    ///
+    /// A close that names its victims used to be judged by `hasUnsavedWorkInConnection`, which walks
+    /// every tab of the connection: closing one database's tabs while another database had a dirty
+    /// one asked the user to save work the command was not going to touch, and Save then ran
+    /// `saveSelectedTabWork()` on whatever tab was selected, which could be that other database's.
+    /// An empty victim list still means the whole connection, which is what the window-close and
+    /// disconnect paths ask about.
+    ///
+    /// The connection-wide flags ride with the selected tab. The row inspector's edits and the
+    /// pending truncates and drops belong to the pane on screen, so they count exactly when that
+    /// pane's tab is one of the victims.
+    func hasUnsavedWork(among victims: [QueryTab]) -> Bool {
+        guard let coordinator, !victims.isEmpty else { return hasUnsavedWorkInConnection }
+        if victims.contains(where: { coordinator.hasUnsavedWork(in: $0) }) { return true }
+        guard victims.contains(where: { coordinator.isSelectedTab($0) }) else { return false }
+        return coordinator.hasSidebarEdits || coordinator.hasPendingDestructiveTableOps
     }
 
     private func tabsToClose(kind: BatchCloseKind) -> [QueryTab] {

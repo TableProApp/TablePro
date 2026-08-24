@@ -7,15 +7,16 @@ import AppKit
 import Foundation
 
 /// The one path a user-requested connection close takes, whatever surface asked for it. A peer of
-/// `ConnectionDisconnectAction`, and the two are deliberately different: Disconnect ends the
-/// session and leaves the connection in place to reconnect, Close ends the connection.
+/// `ConnectionDisconnectAction` and of `WorkspaceCloseAction`, and the three are deliberately
+/// different: Disconnect ends the session and leaves the connection in place to reconnect, closing
+/// an entry takes one container of a connection, and this ends the connection and every entry it
+/// has.
 ///
-/// The rail used to offer this as "Close Workspace", wired to the tab strip's bulk-close family, so
-/// it closed a subset of one connection's tabs and left the row it was invoked on exactly where it
-/// was. No platform or competitor precedent puts that scope on a list of open sessions: the HIG has
-/// no close verb for a sidebar row at all, the one app shipping the literal string is Xcode's File
-/// menu where it means the whole project session, and Finder's Locations rows, the true analogue of
-/// a list of live remote sessions, end the session and drop the row.
+/// The strip used to send all three of its close routes here, because an entry had no lifetime of
+/// its own: it was derived from the tabs, so a close scoped to one container left the row it was
+/// invoked on exactly where it was, and the command read as doing nothing. An entry is now open
+/// until it is closed, so a close on one takes that container and `WorkspaceCloseAction` owns it;
+/// this is what a connection's last entry closes to, and what File > Close Connection runs.
 @MainActor
 internal enum ConnectionCloseAction {
     internal enum Decision: Equatable {

@@ -32,9 +32,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The connection color as a filled badge behind the connection name, with the database icon back to its engine color. (#2398)
 - Deeper fills on tag badges and the connection name badge. (#2398)
 - Turkish, Vietnamese, Simplified Chinese and Traditional Chinese cover every string that was still in English.
+- A database stays in the connections strip until you close its entry.
+- Close on a connections-strip entry closes that database, and the connection only when it is the last entry.
 
 ### Fixed
 
+- The connections strip disappearing when you click the entry you came from.
+- Every database entry but one leaving the connections strip when a connection is disconnected.
+- A connection opened from a file or a URL losing its strip entries when its session ends.
+- Closing one database's tabs asking to save unsaved work in another.
 - A connection's color and name not reaching the toolbar and workspace rail until the next reconnect. (#2398)
 - An invisible connection dot in the query history drawer and the compare status strip. (#2398)
 - The JSON viewer keeping its old font after a font, theme or text-size change. (#2393)

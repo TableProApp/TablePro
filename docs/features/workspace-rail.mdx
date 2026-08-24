@@ -30,15 +30,15 @@ Shape carries the state, not just color.
 
 ## When an entry appears
 
-Switching database adds an entry only when the one you are leaving has work in it: a table open, a query you typed, a file you opened, or edits you have not saved.
+Switching database adds an entry and keeps the one you are leaving, so both databases stay a click apart. An entry lasts until you close it.
 
 | You are on `app` and switch to `logs` | Result |
 |---|---|
-| A table is open in `app` | `app` stays, `logs` is added |
-| Only an empty query tab is open | `app` becomes `logs` |
+| First switch | `app` stays, `logs` is added |
+| Back to `app` from the strip | Both stay, `app` is current |
 | `logs` is already listed | The existing `logs` entry activates |
 
-An entry goes away when its last tab closes and you are no longer browsing it; one you still have work in is never removed. The set is per session, so relaunching starts from the databases your restored tabs use.
+Closing an entry's last tab leaves the entry where it is: tabs and entries close separately. The set is per session, so relaunching starts from the database each connection opens on, plus the databases your restored tabs have work in.
 
 ## Switching
 
@@ -56,7 +56,9 @@ A first window opens at 1200x800 and goes no smaller than 720x480; later windows
 
 ## Closing and disconnecting
 
-Right-click an entry and choose **Close “\<name\>”** to close the connection: every tab across every database it has open, its session, and all of its entries. Unsaved work is confirmed first, and the window closes too if that was its last connection. Middle-clicking does the same without the menu, and **File > Close Connection** does it for the connection on screen. Nothing is lost for good: reopen the connection, from the connection list or **Database > Switch Connection…**, and its tabs come back as they were.
+Right-click an entry and choose **Close Database “\<name\>”** to close that database: its tabs go, its entry goes, and the connection keeps everything it has open elsewhere. Unsaved work in those tabs is confirmed first, and the strip lands on the next entry. Middle-clicking does the same without the menu, and so does `Cmd+W` while the strip holds the keyboard. On servers that group objects by schema the item reads **Close Schema “\<name\>”**.
+
+**Close Connection “\<name\>”**, below it, closes the whole connection: every tab across every database it has open, its session, and all of its entries. The window closes too if that was its last connection, and **File > Close Connection** does the same for the connection on screen. A connection down to one entry has nothing else left, so closing that entry closes it. Nothing is lost for good: reopen the connection, from the connection list or **Database > Switch Connection…**, and its tabs come back as they were.
 
 **Disconnect**, on the same menu while the connection is live, ends the session and keeps everything else. No window closes, no entry disappears, and the tabs are saved first; the connection shows a Reconnect pane in their place until **Database > Reconnect**, or the pane's own button, brings both back. **Database > Disconnect** does the same for the connection on screen, asking first when a query is running or changes are unsaved. Nothing reconnects on its own, and a connection you disconnected is not reopened at the next launch.
 

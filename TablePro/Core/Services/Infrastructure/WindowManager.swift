@@ -266,6 +266,19 @@ internal final class WindowManager {
         Set(hosts().flatMap(\.workspaces.connectionIds))
     }
 
+    /// Every hosted connection's workspace, which is where the containers it has open live and
+    /// where its connection record survives the end of its session.
+    internal func hostedWorkspaces() -> [ConnectionWorkspace] {
+        hosts().flatMap(\.workspaces.workspaces)
+    }
+
+    internal func workspace(for connectionId: UUID) -> ConnectionWorkspace? {
+        hosts()
+            .lazy
+            .compactMap { $0.workspaces.workspace(for: connectionId) }
+            .first
+    }
+
     internal func window(for connectionId: UUID) -> NSWindow? {
         controllers.values
             .first { controller in

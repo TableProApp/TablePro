@@ -34,17 +34,21 @@ struct WorkspaceRailStoreTests {
     private func resolve(
         openConnectionIds: Set<UUID>,
         sessions: [UUID: ConnectionSession],
+        hostedConnections: [UUID: DatabaseConnection] = [:],
         storedConnections: [UUID: DatabaseConnection] = [:],
         target: ContainerSwitchTarget? = .database,
         tabs: [UUID: [QueryTab]] = [:],
+        opened: [UUID: Set<String>] = [:],
         storedOrder: [WorkspaceID] = []
     ) -> [WorkspaceRailEntry] {
         WorkspaceRailStore.resolveEntries(
             openConnectionIds: openConnectionIds,
             sessions: sessions,
+            hostedConnections: hostedConnections,
             storedConnections: storedConnections,
             containerTarget: { _ in target },
             tabs: { tabs[$0] ?? [] },
+            openedContainers: { opened[$0] ?? [] },
             storedOrder: storedOrder
         )
     }
@@ -125,7 +129,9 @@ struct WorkspaceRailStoreTests {
         #expect(Set(entries.map(\.container)) == ["app", "logs"])
     }
 
-    @Test("An empty query tab does not hold its database, so browsing away reuses its row")
+    /// A restored window has tabs before anything has browsed anywhere, so a container nobody has
+    /// opened is listed only when a tab there carries work. An empty scratch tab does not.
+    @Test("An empty query tab in a container nobody opened earns no row")
     func scratchTabDoesNotHoldItsContainer() {
         let connection = TestFixtures.makeConnection(database: "app")
         let entries = resolve(
@@ -134,6 +140,87 @@ struct WorkspaceRailStoreTests {
             tabs: [connection.id: [scratchTab(database: "app")]]
         )
         #expect(entries.map(\.container) == ["logs"])
+    }
+
+    /// The reported bug. Work in `app` holds its row, `logs` is opened by browsing to it, and going
+    /// back to `app` used to take the `logs` row away: the strip fell to one entry and hid itself,
+    /// so the switcher deleted the row the user had just come from.
+    @Test("A container stays listed after the connection browses back to another one")
+    func openedContainerSurvivesBrowsingBack() {
+        let connection = TestFixtures.makeConnection(database: "app")
+        let entries = resolve(
+            openConnectionIds: [connection.id],
+            sessions: [connection.id: makeSession(connection, browseDatabase: "app")],
+            tabs: [connection.id: [tableTab(database: "app")]],
+            opened: [connection.id: ["app", "logs"]]
+        )
+        #expect(Set(entries.map(\.container)) == ["app", "logs"])
+    }
+
+    @Test("An opened container with nothing in it still earns a row")
+    func openedContainerNeedsNoTabs() {
+        let connection = TestFixtures.makeConnection(database: "app")
+        let entries = resolve(
+            openConnectionIds: [connection.id],
+            sessions: [connection.id: makeSession(connection, browseDatabase: "app")],
+            opened: [connection.id: ["app", "logs", "audit"]]
+        )
+        #expect(Set(entries.map(\.container)) == ["app", "logs", "audit"])
+    }
+
+    @Test("A closed container leaves the strip even while its connection stays")
+    func closedContainerLeavesTheStrip() {
+        let connection = TestFixtures.makeConnection(database: "app")
+        let entries = resolve(
+            openConnectionIds: [connection.id],
+            sessions: [connection.id: makeSession(connection, browseDatabase: "app")],
+            opened: [connection.id: ["app"]]
+        )
+        #expect(entries.map(\.container) == ["app"])
+    }
+
+    /// The saved default is a last resort, not a floor. Taking it whenever the session is gone put
+    /// the connection's own database straight back the moment its entry was closed, on exactly the
+    /// connection that has no session to browse away with, so the close read as doing nothing.
+    @Test("A closed entry stays closed on a connection whose session has gone")
+    func closedContainerIsNotRestoredFromTheSavedDefault() {
+        let connection = TestFixtures.makeConnection(database: "app")
+        let entries = resolve(
+            openConnectionIds: [connection.id],
+            sessions: [:],
+            hostedConnections: [connection.id: connection],
+            opened: [connection.id: ["logs"]]
+        )
+        #expect(entries.map(\.container) == ["logs"])
+    }
+
+    @Test("A connection with nothing open still shows its saved database")
+    func savedDatabaseCarriesTheOnlyRow() {
+        let connection = TestFixtures.makeConnection(database: "app")
+        let entries = resolve(
+            openConnectionIds: [connection.id],
+            sessions: [:],
+            hostedConnections: [connection.id: connection]
+        )
+        #expect(entries.map(\.container) == ["app"])
+    }
+
+    /// A connection opened from a file or a URL is never written to `ConnectionStorage`, so
+    /// resolving from storage alone dropped every row it had the moment its session ended, while
+    /// its window was still open and hosting it.
+    @Test("A connection that was never saved keeps its rows once its session ends")
+    func unsavedConnectionKeepsItsRowsWithoutASession() throws {
+        let connection = TestFixtures.makeConnection(database: "/tmp/sales.sqlite")
+        let entries = resolve(
+            openConnectionIds: [connection.id],
+            sessions: [:],
+            hostedConnections: [connection.id: connection],
+            opened: [connection.id: ["/tmp/sales.sqlite"]]
+        )
+        let entry = try #require(entries.first)
+        #expect(entry.connection.id == connection.id)
+        #expect(entry.container == "/tmp/sales.sqlite")
+        #expect(entry.status == .disconnected)
     }
 
     @Test("Every workspace of one connection carries that connection")
