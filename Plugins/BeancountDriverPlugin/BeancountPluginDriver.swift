@@ -92,7 +92,8 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private static let notesQuery = "SELECT date, account, comment FROM #notes ORDER BY date, account"
     private static let eventsQuery = "SELECT date, type, description FROM #events ORDER BY date, type"
     private static let padsQuery =
-        "SELECT date, filename, lineno FROM #entries WHERE type = 'pad' ORDER BY date, id"
+        "SELECT id, date, filename, lineno FROM #entries WHERE type = 'pad' ORDER BY id"
+    private static let padDirectivesQuery = "PRINT FROM FALSE"
     private static let closesQuery =
         "SELECT account, close FROM #accounts WHERE close IS NOT NULL ORDER BY close, account"
     private static let logger = Logger(subsystem: "com.TablePro", category: "BeancountPluginDriver")
@@ -548,6 +549,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         case .rledger:
             let transactions = try transactionRows(ledgerPath: ledgerPath)
             let postings = try postingRows(ledgerPath: ledgerPath)
+            let pads = padProjection(ledgerPath: ledgerPath)
             return BeancountProjectionRows(
                 transactions: transactionRowsByAddingPostingDetails(transactions, postings: postings),
                 postings: postings,
@@ -559,9 +561,9 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 documents: directiveRows(ledgerPath: ledgerPath, bql: documentsQuery, table: "documents"),
                 notes: directiveRows(ledgerPath: ledgerPath, bql: notesQuery, table: "notes"),
                 events: directiveRows(ledgerPath: ledgerPath, bql: eventsQuery, table: "events"),
-                pads: padRows(ledgerPath: ledgerPath),
+                pads: pads.rows,
                 closes: directiveRows(ledgerPath: ledgerPath, bql: closesQuery, table: "closes"),
-                diagnostics: validationDiagnostics(ledgerPath: ledgerPath)
+                diagnostics: validationDiagnostics(ledgerPath: ledgerPath) + pads.diagnostics
             )
         case .python(let executablePath):
             let rows = try pythonProjectionRows(ledgerPath: ledgerPath, executablePath: executablePath)
@@ -652,57 +654,88 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    private static func padRows(ledgerPath: String) -> [[String: Any]] {
-        var sourceLines: [String: [String]] = [:]
-        var pads: [[String: Any]] = []
-        for row in directiveRows(ledgerPath: ledgerPath, bql: padsQuery, table: "pads") {
-            guard let filename = row["filename"] as? String,
-                  let line = intValue(row["lineno"]),
-                  let date = row["date"] as? String else {
-                logger.warning("Beancount projection skipped a pad whose source directive could not be resolved")
-                continue
-            }
-            let lines: [String]
-            if let cached = sourceLines[filename] {
-                lines = cached
-            } else {
-                guard let contents = try? String(contentsOf: URL(fileURLWithPath: filename), encoding: .utf8) else {
-                    logger.warning("Beancount projection skipped a pad whose source directive could not be resolved")
-                    continue
-                }
-                lines = contents.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-                sourceLines[filename] = lines
-            }
-            guard let accounts = padAccounts(lines: lines, line: line, date: date) else {
-                logger.warning("Beancount projection skipped a pad whose source directive could not be resolved")
-                continue
-            }
-            var enriched = row
-            enriched["account"] = accounts.account
-            enriched["source_account"] = accounts.sourceAccount
-            enriched["location"] = "\(filename):\(line)"
-            pads.append(enriched)
+    private static func padProjection(ledgerPath: String) -> BeancountPadProjection {
+        let entries = directiveRows(ledgerPath: ledgerPath, bql: padsQuery, table: "pads")
+        guard !entries.isEmpty else { return BeancountPadProjection() }
+        do {
+            let printed = try query(ledgerPath: ledgerPath, bql: padDirectivesQuery)
+            return padProjection(entries: entries, directives: printed.compactMap { stringValue($0["directive"]) })
+        } catch {
+            logger.warning("Beancount projection could not render pad directives: \(error)")
+            return BeancountPadProjection(
+                rows: [],
+                diagnostics: [padDiagnostic(entry: nil, message: padDirectivesUnavailableMessage(error))]
+            )
         }
-        return pads
     }
 
-    static func padAccounts(
-        lines: [String],
-        line: Int,
-        date: String
-    ) -> (account: String, sourceAccount: String)? {
-        guard line > 0 else { return nil }
-        guard let directive = lines[safe: line - 1] else { return nil }
-        let fields = directive.split(whereSeparator: \.isWhitespace)
-        guard fields.count >= 4,
-              dateComponents(fields[0]) == dateComponents(date),
-              fields[1] == "pad" else { return nil }
-        return (String(fields[2]), String(fields[3]))
+    static func padProjection(entries: [[String: Any]], directives: [String]) -> BeancountPadProjection {
+        let renderedPads = directives.compactMap(padRendering(in:))
+        var projection = BeancountPadProjection()
+        for (index, entry) in entries.enumerated() {
+            guard let date = stringValue(entry["date"]) else {
+                projection.diagnostics.append(padDiagnostic(entry: entry, message: padDateMissingMessage))
+                continue
+            }
+            guard let rendering = renderedPads[safe: index],
+                  let printed = padDirective(rendering: rendering),
+                  printed.date == date else {
+                projection.diagnostics.append(padDiagnostic(entry: entry, message: padUncorrelatedMessage))
+                continue
+            }
+            var row = entry
+            row["account"] = printed.account
+            row["source_account"] = printed.sourceAccount
+            projection.rows.append(row)
+        }
+        return projection
     }
 
-    private static func dateComponents(_ value: some StringProtocol) -> [Int]? {
-        let components = value.split(separator: "-", omittingEmptySubsequences: false).compactMap { Int($0) }
-        return components.count == 3 ? components : nil
+    private static func padRendering(in directive: String) -> String? {
+        guard let line = directive.split(separator: "\n", omittingEmptySubsequences: true).first else { return nil }
+        let fields = line.split(separator: " ", omittingEmptySubsequences: true)
+        guard fields.count >= 2, fields[1] == "pad" else { return nil }
+        return String(line)
+    }
+
+    static func padDirective(
+        rendering: String
+    ) -> (date: String, account: String, sourceAccount: String)? {
+        guard let line = rendering.split(separator: "\n", omittingEmptySubsequences: true).first else { return nil }
+        let fields = line.split(separator: " ", omittingEmptySubsequences: true)
+        guard fields.count == 4, fields[1] == "pad" else { return nil }
+        return (String(fields[0]), String(fields[2]), String(fields[3]))
+    }
+
+    private static func padDiagnostic(entry: [String: Any]?, message: String) -> [String: Any] {
+        var diagnostic: [String: Any] = [
+            "severity": "warning",
+            "phase": "projection",
+            "message": message
+        ]
+        guard let entry else { return diagnostic }
+        if let file = stringValue(entry["filename"]) {
+            diagnostic["file"] = file
+        }
+        if let line = intValue(entry["lineno"]) {
+            diagnostic["line"] = line
+        }
+        return diagnostic
+    }
+
+    private static var padDateMissingMessage: String {
+        String(localized: "The pad directive carries no date, so its accounts were not projected.")
+    }
+
+    private static var padUncorrelatedMessage: String {
+        String(localized: "The pad directive could not be matched to a rendered directive, so its accounts were not projected.")
+    }
+
+    private static func padDirectivesUnavailableMessage(_ error: Error) -> String {
+        String(
+            format: String(localized: "rledger could not render the ledger's directives, so the pads table is empty: %@"),
+            String(describing: error)
+        )
     }
 
     private static func validationDiagnostics(ledgerPath: String) -> [[String: Any]] {

@@ -530,12 +530,13 @@ struct BeancountPluginDriverTests {
         try Data("pdf".utf8).write(to: directory.appendingPathComponent("receipt.pdf"))
 
         let padsLedger = directory.appendingPathComponent("pads.beancount")
-        try """
-        2024-01-01 open Equity:Opening-Balances USD
-
-        2024-06-28 pad Assets:Cash Equity:Opening-Balances
-        2024-06-29 balance Assets:Cash 0 USD
-        """.write(to: padsLedger, atomically: true, encoding: .utf8)
+        let crlfPadsLedger = [
+            "2024-01-01 open Equity:Opening-Balances USD",
+            "",
+            "2024/06/28 pad Assets:Cash Equity:Opening-Balances;opening",
+            "2024-06-29 balance Assets:Cash 0 USD"
+        ].joined(separator: "\r\n")
+        try crlfPadsLedger.write(to: padsLedger, atomically: true, encoding: .utf8)
 
         let ledger = directory.appendingPathComponent("main.beancount")
         try """

@@ -74,6 +74,11 @@ struct BeancountProjectionRows: @unchecked Sendable {
     var diagnostics: [[String: Any]] = []
 }
 
+struct BeancountPadProjection: @unchecked Sendable {
+    var rows: [[String: Any]] = []
+    var diagnostics: [[String: Any]] = []
+}
+
 extension BeancountPluginDriver {
     static func loadProjection(rows: BeancountProjectionRows, sourceFiles: [URL]) throws -> OpaquePointer {
         var handle: OpaquePointer?
@@ -193,9 +198,9 @@ extension BeancountPluginDriver {
                 date DATE NOT NULL,
                 account TEXT NOT NULL,
                 source_account TEXT NOT NULL,
-                source_file TEXT NOT NULL,
-                line INTEGER NOT NULL,
-                source_location TEXT NOT NULL
+                source_file TEXT,
+                line INTEGER,
+                source_location TEXT
             );
             CREATE TABLE closes (
                 id INTEGER PRIMARY KEY,
@@ -427,17 +432,10 @@ extension BeancountPluginDriver {
         for row in rows {
             guard let date = stringValue(row["date"]),
                   let account = stringValue(row["account"]),
-                  let sourceAccount = stringValue(row["source_account"]),
-                  let position = sourcePosition(
-                      file: row["filename"],
-                      line: row["lineno"],
-                      formatted: row["location"]
-                  ),
-                  let sourceFile = position.file,
-                  let line = position.line,
-                  let sourceLocation = position.formatted else {
+                  let sourceAccount = stringValue(row["source_account"]) else {
                 continue
             }
+            let position = sourcePosition(file: row["filename"], line: row["lineno"], formatted: row["location"])
             padId += 1
             try writer.insert(sql: """
                 INSERT INTO pads (id, date, account, source_account, source_file, line, source_location)
@@ -447,9 +445,9 @@ extension BeancountPluginDriver {
                     date,
                     account,
                     sourceAccount,
-                    sourceFile,
-                    String(line),
-                    sourceLocation
+                    position?.file,
+                    position?.line.map(String.init),
+                    position?.formatted
                 ])
         }
     }
@@ -558,7 +556,7 @@ extension BeancountPluginDriver {
         }
     }
 
-    private static func stringValue(_ value: Any?) -> String? {
+    static func stringValue(_ value: Any?) -> String? {
         switch value {
         case let string as String:
             return string

@@ -5,7 +5,7 @@ description: Backend requirements, the table layout, source locations, includes,
 
 import RegistryPlugin from "/snippets/registry-plugin.mdx";
 
-Install `rledger` or Python Beancount before you connect. The plugin shells out to one of those two and projects the answer into 18 read-only SQL tables.
+Install `rledger` or Python Beancount before you connect. The plugin shells out to one of those two and projects the answer into 18 read-only SQL tables. Every projected directive comes from the backend's own output; the plugin reads the ledger text only to follow `include` directives and document roots.
 
 <RegistryPlugin name="Beancount" plugin="Beancount Driver" />
 
@@ -100,11 +100,15 @@ Every ledger file, glob directory, and referenced document is watched by modific
 
 `transactions`, `postings`, and `pads` carry `source_file`, `line`, and `source_location`, the last formatted `path:line` so it copies, filters, and exports as it stands. A posting points at its own line, not at its transaction's.
 
-The backends disagree about generated entries. For the transaction a `pad` inserts, `rledger` leaves these columns empty and Python Beancount points them at the `pad`.
+The backends disagree about generated entries. For the transaction a `pad` inserts, `rledger` leaves these columns empty and Python Beancount points them at the `pad`. A `pad` a Beancount plugin generated keeps whatever name its metadata carries in `source_file`, and projects with `line` and `source_location` null.
+
+`rledger` exposes no pad accounts as query columns, so on that backend `pads.account` and `pads.source_account` come from `PRINT`, which renders each directive from the parsed ledger. Verified against rustledger 0.22.0.
 
 ## Diagnostics
 
 `diagnostics` carries `source_file`, `line`, `source_location`, `column_number`, `end_line`, `end_column`, `severity`, `phase`, `code`, and `message`. A ledger opened through `rledger` is projected even when validation fails, so whatever the projection skipped is readable here. The Python backend leaves the table empty.
+
+Rows from `rledger check` carry `phase` `validate`. Rows the projection wrote itself carry `projection`, and cover any pad directive whose accounts it could not resolve.
 
 ## Includes
 
