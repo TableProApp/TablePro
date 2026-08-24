@@ -3,6 +3,12 @@
   "strings" : {
     "" : {
       "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : ""
+          }
+        },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
@@ -30,6 +36,24 @@
             "state" : "translated",
             "value" : "%1$@ (%2$@)"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ (%2$@)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@（%2$@）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@（%2$@）"
+          }
         }
       }
     },
@@ -39,6 +63,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ (ORA-%2$ld)."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ (ORA-%2$ld)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@（ORA-%2$ld）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@（ORA-%2$ld）。"
           }
         }
       }
@@ -112,6 +154,24 @@
             "state" : "translated",
             "value" : "%@ 연결에서는 단축어를 통한 행 추가를 지원하지 않습니다."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối %@ không hỗ trợ thêm dòng từ Phím tắt."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 连接不支持通过“快捷指令”添加行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 連線不支援透過「捷徑」新增列。"
+          }
         }
       }
     },
@@ -128,6 +188,24 @@
             "state" : "translated",
             "value" : "%1$@에 %2$@ 열이 없습니다."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ không có cột nào tên %2$@."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 中没有名为 %2$@ 的列。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 中沒有名為 %2$@ 的欄位。"
+          }
         }
       }
     },
@@ -137,6 +215,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "읽기 전용인 %@에 행을 추가할 수 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ chỉ đọc nên không thể thêm dòng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 为只读，因此无法添加行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 為唯讀，因此無法新增列。"
           }
         }
       }
@@ -358,6 +454,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@, 포트 %lld"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, cổng %2$lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@，端口 %2$lld"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@，連接埠 %2$lld"
           }
         }
       }
@@ -661,6 +775,24 @@
             "state" : "translated",
             "value" : "1개 행"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 dòng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 列"
+          }
         }
       }
     },
@@ -698,6 +830,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "동기화 충돌이 감지되어 해결이 필요합니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phát hiện xung đột đồng bộ và cần được giải quyết."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "检测到同步冲突，需要解决。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "偵測到同步衝突，需要解決。"
           }
         }
       }
@@ -799,6 +949,24 @@
             "state" : "translated",
             "value" : "%2$@에 행 %1$lld개를 추가하시겠습니까?"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thêm %1$lld dòng vào %2$@?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向 %2$@ 添加 %1$lld 行？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要向 %2$@ 新增 %1$lld 列嗎？"
+          }
         }
       }
     },
@@ -865,6 +1033,24 @@
             "state" : "translated",
             "value" : "테이블에 행 추가"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thêm dòng vào bảng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向表添加行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向資料表新增列"
+          }
         }
       }
     },
@@ -874,6 +1060,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "‘테이블에 행 추가’는 하나의 행만 입력할 수 있습니다. 여러 행을 추가하려면 ‘테이블에 여러 행 추가’를 사용하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“Thêm dòng vào bảng” cần đúng một dòng. Dùng “Thêm nhiều dòng vào bảng” cho nhiều dòng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“向表添加行”只接受一行。多行请使用“向表添加多行”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「向資料表新增列」只接受一列。多列請使用「向資料表新增多列」。"
           }
         }
       }
@@ -885,6 +1089,24 @@
             "state" : "translated",
             "value" : "테이블에 여러 행 추가"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thêm nhiều dòng vào bảng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向表添加多行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向資料表新增多列"
+          }
         }
       }
     },
@@ -894,6 +1116,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "TablePro에서 연결 추가"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thêm một kết nối trong TablePro"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 TablePro 中添加连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 TablePro 中新增連線"
           }
         }
       }
@@ -933,6 +1173,24 @@
             "state" : "translated",
             "value" : "${table}에 행 추가"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thêm một dòng vào ${table}"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向 ${table} 添加一行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向 ${table} 新增一列"
+          }
         }
       }
     },
@@ -942,6 +1200,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "저장된 연결의 테이블에 여러 행을 추가합니다. 행을 JSON 배열, CSV 텍스트 또는 파일로 제공하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thêm nhiều dòng vào một bảng trên kết nối đã lưu. Cung cấp các dòng dưới dạng mảng JSON, văn bản CSV hoặc tệp."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向已保存连接上的表添加多行。以 JSON 数组、CSV 文本或文件形式提供这些行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向已儲存連線上的資料表新增多列。以 JSON 陣列、CSV 文字或檔案形式提供這些列。"
           }
         }
       }
@@ -953,6 +1229,24 @@
             "state" : "translated",
             "value" : "%@에 행 하나를 추가하시겠습니까?"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thêm một dòng vào %@?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向 %@ 添加一行？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要向 %@ 新增一列嗎？"
+          }
         }
       }
     },
@@ -963,6 +1257,24 @@
             "state" : "translated",
             "value" : "저장된 연결의 테이블에 행 하나를 추가합니다. 행을 JSON 객체 또는 CSV 행으로 제공하십시오."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thêm một dòng vào một bảng trên kết nối đã lưu. Cung cấp dòng dưới dạng đối tượng JSON hoặc một dòng CSV."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向已保存连接上的表添加一行。以 JSON 对象或一行 CSV 形式提供该行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向已儲存連線上的資料表新增一列。以 JSON 物件或一列 CSV 形式提供該列。"
+          }
         }
       }
     },
@@ -972,6 +1284,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "${table}에 여러 행 추가"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thêm các dòng vào ${table}"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向 ${table} 添加多行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "向 ${table} 新增多列"
           }
         }
       }
@@ -989,6 +1319,24 @@
             "state" : "translated",
             "value" : "%2$@에 행 %1$lld개를 추가했습니다."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đã thêm %1$lld dòng vào %2$@."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已向 %2$@ 添加 %1$lld 行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已向 %2$@ 新增 %1$lld 列。"
+          }
         }
       }
     },
@@ -998,6 +1346,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@에 행 하나를 추가했습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đã thêm một dòng vào %@."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已向 %@ 添加一行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已向 %@ 新增一列。"
           }
         }
       }
@@ -1262,6 +1628,24 @@
             "state" : "translated",
             "value" : "알 수 없는 동기화 오류가 발생했습니다: %@"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đã xảy ra lỗi đồng bộ không xác định: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发生未知同步错误：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "發生未知的同步錯誤：%@"
+          }
         }
       }
     },
@@ -1524,6 +1908,24 @@
             "state" : "translated",
             "value" : "자동"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tự động"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自動"
+          }
         }
       }
     },
@@ -1561,6 +1963,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "파란색"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xanh dương"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "蓝色"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "藍色"
           }
         }
       }
@@ -1600,6 +2020,24 @@
             "state" : "translated",
             "value" : "CA 인증서"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chứng chỉ CA"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CA 证书"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CA 憑證"
+          }
         }
       }
     },
@@ -1609,6 +2047,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "CA 인증서를 찾을 수 없습니다: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không tìm thấy chứng chỉ CA: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未找到CA证书：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "找不到 CA 憑證：%@"
           }
         }
       }
@@ -1704,6 +2160,24 @@
             "state" : "translated",
             "value" : "인증서"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chứng chỉ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "证书"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "憑證"
+          }
         }
       }
     },
@@ -1714,6 +2188,24 @@
             "state" : "translated",
             "value" : "인증서 암호"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mật khẩu chứng chỉ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "证书密码"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "憑證密碼"
+          }
         }
       }
     },
@@ -1723,6 +2215,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "인증서는 이 기기에만 저장되며 동기화되지 않습니다. PKCS#12 파일을 가져오면 클라이언트 인증서와 개인 키가 모두 입력됩니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chứng chỉ chỉ nằm trên thiết bị này và không bao giờ được đồng bộ. Một tệp PKCS#12 điền cả chứng chỉ máy khách lẫn khóa của nó."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "证书只保留在本设备上，永不同步。一个 PKCS#12 文件会同时填入客户端证书及其密钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "憑證只保留在本裝置上，永不同步。一個 PKCS#12 檔案會同時填入用戶端憑證及其金鑰。"
           }
         }
       }
@@ -1930,6 +2440,24 @@
             "state" : "translated",
             "value" : "파일 선택"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chọn tệp"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择文件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇檔案"
+          }
         }
       }
     },
@@ -2136,6 +2664,24 @@
             "state" : "translated",
             "value" : "클라이언트 인증서"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chứng chỉ máy khách"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "客户端证书"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用戶端憑證"
+          }
         }
       }
     },
@@ -2145,6 +2691,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "클라이언트 키"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khóa máy khách"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "客户端密钥"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用戶端金鑰"
           }
         }
       }
@@ -2156,6 +2720,24 @@
             "state" : "translated",
             "value" : "클라이언트 인증서"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chứng chỉ máy khách"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "客户端证书"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用戶端憑證"
+          }
         }
       }
     },
@@ -2166,6 +2748,24 @@
             "state" : "translated",
             "value" : "클라이언트 인증서를 찾을 수 없습니다: %@"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không tìm thấy chứng chỉ client: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未找到客户端证书：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "找不到用戶端憑證：%@"
+          }
         }
       }
     },
@@ -2175,6 +2775,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "클라이언트 키를 찾을 수 없습니다: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không tìm thấy khóa client: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未找到客户端私钥：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "找不到用戶端金鑰：%@"
           }
         }
       }
@@ -2298,6 +2916,24 @@
             "state" : "translated",
             "value" : "쓰기 확인"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xác nhận ghi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确认写入"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "確認寫入"
+          }
         }
       }
     },
@@ -2336,6 +2972,24 @@
             "state" : "translated",
             "value" : "그래도 연결"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vẫn kết nối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仍然连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仍要連線"
+          }
         }
       }
     },
@@ -2345,6 +2999,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "연결 방식"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối bằng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接方式"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線方式"
           }
         }
       }
@@ -2523,6 +3195,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "연결 실패: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối thất bại: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接失败：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線失敗：%@"
           }
         }
       }
@@ -2898,6 +3588,24 @@
             "state" : "translated",
             "value" : "이 서버와 Oracle 네이티브 네트워크 암호화를 완료할 수 없습니다. 서버에서 드라이버가 지원하지 않는 암호화 또는 체크섬 알고리즘을 요구할 수 있습니다."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể hoàn tất mã hóa mạng gốc của Oracle với máy chủ này. Có thể nó yêu cầu thuật toán mã hóa hoặc checksum mà driver không hỗ trợ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法与此服务器完成 Oracle 原生网络加密。它可能需要驱动不支持的加密或校验和算法。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法與此伺服器完成 Oracle 原生網路加密。它可能需要驅動程式不支援的加密或總和檢查碼演算法。"
+          }
         }
       }
     },
@@ -2908,6 +3616,24 @@
             "state" : "translated",
             "value" : "데이터베이스에 연결할 수 없습니다: %@"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể kết nối tới cơ sở dữ liệu: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接到数据库：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法連線到資料庫：%@"
+          }
         }
       }
     },
@@ -2917,6 +3643,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@의 열을 읽을 수 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể đọc các cột của %@."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取 %@ 的列。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取 %@ 的欄位。"
           }
         }
       }
@@ -3236,6 +3980,24 @@
             "state" : "translated",
             "value" : "데이터베이스 또는 스키마"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cơ sở dữ liệu hoặc Schema"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "数据库或模式"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "資料庫或綱要"
+          }
         }
       }
     },
@@ -3245,6 +4007,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "다음 데이터베이스 유형이 설치되어 있지 않습니다: \"%@\""
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loại cơ sở dữ liệu \"%@\" chưa được cài đặt"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "数据库类型 \"%@\" 未安装"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "資料庫類型「%@」未安裝"
           }
         }
       }
@@ -3311,6 +4091,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "복호화 실패: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giải mã thất bại: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解密失败：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解密失敗：%@"
           }
         }
       }
@@ -4136,6 +4934,24 @@
             "state" : "translated",
             "value" : "코드 %@을(를) 브라우저에 입력하여 로그인을 완료하십시오. 코드는 클립보드에 복사되어 있습니다."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhập mã %@ trong trình duyệt để hoàn tất đăng nhập. Mã đã có trong bộ nhớ tạm."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在浏览器中输入代码 %@ 以完成登录。它已复制到剪贴板。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在瀏覽器中輸入代碼 %@ 以完成登入。它已複製到剪貼簿。"
+          }
         }
       }
     },
@@ -4173,6 +4989,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "인증서 파일을 내보낼 때 사용한 암호를 입력하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhập mật khẩu đã dùng khi xuất tệp chứng chỉ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "输入导出证书文件时使用的密码。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "輸入匯出憑證檔案時使用的密碼。"
           }
         }
       }
@@ -4380,6 +5214,24 @@
             "state" : "translated",
             "value" : "실패"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thất bại"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "失败"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "失敗"
+          }
         }
       }
     },
@@ -4389,6 +5241,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "연결 데이터를 인코딩하지 못했습니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể mã hóa dữ liệu kết nối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法编码连接数据"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法編碼連線資料"
           }
         }
       }
@@ -4400,6 +5270,24 @@
             "state" : "translated",
             "value" : "동기화 데이터를 인코딩하지 못했습니다: %@"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể mã hoá dữ liệu đồng bộ: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同步数据编码失败：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同步資料編碼失敗：%@"
+          }
         }
       }
     },
@@ -4409,6 +5297,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "연결을 설정하지 못했습니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thiết lập được kết nối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法建立连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法建立連線"
           }
         }
       }
@@ -4449,6 +5355,24 @@
             "state" : "translated",
             "value" : "연결 파일을 해석하지 못했습니다: %@"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể phân tích tệp kết nối: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法解析连接文件：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法解析連線檔案：%@"
+          }
         }
       }
     },
@@ -4458,6 +5382,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "파일을 읽지 못했습니다: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đọc tệp thất bại: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "读取文件失败: %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讀取檔案失敗：%@"
           }
         }
       }
@@ -4581,6 +5523,24 @@
             "state" : "translated",
             "value" : "파일을 쓰지 못했습니다: %@"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể ghi tệp: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "写入文件失败: %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "寫入檔案失敗：%@"
+          }
         }
       }
     },
@@ -4702,6 +5662,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "로그인 마치기"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hoàn tất đăng nhập"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完成登录"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完成登入"
           }
         }
       }
@@ -4909,6 +5887,24 @@
             "state" : "translated",
             "value" : "회색"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xám"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "灰色"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "灰色"
+          }
         }
       }
     },
@@ -4918,6 +5914,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "녹색"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xanh lá"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "绿色"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "綠色"
           }
         }
       }
@@ -5154,6 +6168,24 @@
             "state" : "translated",
             "value" : "이 서버에서 Redis 6 이상의 ACL 사용자를 사용하는 경우 사용자 이름 필드를 입력하십시오."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nếu máy chủ này dùng người dùng ACL của Redis 6 trở lên, hãy điền trường Tên người dùng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如果此服务器使用 Redis 6 或更高版本的 ACL 用户，请填写“用户名”字段。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如果此伺服器使用 Redis 6 或更新版本的 ACL 使用者，請填寫「使用者名稱」欄位。"
+          }
         }
       }
     },
@@ -5248,6 +6280,24 @@
             "state" : "translated",
             "value" : "파일 가져오기"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhập tệp"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导入文件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "匯入檔案"
+          }
         }
       }
     },
@@ -5257,6 +6307,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "PKCS#12 가져오기"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhập PKCS#12"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导入 PKCS#12"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "匯入 PKCS#12"
           }
         }
       }
@@ -5351,6 +6419,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "암호가 올바르지 않습니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cụm mật khẩu không đúng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密码短语不正确"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密碼短語不正確"
           }
         }
       }
@@ -5530,6 +6616,24 @@
             "state" : "translated",
             "value" : "점프 호스트 키를 찾을 수 없습니다: %@"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không tìm thấy khóa của jump host: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未找到跳板主机密钥：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "找不到跳板主機金鑰：%@"
+          }
         }
       }
     },
@@ -5539,6 +6643,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kerberos 인증 실패: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xác thực Kerberos thất bại: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kerberos 认证失败：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kerberos 驗證失敗：%@"
           }
         }
       }
@@ -5833,6 +6955,24 @@
             "state" : "translated",
             "value" : "로컬 네트워크 접근 권한이 필요합니다. 설정 > 개인정보 보호 및 보안 > 로컬 네트워크에서 TablePro를 켜십시오. 이미 켜져 있다면 기기를 재시동하거나 iOS 18.6 이상으로 업데이트하십시오."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cần quyền truy cập Mạng cục bộ. Mở Cài đặt > Quyền riêng tư & Bảo mật > Mạng cục bộ và bật TablePro. Nếu đã bật, hãy khởi động lại thiết bị hoặc cập nhật lên iOS 18.6 trở lên."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要本地网络访问权限。请打开“设置 > 隐私与安全性 > 本地网络”并开启 TablePro。如果已开启，请重启设备或升级到 iOS 18.6 或更高版本。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要區域網路存取權。請開啟「設定 > 隱私權與安全性 > 區域網路」並開啟 TablePro。如果已開啟，請重新啟動裝置或更新至 iOS 18.6 或更新版本。"
+          }
         }
       }
     },
@@ -5983,6 +7123,24 @@
             "state" : "translated",
             "value" : "대/소문자 구분"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phân biệt hoa thường"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "区分大小写"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "區分大小寫"
+          }
         }
       }
     },
@@ -5992,6 +7150,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Microsoft Entra ID 로그인 필요"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yêu cầu đăng nhập Microsoft Entra ID"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要 Microsoft Entra ID 登录"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要 Microsoft Entra ID 登入"
           }
         }
       }
@@ -6114,6 +7290,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "네트워크를 사용할 수 없습니다. 연결이 복원되면 변경 사항이 동기화됩니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mạng không khả dụng. Các thay đổi sẽ được đồng bộ khi có kết nối trở lại."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "网络不可用。恢复连接后将自动同步更改。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "網路無法使用。連線恢復後將自動同步變更。"
           }
         }
       }
@@ -6489,6 +7683,24 @@
             "value" : "Microsoft Entra ID 액세스 토큰이 제공되지 않았습니다.",
             "state" : "translated"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không có access token Microsoft Entra ID nào được cung cấp."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未提供 Microsoft Entra ID 访问令牌。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未提供 Microsoft Entra ID 存取權杖。"
+          }
         }
       }
     },
@@ -6667,6 +7879,24 @@
             "state" : "translated",
             "value" : "추가할 데이터가 제공되지 않았습니다."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không có dữ liệu nào được cung cấp để thêm."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有提供要添加的数据。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有提供要新增的資料。"
+          }
         }
       }
     },
@@ -6761,6 +7991,24 @@
             "state" : "translated",
             "value" : "일반"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bình thường"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正常"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一般"
+          }
         }
       }
     },
@@ -6799,6 +8047,24 @@
             "state" : "translated",
             "value" : "SQL Server에 연결되지 않았습니다"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chưa kết nối tới SQL Server"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未连接到 SQL Server"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未連線到 SQL Server"
+          }
         }
       }
     },
@@ -6809,6 +8075,24 @@
             "state" : "translated",
             "value" : "데이터베이스에 연결되지 않았습니다"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chưa kết nối cơ sở dữ liệu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未连接到数据库"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未連線到資料庫"
+          }
         }
       }
     },
@@ -6818,6 +8102,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "설정되지 않음"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chưa đặt"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未设置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未設定"
           }
         }
       }
@@ -7193,6 +8495,24 @@
             "state" : "translated",
             "value" : "Oracle"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oracle"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oracle"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oracle"
+          }
         }
       }
     },
@@ -7202,6 +8522,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "주황색"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cam"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "橙色"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "橘色"
           }
         }
       }
@@ -7437,6 +8775,24 @@
             "state" : "translated",
             "value" : "암호는 종단 간 암호화된 iCloud 키체인을 통해 동기화됩니다. 새로 저장할 때만 적용됩니다. 암호를 다시 저장하면 해당 암호의 동기화 상태가 업데이트됩니다."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mật khẩu đồng bộ qua iCloud Keychain, vốn được mã hóa đầu cuối. Chỉ ảnh hưởng đến các lần lưu mới. Hãy lưu lại mật khẩu để cập nhật đồng bộ của nó."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密码通过端到端加密的 iCloud 钥匙串同步。仅影响新的保存。重新保存密码以更新其同步。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密碼透過端對端加密的 iCloud 鑰匙圈同步。僅影響新的儲存。重新儲存密碼以更新其同步。"
+          }
         }
       }
     },
@@ -7447,6 +8803,24 @@
             "state" : "translated",
             "value" : "붙여넣기"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dán"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "粘贴"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼上"
+          }
         }
       }
     },
@@ -7456,6 +8830,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "키 붙여넣기"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dán khóa"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "粘贴密钥"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼上金鑰"
           }
         }
       }
@@ -7495,6 +8887,24 @@
             "state" : "translated",
             "value" : "BEGIN 및 END 줄을 포함한 전체 PEM 블록을 붙여넣으십시오."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dán toàn bộ khối PEM, bao gồm cả dòng BEGIN và END."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "粘贴完整的 PEM 块，包括 BEGIN 和 END 行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼上完整的 PEM 區塊，包括 BEGIN 和 END 行。"
+          }
         }
       }
     },
@@ -7532,6 +8942,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "분홍색"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hồng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "粉色"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "粉紅色"
           }
         }
       }
@@ -7684,6 +9112,24 @@
             "state" : "translated",
             "value" : "개인 키"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khóa riêng tư"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私钥"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密金鑰"
+          }
         }
       }
     },
@@ -7694,6 +9140,24 @@
             "state" : "translated",
             "value" : "JSON 객체 또는 객체 배열을 제공하십시오."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hãy cung cấp một đối tượng JSON hoặc một mảng các đối tượng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请提供一个 JSON 对象或对象数组。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請提供一個 JSON 物件或物件陣列。"
+          }
         }
       }
     },
@@ -7703,6 +9167,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "보라색"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tím"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "紫色"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "紫色"
           }
         }
       }
@@ -7799,6 +9281,24 @@
             "state" : "translated",
             "value" : "쿼리 실행 실패"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thực thi truy vấn thất bại"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查询执行失败"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查詢執行失敗"
+          }
         }
       }
     },
@@ -7808,6 +9308,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "쿼리 실패: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Truy vấn thất bại: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查询失败：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查詢失敗：%@"
           }
         }
       }
@@ -7847,6 +9365,24 @@
             "state" : "translated",
             "value" : "쿼리가 취소되었습니다"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Truy vấn đã bị hủy"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查询已取消"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查詢已取消"
+          }
         }
       }
     },
@@ -7856,6 +9392,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "빠른 연결"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối nhanh"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快速连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快速連線"
           }
         }
       }
@@ -7867,6 +9421,24 @@
             "state" : "translated",
             "value" : "데이터베이스에 빠르게 연결합니다."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối nhanh tới các cơ sở dữ liệu của bạn."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快速连接到你的数据库。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快速連線到你的資料庫。"
+          }
         }
       }
     },
@@ -7876,6 +9448,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "읽기 전용"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chỉ đọc"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只读"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "唯讀"
           }
         }
       }
@@ -7915,6 +9505,24 @@
             "state" : "translated",
             "value" : "빨간색"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đỏ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "红色"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "紅色"
+          }
         }
       }
     },
@@ -7925,6 +9533,24 @@
             "state" : "translated",
             "value" : "Redis 인증 실패: %1$@ %2$@"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xác thực Redis thất bại: %1$@ %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redis 认证失败：%1$@ %2$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redis 驗證失敗：%1$@ %2$@"
+          }
         }
       }
     },
@@ -7934,6 +9560,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Redis 인증 실패: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xác thực Redis thất bại: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redis 认证失败：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redis 驗證失敗：%@"
           }
         }
       }
@@ -8028,6 +9672,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "제거"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gỡ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除"
           }
         }
       }
@@ -8292,6 +9954,24 @@
             "state" : "translated",
             "value" : "역할"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vai trò"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "角色"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "角色"
+          }
         }
       }
     },
@@ -8330,6 +10010,24 @@
             "state" : "translated",
             "value" : "행(JSON 또는 CSV)"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dòng (JSON hoặc CSV)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "行（JSON 或 CSV）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列（JSON 或 CSV）"
+          }
         }
       }
     },
@@ -8367,6 +10065,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "여러 행(JSON 또는 CSV)"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Các dòng (JSON hoặc CSV)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "多行（JSON 或 CSV）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "多列（JSON 或 CSV）"
           }
         }
       }
@@ -8519,6 +10235,24 @@
             "state" : "translated",
             "value" : "SID"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SID"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SID"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SID"
+          }
         }
       }
     },
@@ -8529,12 +10263,48 @@
             "state" : "translated",
             "value" : "SID를 찾을 수 없음"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không tìm thấy SID"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未找到 SID"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "找不到 SID"
+          }
         }
       }
     },
     "SQL" : {
       "localizations" : {
         "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SQL"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SQL"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SQL"
+          }
+        },
+        "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "SQL"
@@ -8576,6 +10346,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "SSH 호스트 키 변경됨"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khóa máy chủ SSH đã thay đổi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SSH 主机密钥已更改"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SSH 主機金鑰已變更"
           }
         }
       }
@@ -8754,6 +10542,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "SSH 개인 키를 찾을 수 없습니다: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không tìm thấy private key SSH: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未找到 SSH 私钥：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "找不到 SSH 私密金鑰：%@"
           }
         }
       }
@@ -9185,6 +10991,24 @@
             "state" : "translated",
             "value" : "서비스 이름"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tên dịch vụ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务名称"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服務名稱"
+          }
         }
       }
     },
@@ -9194,6 +11018,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "서비스 이름을 찾을 수 없음"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không tìm thấy tên dịch vụ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未找到服务名"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "找不到服務名稱"
           }
         }
       }
@@ -9401,6 +11243,24 @@
             "state" : "translated",
             "value" : "로그인"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đăng nhập"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登录"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登入"
+          }
         }
       }
     },
@@ -9410,6 +11270,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "브라우저에서 Microsoft Entra ID에 로그인하시겠습니까?"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đăng nhập Microsoft Entra ID bằng trình duyệt?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要用浏览器登录 Microsoft Entra ID 吗？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要用瀏覽器登入 Microsoft Entra ID 嗎？"
           }
         }
       }
@@ -9758,6 +11636,24 @@
             "state" : "translated",
             "value" : "암호 동기화"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đồng bộ mật khẩu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同步密码"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同步密碼"
+          }
         }
       }
     },
@@ -9796,6 +11692,24 @@
             "state" : "translated",
             "value" : "동기화 토큰이 만료되었습니다. 전체 동기화를 수행합니다."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token đồng bộ đã hết hạn. Sẽ thực hiện đồng bộ toàn bộ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同步令牌已过期。将执行一次完整同步。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同步權杖已過期。將執行一次完整同步。"
+          }
         }
       }
     },
@@ -9833,6 +11747,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "동기화 영역을 찾을 수 없습니다. 전체 동기화를 수행합니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không tìm thấy vùng đồng bộ. Sẽ thực hiện đồng bộ toàn bộ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未找到同步区域。将执行完整同步。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "找不到同步區域。將執行完整同步。"
           }
         }
       }
@@ -9899,6 +11831,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "TLS 핸드셰이크 실패: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bắt tay TLS thất bại: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TLS 握手失败：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TLS 交握失敗：%@"
           }
         }
       }
@@ -9995,6 +11945,24 @@
             "state" : "translated",
             "value" : "TablePro"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro"
+          }
         }
       }
     },
@@ -10004,6 +11972,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "TablePro가 해당 파일을 읽을 수 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro không đọc được tệp đó."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 无法读取该文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 無法讀取該檔案。"
           }
         }
       }
@@ -10020,6 +12006,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "TablePro는 이전에 %1$@에 연결한 적이 없습니다.\n\n%2$@ 키 지문:\n%3$@\n\n예상한 지문과 일치할 때만 이 서버를 신뢰하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro chưa từng kết nối tới %1$@.\n\nVân tay khóa %2$@:\n%3$@\n\nChỉ tin cậy máy chủ này nếu vân tay khớp với vân tay bạn mong đợi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 之前未连接过 %1$@。\n\n%2$@ 密钥指纹：\n%3$@\n\n只有当指纹与你预期的一致时才信任此服务器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 之前未連線過 %1$@。\n\n%2$@ 金鑰指紋：\n%3$@\n\n只有當指紋與你預期的一致時才信任此伺服器。"
           }
         }
       }
@@ -10227,6 +12231,24 @@
             "state" : "translated",
             "value" : "해당 연결이 더 이상 TablePro에 없습니다."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối đó không còn tồn tại trong TablePro."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该连接在 TablePro 中已不存在。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "該連線在 TablePro 中已不存在。"
+          }
         }
       }
     },
@@ -10236,6 +12258,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "이 파일에는 개인 키가 아닌 인증서가 들어 있습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tệp đó chứa chứng chỉ, không phải khóa riêng tư."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该文件包含的是证书，不是私钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "該檔案包含的是憑證，不是私密金鑰。"
           }
         }
       }
@@ -10247,6 +12287,24 @@
             "state" : "translated",
             "value" : "이 파일에는 인증서가 아닌 개인 키가 들어 있습니다."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tệp đó chứa khóa riêng tư, không phải chứng chỉ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该文件包含的是私钥，不是证书。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "該檔案包含的是私密金鑰，不是憑證。"
+          }
         }
       }
     },
@@ -10256,6 +12314,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "이 파일은 PEM 인증서가 아닙니다. .pem 또는 .crt 파일을 선택하거나 인증서 내용을 붙여넣으십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tệp đó không phải chứng chỉ PEM. Hãy chọn tệp .pem hoặc .crt, hoặc dán nội dung của nó."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该文件不是 PEM 证书。请选择 .pem 或 .crt 文件，或粘贴其内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "該檔案不是 PEM 憑證。請選擇 .pem 或 .crt 檔案，或貼上其內容。"
           }
         }
       }
@@ -10267,6 +12343,24 @@
             "state" : "translated",
             "value" : "이 개인 키는 암호로 보호되어 있습니다. 암호를 제거하거나 대신 PKCS#12 파일을 가져오십시오."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khóa riêng tư đó được bảo vệ bằng passphrase. Hãy gỡ passphrase hoặc nhập tệp PKCS#12 thay thế."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该私钥受密码短语保护。请移除密码短语，或改为导入 PKCS#12 文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "該私密金鑰受密碼短語保護。請移除密碼短語，或改為匯入 PKCS#12 檔案。"
+          }
         }
       }
     },
@@ -10276,6 +12370,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "이 텍스트에 인증서 또는 키가 없습니다. BEGIN 및 END 줄을 포함한 전체 PEM 블록을 붙여넣으십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Văn bản đó không chứa chứng chỉ hay khóa nào. Hãy dán toàn bộ khối PEM, bao gồm cả dòng BEGIN và END."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该文本中没有证书或密钥。请粘贴完整的 PEM 块，包括 BEGIN 和 END 行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "該文字中沒有憑證或金鑰。請貼上完整的 PEM 區塊，包括 BEGIN 和 END 行。"
           }
         }
       }
@@ -10287,6 +12399,24 @@
             "state" : "translated",
             "value" : "이 연결의 CA 인증서가 없습니다. 연결의 SSL 설정에서 다시 가져오십시오."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thiếu chứng chỉ CA cho kết nối này. Hãy nhập lại trong cài đặt SSL của kết nối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此连接的 CA 证书缺失。请在连接的 SSL 设置中重新导入。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此連線的 CA 憑證遺失。請在連線的 SSL 設定中重新匯入。"
+          }
         }
       }
     },
@@ -10296,6 +12426,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "CSV 데이터에 헤더 행이 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dữ liệu CSV không có dòng tiêu đề."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该 CSV 数据没有标题行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "該 CSV 資料沒有標題列。"
           }
         }
       }
@@ -10307,6 +12455,24 @@
             "state" : "translated",
             "value" : "JSON 배열에는 객체만 포함해야 합니다."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mảng JSON chỉ được chứa các đối tượng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "JSON 数组只能包含对象。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "JSON 陣列只能包含物件。"
+          }
         }
       }
     },
@@ -10316,6 +12482,24 @@
           "stringUnit" : {
             "value" : "Microsoft Entra ID 액세스 토큰이 드라이버에서 거부되었습니다.",
             "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Access token Microsoft Entra ID bị driver từ chối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "驱动拒绝了该 Microsoft Entra ID 访问令牌。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "驅動程式拒絕了該 Microsoft Entra ID 存取權杖。"
           }
         }
       }
@@ -10327,6 +12511,24 @@
             "state" : "translated",
             "value" : "Oracle 리스너가 연결을 거부했습니다(ORA-%ld)."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oracle listener đã từ chối kết nối (ORA-%ld)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oracle 侦听器拒绝了此连接（ORA-%ld）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oracle 接聽程式拒絕了此連線（ORA-%ld）。"
+          }
         }
       }
     },
@@ -10337,6 +12539,24 @@
             "state" : "translated",
             "value" : "Oracle 리스너가 연결을 거부했습니다."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oracle listener đã từ chối kết nối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oracle 侦听器拒绝了此连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oracle 接聽程式拒絕了此連線。"
+          }
         }
       }
     },
@@ -10346,6 +12566,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Oracle 서버가 로그인 핸드셰이크 중 연결을 종료했습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máy chủ Oracle đã đóng kết nối trong quá trình bắt tay đăng nhập."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oracle 服务器在登录握手期间关闭了连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oracle 伺服器在登入交握期間關閉了連線。"
           }
         }
       }
@@ -10413,6 +12651,24 @@
             "state" : "translated",
             "value" : "인증서를 이 기기의 키체인에 저장할 수 없습니다."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể lưu chứng chỉ vào keychain của thiết bị này."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法将证书保存到本设备的钥匙串。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法將憑證儲存到本裝置的鑰匙圈。"
+          }
         }
       }
     },
@@ -10422,6 +12678,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "인증서 파일을 읽을 수 없습니다. 암호가 맞는지, 파일이 PKCS#12 인증서인지 확인하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể đọc tệp chứng chỉ. Hãy kiểm tra mật khẩu và xác nhận tệp là chứng chỉ PKCS#12."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取证书文件。请检查密码，并确认该文件是 PKCS#12 证书。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取憑證檔案。請檢查密碼，並確認該檔案是 PKCS#12 憑證。"
           }
         }
       }
@@ -10433,6 +12707,24 @@
             "state" : "translated",
             "value" : "이 연결의 클라이언트 인증서가 없습니다. 연결의 SSL 설정에서 다시 가져오십시오."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thiếu chứng chỉ máy khách cho kết nối này. Hãy nhập lại trong cài đặt SSL của kết nối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此连接的客户端证书缺失。请在连接的 SSL 设置中重新导入。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此連線的用戶端憑證遺失。請在連線的 SSL 設定中重新匯入。"
+          }
         }
       }
     },
@@ -10442,6 +12734,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "이 연결의 클라이언트 키가 없습니다. 연결의 SSL 설정에서 다시 가져오십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thiếu khóa máy khách cho kết nối này. Hãy nhập lại trong cài đặt SSL của kết nối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此连接的客户端密钥缺失。请在连接的 SSL 设置中重新导入。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此連線的用戶端金鑰遺失。請在連線的 SSL 設定中重新匯入。"
           }
         }
       }
@@ -10453,6 +12763,24 @@
             "state" : "translated",
             "value" : "데이터를 읽을 수 없습니다: %@"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể đọc dữ liệu: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取数据：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取資料：%@"
+          }
         }
       }
     },
@@ -10462,6 +12790,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@에 삽입할 값이 입력 데이터에 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dữ liệu không có giá trị nào để chèn vào %@."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该数据没有可插入 %@ 的值。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "該資料沒有可插入 %@ 的值。"
           }
         }
       }
@@ -10501,6 +12847,24 @@
             "state" : "translated",
             "value" : "암호화된 파일이 손상되었거나 불완전합니다"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tệp mã hóa bị hỏng hoặc không đầy đủ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "加密文件已损坏或不完整"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "加密的檔案已損毀或不完整"
+          }
         }
       }
     },
@@ -10510,6 +12874,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "파일이 UTF-8 텍스트가 아닙니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tệp không phải văn bản UTF-8."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该文件不是 UTF-8 文本。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "該檔案不是 UTF-8 文字。"
           }
         }
       }
@@ -10527,6 +12909,24 @@
             "state" : "translated",
             "value" : "%1$@의 호스트 키가 변경되었습니다.\n\n서버가 다시 구축되었거나 누군가 연결을 가로채고 있을 수 있습니다.\n\n이전 지문:\n%2$@\n\n현재 지문:\n%3$@"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khóa máy chủ của %1$@ đã thay đổi.\n\nĐiều này có thể nghĩa là máy chủ được dựng lại, hoặc có ai đó đang chặn kết nối.\n\nVân tay trước đây:\n%2$@\n\nVân tay hiện tại:\n%3$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 的主机密钥已更改。\n\n这可能意味着服务器被重建，也可能有人正在拦截此连接。\n\n之前的指纹：\n%2$@\n\n当前的指纹：\n%3$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 的主機金鑰已變更。\n\n這可能表示伺服器被重建，也可能有人正在攔截此連線。\n\n之前的指紋：\n%2$@\n\n目前的指紋：\n%3$@"
+          }
         }
       }
     },
@@ -10536,6 +12936,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "리스너가 요청한 SID를 인식하지 못합니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Listener không biết SID được yêu cầu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "侦听器不认识请求的 SID"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接聽程式不認識請求的 SID"
           }
         }
       }
@@ -10547,6 +12965,24 @@
             "state" : "translated",
             "value" : "리스너가 요청한 서비스 이름을 인식하지 못합니다"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Listener không biết tên dịch vụ được yêu cầu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "侦听器不认识请求的服务名"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接聽程式不認識請求的服務名稱"
+          }
         }
       }
     },
@@ -10556,6 +12992,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "리스너에서 이 SID를 인식하지 못합니다. 12c 이상 데이터베이스는 일반적으로 서비스 이름으로 연결합니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Listener không biết SID này. Các cơ sở dữ liệu từ 12c trở đi thường được truy cập bằng tên dịch vụ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "侦听器不认识此 SID。12c 及以后的数据库通常改用服务名连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接聽程式不認識此 SID。12c 及以後的資料庫通常改用服務名稱連線。"
           }
         }
       }
@@ -10567,6 +13021,24 @@
             "state" : "translated",
             "value" : "리스너에서 이 서비스 이름을 인식하지 못합니다. DBA에게 확인하거나 이전 버전 데이터베이스인 경우 SID로 전환하십시오."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Listener không biết tên dịch vụ này. Hãy hỏi DBA của bạn, hoặc chuyển sang SID nếu đây là cơ sở dữ liệu cũ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "侦听器不认识此服务名。请与你的 DBA 确认，或在较旧的数据库上改用 SID。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接聽程式不認識此服務名稱。請與你的 DBA 確認，或在較舊的資料庫上改用 SID。"
+          }
         }
       }
     },
@@ -10577,6 +13049,24 @@
             "state" : "translated",
             "value" : "리스너에 요청한 서비스를 처리할 수 있는 핸들러가 없습니다"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Listener không có handler khả dụng cho dịch vụ được yêu cầu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "侦听器没有可用于所请求服务的处理程序"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接聽程式沒有可用於所請求服務的處理常式"
+          }
         }
       }
     },
@@ -10586,6 +13076,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "리스너가 요청한 서비스에 대한 새 연결을 차단하고 있습니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Listener đang chặn các kết nối mới tới dịch vụ được yêu cầu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "侦听器正在阻止到所请求服务的新连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接聽程式正在阻擋到所請求服務的新連線"
           }
         }
       }
@@ -10624,6 +13132,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "쿼리가 설정된 제한 시간 내에 완료되지 않아 연결을 재설정했습니다. 쿼리를 다시 실행하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Truy vấn không hoàn tất trong thời gian chờ đã cấu hình, nên kết nối đã bị đặt lại. Hãy chạy lại truy vấn."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查询未在配置的超时时间内完成，因此连接已重置。请重新运行该查询。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查詢未在設定的逾時時間內完成，因此連線已重設。請重新執行該查詢。"
           }
         }
       }
@@ -10691,6 +13217,24 @@
             "state" : "translated",
             "value" : "서버에서 예상하지 못한 메시지를 보내 연결을 재설정했습니다. 쿼리를 다시 실행하십시오."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máy chủ đã gửi một thông điệp không mong đợi và kết nối đã bị đặt lại. Hãy chạy lại truy vấn."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器发送了意外消息，连接已重置。请重新运行该查询。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器傳送了非預期的訊息，連線已重設。請重新執行該查詢。"
+          }
         }
       }
     },
@@ -10701,6 +13245,24 @@
             "state" : "translated",
             "value" : "서버의 호스트 키가 변경되었습니다."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khóa máy chủ của server đã thay đổi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器的主机密钥已更改。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器的主機金鑰已變更。"
+          }
         }
       }
     },
@@ -10710,6 +13272,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "서버의 호스트 키를 신뢰하지 않았습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khóa máy chủ của server không được tin cậy."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器的主机密钥未被信任。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器的主機金鑰未被信任。"
           }
         }
       }
@@ -10777,6 +13357,24 @@
             "state" : "translated",
             "value" : "텍스트 인코딩이 올바르지 않습니다."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bảng mã văn bản không hợp lệ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文本编码无效。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文字編碼無效。"
+          }
         }
       }
     },
@@ -10786,6 +13384,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "이 Oracle 서버는 릴리스 11.1보다 이전 버전이며 데이터베이스 드라이버에서 지원하지 않습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máy chủ Oracle này cũ hơn bản 11.1, phiên bản mà driver cơ sở dữ liệu không hỗ trợ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Oracle 服务器早于 11.1 版，数据库驱动不支持。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Oracle 伺服器早於 11.1 版，資料庫驅動程式不支援。"
           }
         }
       }
@@ -10797,6 +13413,24 @@
             "state" : "translated",
             "value" : "이 계정은 데이터베이스 드라이버가 지원하지 않는 암호 검증 형식을 사용합니다."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tài khoản này dùng password verifier mà driver cơ sở dữ liệu không hỗ trợ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此账户使用了数据库驱动不支持的口令校验器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此帳戶使用了資料庫驅動程式不支援的密碼驗證器。"
+          }
         }
       }
     },
@@ -10806,6 +13440,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "이 인증서 파일에는 암호가 필요합니다. 암호 없이 내보낸 인증서 파일은 iOS에서 읽을 수 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tệp chứng chỉ này cần mật khẩu. Tệp chứng chỉ xuất ra mà không có mật khẩu thì không đọc được trên iOS."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此证书文件需要密码。导出时未设置密码的证书文件在 iOS 上无法读取。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此憑證檔案需要密碼。匯出時未設定密碼的憑證檔案在 iOS 上無法讀取。"
           }
         }
       }
@@ -10817,6 +13469,24 @@
             "state" : "translated",
             "value" : "이 인증서에는 TablePro에서 읽을 수 없는 유형의 개인 키가 사용되었습니다."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chứng chỉ này dùng loại khóa riêng tư mà TablePro không đọc được."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此证书使用了 TablePro 无法读取的私钥类型。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此憑證使用了 TablePro 無法讀取的私密金鑰類型。"
+          }
         }
       }
     },
@@ -10827,6 +13497,24 @@
             "state" : "translated",
             "value" : "이 연결에 클라이언트 인증서는 있지만 개인 키가 없습니다. 둘 다 가져오십시오."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối này có chứng chỉ máy khách nhưng không có khóa riêng tư. Hãy nhập cả hai."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此连接有客户端证书但没有私钥。请同时导入两者。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此連線有用戶端憑證但沒有私密金鑰。請同時匯入兩者。"
+          }
         }
       }
     },
@@ -10836,6 +13524,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "이 연결에 클라이언트 키는 있지만 인증서가 없습니다. 둘 다 가져오십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối này có khóa máy khách nhưng không có chứng chỉ. Hãy nhập cả hai."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此连接有客户端密钥但没有证书。请同时导入两者。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此連線有用戶端金鑰但沒有憑證。請同時匯入兩者。"
           }
         }
       }
@@ -10903,6 +13609,24 @@
             "state" : "translated",
             "value" : "이 기기에서 이 연결의 CA 인증서를 읽을 수 없습니다(%@). 인증서 파일은 기기 간에 동기화되지 않으므로 이 기기에 인증서를 추가하거나 SSL 모드를 필수(Required)로 낮추십시오."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không đọc được chứng chỉ CA của kết nối này trên thiết bị này (%@). Tệp chứng chỉ không đồng bộ giữa các thiết bị, nên hãy thêm chứng chỉ tại đây hoặc hạ chế độ SSL xuống Required."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此连接的 CA 证书在本设备上不可读（%@）。证书文件不会在设备之间同步，请在此处添加证书，或将 SSL 模式降为“必需”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此連線的 CA 憑證在本裝置上無法讀取（%@）。憑證檔案不會在裝置之間同步，請在此處加入憑證，或將 SSL 模式降為「必要」。"
+          }
         }
       }
     },
@@ -10913,6 +13637,24 @@
             "state" : "translated",
             "value" : "이 기기에서 이 연결의 클라이언트 인증서를 읽을 수 없습니다(%@). 인증서 파일은 기기 간에 동기화되지 않으므로 연결하기 전에 이 기기에 인증서를 추가하십시오."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không đọc được chứng chỉ máy khách của kết nối này trên thiết bị này (%@). Tệp chứng chỉ không đồng bộ giữa các thiết bị, nên hãy thêm chứng chỉ tại đây trước khi kết nối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此连接的客户端证书在本设备上不可读（%@）。证书文件不会在设备之间同步，请先在此处添加证书再连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此連線的用戶端憑證在本裝置上無法讀取（%@）。憑證檔案不會在裝置之間同步，請先在此處加入憑證再連線。"
+          }
         }
       }
     },
@@ -10922,6 +13664,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "이 기기에서 이 연결의 클라이언트 키를 읽을 수 없습니다(%@). 키 파일은 기기 간에 동기화되지 않으므로 연결하기 전에 이 기기에 키를 추가하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không đọc được khóa máy khách của kết nối này trên thiết bị này (%@). Tệp khóa không đồng bộ giữa các thiết bị, nên hãy thêm khóa tại đây trước khi kết nối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此连接的客户端密钥在本设备上不可读（%@）。密钥文件不会在设备之间同步，请先在此处添加密钥再连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此連線的用戶端金鑰在本裝置上無法讀取（%@）。金鑰檔案不會在裝置之間同步，請先在此處加入金鑰再連線。"
           }
         }
       }
@@ -10961,6 +13721,24 @@
             "state" : "translated",
             "value" : "이 파일에 개인 키가 없습니다. 인증서를 개인 키와 함께 내보내십시오."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tệp này không có khóa riêng tư. Hãy xuất chứng chỉ cùng với khóa của nó."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此文件没有私钥。请将证书与其密钥一起导出。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此檔案沒有私密金鑰。請將憑證與其金鑰一起匯出。"
+          }
         }
       }
     },
@@ -10999,6 +13777,24 @@
             "state" : "translated",
             "value" : "이 파일은 암호화되어 있어 암호가 필요합니다"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tệp này được mã hóa và yêu cầu cụm mật khẩu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此文件已加密，需要密码短语"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此檔案已加密，需要通關密語"
+          }
         }
       }
     },
@@ -11009,6 +13805,24 @@
             "state" : "translated",
             "value" : "이 파일은 올바른 TablePro 내보내기 파일이 아닙니다"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tệp này không phải là tệp xuất TablePro hợp lệ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此文件不是有效的 TablePro 导出文件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此檔案不是有效的 TablePro 匯出檔"
+          }
         }
       }
     },
@@ -11018,6 +13832,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "이 파일을 사용하려면 더 최신 버전의 TablePro가 필요합니다(파일 형식 버전 %d)"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tệp này yêu cầu phiên bản TablePro mới hơn (phiên bản định dạng %d)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此文件需要更新版本的TablePro（格式版本%d）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此檔案需要較新版本的 TablePro（格式版本 %d）"
           }
         }
       }
@@ -11057,6 +13889,24 @@
             "state" : "translated",
             "value" : "이 서버의 기본 사용자에게는 암호가 설정되어 있지 않습니다. 암호 필드를 비우십시오."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máy chủ này không đặt mật khẩu cho người dùng mặc định. Hãy xóa trống trường Mật khẩu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此服务器未为默认用户设置密码。请清空“密码”字段。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此伺服器未為預設使用者設定密碼。請清空「密碼」欄位。"
+          }
         }
       }
     },
@@ -11066,6 +13916,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "이 서버는 Redis 6 이전 버전이므로 사용자 이름을 사용하지 않습니다. 사용자 이름 필드를 비우십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máy chủ này cũ hơn Redis 6 và không nhận tên người dùng. Hãy xóa trống trường Tên người dùng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此服务器早于 Redis 6，不接受用户名。请清空“用户名”字段。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此伺服器早於 Redis 6，不接受使用者名稱。請清空「使用者名稱」欄位。"
           }
         }
       }
@@ -11245,6 +14113,24 @@
             "state" : "translated",
             "value" : "Kerberos 인증을 완료하는 동안 시간이 초과되었습니다. Kerberos KDC(도메인 컨트롤러)에 연결할 수 없거나, 서버의 SPN이 없거나, 이 기기의 시계가 맞지 않을 수 있습니다. 도메인에 대한 네트워크 연결을 확인하거나 SQL Server 인증을 사용하십시오."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hết thời gian chờ khi hoàn tất xác thực Kerberos. Có thể KDC Kerberos (domain controller) không truy cập được, SPN của máy chủ bị thiếu, hoặc đồng hồ của thiết bị này bị lệch. Hãy kiểm tra mạng tới domain, hoặc dùng SQL Server Authentication."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完成 Kerberos 认证超时。可能是 Kerberos KDC（域控制器）无法访问、服务器的 SPN 缺失，或本设备的时钟不准。请检查到域的网络，或改用 SQL Server 身份验证。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完成 Kerberos 驗證逾時。可能是 Kerberos KDC（網域控制站）無法連線、伺服器的 SPN 遺失，或本裝置的時鐘不準。請檢查到網域的網路，或改用 SQL Server 驗證。"
+          }
         }
       }
     },
@@ -11254,6 +14140,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "서버에 연결하는 동안 시간이 초과되었습니다. 호스트와 포트가 올바른지, 서버에 연결할 수 있고 서버가 연결을 수락하는지 확인하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hết thời gian chờ khi kết nối tới máy chủ. Hãy kiểm tra host, cổng, và xem máy chủ có truy cập được và đang nhận kết nối không."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接服务器超时。请检查主机、端口，以及服务器是否可达并接受连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線伺服器逾時。請檢查主機、連接埠，以及伺服器是否可連線並接受連線。"
           }
         }
       }
@@ -11265,6 +14169,24 @@
             "state" : "translated",
             "value" : "Oracle 로그인 핸드셰이크 중 시간이 초과되었습니다. 서버가 네트워크 연결을 수락했지만 로그인을 완료하지 않았습니다."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hết thời gian chờ trong quá trình bắt tay đăng nhập Oracle. Máy chủ đã chấp nhận kết nối mạng nhưng không hoàn tất đăng nhập."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oracle 登录握手超时。服务器接受了网络连接，但没有完成登录。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oracle 登入交握逾時。伺服器接受了網路連線，但沒有完成登入。"
+          }
         }
       }
     },
@@ -11274,6 +14196,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "행이 너무 많습니다. 한 번에 최대 %lld개까지 추가하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quá nhiều dòng. Mỗi lần chỉ thêm tối đa %lld dòng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "行数过多。每次最多添加 %lld 行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列數過多。每次最多新增 %lld 列。"
           }
         }
       }
@@ -11340,6 +14280,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "신뢰"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tin cậy"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "信任"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "信任"
           }
         }
       }
@@ -11492,6 +14450,24 @@
             "state" : "translated",
             "value" : "알 수 없는 SSH 서버"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máy chủ SSH không xác định"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知的 SSH 服务器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知的 SSH 伺服器"
+          }
         }
       }
     },
@@ -11558,6 +14534,24 @@
             "state" : "translated",
             "value" : "지원되지 않는 암호화 버전 %d"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phiên bản mã hoá %d không được hỗ trợ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不支持的加密版本%d"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不支援的加密版本 %d"
+          }
         }
       }
     },
@@ -11596,6 +14590,24 @@
             "state" : "translated",
             "value" : "대신 SID 사용"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dùng SID thay thế"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "改用 SID"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "改用 SID"
+          }
         }
       }
     },
@@ -11605,6 +14617,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "대신 서비스 이름 사용"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dùng tên dịch vụ thay thế"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "改用服务名"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "改用服務名稱"
           }
         }
       }
@@ -11644,6 +14674,24 @@
             "state" : "translated",
             "value" : "사용자 이름은 Redis 6 이상의 ACL 사용자용입니다. 암호만 사용하는 서버에서는 비워 두십시오."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tên người dùng dành cho người dùng ACL của Redis 6 trở lên. Để trống với các máy chủ chỉ dùng mật khẩu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用户名用于 Redis 6 及更高版本的 ACL 用户。仅使用密码的服务器请留空。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用者名稱用於 Redis 6 及更新版本的 ACL 使用者。僅使用密碼的伺服器請留空。"
+          }
         }
       }
     },
@@ -11682,6 +14730,24 @@
             "state" : "translated",
             "value" : "CA 확인"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xác minh CA"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "验证 CA"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "驗證 CA"
+          }
         }
       }
     },
@@ -11691,6 +14757,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "신원 확인"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xác minh danh tính"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "验证身份"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "驗證身分"
           }
         }
       }
@@ -11843,6 +14927,24 @@
             "state" : "translated",
             "value" : "이 옵션을 끄면 연결, 그룹 및 태그가 이 기기에만 저장됩니다. 기존 iCloud 데이터는 삭제되지 않습니다. 암호 동기화를 켜지 않는 한 암호도 이 기기에만 저장됩니다."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khi tắt, kết nối, nhóm và thẻ chỉ nằm trên thiết bị này. Dữ liệu iCloud hiện có không bị xóa. Mật khẩu vẫn ở trên thiết bị này trừ khi bạn bật Đồng bộ mật khẩu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭后，连接、分组和标签只保留在本设备上。已有的 iCloud 数据不会被删除。除非你开启“同步密码”，否则密码只保留在本设备。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關閉後，連線、群組和標籤只保留在本裝置上。已有的 iCloud 資料不會被刪除。除非你開啟「同步密碼」，否則密碼只保留在本裝置。"
+          }
         }
       }
     },
@@ -11881,6 +14983,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Windows 인증(Kerberos)은 아직 iOS에서 지원되지 않습니다. SQL Server 인증을 사용하거나 Mac 앱에서 연결하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows Authentication (Kerberos) chưa được hỗ trợ trên iOS. Hãy dùng SQL Server Authentication, hoặc kết nối từ ứng dụng Mac."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS 上尚不支持 Windows 身份验证（Kerberos）。请使用 SQL Server 身份验证，或从 Mac 应用连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS 上尚不支援 Windows 驗證（Kerberos）。請使用 SQL Server 驗證，或從 Mac App 連線。"
           }
         }
       }
@@ -11948,6 +15068,24 @@
             "state" : "translated",
             "value" : "노란색"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vàng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "黄色"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "黃色"
+          }
         }
       }
     },
@@ -11986,6 +15124,24 @@
             "state" : "translated",
             "value" : "범위 내"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "giữa"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "介于"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "介於"
+          }
         }
       }
     },
@@ -11995,6 +15151,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "연결"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "kết nối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線"
           }
         }
       }
@@ -12006,6 +15180,24 @@
             "state" : "translated",
             "value" : "포함"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "chứa"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "包含"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "包含"
+          }
         }
       }
     },
@@ -12015,6 +15207,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "데이터베이스"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "cơ sở dữ liệu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "数据库"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "資料庫"
           }
         }
       }
@@ -12026,6 +15236,24 @@
             "state" : "translated",
             "value" : "다음으로 끝남"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "kết thúc bằng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以...结尾"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "結尾為"
+          }
         }
       }
     },
@@ -12036,6 +15264,24 @@
             "state" : "translated",
             "value" : "같음"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "bằng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等于"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等於"
+          }
         }
       }
     },
@@ -12045,6 +15291,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "보다 큼"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "lớn hơn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "大于"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "大於"
           }
         }
       }
@@ -12084,6 +15348,24 @@
             "state" : "translated",
             "value" : "iCloud 계정을 사용할 수 없습니다. 시스템 설정에서 iCloud에 로그인하십시오."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tài khoản iCloud không khả dụng. Đăng nhập iCloud trong Cài đặt hệ thống."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud 账户不可用。请在系统设置中登录 iCloud。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud 帳號無法使用。請在「系統設定」中登入 iCloud。"
+          }
         }
       }
     },
@@ -12100,6 +15382,24 @@
             "state" : "translated",
             "value" : "iCloud에서 변경 사항 %d개를 거부했습니다. 변경 사항은 이 기기에 유지되며 다시 시도됩니다: %@"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud đã từ chối %1$d thay đổi. Chúng vẫn ở trên thiết bị này và sẽ thử lại: %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud 拒绝了 %1$d 项更改。它们保留在本设备上，稍后会重试：%2$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud 拒絕了 %1$d 項變更。它們保留在本裝置上，稍後會重試：%2$@"
+          }
         }
       }
     },
@@ -12109,6 +15409,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "iCloud 서버 오류: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lỗi máy chủ iCloud: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud 服务器错误：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud 伺服器錯誤：%@"
           }
         }
       }
@@ -12120,6 +15438,24 @@
             "state" : "translated",
             "value" : "iCloud 저장 공간이 가득 찼습니다. iCloud에서 공간을 확보한 후 다시 시도하십시오."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dung lượng iCloud đã đầy. Hãy giải phóng dung lượng trong iCloud rồi thử lại."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud 存储空间已满。请在 iCloud 中释放空间后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud 儲存空間已滿。請在 iCloud 中釋放空間後重試。"
+          }
         }
       }
     },
@@ -12129,6 +15465,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "가져오기"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "nhập"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导入"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "匯入"
           }
         }
       }
@@ -12140,6 +15494,24 @@
             "state" : "translated",
             "value" : "IN"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "thuộc"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "属于"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "屬於"
+          }
         }
       }
     },
@@ -12149,6 +15521,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "삽입"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "chèn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "插入"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "插入"
           }
         }
       }
@@ -12160,6 +15550,24 @@
             "state" : "translated",
             "value" : "NULL이 아님"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "không là null"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不为 NULL"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不為 NULL"
+          }
         }
       }
     },
@@ -12169,6 +15577,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "NULL임"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "là null"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "为 NULL"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "為 NULL"
           }
         }
       }
@@ -12180,6 +15606,24 @@
             "state" : "translated",
             "value" : "보다 작음"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "nhỏ hơn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "小于"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "小於"
+          }
         }
       }
     },
@@ -12189,6 +15633,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "LIKE"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "giống"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "匹配"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相符"
           }
         }
       }
@@ -12200,6 +15662,24 @@
             "state" : "translated",
             "value" : "같지 않음"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "không bằng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不等于"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不等於"
+          }
         }
       }
     },
@@ -12209,6 +15689,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "NOT IN"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "không thuộc"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不属于"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不屬於"
           }
         }
       }
@@ -12220,6 +15718,24 @@
             "state" : "translated",
             "value" : "NOT LIKE"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "không giống"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不匹配"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不相符"
+          }
         }
       }
     },
@@ -12229,6 +15745,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "열기"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mở"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟"
           }
         }
       }
@@ -12296,6 +15830,24 @@
             "state" : "translated",
             "value" : "행"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dòng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列"
+          }
         }
       }
     },
@@ -12305,6 +15857,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "행"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "các dòng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "多行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "多列"
           }
         }
       }
@@ -12316,6 +15886,24 @@
             "state" : "translated",
             "value" : "다음으로 시작"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "bắt đầu bằng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以...开头"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開頭為"
+          }
         }
       }
     },
@@ -12325,6 +15913,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "테이블"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "bảng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "表"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "資料表"
           }
         }
       }
@@ -12336,12 +15942,48 @@
             "state" : "translated",
             "value" : "≤"
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "≤"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "≤"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "≤"
+          }
         }
       }
     },
     "≥" : {
       "localizations" : {
         "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "≥"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "≥"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "≥"
+          }
+        },
+        "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "≥"

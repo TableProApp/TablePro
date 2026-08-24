@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Row inspector fields, cell popovers and the Compare row diff follow the data grid font. (#2393)
 - The connection color as a filled badge behind the connection name, with the database icon back to its engine color. (#2398)
 - Deeper fills on tag badges and the connection name badge. (#2398)
+- Turkish, Vietnamese, Simplified Chinese and Traditional Chinese cover every string that was still in English.
 
 ### Fixed
 

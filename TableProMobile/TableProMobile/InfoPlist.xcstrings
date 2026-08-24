@@ -16,6 +16,24 @@
             "state" : "translated",
             "value" : "TablePro는 저장된 데이터베이스 연결 및 자격 증명을 보호하기 위해 Face ID를 사용합니다."
           }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro dùng Face ID để bảo vệ các kết nối cơ sở dữ liệu và thông tin đăng nhập đã lưu của bạn."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 使用面容 ID 来保护你已保存的数据库连接和凭据。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 使用 Face ID 來保護你已儲存的資料庫連線和認證資訊。"
+          }
         }
       }
     },
@@ -33,6 +51,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "TablePro는 Bonjour(.local) 호스트 이름을 포함하여 로컬 네트워크에서 실행되는 데이터베이스 서버 및 SSH 터널에 연결합니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro kết nối tới các máy chủ cơ sở dữ liệu và SSH tunnel chạy trên mạng cục bộ của bạn, bao gồm cả tên máy Bonjour (.local)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 会连接到运行在你本地网络上的数据库服务器和 SSH 隧道，包括 Bonjour（.local）主机名。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 會連線到執行在你區域網路上的資料庫伺服器和 SSH 通道，包括 Bonjour（.local）主機名稱。"
           }
         }
       }
