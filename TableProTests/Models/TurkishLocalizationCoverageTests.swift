@@ -26,7 +26,7 @@ struct TurkishLocalizationCoverageTests {
     /// specifiers. `CLAUDE.md` says not to localize technical terms, so these are the exception the
     /// check is built around rather than a backlog.
     private static let identicalByDesign: Set<String> = [
-        "%1$@ (%2$@)", "%1$@ +%2$lld", "%1$@: %2$@", "%@ %@", "%@ (%@@%@)", "%@ (%lld/%lld)",
+        "%1$@ (%2$@)", "%1$@ +%2$lld", "%1$@: %2$@", "%1$@ · %2$@", "%@ %@", "%@ (%@@%@)", "%@ (%lld/%lld)",
         "%@ → %@.%@", "%@. %@", "%@. %@. %@", "%@: %@, %@", "%lld / %lld", "%lld / ~%lld",
         "(%lld %@)", ", %@", "<1 ms", "db %d", "v%@ · %@",
         "API Token", "Access Key ID", "Account ID", "Application Default Credentials",
