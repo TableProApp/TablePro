@@ -1,4 +1,6 @@
+import AppKit
 import Foundation
+import SwiftUI
 @testable import TablePro
 import Testing
 
@@ -280,6 +282,61 @@ struct WorkspaceRailCellTextTests {
             status: status,
             containerTarget: containerTarget
         )
+    }
+
+    /// The regression this exists to stop: the glyph used to take the engine's brand colour in
+    /// every state, so a failed PostgreSQL connection's warning triangle rendered PostgreSQL blue.
+    @Test("A failed connection's glyph is not the engine's brand colour")
+    func failedGlyphIsNotBrandColoured() {
+        let failed = WorkspaceRailCellView.glyphTint(for: makeEntry(status: .error("boom")))
+        let connected = WorkspaceRailCellView.glyphTint(for: makeEntry(status: .connected))
+
+        #expect(failed == .systemRed)
+        #expect(failed != connected)
+    }
+
+    @Test("A disconnected connection's glyph recedes rather than wearing a brand colour")
+    func disconnectedGlyphRecedes() {
+        let disconnected = WorkspaceRailCellView.glyphTint(for: makeEntry(status: .disconnected))
+        let connected = WorkspaceRailCellView.glyphTint(for: makeEntry(status: .connected))
+
+        #expect(disconnected == .secondaryLabelColor)
+        #expect(disconnected != connected)
+    }
+
+    /// Identity never reaches the glyph, so naming a connection Red cannot make a healthy
+    /// connection look like a failed one.
+    @Test("The identity colour never reaches the glyph tint")
+    func identityStaysOffTheGlyph() {
+        var connection = TestFixtures.makeConnection(database: "app")
+        connection.color = .red
+        let entry = WorkspaceRailEntry(
+            workspace: WorkspaceID(connectionId: connection.id, container: "app"),
+            connection: connection,
+            status: .connected,
+            containerTarget: .database
+        )
+
+        #expect(WorkspaceRailCellView.glyphTint(for: entry) == NSColor(connection.brandColor))
+    }
+
+    /// The dot sits between the 8pt one the welcome list draws and the 12.5pt one measured on a
+    /// Finder tag, and scales with the sidebar icon size rather than being fixed.
+    private static let railLayouts: [WorkspaceRailMetrics.Layout] = [
+        WorkspaceRailMetrics.small,
+        WorkspaceRailMetrics.medium,
+        WorkspaceRailMetrics.large,
+    ]
+
+    @Test("The identity dot scales with the icon and stays in the shipped size range")
+    func identityDotScalesWithIcon() {
+        let sizes = Self.railLayouts
+            .map(\.iconSize)
+            .map(WorkspaceRailCellView.identityDotSize(forIcon:))
+
+        #expect(sizes == sizes.sorted())
+        #expect(sizes.allSatisfy { $0 >= 7 && $0 <= 12.5 })
+        #expect(WorkspaceRailCellView.identityDotSize(forIcon: 24) == 9)
     }
 
     @Test("The tooltip spells out what the truncated labels cannot")

@@ -31,11 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Row inspector fields, cell popovers and the Compare row diff follow the data grid font. (#2393)
 - The connection color as a filled badge behind the connection name, with the database icon back to its engine color. (#2398)
 - Deeper fills on tag badges and the connection name badge. (#2398)
+- The connection color in the workspace rail as a dot on the engine icon, kept visible on the selected row. (#2398)
 
 ### Fixed
 
 - A connection's color and name not reaching the toolbar and workspace rail until the next reconnect. (#2398)
 - An invisible connection dot in the query history drawer and the compare status strip. (#2398)
+- A failed connection's warning icon in the workspace rail wearing the database engine's color. (#2398)
 - The JSON viewer keeping its old font after a font, theme or text-size change. (#2393)
 - Hex dumps wrapping mid-line instead of keeping their columns aligned. (#2393)
 - A second of delay opening the inline editor on a result with hundreds of columns. (#2381)
