@@ -77,7 +77,8 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private static let postingsCoreColumns =
         "id, date, flag, payee, narration, account, number, currency, cost_number, cost_currency"
     private static let postingsDetailColumns =
-        "filename, lineno, location, tags, links, _entry_meta, _posting_meta"
+        "posting_flag, price, cost_date, cost_label, "
+            + "filename, lineno, location, tags, links, _entry_meta, _posting_meta"
     private static let postingsQuery =
         "SELECT \(postingsCoreColumns), \(postingsDetailColumns) FROM #postings ORDER BY id"
     private static let postingsCoreQuery = "SELECT \(postingsCoreColumns) FROM #postings ORDER BY id"

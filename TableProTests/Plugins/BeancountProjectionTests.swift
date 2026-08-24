@@ -9,7 +9,7 @@ import Testing
 
 @Suite("Beancount SQL projection")
 struct BeancountProjectionTests {
-    @Test("projects transactions, postings, and resolved cost basis")
+    @Test("projects transactions and full posting semantics")
     func projectsTransactionsAndPostings() async throws {
         let driver = try Self.makeDriver()
         defer { driver.disconnect() }
@@ -22,14 +22,19 @@ struct BeancountProjectionTests {
         ])
 
         let postings = try await driver.execute(query: """
-            SELECT transaction_id, account, amount, commodity, cost_number, cost_currency
+            SELECT transaction_id, account, amount, commodity, flag,
+                   cost_number, cost_currency, cost_date, cost_label,
+                   price_number, price_currency
             FROM postings ORDER BY id
             """)
         #expect(postings.rows.map { $0.map(\.asText) } == [
-            ["1", "Expenses:Food", "4.00", "USD", nil, nil],
-            ["1", "Assets:Cash", "-4.00", "USD", nil, nil],
-            ["2", "Assets:Stock", "10", "HOOL", "100.00", "USD"],
-            ["2", "Assets:Cash", "-1000.00", "USD", nil, nil]
+            ["1", "Expenses:Food", "4.00", "USD", nil, nil, nil, nil, nil, nil, nil],
+            ["1", "Assets:Cash", "-4.00", "USD", nil, nil, nil, nil, nil, nil, nil],
+            [
+                "2", "Assets:Stock", "10", "HOOL", "!", "100.00", "USD", "2023-12-31", "opening-lot",
+                "110", "USD"
+            ],
+            ["2", "Assets:Cash", "-1000.00", "USD", nil, nil, nil, nil, nil, nil, nil]
         ])
 
         let postingFreeCount = try await driver.execute(query: """
@@ -480,7 +485,12 @@ struct BeancountProjectionTests {
                 number: "10",
                 currency: "HOOL",
                 costNumber: "100.00",
-                costCurrency: "USD"
+                costCurrency: "USD",
+                costDate: "2023-12-31",
+                costLabel: "opening-lot",
+                priceNumber: "110",
+                priceCurrency: "USD",
+                flag: "!"
             ),
             postingRow(transactionID: 2, account: "Assets:Cash", number: "-1000.00", currency: "USD")
         ],
@@ -572,6 +582,11 @@ struct BeancountProjectionTests {
         currency: String,
         costNumber: String? = nil,
         costCurrency: String? = nil,
+        costDate: String? = nil,
+        costLabel: String? = nil,
+        priceNumber: String? = nil,
+        priceCurrency: String? = nil,
+        flag: String? = nil,
         line: Int? = nil,
         metadata: [String: Any]? = nil
     ) -> [String: Any] {
@@ -584,6 +599,12 @@ struct BeancountProjectionTests {
         ]
         row["cost_number"] = costNumber
         row["cost_currency"] = costCurrency
+        row["cost_date"] = costDate
+        row["cost_label"] = costLabel
+        if let priceNumber, let priceCurrency {
+            row["price"] = ["number": priceNumber, "currency": priceCurrency]
+        }
+        row["posting_flag"] = flag
         if let line {
             row["filename"] = "/ledger/main.beancount"
             row["lineno"] = line

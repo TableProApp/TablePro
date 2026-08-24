@@ -137,8 +137,13 @@ extension BeancountPluginDriver {
                 account TEXT NOT NULL,
                 amount TEXT,
                 commodity TEXT,
+                flag TEXT,
                 cost_number TEXT,
                 cost_currency TEXT,
+                cost_date DATE,
+                cost_label TEXT,
+                price_number TEXT,
+                price_currency TEXT,
                 source_file TEXT,
                 line INTEGER,
                 source_location TEXT
@@ -338,11 +343,13 @@ extension BeancountPluginDriver {
                 line: row["lineno"],
                 formatted: row["location"]
             )
+            let price = amountFields(row["price"])
             try writer.insert(sql: """
                 INSERT INTO postings
-                (id, transaction_id, date, account, amount, commodity, cost_number, cost_currency,
+                (id, transaction_id, date, account, amount, commodity, flag,
+                 cost_number, cost_currency, cost_date, cost_label, price_number, price_currency,
                  source_file, line, source_location)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, values: [
                     String(postingID),
                     String(transactionID),
@@ -350,8 +357,13 @@ extension BeancountPluginDriver {
                     account,
                     stringValue(row["number"]),
                     stringValue(row["currency"]),
+                    stringValue(row["posting_flag"]),
                     stringValue(row["cost_number"]),
                     stringValue(row["cost_currency"]),
+                    stringValue(row["cost_date"]),
+                    stringValue(row["cost_label"]),
+                    price.number,
+                    price.currency,
                     position?.file,
                     position?.line.map(String.init),
                     position?.formatted

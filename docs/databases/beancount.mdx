@@ -66,7 +66,7 @@ Three slashes: the path is absolute. See [Connection URL Reference](/connections
 | Table | Contents |
 |-------|----------|
 | `transactions` | Date, flag, payee, narration, source location. Includes transactions with no postings |
-| `postings` | Account, amount, commodity, resolved cost basis (`cost_number`, `cost_currency`), source location |
+| `postings` | Account, amount, commodity, posting flag, resolved cost and price details, source location |
 | `accounts` | Opened accounts and declared currencies |
 | `prices` | Price directives |
 | `balances` | Computed account balances by commodity |
@@ -93,6 +93,8 @@ ORDER BY t.date DESC;
 ```
 
 Amounts arrive booked, so thousands separators, arithmetic, cost (`{}`) and price (`@`/`@@`) annotations are resolved before they reach a cell. Metadata values are text, and booleans keep their Beancount spelling of `TRUE` and `FALSE`.
+
+Posting costs use `cost_number`, `cost_currency`, `cost_date`, and `cost_label`. Resolved inline prices use `price_number` and `price_currency`; `flag` is the posting's own flag, independent of the transaction flag.
 
 Every ledger file, glob directory, and referenced document is watched by modification date, size, and directory listing. Change one and the next query rebuilds the projection first, so an edit in your text editor lands without reconnecting.
 
