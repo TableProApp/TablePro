@@ -53,6 +53,14 @@ internal final class ConnectionWorkspace {
     /// closing the connection releases it.
     internal private(set) var openedContainers: Set<String> = []
 
+    /// When this connection joined the app, which is what the strip orders newcomers by.
+    ///
+    /// The session's `connectedAt` cannot answer it: a disconnect deletes the session entry, so the
+    /// connection lost its timestamp and its entries jumped to the bottom of the strip, and
+    /// reconnecting minted a new one rather than putting them back. This is stamped once and never
+    /// moves, including across `moveToNewWindow`, which hands this instance to the new window.
+    internal let openedAt = Date()
+
     private var browseCancellable: AnyCancellable?
     private var statusCancellable: AnyCancellable?
     private var tabsCancellable: AnyCancellable?

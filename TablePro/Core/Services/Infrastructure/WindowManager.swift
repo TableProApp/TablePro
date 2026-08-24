@@ -279,15 +279,22 @@ internal final class WindowManager {
             .first
     }
 
+    /// The window hosting this connection, whatever state it is in.
+    ///
+    /// Visibility is not the test: a miniaturized window still hosts its connections, so filtering
+    /// on `isVisible` answered nothing for one and left the connection unreachable from the strip
+    /// and from a close command. `host(for:)` is a different question, "which window should adopt
+    /// this connection", and falls back to the frontmost window for one nobody hosts yet.
     internal func window(for connectionId: UUID) -> NSWindow? {
-        controllers.values
-            .first { controller in
-                guard controller.window?.isVisible == true else { return false }
-                guard let host = controller.window?.contentViewController as? MainSplitViewController
-                else { return false }
-                return host.workspaces.contains(connectionId)
-            }?
-            .window
+        hostingController(for: connectionId)?.window
+    }
+
+    internal func hostingController(for connectionId: UUID) -> NSWindowController? {
+        controllers.values.first { controller in
+            guard let host = controller.window?.contentViewController as? MainSplitViewController
+            else { return false }
+            return host.workspaces.contains(connectionId)
+        }
     }
 
     internal func connectionIdsRetainingRestoreIntent() -> [UUID] {

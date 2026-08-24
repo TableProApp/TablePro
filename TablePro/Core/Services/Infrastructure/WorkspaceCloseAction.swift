@@ -63,8 +63,21 @@ internal enum WorkspaceCloseAction {
 
         let coordinator = hosted.sessionState?.coordinator
         let victims = tabs(in: workspace.container, of: coordinator)
-        guard await confirm(victims, coordinator: coordinator, revealing: workspace) else {
+        guard let closable = await confirm(victims, coordinator: coordinator, revealing: workspace) else {
             Self.logger.info("close cancelled at the save prompt container=\(workspace.container, privacy: .public)")
+            return
+        }
+        /// A tab whose work the save could not take keeps the container open, because it is still
+        /// work in it. Closing the entry regardless would destroy exactly what the alert said would
+        /// stay, which is the promise the wording makes.
+        guard closable.isSuperset(of: Set(victims.map(\.id))) else {
+            coordinator?.closeTabsByUser(ids: victims.map(\.id).filter { closable.contains($0) })
+            Self.logger.info(
+                """
+                close kept container=\(workspace.container, privacy: .public) \
+                unsaveable=\(victims.count - closable.count, privacy: .public)
+                """
+            )
             return
         }
         guard await browseAway(from: workspace, among: containers, coordinator: coordinator) else {
@@ -93,15 +106,23 @@ internal enum WorkspaceCloseAction {
     /// Selecting one of the victims is also what makes Save save a victim. It runs only when there
     /// is something to confirm, because raising a background connection's window and moving its tab
     /// selection is a side effect no one asked for when the close has nothing to lose.
+    /// nil when the user cancelled; otherwise the victims that may now be closed, which is every one
+    /// of them unless Save could not reach some.
     private static func confirm(
         _ victims: [QueryTab],
         coordinator: MainContentCoordinator?,
         revealing workspace: WorkspaceID
-    ) async -> Bool {
-        guard let actions = coordinator?.commandActions, !victims.isEmpty else { return true }
-        guard actions.hasUnsavedWork(among: victims) else { return true }
+    ) async -> Set<UUID>? {
+        let everything = Set(victims.map(\.id))
+        guard let actions = coordinator?.commandActions, !victims.isEmpty else { return everything }
+        guard actions.hasUnsavedWork(among: victims) else { return everything }
         reveal(workspace, coordinator: coordinator)
-        return await actions.confirmDiscardingUnsavedWork(victims: victims)
+        switch await actions.resolveUnsavedWork(in: victims) {
+        case .cancel:
+            return nil
+        case .close(let closable):
+            return closable
+        }
     }
 
     /// Leaves the container before it stops being listed, and only when it is the one being browsed.

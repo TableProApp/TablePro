@@ -41,6 +41,7 @@ struct WorkspaceRailStoreTests {
         target: ContainerSwitchTarget? = .database,
         tabs: [UUID: [QueryTab]] = [:],
         opened: [UUID: Set<String>] = [:],
+        openedAt: [UUID: Date] = [:],
         storedOrder: [WorkspaceID] = []
     ) -> [WorkspaceRailEntry] {
         WorkspaceRailStore.resolveEntries(
@@ -51,6 +52,7 @@ struct WorkspaceRailStoreTests {
             containerTarget: { _ in target },
             tabs: { tabs[$0] ?? [] },
             openedContainers: { opened[$0] ?? [] },
+            openedAt: openedAt,
             storedOrder: storedOrder
         )
     }
@@ -260,6 +262,34 @@ struct WorkspaceRailStoreTests {
         )
         #expect(entries.count == 1)
         #expect(entries[0].container.isEmpty)
+    }
+
+    /// A disconnect deletes the session, and the order used to come from the session's
+    /// `connectedAt`, so the connection lost its timestamp and its entries dropped to the bottom of
+    /// the strip. Reconnecting minted a new session with a new timestamp, so they never came back.
+    @Test("A disconnected connection keeps its place in the strip")
+    func orderSurvivesADisconnect() {
+        let first = TestFixtures.makeConnection(database: "one")
+        let second = TestFixtures.makeConnection(database: "two")
+        let opened: [UUID: Date] = [
+            first.id: Date(timeIntervalSince1970: 100),
+            second.id: Date(timeIntervalSince1970: 200),
+        ]
+
+        let connected = resolve(
+            openConnectionIds: [first.id, second.id],
+            sessions: [first.id: makeSession(first), second.id: makeSession(second)],
+            openedAt: opened
+        )
+        #expect(connected.map(\.container) == ["one", "two"])
+
+        let afterDisconnect = resolve(
+            openConnectionIds: [first.id, second.id],
+            sessions: [second.id: makeSession(second)],
+            hostedConnections: [first.id: first],
+            openedAt: opened
+        )
+        #expect(afterDisconnect.map(\.container) == ["one", "two"])
     }
 
     @Test("Entries follow the stored arrangement")

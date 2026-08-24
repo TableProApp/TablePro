@@ -63,6 +63,7 @@ internal enum WorkspaceRailStore {
             /// closed tab kept a container listed and made a closed entry come back.
             tabs: { workspacesById[$0]?.sessionState?.coordinator.tabManager.tabs ?? [] },
             openedContainers: { workspacesById[$0]?.openedContainers ?? [] },
+            openedAt: workspacesById.mapValues(\.openedAt),
             storedOrder: WorkspaceRailOrderStore.shared.order
         )
     }
@@ -81,6 +82,7 @@ internal enum WorkspaceRailStore {
         containerTarget: (DatabaseType) -> ContainerSwitchTarget?,
         tabs: (UUID) -> [QueryTab],
         openedContainers: (UUID) -> Set<String> = { _ in [] },
+        openedAt: [UUID: Date] = [:],
         storedOrder: [WorkspaceID]
     ) -> [WorkspaceRailEntry] {
         var connections: [UUID: DatabaseConnection] = [:]
@@ -116,7 +118,7 @@ internal enum WorkspaceRailStore {
         let ranked = WorkspaceRailOrdering.ranked(
             openIds: workspaces,
             storedOrder: storedOrder,
-            openedAt: sessions.mapValues(\.connectedAt)
+            openedAt: openedAt
         )
 
         return ranked.compactMap { workspace in

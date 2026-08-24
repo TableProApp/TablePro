@@ -64,7 +64,9 @@ Right-click an entry and choose **Close Database “\<name\>”** to close that 
 
 ## Reordering
 
-Drag entries to arrange them. The order is shared by every window, kept across launches, and an entry returns to its slot when you reopen it. Until you drag anything, entries follow the order their connections opened, one connection's databases grouped by name.
+Drag entries to arrange them. The order is shared by every window, kept across launches, and an entry returns to its slot when you reopen it. Until you drag anything, entries follow the order their connections opened, one connection's databases grouped by name, and a connection you disconnect keeps its place.
+
+Deleting a connection takes its entries out of the saved order. The rest is kept to 500 entries, dropping the ones you no longer have open, oldest first, so a database renamed or dropped on the server does not hold a slot forever.
 
 ## Keys
 

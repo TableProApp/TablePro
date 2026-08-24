@@ -39,6 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - The connections strip disappearing when you click the entry you came from.
+- Save on a bulk tab close applying to the tab on screen instead of the tabs being closed.
+- A connections-strip entry in another window raising that window without showing the connection.
+- A disconnected connection's entries dropping to the bottom of the connections strip.
+- The connections strip's saved arrangement growing without bound.
 - Every database entry but one leaving the connections strip when a connection is disconnected.
 - A connection opened from a file or a URL losing its strip entries when its session ends.
 - Closing one database's tabs asking to save unsaved work in another.

@@ -333,30 +333,29 @@ internal final class WorkspaceRailViewController: NSViewController {
     /// saved. Moving between two containers of the same connection stays in one window and
     /// only moves that window's browse cursor.
     ///
-    /// Both paths end at `applySelection`, which reads the host's own selection back. A workspace
-    /// this window hosts leaves the highlight on the row the user picked; one belonging to another
-    /// window leaves it where it was, because this window did not move. The rail needed a rule for
-    /// when to put its highlight back only while it was guessing at the answer.
+    /// One path, whichever window owns the entry. Selecting the connection in its own window comes
+    /// first and always: the cross-window case used to raise the target window and move the target
+    /// connection's browse cursor without ever telling that window to show it, so it came forward
+    /// still showing the connection it had, its tabs and toolbar named that one, and the work the
+    /// user clicked moved silently behind it.
+    ///
+    /// It ends at `applySelection`, which reads this window's own selection back: a workspace this
+    /// window hosts leaves the highlight on the row the user picked; one belonging to another window
+    /// leaves it where it was, because this window did not move.
     private func activate(_ workspace: WorkspaceID) {
-        /// One window hosts every connection, so switching is a selection change in that
-        /// window's own registry. Raising a different window is what made the rail read as a
-        /// window switcher rather than a workspace switcher.
-        if let host, host.hostedConnectionIds.contains(workspace.connectionId) {
-            host.selectHostedConnection(workspace.connectionId)
-            if let window = view.window {
-                moveBrowseCursor(of: window, to: workspace)
-            }
-            applySelection()
-            return
-        }
-
-        let target = entries.first { $0.workspace == workspace }?.containerTarget
-        let showing = MainContentCoordinator.window(showing: workspace, target: target)
-        guard let window = showing
-            ?? WindowLifecycleMonitor.shared.mostRecentWindow(for: workspace.connectionId) else {
+        guard let window = WindowManager.shared.window(for: workspace.connectionId),
+              let target = window.contentViewController as? MainSplitViewController else {
             Self.logger.error(
                 "activate has no window target=\(Self.describe(workspace), privacy: .public)"
             )
+            return
+        }
+
+        target.selectHostedConnection(workspace.connectionId)
+
+        guard window !== view.window else {
+            moveBrowseCursor(of: window, to: workspace)
+            applySelection()
             return
         }
 
@@ -367,8 +366,7 @@ internal final class WorkspaceRailViewController: NSViewController {
             target=\(Self.describe(workspace), privacy: .public) \
             window=\(window.windowNumber, privacy: .public) visible=\(window.isVisible, privacy: .public) \
             tabs=\(group?.windows.count ?? 0, privacy: .public) \
-            wasSelectedTab=\(group?.selectedWindow === window, privacy: .public) \
-            showsItsOwnWork=\(showing != nil, privacy: .public)
+            wasSelectedTab=\(group?.selectedWindow === window, privacy: .public)
             """
         )
 

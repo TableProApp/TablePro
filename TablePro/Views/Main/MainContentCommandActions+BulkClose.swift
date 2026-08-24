@@ -72,34 +72,118 @@ extension MainContentCommandActions {
         guard let coordinator else { return }
         let victims = tabsToClose(kind: kind)
         guard !victims.isEmpty else { return }
-        guard await confirmDiscardingUnsavedWork(victims: victims) else { return }
-        coordinator.closeTabsByUser(ids: victims.map(\.id))
+        guard case .close(let closable) = await resolveUnsavedWork(in: victims) else { return }
+        coordinator.closeTabsByUser(ids: victims.map(\.id).filter { closable.contains($0) })
+    }
+
+    /// What a close should do about the work it is going to destroy.
+    internal enum UnsavedWorkOutcome: Equatable {
+        case cancel
+        /// The ids that may now be closed. Save leaves out any victim it could not actually save.
+        case close(Set<UUID>)
     }
 
     /// A partial close leaves the window open, so it cannot lean on the window's own prompt.
-    /// Unsaved work is tracked for the connection rather than per tab, so the question is asked
-    /// once for the batch rather than once per tab, which is also what keeps the sheets from
-    /// queueing: `NSWindow.beginSheet` queues a second sheet behind the first rather than
-    /// presenting it, so N prompts would be answered one at a time with no way to see why.
+    /// The question is asked once for the batch rather than once per tab, which is also what keeps
+    /// the sheets from queueing: `NSWindow.beginSheet` queues a second sheet behind the first rather
+    /// than presenting it, so N prompts would be answered one at a time with no way to see why.
     ///
-    /// Save goes on to close. This used to save and then return false, which left the batch
-    /// standing after a successful save and made Save mean "cancel" on this path while it meant
-    /// "close" on the window path.
-    func confirmDiscardingUnsavedWork(victims: [QueryTab] = []) async -> Bool {
-        guard hasUnsavedWork(among: victims) else { return true }
+    /// Save goes on to close. It used to save and then return false, which left the batch standing
+    /// after a successful save and made Save mean "cancel" on this path while it meant "close" on
+    /// the window path. And it used to run `saveSelectedTabWork()` whatever the victims were, so on
+    /// Close Other Tabs and Close Tabs for Other Databases, where the selected tab is never a
+    /// victim, Save wrote a bystander's changes and the close destroyed the victims' own.
+    internal func resolveUnsavedWork(in victims: [QueryTab]) async -> UnsavedWorkOutcome {
+        let everything = Set(victims.map(\.id))
+        guard hasUnsavedWork(among: victims) else { return .close(everything) }
 
-        switch await AlertHelper.confirmSaveChanges(
-            message: String(localized: "Your changes will be lost if you don't save them."),
-            window: closeAnchorWindow
-        ) {
+        switch await AlertHelper.confirmSaveChanges(message: unsavedWorkMessage(for: victims), window: closeAnchorWindow) {
         case .save:
-            guard await applyStagedStructureEdits(in: victims) else { return false }
-            return await saveSelectedTabWork()
+            return .close(await saveVictims(victims))
         case .dontSave:
-            return true
+            return .close(everything)
+        case .cancel:
+            return .cancel
+        }
+    }
+
+    /// For the paths that close everything whatever the answer: a window closing, a connection
+    /// closing, a disconnect. They have nowhere to leave a tab open, so a save that could not take
+    /// every victim stops them, the way a failed apply of staged ALTERs always did. Answering true
+    /// on a partial save would close exactly the tabs the save refused.
+    func confirmDiscardingUnsavedWork(victims: [QueryTab] = []) async -> Bool {
+        switch await resolveUnsavedWork(in: victims) {
         case .cancel:
             return false
+        case .close(let closable):
+            return closable.isSuperset(of: Set(victims.map(\.id)))
         }
+    }
+
+    /// Save cannot reach a tab that is not on screen for grid edits, staged principals or a table
+    /// draft, so the alert says what will happen to those rather than promising a save it cannot
+    /// make: they stay open, and everything else closes.
+    private func unsavedWorkMessage(for victims: [QueryTab]) -> String {
+        guard let coordinator,
+              victims.contains(where: { coordinator.savability(of: $0) == .mountedOnly })
+        else {
+            return String(localized: "Your changes will be lost if you don't save them.")
+        }
+        return String(
+            localized: """
+            Your changes will be lost if you don't save them. \
+            Tabs whose changes can only be saved from the tab itself stay open.
+            """
+        )
+    }
+
+    /// Saves each victim through the path that can reach it, and answers with the ones that are now
+    /// safe to close.
+    ///
+    /// A victim it cannot save keeps its tab: closing it would be the data loss the prompt exists to
+    /// prevent. That includes a file whose copy on disk changed underneath it, because the conflict
+    /// sheet is one window-level slot with no queue, and a second victim's conflict would overwrite
+    /// the first while both tabs closed behind it.
+    private func saveVictims(_ victims: [QueryTab]) async -> Set<UUID> {
+        guard let coordinator else { return Set(victims.map(\.id)) }
+        guard await applyStagedStructureEdits(in: victims) else { return [] }
+        guard await saveWorkOnScreen(among: victims) else { return [] }
+
+        var closable: Set<UUID> = []
+        for victim in victims where !coordinator.isSelectedTab(victim) {
+            switch coordinator.savability(of: victim) {
+            case .nothingAtRisk:
+                closable.insert(victim.id)
+            case .mountedOnly:
+                continue
+            case .saveable:
+                guard victim.content.isFileDirty, let url = victim.content.sourceFileURL else {
+                    closable.insert(victim.id)
+                    continue
+                }
+                if await saveFile(of: victim, to: url) { closable.insert(victim.id) }
+            }
+        }
+        if let selected = coordinator.tabManager.selectedTab, victims.contains(where: { $0.id == selected.id }) {
+            closable.insert(selected.id)
+        }
+        return closable
+    }
+
+    /// The pane on screen, saved through the one path that reaches all of it.
+    ///
+    /// Not every kind of unsaved work belongs to a tab: a staged TRUNCATE and an edit in the row
+    /// inspector belong to the connection, `savability` deliberately leaves them out, and
+    /// `saveSelectedTabWork` is the only thing that applies them. Skipping it because the selected
+    /// tab's own work looked clean is how Save came to close a connection with a staged TRUNCATE
+    /// still staged. An empty victim list is the whole connection, which is what the window-close
+    /// and disconnect paths ask about, and it goes through here too.
+    private func saveWorkOnScreen(among victims: [QueryTab]) async -> Bool {
+        guard let coordinator else { return true }
+        let selected = coordinator.tabManager.selectedTab
+        let onScreenIsAVictim = victims.isEmpty || victims.contains { $0.id == selected?.id }
+        guard onScreenIsAVictim else { return true }
+        return await saveSelectedTabWork()
     }
 
     /// What the batch is about to destroy, not what the connection happens to hold.
