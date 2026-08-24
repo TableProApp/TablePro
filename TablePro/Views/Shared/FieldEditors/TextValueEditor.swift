@@ -14,7 +14,7 @@ import SwiftUI
 internal struct TextValueEditor: NSViewRepresentable {
     @Binding var text: String
     var isEditable: Bool = true
-    var font: NSFont = .systemFont(ofSize: NSFont.systemFontSize)
+    var font: NSFont
     var borderType: NSBorderType = .noBorder
     var movesFocusOnTab: Bool = false
     var textContainerInset = NSSize(width: 4, height: 6)

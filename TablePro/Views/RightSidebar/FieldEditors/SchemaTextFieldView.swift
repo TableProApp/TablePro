@@ -17,7 +17,6 @@ internal struct SchemaTextFieldView: View {
     var body: some View {
         TextField(context.placeholderText, text: $draft)
             .textFieldStyle(.roundedBorder)
-            .font(.subheadline)
             .autocorrectionDisabled(true)
             .focused($isFocused)
             .disabled(context.isReadOnly)

@@ -28,7 +28,7 @@ final class CellOverlayViewer: CellOverlayBase, NSTextViewDelegate {
         textView.isEditable = false
         textView.isSelectable = true
         textView.isRichText = false
-        textView.font = ThemeEngine.shared.dataGridFonts.regular
+        textView.font = ThemeEngine.shared.valueFont
         textView.textColor = .labelColor
         textView.backgroundColor = .textBackgroundColor
         Self.applyCellTextLayout(to: textView)

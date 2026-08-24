@@ -128,7 +128,7 @@ internal struct PhpViewerView: View {
     private var rawBody: some View {
         ScrollView {
             Text(rawValue)
-                .font(.system(.body, design: .monospaced))
+                .font(ThemeEngine.shared.valueFontSwiftUI)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)

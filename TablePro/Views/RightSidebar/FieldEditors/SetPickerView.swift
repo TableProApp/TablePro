@@ -41,7 +41,7 @@ internal struct SetPickerView: View {
         } label: {
             HStack(spacing: 4) {
                 Text(displayLabel)
-                    .font(.subheadline)
+                    .font(ThemeEngine.shared.valueFontSwiftUI)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Image(systemName: "chevron.down")

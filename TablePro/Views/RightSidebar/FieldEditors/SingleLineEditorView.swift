@@ -16,7 +16,6 @@ internal struct SingleLineEditorView: View {
         } else {
             TextField(context.placeholderText, text: context.value)
                 .textFieldStyle(.roundedBorder)
-                .font(.subheadline)
                 .autocorrectionDisabled(true)
                 .focused($isFocused)
         }
@@ -28,7 +27,6 @@ internal struct SingleLineEditorView: View {
         let value = context.value.wrappedValue
         let placeholder = value.isEmpty ? context.emptyStatePlaceholder : nil
         return Text(placeholder ?? value)
-            .font(.subheadline)
             .foregroundStyle(placeholder == nil ? .primary : .tertiary)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, minHeight: 16, alignment: .leading)

@@ -14,7 +14,7 @@ internal struct PendingStateOverlay<Editor: View>: View {
     var body: some View {
         if isPendingNull || isPendingDefault {
             Text(isPendingNull ? "NULL" : "DEFAULT")
-                .font(.system(.subheadline, design: .monospaced))
+                .font(ThemeEngine.shared.valueFontSwiftUI)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
                 .padding(6)

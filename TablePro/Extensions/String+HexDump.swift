@@ -7,6 +7,25 @@
 
 import Foundation
 
+/// The dump's own column arithmetic, so a view that has to size itself around a line does not
+/// restate it. A line is a fixed width in characters, which only means a fixed width in points
+/// while the font stays monospaced.
+internal enum HexDumpLayout {
+    static let bytesPerLine = 16
+
+    private static let offsetColumnWidth = 10
+    private static let hexByteWidth = 3
+    private static let midGroupGapWidth = 1
+    private static let asciiFrameWidth = 3
+
+    static let lineWidthInCharacters =
+        offsetColumnWidth
+            + bytesPerLine * hexByteWidth
+            + midGroupGapWidth
+            + asciiFrameWidth
+            + bytesPerLine
+}
+
 extension String {
     /// Returns a classic hex dump representation of this string's bytes, or nil if empty.
     ///
@@ -26,9 +45,9 @@ extension String {
         let bytesArray = [UInt8](bytes.prefix(displayCount))
 
         var lines: [String] = []
-        lines.reserveCapacity(displayCount / 16 + 2)
+        let bytesPerLine = HexDumpLayout.bytesPerLine
+        lines.reserveCapacity(displayCount / bytesPerLine + 2)
 
-        let bytesPerLine = 16
         var offset = 0
 
         while offset < displayCount {

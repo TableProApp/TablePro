@@ -62,7 +62,7 @@ private struct TextViewerWindowContent: View {
         TextValueEditor(
             text: $text,
             isEditable: isEditable,
-            font: .preferredFont(forTextStyle: .body),
+            font: ThemeEngine.shared.valueFont,
             textContainerInset: NSSize(width: 8, height: 10)
         )
         .onChange(of: text) {

@@ -35,7 +35,7 @@ final class CellOverlayEditor: CellOverlayBase, NSTextViewDelegate {
         textView.isEditable = true
         textView.isRichText = false
         textView.allowsUndo = true
-        textView.font = ThemeEngine.shared.dataGridFonts.regular
+        textView.font = ThemeEngine.shared.valueFont
         textView.textColor = .labelColor
         textView.backgroundColor = .textBackgroundColor
         textView.focusRingType = .none

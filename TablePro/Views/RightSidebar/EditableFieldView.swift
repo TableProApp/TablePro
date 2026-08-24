@@ -47,6 +47,7 @@ internal struct FieldDetailView: View {
                     minHeight: editorMinHeight(for: kind)
                 ) {
                     resolvedEditor(for: kind)
+                        .font(inheritedValueFont(for: kind))
                 }
                 .overlay(alignment: .topTrailing) {
                     if isHovered {
@@ -118,6 +119,23 @@ internal struct FieldDetailView: View {
             }
         }
         .textSelection(.enabled)
+    }
+
+    /// Every text editor under the overlay shows a stored value, so the font is set once for the
+    /// whole subtree rather than remembered by each one, and an editor added later inherits it. The
+    /// field header and the hover menu are siblings rather than descendants and the picker branch
+    /// never reaches here, so nothing that has to stay on the system font is caught.
+    ///
+    /// The two structured viewers opt out because they carry a toolbar and their own placeholders
+    /// alongside the value, and they present the same way in a pop-out window where there is no
+    /// ambient font to inherit. Each names the value font on its own value text instead.
+    private func inheritedValueFont(for kind: FieldEditorKind) -> Font? {
+        switch kind {
+        case .json, .phpSerialized:
+            return nil
+        default:
+            return ThemeEngine.shared.valueFontSwiftUI
+        }
     }
 
     private func editorMinHeight(for kind: FieldEditorKind) -> CGFloat? {
