@@ -55,6 +55,10 @@ final class ResultSet: Identifiable {
     var queryPlan: QueryPlan?
     var explainRawText: String?
 
+    /// Where this plan sits in the statement's saved history, so the plan pane can offer a
+    /// comparison without asking a coordinator anything.
+    var explainPlanContext: QueryPlanContext?
+
     var isExplainResult: Bool { explainRawText != nil }
 
     var resultColumns: [String] { tableRows.columns }

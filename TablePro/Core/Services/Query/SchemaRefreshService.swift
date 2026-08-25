@@ -154,25 +154,28 @@ final class SchemaRefreshService {
             )
             return
         }
-        guard let provider = providerRegistry.provider(for: connectionId) else {
-            Self.logger.debug(
-                "[schema] autocomplete sync skipped, no provider connId=\(connectionId, privacy: .public)"
-            )
-            return
-        }
-        guard let browseDatabase = metadataDriverProvider.browseScope(for: connectionId)?.database else {
+        guard let browseScope = metadataDriverProvider.browseScope(for: connectionId) else {
             Self.logger.debug(
                 "[schema] autocomplete sync skipped, no browse scope connId=\(connectionId, privacy: .public)"
             )
             return
         }
+        let provider = providerRegistry.getOrCreate(for: browseScope)
+        let browseDatabase = browseScope.database
         let tables = schemaService.allLoadedTables(for: connectionId)
         let schemas = schemaService.schemas(for: connectionId)
+        let connection = databaseManager?.session(for: connectionId)?.connection
         do {
-            try await metadataDriverProvider.withBrowseMetadataDriver(connectionId: connectionId) { driver in
-                await provider.resetForDatabase(browseDatabase, tables: tables, driver: driver)
+            try await metadataDriverProvider.withMetadataDriver(scope: browseScope) { driver in
+                await provider.resetForDatabase(
+                    browseDatabase,
+                    tables: tables,
+                    driver: driver,
+                    connection: connection
+                )
                 await provider.setNamespaces(schemas: schemas, databases: [browseDatabase])
             }
+            providerRegistry.notePopulatedExternally(scope: browseScope)
         } catch {
             Self.logger.warning(
                 "[schema] autocomplete sync failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
@@ -204,15 +207,18 @@ final class SchemaRefreshService {
             guard let scope = metadataDriverProvider.browseScope(for: connectionId) else {
                 throw DatabaseError.notConnected
             }
+            let browsesTriggers = databaseManager?.session(for: connectionId)?
+                .connection.type.supportsDatabaseTriggerBrowse ?? false
             let reloaded = try await metadataDriverProvider.withMetadataDriver(
                 scope: scope,
                 workload: .bulk
             ) { [schemaService] driver in
-                /// Both run, and neither short circuits the other: a failed procedure fetch must
-                /// not skip the function fetch that would still have succeeded.
-                let procedures = await schemaService.reloadProcedures(connectionId: connectionId, driver: driver)
-                let functions = await schemaService.reloadFunctions(connectionId: connectionId, driver: driver)
-                return procedures && functions
+                /// Both run, and neither short circuits the other: a failed routine fetch must
+                /// not skip the trigger fetch that would still have succeeded.
+                let routines = await schemaService.reloadRoutines(connectionId: connectionId, driver: driver)
+                guard browsesTriggers else { return routines }
+                let triggers = await schemaService.reloadTriggers(connectionId: connectionId, driver: driver)
+                return routines && triggers
             }
             /// Recording the new scope says the loaded routines belong to it. A reload that failed
             /// left the previous schema's routines in place, so claiming coverage there would pin

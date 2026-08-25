@@ -7,6 +7,13 @@ import Combine
 import Foundation
 import os
 
+/// One tab's Table Info numbers, stamped with what they were read against.
+struct TableMetadataCacheEntry {
+    let tableName: String
+    let lastExecutedAt: Date?
+    let metadata: TableMetadata
+}
+
 extension MainContentCoordinator {
     /// Whether the connection is far enough along for the object list to load.
     ///
@@ -122,7 +129,24 @@ extension MainContentCoordinator {
         }
     }
 
-    func loadTableMetadata(tableName: String) async {
+    /// Whether the Table Info panel already holds this tab's numbers.
+    ///
+    /// The panel used to be backed by one latest-wins slot, so alternating between two tabs missed
+    /// it on every switch and ran a statistics command (`collStats` on MongoDB) each time. The entry
+    /// is keyed by tab and stamped with the tab's last execution, so a reload, a page or a filter
+    /// refetches while a plain switch does not. (#2424)
+    func hasCurrentTableMetadata(for tab: QueryTab, tableName: String) -> Bool {
+        guard let entry = tableMetadataCache[tab.id] else { return false }
+        return entry.tableName == tableName && entry.lastExecutedAt == tab.execution.lastExecutedAt
+    }
+
+    func loadTableMetadata(tableName: String, for tab: QueryTab) async {
+        if let entry = tableMetadataCache[tab.id],
+           entry.tableName == tableName,
+           entry.lastExecutedAt == tab.execution.lastExecutedAt {
+            tableMetadata = entry.metadata
+            return
+        }
         guard let scope = selectedTabScope else {
             Self.logger.error("Skipped table metadata load: no database bound to the selected tab")
             return
@@ -131,7 +155,16 @@ extension MainContentCoordinator {
             let metadata = try await services.databaseManager.withMetadataDriver(scope: scope) { driver in
                 try await driver.fetchTableMetadata(tableName: tableName)
             }
-            self.tableMetadata = metadata
+            tableMetadataCache[tab.id] = TableMetadataCacheEntry(
+                tableName: tableName,
+                lastExecutedAt: tab.execution.lastExecutedAt,
+                metadata: metadata
+            )
+            /// The fetch is not cancellable, so a `.task` the user has already navigated away from
+            /// still completes. Without this the numbers of the collection they left land in the
+            /// panel of the one they are looking at, under its name, and stay there.
+            guard tabManager.selectedTabId == tab.id else { return }
+            tableMetadata = metadata
         } catch {
             Self.logger.error("Failed to load table metadata: \(error.localizedDescription, privacy: .public)")
         }

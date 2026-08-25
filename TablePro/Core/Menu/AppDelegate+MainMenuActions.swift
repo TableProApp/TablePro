@@ -17,6 +17,10 @@ extension AppDelegate: NSMenuItemValidation {
         AcknowledgementsWindowController.present()
     }
 
+    @objc func showSupport(_ sender: Any?) {
+        SupportWindowController.present()
+    }
+
     @objc func checkForUpdates(_ sender: Any?) {
         UpdaterBridge.shared.checkForUpdates()
     }
@@ -35,6 +39,10 @@ extension AppDelegate: NSMenuItemValidation {
 
     @objc func manageConnections(_ sender: Any?) {
         WindowOpener.shared.openWelcome()
+    }
+
+    @objc func compareAndSyncDatabases(_ sender: Any?) {
+        CompareSyncLauncher.open()
     }
 
     @objc func reopenClosedTab(_ sender: Any?) {
@@ -118,7 +126,7 @@ enum AboutPanelCredits {
             ("Website", MainMenuLink.website),
             ("GitHub", MainMenuLink.repository),
             (String(localized: "Documentation"), MainMenuLink.documentation),
-            (String(localized: "Sponsor"), "https://github.com/sponsors/datlechin")
+            (String(localized: "Sponsor"), SupportLinks.sponsors(.aboutPanel).absoluteString)
         ]
         for (index, link) in links.enumerated() {
             if index > 0 {

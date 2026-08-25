@@ -20,7 +20,7 @@ struct DatabaseTypeBrandColorTests {
     @Test("Every known type gets its colour from the plugin registry")
     func everyKnownTypeHasRegistryBranding() {
         for type in DatabaseType.allKnownTypes {
-            let hex = PluginMetadataRegistry.shared.snapshot(forTypeId: type.pluginTypeId)?.brandColorHex
+            let hex = PluginMetadataRegistry.shared.snapshot(for: type)?.brandColorHex
             guard let hex else {
                 Issue.record("\(type.rawValue) has no registry snapshot, so it would draw grey")
                 continue

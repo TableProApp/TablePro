@@ -1,7 +1,7 @@
 import Combine
 import Foundation
 
-final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Sendable {
+final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, QueryPlanSnapshotReading, Sendable {
     static let shared = QueryHistoryManager()
 
     private let storage: QueryHistoryStorage
@@ -20,6 +20,7 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Sen
     @discardableResult
     func record(_ request: QueryHistoryRecordRequest) async -> Bool {
         let entry = QueryHistoryEntry(
+            id: request.id,
             query: request.query,
             connectionId: request.connectionId,
             databaseName: request.databaseName,
@@ -31,7 +32,15 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Sen
             wasSuccessful: request.wasSuccessful,
             errorMessage: request.errorMessage
         )
-        return await record(entry)
+        let stored = await record(entry)
+
+        /// Written after the history row rather than with it: `plan_snapshots.history_id` is a
+        /// foreign key, so the row it points at has to exist first, and a plan that fails to store
+        /// must not take the history entry down with it.
+        if stored, let capture = request.planCapture {
+            await storage.recordPlanSnapshot(capture)
+        }
+        return stored
     }
 
     /// The single writer, so pausing here covers every source: the editor, the grid, structure
@@ -61,6 +70,39 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Sen
 
     func count(scope: QueryHistoryScope) async -> Int {
         await storage.count(scope: scope)
+    }
+
+    // MARK: - Plan snapshots
+
+    func planSnapshots(
+        matching identity: QueryPlanIdentity,
+        excluding excludedId: UUID?,
+        limit: Int
+    ) async -> [QueryPlanSnapshotSummary] {
+        await storage.planSnapshots(matching: identity, excluding: excludedId, limit: limit)
+    }
+
+    func planSnapshotRawText(id: UUID) async -> String? {
+        await storage.planSnapshotRawText(id: id)
+    }
+
+    func planSnapshotUsage() async -> QueryPlanStorageUsage {
+        await storage.planSnapshotUsage()
+    }
+
+    @discardableResult
+    func setPlanSnapshotPinned(id: UUID, isPinned: Bool) async -> Bool {
+        await storage.setPlanSnapshotPinned(id: id, isPinned: isPinned)
+    }
+
+    @discardableResult
+    func deletePlanSnapshot(id: UUID) async -> Bool {
+        await storage.deletePlanSnapshot(id: id)
+    }
+
+    @discardableResult
+    func clearPlanSnapshots() async -> Bool {
+        await storage.clearPlanSnapshots()
     }
 
     func insights(

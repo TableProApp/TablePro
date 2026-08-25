@@ -42,14 +42,25 @@ final class TabSessionRegistry {
         session.tableRows = rows
         session.isEvicted = false
         session.dataRevision &+= 1
+        session.bufferEpoch &+= 1
     }
 
+    /// A mutation of what the tab already holds, so it cannot resurrect a tab that holds nothing.
+    ///
+    /// Phase-2 metadata (foreign keys, defaults, enum values) lands at background priority long
+    /// after the load that asked for it, and it is keyed on the result rather than on the rows, so
+    /// it arrives on tabs that were evicted while it was in flight. Clearing `isEvicted` for a
+    /// mutation that leaves the buffer empty leaves a tab with no rows that `canAutoLoadTableTab`
+    /// reads as already loaded, and eviction cannot re-mark it because it has nothing left to lose:
+    /// the grid stays empty until an explicit refresh.
     func updateTableRows(for tabId: UUID, _ mutate: (inout TableRows) -> Void) {
         let session = ensureSession(for: tabId)
         var rows = session.tableRows
         mutate(&rows)
         session.tableRows = rows
-        session.isEvicted = false
+        if !rows.rows.isEmpty {
+            session.isEvicted = false
+        }
         session.dataRevision &+= 1
     }
 
@@ -58,6 +69,7 @@ final class TabSessionRegistry {
         session.tableRows = TableRows()
         session.isEvicted = false
         session.dataRevision &+= 1
+        session.bufferEpoch &+= 1
     }
 
     func isEvicted(_ tabId: UUID) -> Bool {
@@ -72,9 +84,10 @@ final class TabSessionRegistry {
     func evict(for tabId: UUID) {
         guard let session = sessions[tabId] else { return }
         guard !session.tableRows.rows.isEmpty else { return }
-        session.tableRows.rows = []
+        session.tableRows.discardRowsKeepingMetadata()
         session.isEvicted = true
         session.dataRevision &+= 1
+        session.bufferEpoch &+= 1
     }
 
     private func ensureSession(for tabId: UUID) -> TabSession {

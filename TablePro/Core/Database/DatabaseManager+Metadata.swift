@@ -9,7 +9,7 @@ import Foundation
 /// no connection-only overload: a connection reaches many databases, so resolving the
 /// database from ambient session state is how a tab's read lands on another database.
 @MainActor
-protocol ScopedMetadataProviding: AnyObject {
+protocol ScopedMetadataProviding: AnyObject, Sendable {
     func withMetadataDriver<T: Sendable>(
         scope: DatabaseScope,
         workload: MetadataConnectionPool.Workload,
@@ -28,7 +28,8 @@ extension ScopedMetadataProviding {
     }
 
     /// For reads that belong to the sidebar rather than to a tab: the object list, the
-    /// database and quick switchers, autocomplete, and the AI schema context.
+    /// database and quick switchers, and the AI schema context. Completion is not one of
+    /// them any more: a query tab completes against its own scope.
     func withBrowseMetadataDriver<T: Sendable>(
         connectionId: UUID,
         workload: MetadataConnectionPool.Workload = .interactive,

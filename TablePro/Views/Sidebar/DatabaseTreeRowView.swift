@@ -10,6 +10,16 @@ import TableProPluginKit
 /// `SidebarMenuCommand`, so this is only the star, which is a control inside the row.
 struct DatabaseTreeRowActions {
     let toggleFavorite: (DatabaseTreeTableRef) -> Void
+    let toggleFavoriteDatabase: (String) -> Void
+}
+
+/// Row labels are built here rather than inline so the database row reads to VoiceOver in the same
+/// shape `TableRowLogic` already uses for a table, instead of inventing a second phrasing.
+enum DatabaseTreeRowLabel {
+    static func database(name: String, isFavorite: Bool) -> String {
+        guard isFavorite else { return name }
+        return name + ", " + String(localized: "favorite")
+    }
 }
 
 struct DatabaseTreeRowContext {
@@ -26,6 +36,9 @@ struct DatabaseTreeRowContext {
     var isExternalSchema: @MainActor (String, String) -> Bool = { _, _ in false }
     /// The plugin decides what a table is called, so a section header cannot hardcode "Tables".
     var objectKindTitle: @MainActor (SidebarObjectKind) -> String = { $0.pluralDisplayName }
+    /// Whether a routine's row shows its bare name or its signature depends on the other rows in
+    /// its section, which only the node builder can see, so the row asks rather than deciding.
+    var routineDisplayLabel: @MainActor (DatabaseTreeRoutineRef) -> String = { $0.routine.name }
 }
 
 struct DatabaseTreeRowView: View {
@@ -33,6 +46,8 @@ struct DatabaseTreeRowView: View {
     let isFavorite: Bool
     let context: DatabaseTreeRowContext
     let actions: DatabaseTreeRowActions
+
+    @State private var isHovered = false
 
     /// No `.contextMenu` here. A menu on the hosted view answers the right-click before the outline
     /// view ever sees it, which cost the clicked-row highlight, `clickedRow`, and any menu at all in
@@ -58,12 +73,7 @@ struct DatabaseTreeRowView: View {
         case .recentTable(let ref):
             tableRow(ref)
         case .database(let metadata):
-            header(
-                text: metadata.name,
-                systemImage: metadata.isSystemDatabase ? "gearshape" : "cylinder",
-                isActive: metadata.name == context.activeDatabase,
-                isSystem: metadata.isSystemDatabase
-            )
+            databaseRow(metadata)
         case .schema(let database, let schema):
             header(
                 text: schema,
@@ -75,7 +85,9 @@ struct DatabaseTreeRowView: View {
         case .table(let ref):
             tableRow(ref)
         case .routine(let ref):
-            RoutineRowView(routine: ref.routine)
+            RoutineRowView(routine: ref.routine, displayLabel: context.routineDisplayLabel(ref))
+        case .trigger(let ref):
+            TriggerRowView(trigger: ref.trigger)
         case .status(let status):
             statusRow(status)
         case .objectKindSection(let kind):
@@ -110,6 +122,24 @@ struct DatabaseTreeRowView: View {
         Label(context.objectKindTitle(kind), systemImage: kind.iconName)
             .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
             .lineLimit(1)
+    }
+
+    private func databaseRow(_ metadata: DatabaseMetadata) -> some View {
+        let toggle = { actions.toggleFavoriteDatabase(metadata.name) }
+        return HStack(spacing: 6) {
+            header(
+                text: metadata.name,
+                systemImage: metadata.isSystemDatabase ? "gearshape" : "cylinder",
+                isActive: metadata.name == context.activeDatabase,
+                isSystem: metadata.isSystemDatabase
+            )
+            Spacer(minLength: 4)
+            FavoriteStarButton(isFavorite: isFavorite, isRowHovered: isHovered, toggle: toggle)
+        }
+        .onHover { isHovered = $0 }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(DatabaseTreeRowLabel.database(name: metadata.name, isFavorite: isFavorite))
+        .modifier(FavoriteAccessibilityAction(isFavorite: isFavorite, toggle: toggle))
     }
 
     private func tableRow(_ ref: DatabaseTreeTableRef) -> some View {

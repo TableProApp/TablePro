@@ -130,7 +130,7 @@ struct ArrayValueEditorView: View {
             )
         )
         .textFieldStyle(.roundedBorder)
-        .font(.system(.callout, design: .monospaced))
+        .font(ThemeEngine.shared.valueFontSwiftUI)
         .disabled(element.wrappedValue == .null)
         Toggle("NULL", isOn: Binding(
             get: { element.wrappedValue == .null },
@@ -153,7 +153,7 @@ struct ArrayValueEditorView: View {
         ) {
             ForEach(Array(options.enumerated()), id: \.offset) { optionIndex, option in
                 Text(option)
-                    .font(.system(.callout, design: .monospaced))
+                    .font(ThemeEngine.shared.valueFontSwiftUI)
                     .tag(optionIndex)
             }
             Text("NULL").italic().tag(options.count)
@@ -202,7 +202,7 @@ struct ArrayValueEditorView: View {
     private var rawTextEditor: some View {
         VStack(alignment: .leading, spacing: 4) {
             TextEditor(text: $rawText)
-                .font(.system(.callout, design: .monospaced))
+                .font(ThemeEngine.shared.valueFontSwiftUI)
                 .frame(minHeight: 90)
             if PostgresArrayLiteralCodec.parse(rawText, delimiter: delimiter) == nil {
                 Label {

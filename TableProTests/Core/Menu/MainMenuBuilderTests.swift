@@ -496,6 +496,7 @@ struct DatabaseMenuCommandTests {
             String(localized: "Show Table Structure"),
             String(localized: "Edit View Definition…"),
             String(localized: "Table Maintenance"),
+            String(localized: "Favorite Database"),
             String(localized: "Disconnect"),
             String(localized: "Reconnect")
         ] {
@@ -508,6 +509,16 @@ struct DatabaseMenuCommandTests {
         let container = databaseMenu()?.items.first { $0.title == String(localized: "Table Maintenance") }
         let submenu = container?.submenu
         #expect(submenu?.delegate != nil, "Driver-specific operations must be built on menuNeedsUpdate")
+        #expect(submenu?.items.isEmpty == true, "The submenu is filled when it opens, not at build time")
+    }
+
+    /// The keyboard path to database favorites. The row star is hover-revealed and the context
+    /// menus need a right-click, so without this menu the feature is pointer-only.
+    @Test("Favorite Database fills itself when the submenu opens")
+    func favoriteDatabaseSubmenuIsDelegateDriven() {
+        let container = databaseMenu()?.items.first { $0.title == String(localized: "Favorite Database") }
+        let submenu = container?.submenu
+        #expect(submenu?.delegate != nil, "The current environment must be read on menuNeedsUpdate")
         #expect(submenu?.items.isEmpty == true, "The submenu is filled when it opens, not at build time")
     }
 

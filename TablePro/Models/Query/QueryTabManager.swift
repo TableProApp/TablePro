@@ -323,7 +323,7 @@ final class QueryTabManager {
     static func tabTitle(name: String, schema: String?, databaseType: DatabaseType) -> String {
         guard let schema, !schema.isEmpty else { return name }
         let defaultSchema = PluginMetadataRegistry.shared
-            .snapshot(forTypeId: databaseType.pluginTypeId)?
+            .snapshot(for: databaseType)?
             .schema.defaultSchemaName ?? ""
         return schema == defaultSchema ? name : "\(schema).\(name)"
     }
@@ -373,6 +373,33 @@ final class QueryTabManager {
         newTab.hasUserInteraction = true
         tabs.append(newTab)
         selectedTabId = newTab.id
+    }
+
+    /// One tab per object, so opening the same routine twice returns to the tab already showing
+    /// it, the way opening the same table does.
+    func addObjectSourceTab(objectRef: DatabaseObjectRef) {
+        if let existing = tabs.first(where: { $0.tabType == .objectSource && $0.display.objectRef == objectRef }) {
+            selectedTabId = existing.id
+            return
+        }
+        var newTab = QueryTab(title: Self.objectSourceTitle(for: objectRef), tabType: .objectSource)
+        newTab.tableContext.isEditable = false
+        newTab.tableContext.databaseName = objectRef.database
+        newTab.tableContext.schemaName = objectRef.schema
+        newTab.display.objectRef = objectRef
+        newTab.hasUserInteraction = true
+        tabs.append(newTab)
+        selectedTabId = newTab.id
+    }
+
+    static func objectSourceTitle(for objectRef: DatabaseObjectRef) -> String {
+        let format: String
+        switch objectRef.kind {
+        case .procedure: format = String(localized: "Procedure: %@")
+        case .function:  format = String(localized: "Function: %@")
+        case .trigger:   format = String(localized: "Trigger: %@")
+        }
+        return String(format: format, objectRef.displayIdentity)
     }
 
     func addUsersRolesTab() {

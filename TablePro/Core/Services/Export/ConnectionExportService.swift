@@ -111,12 +111,9 @@ enum ConnectionExportService {
             // Filter secure fields from additionalFields
             // If plugin metadata is unavailable, omit all fields to avoid leaking secrets
             let additionalFields: [String: String]?
-            if let snapshot = PluginMetadataRegistry.shared.snapshot(forTypeId: connection.type.pluginTypeId) {
+            if PluginMetadataRegistry.shared.snapshot(for: connection.type) != nil {
                 var filteredFields = connection.additionalFields
-                let secureFieldIds = snapshot.connection.additionalConnectionFields
-                    .filter(\.isSecure)
-                    .map(\.id)
-                for fieldId in secureFieldIds {
+                for fieldId in PluginManager.shared.secureConnectionFieldIds(for: connection.type) {
                     filteredFields.removeValue(forKey: fieldId)
                 }
                 additionalFields = filteredFields.isEmpty ? nil : filteredFields
@@ -221,10 +218,8 @@ enum ConnectionExportService {
 
             // Collect plugin-specific secure fields
             var pluginSecureFields: [String: String]?
-            if let snapshot = PluginMetadataRegistry.shared.snapshot(forTypeId: connection.type.pluginTypeId) {
-                let secureFieldIds = snapshot.connection.additionalConnectionFields
-                    .filter(\.isSecure)
-                    .map(\.id)
+            if PluginMetadataRegistry.shared.snapshot(for: connection.type) != nil {
+                let secureFieldIds = PluginManager.shared.secureConnectionFieldIds(for: connection.type)
                 if !secureFieldIds.isEmpty {
                     var fields: [String: String] = [:]
                     for fieldId in secureFieldIds {

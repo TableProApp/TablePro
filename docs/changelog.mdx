@@ -4,9 +4,80 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
-<Update label="v0.67.1" description="August 22, 2026">
+<Update label="v0.68.0" description="August 25, 2026">
+  ### New Features
+
+  - **Compare & Sync**: Compare two databases side by side, over tables, views, procedures, functions and triggers, or over row data, and apply what differs. This is a Starter feature ([#721](https://github.com/TableProApp/TablePro/issues/721))
+  - **Procedures, functions and triggers**: Triggers get their own sidebar section beside Procedures and Functions, and all three now list on MSSQL, Oracle, SQLite, ClickHouse, DuckDB, Snowflake, BigQuery, Cassandra, LibSQL, Cloudflare D1, Teradata and Dameng. Each opens in a read-only source viewer with Copy, Export and Open in Editor, and all three are reachable from the quick switcher ([#2383](https://github.com/TableProApp/TablePro/issues/2383))
+  - **Device and team management**: **Settings > License** replaces Settings > Account. Release a seat on another Mac, read your team roster with seats used against seats bought, and see each activated Mac's last use and macOS version. Copy Key copies the real key and keeps it out of clipboard history
+  - **EXPLAIN Compare**: A fourth plan mode that reports what changed against an earlier run of the same query, and pinning a saved plan keeps it through history cleanup ([#2380](https://github.com/TableProApp/TablePro/issues/2380))
+  - **Beancount directives**: Read-only tables for `directives`, pads, named queries and custom directives, carrying account booking, note tags and links, and balance assertion details ([#2399](https://github.com/TableProApp/TablePro/issues/2399), [#2413](https://github.com/TableProApp/TablePro/issues/2413), [#2415](https://github.com/TableProApp/TablePro/issues/2415))
+  - **Table load history**: TablePro keeps 7 days of local load timings in Application Support so you can see which tables are slow. Nothing leaves the Mac ([#2395](https://github.com/TableProApp/TablePro/issues/2395))
+  - MCP clients gain a schema-wide `list_triggers`, plus `return_type` and `language` on `list_routines`
+  - **Support TablePro** in the Help menu, the welcome window and the sidebar
+
+  ### Improvements
+
+  - The data grid draws its own cells and column separators instead of building a view for each one, so a result with hundreds of columns opens at once and holds a fraction of the memory ([#2381](https://github.com/TableProApp/TablePro/issues/2381))
+  - The inline cell editor scrolls a long line instead of wrapping it ([#2381](https://github.com/TableProApp/TablePro/issues/2381))
+  - Row inspector fields, cell popovers and the Compare row diff follow the Data Grid Font setting, so one value reads the same in the grid, its editor and the inspector ([#2393](https://github.com/TableProApp/TablePro/issues/2393))
+  - The license pane states an expired, suspended or unverified license inline, with one action and a purchase link, instead of a banner floating over it. Sync Paused is a separate state for a license the app could not check, and one Refresh replaces the old Refresh and Check Status pair
+  - The license key is masked and not selectable, so a screen share cannot carry the whole credential
+  - iCloud Sync has its own Settings pane, and Linked Folders moved to General
+  - The PRO badge beside a gated control names what the feature does and links to the pricing page
+  - A database stays in the connections strip until you close its entry, and Close ends the connection only on the last one
+  - The connection color shows as a badge behind the connection name and a dot on the workspace rail icon, with deeper fills on tag badges ([#2398](https://github.com/TableProApp/TablePro/issues/2398))
+  - Autocomplete and the query editor's database picker follow the tab's own database and schema
+  - Beancount postings keep their own flag, price, and resolved lot date and label; connections report the active `rledger` or Python Beancount version; and third-party ledger plugins are skipped unless you turn on Run Ledger Plugins
+  - Turkish, Vietnamese, Simplified Chinese and Traditional Chinese cover every string that was still in English
+
   ### Bug Fixes
 
+  - A table with 500 columns pinned a core for 20 seconds and took a gigabyte to open. Scrolling a wide result sideways flickered, left blank columns and an unpainted gap, and opening the inline editor cost a second ([#2381](https://github.com/TableProApp/TablePro/issues/2381))
+  - Find, the arrow keys, the inline editor and Size All Columns to Fit could not reach a column scrolled off the side of a wide result
+  - `Return` opened no editor on a row selected with the arrow keys, and `Tab` or `Shift+Tab` out of a row's end did nothing
+  - Opening a table in a window with no tabs showed an empty grid, one table click ran its query twice, and a closed tab left its query counted as running ([#2342](https://github.com/TableProApp/TablePro/issues/2342))
+  - Exporting two same-named tables from different schemas to SQL crashed, wrote one schema's rows into the other's table, and dropped columns and foreign keys after the first schema ([#1968](https://github.com/TableProApp/TablePro/issues/1968))
+  - One of two PostgreSQL function overloads was missing from the sidebar and Show DDL opened an arbitrary one, while MySQL Show DDL read the session database instead of the one being browsed ([#2383](https://github.com/TableProApp/TablePro/issues/2383))
+  - Routine tooltips, VoiceOver labels and Copy with Signature showed a return type in place of the argument list, and duplicate routine rows in the flat sidebar took the selection back to the first ([#2383](https://github.com/TableProApp/TablePro/issues/2383))
+  - MySQL triggers lost their definer, `WHEN` clause and ordering in the Structure tab, and Oracle triggers showed a header with no body
+  - Turning on iCloud Sync with many saved column layouts froze the app, and the sync record cache filled the preferences file past the 4 MB the system allows, which failed every settings write
+  - iCloud Sync called an unverified license missing, reported a live sync after the license was removed from that Mac, and returned to Synced when sync was turned off mid-sync
+  - The welcome window offered Activate License to a Mac that already held one and had just been offline
+  - The license server was never contacted again after removing and re-adding a license in one session
+  - The device list error survived a later successful refresh, and a renewal warning counted zero days above a status that already read Expired
+  - A previous team's shared connections and saved queries survived deactivation
+  - The connections strip disappeared when you clicked the entry you came from, an entry in another window raised that window without showing the connection, a disconnected connection's entries dropped to the bottom or all but one left, and a connection opened from a file or URL lost its entries when its session ended
+  - Bulk tab close saved the tab on screen instead of the tabs being closed, and asked about another database's unsaved work
+  - A connection's color and name reached the toolbar and workspace rail only after the next reconnect, the connection dot was invisible in the query history drawer and the compare strip, and a failed connection's warning icon wore the engine color ([#2398](https://github.com/TableProApp/TablePro/issues/2398))
+  - The JSON viewer kept its old font after a font, theme or text-size change, and hex dumps wrapped mid-line instead of keeping their columns aligned ([#2393](https://github.com/TableProApp/TablePro/issues/2393))
+  - AI inline suggestions were written without the connection's schema, and columns were missing for any table named with a capital letter
+  - Case-insensitive filters and completion on Redshift fell back to PostgreSQL's ASCII-only ILIKE
+  - The PGlite connection form offered SSH, SSL, Cloudflare Tunnel and SOCKS panes, and a password field
+  - Redshift and CockroachDB system databases were listed in the sidebar as ordinary user databases
+</Update>
+
+<Update label="v0.67.1" description="August 22, 2026">
+  ### New Features
+
+  - **Favorite databases**: Tag a favorite database with the environment it belongs to, filter the Favorites sidebar by that tag, open one directly, and keep the whole set in sync across your Macs through iCloud ([#1553](https://github.com/TableProApp/TablePro/issues/1553))
+  - **Open in Window**: Any text field in the row inspector can be opened in its own window, for reading or editing a long value on a bigger surface
+
+  ### Improvements
+
+  - A large text value in the row inspector now scrolls in a resizable text view instead of being clipped, and stays selectable and copyable when the row is read-only
+  - The inspector picks its multi-line editor from the value itself, so a large `VARCHAR(MAX)`, `NCLOB` or ClickHouse `Nullable(String)` value is no longer stuck on one line
+  - Right-clicking a read-only inspector field now offers Copy Value instead of an empty menu
+  - Background tabs release their row data more carefully, keeping query results, pinned results, unsaved edits and anything still loading
+
+  ### Bug Fixes
+
+  - A background tab whose column metadata arrived after its rows were released showed an empty grid and never reloaded. It now reloads when you return to it
+  - The result display cache could exceed its memory budget when a cached row's formatted values grew
+  - Undo, redo, a theme change and a display-format change left the data grid reformatting every cell as you scrolled
+  - Autocomplete no longer bulk-loads every column of a schema too large to cache. On those databases column suggestions arrive per table as you reference one
+  - A saved connection whose SSH settings were written before the agent socket field existed failed to load and disappeared from the list
+  - Switch Connection and Open Database did nothing on a narrow window, or once you removed their toolbar button. They now open either way
   - **Editor crashes on stale text**: The editor no longer crashes when layout, syntax highlighting, accessibility, an input method, dictation or Look Up reads text that a newer edit had already removed ([#2338](https://github.com/TableProApp/TablePro/issues/2338), [#2339](https://github.com/TableProApp/TablePro/issues/2339), [#2340](https://github.com/TableProApp/TablePro/issues/2340))
   - A search highlight or diagnostic underline now disappears with the text it marks, instead of staying put or jumping elsewhere in the editor ([#2341](https://github.com/TableProApp/TablePro/issues/2341))
   - The toolbar no longer sits on "Executing…" after a query ends, so Stop is not the only way back, and the session context buttons no longer empty out for the length of every query ([#2342](https://github.com/TableProApp/TablePro/issues/2342))

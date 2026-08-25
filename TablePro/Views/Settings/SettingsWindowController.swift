@@ -157,8 +157,10 @@ private struct SettingsPaneContent: View {
             MCPSettingsView(settings: $settingsManager.mcp)
         case .plugins:
             PluginsSettingsView()
+        case .sync:
+            SyncSettingsView()
         case .account:
-            AccountSettingsView()
+            LicenseSettingsView()
         }
     }
 }

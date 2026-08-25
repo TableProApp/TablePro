@@ -134,7 +134,8 @@ Skip the gate for a contained single-file fix whose cause is proven and whose fi
 - **Follow the blueprint's file order.** Do the refactor it calls for. Do not quietly downgrade to a patch because the refactor turned out to be more work.
 - **Regenerate after adding a file.** A new `.swift` file is not compiled until `scripts/generate-project.sh` runs. The symptom is `cannot find 'X' in scope` from the callers, which reads like the code was never written.
 - **Honour the mandatory rules as you go**, not as cleanup: `String(localized:)` for user-facing strings and never with interpolation, `CHANGELOG.md` under `[Unreleased]`, `docs/` for shortcut, UI, settings, or driver changes, OSLog instead of `print`, no comments, early returns, explicit access control.
-- **The CHANGELOG entry is one sentence, under 200 characters.** You will have just finished a deep investigation, and the pull to write it all down lands here, on the one artifact that has no room for it. Say what changed and what it does now; the cause, the mechanism and the before-and-after go in the PR body, which is where a reviewer looks for them anyway. Add one entry per change, under one existing `### ` heading, and never open a second heading of a type the version already has. Entries written to this rule survive the release untouched; 0.67.0's did not, and all 211 were rewritten at release time.
+- **The CHANGELOG entry is a fragment, not a sentence.** You will have just finished a deep investigation, and the pull to write it all down lands here, on the one artifact that has no room for it. Name the bug you fixed or the thing you added, one line, aiming under 120 characters: `Empty grid on a background tab whose rows were freed.` Never `X now does Y instead of Z`, and never a trailing `so ...` clause. The cause, the mechanism and the before-and-after go in the PR body, which is where a reviewer looks for them anyway. Add one entry per change, under one existing `### ` heading, and never open a second heading of a type the version already has. Entries written to this rule survive the release untouched; 0.67.0's did not, and all 211 were rewritten at release time.
+- **Read `docs/STYLE.md` before you write a docs page, and write the page last.** It is the spec, it is 341 lines, and nothing else names it. Two failure modes it exists to stop both survive a green local run: a page that restates its own frontmatter description, repeats a caption as its alt text, argues design rationale at the reader, or makes the product the subject; and a capability table that was true when it was typed and false by the time the branch was pushed, because a later commit changed the code and nobody re-read the page. `.claude/rules/docs-authoring.md` carries the full list.
 - **A docs page that describes UI carries a screenshot.** Prose alone does not show a user what a pane looks like, and every existing feature page in `docs/features/` pairs its description with one. When the change adds a screen, pane, tab, dialog or toolbar, add a `<Frame>` with the light and dark pair the docs use, `docs/images/<name>.png` and `docs/images/<name>-dark.png`, referenced as `className="block dark:hidden"` and `className="hidden dark:block"`. When the change alters a screen an existing page already pictures, the old shot is now wrong: re-capture it or say in the PR that it needs re-capturing. Real shots come from a running Debug build driven with `osascript` and captured with `screencapture`, launched with `TABLEPRO_UI_TEST_SANDBOX` pointed at a throwaway directory so it never touches your own connections; Screen Recording has to be granted to whatever runs it. When you cannot capture one, still add the `<Frame>` and commit a placeholder at the same 1560x960 the other shots use so the page renders, and call it out in the PR body as pending. Never leave the markup pointing at a file that does not exist; a broken image ships to the docs site.
 - **Write the tests the blueprint specified**, unit and UI both. UI suites subclass `UITestCase`; a bare `XCUIApplication()` or `: XCTestCase` under `TableProUITests/` fails a source-scanning guard test, because storage isolation depends on the launch path. When a test fails, fix the source. Never bend a test to match wrong output.
 - **Run `Skill(swiftui-pro)`** when the change adds or reworks SwiftUI views, before you consider the code done.
@@ -153,6 +154,7 @@ You build and test this yourself. Do not hand unverified code back and ask the u
 .claude/skills/fix-issue/scripts/verify.sh plugins            # AllPlugins aggregate
 .claude/skills/fix-issue/scripts/verify.sh abi <merge-base>
 .claude/skills/fix-issue/scripts/verify.sh lint <path> [path…]
+.claude/skills/fix-issue/scripts/verify.sh docs              # only when docs/ changed
 .claude/skills/fix-issue/scripts/verify.sh tail <log> [n]     # re-read a stored log
 ```
 
@@ -164,16 +166,49 @@ This is not a convenience. A raw `xcodebuild` failure returns roughly 10,000 cha
 
 Non-obvious rules that decide whether the result means anything: run only the suites you touched and their neighbours, never the whole target; run the steps serially; and build the `plugins` aggregate yourself if the change touched a registry-only plugin, because PR CI never compiles those.
 
+**"The suites you touched" means the suites that own the types you changed, not the suites you edited.** Grep for the type before you pick the list: a shared model has tests you never opened. Editing `PersistedTab.init(from:)` broke `TabDiskStateDecodingTests`, a suite that exists to pin exactly the behaviour the edit changed, and the branch went green locally and red on CI. `grep -rl "TypeName" TableProTests` takes a second and names the suites that will judge you.
+
+**When CI fails and local passed, do not reach for the whole target.** A local full run of `TableProTests` reports around 60 failures that have nothing to do with the change: quarantined suites, locale, pasteboard, network and timer-dependent cases. Compare against a baseline instead. Read the CI log for the count of real failures, then run the suspect suites on a worktree at the merge base; a suite that fails in both is not yours.
+
 Where the fix rests on how a dependency behaves, finish with the before-and-after probe from "Measure, do not assume". A probe that reproduces the bug on the old path and shows every case correct on the new one is the strongest evidence a PR can carry.
 
 UI tests have their own trap list, including an accessibility tree that differs between this machine and the CI runner, and a SwiftUI container identifier that silently erases every child's. Read `references/verification.md` before writing one.
 
 ## Phase 5: Review, commit, and open the primary PR
 
-1. **Self-review the diff.** Run `Skill(code-review)` on the change. Fix what it finds, or say why a finding does not apply. Treat its findings on your own edits as seriously as its findings on old code; this pass has already caught a CHANGELOG heading deleted by a careless `Edit`.
-   - **`Skill(security-review)`** as well whenever the change touches a security boundary: credentials, keychain, SQL construction, query execution, plugin loading, MCP, AI tool permissions, sync, or anything that widens what a user or a plugin can do. It reviews the pending changes on the branch, so run it after the diff is complete and before the commit.
-   - **`Skill(simplify)`** when the change grew past a couple of files. It is a quality pass for reuse and duplication rather than a bug hunt, which is the gap `code-review` leaves.
-   - Each of these reads the diff itself. Do not paste the diff into the thread to prepare for them.
+1. **Review the diff with Codex, not with yourself.** The review exists to catch what the author cannot see, and a model reviewing its own diff carries the blind spots that produced it. The whole point of this step is that a different model, from a different lab, reads the change cold. Run it through the Codex plugin's companion runtime.
+
+   **Resolve the runtime first.** `$CLAUDE_PLUGIN_ROOT` is only set inside the plugin's own commands, and the install path is version-pinned with no stable symlink, so hardcoding `1.0.6` breaks on the next plugin update:
+   ```bash
+   CODEX="$(ls -1d "$HOME"/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs \
+     | sort -V | tail -1)"
+   ```
+   **Run both passes**, from the repo root, or the worktree root when you are on one:
+   ```bash
+   node "$CODEX" review --wait --scope working-tree            # before the commit
+   node "$CODEX" review --wait --base main                     # once the branch carries commits
+   node "$CODEX" adversarial-review --wait --scope working-tree \
+     "<the mechanism the fix rests on, in one sentence>"       # attacks the approach, not the lines
+   ```
+   `review` maps to Codex's built-in reviewer and hunts defects in the lines you wrote. `adversarial-review` challenges the approach itself: the design choice, the tradeoff, the assumption the fix depends on. It is the only one of the two that accepts focus text, and this workflow earns it, because a fix-issue change is a design decision as much as a diff. Give it the mechanism to attack in one sentence, the same claim the Phase 2 critique went after, so it can disagree with the blueprint now that the blueprint is real code. `review` rejects focus text outright rather than ignoring it.
+
+   **Scope is worth stating rather than inferring.** With neither flag, `auto` picks the working tree when it is dirty and a diff against the detected default branch when it is clean. That is deterministic, but the two are not the same review, and after a partial commit the one you get is not the one you meant. Name it. Use `--cwd <path>` when you cannot run from the root.
+
+   **Background it.** `review` always runs in that process's foreground; the companion parses `--background` but does not act on it, so `run_in_background: true` on the `Bash` call is the only thing that actually detaches the run. Pass `--wait` and let the exit re-invoke you, so what lands is the finished review rather than a job handle. If a run does end up detached without one, `node "$CODEX" status` and `node "$CODEX" result <job-id>` reach it. Never run the two passes concurrently.
+
+   **Act on the findings; do not stop and ask.** The plugin's own `/codex:review` is review-only and ends by asking the user which findings to fix. That contract belongs to the slash command, and this skill deliberately departs from it: you are calling the runtime directly, inside a workflow whose one gate is already behind you at Phase 2. Fix what it finds, or say why a finding does not apply. Treat its findings on lines you just wrote as seriously as its findings on old code; this pass has already caught a CHANGELOG heading deleted by a careless `Edit`. What survives the departure is the reporting half: every finding you dismissed, and why, goes in the final report.
+
+   **The slash commands are not available to you.** `/codex:review` and `/codex:adversarial-review` are declared `disable-model-invocation: true`, so they only run when the user types them. Call the companion script.
+
+   **When Codex cannot review, say so and fall back to `Skill(code-review)`.** Three failures to expect, and none of them is a reason to skip the review:
+   - `Codex CLI is not installed or is missing required runtime support`, meaning the plugin is there and the binary is not.
+   - `Your workspace is out of credits.` in the progress lines. `review` then ends `Reviewer failed to output a response.`; `adversarial-review` ends `Codex did not return valid structured JSON.` with the credit message as its parse error. Authentication is fine and `/codex:setup` still reports `ready: true`, because it checks login and not billing. This is the failure that looks most like a clean review with no findings, so read the body rather than the exit code.
+   - A setup or authentication error, which is the one case to hand back to the user with `/codex:setup` rather than working around.
+
+   Name in the final report which reviewer actually read the diff. A fallback that goes unmentioned lets the user believe a second model saw the change when none did.
+   - **`Skill(security-review)`** whenever the change touches a security boundary: credentials, keychain, SQL construction, query execution, plugin loading, MCP, AI tool permissions, sync, or anything that widens what a user or a plugin can do. It reviews the pending changes on the branch, so run it after the diff is complete and before the commit.
+   - **`Skill(simplify)`** when the change grew past a couple of files. It is a quality pass for reuse and duplication rather than a bug hunt, which is the gap a correctness review leaves.
+   - Every one of these reads the diff from git itself. Do not paste the diff into the thread to prepare for them.
 2. **Check the CHANGELOG survived.** After any edit to `CHANGELOG.md`, run `grep -n '^## \[' CHANGELOG.md` and confirm the released version headings are still there. An `Edit` whose `new_string` drops the trailing context silently folds a shipped release into `[Unreleased]`, and the next release notes then re-ship it.
 3. **Writing-style gate.** Stage the change, then run the grep from `CLAUDE.md` over the staged diff for em dashes and banned filler words. Rewrite every hit that is on an added line.
 4. **Verify the branch, in its own call, immediately before committing.** `git branch --show-current`. The checkout can move between turns, and chaining `commit && push` has already pushed straight to `main` once. Never chain them.

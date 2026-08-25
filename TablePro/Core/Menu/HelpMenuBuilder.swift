@@ -41,6 +41,10 @@ enum HelpMenuBuilder {
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
+                String(localized: "Support TablePro"),
+                action: #selector(AppDelegate.showSupport(_:))
+            ),
+            MenuItemFactory.item(
                 String(localized: "Acknowledgements"),
                 action: #selector(AppDelegate.showAcknowledgements(_:))
             )

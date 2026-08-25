@@ -21,7 +21,7 @@ struct SwitchDatabaseReconnectFailureTests {
     private static let typeId = "ReconnectSwitchFake"
 
     private func registerTypeIfNeeded() {
-        guard PluginMetadataRegistry.shared.snapshot(forTypeId: Self.typeId) == nil else { return }
+        guard PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: Self.typeId) == nil else { return }
         var capabilities = PluginMetadataSnapshot.CapabilityFlags.defaults
         capabilities = PluginMetadataSnapshot.CapabilityFlags(
             supportsSchemaSwitching: true,

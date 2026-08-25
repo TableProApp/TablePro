@@ -53,6 +53,16 @@ extension MainSplitViewController {
         Task { await coordinator.switchSchema(to: schema) }
     }
 
+    @objc func setFavoriteDatabaseEnvironment(_ sender: Any?) {
+        guard let raw = (sender as? NSMenuItem)?.representedObject as? String,
+              let environment = FavoriteDatabaseEnvironment(rawValue: raw) else { return }
+        commandActions?.setActiveDatabaseFavorite(environment: environment)
+    }
+
+    @objc func removeFavoriteDatabase(_ sender: Any?) {
+        commandActions?.removeActiveDatabaseFavorite()
+    }
+
     @objc func truncateTable(_ sender: Any?) {
         commandActions?.truncateTables()
     }

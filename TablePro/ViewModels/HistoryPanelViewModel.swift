@@ -227,7 +227,7 @@ struct HistoryConnectionDirectory: Sendable {
     static let live = HistoryConnectionDirectory { connectionId in
         guard let connection = ConnectionStorage.shared.loadConnections().first(where: { $0.id == connectionId })
         else { return nil }
-        return HistoryConnectionLabel(name: connection.name, color: connection.color)
+        return HistoryConnectionLabel(name: connection.name, color: connection.identityColor)
     }
 
     static let none = HistoryConnectionDirectory { _ in nil }

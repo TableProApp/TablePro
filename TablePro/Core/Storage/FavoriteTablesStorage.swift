@@ -107,6 +107,18 @@ final class FavoriteTablesStorage: @unchecked Sendable {
 
     @discardableResult
     func removeFavorites(for connectionId: UUID) -> [FavoriteEntry] {
+        removeFavorites(for: connectionId, skipSync: false)
+    }
+
+    /// Used when another device deleted the connection. Marking tombstones here would push its own
+    /// deletion straight back at it.
+    @discardableResult
+    func removeFavoritesWithoutSync(for connectionId: UUID) -> [FavoriteEntry] {
+        removeFavorites(for: connectionId, skipSync: true)
+    }
+
+    @discardableResult
+    private func removeFavorites(for connectionId: UUID, skipSync: Bool) -> [FavoriteEntry] {
         var removed: [FavoriteEntry] = []
         lock.lock()
         var favorites = _loadFavorites()
@@ -119,8 +131,10 @@ final class FavoriteTablesStorage: @unchecked Sendable {
         lock.unlock()
 
         guard !removed.isEmpty else { return [] }
-        for entry in removed {
-            syncTracker.markDeleted(.tableFavorite, id: Self.syncId(for: entry))
+        if !skipSync {
+            for entry in removed {
+                syncTracker.markDeleted(.tableFavorite, id: Self.syncId(for: entry))
+            }
         }
         NotificationCenter.default.post(name: .favoriteTablesDidChange, object: nil)
         return removed

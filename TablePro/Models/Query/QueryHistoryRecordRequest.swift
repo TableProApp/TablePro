@@ -1,6 +1,9 @@
 import Foundation
 
 struct QueryHistoryRecordRequest: Sendable {
+    /// Chosen by the caller so a run that also saves a plan can link the two before either is
+    /// written. Defaulted, so every other caller ignores it.
+    var id = UUID()
     let query: String
     let connectionId: UUID
     let databaseName: String
@@ -12,7 +15,13 @@ struct QueryHistoryRecordRequest: Sendable {
     let wasSuccessful: Bool
     var errorMessage: String?
 
+    /// The EXPLAIN plan this run produced, when it is one worth keeping. Written after the history
+    /// row and never inside its transaction, so a plan that cannot be stored never costs the run
+    /// its place in history.
+    var planCapture: QueryPlanCapture?
+
     init(
+        id: UUID = UUID(),
         query: String,
         connectionId: UUID,
         databaseName: String,
@@ -22,8 +31,10 @@ struct QueryHistoryRecordRequest: Sendable {
         executionTime: TimeInterval,
         rowCount: Int,
         wasSuccessful: Bool,
-        errorMessage: String? = nil
+        errorMessage: String? = nil,
+        planCapture: QueryPlanCapture? = nil
     ) {
+        self.id = id
         self.query = query
         self.connectionId = connectionId
         self.databaseName = databaseName
@@ -34,5 +45,6 @@ struct QueryHistoryRecordRequest: Sendable {
         self.rowCount = rowCount
         self.wasSuccessful = wasSuccessful
         self.errorMessage = errorMessage
+        self.planCapture = planCapture
     }
 }

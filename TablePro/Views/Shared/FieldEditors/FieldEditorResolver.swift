@@ -82,8 +82,8 @@ internal enum FieldEditorResolver {
         return text.rangeOfCharacter(from: .newlines).location != NSNotFound
     }
 
-    /// Two lines' worth. Between 32 and 46 subheadline characters fit one line at the inspector's
-    /// minimum width, so a value past this needs a third line and a short scalar keeps the text
-    /// field AppKit intends for it.
+    /// Two lines' worth at the inspector's minimum width. The value font is user-configurable, so how
+    /// many characters actually fit a line moves with it; the threshold stays a fixed count on purpose,
+    /// because which editor a value gets must not change under the user when they resize the font.
     static let multiLineValueThreshold = 80
 }

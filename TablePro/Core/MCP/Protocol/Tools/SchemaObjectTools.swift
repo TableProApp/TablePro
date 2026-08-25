@@ -150,27 +150,31 @@ public struct ListTriggersTool: MCPToolImplementation {
             "database": MCPToolSchema.database,
             "schema": MCPToolSchema.schema
         ],
-        required: ["connection_id", "table"]
+        required: ["connection_id"]
     )
 
     public static let outputSchema: JsonValue? = MCPToolSchema.object(
         properties: [
-            "table": MCPToolSchema.string(String(localized: "Table the triggers belong to")),
+            "table": MCPToolSchema.string(String(localized: "Table the triggers belong to, when one was named")),
             "triggers": MCPToolSchema.array(
-                String(localized: "Triggers, sorted by name"),
+                String(localized: "Triggers, sorted by table then name"),
                 of: MCPToolSchema.object(
                     properties: [
                         "name": MCPToolSchema.string(String(localized: "Trigger name")),
+                        "table": MCPToolSchema.string(String(localized: "Table the trigger fires for")),
+                        "schema": MCPToolSchema.string(String(localized: "Schema the trigger belongs to")),
                         "timing": MCPToolSchema.string(String(localized: "BEFORE, AFTER, or INSTEAD OF")),
                         "event": MCPToolSchema.string(String(localized: "INSERT, UPDATE, or DELETE")),
+                        "orientation": MCPToolSchema.string(String(localized: "ROW or STATEMENT")),
                         "statement": MCPToolSchema.string(String(localized: "Trigger body")),
+                        "definition": MCPToolSchema.string(String(localized: "Full CREATE TRIGGER statement")),
                         "is_enabled": MCPToolSchema.boolean(String(localized: "Whether the trigger is enabled"))
                     ],
                     required: ["name", "timing", "event", "statement"]
                 )
             )
         ],
-        required: ["table", "triggers"]
+        required: ["triggers"]
     )
 
     public init() {}
@@ -181,7 +185,7 @@ public struct ListTriggersTool: MCPToolImplementation {
         services: MCPToolServices
     ) async throws -> MCPToolCallResult {
         try MCPArgumentDecoder.rejectUnknownKeys(arguments, allowed: MCPScopeArguments.keys.union(["table"]))
-        let table = try MCPArgumentDecoder.requireNonEmptyString(arguments, key: "table")
+        let table = try MCPArgumentDecoder.optionalString(arguments, key: "table")
         let scope = try await MCPScopeArguments.resolve(arguments, services: services)
         let payload = try await services.connectionBridge.listTriggers(scope: scope, table: table)
         return .structured(payload)
@@ -273,7 +277,13 @@ public struct ListRoutinesTool: MCPToolImplementation {
                         "kind": MCPToolSchema.string(String(localized: "PROCEDURE or FUNCTION")),
                         "schema": MCPToolSchema.string(String(localized: "Schema the routine lives in")),
                         "qualified_name": MCPToolSchema.string(String(localized: "Schema-qualified name")),
-                        "signature": MCPToolSchema.string(String(localized: "Argument signature, when reported"))
+                        "signature": MCPToolSchema.string(
+                            String(localized: "Argument list the engine reports, such as (date), when it reports one")
+                        ),
+                        "return_type": MCPToolSchema.string(
+                            String(localized: "What a function returns, absent for a procedure")
+                        ),
+                        "language": MCPToolSchema.string(String(localized: "Language the routine is written in"))
                     ],
                     required: ["name", "kind", "qualified_name"]
                 )

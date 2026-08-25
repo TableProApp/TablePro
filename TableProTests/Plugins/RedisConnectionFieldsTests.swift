@@ -11,7 +11,7 @@ import Testing
 @Suite("Redis connection fields")
 struct RedisConnectionFieldsTests {
     private func redisFields() throws -> [ConnectionField] {
-        let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forTypeId: "Redis"))
+        let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: "Redis"))
         return snapshot.connection.additionalConnectionFields
     }
 

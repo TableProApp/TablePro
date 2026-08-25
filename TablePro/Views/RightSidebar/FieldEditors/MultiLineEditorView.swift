@@ -17,7 +17,7 @@ internal struct MultiLineEditorView: View {
             TextValueEditor(
                 text: context.value,
                 isEditable: !context.isReadOnly,
-                font: .preferredFont(forTextStyle: .subheadline),
+                font: ThemeEngine.shared.valueFont,
                 movesFocusOnTab: true
             )
             .clipShape(RoundedRectangle(cornerRadius: 5))
@@ -31,7 +31,6 @@ internal struct MultiLineEditorView: View {
     private var placeholder: some View {
         if context.value.wrappedValue.isEmpty, let text = context.emptyStatePlaceholder {
             Text(text)
-                .font(.subheadline)
                 .foregroundStyle(.tertiary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)

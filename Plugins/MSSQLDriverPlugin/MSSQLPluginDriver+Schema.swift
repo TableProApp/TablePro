@@ -180,47 +180,8 @@ extension MSSQLPluginDriver {
     }
 
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
-        let esc = MSSQLSchemaQueries.escapeBracket(effectiveSchema(schema))
-        let bracketedTable = table.replacingOccurrences(of: "]", with: "]]")
-        let bracketedFull = "[\(esc)].[\(bracketedTable)]"
-        let sql = """
-            SELECT t.name, t.is_disabled, t.is_instead_of_trigger,
-                   OBJECT_DEFINITION(t.object_id) AS definition,
-                   te.type_desc AS event
-            FROM sys.triggers t
-            JOIN sys.trigger_events te ON t.object_id = te.object_id
-            WHERE t.parent_id = OBJECT_ID('\(bracketedFull)')
-            ORDER BY t.name, te.type_desc
-            """
-        let result = try await execute(query: sql)
-
-        var order: [String] = []
-        var byName: [String: (timing: String, definition: String, enabled: Bool, events: [String])] = [:]
-        for row in result.rows {
-            guard let name = row[safe: 0]?.asText else { continue }
-            let event = row[safe: 4]?.asText ?? ""
-            if byName[name] == nil {
-                order.append(name)
-                let timing = (row[safe: 2]?.asText == "1") ? "INSTEAD OF" : "AFTER"
-                let enabled = (row[safe: 1]?.asText != "1")
-                byName[name] = (timing: timing, definition: row[safe: 3]?.asText ?? "", enabled: enabled, events: [])
-            }
-            if !event.isEmpty {
-                byName[name]?.events.append(event)
-            }
-        }
-        return order.compactMap { name in
-            guard let info = byName[name] else { return nil }
-            return PluginTriggerInfo(
-                name: name,
-                timing: info.timing,
-                event: info.events.joined(separator: " OR "),
-                statement: info.definition,
-                enabled: info.enabled
-            )
-        }
+        try await triggerList(schema: effectiveSchema(schema), table: table)
     }
-
     var triggerEditUsesReplace: Bool { true }
 
     var supportsTransactionalDDL: Bool { true }

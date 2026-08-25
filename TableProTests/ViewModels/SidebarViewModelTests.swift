@@ -342,8 +342,8 @@ struct SidebarViewModelMultiSectionTests {
     @MainActor
     func filteredRoutinesByKind() {
         let vm = makeViewModel()
-        let getUser = RoutineInfo(name: "get_user_by_id", schema: "public", kind: .procedure, signature: nil)
-        let calcAge = RoutineInfo(name: "calculate_age", schema: "public", kind: .function, signature: nil)
+        let getUser = RoutineInfo(name: "get_user_by_id", kind: .procedure, schema: "public")
+        let calcAge = RoutineInfo(name: "calculate_age", kind: .function, schema: "public")
         let mixed = [getUser, calcAge]
 
         let procs = vm.filteredRoutines(of: .procedure, from: mixed)
@@ -384,8 +384,8 @@ struct SidebarViewModelMultiSectionTests {
     @MainActor
     func filteredRoutinesSearch() {
         let vm = makeViewModel()
-        let getUser = RoutineInfo(name: "GET_USER_BY_ID", schema: nil, kind: .procedure, signature: nil)
-        let other = RoutineInfo(name: "log_event", schema: nil, kind: .procedure, signature: nil)
+        let getUser = RoutineInfo(name: "GET_USER_BY_ID", kind: .procedure)
+        let other = RoutineInfo(name: "log_event", kind: .procedure)
         vm.searchText = "user"
 
         let procs = vm.filteredRoutines(of: .procedure, from: [getUser, other])

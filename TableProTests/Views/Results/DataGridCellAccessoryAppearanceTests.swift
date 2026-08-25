@@ -17,12 +17,23 @@ struct DataGridCellAccessoryAppearanceTests {
         let height: Double
     }
 
-    /// The cell text is already appearance-reactive, so a whole-cell comparison passes even with
-    /// the accessory frozen. The text stays empty and only the accessory rect is read.
-    private func makeCell(kind: DataGridCellKind, appearance: NSAppearance) -> DataGridCellView {
-        let cell = DataGridCellView(frame: NSRect(x: 0, y: 0, width: 120, height: 24))
+    /// A cell is drawn rather than mounted, so this renders one through the renderer the grid uses
+    /// and reads the accessory rect back off the bitmap. The text stays empty so only the accessory
+    /// contributes ink.
+    private final class RenderedCellView: NSView {
+        var appearanceToDraw: DataGridCellAppearance?
+        private let renderer = DataGridCellRenderer()
+        override var isFlipped: Bool { true }
+        override func draw(_ dirtyRect: NSRect) {
+            guard let appearanceToDraw else { return }
+            renderer.draw(appearanceToDraw, in: bounds)
+        }
+    }
+
+    private func makeCell(kind: DataGridCellKind, appearance: NSAppearance) -> NSView {
+        let cell = RenderedCellView(frame: NSRect(x: 0, y: 0, width: 120, height: 24))
         cell.appearance = appearance
-        cell.configure(
+        cell.appearanceToDraw = DataGridCellAppearance.resolve(
             kind: kind,
             content: DataGridCellContent(displayText: "", rawValue: "42", placeholder: nil),
             state: DataGridCellState(
@@ -33,7 +44,10 @@ struct DataGridCellAccessoryAppearanceTests {
                 row: 0,
                 columnIndex: 0
             ),
-            palette: .placeholder
+            palette: .placeholder,
+            nullDisplayString: "NULL",
+            onEmphasizedSelection: false,
+            hasOverlay: false
         )
         return cell
     }

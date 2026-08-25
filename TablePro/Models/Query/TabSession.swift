@@ -32,10 +32,17 @@ final class TabSession: Identifiable {
     /// which cannot distinguish two different results of the same size.
     var dataRevision: Int
 
+    /// Bumped only when the buffer is replaced wholesale, which `dataRevision` cannot express: it
+    /// also moves for an in-place edit, and a row id survives one of those. Row ids are positional,
+    /// so a new page hands the same ids to different rows, and anything derived per row id has to
+    /// be dropped exactly then and kept across an edit.
+    var bufferEpoch: Int
+
     init(id: UUID = UUID()) {
         self.id = id
         self.tableRows = TableRows()
         self.isEvicted = false
         self.dataRevision = 0
+        self.bufferEpoch = 0
     }
 }

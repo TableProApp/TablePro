@@ -8,7 +8,7 @@
 import Foundation
 
 /// A single node in an EXPLAIN query plan tree.
-struct QueryPlanNode: Identifiable {
+struct QueryPlanNode: Identifiable, Sendable {
     let id = UUID()
     let operation: String
     let relation: String?
@@ -44,7 +44,7 @@ struct QueryPlanNode: Identifiable {
 }
 
 /// A parsed EXPLAIN query plan.
-struct QueryPlan {
+struct QueryPlan: Sendable {
     var rootNode: QueryPlanNode
     let planningTime: Double?
     let executionTime: Double?

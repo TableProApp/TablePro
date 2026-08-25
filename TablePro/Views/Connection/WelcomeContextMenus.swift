@@ -154,6 +154,12 @@ extension WelcomeWindowView {
 
         Divider()
 
+        Button { CompareSyncLauncher.open(prefillSource: connection.id) } label: {
+            Label(String(localized: "Compare/Sync with…"), systemImage: "arrow.left.arrow.right.square")
+        }
+
+        Divider()
+
         Button { vm.toggleFavorite([connection]) } label: {
             Label(
                 connection.isFavorite

@@ -165,13 +165,19 @@ extension MCPConnectionBridge {
         ])
     }
 
-    func listTriggers(scope: DatabaseScope, table: String) async throws -> JsonValue {
+    /// A nil table asks for the whole schema, which is what the sidebar's Triggers section shows.
+    /// Every entry carries its own table either way, so one reader can handle both answers.
+    func listTriggers(scope: DatabaseScope, table: String?) async throws -> JsonValue {
         try await ensureConnected(scope.connectionId)
+        let schema = scope.schema
         let triggers = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-            try await driver.fetchTriggers(table: table)
+            if let table {
+                return try await driver.fetchTriggers(table: table)
+            }
+            return try await driver.fetchAllTriggers(schema: schema)
         }
         let payload = triggers
-            .sorted { $0.name < $1.name }
+            .sorted { ($0.table ?? "", $0.name) < ($1.table ?? "", $1.name) }
             .map { trigger -> JsonValue in
                 var fields: [String: JsonValue] = [
                     "name": .string(trigger.name),
@@ -179,12 +185,28 @@ extension MCPConnectionBridge {
                     "event": .string(trigger.event),
                     "statement": .string(trigger.statement)
                 ]
+                if let owningTable = trigger.table ?? table {
+                    fields["table"] = .string(owningTable)
+                }
+                if let triggerSchema = trigger.schema {
+                    fields["schema"] = .string(triggerSchema)
+                }
+                if let orientation = trigger.orientation {
+                    fields["orientation"] = .string(orientation)
+                }
+                if let definition = trigger.definition {
+                    fields["definition"] = .string(definition)
+                }
                 if let enabled = trigger.enabled {
                     fields["is_enabled"] = .bool(enabled)
                 }
                 return .object(fields)
             }
-        return .object(["table": .string(table), "triggers": .array(payload)])
+        var result: [String: JsonValue] = ["triggers": .array(payload)]
+        if let table {
+            result["table"] = .string(table)
+        }
+        return .object(result)
     }
 
     func getViewDefinition(scope: DatabaseScope, view: String) async throws -> JsonValue {
@@ -203,14 +225,9 @@ extension MCPConnectionBridge {
         try await ensureConnected(scope.connectionId)
         let schema = scope.schema
         let routines = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-            var collected: [RoutineInfo] = []
-            if kind == nil || kind == "procedure" {
-                collected += try await driver.fetchProcedures(schema: schema)
-            }
-            if kind == nil || kind == "function" {
-                collected += try await driver.fetchFunctions(schema: schema)
-            }
-            return collected
+            let all = try await driver.fetchRoutines(schema: schema)
+            guard let kind else { return all }
+            return all.filter { $0.kind.rawValue.lowercased() == kind.lowercased() }
         }
         let payload = routines
             .sorted { $0.qualifiedName < $1.qualifiedName }
@@ -223,8 +240,14 @@ extension MCPConnectionBridge {
                 if let schema = routine.schema {
                     fields["schema"] = .string(schema)
                 }
-                if let signature = routine.signature {
+                if let signature = routine.argumentSignature {
                     fields["signature"] = .string(signature)
+                }
+                if let returnType = routine.returnType {
+                    fields["return_type"] = .string(returnType)
+                }
+                if let language = routine.language {
+                    fields["language"] = .string(language)
                 }
                 return .object(fields)
             }

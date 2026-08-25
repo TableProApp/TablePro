@@ -104,7 +104,11 @@ extension MainContentCoordinator {
               let fallbackSQL = adapter.buildExplainQuery(statement)
         else { return nil }
 
-        return ExplainRequest.driverBuilt(sql: fallbackSQL, databaseType: connection.type)
+        return ExplainRequest.driverBuilt(
+            sql: fallbackSQL,
+            databaseType: connection.type,
+            subjectSQL: statement
+        )
     }
 
     // MARK: - Execution
@@ -169,6 +173,26 @@ extension MainContentCoordinator {
                         databaseName: operationDatabaseName(tabId: tabId),
                         outcome: .succeeded(OperationSummary())
                     )
+                    /// The same builder and the same database and schema the history row uses, so a
+                    /// plan captured here and one captured from a hand-typed EXPLAIN land in one
+                    /// chain instead of two that never compare.
+                    let historyId = UUID()
+                    let captured = QueryPlanCaptureBuilder.make(
+                        subjectSQL: request.subjectSQL,
+                        rawPlan: rawText,
+                        format: request.format,
+                        variantKey: request.variantKey,
+                        scope: QueryPlanScope(
+                            connectionId: conn.id,
+                            databaseType: conn.type,
+                            databaseName: queryExecutionCoordinator.historyDatabaseName(tabId: tabId),
+                            schemaName: queryExecutionCoordinator.historySchemaName(tabId: tabId)
+                        ),
+                        executionTime: fetchResult.executionTime,
+                        capturedAt: Date(),
+                        historyId: historyId,
+                        queryParameters: nil
+                    )
                     flushBufferToActiveResult(tabId: tabId, pinnedOnly: true)
                     tabManager.mutate(tabId: tabId) { tab in
                         tab.execution.executionTime = fetchResult.executionTime
@@ -182,7 +206,8 @@ extension MainContentCoordinator {
                                 plan: plan,
                                 sql: request.sql,
                                 executionTime: fetchResult.executionTime,
-                                anchor: anchor
+                                anchor: anchor,
+                                planContext: captured.context
                             )]
                         )
                         if tab.display.isResultsCollapsed {
@@ -194,15 +219,17 @@ extension MainContentCoordinator {
 
                     recordHistory(
                         QueryHistoryRecordRequest(
+                            id: historyId,
                             query: request.sql,
                             connectionId: conn.id,
-                            databaseName: queryExecutionCoordinator.historyDatabaseName(tabId: tabId),
+                            databaseName: captured.context.identity.scope.databaseName,
                             databaseType: conn.type,
-                            schemaName: queryExecutionCoordinator.historySchemaName(tabId: tabId),
+                            schemaName: captured.context.identity.scope.schemaName,
                             source: .explain,
                             executionTime: fetchResult.executionTime,
                             rowCount: fetchResult.rows.count,
-                            wasSuccessful: true
+                            wasSuccessful: true,
+                            planCapture: captured.capture
                         )
                     )
                 }

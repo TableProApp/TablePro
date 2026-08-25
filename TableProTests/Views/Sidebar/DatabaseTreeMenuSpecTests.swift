@@ -25,6 +25,7 @@ struct DatabaseTreeMenuSpecTests {
         selectedContainers: [DatabaseContainerRef] = [],
         isReadOnly: Bool = false,
         isFavorite: Bool = false,
+        favoriteDatabaseEnvironments: [String: FavoriteDatabaseEnvironment] = [:],
         activeDatabase: String? = "app",
         activeSchema: String? = "public",
         canReachOtherDatabases: Bool = true,
@@ -56,6 +57,7 @@ struct DatabaseTreeMenuSpecTests {
             schemaEntityNamePlural: "Schemas",
             objectKindTitles: [.table: "Tables"],
             isFavorite: isFavorite,
+            favoriteDatabaseEnvironments: favoriteDatabaseEnvironments,
             showObjectIcons: true,
             showObjectComments: false,
             rowSize: .matchSystem,
@@ -289,6 +291,84 @@ struct DatabaseTreeMenuSpecTests {
         })
     }
 
+    @Test("An unfavorited database offers every environment under Add to Favorites")
+    func databaseCanBeFavoritedWithEnvironment() {
+        let database = DatabaseMetadata.minimal(name: "analytics", isSystem: false)
+        let items = DatabaseTreeMenuSpec.items(for: context(clicked: .database(database)))
+        let issued = commands(items)
+
+        #expect(titles(items).contains(String(localized: "Add to Favorites")))
+        for environment in FavoriteDatabaseEnvironment.allCases {
+            #expect(issued.contains(.setFavoriteDatabases(databases: ["analytics"], environment: environment)))
+        }
+        #expect(!issued.contains(.removeFavoriteDatabases(["analytics"])))
+    }
+
+    @Test("A favorite database can change environment or be removed")
+    func favoriteDatabaseMenuReflectsState() {
+        let database = DatabaseMetadata.minimal(name: "analytics", isSystem: false)
+        let items = DatabaseTreeMenuSpec.items(for: context(
+            clicked: .database(database),
+            favoriteDatabaseEnvironments: ["analytics": .production]
+        ))
+        let issued = commands(items)
+
+        #expect(titles(items).contains(String(localized: "Environment")))
+        #expect(issued.contains(.removeFavoriteDatabases(["analytics"])))
+        #expect(issued.contains(.setFavoriteDatabases(databases: ["analytics"], environment: .development)))
+    }
+
+    /// A right-click inside a multi-selection acts on the whole selection, which is what
+    /// `NSTableView.clickedRow` documents and what `FieldDrivenList` already does. The favorite
+    /// items used to disappear entirely once a second database was selected.
+    @Test("A multi-database selection still offers the favorite items, for every database")
+    func favoriteItemsSurviveMultiSelection() {
+        let clicked = DatabaseMetadata.minimal(name: "analytics", isSystem: false)
+        let items = DatabaseTreeMenuSpec.items(for: context(
+            clicked: .database(clicked),
+            selectedContainers: [
+                .database("analytics", isSystem: false),
+                .database("reporting", isSystem: false)
+            ]
+        ))
+        let issued = commands(items)
+
+        #expect(titles(items).contains(String(localized: "Add to Favorites")))
+        #expect(issued.contains(
+            .setFavoriteDatabases(databases: ["analytics", "reporting"], environment: .production)
+        ))
+    }
+
+    /// Retagging is only what the menu offers when every target is already a favorite; a selection
+    /// that mixes the two still says "Add to Favorites", and no environment is checked.
+    @Test("A mixed selection offers Add to Favorites with no environment checked")
+    func mixedSelectionOffersAdd() {
+        let clicked = DatabaseMetadata.minimal(name: "analytics", isSystem: false)
+        let items = DatabaseTreeMenuSpec.items(for: context(
+            clicked: .database(clicked),
+            selectedContainers: [
+                .database("analytics", isSystem: false),
+                .database("reporting", isSystem: false)
+            ],
+            favoriteDatabaseEnvironments: ["analytics": .production]
+        ))
+
+        #expect(titles(items).contains(String(localized: "Add to Favorites")))
+        #expect(commands(items).contains(.removeFavoriteDatabases(["analytics", "reporting"])))
+    }
+
+    /// An engine with no database dimension names no database on its container refs, and a favorite
+    /// that names nothing is unreachable.
+    @Test("A schema row offers no favorite items")
+    func schemaRowOffersNoFavoriteItems() {
+        let items = DatabaseTreeMenuSpec.items(
+            for: context(clicked: .schema(database: "app", schema: "public"))
+        )
+
+        #expect(!titles(items).contains(String(localized: "Add to Favorites")))
+        #expect(!titles(items).contains(String(localized: "Environment")))
+    }
+
     // MARK: - Shape
 
     @Test("A menu never opens or closes on a separator, and never doubles one")
@@ -320,7 +400,7 @@ struct DatabaseTreeMenuSpecTests {
             .table(tableRef("orders")),
             .routine(DatabaseTreeRoutineRef(
                 database: "app", schema: "public",
-                routine: RoutineInfo(name: "do_thing", schema: "public", kind: .function, signature: nil)
+                routine: RoutineInfo(name: "do_thing", kind: .function, schema: "public")
             )),
             .status(.loading),
             .recentSection,

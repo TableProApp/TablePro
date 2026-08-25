@@ -29,9 +29,14 @@ final class QueryTabDeleteLineUITests: UITestCase {
 
         let grid = app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
         XCTAssertTrue(grid.waitToExist(timeout: 10))
-        let firstRow = grid.tableRows.element(boundBy: 0)
-        XCTAssertTrue(firstRow.waitToExist(timeout: 10))
-        firstRow.click()
+        XCTAssertTrue(grid.tableRows.element(boundBy: 0).waitToExist(timeout: 10))
+        /// A point in the grid rather than the row element. A table publishes its columns as
+        /// siblings of its rows, each one as tall as every row it spans and later in the tree, so
+        /// XCUITest reads every row and every cell as obscured and refuses to click either. The
+        /// offset lands in the first row's first data column, past the header and the row numbers.
+        grid.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: 60, dy: 52))
+            .click()
 
         editor.click()
         app.typeKey(XCUIKeyboardKey.rightArrow.rawValue, modifierFlags: .command)

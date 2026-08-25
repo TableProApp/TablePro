@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import Testing
 @testable import TablePro
+import Testing
 
 @Suite("QueryClassifier isExplainStatement")
 struct QueryClassifierExplainTests {
@@ -43,6 +43,51 @@ struct QueryClassifierExplainTests {
         #expect(!QueryClassifier.isExplainStatement("EXPLAINING SELECT 1"))
         #expect(!QueryClassifier.isExplainStatement("EXPLAIN"))
         #expect(!QueryClassifier.isExplainStatement(""))
+    }
+}
+
+@Suite("QueryClassifier explainedStatement")
+struct QueryClassifierExplainedStatementTests {
+    @Test("Preserves line comments between EXPLAIN options and the statement")
+    func preservesLineCommentBeforeStatement() throws {
+        let subject = "-- compare this plan\nSELECT * FROM users"
+        let explicitSubject = try #require(SQLStatementScanner.executableStatements(in: subject).first?.sql)
+
+        #expect(
+            QueryClassifier.explainedStatement(in: "EXPLAIN QUERY PLAN \(subject)")
+                == explicitSubject
+        )
+    }
+
+    @Test("Preserves block comments between parenthesized options and the statement")
+    func preservesBlockCommentBeforeStatement() throws {
+        let subject = "/* compare this plan */ SELECT * FROM users"
+        let explicitSubject = try #require(SQLStatementScanner.executableStatements(in: subject).first?.sql)
+
+        #expect(
+            QueryClassifier.explainedStatement(in: "EXPLAIN (ANALYZE, BUFFERS) \(subject)")
+                == explicitSubject
+        )
+    }
+
+    @Test("Preserves nested block comments before the statement")
+    func preservesNestedBlockCommentBeforeStatement() throws {
+        let subject = "/* outer /* inner */ still outer */ SELECT 1"
+        let explicitSubject = try #require(SQLStatementScanner.executableStatements(in: subject).first?.sql)
+
+        #expect(
+            QueryClassifier.explainedStatement(in: "EXPLAIN (FORMAT JSON) \(subject)")
+                == explicitSubject
+        )
+    }
+
+    @Test("Comments inside EXPLAIN options do not become statement comments")
+    func skipsCommentsInsideOptions() {
+        #expect(
+            QueryClassifier.explainedStatement(
+                in: "EXPLAIN FORMAT /* option separator */ = JSON /* statement */ SELECT 1"
+            ) == "/* statement */ SELECT 1"
+        )
     }
 }
 

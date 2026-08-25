@@ -189,7 +189,7 @@ extension MCPConnectionBridge {
     ) async throws -> JsonValue {
         let databaseType = try await ensureConnected(scope.connectionId)
         let style = await MainActor.run {
-            PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?.parameterStyle
+            PluginMetadataRegistry.shared.snapshot(for: databaseType)?.parameterStyle
                 ?? ParameterStyle.questionMark
         }
         let connectionId = scope.connectionId

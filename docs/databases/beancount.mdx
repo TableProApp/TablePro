@@ -5,13 +5,13 @@ description: Backend requirements, the table layout, source locations, includes,
 
 import RegistryPlugin from "/snippets/registry-plugin.mdx";
 
-Install `rledger` or Python Beancount before you connect. The plugin parses nothing itself: it shells out to one of those two and projects the answer into 17 read-only SQL tables.
+Install `rledger` or Python Beancount before you connect. The plugin shells out to one of those two and projects the answer into the read-only SQL tables below.
 
 <RegistryPlugin name="Beancount" plugin="Beancount Driver" />
 
 ## Backend requirements
 
-Either backend browses the tables, at any version. Install `rledger` if you are choosing: it wins when both are present, it is the only one that fills `diagnostics`, and BQL runs through it and nothing else.
+The compatibility fixture exercises `rledger` 0.22.0 and Python Beancount 3.2.3. Other versions may work, but are not part of that tested contract. Install `rledger` if you are choosing: it wins when both are present, it is the only one that fills `diagnostics`, and BQL runs through it and nothing else.
 
 <CodeGroup>
 ```bash rledger
@@ -33,6 +33,14 @@ launchctl setenv TABLEPRO_BEANCOUNT_PYTHON /opt/homebrew/bin/python3
 ```
 
 `TABLEPRO_BEANCOUNT_BACKEND` overrides which one wins. It takes `rledger` or `python`.
+
+After connecting, TablePro's database version display names the backend it selected and the version that executable reports.
+
+## Ledger plugins
+
+A `plugin "..."` directive names Python code that Beancount imports and runs while it loads the ledger. The plugins that ship with Beancount itself, everything under `beancount.`, always run. Anything else is third-party code, so the Python backend skips it unless you turn on **Run Ledger Plugins** in the connection's Advanced tab.
+
+The setting belongs to one connection, so trusting your own ledger does not trust the next ledger someone sends you. Skipped plugin names appear in `diagnostics` with phase `security`. If the ledger needs one of them to load at all, the connection fails and the error names the plugin it skipped.
 
 ## Quick setup
 
@@ -66,22 +74,28 @@ Three slashes: the path is absolute. See [Connection URL Reference](/connections
 | Table | Contents |
 |-------|----------|
 | `transactions` | Date, flag, payee, narration, source location. Includes transactions with no postings |
-| `postings` | Account, amount, commodity, resolved cost basis (`cost_number`, `cost_currency`), source location |
-| `accounts` | Opened accounts and declared currencies |
+| `postings` | Account, amount, commodity, posting flag, resolved cost and price details, source location |
+| `accounts` | Opened accounts, declared currencies, and booking methods |
 | `prices` | Price directives |
 | `balances` | Computed account balances by commodity |
-| `balance_assertions` | Beancount balance directives |
+| `balance_assertions` | Expected balance, explicit tolerance, and the booked difference |
 | `commodities` | Commodity directives |
 | `documents` | Document directives, their attached paths, tags, and links |
-| `notes` | Account notes |
+| `notes` | Account notes, tags, and links |
 | `events` | Event type and description directives |
+| `pads` | Pad directives, their target and source accounts, and source locations |
 | `closes` | Close directives |
+| `queries` | Named query directives and their source locations |
+| `custom` | Custom directive type and source location |
+| `custom_values` | Ordered, typed values belonging to each custom directive |
 | `transaction_metadata`, `posting_metadata` | Metadata key/value pairs |
 | `transaction_tags`, `transaction_links` | Tags and links |
+| `directives` | Every dated directive that is not a transaction, with its source location |
+| `directive_metadata` | User metadata on those directives |
 | `diagnostics` | Validation output from `rledger check` |
 | `source_files` | Parsed ledger and include files |
 
-`postings.transaction_id` points at `transactions.id`, and so do `transaction_metadata`, `transaction_tags`, and `transaction_links`. `posting_metadata.posting_id` points at `postings.id`. The rest join by name: an account column against `accounts.name`, a `source_file` column against `source_files.path`.
+`postings.transaction_id` points at `transactions.id`, and so do `transaction_metadata`, `transaction_tags`, and `transaction_links`. `posting_metadata.posting_id` points at `postings.id`, `custom_values.custom_id` points at `custom.id`, and `directive_metadata.directive_id` points at `directives.id`. The rest join by name: an account column against `accounts.name`, a `source_file` column against `source_files.path`.
 
 ```sql
 SELECT t.date, t.payee, p.account, p.amount, p.commodity
@@ -93,17 +107,29 @@ ORDER BY t.date DESC;
 
 Amounts arrive booked, so thousands separators, arithmetic, cost (`{}`) and price (`@`/`@@`) annotations are resolved before they reach a cell. Metadata values are text, and booleans keep their Beancount spelling of `TRUE` and `FALSE`.
 
+Posting costs use `cost_number`, `cost_currency`, `cost_date`, and `cost_label`. Resolved inline prices use `price_number` and `price_currency`; `flag` is the posting's own flag, independent of the transaction flag.
+
+`custom_values.value_type` is `string`, `date`, `boolean`, `amount`, `account`, or `number`. `value` is the complete readable value; amounts also split into `number` and `currency`, and standalone numbers repeat in `number` so exports do not have to parse the display text.
+
+`balance_assertions.difference_amount` is the booked balance immediately before the assertion date minus the expected amount. Its currency is in `difference_currency`; an explicit `~` value is in `tolerance`.
+
 Every ledger file, glob directory, and referenced document is watched by modification date, size, and directory listing. Change one and the next query rebuilds the projection first, so an edit in your text editor lands without reconnecting.
 
 ## Source locations
 
-`transactions` and `postings` carry `source_file`, `line`, and `source_location`, the last formatted `path:line` so it copies, filters, and exports as it stands. A posting points at its own line, not at its transaction's.
+`transactions`, `postings`, `pads`, `queries`, and `custom` carry `source_file`, `line`, and `source_location`, the last formatted `path:line` so it copies, filters, and exports as it stands. A posting points at its own line, not at its transaction's.
+
+`directives` carries the source location of each non-transaction directive, so metadata joined through `directive_id` reaches the line the directive is on. That is how two same-day directives of one type stay apart. Transaction and posting metadata stay in their dedicated tables.
 
 The backends disagree about generated entries. For the transaction a `pad` inserts, `rledger` leaves these columns empty and Python Beancount points them at the `pad`.
 
+A pad generated by a Beancount plugin carries a synthetic filename and no line number, so `source_file` holds that name and `line` and `source_location` are null.
+
 ## Diagnostics
 
-`diagnostics` carries `source_file`, `line`, `source_location`, `column_number`, `end_line`, `end_column`, `severity`, `phase`, `code`, and `message`. A ledger opened through `rledger` is projected even when validation fails, so whatever the projection skipped is readable here. The Python backend leaves the table empty.
+`diagnostics` carries `source_file`, `line`, `source_location`, `column_number`, `end_line`, `end_column`, `severity`, `phase`, `code`, and `message`. A ledger opened through `rledger` is projected even when validation fails, so whatever the projection skipped is readable here. The Python backend records the ledger plugins it skipped.
+
+Rows the projection wrote itself carry `phase` `projection`, including any pad whose accounts it could not resolve. The rest come from `rledger check` and carry its own phase names.
 
 ## Includes
 
@@ -124,8 +150,7 @@ Table browsing, row counts, and pagination work on a BQL result. SQL parameters 
 - No writes. INSERT, UPDATE, DELETE, and every form of schema editing are rejected. Edit the ledger in a text editor; the next query picks the change up.
 - No import, SSH, SSL, or ledger switching. One connection is one ledger file.
 - BQL needs `rledger` even when the ledger opened on the Python backend. The query is refused. Install `rledger`, or drop the `BQL:` prefix and query the projected tables.
-- `pad` directives get no table of their own. The balancing transaction they insert is projected; read the directive in the source file.
-- Directives outside the 17 tables are not projected. They stay in the source files.
+- Directives outside those tables are not projected. They stay in the source files.
 
 ## Troubleshooting
 

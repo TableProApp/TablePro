@@ -30,6 +30,10 @@ struct SidebarView: View {
         schemaService.routines(for: connectionId)
     }
 
+    private var triggers: [TriggerInfo] {
+        schemaService.triggers(for: connectionId)
+    }
+
     private var hasAnyMatch: Bool {
         SidebarObjectKind.allCases.contains { kind in
             countFor(kind: kind) > 0
@@ -94,17 +98,15 @@ struct SidebarView: View {
     // MARK: - Body
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
             switch sidebarState.selectedSidebarTab {
             case .tables:
-                VStack(spacing: 0) {
-                    tablesContent
-                    schemaFooter
-                }
+                tablesContent
             case .favorites:
                 if let coordinator {
                     FavoritesTabView(
                         connectionId: connectionId,
+                        databaseType: viewModel.databaseType,
                         sharedSidebarState: sidebarState,
                         tables: tables,
                         coordinator: coordinator
@@ -113,6 +115,8 @@ struct SidebarView: View {
                     Color.clear
                 }
             }
+
+            sidebarFooter
         }
         .onChange(of: settingsManager.general.showRecentTables) { _, _ in
             sidebarState.reloadRecentTablesFromStore()
@@ -155,20 +159,30 @@ struct SidebarView: View {
         }
     }
 
-    // MARK: - Schema Footer
+    // MARK: - Footer
+
+    /// The schema picker belongs to the flat table list alone, and the support link belongs to
+    /// anyone without a license, so the bar draws when either has something to put in it.
+    private var showsSchemaPicker: Bool {
+        supportsSchemaFooter && sidebarState.selectedSidebarTab == .tables
+    }
 
     @ViewBuilder
-    private var schemaFooter: some View {
-        if supportsSchemaFooter {
+    private var sidebarFooter: some View {
+        if showsSchemaPicker || LicenseManager.shared.supportAudience == .prospect {
             VStack(spacing: 0) {
                 Divider()
                 HStack(spacing: 8) {
+                    SupportPromptLink()
+                        .font(.caption)
                     Spacer()
-                    SchemaPickerControl(
-                        connectionId: connectionId,
-                        databaseType: viewModel.databaseType,
-                        coordinator: coordinator
-                    )
+                    if showsSchemaPicker {
+                        SchemaPickerControl(
+                            connectionId: connectionId,
+                            databaseType: viewModel.databaseType,
+                            coordinator: coordinator
+                        )
+                    }
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
@@ -227,7 +241,8 @@ struct SidebarView: View {
             state: schemaService.state(for: connectionId),
             hasActiveFilter: !viewModel.filterQuery.isEmpty,
             hasAnyMatch: hasAnyMatch,
-            hasRoutines: !routines.isEmpty
+            hasRoutines: !routines.isEmpty,
+            hasTriggers: !triggers.isEmpty
         ) {
         case .loading:
             loadingState
@@ -319,10 +334,11 @@ struct SidebarView: View {
     }
 
     private func countFor(kind: SidebarObjectKind) -> Int {
-        if kind.isRoutine {
-            return viewModel.filteredRoutines(of: kind, from: routines).count
+        switch kind.category {
+        case .table:   return viewModel.filteredTables(of: kind, from: tables).count
+        case .routine: return viewModel.filteredRoutines(of: kind, from: routines).count
+        case .trigger: return viewModel.filteredTriggers(from: triggers).count
         }
-        return viewModel.filteredTables(of: kind, from: tables).count
     }
 }
 

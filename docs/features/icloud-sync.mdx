@@ -3,7 +3,7 @@ title: iCloud Sync
 description: Sync connections, table favorites, settings, and SSH profiles across Macs and iOS via iCloud
 ---
 
-Sync needs a Starter or Team [license](/features/licensing) and starts off. Press `Cmd+,`, open **Settings > Account**, turn on **iCloud Sync**, pick the categories, and click **Sync Now**. The iPhone and iPad app shares the same CloudKit data but carries connections, groups, and tags only.
+Sync needs a Starter or Team [license](/features/licensing) and starts off. Press `Cmd+,`, open **Settings > Sync**, turn on **Sync this Mac with iCloud**, pick the categories, and click **Sync Now**. The iPhone and iPad app shares the same CloudKit data but carries connections, groups, and tags only.
 
 <Frame caption="iCloud Sync settings">
   <img className="block dark:hidden" src="/images/settings-sync.png" alt="iCloud Sync settings" />
@@ -21,6 +21,7 @@ Each synced category has its own toggle under **Sync Categories**.
 | **Groups & Tags** | Yes | Nested group hierarchy and sort order included |
 | **SSH Profiles** | Yes | Named [SSH profiles](/connections/ssh-profiles) |
 | **Table Favorites** | Yes | The names shown in the Favorites tab and pinned in table lists |
+| **Database Favorites** | Yes | Favorited databases and their Development / Testing / Production tags |
 | **Saved Queries** | Yes | Saved SQL and their folders |
 | **Settings** | Yes | General, Appearance, Editor, Data Grid, History, Tabs, Keyboard, and AI settings, plus custom AI slash commands and saved per-table column widths and order |
 | **Linked SQL Folders** | No | Folder paths are per-Mac. Link the same Git repo on each Mac after cloning. The cached file index stays local too |
@@ -45,3 +46,5 @@ If nothing syncs, confirm iCloud is signed in and iCloud Drive is enabled, then 
 Signing into a different iCloud account clears TablePro's sync metadata, so the next sync is a full fetch rather than a delta. Expect it to take longer once.
 
 When a license expires, sync stops and local data stays where it is. Re-activate to resume.
+
+A license TablePro has not been able to check for 30 days pauses sync separately, under **Sync Paused** rather than **Sync Off**. Click the indicator, or **Check Again** in **Settings > Sync**, to try the server again. Local data stays where it is either way.

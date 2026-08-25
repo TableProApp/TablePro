@@ -38,11 +38,15 @@ final class SyncChangeTracker: Sendable {
         postChangeNotification()
     }
 
+    /// One read-modify-write and one notification for the whole batch.
+    ///
+    /// The single-record overload posts a notification per call, and the observer cancels the
+    /// in-flight sync and awaits it before scheduling the next, so a few hundred of them in a row
+    /// build a chain of tasks each waiting on its predecessor. Always prefer this when the caller
+    /// already holds the whole set.
     func markDirty(_ type: SyncRecordType, ids: [String]) {
         guard !isSuppressed, !ids.isEmpty, type.syncScope == .synced else { return }
-        for id in ids {
-            metadataStorage.markDirty(id, type: type)
-        }
+        metadataStorage.markDirty(ids, type: type)
         Self.logger.trace("Marked dirty: \(type.rawValue) x\(ids.count)")
         postChangeNotification()
     }

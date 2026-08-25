@@ -6,7 +6,7 @@
 import SwiftUI
 
 enum SettingsPane: String, CaseIterable {
-    case general, appearance, editor, data, keyboard, notifications, ai, mcp, plugins, account
+    case general, appearance, editor, data, keyboard, notifications, ai, mcp, plugins, sync, account
 
     var title: String {
         switch self {
@@ -19,7 +19,10 @@ enum SettingsPane: String, CaseIterable {
         case .ai: String(localized: "AI")
         case .mcp: String(localized: "Integrations")
         case .plugins: String(localized: "Plugins")
-        case .account: String(localized: "Account")
+        case .sync: String(localized: "Sync")
+        /// The stored rawValue stays "account": it is the tab item identifier and the pane the
+        /// window restores, so renaming it would silently reset everyone's last-used pane.
+        case .account: String(localized: "License")
         }
     }
 
@@ -34,7 +37,8 @@ enum SettingsPane: String, CaseIterable {
         case .ai: "sparkles"
         case .mcp: "network"
         case .plugins: "puzzlepiece.extension"
-        case .account: "person.crop.circle"
+        case .sync: "arrow.triangle.2.circlepath"
+        case .account: "key.fill"
         }
     }
 }

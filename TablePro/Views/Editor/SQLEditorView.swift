@@ -19,8 +19,10 @@ import TableProPluginKit
 struct SQLEditorView: View {
     @Binding var text: String
     @Binding var cursorPositions: [CursorPosition]
+    @State private var completionProfile: QueryCompletionProfile?
     var schemaProvider: SQLSchemaProvider?
     var databaseType: DatabaseType?
+    var databaseScope: DatabaseScope?
     var connectionId: UUID?
     var connectionAIPolicy: AIConnectionPolicy?
     var tabID: UUID?
@@ -120,8 +122,19 @@ struct SQLEditorView: View {
             coordinator.repointFolds(to: restoredFoldRanges)
         }
         .onChange(of: connectionId) { _, _ in
-            completionAdapter.configure(schemaProvider: schemaProvider, databaseType: databaseType)
+            configureCompletion()
             setupFavoritesObserver()
+        }
+        /// A tab rebound to another database keeps its view and its connection, so only the scope
+        /// moves. Without this the editor keeps completing against the previous database's
+        /// provider until the profile resolution returns, which leases a metadata driver and on a
+        /// non-poolable engine can queue behind a running query.
+        .onChange(of: databaseScope) { _, _ in
+            completionProfile = nil
+            configureCompletion()
+        }
+        .task(id: completionProfileRequest) {
+            await resolveCompletionProfile()
         }
         .onChange(of: colorScheme) {
             editorConfiguration = Self.makeConfiguration()
@@ -149,8 +162,42 @@ struct SQLEditorView: View {
     // MARK: - Initialization
 
     private func initializeEditor() {
-        completionAdapter.configure(schemaProvider: schemaProvider, databaseType: databaseType)
+        configureCompletion()
         setupFavoritesObserver()
+    }
+
+    /// The one place the completion service is configured. Appear and the connection change used
+    /// to configure without a profile, so whichever of them ran after the resolver silently put
+    /// the editor back on the app's own dialect, with nothing scheduled to correct it: the
+    /// resolving `.task` re-runs only when its request identity changes.
+    private func configureCompletion() {
+        completionAdapter.configure(
+            schemaProvider: schemaProvider,
+            databaseType: databaseType,
+            profile: completionProfile
+        )
+    }
+
+    /// Reading `revision` here is what subscribes this body to its own scope's invalidations, and
+    /// only its own: the registry is not `@Observable`, so the dependency lands on this one box.
+    private var completionProfileRequest: CompletionProfileRequest? {
+        guard let databaseScope, let databaseType else { return nil }
+        return CompletionProfileRequest(
+            scope: databaseScope,
+            databaseType: databaseType,
+            profileRevision: QueryCompletionProfileRegistry.shared.revisionBox(for: databaseScope).revision
+        )
+    }
+
+    private func resolveCompletionProfile() async {
+        guard let request = completionProfileRequest else { return }
+        let profile = await QueryCompletionProfileRegistry.shared.profile(
+            for: request.scope,
+            databaseType: request.databaseType
+        )
+        guard !Task.isCancelled else { return }
+        completionProfile = profile
+        configureCompletion()
     }
 
     // MARK: - Favorites
@@ -217,6 +264,12 @@ struct SQLEditorView: View {
             )
         )
     }
+}
+
+private struct CompletionProfileRequest: Hashable {
+    let scope: DatabaseScope
+    let databaseType: DatabaseType
+    let profileRevision: Int
 }
 
 // MARK: - Preview

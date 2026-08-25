@@ -21,6 +21,23 @@ protocol QueryHistoryReading: Sendable {
     ) async -> QueryInsightsSnapshot
 }
 
+/// Saved EXPLAIN plans. Separate from `QueryHistoryReading` because a plan is a different artifact
+/// with a different lifetime, and because the comparison pane needs only these four calls.
+protocol QueryPlanSnapshotReading: Sendable {
+    func planSnapshots(
+        matching identity: QueryPlanIdentity,
+        excluding excludedId: UUID?,
+        limit: Int
+    ) async -> [QueryPlanSnapshotSummary]
+
+    func planSnapshotRawText(id: UUID) async -> String?
+
+    @discardableResult
+    func setPlanSnapshotPinned(id: UUID, isPinned: Bool) async -> Bool
+
+    func isStoreAvailable() async -> Bool
+}
+
 extension QueryHistoryReading {
     func isStoreAvailable() async -> Bool { true }
 

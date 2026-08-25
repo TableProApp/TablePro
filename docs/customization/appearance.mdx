@@ -30,10 +30,10 @@ A built-in or registry theme is read-only, so the first change forks it. Changin
 
 The pickers list the monospaced families installed on your Mac; the preview renders a sample query in the theme's own editor colors.
 
-| Setting | Options | Default |
-|---------|---------|---------|
-| Editor Font | Family + size, 11 to 18 pt | System Mono, 13 pt |
-| Data Grid Font | Family + size, 10 to 18 pt | System Mono, 13 pt |
+| Setting | Options | Default | Applies to |
+|---------|---------|---------|------------|
+| Editor Font | Family + size, 11 to 18 pt | System Mono, 13 pt | SQL editor and the JSON viewer's Text mode |
+| Data Grid Font | Family + size, 10 to 18 pt | System Mono, 13 pt | Grid cells, the inspector, the cell popovers and the Compare row diff |
 
 ## Colors
 
@@ -90,9 +90,11 @@ Every key is optional. A group you leave out falls back to Default Light, and a 
 
 ## Connection colors
 
-Assign one in the connection form under **Customization > Appearance > Color**: None, Red, Orange, Yellow, Green, Blue, Purple, Pink, or Gray. With None, the connection takes its database type's brand color from the driver plugin. Connection groups take a color the same way, from their right-click menu on the welcome window.
+Assign one in the connection form under **Customization > Appearance > Color**: None, Red, Orange, Yellow, Green, Blue, Purple, Pink, or Gray. With None, no color cue appears. Connection groups take a color the same way, from their right-click menu on the welcome window.
 
-The color shows on the toolbar connection status indicator, the connection switcher popover, the sidebar connection header, and the welcome window list.
+The color fills a badge behind the connection name in the toolbar. In the workspace rail it is a dot on the corner of the database icon, and it stays visible on the selected row. In the welcome window list and the connection switcher, it is a dot beside the name. The color's name is in the connection's tooltip and its VoiceOver label.
+
+The database icon keeps its engine's own color everywhere, whichever color the connection carries.
 
 <Tip>
 Use red for production databases as a visual reminder to be careful with queries.

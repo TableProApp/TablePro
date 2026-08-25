@@ -43,4 +43,58 @@ struct QueryCompletionAdapterLifecycleTests {
 
         #expect(!adapter.completionTriggerCharacters().isEmpty)
     }
+
+    /// Rebuilding the service drops the open completion session. A refresh in any window of the
+    /// connection bumps the profile revision the editor's task keys on, so an unconditional
+    /// rebuild closed the popup under whoever was typing.
+    @MainActor
+    @Test("configuring with unchanged inputs does not rebuild the service")
+    func configureWithUnchangedInputsKeepsTheService() {
+        let provider = SQLSchemaProvider()
+        let adapter = QueryCompletionAdapter(schemaProvider: provider, databaseType: .postgresql)
+        let profile = QueryCompletionProfile(
+            resolvedDialect: nil,
+            statementCompletions: [],
+            revision: "rev-1"
+        )
+        adapter.configure(schemaProvider: provider, databaseType: .postgresql, profile: profile)
+        let first = adapter.serviceIdentityForTesting
+
+        adapter.configure(schemaProvider: provider, databaseType: .postgresql, profile: profile)
+
+        #expect(adapter.serviceIdentityForTesting == first)
+    }
+
+    @MainActor
+    @Test("a changed profile revision rebuilds the service")
+    func changedProfileRevisionRebuildsTheService() {
+        let provider = SQLSchemaProvider()
+        let adapter = QueryCompletionAdapter(schemaProvider: provider, databaseType: .postgresql)
+        adapter.configure(
+            schemaProvider: provider,
+            databaseType: .postgresql,
+            profile: QueryCompletionProfile(resolvedDialect: nil, statementCompletions: [], revision: "rev-1")
+        )
+        let first = adapter.serviceIdentityForTesting
+
+        adapter.configure(
+            schemaProvider: provider,
+            databaseType: .postgresql,
+            profile: QueryCompletionProfile(resolvedDialect: nil, statementCompletions: [], revision: "rev-2")
+        )
+
+        #expect(adapter.serviceIdentityForTesting != first)
+    }
+
+    @MainActor
+    @Test("a changed schema provider rebuilds the service")
+    func changedSchemaProviderRebuildsTheService() {
+        let adapter = QueryCompletionAdapter(schemaProvider: SQLSchemaProvider(), databaseType: .postgresql)
+        adapter.configure(schemaProvider: SQLSchemaProvider(), databaseType: .postgresql)
+        let first = adapter.serviceIdentityForTesting
+
+        adapter.configure(schemaProvider: SQLSchemaProvider(), databaseType: .postgresql)
+
+        #expect(adapter.serviceIdentityForTesting != first)
+    }
 }

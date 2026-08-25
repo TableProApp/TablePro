@@ -32,6 +32,7 @@ final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let brandColorHex = "#FFD100"
     static let postConnectActions: [PostConnectAction] = [.selectDatabaseFromLastSession]
     static let supportsForeignKeys = false
+    static let supportsRoutines = true
     static let systemDatabaseNames: [String] = ["information_schema", "INFORMATION_SCHEMA", "system"]
     static let columnTypesByCategory: [String: [String]] = [
         "Integer": [
@@ -162,6 +163,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .alterTableDDL,
             .cancelQuery,
             .materializedViews,
+            .dataCompare,
         ]
     }
 

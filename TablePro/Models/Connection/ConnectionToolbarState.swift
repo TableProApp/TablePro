@@ -75,8 +75,11 @@ final class ConnectionToolbarState {
     /// everything else follows the engine's switchable containers.
     var databaseGroupingStrategy: GroupingStrategy = .byDatabase
 
-    /// Custom display color for the connection (uses database type color if not set)
-    var displayColor: Color = .init(nsColor: .systemOrange)
+    /// The engine's own colour, which the engine glyph wears on every connection.
+    var brandColor: Color = .init(nsColor: .systemOrange)
+
+    /// The colour the user assigned to this connection, `nil` when they assigned none.
+    var identityColor: ConnectionColor?
 
     /// Current connection state
     var connectionState: ToolbarConnectionState = .disconnected
@@ -168,13 +171,22 @@ final class ConnectionToolbarState {
 
     // MARK: - Update Methods
 
-    /// Update state from a DatabaseConnection model
+    /// Update state from a DatabaseConnection model.
+    ///
+    /// Guarded field by field like every other write on this object. This runs on the
+    /// `connectionUpdated` path, which fires on any connection save and on a bulk `nil` after an
+    /// iCloud pull, so an unguarded write would invalidate every window's toolbar on a change that
+    /// touched nothing it displays.
     func update(from connection: DatabaseConnection) {
-        connectionName = connection.name
-        databaseType = connection.type
-        displayColor = connection.displayColor
-        tagIds = connection.tagIds
-        databaseGroupingStrategy = PluginManager.shared.databaseGroupingStrategy(for: connection.type)
+        if connectionName != connection.name { connectionName = connection.name }
+        if databaseType != connection.type { databaseType = connection.type }
+        if brandColor != connection.brandColor { brandColor = connection.brandColor }
+        if identityColor != connection.identityColor { identityColor = connection.identityColor }
+        if tagIds != connection.tagIds { tagIds = connection.tagIds }
+
+        let strategy = PluginManager.shared.databaseGroupingStrategy(for: connection.type)
+        if databaseGroupingStrategy != strategy { databaseGroupingStrategy = strategy }
+
         syncFromSession(for: connection)
     }
 
@@ -226,7 +238,8 @@ final class ConnectionToolbarState {
         currentDatabase = ""
         currentSchema = nil
         databaseGroupingStrategy = .byDatabase
-        displayColor = databaseType.themeColor
+        brandColor = databaseType.themeColor
+        identityColor = nil
         connectionState = .disconnected
         lastQueryDuration = nil
         clickHouseProgress = nil

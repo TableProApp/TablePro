@@ -3,6 +3,240 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.68.0</title>
+            <pubDate>Tue, 25 Aug 2026 10:59:57 +0000</pubDate>
+            <sparkle:version>123</sparkle:version>
+            <sparkle:shortVersionString>0.68.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Compare & Sync between two databases, over schema objects or row data. Starter license. (#721)</li>
+<li>Seat release, team roster, per-Mac last use and macOS version, and your role in Settings > License.</li>
+<li>Copy Key in Settings > License, kept out of clipboard history.</li>
+<li>Support TablePro in the Help menu, the welcome window and the sidebar.</li>
+<li>Triggers as a sidebar section, alongside Procedures and Functions. (#2383)</li>
+<li>Procedures, functions and triggers on MSSQL, Oracle, SQLite, ClickHouse, DuckDB, Snowflake, BigQuery, Cassandra, LibSQL, Cloudflare D1, Teradata and Dameng. (#2383)</li>
+<li>Read-only source viewer for procedures, functions and triggers, with Copy, Export and Open in Editor. (#2383)</li>
+<li>Procedures, functions and triggers in the quick switcher, with argument signatures on ambiguous names.</li>
+<li>Compare, a fourth EXPLAIN plan mode, and pinning a saved plan. (#2380)</li>
+<li>Beancount tables for `directives`, pads, named queries and custom directives. (#2399, #2413, #2415)</li>
+<li>Account booking, note tags and links, and balance assertion details on Beancount tables. (#2415)</li>
+<li>Local table load history, kept 7 days and never uploaded. (#2395)</li>
+<li>`list_triggers` for MCP clients, and `return_type` and `language` on `list_routines`.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Settings > License in place of Settings > Account, with iCloud Sync in its own pane and Linked Folders under General.</li>
+<li>The license pane states an expired, suspended or unverified license inline, with one action and a purchase link.</li>
+<li>Sync Paused, a separate state for a license the app could not check.</li>
+<li>One Refresh in Settings > License, replacing Refresh and Check Status.</li>
+<li>The license key masked and not selectable.</li>
+<li>The PRO badge names the gated feature and links to the pricing page.</li>
+<li>The data grid draws its own cells and column separators, opening a result with hundreds of columns at once. (#2381)</li>
+<li>The inline cell editor scrolls a long line instead of wrapping it. (#2381)</li>
+<li>Row inspector fields, cell popovers and the Compare row diff follow the data grid font. (#2393)</li>
+<li>The connection color as a badge behind the connection name, a dot on the rail icon, and deeper tag badge fills. (#2398)</li>
+<li>A database stays in the connections strip until you close its entry; Close ends the connection on the last one.</li>
+<li>Autocomplete and the database picker follow the query tab's own database and schema.</li>
+<li>Beancount postings keep their own flag, price, and resolved lot date and label.</li>
+<li>Beancount connections report the active `rledger` or Python Beancount version.</li>
+<li>Beancount ledger plugins are skipped unless the connection turns on Run Ledger Plugins.</li>
+<li>Turkish, Vietnamese, Simplified Chinese and Traditional Chinese cover every remaining English string.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>A table with 500 columns pinning a core for 20 seconds and taking a gigabyte to open. (#2381)</li>
+<li>Flickering columns, blank columns and an unpainted gap while scrolling a wide result sideways. (#2381)</li>
+<li>A second of delay opening the inline editor on a result with hundreds of columns. (#2381)</li>
+<li>Find, arrow keys, the inline editor and Size All Columns to Fit unable to reach a column scrolled off the side.</li>
+<li>Return opening no editor on a row selected with the arrow keys, and Tab or Shift+Tab out of a row's end doing nothing.</li>
+<li>An empty grid the first time a table is opened in a window with no tabs. (#2342)</li>
+<li>One table click running its query twice, and a closed tab leaving its query counted as running. (#2342)</li>
+<li>Crash exporting two same-named tables from different schemas to SQL. (#1968)</li>
+<li>SQL export writing rows into another schema's same-named table, and dropping columns and keys after the first. (#1968)</li>
+<li>One of two PostgreSQL function overloads missing from the sidebar, with Show DDL opening an arbitrary one. (#2383)</li>
+<li>MySQL Show DDL reading the session database instead of the one being browsed. (#2383)</li>
+<li>Routine tooltips, VoiceOver labels and Copy with Signature showing a return type in place of the arguments. (#2383)</li>
+<li>Duplicate routine rows in the flat sidebar taking the selection back to the first of them. (#2383)</li>
+<li>MySQL triggers losing their definer, `WHEN` clause and ordering, and Oracle triggers showing a header with no body.</li>
+<li>The welcome window offering Activate License to a Mac that already holds one and has just been offline.</li>
+<li>iCloud Sync calling an unverified license missing, and reporting a live sync after the license was removed.</li>
+<li>The app freezing after turning on iCloud Sync with many saved column layouts.</li>
+<li>Every settings write failing once the sync record cache filled the preferences file past the 4 MB limit.</li>
+<li>The sync status returning to Synced when sync was turned off mid-sync.</li>
+<li>The license server never contacted again after removing and re-adding a license in one session.</li>
+<li>The device list error surviving a later successful refresh, and a renewal warning counting zero days above Expired.</li>
+<li>A previous team's shared connections and saved queries surviving deactivation.</li>
+<li>The connections strip disappearing when you click the entry you came from.</li>
+<li>Cancelling a close leaving the window on the connection the strip revealed.</li>
+<li>A strip entry in another window raising that window without showing the connection.</li>
+<li>A disconnected connection's entries dropping to the bottom of the strip, and all but one leaving it.</li>
+<li>A connection opened from a file or a URL losing its strip entries when its session ends.</li>
+<li>The connections strip's saved arrangement growing without bound.</li>
+<li>Bulk tab close saving the tab on screen, and asking about another database's unsaved work.</li>
+<li>A connection's color and name not reaching the toolbar and workspace rail until the next reconnect. (#2398)</li>
+<li>An invisible connection dot in the history drawer and compare strip, and a warning icon in the engine color. (#2398)</li>
+<li>The JSON viewer keeping its old font after a font, theme or text-size change, and hex dumps wrapping mid-line. (#2393)</li>
+<li>AI inline suggestions written without the schema, and columns missing for a table named with a capital letter.</li>
+<li>Case-insensitive filters and completion on Redshift falling back to PostgreSQL's ASCII-only ILIKE.</li>
+<li>PGlite connection form offering SSH, SSL, Cloudflare Tunnel and SOCKS panes, and a password field.</li>
+<li>Redshift and CockroachDB system databases listed in the sidebar as ordinary user databases.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.68.0/TablePro-0.68.0-arm64.zip" length="25469554" type="application/octet-stream" sparkle:edSignature="2XzOE7QUOgmOMt3uMiQuH8zjVFrczcTmE3aDo0UOHeAGMTKaD9JBuIPbUp9xS5E+hKDPNUEmkMrI5KAK7zpTCA=="/>
+        </item>
+        <item>
+            <title>0.68.0</title>
+            <pubDate>Tue, 25 Aug 2026 10:59:58 +0000</pubDate>
+            <sparkle:version>123</sparkle:version>
+            <sparkle:shortVersionString>0.68.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Compare & Sync between two databases, over schema objects or row data. Starter license. (#721)</li>
+<li>Seat release, team roster, per-Mac last use and macOS version, and your role in Settings > License.</li>
+<li>Copy Key in Settings > License, kept out of clipboard history.</li>
+<li>Support TablePro in the Help menu, the welcome window and the sidebar.</li>
+<li>Triggers as a sidebar section, alongside Procedures and Functions. (#2383)</li>
+<li>Procedures, functions and triggers on MSSQL, Oracle, SQLite, ClickHouse, DuckDB, Snowflake, BigQuery, Cassandra, LibSQL, Cloudflare D1, Teradata and Dameng. (#2383)</li>
+<li>Read-only source viewer for procedures, functions and triggers, with Copy, Export and Open in Editor. (#2383)</li>
+<li>Procedures, functions and triggers in the quick switcher, with argument signatures on ambiguous names.</li>
+<li>Compare, a fourth EXPLAIN plan mode, and pinning a saved plan. (#2380)</li>
+<li>Beancount tables for `directives`, pads, named queries and custom directives. (#2399, #2413, #2415)</li>
+<li>Account booking, note tags and links, and balance assertion details on Beancount tables. (#2415)</li>
+<li>Local table load history, kept 7 days and never uploaded. (#2395)</li>
+<li>`list_triggers` for MCP clients, and `return_type` and `language` on `list_routines`.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Settings > License in place of Settings > Account, with iCloud Sync in its own pane and Linked Folders under General.</li>
+<li>The license pane states an expired, suspended or unverified license inline, with one action and a purchase link.</li>
+<li>Sync Paused, a separate state for a license the app could not check.</li>
+<li>One Refresh in Settings > License, replacing Refresh and Check Status.</li>
+<li>The license key masked and not selectable.</li>
+<li>The PRO badge names the gated feature and links to the pricing page.</li>
+<li>The data grid draws its own cells and column separators, opening a result with hundreds of columns at once. (#2381)</li>
+<li>The inline cell editor scrolls a long line instead of wrapping it. (#2381)</li>
+<li>Row inspector fields, cell popovers and the Compare row diff follow the data grid font. (#2393)</li>
+<li>The connection color as a badge behind the connection name, a dot on the rail icon, and deeper tag badge fills. (#2398)</li>
+<li>A database stays in the connections strip until you close its entry; Close ends the connection on the last one.</li>
+<li>Autocomplete and the database picker follow the query tab's own database and schema.</li>
+<li>Beancount postings keep their own flag, price, and resolved lot date and label.</li>
+<li>Beancount connections report the active `rledger` or Python Beancount version.</li>
+<li>Beancount ledger plugins are skipped unless the connection turns on Run Ledger Plugins.</li>
+<li>Turkish, Vietnamese, Simplified Chinese and Traditional Chinese cover every remaining English string.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>A table with 500 columns pinning a core for 20 seconds and taking a gigabyte to open. (#2381)</li>
+<li>Flickering columns, blank columns and an unpainted gap while scrolling a wide result sideways. (#2381)</li>
+<li>A second of delay opening the inline editor on a result with hundreds of columns. (#2381)</li>
+<li>Find, arrow keys, the inline editor and Size All Columns to Fit unable to reach a column scrolled off the side.</li>
+<li>Return opening no editor on a row selected with the arrow keys, and Tab or Shift+Tab out of a row's end doing nothing.</li>
+<li>An empty grid the first time a table is opened in a window with no tabs. (#2342)</li>
+<li>One table click running its query twice, and a closed tab leaving its query counted as running. (#2342)</li>
+<li>Crash exporting two same-named tables from different schemas to SQL. (#1968)</li>
+<li>SQL export writing rows into another schema's same-named table, and dropping columns and keys after the first. (#1968)</li>
+<li>One of two PostgreSQL function overloads missing from the sidebar, with Show DDL opening an arbitrary one. (#2383)</li>
+<li>MySQL Show DDL reading the session database instead of the one being browsed. (#2383)</li>
+<li>Routine tooltips, VoiceOver labels and Copy with Signature showing a return type in place of the arguments. (#2383)</li>
+<li>Duplicate routine rows in the flat sidebar taking the selection back to the first of them. (#2383)</li>
+<li>MySQL triggers losing their definer, `WHEN` clause and ordering, and Oracle triggers showing a header with no body.</li>
+<li>The welcome window offering Activate License to a Mac that already holds one and has just been offline.</li>
+<li>iCloud Sync calling an unverified license missing, and reporting a live sync after the license was removed.</li>
+<li>The app freezing after turning on iCloud Sync with many saved column layouts.</li>
+<li>Every settings write failing once the sync record cache filled the preferences file past the 4 MB limit.</li>
+<li>The sync status returning to Synced when sync was turned off mid-sync.</li>
+<li>The license server never contacted again after removing and re-adding a license in one session.</li>
+<li>The device list error surviving a later successful refresh, and a renewal warning counting zero days above Expired.</li>
+<li>A previous team's shared connections and saved queries surviving deactivation.</li>
+<li>The connections strip disappearing when you click the entry you came from.</li>
+<li>Cancelling a close leaving the window on the connection the strip revealed.</li>
+<li>A strip entry in another window raising that window without showing the connection.</li>
+<li>A disconnected connection's entries dropping to the bottom of the strip, and all but one leaving it.</li>
+<li>A connection opened from a file or a URL losing its strip entries when its session ends.</li>
+<li>The connections strip's saved arrangement growing without bound.</li>
+<li>Bulk tab close saving the tab on screen, and asking about another database's unsaved work.</li>
+<li>A connection's color and name not reaching the toolbar and workspace rail until the next reconnect. (#2398)</li>
+<li>An invisible connection dot in the history drawer and compare strip, and a warning icon in the engine color. (#2398)</li>
+<li>The JSON viewer keeping its old font after a font, theme or text-size change, and hex dumps wrapping mid-line. (#2393)</li>
+<li>AI inline suggestions written without the schema, and columns missing for a table named with a capital letter.</li>
+<li>Case-insensitive filters and completion on Redshift falling back to PostgreSQL's ASCII-only ILIKE.</li>
+<li>PGlite connection form offering SSH, SSL, Cloudflare Tunnel and SOCKS panes, and a password field.</li>
+<li>Redshift and CockroachDB system databases listed in the sidebar as ordinary user databases.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.68.0/TablePro-0.68.0-x86_64.zip" length="27118704" type="application/octet-stream" sparkle:edSignature="9EKVgLdZi3k12O9NDMd4MYcmJnt3ZbNXE3tkMFq43wRtUC0LpBghO1ZUNmNeZVBqZ8WAcEoGAag3oOVJ6ZnLAw=="/>
+        </item>
+        <item>
+            <title>0.67.1</title>
+            <pubDate>Sat, 22 Aug 2026 10:44:28 +0000</pubDate>
+            <sparkle:version>122</sparkle:version>
+            <sparkle:shortVersionString>0.67.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Environment tags for database favorites, with sidebar filtering, direct open, and iCloud sync. (#1553)</li>
+<li>Open in Window for row inspector text fields.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Background tab eviction dropping query, pinned, edited, and in-flight results.</li>
+<li>Result display cache exceeding its memory budget when a cached row's values grew.</li>
+<li>Data grid reformatting every cell while scrolling after undo, redo, a theme change, or a display-format change.</li>
+<li>Autocomplete bulk-loading every column of a schema too large to cache.</li>
+<li>Empty grid on a background tab whose column metadata arrived after its rows were freed.</li>
+<li>Saved connections failing to load when their SSH settings predated the agent socket field.</li>
+<li>Switch Connection and Open Database doing nothing on a narrow window or without their toolbar button.</li>
+<li>Large text values clipped in the row inspector, and unselectable when the row is read-only.</li>
+<li>Large `VARCHAR(MAX)`, `NCLOB`, and `Nullable(String)` values stuck on one line in the inspector.</li>
+<li>Empty context menu when right-clicking a read-only inspector field.</li>
+<li>Editor crashes reading text a newer edit had removed. (#2338, #2339, #2340)</li>
+<li>Search highlights and diagnostic underlines moving when their text was deleted. (#2341)</li>
+<li>Toolbar stuck on "Executing…" after a query ended, and session context buttons emptying mid-query. (#2342)</li>
+<li>SQLite queries showing an empty table instead of reporting a lock or volume error. (#2355)</li>
+<li>Stop not ending a SQLite query waiting on a database locked by another program. (#2363)</li>
+<li>Broken documentation links in the XLSX, MQL, and SQL Import plugins.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.67.1/TablePro-0.67.1-arm64.zip" length="24418655" type="application/octet-stream" sparkle:edSignature="Blg+oRy7sM8whtLzBG1H2I7b4gYqU8asx6diNtujlxp10/eYbKOwmydFOKYT9ljXy2Btc1RZ06s1KUvn6aWCAg=="/>
+        </item>
+        <item>
+            <title>0.67.1</title>
+            <pubDate>Sat, 22 Aug 2026 10:44:29 +0000</pubDate>
+            <sparkle:version>122</sparkle:version>
+            <sparkle:shortVersionString>0.67.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Environment tags for database favorites, with sidebar filtering, direct open, and iCloud sync. (#1553)</li>
+<li>Open in Window for row inspector text fields.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Background tab eviction dropping query, pinned, edited, and in-flight results.</li>
+<li>Result display cache exceeding its memory budget when a cached row's values grew.</li>
+<li>Data grid reformatting every cell while scrolling after undo, redo, a theme change, or a display-format change.</li>
+<li>Autocomplete bulk-loading every column of a schema too large to cache.</li>
+<li>Empty grid on a background tab whose column metadata arrived after its rows were freed.</li>
+<li>Saved connections failing to load when their SSH settings predated the agent socket field.</li>
+<li>Switch Connection and Open Database doing nothing on a narrow window or without their toolbar button.</li>
+<li>Large text values clipped in the row inspector, and unselectable when the row is read-only.</li>
+<li>Large `VARCHAR(MAX)`, `NCLOB`, and `Nullable(String)` values stuck on one line in the inspector.</li>
+<li>Empty context menu when right-clicking a read-only inspector field.</li>
+<li>Editor crashes reading text a newer edit had removed. (#2338, #2339, #2340)</li>
+<li>Search highlights and diagnostic underlines moving when their text was deleted. (#2341)</li>
+<li>Toolbar stuck on "Executing…" after a query ended, and session context buttons emptying mid-query. (#2342)</li>
+<li>SQLite queries showing an empty table instead of reporting a lock or volume error. (#2355)</li>
+<li>Stop not ending a SQLite query waiting on a database locked by another program. (#2363)</li>
+<li>Broken documentation links in the XLSX, MQL, and SQL Import plugins.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.67.1/TablePro-0.67.1-x86_64.zip" length="25966268" type="application/octet-stream" sparkle:edSignature="fcD0SjG5lZTaIj2Y3yhRW4QPcgAFkQP4TkdS4Ro7y/Q9bV+Ca54IsOjfZSfXszbrnJhAvo+4Baj237SedZJLBg=="/>
+        </item>
+        <item>
             <title>0.67.0</title>
             <pubDate>Fri, 21 Aug 2026 13:40:28 +0000</pubDate>
             <sparkle:version>120</sparkle:version>

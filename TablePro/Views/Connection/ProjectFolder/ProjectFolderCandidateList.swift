@@ -84,7 +84,7 @@ struct ProjectFolderCandidateRow: View {
     }
 
     private var snapshot: PluginMetadataSnapshot? {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: candidate.parsedURL.type.rawValue)
+        PluginMetadataRegistry.shared.snapshot(for: candidate.parsedURL.type)
     }
 
     private var typeName: String {

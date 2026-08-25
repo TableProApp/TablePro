@@ -124,6 +124,13 @@ enum WindowTitleResolver {
             return String(localized: "ER Diagram")
         case .createTable:
             return String(localized: "Create Table")
+        case .objectSource:
+            /// The tab already carries the object's identity as its title. Falling through would
+            /// title the window "SQL Query" while its tab reads "Procedure: public.f(date)".
+            if let explicitTitle, !explicitTitle.isBlank {
+                return explicitTitle
+            }
+            return String(localized: "Source")
         default:
             break
         }

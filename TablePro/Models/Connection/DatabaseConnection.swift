@@ -85,12 +85,15 @@ extension DatabaseType {
         PluginMetadataRegistry.shared.pluginTypeId(for: rawValue)
     }
 
+    /// Genuinely a fact about the plugin binary rather than the database, so it asks by
+    /// `pluginTypeId`: Redshift is served by the bundled PostgreSQL plugin and there is nothing
+    /// of its own to download.
     var isDownloadablePlugin: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.isDownloadable ?? false
+        PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: pluginTypeId)?.isDownloadable ?? false
     }
 
     var iconName: String {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.iconName ?? "database-icon"
+        PluginMetadataRegistry.shared.snapshot(for: self)?.iconName ?? "database-icon"
     }
 
     /// Returns the correct SwiftUI Image for this database type, handling both
@@ -104,32 +107,32 @@ extension DatabaseType {
     }
 
     var defaultPort: Int {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.defaultPort ?? 0
+        PluginMetadataRegistry.shared.snapshot(for: self)?.defaultPort ?? 0
     }
 
     var defaultSSLMode: SSLMode {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.defaultSSLMode ?? .disabled
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.defaultSSLMode ?? .disabled
     }
 
     var supportsOpportunisticTLS: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsOpportunisticTLS ?? true
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsOpportunisticTLS ?? true
     }
 
     var supportsClientKeyPassphrase: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsClientKeyPassphrase ?? false
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsClientKeyPassphrase ?? false
     }
 
     var supportsConnectionPooling: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsConnectionPooling ?? true
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsConnectionPooling ?? true
     }
 
     var authenticationIsDatabaseScoped: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?
+        PluginMetadataRegistry.shared.snapshot(for: self)?
             .capabilities.authenticationIsDatabaseScoped ?? false
     }
 
     var defaultHost: String? {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.connection.defaultHost
+        PluginMetadataRegistry.shared.snapshot(for: self)?.connection.defaultHost
     }
 
     var supportsCloudSQLProxy: Bool {
@@ -174,68 +177,91 @@ extension DatabaseType {
     }
 
     var explainVariants: [ExplainVariant] {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.explainVariants ?? []
+        PluginMetadataRegistry.shared.snapshot(for: self)?.explainVariants ?? []
     }
 
     var category: DatabaseCategory {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.connection.category ?? .other
+        PluginMetadataRegistry.shared.snapshot(for: self)?.connection.category ?? .other
     }
 
     var pathFieldRole: PathFieldRole {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.pathFieldRole ?? .database
+        PluginMetadataRegistry.shared.snapshot(for: self)?.pathFieldRole ?? .database
     }
 
     var tagline: String? {
-        let raw = PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.connection.tagline ?? ""
+        let raw = PluginMetadataRegistry.shared.snapshot(for: self)?.connection.tagline ?? ""
         return raw.isEmpty ? nil : raw
     }
 
     var requiresAuthentication: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.requiresAuthentication ?? true
+        PluginMetadataRegistry.shared.snapshot(for: self)?.requiresAuthentication ?? true
     }
 
     var supportsForeignKeys: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.supportsForeignKeys ?? true
+        PluginMetadataRegistry.shared.snapshot(for: self)?.supportsForeignKeys ?? true
     }
 
     var supportsTriggers: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsTriggers ?? false
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsTriggers ?? false
     }
 
     var supportsTriggerEditing: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsTriggerEditing ?? false
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsTriggerEditing ?? false
+    }
+
+    var supportsRoutines: Bool {
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsRoutines ?? false
+    }
+
+    var supportsDatabaseTriggerBrowse: Bool {
+        PluginMetadataRegistry.shared.snapshot(for: self)?
+            .capabilities.supportsDatabaseTriggerBrowse ?? false
+    }
+
+    /// The object kinds the sidebar should offer a section for even before any have been fetched.
+    /// It never subtracts: a kind whose driver returned rows is listed whatever this says.
+    var declaredObjectKinds: Set<SidebarObjectKind> {
+        var kinds: Set<SidebarObjectKind> = []
+        if supportsRoutines {
+            kinds.insert(.procedure)
+            kinds.insert(.function)
+        }
+        if supportsDatabaseTriggerBrowse {
+            kinds.insert(.trigger)
+        }
+        return kinds
     }
 
     var supportsSchemaEditing: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.supportsSchemaEditing ?? true
+        PluginMetadataRegistry.shared.snapshot(for: self)?.supportsSchemaEditing ?? true
     }
 
     var supportsAddColumn: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsAddColumn ?? true
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsAddColumn ?? true
     }
 
     var supportsModifyColumn: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsModifyColumn ?? true
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsModifyColumn ?? true
     }
 
     var supportsDropColumn: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsDropColumn ?? true
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsDropColumn ?? true
     }
 
     var supportsRenameColumn: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsRenameColumn ?? false
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsRenameColumn ?? false
     }
 
     var supportsAddIndex: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsAddIndex ?? true
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsAddIndex ?? true
     }
 
     var supportsDropIndex: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsDropIndex ?? true
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsDropIndex ?? true
     }
 
     var supportsModifyPrimaryKey: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsModifyPrimaryKey ?? true
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsModifyPrimaryKey ?? true
     }
 }
 
@@ -316,6 +342,34 @@ enum ConnectionColor: String, CaseIterable, Identifiable, Codable {
 
     /// Whether this represents "no custom color"
     var isDefault: Bool { self == .none }
+
+    /// The hue itself, for a dot, a swatch or a glyph tint. `nil` rather than `color`'s `.clear`
+    /// when the user picked nothing, so a caller cannot paint a transparent indicator and leave a
+    /// hole where the cue should be.
+    var indicatorColor: Color? { isDefault ? nil : color }
+
+    /// The same hue, dimmed only as far as a label sitting on it needs. Use this wherever text is
+    /// drawn on the colour; `indicatorColor` stays at full brightness everywhere else, which is
+    /// why the picker swatch and the fill can differ by a few percent without disagreeing.
+    ///
+    /// The tuning runs inside a dynamic provider rather than at the point of call, because
+    /// `tunedForLegibleLabel` ends at `NSColor(hue:saturation:brightness:alpha:)`, which is a
+    /// concrete colour in whatever appearance happened to be current. Resolving eagerly froze it:
+    /// measured, a tuned red stayed `#DB393B` in both appearances while an untouched orange still
+    /// moved between `#FF8D28` and `#FF9230`, so half the palette followed a Light/Dark switch and
+    /// half did not. A provider is resolved by AppKit against the appearance it is drawn in, so no
+    /// call site has to remember to observe the colour scheme.
+    var labelledFill: Color? {
+        guard !isDefault else { return nil }
+        let palette = color
+        return Color(nsColor: NSColor(name: nil) { appearance in
+            var tuned = NSColor.clear
+            appearance.performAsCurrentDrawingAppearance {
+                tuned = NSColor(palette).tunedForLegibleLabel()
+            }
+            return tuned
+        })
+    }
 }
 
 // MARK: - Database Connection
@@ -525,9 +579,21 @@ struct DatabaseConnection: Identifiable, Hashable {
         }
     }
 
-    /// Returns the display color (custom color or database type color)
-    @MainActor var displayColor: Color {
-        color.isDefault ? type.themeColor : color.color
+    /// The engine's own colour. It answers "which database is this" and never changes with the
+    /// user's pick, so the glyph that carries it keeps meaning the same thing on every connection.
+    @MainActor var brandColor: Color {
+        type.themeColor
+    }
+
+    /// The colour the user assigned to tell this connection apart from the others, `nil` when they
+    /// assigned none.
+    ///
+    /// These two used to be one property that returned the brand colour until a pick replaced it,
+    /// which spent the pick recolouring an already-branded glyph: the only visible change was a
+    /// hue shift on a 14pt icon, and the engine lost its own colour to pay for it. They are
+    /// separate because they answer different questions and belong on different surfaces (#2398).
+    var identityColor: ConnectionColor? {
+        color.isDefault ? nil : color
     }
 }
 

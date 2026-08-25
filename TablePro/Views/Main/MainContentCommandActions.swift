@@ -319,6 +319,38 @@ final class MainContentCommandActions {
         PluginManager.shared.supportsContainerSwitching(for: connection.type)
     }
 
+    /// An engine with no database dimension has nothing to favorite, and neither has a window whose
+    /// browse database is still empty.
+    var canFavoriteActiveDatabase: Bool {
+        PluginManager.shared.containerSwitchTarget(for: connection.type) == .database
+            && !browseDatabaseName.isEmpty
+    }
+
+    var activeDatabaseFavoriteEnvironment: FavoriteDatabaseEnvironment? {
+        guard canFavoriteActiveDatabase else { return nil }
+        return FavoriteDatabasesStorage.shared
+            .favorites(for: connection.id)
+            .first { $0.database == browseDatabaseName }?
+            .environment
+    }
+
+    func setActiveDatabaseFavorite(environment: FavoriteDatabaseEnvironment) {
+        guard canFavoriteActiveDatabase else { return }
+        FavoriteDatabasesStorage.shared.setFavorite(
+            database: browseDatabaseName,
+            environment: environment,
+            connectionId: connection.id
+        )
+    }
+
+    func removeActiveDatabaseFavorite() {
+        guard canFavoriteActiveDatabase else { return }
+        FavoriteDatabasesStorage.shared.removeFavorite(
+            database: browseDatabaseName,
+            connectionId: connection.id
+        )
+    }
+
     /// Picks between the two spellings a container command has. Each one is a whole localized
     /// string rather than a noun dropped into a format, because System Settings binds an App
     /// Shortcut to a menu item's exact literal title, and because the driver's own entity name
@@ -803,74 +835,6 @@ final class MainContentCommandActions {
         return true
     }
 
-    private func saveFileToSourceURL() {
-        guard let tab = coordinator?.tabManager.selectedTab,
-              let url = tab.content.sourceFileURL else { return }
-
-        if isExternallyModified(tab: tab, url: url) {
-            requestConflictResolution(tab: tab, url: url)
-            return
-        }
-
-        writeTabContent(tabId: tab.id, content: tab.content.query, to: url)
-    }
-
-    func writeTabContent(tabId: UUID, content: String, to url: URL) {
-        Task {
-            do {
-                try await SQLFileService.writeFile(content: content, to: url)
-                let mtime = (try? FileManager.default
-                    .attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
-                coordinator?.tabManager.mutate(tabId: tabId) { tab in
-                    tab.content.savedFileContent = content
-                    tab.content.loadMtime = mtime
-                    tab.content.externalModificationDetected = false
-                }
-            } catch {
-                Self.logger.error("Failed to save file: \(error.localizedDescription)")
-                saveFileAs()
-            }
-        }
-    }
-
-    private func isExternallyModified(tab: QueryTab, url: URL) -> Bool {
-        guard let loadMtime = tab.content.loadMtime,
-              let currentMtime = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date else {
-            return false
-        }
-        return currentMtime > loadMtime.addingTimeInterval(0.5)
-    }
-
-    private func requestConflictResolution(tab: QueryTab, url: URL) {
-        let mineContent = tab.content.query
-        let diskContent = FileTextLoader.load(url)?.content ?? ""
-        coordinator?.fileConflictRequest = MainContentCoordinator.FileConflictRequest(
-            tabId: tab.id,
-            url: url,
-            mineContent: mineContent,
-            diskContent: diskContent
-        )
-    }
-
-    func reloadFileFromDisk(tabId: UUID, url: URL) {
-        guard let beforeIndex = coordinator?.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
-        let queryAtRequestTime = coordinator?.tabManager.tabs[beforeIndex].content.query
-        Task {
-            guard let loaded = FileTextLoader.load(url) else { return }
-            let mtime = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
-            await MainActor.run {
-                guard let index = coordinator?.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
-                let liveQuery = coordinator?.tabManager.tabs[index].content.query
-                guard liveQuery == queryAtRequestTime else { return }
-                coordinator?.tabManager.mutate(at: index) { tab in
-                    tab.content.query = loaded.content
-                    tab.content.savedFileContent = loaded.content
-                    tab.content.loadMtime = mtime
-                    tab.content.externalModificationDetected = false
-                }
-            }
-        }
-    }
 
     private func discardAndClose(asBatchSurvivor: Bool?) {
         coordinator?.changeManager.clearChangesAndUndoHistory()

@@ -201,6 +201,7 @@
             "icon": "sitemap",
             "pages": [
               "features/table-structure",
+              "features/routines-triggers",
               "features/table-operations",
               "features/er-diagram",
               "features/explain-visualization",
@@ -213,7 +214,8 @@
             "icon": "arrow-right-arrow-left",
             "pages": [
               "features/import-export",
-              "features/backup-restore"
+              "features/backup-restore",
+              "features/compare-sync"
             ]
           },
           {

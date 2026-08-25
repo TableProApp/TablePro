@@ -7,28 +7,114 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Stall on switching between two loaded table tabs, growing with the rows they hold. (#2424)
+- Scroll position lost when switching away from a table tab and back. (#2424)
+- A table statistics command on every switch between two table tabs. (#2424)
+- Another table's size and row count in Table Info when its statistics arrive late. (#2424)
+
+## [0.68.0] - 2026-08-25
+
 ### Added
 
-- Open in Window on a row inspector text field, for reading or editing a long value on a bigger surface.
+- Compare & Sync between two databases, over schema objects or row data. Starter license. (#721)
+- Seat release, team roster, per-Mac last use and macOS version, and your role in Settings > License.
+- Copy Key in Settings > License, kept out of clipboard history.
+- Support TablePro in the Help menu, the welcome window and the sidebar.
+- Triggers as a sidebar section, alongside Procedures and Functions. (#2383)
+- Procedures, functions and triggers on MSSQL, Oracle, SQLite, ClickHouse, DuckDB, Snowflake, BigQuery, Cassandra, LibSQL, Cloudflare D1, Teradata and Dameng. (#2383)
+- Read-only source viewer for procedures, functions and triggers, with Copy, Export and Open in Editor. (#2383)
+- Procedures, functions and triggers in the quick switcher, with argument signatures on ambiguous names.
+- Compare, a fourth EXPLAIN plan mode, and pinning a saved plan. (#2380)
+- Beancount tables for `directives`, pads, named queries and custom directives. (#2399, #2413, #2415)
+- Account booking, note tags and links, and balance assertion details on Beancount tables. (#2415)
+- Local table load history, kept 7 days and never uploaded. (#2395)
+- `list_triggers` for MCP clients, and `return_type` and `language` on `list_routines`.
+
+### Changed
+
+- Settings > License in place of Settings > Account, with iCloud Sync in its own pane and Linked Folders under General.
+- The license pane states an expired, suspended or unverified license inline, with one action and a purchase link.
+- Sync Paused, a separate state for a license the app could not check.
+- One Refresh in Settings > License, replacing Refresh and Check Status.
+- The license key masked and not selectable.
+- The PRO badge names the gated feature and links to the pricing page.
+- The data grid draws its own cells and column separators, opening a result with hundreds of columns at once. (#2381)
+- The inline cell editor scrolls a long line instead of wrapping it. (#2381)
+- Row inspector fields, cell popovers and the Compare row diff follow the data grid font. (#2393)
+- The connection color as a badge behind the connection name, a dot on the rail icon, and deeper tag badge fills. (#2398)
+- A database stays in the connections strip until you close its entry; Close ends the connection on the last one.
+- Autocomplete and the database picker follow the query tab's own database and schema.
+- Beancount postings keep their own flag, price, and resolved lot date and label.
+- Beancount connections report the active `rledger` or Python Beancount version.
+- Beancount ledger plugins are skipped unless the connection turns on Run Ledger Plugins.
+- Turkish, Vietnamese, Simplified Chinese and Traditional Chinese cover every remaining English string.
 
 ### Fixed
 
-- A saved connection whose SSH settings were written before the agent socket field existed now loads instead of disappearing.
-- Switch Connection and Open Database now open on a narrow window, and after you remove their toolbar button, instead of doing nothing at all.
-- A large text value in the row inspector now scrolls in a resizable text view instead of being clipped, and stays selectable and copyable when the row is read-only.
-- The inspector picks its multi-line editor from the value, so a large value in `VARCHAR(MAX)`, `NCLOB` or ClickHouse's `Nullable(String)` is no longer stuck on one line.
-- Right-clicking a read-only inspector field now offers Copy Value instead of an empty menu.
+- A table with 500 columns pinning a core for 20 seconds and taking a gigabyte to open. (#2381)
+- Flickering columns, blank columns and an unpainted gap while scrolling a wide result sideways. (#2381)
+- A second of delay opening the inline editor on a result with hundreds of columns. (#2381)
+- Find, arrow keys, the inline editor and Size All Columns to Fit unable to reach a column scrolled off the side.
+- Return opening no editor on a row selected with the arrow keys, and Tab or Shift+Tab out of a row's end doing nothing.
+- An empty grid the first time a table is opened in a window with no tabs. (#2342)
+- One table click running its query twice, and a closed tab leaving its query counted as running. (#2342)
+- Crash exporting two same-named tables from different schemas to SQL. (#1968)
+- SQL export writing rows into another schema's same-named table, and dropping columns and keys after the first. (#1968)
+- One of two PostgreSQL function overloads missing from the sidebar, with Show DDL opening an arbitrary one. (#2383)
+- MySQL Show DDL reading the session database instead of the one being browsed. (#2383)
+- Routine tooltips, VoiceOver labels and Copy with Signature showing a return type in place of the arguments. (#2383)
+- Duplicate routine rows in the flat sidebar taking the selection back to the first of them. (#2383)
+- MySQL triggers losing their definer, `WHEN` clause and ordering, and Oracle triggers showing a header with no body.
+- The welcome window offering Activate License to a Mac that already holds one and has just been offline.
+- iCloud Sync calling an unverified license missing, and reporting a live sync after the license was removed.
+- The app freezing after turning on iCloud Sync with many saved column layouts.
+- Every settings write failing once the sync record cache filled the preferences file past the 4 MB limit.
+- The sync status returning to Synced when sync was turned off mid-sync.
+- The license server never contacted again after removing and re-adding a license in one session.
+- The device list error surviving a later successful refresh, and a renewal warning counting zero days above Expired.
+- A previous team's shared connections and saved queries surviving deactivation.
+- The connections strip disappearing when you click the entry you came from.
+- Cancelling a close leaving the window on the connection the strip revealed.
+- A strip entry in another window raising that window without showing the connection.
+- A disconnected connection's entries dropping to the bottom of the strip, and all but one leaving it.
+- A connection opened from a file or a URL losing its strip entries when its session ends.
+- The connections strip's saved arrangement growing without bound.
+- Bulk tab close saving the tab on screen, and asking about another database's unsaved work.
+- A connection's color and name not reaching the toolbar and workspace rail until the next reconnect. (#2398)
+- An invisible connection dot in the history drawer and compare strip, and a warning icon in the engine color. (#2398)
+- The JSON viewer keeping its old font after a font, theme or text-size change, and hex dumps wrapping mid-line. (#2393)
+- AI inline suggestions written without the schema, and columns missing for a table named with a capital letter.
+- Case-insensitive filters and completion on Redshift falling back to PostgreSQL's ASCII-only ILIKE.
+- PGlite connection form offering SSH, SSL, Cloudflare Tunnel and SOCKS panes, and a password field.
+- Redshift and CockroachDB system databases listed in the sidebar as ordinary user databases.
 
 ## [0.67.1] - 2026-08-22
 
+### Added
+
+- Environment tags for database favorites, with sidebar filtering, direct open, and iCloud sync. (#1553)
+- Open in Window for row inspector text fields.
+
 ### Fixed
 
-- Editor crashes when layout, highlighting, accessibility, input methods, dictation or Look Up read text a newer edit had removed. (#2338, #2339, #2340)
-- A search highlight or diagnostic underline whose text you delete now disappears instead of moving elsewhere. (#2341)
-- The toolbar no longer sits on "Executing…" after a query ends, and the session context buttons no longer empty out while one runs. (#2342)
-- A SQLite query that stops early on a locked database or a volume error now says so instead of showing an empty table. (#2355)
-- Stop now ends a SQLite query waiting on a database another program has locked. (#2363)
-- The XLSX, MQL and SQL Import plugins now link to Import & Export instead of a page that does not exist.
+- Background tab eviction dropping query, pinned, edited, and in-flight results.
+- Result display cache exceeding its memory budget when a cached row's values grew.
+- Data grid reformatting every cell while scrolling after undo, redo, a theme change, or a display-format change.
+- Autocomplete bulk-loading every column of a schema too large to cache.
+- Empty grid on a background tab whose column metadata arrived after its rows were freed.
+- Saved connections failing to load when their SSH settings predated the agent socket field.
+- Switch Connection and Open Database doing nothing on a narrow window or without their toolbar button.
+- Large text values clipped in the row inspector, and unselectable when the row is read-only.
+- Large `VARCHAR(MAX)`, `NCLOB`, and `Nullable(String)` values stuck on one line in the inspector.
+- Empty context menu when right-clicking a read-only inspector field.
+- Editor crashes reading text a newer edit had removed. (#2338, #2339, #2340)
+- Search highlights and diagnostic underlines moving when their text was deleted. (#2341)
+- Toolbar stuck on "Executing…" after a query ended, and session context buttons emptying mid-query. (#2342)
+- SQLite queries showing an empty table instead of reporting a lock or volume error. (#2355)
+- Stop not ending a SQLite query waiting on a database locked by another program. (#2363)
+- Broken documentation links in the XLSX, MQL, and SQL Import plugins.
 
 ## [0.67.0] - 2026-08-21
 
@@ -3292,7 +3378,8 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.67.1...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.68.0...HEAD
+[0.68.0]: https://github.com/TableProApp/TablePro/compare/v0.67.1...v0.68.0
 [0.67.1]: https://github.com/TableProApp/TablePro/compare/v0.67.0...v0.67.1
 [0.67.0]: https://github.com/TableProApp/TablePro/compare/v0.66.0...v0.67.0
 [0.66.0]: https://github.com/TableProApp/TablePro/compare/v0.65.0...v0.66.0

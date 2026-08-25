@@ -13,8 +13,8 @@ final class SchemaService {
     static let shared = SchemaService()
 
     private(set) var states: [UUID: SchemaState] = [:]
-    private(set) var procedures: [UUID: [RoutineInfo]] = [:]
-    private(set) var functions: [UUID: [RoutineInfo]] = [:]
+    private(set) var routines: [UUID: [RoutineInfo]] = [:]
+    private(set) var triggers: [UUID: [TriggerInfo]] = [:]
     private(set) var schemasInOrder: [UUID: [String]] = [:]
     private(set) var perSchemaStates: [UUID: [String: SchemaState]] = [:]
     private(set) var generations: [UUID: Int] = [:]
@@ -30,8 +30,8 @@ final class SchemaService {
     }
 
     @ObservationIgnored private let loadDedup = OnceTask<LoadKey, [TableInfo]>()
-    @ObservationIgnored private let procedureDedup = OnceTask<UUID, [RoutineInfo]>()
-    @ObservationIgnored private let functionDedup = OnceTask<UUID, [RoutineInfo]>()
+    @ObservationIgnored private let routinesDedup = OnceTask<UUID, [RoutineInfo]>()
+    @ObservationIgnored private let triggersDedup = OnceTask<UUID, [TriggerInfo]>()
     @ObservationIgnored private let schemasDedup = OnceTask<UUID, [String]>()
     @ObservationIgnored private let perSchemaDedup = OnceTask<SchemaKey, [TableInfo]>()
 
@@ -118,16 +118,20 @@ final class SchemaService {
         return []
     }
 
+    func routines(for connectionId: UUID) -> [RoutineInfo] {
+        routines[connectionId] ?? []
+    }
+
     func procedures(for connectionId: UUID) -> [RoutineInfo] {
-        procedures[connectionId] ?? []
+        routines(for: connectionId).filter { $0.kind == .procedure }
     }
 
     func functions(for connectionId: UUID) -> [RoutineInfo] {
-        functions[connectionId] ?? []
+        routines(for: connectionId).filter { $0.kind == .function }
     }
 
-    func routines(for connectionId: UUID) -> [RoutineInfo] {
-        procedures(for: connectionId) + functions(for: connectionId)
+    func triggers(for connectionId: UUID) -> [TriggerInfo] {
+        triggers[connectionId] ?? []
     }
 
     func schemas(for connectionId: UUID) -> [String] {
@@ -235,38 +239,38 @@ final class SchemaService {
     /// Returns false when the stored list is still the one from before the call, so a caller that
     /// is about to record what its refresh covered can tell a real reload from a swallowed error.
     @discardableResult
-    func reloadProcedures(connectionId: UUID, driver: DatabaseDriver) async -> Bool {
+    func reloadRoutines(connectionId: UUID, driver: DatabaseDriver) async -> Bool {
         do {
-            let routines = try await procedureDedup.execute(key: connectionId) {
-                try await driver.fetchProcedures(schema: nil)
+            let loaded = try await routinesDedup.execute(key: connectionId) {
+                try await driver.fetchRoutines(schema: nil)
             }
-            procedures[connectionId] = routines
+            routines[connectionId] = loaded
             bumpGeneration(connectionId)
             return true
         } catch is CancellationError {
             return false
         } catch {
             Self.logger.warning(
-                "[schema] procedures reload failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "[schema] routines reload failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
             return false
         }
     }
 
     @discardableResult
-    func reloadFunctions(connectionId: UUID, driver: DatabaseDriver) async -> Bool {
+    func reloadTriggers(connectionId: UUID, driver: DatabaseDriver) async -> Bool {
         do {
-            let routines = try await functionDedup.execute(key: connectionId) {
-                try await driver.fetchFunctions(schema: nil)
+            let loaded = try await triggersDedup.execute(key: connectionId) {
+                try await driver.fetchAllTriggers(schema: nil)
             }
-            functions[connectionId] = routines
+            triggers[connectionId] = loaded
             bumpGeneration(connectionId)
             return true
         } catch is CancellationError {
             return false
         } catch {
             Self.logger.warning(
-                "[schema] functions reload failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "[schema] triggers reload failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
             return false
         }
@@ -280,8 +284,8 @@ final class SchemaService {
 
     private func cancelInFlightLoads(connectionId: UUID) async {
         await loadDedup.cancel { $0.connectionId == connectionId }
-        await procedureDedup.cancel(key: connectionId)
-        await functionDedup.cancel(key: connectionId)
+        await routinesDedup.cancel(key: connectionId)
+        await triggersDedup.cancel(key: connectionId)
         await schemasDedup.cancel(key: connectionId)
         await perSchemaDedup.cancel { $0.connectionId == connectionId }
     }
@@ -291,8 +295,8 @@ final class SchemaService {
         loadGenerations.removeValue(forKey: connectionId)
         refreshingConnections.remove(connectionId)
         states.removeValue(forKey: connectionId)
-        procedures.removeValue(forKey: connectionId)
-        functions.removeValue(forKey: connectionId)
+        routines.removeValue(forKey: connectionId)
+        triggers.removeValue(forKey: connectionId)
         schemasInOrder.removeValue(forKey: connectionId)
         perSchemaStates.removeValue(forKey: connectionId)
         generations.removeValue(forKey: connectionId)
@@ -353,6 +357,7 @@ final class SchemaService {
             await runHierarchicalLoad(
                 connectionId: connectionId,
                 driver: driver,
+                browsesTriggers: connection.type.supportsDatabaseTriggerBrowse,
                 generation: generation,
                 scope: scope
             )
@@ -364,18 +369,21 @@ final class SchemaService {
         ) {
             try await driver.fetchTables()
         }
-        async let proceduresTask: [RoutineInfo]? = Self.fetchRoutinesSafely(
+        async let routinesTask: [RoutineInfo]? = Self.fetchObjectsSafely(
             connectionId: connectionId,
-            kind: .procedure,
-            dedup: procedureDedup,
-            fetch: { try await driver.fetchProcedures(schema: nil) }
+            label: "routines",
+            dedup: routinesDedup,
+            fetch: { try await driver.fetchRoutines(schema: nil) }
         )
-        async let functionsTask: [RoutineInfo]? = Self.fetchRoutinesSafely(
-            connectionId: connectionId,
-            kind: .function,
-            dedup: functionDedup,
-            fetch: { try await driver.fetchFunctions(schema: nil) }
-        )
+        let browsesTriggers = connection.type.supportsDatabaseTriggerBrowse
+        async let triggersTask: [TriggerInfo]? = browsesTriggers
+            ? Self.fetchObjectsSafely(
+                connectionId: connectionId,
+                label: "triggers",
+                dedup: triggersDedup,
+                fetch: { try await driver.fetchAllTriggers(schema: nil) }
+            )
+            : nil
         async let schemasTask: [String]? = supportsSchemas
             ? Self.fetchSchemasSafely(
                 connectionId: connectionId,
@@ -391,24 +399,24 @@ final class SchemaService {
             }
             states[connectionId] = .loaded(tables)
 
-            let loadedProcedures = await proceduresTask
-            guard isCurrentLoadGeneration(generation, for: connectionId, phase: "procedures-loaded") else {
+            let loadedRoutines = await routinesTask
+            guard isCurrentLoadGeneration(generation, for: connectionId, phase: "routines-loaded") else {
                 return
             }
-            if let loadedProcedures {
-                procedures[connectionId] = loadedProcedures
+            if let loadedRoutines {
+                routines[connectionId] = loadedRoutines
             } else if scopeChanged {
-                procedures.removeValue(forKey: connectionId)
+                routines.removeValue(forKey: connectionId)
             }
 
-            let loadedFunctions = await functionsTask
-            guard isCurrentLoadGeneration(generation, for: connectionId, phase: "functions-loaded") else {
+            let loadedTriggers = await triggersTask
+            guard isCurrentLoadGeneration(generation, for: connectionId, phase: "triggers-loaded") else {
                 return
             }
-            if let loadedFunctions {
-                functions[connectionId] = loadedFunctions
+            if let loadedTriggers {
+                triggers[connectionId] = loadedTriggers
             } else if scopeChanged {
-                functions.removeValue(forKey: connectionId)
+                triggers.removeValue(forKey: connectionId)
             }
 
             if let loadedSchemas = await schemasTask {
@@ -440,25 +448,28 @@ final class SchemaService {
     private func runHierarchicalLoad(
         connectionId: UUID,
         driver: DatabaseDriver,
+        browsesTriggers: Bool,
         generation: Int,
         scope: DatabaseScope?
     ) async {
         let scopeChanged = scope != nil && loadedScopes[connectionId] != scope
-        async let proceduresTask: [RoutineInfo]? = Self.fetchRoutinesSafely(
+        async let routinesTask: [RoutineInfo]? = Self.fetchObjectsSafely(
             connectionId: connectionId,
-            kind: .procedure,
-            dedup: procedureDedup,
-            fetch: { try await driver.fetchProcedures(schema: nil) }
+            label: "routines",
+            dedup: routinesDedup,
+            fetch: { try await driver.fetchRoutines(schema: nil) }
         )
-        async let functionsTask: [RoutineInfo]? = Self.fetchRoutinesSafely(
-            connectionId: connectionId,
-            kind: .function,
-            dedup: functionDedup,
-            fetch: { try await driver.fetchFunctions(schema: nil) }
-        )
+        async let triggersTask: [TriggerInfo]? = browsesTriggers
+            ? Self.fetchObjectsSafely(
+                connectionId: connectionId,
+                label: "triggers",
+                dedup: triggersDedup,
+                fetch: { try await driver.fetchAllTriggers(schema: nil) }
+            )
+            : nil
 
-        let loadedProcedures = await proceduresTask
-        let loadedFunctions = await functionsTask
+        let loadedRoutines = await routinesTask
+        let loadedTriggers = await triggersTask
 
         let loadedSchemas: [String]
         do {
@@ -482,15 +493,15 @@ final class SchemaService {
             return
         }
         schemasInOrder[connectionId] = loadedSchemas
-        if let loadedProcedures {
-            procedures[connectionId] = loadedProcedures
+        if let loadedRoutines {
+            routines[connectionId] = loadedRoutines
         } else if scopeChanged {
-            procedures.removeValue(forKey: connectionId)
+            routines.removeValue(forKey: connectionId)
         }
-        if let loadedFunctions {
-            functions[connectionId] = loadedFunctions
+        if let loadedTriggers {
+            triggers[connectionId] = loadedTriggers
         } else if scopeChanged {
-            functions.removeValue(forKey: connectionId)
+            triggers.removeValue(forKey: connectionId)
         }
         states[connectionId] = .loaded([])
         if let scope {
@@ -575,19 +586,19 @@ final class SchemaService {
     /// database with no routines, and the caller committed it over the loaded one: a single
     /// dropped connection emptied the sidebar's procedures and functions while the refresh
     /// reported success, with nothing scheduled to put them back.
-    private static func fetchRoutinesSafely(
+    private static func fetchObjectsSafely<Value: Sendable>(
         connectionId: UUID,
-        kind: RoutineInfo.Kind,
-        dedup: OnceTask<UUID, [RoutineInfo]>,
-        fetch: @Sendable @escaping () async throws -> [RoutineInfo]
-    ) async -> [RoutineInfo]? {
+        label: String,
+        dedup: OnceTask<UUID, [Value]>,
+        fetch: @Sendable @escaping () async throws -> [Value]
+    ) async -> [Value]? {
         do {
             return try await dedup.execute(key: connectionId, work: fetch)
         } catch is CancellationError {
             return nil
         } catch {
             logger.warning(
-                "[schema] \(kind.rawValue, privacy: .public) load failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "[schema] \(label, privacy: .public) load failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
             return nil
         }

@@ -35,17 +35,11 @@ final class CellOverlayEditor: CellOverlayBase, NSTextViewDelegate {
         textView.isEditable = true
         textView.isRichText = false
         textView.allowsUndo = true
-        textView.font = ThemeEngine.shared.dataGridFonts.regular
+        textView.font = ThemeEngine.shared.valueFont
         textView.textColor = .labelColor
         textView.backgroundColor = .textBackgroundColor
         textView.focusRingType = .none
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.textContainer?.widthTracksTextView = true
-        textView.textContainer?.containerSize = NSSize(
-            width: scrollView.bounds.width,
-            height: CGFloat.greatestFiniteMagnitude
-        )
+        Self.applyCellTextLayout(to: textView)
         textView.delegate = self
         textView.string = value
         textView.selectAll(nil)

@@ -11,8 +11,8 @@ import Testing
 @MainActor
 @Suite("Container entity name and switch target")
 struct ContainerEntityNameTests {
-    private func snapshot(forTypeId typeId: String) -> PluginMetadataSnapshot? {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: typeId)
+    private func snapshot(forRegisteredTypeId typeId: String) -> PluginMetadataSnapshot? {
+        PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId)
     }
 
     // MARK: - Container entity names
@@ -50,7 +50,7 @@ struct ContainerEntityNameTests {
 
     @Test("DriverPlugin defaults provide Database container")
     func driverPluginDefaultIsDatabase() {
-        #expect(snapshot(forTypeId: "MySQL")?.schema.containerEntityName == "Database")
+        #expect(snapshot(forRegisteredTypeId: "MySQL")?.schema.containerEntityName == "Database")
         #expect(PluginMetadataSnapshot.SchemaInfo.defaults.containerEntityName == "Database")
     }
 
@@ -79,7 +79,7 @@ struct ContainerEntityNameTests {
         #expect(PluginManager.shared.containerEntityName(for: .oracle) == "Schema")
         #expect(PluginManager.shared.databaseGroupingStrategy(for: .oracle) == .hierarchicalSchema)
         #expect(PluginManager.shared.supportsDatabaseTree(for: .oracle) == false)
-        #expect(snapshot(forTypeId: "Oracle")?.schema.defaultSchemaName == "")
+        #expect(snapshot(forRegisteredTypeId: "Oracle")?.schema.defaultSchemaName == "")
     }
 
     @Test("Dameng switches hierarchical schemas")

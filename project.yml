@@ -325,6 +325,9 @@ targets:
       # Plugin logic under test. Plugin bundles load at runtime, so the test bundle
       # compiles the pure-logic files its suites cover.
       - Plugins/BeancountDriverPlugin/BeancountIncludeResolver.swift
+      - Plugins/BeancountDriverPlugin/BeancountDirectiveDetails.swift
+      - Plugins/BeancountDriverPlugin/BeancountDirectiveProjection.swift
+      - Plugins/BeancountDriverPlugin/BeancountSourceScanner.swift
       - Plugins/BeancountDriverPlugin/BeancountPluginDriver+Projection.swift
       - Plugins/BeancountDriverPlugin/BeancountPluginDriver+PythonScript.swift
       - Plugins/BeancountDriverPlugin/BeancountPluginDriver.swift
@@ -368,6 +371,7 @@ targets:
       - Plugins/JSONImportPlugin/JSONImportOptionsView.swift
       - Plugins/JSONImportPlugin/JSONImportParsing.swift
       - Plugins/JSONImportPlugin/JSONImportPlugin.swift
+      - Plugins/MSSQLDriverPlugin/MSSQLObjectQueries.swift
       - Plugins/MSSQLDriverPlugin/MSSQLLoginParameters.swift
       - Plugins/MSSQLDriverPlugin/MSSQLSSLMapping.swift
       - Plugins/MQLExportPlugin/MQLExportHelpers.swift
@@ -385,8 +389,10 @@ targets:
       - Plugins/MongoDBDriverPlugin/MongoDBStatementGenerator.swift
       - Plugins/MongoDBDriverPlugin/MongoDBTimeoutPolicy.swift
       - Plugins/MongoDBDriverPlugin/MongoStreamProjection.swift
+      - Plugins/OracleDriverPlugin/OracleObjectQueries.swift
       - Plugins/MySQLDriverPlugin/MySQLColumnDefinitionSQL.swift
       - Plugins/MySQLDriverPlugin/MySQLGeneratedColumnClassification.swift
+      - Plugins/MySQLDriverPlugin/MySQLObjectQueries.swift
       - Plugins/MySQLDriverPlugin/MySQLQueryTimeoutStatement.swift
       - Plugins/MySQLDriverPlugin/MySQLSocketTimeout.swift
       - Plugins/MySQLDriverPlugin/MySQLStatementClassification.swift
@@ -396,6 +402,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/LibPQSSLMapping.swift
       - Plugins/PostgreSQLDriverPlugin/PostGISSpatialRewrite.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogPresence.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLObjectQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSchemaQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSystemDatabases.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTableListingLadder.swift

@@ -25,6 +25,8 @@ public protocol DriverPlugin: TableProPlugin {
     static var supportsForeignKeys: Bool { get }
     static var supportsTriggers: Bool { get }
     static var supportsTriggerEditing: Bool { get }
+    static var supportsRoutines: Bool { get }
+    static var supportsDatabaseTriggerBrowse: Bool { get }
     static var supportsSchemaEditing: Bool { get }
     static var supportsDatabaseSwitching: Bool { get }
     static var supportsSchemaSwitching: Bool { get }
@@ -88,6 +90,12 @@ public extension DriverPlugin {
     static var supportsForeignKeys: Bool { true }
     static var supportsTriggers: Bool { false }
     static var supportsTriggerEditing: Bool { false }
+
+    /// These say what the ENGINE has, so the app knows not to run a query that can only fail on
+    /// Redis or DynamoDB. They never gate whether returned objects are shown: a driver that
+    /// declares nothing and returns routines anyway still gets its section.
+    static var supportsRoutines: Bool { false }
+    static var supportsDatabaseTriggerBrowse: Bool { supportsTriggers }
     static var supportsSchemaEditing: Bool { true }
     static var supportsDatabaseSwitching: Bool { true }
     static var supportsSchemaSwitching: Bool { false }

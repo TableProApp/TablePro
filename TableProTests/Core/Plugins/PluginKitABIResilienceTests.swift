@@ -44,5 +44,17 @@ struct PluginKitABIResilienceTests {
         #expect(try await driver.fetchSchemas().isEmpty)
         #expect(try await driver.fetchExternalSchemaNames().isEmpty)
         #expect(try await driver.fetchApproximateRowCount(table: "users", schema: nil) == nil)
+        let base = QueryCompletionProfile(
+            resolvedDialect: nil,
+            statementCompletions: [CompletionEntry(label: "SELECT", insertText: "SELECT")],
+            revision: "fixture"
+        )
+        let resolved = try await driver.resolveQueryCompletionProfile(
+            databaseTypeId: "SQL Server",
+            base: base
+        )
+        #expect(resolved.resolvedDialect == nil)
+        #expect(resolved.statementCompletions.map(\.label) == ["SELECT"])
+        #expect(resolved.revision == "fixture")
     }
 }

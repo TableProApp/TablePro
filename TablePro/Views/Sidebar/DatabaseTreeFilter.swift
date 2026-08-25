@@ -18,9 +18,10 @@ struct DatabaseTreeContainerKey: Hashable {
 struct DatabaseTreeObjectBuckets {
     let tables: [SidebarObjectKind: [TableInfo]]
     let routines: [SidebarObjectKind: [RoutineInfo]]
+    let triggers: [TriggerInfo]
 
     var isEmpty: Bool {
-        tables.values.allSatisfy(\.isEmpty) && routines.values.allSatisfy(\.isEmpty)
+        tables.values.allSatisfy(\.isEmpty) && routines.values.allSatisfy(\.isEmpty) && triggers.isEmpty
     }
 
     var itemCounts: [SidebarObjectKind: Int] {
@@ -28,6 +29,7 @@ struct DatabaseTreeObjectBuckets {
         for (kind, list) in routines {
             counts[kind, default: 0] += list.count
         }
+        counts[.trigger, default: 0] += triggers.count
         return counts
     }
 }
@@ -47,9 +49,23 @@ enum DatabaseTreeFilter {
         return deduplicated(matched, by: \.id)
     }
 
+    /// A trigger is findable by its own name and by the table it fires for, because a reader who
+    /// knows only the table is exactly the reader the database-level list exists for.
+    static func filteredTriggers(_ triggers: [TriggerInfo], searchText: String) -> [TriggerInfo] {
+        let matched = SidebarNameFilter.ranked(triggers, query: searchText, name: { $0.name })
+        let byTable = searchText.isEmpty
+            ? []
+            : triggers.filter { trigger in
+                guard let table = trigger.table, matches(searchText, table) else { return false }
+                return true
+            }
+        return deduplicated(matched + byTable, by: \.id)
+    }
+
     static func objectBuckets(
         tables: [TableInfo],
         routines: [RoutineInfo],
+        triggers: [TriggerInfo],
         searchText: String
     ) -> DatabaseTreeObjectBuckets {
         var tableBuckets: [SidebarObjectKind: [TableInfo]] = [:]
@@ -60,7 +76,11 @@ enum DatabaseTreeFilter {
         for routine in filteredRoutines(routines, searchText: searchText) {
             routineBuckets[routine.kind.sidebarObjectKind, default: []].append(routine)
         }
-        return DatabaseTreeObjectBuckets(tables: tableBuckets, routines: routineBuckets)
+        return DatabaseTreeObjectBuckets(
+            tables: tableBuckets,
+            routines: routineBuckets,
+            triggers: filteredTriggers(triggers, searchText: searchText)
+        )
     }
 
     /// A schema whose tables have not loaded yet cannot be judged, so it stays visible. Reading an

@@ -670,6 +670,87 @@ struct DatabaseTreeFavoriteRefreshTests {
         #expect(zip(favoritePixels, removedPixels).allSatisfy(!=))
     }
 
+    @Test("Adding and removing a database favorite repaints its star in place")
+    func databaseFavoriteMutationRepaintsVisibleRow() throws {
+        let tableSuite = "DatabaseTreeFavoriteRefreshTests.tables.\(UUID().uuidString)"
+        let databaseSuite = "DatabaseTreeFavoriteRefreshTests.databases.\(UUID().uuidString)"
+        let syncSuite = "DatabaseTreeFavoriteRefreshTests.database-sync.\(UUID().uuidString)"
+        let tableDefaults = try #require(UserDefaults(suiteName: tableSuite))
+        let databaseDefaults = try #require(UserDefaults(suiteName: databaseSuite))
+        let syncDefaults = try #require(UserDefaults(suiteName: syncSuite))
+        defer {
+            tableDefaults.removePersistentDomain(forName: tableSuite)
+            databaseDefaults.removePersistentDomain(forName: databaseSuite)
+            syncDefaults.removePersistentDomain(forName: syncSuite)
+        }
+
+        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
+        let tracker = SyncChangeTracker(metadataStorage: metadata)
+        let tableStorage = FavoriteTablesStorage(userDefaults: tableDefaults, syncTracker: tracker)
+        let databaseStorage = FavoriteDatabasesStorage(defaults: databaseDefaults)
+        let coordinator = DatabaseTreeOutlineCoordinator(
+            favoriteTablesStorage: tableStorage,
+            favoriteDatabasesStorage: databaseStorage
+        )
+        let connectionId = UUID()
+        let database = DatabaseTreeNode(
+            id: "database-shop",
+            kind: .database(.minimal(name: "shop"))
+        )
+        let outlineView = NSOutlineView()
+        let scrollView = SidebarOutlineScaffold.makeScrollView(
+            outlineView: outlineView,
+            configuration: SidebarOutlineScaffold.Configuration(
+                columnIdentifier: "DatabaseFavoriteRefreshColumn",
+                allowsMultipleSelection: true,
+                rowSizePreference: .medium
+            )
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: Self.width, height: Self.height),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.appearance = NSAppearance(named: .aqua)
+        window.contentView = scrollView
+
+        coordinator.connectionId = connectionId
+        coordinator.databaseType = .postgresql
+        coordinator.childrenCache[""] = [database]
+        outlineView.dataSource = coordinator
+        outlineView.delegate = coordinator
+        coordinator.attach(outlineView: outlineView)
+        outlineView.reloadData()
+        settle(window)
+
+        let cell = try #require(
+            outlineView.view(atColumn: 0, row: 0, makeIfNecessary: true) as? DatabaseTreeCellView
+        )
+        settle(window)
+        let host = cell.hostedView
+        let unfavoritePixels = try trailingPixels(of: cell)
+
+        databaseStorage.setFavorite(
+            database: "shop",
+            environment: .production,
+            connectionId: connectionId
+        )
+        settle(window)
+
+        #expect(coordinator.favoriteDatabaseEnvironments()["shop"] == .production)
+        #expect(cell.hostedView === host)
+        let favoritePixels = try trailingPixels(of: cell)
+        #expect(unfavoritePixels != favoritePixels)
+
+        databaseStorage.removeFavorite(database: "shop", connectionId: connectionId)
+        settle(window)
+
+        #expect(coordinator.favoriteDatabaseEnvironments()["shop"] == nil)
+        #expect(cell.hostedView === host)
+        #expect(try trailingPixels(of: cell) != favoritePixels)
+    }
+
     private func settle(_ window: NSWindow) {
         window.layoutIfNeeded()
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))

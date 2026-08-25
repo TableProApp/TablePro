@@ -85,6 +85,19 @@ internal final class ThemeEngine {
     /// Cached data grid fonts
     private(set) var dataGridFonts: DataGridFontCacheResolved
 
+    // MARK: - Stored Value Font
+
+    /// The font every control that shows or edits a stored value uses, so one value reads the same in
+    /// the grid cell, its inline editor, the row inspector and a pop-out window. It is the data grid
+    /// font today; a viewer that also wears the editor's colours and syntax palette takes
+    /// `editorFonts` instead.
+    var valueFont: NSFont { dataGridFonts.regular }
+
+    var valueFontSwiftUI: Font { Font(valueFont) }
+
+    /// The emphasised variant, for the key half of a key/value pair.
+    var valueFontEmphasizedSwiftUI: Font { Font(dataGridFonts.medium) }
+
     // MARK: - Available Themes
 
     private(set) var availableThemes: [ThemeDefinition]

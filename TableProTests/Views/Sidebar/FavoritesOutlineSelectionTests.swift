@@ -20,9 +20,18 @@ struct FavoritesOutlineSelectionTests {
         SQLFavorite(name: name, query: "SELECT 1")
     }
 
+    private func database(_ name: String) -> FavoriteDatabaseEntry {
+        FavoriteDatabaseEntry(connectionId: UUID(), database: name, environment: .development)
+    }
+
     @Test("Section titles refuse selection, objects accept it")
     func headersRefuseSelection() {
         #expect(FavoritesOutlineSelection.isSelectable(.header("Tables")) == false)
+        #expect(FavoritesOutlineSelection.isSelectable(.database(database("app"))))
+        #expect(FavoritesOutlineSelection.isSelectable(.databaseEnvironment(FavoriteDatabaseGroup(
+            environment: .development,
+            entries: [database("app")]
+        ))))
         #expect(FavoritesOutlineSelection.isSelectable(.table(table("users"))))
         #expect(FavoritesOutlineSelection.isSelectable(.query(.favorite(favorite("daily")))))
         #expect(FavoritesOutlineSelection.isSelectable(.teamQuery(id: "t1", name: "Shared", publishedBy: nil)))
@@ -38,6 +47,37 @@ struct FavoritesOutlineSelectionTests {
     func queryMapsToNodeId() {
         let node = FavoriteNode.favorite(favorite("daily"))
         #expect(FavoritesOutlineSelection.selection(for: .query(node), database: nil) == .node(id: node.id))
+    }
+
+    @Test("A database row maps to its stable node id")
+    func databaseMapsToNodeId() {
+        let entry = database("analytics")
+        let selection = FavoritesOutlineSelection.selection(for: .database(entry), database: nil)
+
+        #expect(selection == .node(id: FavoritesOutlineNode.databaseId(entry)))
+    }
+
+    @Test("Database environment expansion is independent per connection")
+    @MainActor
+    func databaseEnvironmentExpansionIsConnectionScoped() {
+        let firstConnection = UUID()
+        let secondConnection = UUID()
+        defer {
+            FavoritesExpansionState.shared.removeConnection(firstConnection)
+            FavoritesExpansionState.shared.removeConnection(secondConnection)
+        }
+
+        #expect(FavoritesExpansion.isDatabaseEnvironmentExpanded(.testing, connectionId: firstConnection))
+        #expect(FavoritesExpansion.isDatabaseEnvironmentExpanded(.testing, connectionId: secondConnection))
+
+        FavoritesExpansion.setDatabaseEnvironmentExpanded(
+            .testing,
+            expanded: false,
+            connectionId: firstConnection
+        )
+
+        #expect(!FavoritesExpansion.isDatabaseEnvironmentExpanded(.testing, connectionId: firstConnection))
+        #expect(FavoritesExpansion.isDatabaseEnvironmentExpanded(.testing, connectionId: secondConnection))
     }
 
     /// Team Library rows carried no tag at all before, so the keyboard could never reach them.
@@ -66,6 +106,7 @@ struct FavoritesOutlineSelectionTests {
     @Test("Type-select uses the name a user would type, never a section title")
     func typeSelectSkipsHeaders() {
         #expect(FavoritesOutlineSelection.matchString(for: .header("Tables")) == nil)
+        #expect(FavoritesOutlineSelection.matchString(for: .database(database("analytics"))) == "analytics")
         #expect(FavoritesOutlineSelection.matchString(for: .table(table("orders"))) == "orders")
         #expect(FavoritesOutlineSelection.matchString(for: .query(.favorite(favorite("daily")))) == "daily")
         #expect(
@@ -83,8 +124,16 @@ struct FavoritesOutlineSelectionTests {
             kind: .query(.folder(SQLFavoriteFolder(name: "Reports"), children: []))
         )
         let header = FavoritesOutlineNode(id: "c", kind: .header("Queries"))
+        let databaseGroup = FavoritesOutlineNode(
+            id: "d",
+            kind: .databaseEnvironment(FavoriteDatabaseGroup(
+                environment: .development,
+                entries: [database("app")]
+            ))
+        )
         #expect(leaf.isExpandable == false)
         #expect(branch.isExpandable)
         #expect(header.isExpandable == false)
+        #expect(databaseGroup.isExpandable)
     }
 }

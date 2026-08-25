@@ -490,6 +490,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
                     connectionPolicy: connectionAIPolicy
                 )
             }
+            aiChatInlineSource?.schemaProvider = schemaProvider
             return aiChatInlineSource
         }
     }

@@ -647,8 +647,7 @@ final class ConnectionFormCoordinator {
         services.connectionStorage.deleteCloudflareTokenSecret(for: testId)
         services.connectionStorage.deleteCloudSQLProxyServiceAccountKey(for: testId)
         services.connectionStorage.deleteSOCKSProxyPassword(for: testId)
-        let secureFieldIds = services.pluginManager.additionalConnectionFields(for: network.type)
-            .filter(\.isSecure).map(\.id)
+        let secureFieldIds = services.pluginManager.secureConnectionFieldIds(for: network.type)
         services.connectionStorage.deleteAllPluginSecureFields(for: testId, fieldIds: secureFieldIds)
         temporaryTestIds.remove(testId)
     }

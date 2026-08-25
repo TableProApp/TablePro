@@ -35,6 +35,7 @@ final class SnowflakePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let queryLanguageName = "SQL"
     static let editorLanguage: EditorLanguage = .sql
     static let supportsForeignKeys = true
+    static let supportsRoutines = true
     static let supportsSchemaEditing = true
     static let supportsAddColumn = true
     static let supportsModifyColumn = true

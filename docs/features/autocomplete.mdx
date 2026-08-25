@@ -122,6 +122,14 @@ SELECT * FROM ANALYTICS_PROD.DBT_MARTS.|       -- tables in that schema
 SELECT * FROM ANALYTICS_PROD.DBT_MARTS.ORDERS o WHERE o.|  -- columns
 ```
 
+## Which database a tab completes against
+
+Every query tab carries its own database and schema, named in the picker at the top of the editor. Suggestions come from there, not from whatever the object browser is pointing at, so selecting a different database in the sidebar leaves open tabs alone.
+
+Two tabs on one connection can sit on different databases and complete against each. Change a tab's database in the picker and its suggestions follow on the next keystroke.
+
+On engines with schemas under a database, the picker names both, as `analytics · public`.
+
 ## Favorite keywords
 
 A favorite with a keyword, stored in the database or set by `@keyword` frontmatter in a linked file, appears as a top-priority match. Type the keyword, accept it, and the favorite's full SQL replaces it inline. A `;;` in that SQL says where the cursor lands afterwards. See [Favorites](/features/favorites#cursor-placement).

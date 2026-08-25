@@ -46,7 +46,7 @@ final class AuthPaneViewModel {
 
     var hidesBuiltInPassword: Bool {
         guard let type = coordinator?.value?.network.type else { return false }
-        return PluginMetadataRegistry.shared.snapshot(forTypeId: type.pluginTypeId)?
+        return PluginMetadataRegistry.shared.snapshot(for: type)?
             .connection.hidesBuiltInPassword ?? false
     }
 

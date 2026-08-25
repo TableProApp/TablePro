@@ -13,7 +13,10 @@ actor QueryHistoryStorage {
     private var dbHandle = DatabaseHandle()
     private var isPrepared = false
 
-    private var db: OpaquePointer? {
+    /// Internal rather than private so `QueryHistoryStorage+PlanSnapshots` can reach it. Splitting a
+    /// type across `+Category` files is what `CLAUDE.md` asks for as a file approaches its length
+    /// limit, and it is what forces this handful of members past `private`.
+    var db: OpaquePointer? {
         if !isPrepared {
             isPrepared = true
             setupDatabase()
@@ -77,11 +80,16 @@ actor QueryHistoryStorage {
 
         execute("PRAGMA journal_mode=WAL;")
         execute("PRAGMA synchronous=NORMAL;")
+        /// Off by default in SQLite, and `plan_snapshots.history_id` needs it: without it the
+        /// `ON DELETE SET NULL` never fires and a pruned history row leaves a plan pointing at a
+        /// row that no longer exists.
+        execute("PRAGMA foreign_keys=ON;")
         sqlite3_busy_timeout(db, 3_000)
 
         createTables()
         migrateIfNeeded()
         createFingerprintIndex()
+        createPlanSnapshotStorage()
         protectDatabaseFiles(at: dbPath)
     }
 
@@ -395,7 +403,7 @@ actor QueryHistoryStorage {
 
     // MARK: - Statement Helpers
 
-    private func execute(_ sql: String) {
+    func execute(_ sql: String) {
         guard let db else { return }
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
@@ -410,7 +418,7 @@ actor QueryHistoryStorage {
         }
     }
 
-    private func logSqliteError(context: String) {
+    func logSqliteError(context: String) {
         guard let db, let message = sqlite3_errmsg(db) else { return }
         Self.logger.error("Query history SQL \(context, privacy: .public) failed: \(String(cString: message), privacy: .public)")
     }
@@ -1109,6 +1117,13 @@ actor QueryHistoryStorage {
         }
 
         commitTransaction()
+
+        /// After the commit, so the `ON DELETE SET NULL` on `plan_snapshots.history_id` has already
+        /// run and the byte budget is measured against what survives. Its own statement rather than
+        /// part of the transaction above: a full scan of the plan table has no business holding the
+        /// write lock that every history insert needs.
+        prunePlanSnapshots(toByteLimit: QueryPlanStorageLimits.maximumTotalByteCount)
+
         return sqlite3_total_changes(db) != changesBefore
     }
 

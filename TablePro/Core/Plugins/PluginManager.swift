@@ -325,7 +325,7 @@ final class PluginManager {
         let primaryTypeId = manifest.providedDatabaseTypeIds.first
         let additionalTypeIds = Array(manifest.providedDatabaseTypeIds.dropFirst())
         let registrySnapshot = primaryTypeId.flatMap {
-            PluginMetadataRegistry.shared.snapshot(forTypeId: $0)
+            PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: $0)
         }
 
         var capabilities: [PluginCapability] = []

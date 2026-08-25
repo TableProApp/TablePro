@@ -287,16 +287,11 @@ final class ConnectionStorage {
         let secureFieldIds = Self.secureFieldIds(for: connection.type)
         deleteAllPluginSecureFields(for: connection.id, fieldIds: secureFieldIds)
 
-        let appSettings = appSettingsProvider()
-        appSettings.saveLastDatabase(nil, for: connection.id)
-        appSettings.saveLastSchema(nil, for: connection.id)
-
-        FavoriteTablesStorage.shared.removeFavorites(for: connection.id)
-        FilterSettingsStorage.shared.removeFilters(for: connection.id)
-        DatabaseTreeFilterStorage.shared.removeFilter(for: connection.id)
-        RecentlyClosedTabStore.shared.removeEntries(for: connection.id)
-        HistoryPanelPreferencesStorage.remove(for: connection.id)
-        QueryInsightsPreferencesStorage.remove(for: connection.id)
+        ConnectionLocalState.purge(
+            connectionIds: [connection.id],
+            origin: .local,
+            appSettings: appSettingsProvider()
+        )
         Task {
             await SQLFavoriteManager.shared.removeFavoritesAndFolders(for: connection.id)
             await QueryHistoryManager.shared.clear(
@@ -331,18 +326,12 @@ final class ConnectionStorage {
             deleteSOCKSProxyPassword(for: conn.id)
             let fields = Self.secureFieldIds(for: conn.type)
             deleteAllPluginSecureFields(for: conn.id, fieldIds: fields)
-            let appSettings = appSettingsProvider()
-            appSettings.saveLastDatabase(nil, for: conn.id)
-            appSettings.saveLastSchema(nil, for: conn.id)
-            FavoriteTablesStorage.shared.removeFavorites(for: conn.id)
         }
-        FilterSettingsStorage.shared.removeFilters(for: idsToDelete)
-        DatabaseTreeFilterStorage.shared.removeFilters(for: idsToDelete)
-        RecentlyClosedTabStore.shared.removeEntries(for: idsToDelete)
-        for id in idsToDelete {
-            HistoryPanelPreferencesStorage.remove(for: id)
-            QueryInsightsPreferencesStorage.remove(for: id)
-        }
+        ConnectionLocalState.purge(
+            connectionIds: idsToDelete,
+            origin: .local,
+            appSettings: appSettingsProvider()
+        )
         Task {
             for conn in connectionsToDelete {
                 await SQLFavoriteManager.shared.removeFavoritesAndFolders(for: conn.id)
@@ -625,9 +614,7 @@ final class ConnectionStorage {
     // MARK: - Plugin Secure Field Migration
 
     private static func secureFieldIds(for databaseType: DatabaseType) -> [String] {
-        (PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
-            .connection.additionalConnectionFields ?? [])
-            .filter(\.isSecure).map(\.id)
+        PluginManager.shared.secureConnectionFieldIds(for: databaseType)
     }
 
     func migratePluginSecureFieldsIfNeeded() {
@@ -639,14 +626,11 @@ final class ConnectionStorage {
         var changed = false
 
         for index in connections.indices {
-            let secureFields = (PluginMetadataRegistry.shared
-                .snapshot(forTypeId: connections[index].type.pluginTypeId)?
-                .connection.additionalConnectionFields ?? [])
-                .filter(\.isSecure)
-            for field in secureFields {
-                if let value = connections[index].additionalFields[field.id], !value.isEmpty {
-                    savePluginSecureField(value, fieldId: field.id, for: connections[index].id)
-                    connections[index].additionalFields.removeValue(forKey: field.id)
+            let secureFieldIds = Self.secureFieldIds(for: connections[index].type)
+            for fieldId in secureFieldIds {
+                if let value = connections[index].additionalFields[fieldId], !value.isEmpty {
+                    savePluginSecureField(value, fieldId: fieldId, for: connections[index].id)
+                    connections[index].additionalFields.removeValue(forKey: fieldId)
                     changed = true
                 }
             }

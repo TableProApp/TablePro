@@ -60,7 +60,7 @@ extension QueryExecutionCoordinator {
         }
 
         let style = PluginMetadataRegistry.shared.snapshot(
-            forTypeId: parent.connection.type.pluginTypeId
+            for: parent.connection.type
         )?.parameterStyle ?? .questionMark
         let conversion = SQLParameterExtractor.convertToNativeStyle(
             sql: sql,
@@ -259,7 +259,7 @@ extension QueryExecutionCoordinator {
         }
 
         let style = PluginMetadataRegistry.shared.snapshot(
-            forTypeId: parent.connection.type.pluginTypeId
+            for: parent.connection.type
         )?.parameterStyle ?? .questionMark
 
         parent.currentQueryTask?.cancel()

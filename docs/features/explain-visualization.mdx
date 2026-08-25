@@ -77,6 +77,30 @@ An expandable outline with **Operation**, **Cost**, **Rows**, and **Actual Time*
 
 The original EXPLAIN output as text, with a copy button and a font size stepper. Planning and execution times, where the plan reports them, sit beside the view switcher in every mode.
 
+## Compare
+
+A fourth mode beside Diagram, Tree and Raw. Pick an earlier run from the **Baseline** menu and the pane reports what changed between it and the plan on screen.
+
+It leads with the verdict: whether the query got faster or slower, whether the plan shape changed, or whether nothing measurable moved. Below that come cost, estimated rows, planning time, execution time and node count, then the plan steps that were added, removed or changed. A timing difference under 15% counts as noise, so two runs of an unchanged plan report no change rather than a list of near-identical numbers.
+
+Compare is a mode, not a sheet, so the editor stays usable. Change the query or add an index, run it again, and the comparison follows the new plan.
+
+If either plan cannot be read as a tree, the two runs are compared as text instead.
+
+### Which runs can be compared
+
+A run appears as a baseline when it matches the current one on statement shape, connection, database, schema, EXPLAIN variant and output format.
+
+Statement shape means the query normalized the way `pg_stat_statements` normalizes one: literals, comments, whitespace and identifier quoting stop mattering. Reformatting a query, or running it with a different `WHERE` value, keeps its earlier plans. Changing which tables or columns it touches does not, and neither does switching between `EXPLAIN` and `EXPLAIN ANALYZE`, which report different things.
+
+### What is kept
+
+Plans are saved alongside [Query History](/features/query-history), and pausing history stops saving them. They are not deleted with it: clearing or pruning history leaves the plans in place, because a baseline you kept is worth more than the row that produced it.
+
+Click the pin beside the baseline menu to keep a plan permanently. Unpinned plans are pruned oldest first once they pass 100 MB in total, on the same schedule as history cleanup.
+
+A plan over 2 MB is not saved, and neither is the plan of a query that carries parameters, because a database can print the parameter values into its plan output. In both cases the run keeps its history entry, and Compare says which of the two happened.
+
 ## Node details
 
 Selecting a node in either view fills the detail panel:

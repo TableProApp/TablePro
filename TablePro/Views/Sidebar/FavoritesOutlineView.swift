@@ -11,6 +11,10 @@ import SwiftUI
 internal struct FavoritesOutlineInput {
     internal let connectionId: UUID
     internal let activeDatabase: String?
+    internal let databaseGroups: [FavoriteDatabaseGroup]
+    internal let databaseEntityName: String
+    internal let databaseEntityNamePlural: String
+    internal let isNarrowingDatabases: Bool
     internal let tables: [TableInfo]
     internal let queryNodes: [FavoriteNode]
     internal let teamQueries: [FavoritesOutlineTeamQuery]

@@ -10,6 +10,7 @@
 import Foundation
 import SQLite3
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("QueryHistoryStorage migration")
@@ -104,6 +105,18 @@ struct QueryHistoryMigrationTests {
         }
         sqlite3_finalize(statement)
         return names
+    }
+
+    private func scalarInt(in url: URL, sql: String) -> Int {
+        var db: OpaquePointer?
+        guard sqlite3_open(url.path(percentEncoded: false), &db) == SQLITE_OK else { return -1 }
+        defer { sqlite3_close_v2(db) }
+
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return -1 }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else { return -1 }
+        return Int(sqlite3_column_int64(statement, 0))
     }
 
     @Test("migration keeps every existing row")
@@ -263,5 +276,88 @@ struct QueryHistoryMigrationTests {
         #expect(await second.count(scope: .all) == 1)
         let entries = await second.fetch(QueryHistoryFilter(scope: .connection(connId)), after: nil, limit: 10).entries
         #expect(entries.first?.query == "SELECT * FROM once")
+    }
+
+    @Test("plan snapshot schema is added after legacy migration and is idempotent")
+    func planSnapshotSchemaMigratesLegacyDatabaseIdempotently() async {
+        let connectionId = UUID()
+        let url = makeLegacyDatabase(rows: [
+            (UUID(), "SELECT * FROM legacy_plan", connectionId, Date(), nil)
+        ])
+
+        let first = QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: false)
+        #expect(await first.count(scope: .all) == 1)
+        #expect(columnNames(in: url, table: "plan_snapshots") == [
+            "id", "history_id", "fingerprint_hash", "subject_sql", "connection_id",
+            "database_name", "database_type", "schema_name", "variant_key", "format",
+            "raw_plan", "byte_count", "execution_time", "captured_at", "is_pinned"
+        ])
+        #expect(scalarInt(in: url, sql: "PRAGMA user_version;") == 4)
+
+        let second = QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: true)
+        #expect(await second.count(scope: .all) == 1)
+        #expect(
+            scalarInt(
+                in: url,
+                sql: "SELECT COUNT(*) FROM sqlite_master WHERE name = 'plan_snapshots';"
+            ) == 1
+        )
+    }
+
+    @Test("fresh plan snapshot schema is idempotent without changing schema version")
+    func freshPlanSnapshotSchemaIsIdempotent() async {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-tests")
+            .appendingPathComponent("fresh_plan_history_\(UUID().uuidString).db")
+        let first = QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: false)
+        #expect(await first.count(scope: .all) == 0)
+        let second = QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: true)
+        #expect(await second.count(scope: .all) == 0)
+
+        #expect(scalarInt(in: url, sql: "PRAGMA user_version;") == 4)
+        #expect(
+            scalarInt(
+                in: url,
+                sql: "SELECT COUNT(*) FROM sqlite_master WHERE name IN ("
+                    + "'plan_snapshots', 'idx_plan_snapshots_identity', 'idx_plan_snapshots_retention');"
+            ) == 3
+        )
+    }
+
+    /// `history_id` is provenance, not ownership. History retention must leave the plan behind with
+    /// a null link rather than cascading it away, which is what a pinned baseline depends on.
+    @Test("deleting a history row nulls the plan link instead of deleting the plan")
+    func historyDeletionNullsThePlanLink() async {
+        let connectionId = UUID()
+        let historyId = UUID()
+        let url = makeLegacyDatabase(rows: [
+            (historyId, "EXPLAIN SELECT 1", connectionId, Date(), nil)
+        ])
+
+        let storage = QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: true)
+        let capture = QueryPlanCapture(
+            id: UUID(),
+            identity: QueryPlanIdentity(
+                fingerprintHash: 1,
+                scope: QueryPlanScope(
+                    connectionId: connectionId,
+                    databaseType: .postgresql,
+                    databaseName: "legacydb",
+                    schemaName: nil
+                ),
+                variantKey: .declared("explain"),
+                format: .postgresJson
+            ),
+            subjectSQL: "SELECT 1",
+            rawPlan: "plan",
+            executionTime: 0.1,
+            capturedAt: Date(),
+            historyId: historyId
+        )
+        #expect(await storage.recordPlanSnapshot(capture))
+        #expect(await storage.delete(id: historyId))
+
+        #expect(scalarInt(in: url, sql: "SELECT COUNT(*) FROM plan_snapshots;") == 1)
+        #expect(scalarInt(in: url, sql: "SELECT COUNT(*) FROM plan_snapshots WHERE history_id IS NULL;") == 1)
     }
 }

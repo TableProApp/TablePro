@@ -345,7 +345,11 @@ struct FilterPanelView: View {
             fieldPaths = []
             return
         }
-        let provider = SchemaProviderRegistry.shared.getOrCreate(for: coordinator.connection.id)
+        guard let scope = coordinator.selectedTabScope else {
+            fieldPaths = []
+            return
+        }
+        let provider = SchemaProviderRegistry.shared.getOrCreate(for: scope)
         let paths = await provider.fieldPaths(for: tableName)
         guard !Task.isCancelled else { return }
         fieldPaths = paths
@@ -357,11 +361,14 @@ struct FilterPanelView: View {
     }
 
     private func refreshRawSQLCompletionProvider() {
-        guard isSQLDialect, let tableName = coordinator.currentTableName else {
+        guard isSQLDialect,
+              let tableName = coordinator.currentTableName,
+              let scope = coordinator.selectedTabScope
+        else {
             rawSQLCompletionProvider = nil
             return
         }
-        let schemaProvider = SchemaProviderRegistry.shared.getOrCreate(for: coordinator.connection.id)
+        let schemaProvider = SchemaProviderRegistry.shared.getOrCreate(for: scope)
         rawSQLCompletionProvider = RawSQLFilterCompletionProvider(
             schemaProvider: schemaProvider,
             databaseType: databaseType,

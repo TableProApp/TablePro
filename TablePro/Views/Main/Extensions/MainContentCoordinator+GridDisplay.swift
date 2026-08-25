@@ -30,7 +30,66 @@ struct DisplayOrderCacheEntry {
     }
 }
 
+/// A tab's formatted-cell text, kept across the grid remounts a tab switch causes, plus the inputs
+/// that decided it.
+struct DisplayStateCacheEntry {
+    let identity: DataGridDisplayIdentity
+    let state: DataGridDisplayState
+    var lastUsed: Int
+}
+
 extension MainContentCoordinator {
+    /// The formatted text and viewport anchor for a tab's result, kept here because the grid that
+    /// derives them is destroyed and rebuilt on every tab switch.
+    ///
+    /// A stale entry is replaced rather than repaired: the cache is keyed by row id, row ids are
+    /// positional, and a new page reuses the ids of the one before it, so anything that can change
+    /// what a position holds has to be part of the identity. It keys on `bufferEpoch` rather than
+    /// `dataRevision` for exactly that reason: an in-place edit keeps every row id, and the grid
+    /// already drops the one row it touched, so replacing the whole entry there would re-format the
+    /// page after every keystroke that commits. (#2424)
+    func displayState(for tab: QueryTab) -> DataGridDisplayState {
+        let settings = AppSettingsManager.shared.dataGrid
+        let tableRows = tabSessionRegistry.existingTableRows(for: tab.id)
+        let identity = DataGridDisplayIdentity(
+            bufferEpoch: tabSessionRegistry.session(for: tab.id)?.bufferEpoch ?? 0,
+            resultSetId: tab.display.activeResultSetId,
+            columns: tableRows?.columns ?? [],
+            columnTypes: tableRows?.columnTypes ?? [],
+            displayFormats: displayFormats(for: tab),
+            dateFormat: settings.dateFormat,
+            nullDisplay: settings.nullDisplay,
+            smartValueDetection: settings.enableSmartValueDetection
+        )
+
+        displayStateClock &+= 1
+        if let cached = displayStateCache[tab.id], cached.identity == identity {
+            displayStateCache[tab.id]?.lastUsed = displayStateClock
+            return cached.state
+        }
+        let state = DataGridDisplayState()
+        displayStateCache[tab.id] = DisplayStateCacheEntry(
+            identity: identity,
+            state: state,
+            lastUsed: displayStateClock
+        )
+        pruneDisplayStateCache()
+        return state
+    }
+
+    /// Each entry holds a whole result's formatted text, budgeted at 64 MB by `RowDisplayCache`, so
+    /// the tabs the user is actually moving between keep theirs and the rest give it back. The
+    /// budget is the one inactive row data already uses, so the two do not disagree about how many
+    /// background tabs are worth keeping.
+    private func pruneDisplayStateCache() {
+        let budget = MemoryPressureAdvisor.budgetForInactiveTabs() + 1
+        guard displayStateCache.count > budget else { return }
+        let ordered = displayStateCache.sorted { $0.value.lastUsed > $1.value.lastUsed }
+        for entry in ordered.dropFirst(budget) {
+            displayStateCache.removeValue(forKey: entry.key)
+        }
+    }
+
     /// The rows the grid is displaying, in display order, or nil when that is the storage order.
     ///
     /// Resolved from the tab rather than from the mounted grid. SwiftUI destroys an

@@ -93,6 +93,8 @@ struct GeneralSettingsView: View {
 
             CommandLineToolSection()
 
+            LinkedFoldersSection()
+
             TrustedExternalConnectionsSection()
 
             Section("Software Update") {

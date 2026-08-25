@@ -22,6 +22,7 @@ extension MainContentCoordinator {
             guard let tab = tabManager.tabs.first(where: { $0.id == id }) else { continue }
             RecentlyClosedTabStore.shared.push(tab: tab, connection: connection)
             releaseResources(of: tab)
+            releaseExecution(of: tab)
             tabManager.closeTab(id: id)
         }
         guard tabManager.tabs.isEmpty else { return }
@@ -34,6 +35,8 @@ extension MainContentCoordinator {
     func cleanupTabCaches(openTabIds: Set<UUID>) {
         prune(&displayFormatsCache, keeping: openTabIds)
         prune(&displayOrderCache, keeping: openTabIds)
+        prune(&displayStateCache, keeping: openTabIds)
+        prune(&tableMetadataCache, keeping: openTabIds)
         prune(&createTableDrafts, keeping: openTabIds)
         prune(&navigationHistories, keeping: openTabIds)
         prune(&pendingRowAnchors, keeping: openTabIds)
@@ -58,6 +61,8 @@ extension MainContentCoordinator {
     /// retargeted at all; this is what keeps the caches honest once one without work has been.
     func releaseRetargetedTabState(for tabId: UUID) {
         pendingRowAnchors.removeValue(forKey: tabId)
+        displayStateCache.removeValue(forKey: tabId)
+        tableMetadataCache.removeValue(forKey: tabId)
         structureSessions.removeValue(forKey: tabId)?.releaseViewWiring()
         createTableDrafts.removeValue(forKey: tabId)
         tabsWithStagedPrincipals.remove(tabId)
@@ -84,10 +89,29 @@ extension MainContentCoordinator {
         createTableDrafts.removeValue(forKey: tab.id)
         navigationHistories.removeValue(forKey: tab.id)
         pendingRowAnchors.removeValue(forKey: tab.id)
+        displayStateCache.removeValue(forKey: tab.id)
+        tableMetadataCache.removeValue(forKey: tab.id)
         guard isSelectedTab(tab) else { return }
         changeManager.clearChangesAndUndoHistory()
         toolbarState.hasStructureChanges = false
         toolbarState.hasCreateTablePending = false
         toolbarState.hasPrincipalChanges = false
+    }
+
+    /// Ends what the tab was running, on the same terms a retarget does.
+    ///
+    /// A closed tab used to keep its claim in the registry, so the window went on reporting the
+    /// work as running until the query it could no longer show came back. Reopen Closed Tab hands
+    /// the restored tab the id it had before, which is enough for the orphan to be mistaken for the
+    /// reopened tab's own load and for that load to be refused as a duplicate.
+    ///
+    /// The window's query handle is only retired when it belongs to this tab: one handle serves
+    /// every tab, so cancelling it blindly would take another tab's query down.
+    internal func releaseExecution(of tab: QueryTab) {
+        reportEndedExecutions(tabExecution.invalidate(tab.id, reason: .abandoned).map { [$0] } ?? [])
+        cancelTableLoad(for: tab.id)
+        cancelRowCountTask(for: tab.id)
+        guard currentQueryTaskOwner?.tabId == tab.id else { return }
+        cancelInFlightQueryTask(reach: .supersededNavigation)
     }
 }

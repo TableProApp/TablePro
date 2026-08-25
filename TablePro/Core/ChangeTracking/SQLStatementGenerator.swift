@@ -55,7 +55,7 @@ struct SQLStatementGenerator {
     }
 
     private static func defaultParameterStyle(for databaseType: DatabaseType) -> ParameterStyle {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?.parameterStyle ?? .questionMark
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.parameterStyle ?? .questionMark
     }
 
     // MARK: - Public API

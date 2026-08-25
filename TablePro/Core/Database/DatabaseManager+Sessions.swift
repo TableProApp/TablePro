@@ -163,7 +163,7 @@ extension DatabaseManager {
             AppEvents.shared.databaseDidConnect.send(DatabaseDidConnect(connectionId: connection.id))
 
             let supportsHealth = PluginMetadataRegistry.shared.snapshot(
-                forTypeId: connection.type.pluginTypeId
+                for: connection.type
             )?.supportsHealthMonitor ?? true
 
             if supportsHealth {
@@ -229,7 +229,7 @@ extension DatabaseManager {
         driver: DatabaseDriver
     ) async {
         let postConnectActions = PluginMetadataRegistry.shared.snapshot(
-            forTypeId: connection.type.pluginTypeId
+            for: connection.type
         )?.postConnectActions ?? []
 
         for action in postConnectActions {
@@ -294,9 +294,9 @@ extension DatabaseManager {
             throw DatabaseError.notConnected
         }
 
-        let pm = PluginMetadataRegistry.shared.snapshot(
-            forTypeId: session(for: connectionId)?.connection.type.pluginTypeId ?? ""
-        )
+        let pm = session(for: connectionId).flatMap {
+            PluginMetadataRegistry.shared.snapshot(for: $0.connection.type)
+        }
 
         if pm?.capabilities.requiresReconnectForDatabaseSwitch == true {
             try await reconnectOntoDatabase(database, for: connectionId)
@@ -466,6 +466,7 @@ extension DatabaseManager {
         await DatabaseTreeMetadataService.shared.handleDisconnect(connectionId: sessionId)
 
         SchemaProviderRegistry.shared.clear(for: sessionId)
+        QueryCompletionProfileRegistry.shared.clear(connectionId: sessionId)
         ExternalSchemaTracker.shared.reset(connectionId: sessionId)
 
         SharedSidebarState.removeConnection(sessionId)
@@ -512,17 +513,45 @@ extension DatabaseManager {
         connectionUpdatedCancellable = AppEvents.shared.connectionUpdated
             .receive(on: RunLoop.main)
             .sink { [weak self] connectionId in
-                self?.reconcileSafeModeLevel(for: connectionId)
+                self?.reconcileStoredRecord(for: connectionId)
             }
     }
 
-    func reconcileSafeModeLevel(for connectionId: UUID?) {
+    func reconcileStoredRecord(for connectionId: UUID?) {
         let targetIds = connectionId.map { [$0] } ?? Array(activeSessions.keys)
         for id in targetIds {
-            guard activeSessions[id] != nil,
+            guard let session = activeSessions[id],
                   let stored = connectionStorage.loadConnection(id: id) else { continue }
+            adoptDisplayFields(from: stored, into: session, for: id)
             setSafeModeLevel(stored.safeModeLevel, for: id)
         }
+    }
+
+    /// Carries the fields a live session only ever *displays* across from storage, and nothing else.
+    ///
+    /// This used to reconcile `safeModeLevel` alone, so everything else stayed frozen at connect
+    /// time. `WorkspaceRailStore.resolve` reads `session.connection` for any live session, which
+    /// made a rename or a recolour invisible in the rail until the next reconnect (#2398).
+    ///
+    /// The allowlist is deliberately narrow, and adopting the whole stored record instead would be
+    /// unsafe: `reconnectOntoDatabase` builds its reconnect from `session.connection`, so letting
+    /// an edited host, port, username or SSH config reach a live session would let the health
+    /// monitor silently reconnect an open window, with its tabs, to a different server. An edit to
+    /// those fields belongs to the next connect the user asks for, not to the one already running.
+    private func adoptDisplayFields(
+        from stored: DatabaseConnection,
+        into session: ConnectionSession,
+        for connectionId: UUID
+    ) {
+        var reconciled = session.connection
+        reconciled.name = stored.name
+        reconciled.color = stored.color
+        reconciled.tagIds = stored.tagIds
+        guard reconciled != session.connection else { return }
+
+        var updated = session
+        updated.connection = reconciled
+        setSession(updated, for: connectionId)
     }
 
     func setSafeModeLevel(_ level: SafeModeLevel, for connectionId: UUID) {

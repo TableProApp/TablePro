@@ -339,7 +339,7 @@ struct AWSSSOParsingTests {
 @MainActor
 struct RegistryAWSIAMFieldsTests {
     private func fieldIds(forTypeId typeId: String) -> [String] {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: typeId)?
+        PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId)?
             .connection.additionalConnectionFields.map(\.id) ?? []
     }
 
@@ -359,7 +359,7 @@ struct RegistryAWSIAMFieldsTests {
     @Test("The profile field offers the profiles found on disk")
     func profileFieldHasDynamicOptions() {
         for typeId in ["MySQL", "MariaDB", "PostgreSQL"] {
-            let field = PluginMetadataRegistry.shared.snapshot(forTypeId: typeId)?
+            let field = PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId)?
                 .connection.additionalConnectionFields.first { $0.id == "awsProfileName" }
             #expect(field?.dynamicOptions == .awsProfiles, "\(typeId) profile field has no profile list")
         }
@@ -373,7 +373,7 @@ struct RegistryAWSIAMFieldsTests {
 
     @Test("The secret access key field is Keychain-backed (secure)")
     func secretFieldIsSecure() {
-        let field = PluginMetadataRegistry.shared.snapshot(forTypeId: "MySQL")?
+        let field = PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: "MySQL")?
             .connection.additionalConnectionFields.first { $0.id == "awsSecretAccessKey" }
         #expect(field?.isSecure == true)
     }

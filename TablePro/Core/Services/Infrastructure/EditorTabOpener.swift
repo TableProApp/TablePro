@@ -84,6 +84,9 @@ internal enum EditorTabOpener {
             tabManager.addUsersRolesTab()
         case .insights:
             tabManager.addQueryInsightsTab()
+        case .objectSource:
+            guard let objectRef = payload.objectRef else { return }
+            tabManager.addObjectSourceTab(objectRef: objectRef)
         }
     }
 

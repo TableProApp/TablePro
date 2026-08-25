@@ -182,5 +182,7 @@ Native/DamengBridge/lib
 .docs/
 /plans/reports
 
-# Working copies produced by scripts/localization.py; the catalog is the source of truth
-Localization/
+# Working copies produced by scripts/localization.py; the catalog is the source of truth.
+# Anchored: unanchored, it also matched TableProTests/Localization/, so the string-catalog
+# guard suite existed on disk and was invisible to git and to CI.
+/Localization/

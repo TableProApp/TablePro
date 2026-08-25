@@ -40,7 +40,7 @@ func resolveSQLDialect(
 ) throws -> SQLDialectDescriptor {
     if let explicit { return explicit }
     if let dialect = PluginMetadataRegistry.shared
-        .snapshot(forTypeId: databaseType.pluginTypeId)?.editor.sqlDialect {
+        .snapshot(for: databaseType)?.editor.sqlDialect {
         return dialect
     }
     throw SQLDialectError.dialectUnavailable(typeId: databaseType.pluginTypeId)

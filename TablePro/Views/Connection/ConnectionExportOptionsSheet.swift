@@ -101,7 +101,7 @@ struct ConnectionExportOptionsSheet: View {
                         .toggleStyle(.checkbox)
                         .disabled(!isProAvailable)
                     if !isProAvailable {
-                        ProBadge()
+                        ProBadge(feature: .encryptedExport)
                     }
                 }
                 Text("Off by default. Turn it on to encrypt saved passwords with a passphrase.")

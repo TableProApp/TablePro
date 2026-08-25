@@ -90,7 +90,7 @@ struct PluginMetadataRegistryBrandingTests {
         let registry = PluginMetadataRegistry.shared
         let typeId = "BrandTestPluginType"
 
-        guard registry.snapshot(forTypeId: typeId) == nil else {
+        guard registry.snapshot(forRegisteredTypeId: typeId) == nil else {
             Issue.record("Test type \(typeId) unexpectedly in registry defaults")
             return
         }
@@ -113,7 +113,7 @@ struct PluginMetadataRegistryBrandingTests {
         )
         registry.register(snapshot: pluginSnapshot, forTypeId: typeId, preserveIcon: true)
 
-        let resolved = registry.snapshot(forTypeId: typeId)
+        let resolved = registry.snapshot(forRegisteredTypeId: typeId)
         #expect(resolved?.iconName == "existing-icon")
         #expect(resolved?.displayName == "BrandTest")
         #expect(resolved?.connection.additionalConnectionFields.map(\.id) == ["newPluginField"])

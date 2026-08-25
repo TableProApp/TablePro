@@ -69,7 +69,12 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var displayIDs: [RowID]? { valueFilteredIDs }
     private(set) var columnDisplayFormats: [ValueDisplayFormat?] = []
     private(set) var currentFindMatch: FindMatch?
-    private let displayCache = RowDisplayCache()
+    /// Owned by whoever outlives this coordinator when there is one, so a remount reuses the text it
+    /// already formatted instead of formatting the whole result again. A grid with no owner keeps
+    /// its own, which is all a structure or create-table grid ever needs. (#2424)
+    private(set) var displayState = DataGridDisplayState()
+    var displayCache: RowDisplayCache { displayState.cache }
+    private var pendingScrollAnchorRow: Int?
     weak var delegate: (any DataGridViewDelegate)?
     weak var activeFKPreviewPopover: NSPopover?
     weak var activeCellEditorPopover: NSPopover?
@@ -113,6 +118,51 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         storedValueFilterState = state
     }
 
+    /// Takes over the formatted text and viewport anchor the owner kept while no grid was mounted.
+    ///
+    /// The owner hands back a fresh state whenever the inputs that decide the text have moved, so
+    /// there is nothing to validate here.
+    func adoptDisplayState(_ state: DataGridDisplayState) {
+        guard state !== displayState else { return }
+        displayState = state
+        pendingScrollAnchorRow = state.firstVisibleRow
+        /// Both directions, because either side can be the one that knows. A fresh coordinator
+        /// takes the schema and formats the state carries, so its first update does not report them
+        /// as a change and clear the text. A state handed over while the grid stays mounted carries
+        /// neither, and the writers that would fill them are change-gated and will not fire, so it
+        /// takes them from here instead and the next remount still restores.
+        if let schema = state.identitySchema {
+            identitySchema = schema
+        } else {
+            state.identitySchema = identitySchema
+        }
+        if let formats = state.displayFormats {
+            columnDisplayFormats = formats
+        } else {
+            state.displayFormats = columnDisplayFormats
+        }
+    }
+
+    var scrollAnchorRow: Int { pendingScrollAnchorRow ?? 0 }
+
+    /// Records where the user was looking, so returning to this tab does not start at the first row.
+    func recordScrollAnchor() {
+        guard let tableView else { return }
+        let visible = tableView.rows(in: tableView.visibleRect)
+        displayState.firstVisibleRow = max(0, visible.location)
+    }
+
+    /// `scrollRowToVisible` only guarantees visibility, so from a grid scrolled to the top it puts
+    /// the anchor at the bottom of the viewport rather than back where the user left it.
+    func restoreScrollAnchor() {
+        guard let tableView, let row = pendingScrollAnchorRow else { return }
+        pendingScrollAnchorRow = nil
+        guard row > 0, row < tableView.numberOfRows else { return }
+        let origin = tableView.rect(ofRow: row).origin
+        let x = tableView.enclosingScrollView?.contentView.bounds.origin.x ?? 0
+        tableView.scroll(NSPoint(x: x, y: origin.y))
+    }
+
     func invalidateColumnIndexCache() {
         guard !columnIndexByDataIndex.isEmpty else { return }
         Self.selectionCacheLogger.debug("invalidate column index cache (had \(self.columnIndexByDataIndex.count))")
@@ -130,6 +180,41 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// Whether the result presents this column, regardless of whether the window has it mounted.
     func presentsColumn(_ column: NSTableColumn) -> Bool {
         columnPool.presentsColumn(column)
+    }
+
+    /// Whether this position in `tableColumns` holds one of the columns the result presents.
+    ///
+    /// The row-number column and the window's two spacers are attached columns as well, and one
+    /// spacer sits immediately before the first data column, so no fixed position answers this.
+    func presentsColumn(atTableColumnIndex index: Int) -> Bool {
+        guard let tableView else { return false }
+        return columnPool.presentsColumn(atTableColumnIndex: index, in: tableView)
+    }
+
+    func firstPresentedColumnIndex() -> Int? {
+        guard let tableView else { return nil }
+        return columnPool.firstPresentedColumnIndex(in: tableView)
+    }
+
+    func lastPresentedColumnIndex() -> Int? {
+        guard let tableView else { return nil }
+        return columnPool.lastPresentedColumnIndex(in: tableView)
+    }
+
+    func nextPresentedColumnIndex(after index: Int) -> Int? {
+        guard let tableView else { return nil }
+        return columnPool.nextPresentedColumnIndex(after: index, in: tableView)
+    }
+
+    func previousPresentedColumnIndex(before index: Int) -> Int? {
+        guard let tableView else { return nil }
+        return columnPool.previousPresentedColumnIndex(before: index, in: tableView)
+    }
+
+    /// The single way to reach a column, for Find, cell navigation and the inline editor alike.
+    func scrollColumnToVisible(tableColumnIndex index: Int) {
+        guard let tableView, index >= 0, index < tableView.numberOfColumns else { return }
+        tableView.scrollColumnToVisible(index)
     }
 
     /// The columns the user is looking at, which is every presented column and not merely the
@@ -342,12 +427,63 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     let cellFactory = DataGridCellFactory()
     let cellRegistry: DataGridCellRegistry
     let columnPool = DataGridColumnPool()
+    /// Draws every data cell in the grid. One renderer for the whole table, because its only state
+    /// is a cache of laid-out lines and every row draws the same values as it scrolls.
+    let cellRenderer = DataGridCellRenderer()
+    /// The cell an overlay editor or viewer is open over, which draws no text of its own behind it.
+    var overlayCell: CellPosition? {
+        didSet {
+            guard overlayCell != oldValue else { return }
+            for position in [oldValue, overlayCell].compactMap({ $0 }) {
+                redrawCell(row: position.row, columnIndex: position.column)
+            }
+        }
+    }
+
+    /// Repaints every drawn cell on screen, for a change that moves all of them at once.
+    func redrawVisibleCells() {
+        guard let tableView else { return }
+        tableView.enumerateAvailableRowViews { rowView, _ in
+            (rowView as? DataGridRowView)?.redrawCells()
+        }
+    }
+
+    /// Repaints whole rows, across the row-number column and every drawn cell.
+    ///
+    /// `reloadData(forRowIndexes:columnIndexes:)` rebuilds a cell view, and the row-number column is
+    /// the only one that still mounts one, so on its own it repaints a row's number and nothing
+    /// else. Every caller that used to reload a row's full column range goes through here (#2381).
+    ///
+    /// A row past the end is dropped rather than passed on: `reloadData(forRowIndexes:)` raises
+    /// `NSRangeException` for one, and a row view can outlive the result that shrank under it.
+    func repaintRows(_ rows: IndexSet) {
+        guard let tableView else { return }
+        let rows = rows.filteredIndexSet { $0 >= 0 && $0 < tableView.numberOfRows }
+        guard !rows.isEmpty else { return }
+        let rowNumberColumn = tableView.column(withIdentifier: ColumnIdentitySchema.rowNumberIdentifier)
+        if rowNumberColumn >= 0 {
+            tableView.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integer: rowNumberColumn))
+        }
+        for row in rows {
+            (tableView.rowView(atRow: row, makeIfNecessary: false) as? DataGridRowView)?.redrawCells()
+        }
+    }
+
+    /// Repaints one drawn cell, which is what a mounted cell got from `setNeedsDisplay` on itself.
+    func redrawCell(row: Int, columnIndex: Int) {
+        guard let tableView,
+              let rowView = tableView.rowView(atRow: row, makeIfNecessary: false) as? DataGridRowView,
+              let position = tableColumnIndex(for: columnIndex) else { return }
+        rowView.redrawCell(atTableColumnIndex: position)
+    }
     let selectionController = GridSelectionController()
     var overlayEditor: CellOverlayEditor?
     var overlayViewer: CellOverlayViewer?
 
     var settingsCancellable: AnyCancellable?
     var themeCancellable: AnyCancellable?
+    private var accessibilityActivationObserver: (any NSObjectProtocol)?
+    private var accessibilityMountedRows = NSRange(location: 0, length: 0)
     private var lastDataGridSettings: DataGridSettings
 
     @Binding var selectedRowIndices: Set<Int>
@@ -373,11 +509,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var pendingColumnLayoutPersistence: PendingColumnLayoutPersistence?
     var columnLayoutPersistenceGeneration = 0
     var lastUpdateSnapshot: DataGridUpdateSnapshot?
-    private var prewarmTask: Task<Void, Never>?
-    private var prewarmResumeTask: Task<Void, Never>?
-    private var scrollObservers: [NSObjectProtocol] = []
-    private static let prewarmFrameBudget: Duration = .milliseconds(2)
-    private static let prewarmResumeDelay: Duration = .milliseconds(300)
+    var prewarmTask: Task<Void, Never>?
+    var prewarmResumeTask: Task<Void, Never>?
+    var scrollObservers: [NSObjectProtocol] = []
+    static let prewarmFrameBudget: Duration = .milliseconds(2)
+    static let prewarmResumeDelay: Duration = .milliseconds(300)
 
     static let rowViewIdentifier = NSUserInterfaceItemIdentifier("TableRowView")
     let visualIndex = RowVisualIndex()
@@ -404,6 +540,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         updateCache()
 
         observeThemeChanges()
+        observeAccessibilityActivation()
 
         settingsCancellable = AppEvents.shared.dataGridSettingsChanged
             .receive(on: RunLoop.main)
@@ -433,11 +570,9 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             let visibleRect = tableView.visibleRect
             let visibleRange = tableView.rows(in: visibleRect)
             if visibleRange.length > 0 {
-                tableView.reloadData(
-                    forRowIndexes: IndexSet(integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length)),
-                    columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)
-                )
+                repaintRows(IndexSet(integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length)))
             }
+            startBackgroundPrewarm()
         }
     }
 
@@ -447,6 +582,50 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             .sink { [weak self] _ in
                 self?.reloadVisibleRowsAndStates()
             }
+    }
+
+    /// The grid mounts no view for a data cell, so a client that attaches mid-session finds a table
+    /// of empty cells until the visible rows are built again. The remount is deferred off the
+    /// accessibility query that raised the flag, because rebuilding rows inside it would re-enter
+    /// the tree AppKit is walking.
+    private func observeAccessibilityActivation() {
+        accessibilityActivationObserver = NotificationCenter.default.addObserver(
+            forName: DataGridAccessibility.didActivateNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.remountAccessibilityCells()
+            }
+        }
+    }
+
+    /// Whether this row is one an assistive client can be reading right now.
+    ///
+    /// Walking the accessibility tree makes `NSTableView` prepare every row of the page, not the
+    /// twenty-five on screen, and it asks for a view for each one. Mounting a cell there put 9,000
+    /// views and a 21,000 element tree behind a 1,000-row page, which is the cost `#2381` removed
+    /// and enough to starve the app of the main thread. Only the viewport mounts, and scrolling
+    /// mounts what it brings into view.
+    func mountsAccessibilityCell(forRow row: Int) -> Bool {
+        guard let tableView else { return false }
+        return NSLocationInRange(row, tableView.rows(in: tableView.visibleRect))
+    }
+
+    /// Rebuilds the cells for the rows now on screen. A row prepared while it was off screen was
+    /// answered with no view and is never asked again, so the rows a scroll reveals have to be
+    /// reloaded rather than waited for.
+    func remountAccessibilityCells() {
+        guard DataGridAccessibility.isActive, let tableView else { return }
+        let visible = tableView.rows(in: tableView.visibleRect)
+        guard visible.length > 0, !NSEqualRanges(visible, accessibilityMountedRows) else { return }
+        let upperBound = min(visible.location + visible.length, tableView.numberOfRows)
+        guard visible.location >= 0, upperBound > visible.location, tableView.numberOfColumns > 0 else { return }
+        accessibilityMountedRows = visible
+        tableView.reloadData(
+            forRowIndexes: IndexSet(integersIn: visible.location..<upperBound),
+            columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)
+        )
     }
 
     func releaseData() {
@@ -462,6 +641,10 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         settingsCancellable = nil
         themeCancellable?.cancel()
         themeCancellable = nil
+        if let accessibilityActivationObserver {
+            NotificationCenter.default.removeObserver(accessibilityActivationObserver)
+        }
+        accessibilityActivationObserver = nil
         visualIndex.clear()
         displayCache.removeAll()
         columnDisplayFormats = []
@@ -491,6 +674,9 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         let tableRows = tableRowsProvider()
         cachedRowCount = displayIDs?.count ?? tableRows.count
         cachedColumnCount = tableRows.columns.count
+        /// A reload throws away the cells that were mounted, so the record of which rows carry one
+        /// has to go with them or the next scroll decides there is nothing to remount.
+        accessibilityMountedRows = NSRange(location: 0, length: 0)
         resizeRowNumberColumnForCurrentRange()
     }
 
@@ -649,7 +835,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         if column >= 0, column < box.values.count {
             box.values[column] = formatted
         }
-        displayCache.setBox(box, forID: id, cost: displayCacheCost(box.values))
+        displayCache.setBox(box, forID: id)
         return formatted
     }
 
@@ -676,6 +862,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     private func applyDisplayFormats(_ formats: [ValueDisplayFormat?]) -> Bool {
         let remappedValueFilters = remapValueFilters(from: columnDisplayFormats, to: formats)
         columnDisplayFormats = formats
+        displayState.displayFormats = formats
         displayCache.removeAll()
         delegate?.dataGridDisplayFormatChanged()
         return remappedValueFilters
@@ -754,121 +941,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         startBackgroundPrewarm()
     }
 
-    func preWarmDisplayCache(upTo rowCount: Int) {
-        let tableRows = tableRowsProvider()
-        let displayCount = displayIDs?.count ?? tableRows.count
-        let count = min(rowCount, displayCount)
-        guard count > 0 else { return }
-        for displayIndex in 0..<count {
-            cacheDisplayRow(at: displayIndex, in: tableRows)
-        }
-    }
-
-    /// Fills displayCache off the scroll hot path so viewFor:row: stays a cache hit.
-    func startBackgroundPrewarm() {
-        prewarmResumeTask?.cancel()
-        prewarmResumeTask = nil
-        prewarmTask?.cancel()
-        prewarmTask = Task { @MainActor [weak self] in
-            await self?.runBackgroundPrewarm()
-        }
-    }
-
-    /// Pauses prewarm during live scroll; resumes after a debounce so rapid scrolls do not restart it repeatedly.
-    func attachScrollObservers(scrollView: NSScrollView) {
-        detachScrollObservers()
-        let start = NotificationCenter.default.addObserver(
-            forName: NSScrollView.willStartLiveScrollNotification,
-            object: scrollView,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.pausePrewarmForScroll()
-            }
-        }
-        let end = NotificationCenter.default.addObserver(
-            forName: NSScrollView.didEndLiveScrollNotification,
-            object: scrollView,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.schedulePrewarmResume()
-            }
-        }
-        scrollView.contentView.postsBoundsChangedNotifications = true
-        let bounds = NotificationCenter.default.addObserver(
-            forName: NSView.boundsDidChangeNotification,
-            object: scrollView.contentView,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.updateColumnWindow()
-            }
-        }
-        // A bounds change is scrolling; a frame change is the viewport resizing. Widening the
-        // window exposes area the window never covered, and only this fires for that.
-        scrollView.contentView.postsFrameChangedNotifications = true
-        let frame = NotificationCenter.default.addObserver(
-            forName: NSView.frameDidChangeNotification,
-            object: scrollView.contentView,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.updateColumnWindow()
-            }
-        }
-        scrollObservers = [start, end, bounds, frame]
-    }
-
-    /// Re-mounts the columns the viewport can now reach. The resolver keeps the range stable while
-    /// the viewport stays inside its margin, so most scroll frames return without touching a column.
-    func updateColumnWindow() {
-        guard let tableView, !isRebuildingColumns else { return }
-        columnPool.applyColumnWindow(in: tableView)
-    }
-
-    private func detachScrollObservers() {
-        for observer in scrollObservers {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        scrollObservers.removeAll()
-    }
-
-    private func pausePrewarmForScroll() {
-        prewarmResumeTask?.cancel()
-        prewarmResumeTask = nil
-        prewarmTask?.cancel()
-        prewarmTask = nil
-    }
-
-    private func schedulePrewarmResume() {
-        prewarmResumeTask?.cancel()
-        prewarmResumeTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: Self.prewarmResumeDelay)
-            guard !Task.isCancelled, let self else { return }
-            self.startBackgroundPrewarm()
-        }
-    }
-
-    private func runBackgroundPrewarm() async {
-        var nextIndex = 0
-        while !Task.isCancelled {
-            let tableRows = tableRowsProvider()
-            let displayCount = displayIDs?.count ?? tableRows.count
-            guard nextIndex < displayCount else { return }
-
-            let deadline = ContinuousClock.now.advanced(by: Self.prewarmFrameBudget)
-            while nextIndex < displayCount {
-                if Task.isCancelled { return }
-                cacheDisplayRow(at: nextIndex, in: tableRows)
-                nextIndex += 1
-                if ContinuousClock.now >= deadline { break }
-            }
-            await Task.yield()
-        }
-    }
-
-    private func cacheDisplayRow(at displayIndex: Int, in tableRows: TableRows) {
+    func cacheDisplayRow(at displayIndex: Int, in tableRows: TableRows) {
         guard let row = displayRow(at: displayIndex, in: tableRows) else { return }
         guard displayCache.box(forID: row.id) == nil else { return }
 
@@ -887,15 +960,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             ) ?? row.values[col].asText
         }
         let box = RowDisplayBox(values)
-        displayCache.setBox(box, forID: row.id, cost: displayCacheCost(values))
-    }
-
-    private func displayCacheCost(_ values: ContiguousArray<String?>) -> Int {
-        var total = 0
-        for value in values {
-            if let s = value { total &+= s.utf8.count }
-        }
-        return total
+        displayCache.setBox(box, forID: row.id)
     }
 
     private func invalidateDisplayCache(forDisplayRow displayIndex: Int) {
@@ -908,7 +973,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         guard let box = displayCache.box(forID: row.id),
               column >= 0, column < box.values.count else { return }
         box.values[column] = nil
-        displayCache.setBox(box, forID: row.id, cost: displayCacheCost(box.values))
+        displayCache.setBox(box, forID: row.id)
     }
 
     func applyDelta(_ delta: Delta) {
@@ -920,10 +985,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             guard row >= 0, row < tableView.numberOfRows else { return }
             invalidateDisplayCache(forDisplayRow: row, column: column)
             visualIndex.updateRow(row, from: changeManager, displayIDs: displayIDs)
-            tableView.reloadData(
-                forRowIndexes: IndexSet(integer: row),
-                columnIndexes: IndexSet(integer: tableColumn)
-            )
+            redrawCells(rows: IndexSet(integer: row), tableColumnIndexes: IndexSet(integer: tableColumn))
         case .cellsChanged(let positions):
             guard !positions.isEmpty, let tableView else { return }
             var rowSet = IndexSet()
@@ -941,7 +1003,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             for row in rowSet {
                 visualIndex.updateRow(row, from: changeManager, displayIDs: displayIDs)
             }
-            tableView.reloadData(forRowIndexes: rowSet, columnIndexes: colSet)
+            redrawCells(rows: rowSet, tableColumnIndexes: colSet)
         case .rowsInserted(let indices):
             guard !indices.isEmpty else { return }
             overlayEditor?.dismiss(commit: false)
@@ -967,23 +1029,19 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         reloadVisibleRowsAndStates()
     }
 
-    /// Repaint visible rows in two layers Apple's NSTableView contract requires:
-    /// `reloadData(forRowIndexes:columnIndexes:)` re-fetches cells via
-    /// `tableView(_:viewFor:row:)` but does not touch row views, so per-row
-    /// decoration (deleted/inserted tint, deleted-row context menu state) goes
-    /// stale. `enumerateAvailableRowViews` then visits each live `NSTableRowView`
-    /// so `applyVisualState` can mutate row-level state without recreating views.
-    /// Both delegates call this after model mutations that don't change row count.
+    /// Repaints visible rows in the two layers a row needs: `repaintRows` covers the row-number
+    /// column and the drawn cells, and `refreshVisibleRowVisualStates` then visits each live
+    /// `NSTableRowView` so `applyVisualState` can carry the per-row decoration (deleted or inserted
+    /// tint, deleted-row context menu state) without recreating a view. Both delegates call this
+    /// after a model mutation that leaves the row count alone.
     func reloadVisibleRowsAndStates() {
         guard let tableView else { return }
         let visibleRange = tableView.rows(in: tableView.visibleRect)
         guard visibleRange.length > 0 else { return }
         invalidateDisplayCache()
-        tableView.reloadData(
-            forRowIndexes: IndexSet(integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length)),
-            columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)
-        )
+        repaintRows(IndexSet(integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length)))
         refreshVisibleRowVisualStates()
+        startBackgroundPrewarm()
     }
 
     /// Single-row equivalent of `reloadVisibleRowsAndStates` for cases where
@@ -992,10 +1050,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     func reloadRowAndState(at row: Int) {
         guard let tableView, row >= 0, row < tableView.numberOfRows else { return }
         invalidateDisplayCache(forDisplayRow: row)
-        tableView.reloadData(
-            forRowIndexes: IndexSet(integer: row),
-            columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)
-        )
+        repaintRows(IndexSet(integer: row))
         refreshRowVisualState(at: row)
     }
 
@@ -1077,18 +1132,12 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         let affected = IndexSet([previous?.displayRow, match?.displayRow]
             .compactMap(\.self)
             .filter { $0 >= 0 && $0 < tableView.numberOfRows })
-        if !affected.isEmpty {
-            tableView.reloadData(
-                forRowIndexes: affected,
-                columnIndexes: IndexSet(integersIn: 0 ..< tableView.numberOfColumns)
-            )
-        }
+        repaintRows(affected)
 
         guard let match, match.displayRow >= 0, match.displayRow < tableView.numberOfRows else { return }
         tableView.scrollRowToVisible(match.displayRow)
-        if let displayColumn = tableColumnIndex(for: match.columnIndex),
-           displayColumn < tableView.numberOfColumns {
-            tableView.scrollColumnToVisible(displayColumn)
+        if let displayColumn = tableColumnIndex(for: match.columnIndex) {
+            scrollColumnToVisible(tableColumnIndex: displayColumn)
         }
         tableView.selectRowIndexes(IndexSet(integer: match.displayRow), byExtendingSelection: false)
     }
@@ -1100,6 +1149,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         guard displayRow >= 0, displayRow < tableView.numberOfRows else { return }
         tableView.scrollRowToVisible(displayRow)
         tableView.selectRowIndexes(IndexSet(integer: displayRow), byExtendingSelection: false)
+        scrollColumnToVisible(tableColumnIndex: displayCol)
         beginCellEdit(row: displayRow, tableColumnIndex: displayCol)
     }
 
@@ -1128,7 +1178,24 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         let visibleRows = IndexSet(
             integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length)
         )
-        tableView.reloadData(forRowIndexes: visibleRows, columnIndexes: changedTableColumnIndices)
+        redrawCells(rows: visibleRows, tableColumnIndexes: changedTableColumnIndices)
+    }
+
+    /// Repaints a set of drawn cells.
+    ///
+    /// `reloadData(forRowIndexes:columnIndexes:)` rebuilt a cell view per pair, which is how a
+    /// mounted cell was refreshed. A data cell has no view now, so that call reaches nothing and the
+    /// change never appears; the rows that draw the cells are asked instead.
+    func redrawCells(rows: IndexSet, tableColumnIndexes: IndexSet) {
+        guard let tableView else { return }
+        for row in rows {
+            guard let rowView = tableView.rowView(atRow: row, makeIfNecessary: false) as? DataGridRowView else {
+                continue
+            }
+            for tableColumnIndex in tableColumnIndexes {
+                rowView.redrawCell(atTableColumnIndex: tableColumnIndex)
+            }
+        }
     }
 
     func flushPendingCellPresentationRefresh() {
@@ -1151,6 +1218,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
         guard schemaChanged else { return false }
         identitySchema = nextSchema
+        displayState.identitySchema = nextSchema
         displayCache.removeAll()
         invalidateColumnIndexCache()
         return true

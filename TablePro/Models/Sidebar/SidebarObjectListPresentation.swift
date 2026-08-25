@@ -22,7 +22,8 @@ internal enum SidebarObjectListPresentation: Equatable {
         state: SchemaState,
         hasActiveFilter: Bool,
         hasAnyMatch: Bool,
-        hasRoutines: Bool
+        hasRoutines: Bool,
+        hasTriggers: Bool
     ) -> SidebarObjectListPresentation {
         switch state {
         case .idle, .loading:
@@ -33,7 +34,7 @@ internal enum SidebarObjectListPresentation: Equatable {
             if hasActiveFilter, !hasAnyMatch {
                 return .noMatch
             }
-            if tables.isEmpty, !hasRoutines {
+            if tables.isEmpty, !hasRoutines, !hasTriggers {
                 return .empty
             }
             return .list

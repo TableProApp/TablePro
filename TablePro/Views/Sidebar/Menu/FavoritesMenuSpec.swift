@@ -10,15 +10,21 @@ internal struct FavoritesMenuContext {
     internal let clicked: FavoritesOutlineNode.Kind?
     internal let allFolders: [SQLFavoriteFolder]
     internal let teamLibraryAvailable: Bool
+    internal let databaseEntityName: String
+    internal let activeDatabase: String?
 
     internal init(
         clicked: FavoritesOutlineNode.Kind?,
         allFolders: [SQLFavoriteFolder] = [],
-        teamLibraryAvailable: Bool = false
+        teamLibraryAvailable: Bool = false,
+        databaseEntityName: String = "Database",
+        activeDatabase: String? = nil
     ) {
         self.clicked = clicked
         self.allFolders = allFolders
         self.teamLibraryAvailable = teamLibraryAvailable
+        self.databaseEntityName = databaseEntityName
+        self.activeDatabase = activeDatabase
     }
 }
 
@@ -30,6 +36,10 @@ internal enum FavoritesMenuSpec {
     private static func rawItems(for context: FavoritesMenuContext) -> [FavoritesMenuItem] {
         guard let clicked = context.clicked else { return backgroundItems(context) }
         switch clicked {
+        case .databaseEnvironment:
+            return backgroundItems(context)
+        case .database(let entry):
+            return databaseItems(entry, context: context)
         case .table(let table):
             return tableItems(table)
         case .query(let node):
@@ -37,6 +47,36 @@ internal enum FavoritesMenuSpec {
         case .header, .teamQuery:
             return backgroundItems(context)
         }
+    }
+
+    private static func databaseItems(
+        _ entry: FavoriteDatabaseEntry,
+        context: FavoritesMenuContext
+    ) -> [FavoritesMenuItem] {
+        var items: [FavoritesMenuItem] = []
+        if entry.database != context.activeDatabase {
+            items.append(.command(
+                String(
+                    format: String(localized: "Use as Active %@"),
+                    context.databaseEntityName
+                ),
+                .useDatabase(entry)
+            ))
+        }
+        let state = FavoriteDatabaseSelectionState(environments: [entry.environment])
+        items.append(.submenu(
+            title: FavoriteDatabaseMenu.submenuTitle(for: state),
+            items: FavoriteDatabaseMenu.environmentItems(for: state).map { item in
+                .command(SidebarMenuEntry(
+                    title: item.title,
+                    command: .setDatabaseEnvironment(entry, item.environment),
+                    isOn: item.isOn
+                ))
+            }
+        ))
+        items.append(.separator)
+        items.append(.destructive(FavoriteDatabaseMenu.removeTitle, .removeDatabaseFavorite(entry)))
+        return items
     }
 
     private static func tableItems(_ table: TableInfo) -> [FavoritesMenuItem] {

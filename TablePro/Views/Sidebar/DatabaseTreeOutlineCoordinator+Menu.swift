@@ -59,6 +59,7 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
             schemaEntityNamePlural: PluginManager.shared.schemaEntityNamePlural(for: databaseType),
             objectKindTitles: objectKindTitles(),
             isFavorite: clickedRef.map { isFavorite($0) } ?? false,
+            favoriteDatabaseEnvironments: favoriteDatabaseEnvironments(),
             showObjectIcons: settings.showObjectIcons,
             showObjectComments: settings.showObjectComments,
             rowSize: settings.sidebarRowSize,

@@ -73,21 +73,32 @@ Verify all of these first. If any fails, stop and say what is wrong.
    to fold those changes into the release.
 5. **`[Unreleased]` has content.** If empty, the release has no notes. Say so.
 6. **Entries are the right shape.** They accumulate one PR at a time and drift long.
-   Per `CLAUDE.md` rule 1 and Keep a Changelog 1.1.0, an entry is one sentence, two
-   at the outside, under 200 characters:
+   Per `CLAUDE.md` rule 1 and Keep a Changelog 1.1.0, an entry is a fragment naming
+   the change, one line, aiming under 120 characters:
 
    ```bash
    awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md \
-     | grep '^- ' | awk '{ t+=length($0); n++; if (length($0)>200) o++ } \
+     | grep '^- ' | awk '{ t+=length($0); n++; if (length($0)>120) o++ } \
          END { if (!n) { print "no entries"; exit } \
-               print n" entries, avg "int(t/n)" chars, "o+0" over 200" }'
+               print n" entries, avg "int(t/n)" chars, "o+0" over 120" }'
    ```
 
-   If entries run over, rewrite the whole section before finalizing: cut each to the
-   notable difference, merge entries describing one change, keep every `(#1234)`.
-   Diff the reference IDs before and after to prove none were dropped. The
-   explanation belongs in the PR body. At 0.67.0 this arrived with 211 entries
-   averaging 300 characters, the longest 1,685, and was rewritten to 200 averaging 100.
+   Also flag the shapes the style forbids, which are what long entries turn into.
+   `now` and `no longer` are the tells for a repair narrative, and `, so` for a
+   trailing consequence. Not `instead of` on its own: describing the bug as
+   `showing an empty table instead of reporting an error` is exactly right.
+
+   ```bash
+   awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md \
+     | grep -nE '^- .*( now | no longer |, so )'
+   ```
+
+   If entries run over or match, rewrite the whole section before finalizing: cut each
+   to the notable difference, turn every `X now does Y instead of Z` into the bug or
+   the thing itself, drop trailing `so ...` clauses, merge entries describing one
+   change, keep every `(#1234)`. Diff the reference IDs before and after to prove none
+   were dropped. The explanation belongs in the PR body. At 0.67.0 this arrived with
+   211 entries averaging 300 characters, the longest 1,685.
 7. **On `main`**: warn, do not block.
 8. **SwiftLint is clean**: `swiftlint lint --strict`. Fix what it finds first, in its
    own commit.

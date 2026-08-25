@@ -127,13 +127,13 @@ struct ForeignKeyPreviewView: View {
 
                             if let val = value {
                                 Text(val)
-                                    .font(.system(.callout, design: .monospaced))
+                                    .font(ThemeEngine.shared.valueFontSwiftUI)
                                     .foregroundStyle(.primary)
                                     .lineLimit(3)
                                     .textSelection(.enabled)
                             } else {
                                 Text("NULL")
-                                    .font(.system(.callout, design: .monospaced))
+                                    .font(ThemeEngine.shared.valueFontSwiftUI)
                                     .foregroundStyle(.tertiary)
                                     .italic()
                             }

@@ -21,6 +21,10 @@ internal enum FavoritesOutlineSelection {
         switch kind {
         case .header:
             return nil
+        case .databaseEnvironment(let group):
+            return .node(id: FavoritesOutlineNode.databaseEnvironmentId(group.environment))
+        case .database(let entry):
+            return .node(id: FavoritesOutlineNode.databaseId(entry))
         case .table(let table):
             return .table(database: database, schema: table.schema, name: table.name)
         case .query(let node):
@@ -45,6 +49,10 @@ internal enum FavoritesOutlineSelection {
         switch kind {
         case .header:
             return nil
+        case .databaseEnvironment(let group):
+            return group.environment.title
+        case .database(let entry):
+            return entry.database
         case .table(let table):
             return table.name
         case .teamQuery(_, let name, _):

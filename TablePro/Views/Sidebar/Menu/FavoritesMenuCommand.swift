@@ -11,6 +11,10 @@ import TableProPluginKit
 /// Several of these end in a confirmation the view owns, so the command names the intent and the
 /// view decides how to ask. Keeping that split is what lets the whole menu be a pure function.
 internal enum FavoritesMenuCommand: Equatable {
+    case useDatabase(FavoriteDatabaseEntry)
+    case setDatabaseEnvironment(FavoriteDatabaseEntry, FavoriteDatabaseEnvironment)
+    case removeDatabaseFavorite(FavoriteDatabaseEntry)
+
     case openTable(TableInfo)
     case showERDiagram
     case removeTableFavorite(TableInfo)

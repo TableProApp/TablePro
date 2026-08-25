@@ -50,6 +50,12 @@ Search matches partial words, so `cust` finds `customers`. Several words must al
 
 **My Queries**, the default, is Editor and Explain. Add **Table Browsing** to see what the app sent while you clicked around a table, **Structure Changes** to review what altered a schema and when.
 
+## Saved EXPLAIN plans
+
+A successful EXPLAIN also saves its plan, so a later run of the same query can be compared against it. See [EXPLAIN Visualization](/features/explain-visualization#compare).
+
+Pausing history stops saving plans. Clearing, pruning or deleting history does not delete them: a saved plan outlives the run that produced it, and pinning one exempts it from cleanup entirely. Unpinned plans are pruned oldest first once they pass 100 MB in total.
+
 ## Working with entries
 
 | Action | How |

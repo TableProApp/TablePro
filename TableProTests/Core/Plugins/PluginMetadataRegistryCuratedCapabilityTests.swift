@@ -86,7 +86,7 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
     @Test("A plugin with no curated entry falls back to the defaults")
     func unknownPluginUsesTheStructDefaults() {
         let registry = PluginMetadataRegistry.shared
-        #expect(registry.snapshot(forTypeId: MockUnknownPlugin.databaseTypeId) == nil)
+        #expect(registry.snapshot(forRegisteredTypeId: MockUnknownPlugin.databaseTypeId) == nil)
 
         let built = registry.buildMetadataSnapshot(from: MockUnknownPlugin.self)
 

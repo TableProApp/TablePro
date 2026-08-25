@@ -54,7 +54,11 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
     /// outline reloads only when the set of rows or their nesting changed. Depth is part of the
     /// fingerprint because moving a favorite into a folder can leave the pre-order id list identical.
     private static func fingerprint(of input: FavoritesOutlineInput) -> String {
-        var parts: [String] = [input.activeDatabase ?? ""]
+        var parts: [String] = [input.activeDatabase ?? "", input.isNarrowingDatabases ? "filtering" : ""]
+        parts += input.databaseGroups.flatMap { group in
+            ["environment|\(group.environment.rawValue)"]
+                + group.entries.map { "\(group.environment.rawValue)|\($0.id)" }
+        }
         parts += input.tables.map(\.id)
         parts += input.queryNodes.flatMap { Self.identifiers(of: $0, depth: 0) }
         parts += input.teamQueries.map(\.id)
@@ -121,12 +125,33 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
 
     private func build(children parent: FavoritesOutlineNode?) -> [FavoritesOutlineNode] {
         guard let parent else { return rootNodes() }
-        guard case .query(let favoriteNode) = parent.kind, let kids = favoriteNode.children else { return [] }
-        return kids.map { node(id: $0.id, kind: .query($0)) }
+        switch parent.kind {
+        case .databaseEnvironment(let group):
+            return group.entries.map { entry in
+                node(id: FavoritesOutlineNode.databaseId(entry), kind: .database(entry))
+            }
+        case .query(let favoriteNode):
+            guard let kids = favoriteNode.children else { return [] }
+            return kids.map { node(id: $0.id, kind: .query($0)) }
+        case .header, .database, .table, .teamQuery:
+            return []
+        }
     }
 
     private func rootNodes() -> [FavoritesOutlineNode] {
         var nodes: [FavoritesOutlineNode] = []
+        if !owner.input.databaseGroups.isEmpty {
+            nodes.append(node(
+                id: FavoritesOutlineNode.databasesHeaderId,
+                kind: .header(owner.input.databaseEntityNamePlural)
+            ))
+            nodes += owner.input.databaseGroups.map { group in
+                node(
+                    id: FavoritesOutlineNode.databaseEnvironmentId(group.environment),
+                    kind: .databaseEnvironment(group)
+                )
+            }
+        }
         if !owner.input.tables.isEmpty {
             nodes.append(node(id: FavoritesOutlineNode.tablesHeaderId, kind: .header(String(localized: "Tables"))))
             nodes += owner.input.tables.map { table in
@@ -163,8 +188,20 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
 
     private func applyExpansion(to nodes: [FavoritesOutlineNode], in outlineView: NSOutlineView) {
         for node in nodes where node.isExpandable {
-            guard case .query(let favoriteNode) = node.kind else { continue }
-            if FavoritesExpansion.isExpanded(favoriteNode, connectionId: owner.input.connectionId) {
+            let shouldExpand: Bool
+            switch node.kind {
+            case .databaseEnvironment(let group):
+                shouldExpand = owner.input.isNarrowingDatabases || FavoritesExpansion
+                    .isDatabaseEnvironmentExpanded(group.environment, connectionId: owner.input.connectionId)
+            case .query(let favoriteNode):
+                shouldExpand = FavoritesExpansion.isExpanded(
+                    favoriteNode,
+                    connectionId: owner.input.connectionId
+                )
+            case .header, .database, .table, .teamQuery:
+                shouldExpand = false
+            }
+            if shouldExpand {
                 outlineView.expandItem(node)
                 applyExpansion(to: children(of: node), in: outlineView)
             } else {
@@ -183,9 +220,24 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
 
     private func recordExpansion(from notification: Notification, expanded: Bool) {
         guard !isApplyingExpansion,
-              let node = notification.userInfo?["NSObject"] as? FavoritesOutlineNode,
-              case .query(let favoriteNode) = node.kind else { return }
-        FavoritesExpansion.setExpanded(favoriteNode, expanded: expanded, connectionId: owner.input.connectionId)
+              let node = notification.userInfo?["NSObject"] as? FavoritesOutlineNode else { return }
+        switch node.kind {
+        case .databaseEnvironment(let group):
+            guard !owner.input.isNarrowingDatabases else { return }
+            FavoritesExpansion.setDatabaseEnvironmentExpanded(
+                group.environment,
+                expanded: expanded,
+                connectionId: owner.input.connectionId
+            )
+        case .query(let favoriteNode):
+            FavoritesExpansion.setExpanded(
+                favoriteNode,
+                expanded: expanded,
+                connectionId: owner.input.connectionId
+            )
+        case .header, .database, .table, .teamQuery:
+            break
+        }
     }
 
     // MARK: - Selection
@@ -270,7 +322,9 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
         let context = FavoritesMenuContext(
             clicked: clicked?.kind,
             allFolders: owner.input.allFolders,
-            teamLibraryAvailable: owner.input.teamLibraryAvailable
+            teamLibraryAvailable: owner.input.teamLibraryAvailable,
+            databaseEntityName: owner.input.databaseEntityName,
+            activeDatabase: owner.input.activeDatabase
         )
         SidebarMenuBuilder.fill(
             menu,

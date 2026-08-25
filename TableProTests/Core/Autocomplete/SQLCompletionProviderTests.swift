@@ -307,7 +307,7 @@ struct SQLCompletionProviderTests {
         let pgProvider = await SQLCompletionProvider(
             schemaProvider: schemaProvider,
             databaseType: .postgresql,
-            dialect: MainActor.run { PluginMetadataRegistry.shared.snapshot(forTypeId: DatabaseType.postgresql.pluginTypeId)?.editor.sqlDialect }
+            dialect: MainActor.run { PluginMetadataRegistry.shared.snapshot(for: .postgresql)?.editor.sqlDialect }
         )
         // Use prefix "JSON" to filter past the 20-item limit so JSONB appears
         let text = "CREATE TABLE test (col JSON"
@@ -326,7 +326,7 @@ struct SQLCompletionProviderTests {
         let mysqlProvider = await SQLCompletionProvider(
             schemaProvider: schemaProvider,
             databaseType: .mysql,
-            dialect: MainActor.run { PluginMetadataRegistry.shared.snapshot(forTypeId: DatabaseType.mysql.pluginTypeId)?.editor.sqlDialect }
+            dialect: MainActor.run { PluginMetadataRegistry.shared.snapshot(for: .mysql)?.editor.sqlDialect }
         )
         let text = "CREATE TABLE test (col "
         let (items, _) = await mysqlProvider.getCompletions(text: text, cursorPosition: text.count)

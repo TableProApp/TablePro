@@ -13,8 +13,8 @@ import Testing
 @MainActor
 @Suite("Database tree capability")
 struct DatabaseTreeCapabilityTests {
-    private func snapshot(forTypeId typeId: String) -> PluginMetadataSnapshot? {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: typeId)
+    private func snapshot(forRegisteredTypeId typeId: String) -> PluginMetadataSnapshot? {
+        PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId)
     }
 
     @Test("Networked engines that group by database or schema get a tree")
@@ -104,7 +104,7 @@ struct DatabaseTreeCapabilityTests {
     func noFileBasedTypeGainsTree() {
         var checked = 0
         for typeId in PluginMetadataRegistry.shared.allRegisteredTypeIds() {
-            guard let snap = snapshot(forTypeId: typeId), snap.connectionMode == .fileBased else { continue }
+            guard let snap = snapshot(forRegisteredTypeId: typeId), snap.connectionMode == .fileBased else { continue }
             checked += 1
             #expect(
                 PluginManager.shared.supportsDatabaseTree(for: DatabaseType(rawValue: typeId)) == false,

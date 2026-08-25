@@ -29,7 +29,7 @@ private struct PhpTreeRowView: View {
         HStack(spacing: 4) {
             if let key = node.key {
                 Text(key)
-                    .font(.system(.body, design: .monospaced).weight(.medium))
+                    .font(ThemeEngine.shared.valueFontEmphasizedSwiftUI)
                     .foregroundStyle(.blue)
                     .lineLimit(1)
                 if let badge = node.visibilityBadge {
@@ -41,7 +41,7 @@ private struct PhpTreeRowView: View {
                     .foregroundStyle(.secondary)
             }
             Text(node.displayValue)
-                .font(.system(.body, design: .monospaced))
+                .font(ThemeEngine.shared.valueFontSwiftUI)
                 .foregroundStyle(Color(nsColor: node.nodeType.color))
                 .lineLimit(1)
             Spacer(minLength: 4)

@@ -228,6 +228,34 @@ internal struct ListActivationsResponse: Codable {
     }
 }
 
+/// One member of a Team license, as reported by the team endpoint.
+internal struct LicenseTeamMember: Codable, Identifiable {
+    var id: String { email }
+    let email: String
+    let role: String
+    let joinedAt: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case email
+        case role
+        case joinedAt = "joined_at"
+    }
+}
+
+/// Response from the team endpoint. A non-Team license answers with no members and zero seats
+/// used, so the caller decides whether the section is worth showing rather than the request failing.
+internal struct LicenseTeamResponse: Codable {
+    let members: [LicenseTeamMember]
+    let seatsUsed: Int
+    let maxSeats: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case members
+        case seatsUsed = "seats_used"
+        case maxSeats = "max_seats"
+    }
+}
+
 // MARK: - Cached License
 
 /// Cache envelope around the server's signed payload.
@@ -257,6 +285,16 @@ struct License: Codable, Equatable {
     var billingCycle: String? { payload.billingCycle }
 
     var boundMachineId: String? { payload.machineId }
+
+    /// The team this license belongs to. The server signs it only for a Team license, so its
+    /// presence is the signed answer to "does this license have other people on it", which decides
+    /// whether releasing a seat here could affect somebody else.
+    var teamId: String? { payload.teamId }
+
+    var isTeamLicense: Bool { payload.teamId != nil }
+
+    /// The activating member's role on the team, signed alongside `teamId`.
+    var teamRole: TeamRole? { payload.role.map(TeamRole.init(rawValue:)) }
 
     var status: LicenseStatus {
         switch payload.status {

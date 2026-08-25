@@ -97,7 +97,7 @@ struct ImportFromURLSheet: View {
     }
 
     private func previewView(_ parsed: ParsedConnectionURL) -> some View {
-        let snapshot = PluginMetadataRegistry.shared.snapshot(forTypeId: parsed.type.rawValue)
+        let snapshot = PluginMetadataRegistry.shared.snapshot(for: parsed.type)
         let mode = snapshot?.connectionMode ?? .network
 
         return VStack(alignment: .leading, spacing: 4) {

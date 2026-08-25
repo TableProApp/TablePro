@@ -8,18 +8,44 @@ import Foundation
 public struct PluginExportTable: Sendable {
     public let name: String
     public let databaseName: String
+    public let schema: String?
     public let tableType: String
     public let optionValues: [Bool]
 
+    public init(
+        name: String,
+        databaseName: String,
+        tableType: String,
+        optionValues: [Bool] = [],
+        schema: String?
+    ) {
+        self.name = name
+        self.databaseName = databaseName
+        self.schema = schema
+        self.tableType = tableType
+        self.optionValues = optionValues
+    }
+
+    @_disfavoredOverload
     public init(name: String, databaseName: String, tableType: String, optionValues: [Bool] = []) {
         self.name = name
         self.databaseName = databaseName
+        self.schema = nil
         self.tableType = tableType
         self.optionValues = optionValues
     }
 
     public var qualifiedName: String {
         databaseName.isEmpty ? name : "\(databaseName).\(name)"
+    }
+
+    /// The container this table was grouped under: the export tree's group name where it named
+    /// one, and the driver's own schema where it did not. Two tables in one export carry the
+    /// same value only when they really sit together, so this is what qualifies a bare name.
+    public var containerName: String? {
+        guard databaseName.isEmpty else { return databaseName }
+        guard let schema, !schema.isEmpty else { return nil }
+        return schema
     }
 }
 

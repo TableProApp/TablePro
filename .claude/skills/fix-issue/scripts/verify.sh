@@ -15,6 +15,7 @@
 #   verify.sh [options] uitest <Suite> [Suite…]
 #   verify.sh [options] abi   <merge-base>
 #   verify.sh [options] lint  <path> [path…]
+#   verify.sh [options] docs                    # docs/ house style + claims against source
 #   verify.sh          tail   <log> [lines]     # re-read a stored log without rerunning
 #   verify.sh          parse  <log>             # re-read the verdict for a stored log
 #
@@ -214,40 +215,82 @@ report_tests() {
 
     local quarantine="$REPO_ROOT/.github/macos-test-quarantine.txt"
     local ui_quarantine="$REPO_ROOT/.github/macos-ui-test-quarantine.txt"
+
+    # Both quarantine files hold one case per line as Suite/case(), never a bare suite name, so a
+    # failing line is matched by its own case id. Matching the suite instead did two wrong things
+    # at once: it never matched the unit file at all, so every quarantined case was reported as a
+    # new failure; and on the UI file it muted the whole suite, hiding a real regression sitting
+    # beside a quarantined case.
+    # xcodebuild prints a failing case in three spellings and the quarantine files use only the
+    # last one, so every line is normalised to Suite/case() before the lookup:
+    #   Test Case '-[TableProUITests.FooUITests testBar]' failed (1.0 seconds).   XCTest
+    #   Test case 'FooUITests.testBar()' failed on 'My Mac' ...                   XCTest
+    #   Test case 'FooTests/bar()' failed on 'My Mac' ...                         Swift Testing
+    # Matching only the third muted nothing written by XCTest, which is every entry in the UI
+    # quarantine file, so a clean uitest run reported both quarantined cases as new failures.
+    local fail_lines unmuted muted_cases=0
+    fail_lines="$(grep -iE "$FAIL_PATTERN" "$log" 2> /dev/null)"
+    unmuted=""
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        local case_id
+        case_id="$(printf '%s\n' "$line" | sed -E \
+            -e "s|.*'-\[[A-Za-z0-9_]+\.([A-Za-z0-9_]+) ([A-Za-z0-9_]+)\]'.*|\1/\2()|" \
+            -e "s|.*'([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)\(\)'.*|\1/\2()|" \
+            -e "s|.*'([A-Za-z0-9_]+/[A-Za-z0-9_]+\(\))'.*|\1|")"
+        # A line none of the three matched comes back unchanged, so require the normalised shape
+        # before trusting it. Failing to extract must report the line, never mute it.
+        case "$case_id" in
+            *' '* | *'/'*'/'*) case_id="" ;;
+            */*'()') ;;
+            *) case_id="" ;;
+        esac
+        if [ -n "$case_id" ] \
+            && { grep -qxF "$case_id" "$quarantine" 2> /dev/null \
+                || grep -qxF "$case_id" "$ui_quarantine" 2> /dev/null; }; then
+            muted_cases=$((muted_cases + 1))
+            continue
+        fi
+        unmuted="$unmuted$line"$'\n'
+    done <<< "$fail_lines"
+
+    [ "$muted_cases" -gt 0 ] && note "muted: $muted_cases quarantined case(s)"
+
     local suites
-    suites="$(grep -iE "$FAIL_PATTERN" "$log" 2> /dev/null \
+    suites="$(printf '%s\n' "$unmuted" \
         | grep -oE "[A-Za-z_][A-Za-z0-9_]*Tests" \
         | grep -vxE "TableProTests|TableProUITests" \
         | sort -u)"
 
     if [ -z "$suites" ]; then
+        if [ -z "${unmuted//[$'\n' ]/}" ]; then
+            STATUS=PASS
+            note "verdict: no unexplained failures. Every failing case is quarantined."
+            return
+        fi
         STATUS=FAIL
         note "failing cases (no suite name on the line, read the log):"
-        note "$(grep -iE "$FAIL_PATTERN" "$log" 2> /dev/null | sed 's/^/  /' | head -10)"
+        note "$(printf '%s\n' "$unmuted" | sed 's/^/  /' | head -10)"
         return
     fi
 
     local new_suites="" muted=0 suite
     for suite in $suites; do
-        if [ -f "$quarantine" ] && grep -qx "$suite" "$quarantine" 2> /dev/null; then
-            muted=$((muted + 1))
-        elif [ -f "$ui_quarantine" ] && grep -q "^$suite/" "$ui_quarantine" 2> /dev/null; then
-            muted=$((muted + 1))
-        elif [[ " $KNOWN_ENV_FAILURES " == *" $suite "* ]]; then
+        if [[ " $KNOWN_ENV_FAILURES " == *" $suite "* ]]; then
             muted=$((muted + 1))
         else
             new_suites="$new_suites $suite"
         fi
     done
 
-    [ "$muted" -gt 0 ] && note "muted: $muted failing suite(s) are quarantined or known environment failures"
+    [ "$muted" -gt 0 ] && note "muted: $muted failing suite(s) are known environment failures"
     if [ -z "$new_suites" ]; then
         STATUS=PASS
         note "verdict: no unexplained failures. Every failing suite is already red on this machine."
     else
         STATUS=FAIL
         note "new failures:$new_suites"
-        note "$(grep -iE "$FAIL_PATTERN" "$log" 2> /dev/null | sed 's/^/  /' | head -10)"
+        note "$(printf '%s\n' "$unmuted" | sed 's/^/  /' | head -10)"
     fi
 }
 
@@ -404,19 +447,59 @@ case "$STEP" in
         # Lint the agent-facing docs in the same pass. They are instructions the next run acts on,
         # so a stale symbol there is a defect the same way a lint violation is, and it is the one
         # class of defect nothing else in this repo catches.
+        #
+        # This covers CLAUDE.md and .claude/ ONLY. It never reads docs/. The line it prints is
+        # labelled "agent docs:" for that reason: an earlier "docs: clean" was read as validation of
+        # the user-facing docs and a page shipped with a wrong capability table on a green run.
+        # For docs/, run `verify.sh docs`.
         doc_check="$REPO_ROOT/scripts/check-doc-symbols.sh"
         if [ -x "$doc_check" ]; then
             doc_out="$("$doc_check" 2>&1)"
             doc_code=$?
             if [ "$doc_code" -ne 0 ]; then
                 [ "$STATUS" = "PASS" ] && STATUS=FAIL
-                note "docs: $(printf '%s' "$doc_out" | tail -3 | head -1)"
+                note "agent docs: $(printf '%s' "$doc_out" | tail -3 | head -1)"
                 note "$(printf '%s' "$doc_out" | grep -E '^(CLAUDE|\.claude)' | sed 's/^/  /' | head -10)"
                 note "  run scripts/check-doc-symbols.sh for the full list"
             else
-                note "docs: $(printf '%s' "$doc_out" | tail -1)"
+                note "agent docs: $(printf '%s' "$doc_out" | tail -1)"
             fi
         fi
+        emit "$log" $code
+        ;;
+
+    docs)
+        # The two checks that actually read docs/. Neither runs anywhere else in this script, and
+        # CI runs them in the "Validate docs" job, so a local run is the only way to see a failure
+        # before the push.
+        log="$(new_log docs)"
+        : > "$log"
+        code=0
+        for check in "check-writing-style.sh" "check-docs-against-source.py"; do
+            script="$REPO_ROOT/docs/scripts/$check"
+            if [ ! -f "$script" ]; then
+                note "missing: docs/scripts/$check"
+                STATUS=INCONCLUSIVE
+                continue
+            fi
+            case "$check" in
+                *.sh) (cd "$REPO_ROOT/docs" && bash "scripts/$check") >> "$log" 2>&1 || code=1 ;;
+                *.py) (cd "$REPO_ROOT/docs" && python3 "scripts/$check") >> "$log" 2>&1 || code=1 ;;
+            esac
+        done
+        if [ "$STATUS" != "INCONCLUSIVE" ]; then
+            if [ $code -eq 0 ]; then
+                STATUS=PASS
+                note "docs/: house style and source claims both agree"
+            else
+                STATUS=FAIL
+                # The scripts print one line per check, most of them "ok". Show the failing check
+                # and the file:line under it, not the twenty passes above it.
+                note "$(grep -A 2 -E '^FAIL' "$log" 2> /dev/null | sed 's/^/  /' | head -15)"
+                note "$(grep -E 'contradict|house style' "$log" 2> /dev/null | sed 's/^/  /' | head -3)"
+            fi
+        fi
+        note "STYLE.md rules no script enforces: see .claude/rules/docs-authoring.md"
         emit "$log" $code
         ;;
 

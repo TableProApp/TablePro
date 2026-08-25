@@ -45,6 +45,11 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Apply query execution timeout (seconds, 0 = no limit)
     func applyQueryTimeout(_ seconds: Int) async throws
 
+    func resolveQueryCompletionProfile(
+        databaseTypeId: String,
+        base: QueryCompletionProfile
+    ) async throws -> QueryCompletionProfile
+
     // MARK: - Query Execution
 
     /// Execute a SQL query and return results
@@ -157,13 +162,20 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Default implementation returns an empty set; drivers that support them override.
     func fetchExternalSchemaNames() async throws -> Set<String>
 
-    /// Fetch stored procedures for the given schema (or current schema if nil).
-    /// Default implementation returns an empty list; drivers that support routines override.
-    func fetchProcedures(schema: String?) async throws -> [RoutineInfo]
+    /// Fetch every stored procedure and function in the given schema (or the current schema if
+    /// nil), in one round trip. Callers that want one kind filter the result rather than asking
+    /// twice, so an engine is never queried twice for what a single catalog read answers.
+    func fetchRoutines(schema: String?) async throws -> [RoutineInfo]
 
-    /// Fetch user-defined functions for the given schema (or current schema if nil).
-    /// Default implementation returns an empty list; drivers that support routines override.
-    func fetchFunctions(schema: String?) async throws -> [RoutineInfo]
+    /// Fetch the source of one routine. The routine must be one this driver listed, because its
+    /// `identity` is the driver's own key for finding it again.
+    func fetchRoutineDDL(_ routine: RoutineInfo) async throws -> String
+
+    /// Fetch every trigger in the given schema, across all its tables.
+    func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo]
+
+    /// Fetch the source of one trigger.
+    func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String
 
     /// Fetch metadata for a specific database (table count, size, etc.)
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata
@@ -273,6 +285,13 @@ extension DatabaseDriver {
 
     func connectReporting(stage report: @escaping ConnectionStageReporter) async throws {
         try await connect()
+    }
+
+    func resolveQueryCompletionProfile(
+        databaseTypeId: String,
+        base: QueryCompletionProfile
+    ) async throws -> QueryCompletionProfile {
+        base
     }
 
     var queryBuildingPluginDriver: (any PluginDatabaseDriver)? { nil }
@@ -482,9 +501,18 @@ extension DatabaseDriver {
         try await fetchTables()
     }
 
-    func fetchProcedures(schema: String?) async throws -> [RoutineInfo] { [] }
+    func fetchRoutines(schema: String?) async throws -> [RoutineInfo] { [] }
 
-    func fetchFunctions(schema: String?) async throws -> [RoutineInfo] { [] }
+    func fetchRoutineDDL(_ routine: RoutineInfo) async throws -> String {
+        throw PluginObjectSourceError.unsupported(routine.name)
+    }
+
+    func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo] { [] }
+
+    func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String {
+        if let definition = trigger.definition, !definition.isEmpty { return definition }
+        throw PluginObjectSourceError.unsupported(trigger.name)
+    }
 
     var supportsTransactions: Bool { true }
 
@@ -593,7 +621,7 @@ enum DatabaseDriverFactory {
             preTunnelPort: connection.preTunnelPort,
             override: fields["awsRDSEndpoint"],
             defaultPort: PluginMetadataRegistry.shared
-                .snapshot(forTypeId: connection.type.pluginTypeId)?.defaultPort ?? connection.port
+                .snapshot(for: connection.type)?.defaultPort ?? connection.port
         )
 
         let explicitRegion = fields["awsRegion"].flatMap { $0.isEmpty ? nil : $0 }
@@ -651,14 +679,18 @@ enum DatabaseDriverFactory {
             fields[key] = value
         }
 
-        let secureFields = PluginManager.shared.additionalConnectionFields(for: connection.type)
-            .filter(\.isSecure)
-        for field in secureFields {
-            if fields[field.id] == nil || fields[field.id]?.isEmpty == true {
+        /// The superset, not the rendered form's list. A connection saved while a variant was
+        /// still being offered its primary's whole form holds those values in the Keychain, and
+        /// the connection still acts on them: a Redshift connection with `awsAuth` set reaches
+        /// `resolveIAMPassword`, which reads `awsSecretAccessKey` from here. Loading only what the
+        /// form renders today would leave that secret behind and fail the connect, with no AWS
+        /// section left in the form to turn it off.
+        for fieldId in PluginManager.shared.secureConnectionFieldIds(for: connection.type) {
+            if fields[fieldId] == nil || fields[fieldId]?.isEmpty == true {
                 if let secureValue = ConnectionStorage.shared.loadPluginSecureField(
-                    fieldId: field.id, for: connection.id
+                    fieldId: fieldId, for: connection.id
                 ) {
-                    fields[field.id] = secureValue
+                    fields[fieldId] = secureValue
                 }
             }
         }

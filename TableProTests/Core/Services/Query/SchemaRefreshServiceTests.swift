@@ -47,6 +47,28 @@ private final class FakeScopedMetadataProvider: ScopedMetadataProviding {
     }
 }
 
+@MainActor
+private final class ScopeRoutingMetadataProvider: ScopedMetadataProviding {
+    let drivers: [DatabaseScope: MockDatabaseDriver]
+    private(set) var requestedScopes: [DatabaseScope] = []
+
+    init(drivers: [DatabaseScope: MockDatabaseDriver]) {
+        self.drivers = drivers
+    }
+
+    func withMetadataDriver<T: Sendable>(
+        scope: DatabaseScope,
+        workload: MetadataConnectionPool.Workload,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
+    ) async throws -> T {
+        requestedScopes.append(scope)
+        guard let driver = drivers[scope] else { throw DatabaseError.notConnected }
+        return try await body(driver)
+    }
+
+    func browseScope(for connectionId: UUID) -> DatabaseScope? { nil }
+}
+
 @Suite("SchemaRefreshService")
 @MainActor
 struct SchemaRefreshServiceTests {
@@ -78,7 +100,7 @@ struct SchemaRefreshServiceTests {
         _ = await (first, second, third)
 
         #expect(driver.fetchTablesCallCount == 1)
-        #expect(provider.acquisitionCount == 1)
+        #expect(provider.requestedWorkloads.filter { $0 == .bulk }.count == 1)
         #expect(schemaService.state(for: connection.id) == .loaded(driver.tablesToReturn))
     }
 
@@ -94,12 +116,12 @@ struct SchemaRefreshServiceTests {
 
         await service.refresh(connection: connection)
 
-        #expect(provider.requestedScopes.count == 1)
         let scope = try #require(provider.requestedScopes.first)
         #expect(scope.connectionId == connection.id)
         #expect(scope.database == "inventory")
         #expect(scope.schema == "dbo")
-        #expect(provider.requestedWorkloads == [.bulk])
+        #expect(Set(provider.requestedScopes) == [scope])
+        #expect(provider.requestedWorkloads.first == .bulk)
     }
 
     @Test("an empty browse database is server scoped, so the refresh still runs")
@@ -116,6 +138,7 @@ struct SchemaRefreshServiceTests {
         let scope = try #require(provider.requestedScopes.first)
         #expect(scope.isServerScoped)
         #expect(driver.fetchTablesCallCount == 1)
+        #expect(provider.requestedWorkloads.filter { $0 == .bulk }.count == 1)
         #expect(schemaService.state(for: connection.id) == .loaded(driver.tablesToReturn))
     }
 
@@ -147,9 +170,10 @@ struct SchemaRefreshServiceTests {
             TableInfo(name: "customers", type: .table, rowCount: 0, schema: nil)
         ]
         let provider = FakeScopedMetadataProvider(driver: driver)
-        let registry = SchemaProviderRegistry()
+        let registry = SchemaProviderRegistry(metadataDriverProvider: provider)
         let connection = TestFixtures.makeConnection()
-        let schemaProvider = registry.getOrCreate(for: connection.id)
+        let scope = DatabaseScope(connectionId: connection.id, database: "testdb", schema: nil)
+        let schemaProvider = registry.getOrCreate(for: scope)
         let service = makeService(
             schemaService: SchemaService(),
             provider: provider,
@@ -162,14 +186,37 @@ struct SchemaRefreshServiceTests {
         #expect(names.sorted() == ["customers", "orders"])
     }
 
+    @Test("the sync creates the browse scope's provider when no tab has one yet")
+    func autocompleteSyncCreatesTheBrowseScopeProvider() async throws {
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
+        let provider = FakeScopedMetadataProvider(driver: driver)
+        let registry = SchemaProviderRegistry(metadataDriverProvider: provider)
+        let connection = TestFixtures.makeConnection()
+        let service = makeService(
+            schemaService: SchemaService(),
+            provider: provider,
+            providerRegistry: registry
+        )
+
+        await service.refresh(connection: connection)
+
+        let scope = DatabaseScope(connectionId: connection.id, database: "testdb", schema: nil)
+        let schemaProvider = try #require(registry.provider(for: scope))
+        let names = await schemaProvider.getTables().map(\.name)
+        #expect(names == ["orders"])
+        #expect(driver.fetchTablesCallCount == 1)
+    }
+
     @Test("no browse scope leaves the autocomplete provider untouched instead of clearing it")
     func autocompleteSyncWithoutABrowseScopeKeepsTheCachedTables() async {
         let driver = MockDatabaseDriver()
         driver.tablesToReturn = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
         let provider = FakeScopedMetadataProvider(driver: driver)
-        let registry = SchemaProviderRegistry()
+        let registry = SchemaProviderRegistry(metadataDriverProvider: provider)
         let connection = TestFixtures.makeConnection()
-        let schemaProvider = registry.getOrCreate(for: connection.id)
+        let scope = DatabaseScope(connectionId: connection.id, database: "testdb", schema: nil)
+        let schemaProvider = registry.getOrCreate(for: scope)
         let service = makeService(
             schemaService: SchemaService(),
             provider: provider,
@@ -210,7 +257,7 @@ struct SchemaRefreshServiceTests {
         async let unscoped: Void = service.refresh(connection: connection, database: nil)
         _ = await (scoped, unscoped)
 
-        #expect(provider.acquisitionCount == 2)
+        #expect(provider.requestedWorkloads.filter { $0 == .bulk }.count == 2)
     }
 
     @Test("a metadata connection failure surfaces a failed schema state")
@@ -229,5 +276,36 @@ struct SchemaRefreshServiceTests {
             isFailed = true
         }
         #expect(isFailed)
+    }
+
+    @Test("query tabs on one connection keep schema providers isolated by full scope")
+    func queryTabProvidersAreIsolatedByScope() async {
+        let connectionId = UUID()
+        let salesScope = DatabaseScope(connectionId: connectionId, database: "shop", schema: "sales")
+        let auditScope = DatabaseScope(connectionId: connectionId, database: "shop", schema: "audit")
+        let salesDriver = MockDatabaseDriver()
+        salesDriver.tablesToReturn = [
+            TableInfo(name: "orders", type: .table, rowCount: 0, schema: "sales")
+        ]
+        let auditDriver = MockDatabaseDriver()
+        auditDriver.tablesToReturn = [
+            TableInfo(name: "events", type: .table, rowCount: 0, schema: "audit")
+        ]
+        let metadataProvider = ScopeRoutingMetadataProvider(
+            drivers: [salesScope: salesDriver, auditScope: auditDriver]
+        )
+        let registry = SchemaProviderRegistry(metadataDriverProvider: metadataProvider)
+
+        let salesProvider = await registry.prepare(for: salesScope)
+        let auditProvider = await registry.prepare(for: auditScope)
+
+        let salesNames = await salesProvider.getTables().map(\.name)
+        let auditNames = await auditProvider.getTables().map(\.name)
+        #expect(salesProvider !== auditProvider)
+        #expect(salesNames == ["orders"])
+        #expect(auditNames == ["events"])
+        #expect(registry.provider(for: salesScope) === salesProvider)
+        #expect(registry.provider(for: auditScope) === auditProvider)
+        #expect(Set(metadataProvider.requestedScopes) == [salesScope, auditScope])
     }
 }

@@ -54,7 +54,7 @@ extension DatabaseConnection {
     }
 
     private var declaredConnectionFields: [ConnectionField] {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: type.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: type)?
             .connection.additionalConnectionFields ?? []
     }
 

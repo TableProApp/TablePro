@@ -31,6 +31,9 @@ internal struct DatabaseTreeMenuContext {
     internal let schemaEntityNamePlural: String
     internal let objectKindTitles: [SidebarObjectKind: String]
     internal let isFavorite: Bool
+    /// Keyed per database rather than resolved for the clicked row alone, because a right-click
+    /// inside a multi-selection acts on the whole selection and those databases need not share a tag.
+    internal var favoriteDatabaseEnvironments: [String: FavoriteDatabaseEnvironment] = [:]
     internal let showObjectIcons: Bool
     internal let showObjectComments: Bool
     internal let rowSize: SidebarRowSizePreference
@@ -73,6 +76,8 @@ internal enum DatabaseTreeMenuSpec {
             )
         case .routine(let ref):
             return routineItems(ref)
+        case .trigger(let ref):
+            return triggerItems(ref)
         case .objectKindSection(let kind):
             return objectKindItems(kind, context: context)
         case .containerObjectKindSection(let group):
@@ -162,14 +167,24 @@ internal enum DatabaseTreeMenuSpec {
 
     private static func routineItems(_ ref: DatabaseTreeRoutineRef) -> [DatabaseTreeMenuItem] {
         var items: [DatabaseTreeMenuItem] = [.command(String(localized: "Copy Name"), .copyText(ref.routine.name))]
-        if let signature = ref.routine.signature, !signature.isEmpty {
+        if let signature = ref.routine.argumentSignature, !signature.isEmpty {
             items.append(.command(
                 String(localized: "Copy with Signature"),
-                .copyText("\(ref.routine.name)\(signature)")
+                .copyText(RoutineDisplayLabel.copyableSignature(for: ref.routine))
             ))
         }
         items.append(.separator)
-        items.append(.command(String(localized: "Show DDL"), .showRoutineDDL(ref)))
+        items.append(.command(String(localized: "Show DDL"), .showObjectSource(ref.objectRef)))
+        return items
+    }
+
+    private static func triggerItems(_ ref: DatabaseTreeTriggerRef) -> [DatabaseTreeMenuItem] {
+        var items: [DatabaseTreeMenuItem] = [.command(String(localized: "Copy Name"), .copyText(ref.trigger.name))]
+        if let table = ref.trigger.table, !table.isEmpty {
+            items.append(.command(String(localized: "Copy Table Name"), .copyText(table)))
+        }
+        items.append(.separator)
+        items.append(.command(String(localized: "Show DDL"), .showObjectSource(ref.objectRef)))
         return items
     }
 
@@ -219,16 +234,53 @@ internal enum DatabaseTreeMenuSpec {
         items.append(.command(String(localized: "Refresh"), .refreshContainers(targets)))
         items.append(.command(copyNamesTitle(count: targets.count), .copyContainerNames(targets)))
 
+        let favoriteDatabases = targets.filter { $0.kind == .database }.compactMap(\.database)
+        if !favoriteDatabases.isEmpty {
+            let favoriteItems = favoriteDatabaseItems(
+                databases: favoriteDatabases,
+                state: FavoriteDatabaseSelectionState(
+                    environments: favoriteDatabases.map { context.favoriteDatabaseEnvironments[$0] }
+                )
+            )
+            if !favoriteItems.isEmpty {
+                items.append(.separator)
+                items += favoriteItems
+            }
+        }
+
         if ExportPreselection.canPreselect(
             containers: targets,
             activeDatabase: context.activeDatabase,
             canReachOtherDatabases: context.canReachOtherDatabases
         ) {
+            items.append(.separator)
             items.append(.command(String(localized: "Export…"), .exportContainers(targets)))
         }
         guard !droppable.isEmpty else { return items }
         items.append(.separator)
         items.append(.command(dropTitle(for: droppable, context: context), .dropContainers(droppable)))
+        return items
+    }
+
+    private static func favoriteDatabaseItems(
+        databases: [String],
+        state: FavoriteDatabaseSelectionState
+    ) -> [DatabaseTreeMenuItem] {
+        guard !state.isEmpty else { return [] }
+        let environmentItems: [DatabaseTreeMenuItem] = FavoriteDatabaseMenu.environmentItems(for: state)
+            .map { item in
+                .command(SidebarMenuEntry(
+                    title: item.title,
+                    command: .setFavoriteDatabases(databases: databases, environment: item.environment),
+                    isOn: item.isOn
+                ))
+            }
+        var items: [DatabaseTreeMenuItem] = [
+            .submenu(title: FavoriteDatabaseMenu.submenuTitle(for: state), items: environmentItems)
+        ]
+        if state.hasFavorite {
+            items.append(.destructive(FavoriteDatabaseMenu.removeTitle, .removeFavoriteDatabases(databases)))
+        }
         return items
     }
 

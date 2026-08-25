@@ -56,11 +56,23 @@ struct SyncSchemaGateTests {
         #expect(SampleField.deployed.productionSchemaState == .verified)
     }
 
-    @Test("Every record type the app declares is currently deployed")
-    func allRecordTypesAreWritable() {
-        let gated = SyncRecordType.allCases.filter { !$0.isWritable }
+    /// A type lands here only between the commit that declares it and the commit that carries the
+    /// refreshed `production-schema.ckdb`. Anything gated and unlisted is a type that will never
+    /// sync, which is what this test exists to catch; anything listed and no longer gated means the
+    /// deploy landed and the entry is stale. Comparing sets catches both.
+    private static let pendingProductionDeploy: Set<SyncRecordType> = [.favoriteDatabase]
 
-        #expect(gated.isEmpty, "Gated record types: \(gated.map(\.rawValue).sorted())")
+    @Test("Every record type the app declares is deployed, or is explicitly awaiting deployment")
+    func allRecordTypesAreWritable() {
+        let gated = Set(SyncRecordType.allCases.filter { !$0.isWritable })
+
+        #expect(
+            gated == Self.pendingProductionDeploy,
+            """
+            Gated record types: \(gated.map(\.rawValue).sorted()). \
+            Awaiting deployment: \(Self.pendingProductionDeploy.map(\.rawValue).sorted())
+            """
+        )
     }
 
     @Test("Records of a deployed type are published")

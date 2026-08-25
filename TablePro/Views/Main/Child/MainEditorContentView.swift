@@ -152,6 +152,7 @@ struct MainEditorContentView: View {
             serverDashboardViewModels = serverDashboardViewModels.filter { openTabIds.contains($0.key) }
             usersRolesViewModels = usersRolesViewModels.filter { openTabIds.contains($0.key) }
             queryInsightsViewModels = queryInsightsViewModels.filter { openTabIds.contains($0.key) }
+            SchemaProviderRegistry.shared.reclaimUnheldProviders(for: connectionId)
         }
         .onChange(of: tabManager.selectedTabId) { _, _ in
             updateHasQueryText()
@@ -225,12 +226,35 @@ struct MainEditorContentView: View {
             usersRolesContent(tab: tab)
         case .insights:
             queryInsightsContent(tab: tab)
+        case .objectSource:
+            objectSourceContent(tab: tab)
+        }
+    }
+
+    // MARK: - Object Source Tab Content
+
+    @ViewBuilder
+    private func objectSourceContent(tab: QueryTab) -> some View {
+        if let objectRef = tab.display.objectRef {
+            ObjectSourceTabView(
+                connectionId: connection.id,
+                databaseType: connection.type,
+                objectRef: objectRef,
+                onOpenInEditor: { source in
+                    coordinator.openObjectSourceInEditor(objectRef, source: source)
+                }
+            )
+            .id(objectRef)
+        } else {
+            ContentUnavailableView(
+                String(localized: "No Object"),
+                systemImage: "questionmark.square.dashed"
+            )
         }
     }
 
     // MARK: - Query Insights Tab Content
 
-    @ViewBuilder
     private func queryInsightsContent(tab: QueryTab) -> some View {
         Group {
             if let vm = queryInsightsViewModels[tab.id] {
@@ -346,9 +370,20 @@ struct MainEditorContentView: View {
         PluginManager.shared.containerEntityName(for: connection.type)
     }
 
+    /// Read from the tab's own scope, the same value completion resolves against, so the control
+    /// and the suggestions can never describe different databases. Sequel Ace ships that
+    /// divergence: its tab title names one database while the tab queries another (#1396, #1806).
     private func containerName(for tab: QueryTab) -> String {
+        if let scoped = coordinator.scope(for: tab)?.database, !scoped.isEmpty { return scoped }
         let bound = tab.tableContext.databaseName
         return bound.isEmpty ? coordinator.browseDatabaseName : bound
+    }
+
+    /// Only shown beside a database, never instead of one: on an engine whose container IS the
+    /// schema the picker is already naming it.
+    private func containerSchemaName(for tab: QueryTab) -> String? {
+        guard containerSwitchTarget == .database else { return nil }
+        return coordinator.scope(for: tab)?.schema
     }
 
     /// Rebinding the container is a tab-local edit. The tab owns the new database for the
@@ -358,6 +393,7 @@ struct MainEditorContentView: View {
         guard tab.tableContext.databaseName != name,
               tabManager.mutate(tabId: tabId, { $0.tableContext.databaseName = name }) else { return }
         tabManager.markTabRenamed(tabId)
+        SchemaProviderRegistry.shared.reclaimUnheldProviders(for: connectionId)
         guard tabManager.selectedTabId == tabId else { return }
         coordinator.runQuery()
     }
@@ -368,6 +404,7 @@ struct MainEditorContentView: View {
     private func queryTabContent(tab: QueryTab) -> some View {
         @Bindable var bindableCoordinator = coordinator
         let claimFocus = coordinator.tabManager.pendingFocusTabId == tab.id
+        let queryScope = coordinator.scope(for: tab)
         VerticalCollapsibleSplitView(
             isBottomCollapsed: Binding(
                 get: { tab.display.isResultsCollapsed },
@@ -395,8 +432,9 @@ struct MainEditorContentView: View {
                         onExecute: { coordinator.runQuery() },
                         onExecuteWithoutLimit: { coordinator.runQuery(bypassRowLimit: true) },
                         onExecuteAllStatements: { coordinator.runAllStatements() },
-                        schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: coordinator.connection.id),
+                        schemaProvider: queryScope.map { SchemaProviderRegistry.shared.getOrCreate(for: $0) },
                         databaseType: coordinator.connection.type,
+                        databaseScope: queryScope,
                         connectionId: coordinator.connection.id,
                         connectionAIPolicy: coordinator.connection.aiPolicy ?? AppSettingsManager.shared.ai.defaultConnectionPolicy,
                         tabID: tab.id,
@@ -437,6 +475,7 @@ struct MainEditorContentView: View {
                         selectedContainerName: containerName(for: tab),
                         containerEntityName: containerEntityName,
                         isContainerSwitchReadOnly: isContainerSwitchReadOnly,
+                        containerSchemaName: containerSchemaName(for: tab),
                         onContainerChanged: { name in changeContainer(for: tab, to: name) }
                     )
                 }
@@ -449,6 +488,13 @@ struct MainEditorContentView: View {
         )
         .onAppear {
             coordinator.clearRestoredCursor(for: tab.id)
+        }
+        .task(id: queryScope) {
+            guard let queryScope else { return }
+            await SchemaProviderRegistry.shared.prepare(
+                for: queryScope,
+                connection: coordinator.connection
+            )
         }
     }
 
@@ -653,11 +699,7 @@ struct MainEditorContentView: View {
             case .chart:
                 resultTabBarSection(tab: tab)
                 if let explain = tab.display.activeExplainResult {
-                    QueryPlanResultView(
-                        rawText: explain.explainRawText ?? "",
-                        executionTime: explain.executionTime,
-                        plan: explain.queryPlan
-                    )
+                    queryPlanResultView(for: explain)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let resultSet = tab.display.activeResultSet {
                     ResultChartView(
@@ -679,11 +721,7 @@ struct MainEditorContentView: View {
             case .data:
                 resultTabBarSection(tab: tab)
                 if let explain = tab.display.activeExplainResult {
-                    QueryPlanResultView(
-                        rawText: explain.explainRawText ?? "",
-                        executionTime: explain.executionTime,
-                        plan: explain.queryPlan
-                    )
+                    queryPlanResultView(for: explain)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     let resolvedRows = resolvedTableRows(for: tab)
@@ -767,6 +805,15 @@ struct MainEditorContentView: View {
         }
     }
 
+    private func queryPlanResultView(for resultSet: ResultSet) -> QueryPlanResultView {
+        QueryPlanResultView(
+            rawText: resultSet.explainRawText ?? "",
+            executionTime: resultSet.executionTime,
+            plan: resultSet.queryPlan,
+            planContext: resultSet.explainPlanContext
+        )
+    }
+
     @ViewBuilder
     private func resultTabBarSection(tab: QueryTab) -> some View {
         if ResultTabBarPolicy.showsTabBar(tabType: tab.tabType, display: tab.display) {
@@ -846,7 +893,8 @@ struct MainEditorContentView: View {
             ),
             sortState: sortStateBinding(for: tab),
             columnLayout: columnLayoutBinding(for: tab),
-            valueFilter: valueFilterBinding(for: tab)
+            valueFilter: valueFilterBinding(for: tab),
+            displayState: coordinator.displayState(for: tab)
         )
         .id(tabId)
         .frame(maxHeight: .infinity, alignment: .top)

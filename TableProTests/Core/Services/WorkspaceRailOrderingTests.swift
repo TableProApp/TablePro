@@ -191,4 +191,43 @@ struct WorkspaceRailOrderingTests {
         #expect(first == [alpha, logs])
         #expect(first == second)
     }
+
+    /// The cap exists because a database that is renamed or dropped raises no event, so its entry
+    /// can never be removed the way a deleted connection's is. Everything open survives it.
+    @Test("The cap never drops a workspace that is open")
+    func capKeepsEveryVisibleEntry() {
+        let connectionId = UUID()
+        let visible = (0..<10).map { WorkspaceID(connectionId: connectionId, container: "open\($0)") }
+        let closed = (0..<WorkspaceRailOrdering.maxStoredEntries).map {
+            WorkspaceID(connectionId: connectionId, container: "closed\($0)")
+        }
+
+        let capped = WorkspaceRailOrdering.capped(closed + visible, keeping: Set(visible))
+
+        #expect(capped.count == WorkspaceRailOrdering.maxStoredEntries)
+        #expect(visible.allSatisfy(capped.contains))
+    }
+
+    /// Trimming the list itself would take the newest arrangements: `merged` appends what it has
+    /// just seen at the end, so the oldest closed entries are the ones at the front.
+    @Test("The cap drops closed entries oldest first")
+    func capDropsTheOldestClosedEntries() {
+        let connectionId = UUID()
+        let stored = (0..<(WorkspaceRailOrdering.maxStoredEntries + 2)).map {
+            WorkspaceID(connectionId: connectionId, container: "closed\($0)")
+        }
+
+        let capped = WorkspaceRailOrdering.capped(stored, keeping: [])
+
+        #expect(capped.count == WorkspaceRailOrdering.maxStoredEntries)
+        #expect(capped.first == stored[2])
+        #expect(capped.last == stored.last)
+    }
+
+    @Test("A list within budget is left exactly as it is")
+    func capIsInertWithinBudget() {
+        let connectionId = UUID()
+        let stored = (0..<3).map { WorkspaceID(connectionId: connectionId, container: "c\($0)") }
+        #expect(WorkspaceRailOrdering.capped(stored, keeping: []) == stored)
+    }
 }

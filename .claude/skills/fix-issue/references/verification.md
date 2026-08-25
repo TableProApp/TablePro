@@ -147,7 +147,15 @@ The checkout can move between turns, and uncommitted edits to tracked files are 
 
 ## Before the commit
 
-- Run `Skill(code-review)` over the diff and act on what it finds. Its findings on the lines you just wrote matter as much as its findings on old code.
+- **Review the diff with Codex**, from the repo root (the worktree root when you are on one), backgrounded with `run_in_background: true`, and act on what it finds. A different model reading the change cold is the point; reviewing your own diff with the model that wrote it carries the blind spots that produced it.
+  ```bash
+  CODEX="$(ls -1d "$HOME"/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs | sort -V | tail -1)"
+  node "$CODEX" review --wait --scope working-tree
+  node "$CODEX" adversarial-review --wait --scope working-tree "<the mechanism the fix rests on>"
+  ```
+  Resolve the path rather than hardcoding the version: the install directory is version-pinned and `$CLAUDE_PLUGIN_ROOT` is only set inside the plugin's own commands. Use `--base main` once the branch already carries commits. State the scope instead of letting `auto` choose, which silently switches between working tree and branch diff depending on whether the tree is dirty. `review` finds defects and takes no focus text; `adversarial-review` challenges the approach and does. Run them one at a time, never concurrently.
+- Its findings on the lines you just wrote matter as much as its findings on old code. Unlike the `/codex:review` slash command, which stops and asks, this workflow fixes what the review finds and reports what it dismissed and why.
+- If Codex is missing, or the output ends `Reviewer failed to output a response.` after `Your workspace is out of credits.`, fall back to `Skill(code-review)` and name in the final report which reviewer actually read the diff. That credit failure is the dangerous one: it exits 1 with an empty review that reads like a clean pass, and `/codex:setup` still reports ready because it checks login rather than billing.
 - **Confirm the CHANGELOG still has its headings:**
   ```bash
   grep -n '^## \[' CHANGELOG.md

@@ -19,6 +19,30 @@
               "${applicationName}에서 행 추가"
             ]
           }
+        },
+        "vi" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Thêm một dòng trong ${applicationName}"
+            ]
+          }
+        },
+        "zh-Hans" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "在 ${applicationName} 中添加一行"
+            ]
+          }
+        },
+        "zh-Hant" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "在 ${applicationName} 中新增一列"
+            ]
+          }
         }
       }
     },
@@ -38,6 +62,30 @@
             "state" : "translated",
             "values" : [
               "${applicationName}에서 여러 행 추가"
+            ]
+          }
+        },
+        "vi" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Thêm nhiều dòng trong ${applicationName}"
+            ]
+          }
+        },
+        "zh-Hans" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "在 ${applicationName} 中添加多行"
+            ]
+          }
+        },
+        "zh-Hant" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "在 ${applicationName} 中新增多列"
             ]
           }
         }
@@ -61,6 +109,33 @@
             "values" : [
               "${applicationName}에서 ${connection} 열기",
               "${applicationName}에서 ${connection}에 연결"
+            ]
+          }
+        },
+        "vi" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Mở ${connection} trong ${applicationName}",
+              "Kết nối tới ${connection} trong ${applicationName}"
+            ]
+          }
+        },
+        "zh-Hans" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "在 ${applicationName} 中打开 ${connection}",
+              "在 ${applicationName} 中连接到 ${connection}"
+            ]
+          }
+        },
+        "zh-Hant" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "在 ${applicationName} 中開啟 ${connection}",
+              "在 ${applicationName} 中連線到 ${connection}"
             ]
           }
         }

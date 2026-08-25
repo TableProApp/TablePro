@@ -28,7 +28,16 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     var capabilities: PluginCapabilities {
-        [.multiSchema, .transactions, .truncateTable, .cancelQuery, .parameterizedQueries, .alterTableDDL]
+        [
+            .multiSchema,
+            .transactions,
+            .truncateTable,
+            .cancelQuery,
+            .parameterizedQueries,
+            .alterTableDDL,
+            .schemaCompare,
+            .dataCompare,
+        ]
     }
 
     func cancelQuery() throws {

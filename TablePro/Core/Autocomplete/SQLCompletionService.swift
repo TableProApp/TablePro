@@ -8,9 +8,16 @@ final class SQLCompletionService: QueryCompletionService {
 
     private static let windowRadius = 5_000
 
-    init(schemaProvider: SQLSchemaProvider?, databaseType: DatabaseType?) {
-        let dialect = databaseType.flatMap { PluginManager.shared.sqlDialect(for: $0) }
-        let statementCompletions = databaseType.flatMap { PluginManager.shared.statementCompletions(for: $0) } ?? []
+    init(
+        schemaProvider: SQLSchemaProvider?,
+        databaseType: DatabaseType?,
+        profile: QueryCompletionProfile? = nil
+    ) {
+        let dialect = profile?.resolvedDialect
+            ?? databaseType.flatMap { PluginManager.shared.sqlDialect(for: $0) }
+        let statementCompletions = profile?.statementCompletions
+            ?? databaseType.flatMap { PluginManager.shared.statementCompletions(for: $0) }
+            ?? []
         self.engine = CompletionEngine(
             schemaProvider: schemaProvider,
             databaseType: databaseType,

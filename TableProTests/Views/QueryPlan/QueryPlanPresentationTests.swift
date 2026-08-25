@@ -62,7 +62,8 @@ struct QueryPlanPresentationTests {
         for mode in QueryPlanViewMode.allCases {
             #expect(!mode.title.isEmpty)
         }
-        #expect(QueryPlanViewMode.allCases.count == 3)
+        #expect(QueryPlanViewMode.allCases.count == 4)
+        #expect(QueryPlanViewMode.allCases.contains(.compare))
     }
 
     @Test("An explain result set is recognised by its raw text, not by a parsed plan")

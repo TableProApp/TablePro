@@ -53,7 +53,7 @@ struct HexEditorContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HexDumpDisplayView(text: hexDumpText)
+            HexDumpDisplayView(text: hexDumpText, font: ThemeEngine.shared.valueFont)
 
             if isEditable {
                 Divider()
@@ -63,7 +63,7 @@ struct HexEditorContentView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    HexInputTextView(text: $editableHex)
+                    HexInputTextView(text: $editableHex, font: ThemeEngine.shared.valueFont)
                         .frame(height: 80)
 
                     HStack(spacing: 4) {
@@ -114,11 +114,24 @@ struct HexEditorContentView: View {
                 .padding(.vertical, 8)
             }
         }
-        .frame(width: 520, height: isEditable ? 400 : 280)
+        .frame(width: Self.popoverWidth, height: isEditable ? 400 : 280)
         .onChange(of: editableHex) { _, newValue in
             scheduleValidation(newValue)
         }
     }
+
+    /// A dump line is a fixed count of monospaced characters, so the popover is only as wide as
+    /// that count in the value font. Fixing the width instead wraps every line and breaks the
+    /// column alignment the dump exists for.
+    private static var popoverWidth: CGFloat {
+        let line = ThemeEngine.shared.dataGridFonts.monoCharWidth
+            * CGFloat(HexDumpLayout.lineWidthInCharacters)
+        return line + textViewChromeWidth
+    }
+
+    /// The text container's own inset on both edges, the layout manager's line fragment padding,
+    /// and room for the vertical scroller.
+    private static let textViewChromeWidth: CGFloat = 42
 
     // MARK: - Actions
 
@@ -191,6 +204,7 @@ struct HexEditorContentView: View {
 
 private struct HexDumpDisplayView: NSViewRepresentable {
     let text: String
+    let font: NSFont
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSTextView.scrollableTextView()
@@ -200,10 +214,7 @@ private struct HexDumpDisplayView: NSViewRepresentable {
 
         textView.isEditable = false
         textView.isSelectable = true
-        textView.font = NSFont.monospacedSystemFont(
-            ofSize: 11,
-            weight: .regular
-        )
+        textView.font = font
         textView.textContainerInset = NSSize(width: 8, height: 8)
         textView.backgroundColor = NSColor.textBackgroundColor
         textView.textColor = NSColor.secondaryLabelColor
@@ -214,6 +225,9 @@ private struct HexDumpDisplayView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
+        if textView.font != font {
+            textView.font = font
+        }
         if textView.string != text {
             textView.string = text
         }
@@ -224,6 +238,7 @@ private struct HexDumpDisplayView: NSViewRepresentable {
 
 private struct HexInputTextView: NSViewRepresentable {
     @Binding var text: String
+    let font: NSFont
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -237,10 +252,7 @@ private struct HexInputTextView: NSViewRepresentable {
 
         textView.isEditable = true
         textView.isSelectable = true
-        textView.font = NSFont.monospacedSystemFont(
-            ofSize: 12,
-            weight: .regular
-        )
+        textView.font = font
         textView.textContainerInset = NSSize(width: 8, height: 8)
         textView.backgroundColor = NSColor.textBackgroundColor
         textView.textColor = NSColor.labelColor
@@ -262,6 +274,9 @@ private struct HexInputTextView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
+        if textView.font != font {
+            textView.font = font
+        }
         if textView.string != text, !context.coordinator.isUpdating {
             textView.string = text
         }

@@ -19,11 +19,14 @@ internal struct BlobHexEditorView: View {
         }
     }
 
+    /// A dump line is wider than the inspector at any font, so it scrolls in both axes. Letting it
+    /// wrap to the pane instead folds each line onto the next and the offset, hex and ASCII columns
+    /// stop lining up, which is the whole point of a dump.
     private var readOnlyHexView: some View {
-        ScrollView {
+        ScrollView([.horizontal, .vertical]) {
             Text(BlobFormattingService.shared.format(context.value.wrappedValue, for: .detail) ?? "")
-                .font(.system(.caption2, design: .monospaced))
                 .textSelection(.enabled)
+                .fixedSize()
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxHeight: 120)
@@ -33,7 +36,6 @@ internal struct BlobHexEditorView: View {
         VStack(alignment: .leading, spacing: 2) {
             TextField("Hex bytes", text: $hexEditText, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
-                .font(.system(.caption2, design: .monospaced))
                 .lineLimit(3...8)
                 .autocorrectionDisabled(true)
                 .focused($isFocused)

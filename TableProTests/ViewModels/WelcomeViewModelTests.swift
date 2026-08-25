@@ -85,6 +85,7 @@ final class WelcomeViewModelTests: XCTestCase {
             schemaProviderRegistry: live.schemaProviderRegistry,
             sqlFavoriteManager: live.sqlFavoriteManager,
             favoriteTablesStorage: live.favoriteTablesStorage,
+            favoriteDatabasesStorage: live.favoriteDatabasesStorage,
             aiChatStorage: live.aiChatStorage,
             aiKeyStorage: live.aiKeyStorage,
             groupStorage: groupStorage,

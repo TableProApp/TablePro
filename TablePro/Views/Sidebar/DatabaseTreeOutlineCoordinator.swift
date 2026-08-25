@@ -15,6 +15,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     internal let service = DatabaseTreeMetadataService.shared
     private static let cellIdentifier = NSUserInterfaceItemIdentifier("DatabaseTreeCell")
     private let favoriteTablesStorage: FavoriteTablesStorage
+    internal let favoriteDatabasesStorage: FavoriteDatabasesStorage
 
     internal var connectionId = UUID()
     internal var databaseType: DatabaseType = .mysql
@@ -34,6 +35,9 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     internal var nodeCache: [String: DatabaseTreeNode] = [:]
     internal var childrenCache: [String: [DatabaseTreeNode]] = [:]
     internal var objectBucketsCache: [DatabaseTreeContainerKey: DatabaseTreeObjectBuckets] = [:]
+    /// Whether a routine row shows its signature depends on the other rows in its own section, so
+    /// the label is decided where the section is built and looked up here when the row draws.
+    internal var routineDisplayLabels: [String: String] = [:]
     private var cachedRowContext: DatabaseTreeRowContext?
     private var cachedRowActions: DatabaseTreeRowActions?
     private var lastSelection: Set<DatabaseTreeTableRef> = []
@@ -55,10 +59,15 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
 
     internal let schemaService = SchemaService.shared
     private var favoriteTables: Set<FavoriteTablesStorage.FavoriteEntry> = []
-    private let favoritesObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
+    private var favoriteDatabases: Set<FavoriteDatabaseEntry> = []
+    private let favoritesObservers = OSAllocatedUnfairLock<[any NSObjectProtocol]>(uncheckedState: [])
 
-    init(favoriteTablesStorage: FavoriteTablesStorage = .shared) {
+    init(
+        favoriteTablesStorage: FavoriteTablesStorage = .shared,
+        favoriteDatabasesStorage: FavoriteDatabasesStorage = .shared
+    ) {
         self.favoriteTablesStorage = favoriteTablesStorage
+        self.favoriteDatabasesStorage = favoriteDatabasesStorage
         super.init()
     }
 
@@ -74,7 +83,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
 
     func attach(outlineView: NSOutlineView) {
         self.outlineView = outlineView
-        let observer = NotificationCenter.default.addObserver(
+        let tableObserver = NotificationCenter.default.addObserver(
             forName: .favoriteTablesDidChange, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -83,13 +92,22 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
                 self.refreshVisibleRows()
             }
         }
-        favoritesObserver.withLockUnchecked { $0 = observer }
+        favoritesObservers.withLockUnchecked { $0.append(tableObserver) }
+
+        let databaseObserver = NotificationCenter.default.addObserver(
+            forName: .favoriteDatabasesDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.reloadFavorites()
+                self.refreshVisibleRows()
+            }
+        }
+        favoritesObservers.withLockUnchecked { $0.append(databaseObserver) }
     }
 
     deinit {
-        if let observer = favoritesObserver.withLockUnchecked({ $0 }) {
-            NotificationCenter.default.removeObserver(observer)
-        }
+        favoritesObservers.withLockUnchecked { $0.forEach(NotificationCenter.default.removeObserver) }
     }
 
     func update(from view: DatabaseTreeOutlineView) {
@@ -192,16 +210,18 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
                 _ = service.schemaListState(connectionId: connectionId, database: metadata.name)
                 _ = service.tablesLoadState(connectionId: connectionId, database: metadata.name, schema: nil)
                 _ = service.routinesLoadState(connectionId: connectionId, database: metadata.name, schema: nil)
+                _ = service.triggersLoadState(connectionId: connectionId, database: metadata.name, schema: nil)
             case .schema(let database, let schema):
                 _ = service.tablesLoadState(connectionId: connectionId, database: database, schema: schema)
                 _ = service.routinesLoadState(connectionId: connectionId, database: database, schema: schema)
+                _ = service.triggersLoadState(connectionId: connectionId, database: database, schema: schema)
             case .hierarchicalSchemaSection(let schema):
                 _ = schemaService.schemaState(for: connectionId, schema: schema)
             case .table(let ref) where ref.table.type == .partitionedTable:
                 _ = service.partitionsLoadState(
                     connectionId: connectionId, database: ref.database ?? "", schema: ref.schema, table: ref.table.name
                 )
-            case .recentSection, .recentTable, .table, .routine, .status,
+            case .recentSection, .recentTable, .table, .routine, .trigger, .status,
                  .objectKindSection, .containerObjectKindSection,
                  .redisKeysSection, .redisNode:
                 break
@@ -214,6 +234,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         isReloading = true
         childrenCache.removeAll()
         objectBucketsCache.removeAll()
+        routineDisplayLabels.removeAll()
         invalidateRowConfiguration()
         outlineView.reloadData()
         applyDesiredExpansion()
@@ -241,6 +262,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
 
     private func reloadFavorites() {
         favoriteTables = favoriteTablesStorage.favorites(for: connectionId)
+        favoriteDatabases = favoriteDatabasesStorage.favorites(for: connectionId)
     }
 
     private func favoriteEntry(for ref: DatabaseTreeTableRef) -> FavoriteTablesStorage.FavoriteEntry {
@@ -257,8 +279,29 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     }
 
     private func favoriteState(for node: DatabaseTreeNode) -> Bool {
-        guard let ref = DatabaseTreeSelection.tableRef(of: node) else { return false }
-        return isFavorite(ref)
+        switch node.kind {
+        case .database(let metadata):
+            return favoriteDatabases.contains { $0.database == metadata.name }
+        default:
+            guard let ref = DatabaseTreeSelection.tableRef(of: node) else { return false }
+            return isFavorite(ref)
+        }
+    }
+
+    internal func favoriteDatabaseEnvironments() -> [String: FavoriteDatabaseEnvironment] {
+        Dictionary(favoriteDatabases.map { ($0.database, $0.environment) }) { first, _ in first }
+    }
+
+    internal func toggleFavoriteDatabase(_ database: String) {
+        guard favoriteDatabases.contains(where: { $0.database == database }) else {
+            favoriteDatabasesStorage.setFavorite(
+                database: database,
+                environment: .unassigned,
+                connectionId: connectionId
+            )
+            return
+        }
+        favoriteDatabasesStorage.removeFavorite(database: database, connectionId: connectionId)
     }
 
     internal func toggleFavorite(_ ref: DatabaseTreeTableRef) {
@@ -463,13 +506,17 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             },
             objectKindTitle: { [databaseType] kind in
                 kind.title(tableEntityName: PluginManager.shared.tableEntityName(for: databaseType))
+            },
+            routineDisplayLabel: { [weak self] ref in
+                self?.routineDisplayLabels[ref.id] ?? ref.routine.name
             }
         )
     }
 
     private func makeRowActions() -> DatabaseTreeRowActions {
         DatabaseTreeRowActions(
-            toggleFavorite: { [weak self] ref in self?.toggleFavorite(ref) }
+            toggleFavorite: { [weak self] ref in self?.toggleFavorite(ref) },
+            toggleFavoriteDatabase: { [weak self] database in self?.toggleFavoriteDatabase(database) }
         )
     }
 
@@ -487,8 +534,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     internal func refreshObjectKind(_ kind: SidebarObjectKind) {
         guard let mainCoordinator else { return }
         switch kind {
-        case .procedure: Task { await mainCoordinator.refreshProcedures() }
-        case .function: Task { await mainCoordinator.refreshFunctions() }
+        case .procedure, .function: Task { await mainCoordinator.refreshRoutines() }
+        case .trigger: Task { await mainCoordinator.refreshTriggers() }
         case .table, .view, .materializedView, .foreignTable: Task { await mainCoordinator.refreshTables() }
         }
     }
@@ -496,14 +543,21 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     internal func refreshContainerObjectKind(_ group: DatabaseTreeObjectGroup) {
         let connectionId = connectionId
         Task {
-            if group.kind.isRoutine {
+            switch group.kind.category {
+            case .table:
+                await service.refreshTableObjects(
+                    connectionId: connectionId,
+                    database: group.database,
+                    schema: group.schema
+                )
+            case .routine:
                 await service.refreshRoutineObjects(
                     connectionId: connectionId,
                     database: group.database,
                     schema: group.schema
                 )
-            } else {
-                await service.refreshTableObjects(
+            case .trigger:
+                await service.refreshTriggerObjects(
                     connectionId: connectionId,
                     database: group.database,
                     schema: group.schema
@@ -550,6 +604,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
             pendingOpenWork?.cancel()
             pendingOpenWork = nil
             open(ref, activateGridFocus: true, forceNonPreview: true)
+        case .openObjectSource(let objectRef):
+            mainCoordinator?.showObjectSource(objectRef)
         case .toggleDisclosure:
             if outlineView.isItemExpanded(node) {
                 outlineView.collapseItem(node)

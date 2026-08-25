@@ -40,7 +40,7 @@ extension TableViewCoordinator {
         guard let fkInfo = tableRows.columnForeignKeys[columnName] else { return }
         let cellValue = cellValue(at: row, column: columnIndex)
         guard let databaseType, let connectionId else { return }
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
         let model = FKPreviewModel(cellValue: cellValue, fkInfo: fkInfo)
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
@@ -118,7 +118,7 @@ extension TableViewCoordinator {
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
         let columnName = tableRows.columns[columnIndex]
 
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
         dismissActiveCellEditorPopover()
@@ -152,7 +152,7 @@ extension TableViewCoordinator {
     func showBlobEditorPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         let currentValue = blobStringValue(at: row, columnIndex: columnIndex)
 
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
         dismissActiveCellEditorPopover()
@@ -177,7 +177,7 @@ extension TableViewCoordinator {
     func showDateTimePickerPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         let tableRows = tableRowsProvider()
         guard columnIndex >= 0, columnIndex < tableRows.columnTypes.count else { return }
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
         let columnType = tableRows.columnTypes[columnIndex]
         let parsed = DatabaseDateParser.parse(cellValue(at: row, column: columnIndex))
@@ -206,7 +206,7 @@ extension TableViewCoordinator {
     }
 
     func showEnumPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
         let tableRows = tableRowsProvider()
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
         let columnName = tableRows.columns[columnIndex]
@@ -230,7 +230,7 @@ extension TableViewCoordinator {
     }
 
     func showSetPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
         let tableRows = tableRowsProvider()
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
         let columnName = tableRows.columns[columnIndex]
@@ -249,7 +249,7 @@ extension TableViewCoordinator {
     }
 
     func showArrayEditorPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
         let tableRows = tableRowsProvider()
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
         let columnName = tableRows.columns[columnIndex]
@@ -309,7 +309,7 @@ extension TableViewCoordinator {
     }
 
     func showDropdownMenu(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
         let tableRows = tableRowsProvider()
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
 
@@ -381,7 +381,7 @@ extension TableViewCoordinator {
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
         let columnName = tableRows.columns[columnIndex]
 
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
         PopoverPresenter.show(
@@ -412,7 +412,7 @@ extension TableViewCoordinator {
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
         let columnName = tableRows.columns[columnIndex]
 
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
         PopoverPresenter.show(
@@ -435,7 +435,7 @@ extension TableViewCoordinator {
     func showBlobViewerPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         let currentValue = blobStringValue(at: row, columnIndex: columnIndex)
 
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
         PopoverPresenter.show(

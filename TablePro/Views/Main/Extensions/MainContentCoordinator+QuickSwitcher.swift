@@ -15,6 +15,8 @@ extension MainContentCoordinator {
             return
         }
         let browseSchema = services.databaseManager.session(for: connectionId)?.browseSchema
+        let switcherScope = browseScope
+            ?? DatabaseScope(connectionId: connectionId, database: connection.database, schema: nil)
         let openTables = Set(
             tabManager.tabs
                 .filter { $0.tabType == .table }
@@ -28,7 +30,7 @@ extension MainContentCoordinator {
                 }
         )
         let panelView = QuickSwitcherPanelView(
-            schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: connectionId),
+            schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: switcherScope),
             connectionId: connectionId,
             databaseType: connection.type,
             openTables: openTables,
@@ -82,6 +84,10 @@ extension MainContentCoordinator {
             Task {
                 await switchSchema(to: item.name)
             }
+
+        case .procedure, .function, .trigger:
+            guard let objectRef = item.objectRef else { return }
+            showObjectSource(objectRef)
 
         case .savedQuery:
             loadQueryIntoEditor(

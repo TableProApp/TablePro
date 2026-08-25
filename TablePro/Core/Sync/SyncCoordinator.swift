@@ -33,6 +33,10 @@ final class SyncCoordinator {
     @ObservationIgnored private var syncTask: Task<Void, Never>?
     @ObservationIgnored private var hasStarted = false
 
+    /// Bumped every time something other than a sync run decides the status, so a run that has been
+    /// suspended across the network can tell whether its outcome is still the current answer.
+    @ObservationIgnored private var statusGeneration = 0
+
     init(services: AppServices = .live) {
         self.services = services
         self.changeTracker = services.syncTracker
@@ -93,6 +97,7 @@ final class SyncCoordinator {
             return
         }
 
+        let generation = statusGeneration
         syncStatus = .syncing
 
         do {
@@ -109,21 +114,36 @@ final class SyncCoordinator {
             await performPull()
 
             if let pushError {
-                syncStatus = .error(SyncError.from(pushError))
+                settle(.error(SyncError.from(pushError)), from: generation)
                 return
             }
 
             lastSyncDate = Date()
             metadataStorage.lastSyncDate = lastSyncDate
-            syncStatus = .idle
+            settle(.idle, from: generation)
             metadataStorage.pruneTombstones(olderThan: 30)
 
             Self.logger.info("Sync completed successfully")
         } catch {
             let syncError = SyncError.from(error)
-            syncStatus = .error(syncError)
+            settle(.error(syncError), from: generation)
             Self.logger.error("Sync failed: \(error.localizedDescription)")
         }
+    }
+
+    /// Publishes the outcome of a sync run, unless something decided the status while it was in
+    /// flight.
+    ///
+    /// A run reads `canSync()` once on entry and then suspends across the whole CloudKit round
+    /// trip, so turning sync off, or losing the license, used to be overwritten by the returning
+    /// run: the indicator went back to "Synced" for a sync that would now be refused. Whoever
+    /// decided last wins, and a stale run reports nothing.
+    private func settle(_ outcome: SyncStatus, from generation: Int) {
+        guard generation == statusGeneration else {
+            Self.logger.info("Discarding a sync outcome the status moved on from")
+            return
+        }
+        syncStatus = outcome
     }
 
     /// Triggered by remote push notification
@@ -162,50 +182,50 @@ final class SyncCoordinator {
     /// because the favorite store is an actor and must be read asynchronously.
     private func markSQLFavoritesDirty() async {
         let favorites = await services.sqlFavoriteManager.fetchFavorites()
-        for favorite in favorites {
-            changeTracker.markDirty(.favorite, id: favorite.id.uuidString)
-        }
+        changeTracker.markDirty(.favorite, ids: favorites.map { $0.id.uuidString })
+
         let folders = await services.sqlFavoriteManager.fetchFolders()
-        for folder in folders {
-            changeTracker.markDirty(.favoriteFolder, id: folder.id.uuidString)
-        }
+        changeTracker.markDirty(.favoriteFolder, ids: folders.map { $0.id.uuidString })
     }
 
-    /// Marks all existing local data as dirty so it will be pushed on the next sync.
-    /// Called when sync is first enabled to upload existing connections/groups/tags/settings.
+    /// Marks every synced record dirty so the first sync after enabling pushes the lot.
+    ///
+    /// Every type is marked as one batch. Marking record by record posted a change notification per
+    /// record, and the observer cancels the in-flight sync and awaits it before scheduling the next,
+    /// so an account with a few hundred saved column layouts built a chain of hundreds of tasks each
+    /// waiting on its predecessor and the app stopped responding to the switch that started it.
     private func markAllLocalDataDirty() {
         let connections = services.connectionStorage.loadConnections()
-        for connection in connections where !connection.localOnly {
-            changeTracker.markDirty(.connection, id: connection.id.uuidString)
-        }
+        changeTracker.markDirty(
+            .connection,
+            ids: connections.filter { !$0.localOnly }.map { $0.id.uuidString }
+        )
 
         let groups = services.groupStorage.loadGroups()
-        for group in groups {
-            changeTracker.markDirty(.group, id: group.id.uuidString)
-        }
+        changeTracker.markDirty(.group, ids: groups.map { $0.id.uuidString })
 
         let tags = services.tagStorage.loadTags()
-        for tag in tags {
-            changeTracker.markDirty(.tag, id: tag.id.uuidString)
-        }
+        changeTracker.markDirty(.tag, ids: tags.map { $0.id.uuidString })
 
         let sshProfiles = services.sshProfileStorage.loadProfiles()
-        for profile in sshProfiles {
-            changeTracker.markDirty(.sshProfile, id: profile.id.uuidString)
-        }
+        changeTracker.markDirty(.sshProfile, ids: sshProfiles.map { $0.id.uuidString })
 
         let favoriteTables = services.favoriteTablesStorage.loadFavorites()
-        for entry in favoriteTables {
-            changeTracker.markDirty(.tableFavorite, id: FavoriteTablesStorage.syncId(for: entry))
-        }
+        changeTracker.markDirty(
+            .tableFavorite,
+            ids: favoriteTables.map { FavoriteTablesStorage.syncId(for: $0) }
+        )
 
-        for category in AppSettingsCategory.synced + [CustomSlashCommandStorage.syncCategory] {
-            changeTracker.markDirty(.settings, id: category)
-        }
+        let favoriteDatabases = services.favoriteDatabasesStorage.loadFavorites()
+        changeTracker.markDirty(
+            .favoriteDatabase,
+            ids: favoriteDatabases.map { FavoriteDatabasesStorage.syncId(for: $0) }
+        )
 
-        for storageKey in FileColumnLayoutPersister.shared.customizedStorageKeys() {
-            changeTracker.markDirty(.settings, id: FileColumnLayoutPersister.syncCategory(for: storageKey))
-        }
+        let settingsCategories = AppSettingsCategory.synced + [CustomSlashCommandStorage.syncCategory]
+        let columnLayoutCategories = FileColumnLayoutPersister.shared.customizedStorageKeys()
+            .map { FileColumnLayoutPersister.syncCategory(for: $0) }
+        changeTracker.markDirty(.settings, ids: settingsCategories + columnLayoutCategories)
 
         let summary = [
             "connections=\(connections.count)",
@@ -221,7 +241,7 @@ final class SyncCoordinator {
     /// Called when user disables sync in settings
     func disableSync() {
         syncTask?.cancel()
-        syncStatus = .disabled(.userDisabled)
+        decide(.disabled(.userDisabled))
     }
 
     // MARK: - Status
@@ -230,29 +250,51 @@ final class SyncCoordinator {
         let licenseManager = services.licenseManager
 
         guard licenseManager.isFeatureAvailable(.iCloudSync) else {
-            switch licenseManager.status {
-            case .expired:
-                syncStatus = .disabled(.licenseExpired)
-            default:
-                syncStatus = .disabled(.licenseRequired)
-            }
+            decide(.disabled(Self.licenseDisableReason(for: licenseManager.status)))
             return
         }
 
         let syncSettings = services.appSettingsStorage.loadSync()
         guard syncSettings.enabled else {
-            syncStatus = .disabled(.userDisabled)
+            decide(.disabled(.userDisabled))
             return
         }
 
         guard iCloudAccountAvailable else {
-            syncStatus = .disabled(.noAccount)
+            decide(.disabled(.noAccount))
             return
         }
 
         // If we were in an error or disabled state, transition to idle
         if !syncStatus.isSyncing {
-            syncStatus = .idle
+            decide(.idle)
+        }
+    }
+
+    /// Settles the status from outside a sync run, and retires whatever run is in flight.
+    ///
+    /// The branch that leaves a running sync alone deliberately does not come through here: it has
+    /// decided nothing, so invalidating the run would leave the status stuck on Syncing with
+    /// nothing left to move it.
+    private func decide(_ status: SyncStatus) {
+        statusGeneration += 1
+        syncStatus = status
+    }
+
+    /// Why sync is off, for a license that does not currently unlock it.
+    ///
+    /// Exhaustive on purpose. The arm that used to be `default:` swallowed `.validationFailed`,
+    /// which is a paying customer the app has not reached the server about, and told them a license
+    /// was required. A new `LicenseStatus` case has to be answered here rather than inheriting the
+    /// wrong answer.
+    nonisolated static func licenseDisableReason(for status: LicenseStatus) -> DisableReason {
+        switch status {
+        case .expired:
+            return .licenseExpired
+        case .validationFailed:
+            return .licenseUnverified
+        case .active, .unlicensed, .suspended, .deactivated:
+            return .licenseRequired
         }
     }
 
@@ -334,6 +376,10 @@ final class SyncCoordinator {
 
         if settings.syncTableFavorites {
             collectDirtyTableFavorites(into: &recordsToSave, deletions: &recordIDsToDelete, zoneID: zoneID)
+        }
+
+        if settings.syncDatabaseFavorites {
+            collectDirtyDatabaseFavorites(into: &recordsToSave, deletions: &recordIDsToDelete, zoneID: zoneID)
         }
 
         if settings.syncSQLFavorites {
@@ -435,6 +481,7 @@ final class SyncCoordinator {
         let tagTombstoneIds = Set(metadataStorage.tombstones(for: .tag).map(\.id))
         let sshTombstoneIds = Set(metadataStorage.tombstones(for: .sshProfile).map(\.id))
         let tableFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .tableFavorite).map(\.id))
+        let databaseFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .favoriteDatabase).map(\.id))
         let sqlFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .favorite).map(\.id))
         let sqlFolderTombstoneIds = Set(metadataStorage.tombstones(for: .favoriteFolder).map(\.id))
         var remoteFavorites: [SQLFavorite] = []
@@ -460,6 +507,8 @@ final class SyncCoordinator {
                 applyRemoteSettings(record)
             case SyncRecordType.tableFavorite.rawValue where settings.syncTableFavorites:
                 applyRemoteTableFavorite(record, tombstoneIds: tableFavoriteTombstoneIds)
+            case SyncRecordType.favoriteDatabase.rawValue where settings.syncDatabaseFavorites:
+                applyRemoteDatabaseFavorite(record, tombstoneIds: databaseFavoriteTombstoneIds)
             case SyncRecordType.favorite.rawValue where settings.syncSQLFavorites:
                 if let favorite = try? SyncRecordMapper.sqlFavorite(from: record),
                    !sqlFavoriteTombstoneIds.contains(favorite.id.uuidString) {
@@ -517,7 +566,7 @@ final class SyncCoordinator {
             if !services.connectionStorage.saveConnections(connections) {
                 Self.logger.error("Failed to apply remote connection deletions: persistence error")
             } else {
-                FilterSettingsStorage.shared.removeFilters(for: connectionIdsToDelete)
+                ConnectionLocalState.purge(connectionIds: connectionIdsToDelete, origin: .remote)
                 let favoriteManager = services.sqlFavoriteManager
                 Task {
                     for id in connectionIdsToDelete {
@@ -714,6 +763,24 @@ final class SyncCoordinator {
         }
         if tombstoneIds.contains(FavoriteTablesStorage.syncId(for: entry)) { return false }
         return services.favoriteTablesStorage.addFavoriteWithoutSync(entry)
+    }
+
+    /// Upserts rather than inserts. A database favorite carries a mutable payload, the environment
+    /// tag, so an insert-if-absent apply would keep the local tag and silently drop the remote one.
+    private func applyRemoteDatabaseFavorite(_ record: CKRecord, tombstoneIds: Set<String>) {
+        let entry: FavoriteDatabaseEntry
+        do {
+            entry = try SyncRecordMapper.favoriteDatabase(from: record)
+        } catch {
+            let recordName = record.recordID.recordName
+            let message = error.localizedDescription
+            Self.logger.error(
+                "Skipping remote favorite database \(recordName, privacy: .public): \(message, privacy: .public)"
+            )
+            return
+        }
+        guard !tombstoneIds.contains(FavoriteDatabasesStorage.syncId(for: entry)) else { return }
+        services.favoriteDatabasesStorage.setFavoriteWithoutSync(entry)
     }
 
     // MARK: - Observers
@@ -980,6 +1047,34 @@ final class SyncCoordinator {
         for tombstone in metadataStorage.tombstones(for: .tableFavorite) {
             deletions.append(
                 SyncRecordMapper.recordID(type: .tableFavorite, id: tombstone.id, in: zoneID)
+            )
+        }
+    }
+
+    /// A connection the user marked local only never reaches iCloud, and neither do the database
+    /// names hanging off it. Tombstones are not filtered: a deletion only ever removes something,
+    /// and a connection can be marked local only after its favorites were already pushed.
+    private func collectDirtyDatabaseFavorites(
+        into records: inout [CKRecord],
+        deletions: inout [CKRecord.ID],
+        zoneID: CKRecordZone.ID
+    ) {
+        let dirtyIds = changeTracker.dirtyRecords(for: .favoriteDatabase)
+        if !dirtyIds.isEmpty {
+            let localOnlyIds = Set(
+                services.connectionStorage.loadConnections().filter(\.localOnly).map(\.id)
+            )
+            let favorites = services.favoriteDatabasesStorage.loadFavorites()
+            for entry in favorites
+            where dirtyIds.contains(FavoriteDatabasesStorage.syncId(for: entry))
+                && !localOnlyIds.contains(entry.connectionId) {
+                records.append(SyncRecordMapper.toCKRecord(favoriteDatabase: entry, in: zoneID))
+            }
+        }
+
+        for tombstone in metadataStorage.tombstones(for: .favoriteDatabase) {
+            deletions.append(
+                SyncRecordMapper.recordID(type: .favoriteDatabase, id: tombstone.id, in: zoneID)
             )
         }
     }

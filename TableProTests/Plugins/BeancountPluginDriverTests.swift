@@ -154,48 +154,84 @@ struct BeancountPluginDriverTests {
     }
 
     @Test(
-        "projects authoritative posting amounts and resolved cost basis",
+        "projects posting semantics through rledger",
         .enabled(if: RustledgerLocator.path != nil, "rledger executable unavailable")
     )
-    func projectsAuthoritativeAmounts() async throws {
+    func projectsPostingSemanticsThroughRustledger() async throws {
         try await Self.withRustledger {
-            let directory = try Self.makeTempDirectory()
-            defer { try? FileManager.default.removeItem(at: directory) }
+            try await Self.withPostingSemanticsLedger(Self.expectPostingSemantics)
+        }
+    }
 
-            let ledger = directory.appendingPathComponent("main.beancount")
-            try """
-            2024-01-01 open Assets:Cash USD
-            2024-01-01 open Assets:Stock HOOL
+    @Test(
+        "projects posting semantics through Python Beancount",
+        .enabled(if: PythonBeancountLocator.path != nil, "Python Beancount unavailable")
+    )
+    func projectsPostingSemanticsThroughPythonBeancount() async throws {
+        let python = try #require(PythonBeancountLocator.path)
+        try await Self.withEnvironment([
+            "TABLEPRO_BEANCOUNT_BACKEND": "python",
+            "TABLEPRO_BEANCOUNT_PYTHON": python
+        ]) {
+            try await Self.withPostingSemanticsLedger(Self.expectPostingSemantics)
+        }
+    }
 
-            2024-01-05 * "Broker" "Buy stock"
-              Assets:Stock        10 HOOL {100.00 USD}
-              Assets:Cash    -1,000.00 USD
-            """.write(to: ledger, atomically: true, encoding: .utf8)
+    @Test(
+        "keeps posting source locations and metadata when the backend lacks the semantic columns",
+        .enabled(if: RustledgerLocator.path != nil, "rledger executable unavailable")
+    )
+    func keepsPostingSourceDetailWhenSemanticColumnsAreUnsupported() async throws {
+        let rledger = try #require(RustledgerLocator.path)
+        let directory = try Self.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
 
+        let wrapper = directory.appendingPathComponent("rledger")
+        try """
+        #!/bin/sh
+        for argument in "$@"; do
+          case "$argument" in
+            *posting_flag*)
+              echo "evaluation error: column 'posting_flag' not found in subquery result" >&2
+              exit 1
+              ;;
+          esac
+        done
+        exec "\(rledger)" "$@"
+        """.write(to: wrapper, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: wrapper.path)
+
+        let ledger = directory.appendingPathComponent("main.beancount")
+        try """
+        2024-01-01 open Assets:Cash USD
+        2024-01-01 open Expenses:Food USD
+
+        2024-01-05 * "Cafe" "Coffee"
+          Expenses:Food  3.00 USD
+            method: "card"
+          Assets:Cash
+        """.write(to: ledger, atomically: true, encoding: .utf8)
+
+        try await Self.withEnvironment([
+            "TABLEPRO_BEANCOUNT_BACKEND": "rledger",
+            "TABLEPRO_RUSTLEDGER_BINARY": wrapper.path
+        ]) {
             let driver = BeancountPluginDriver(config: Self.config(ledger))
             try await driver.connect()
             defer { driver.disconnect() }
 
-            let result = try await driver.execute(query: """
-                SELECT account, amount, commodity, cost_number, cost_currency
-                FROM postings ORDER BY account
+            let postings = try await driver.execute(query: """
+                SELECT account, flag, price_number, line FROM postings ORDER BY account
                 """)
-            let byAccount = Dictionary(
-                uniqueKeysWithValues: result.rows.compactMap { row -> (String, [PluginCellValue])? in
-                    guard let account = row[0].asText else { return nil }
-                    return (account, row)
-                }
-            )
+            #expect(postings.rows.map { $0.map(\.asText) } == [
+                ["Assets:Cash", nil, nil, "7"],
+                ["Expenses:Food", nil, nil, "5"]
+            ])
 
-            let cash = try #require(byAccount["Assets:Cash"])
-            #expect(cash[1].asText == "-1000.00")
-            #expect(cash[2].asText == "USD")
-
-            let stock = try #require(byAccount["Assets:Stock"])
-            #expect(stock[1].asText == "10")
-            #expect(stock[2].asText == "HOOL")
-            #expect(stock[3].asText == "100.00")
-            #expect(stock[4].asText == "USD")
+            let metadata = try await driver.execute(query: """
+                SELECT key, value FROM posting_metadata ORDER BY key
+                """)
+            #expect(metadata.rows.map { $0.map(\.asText) } == [["method", "card"]])
         }
     }
 
@@ -362,6 +398,123 @@ struct BeancountPluginDriverTests {
         }
     }
 
+    @Test("reads the ledger plugin trust flag from the connection, not the environment")
+    func readsLedgerPluginTrustFromConnection() {
+        #expect(BeancountPluginDriver.allowsLedgerPlugins([:]) == false)
+        #expect(BeancountPluginDriver.allowsLedgerPlugins(["beancountRunLedgerPlugins": "false"]) == false)
+        #expect(BeancountPluginDriver.allowsLedgerPlugins(["beancountRunLedgerPlugins": "true"]))
+    }
+
+    @Test(
+        "does not run ledger-declared Python plugins for an untrusted connection",
+        .enabled(if: PythonBeancountLocator.path != nil, "Python Beancount unavailable")
+    )
+    func doesNotRunLedgerDeclaredPythonPluginsWhenUntrusted() async throws {
+        try await Self.withPythonBeancount { directory in
+            let marker = directory.appendingPathComponent("plugin-executed")
+            let ledger = try Self.writeMarkerPluginLedger(in: directory, marker: marker)
+
+            let driver = BeancountPluginDriver(config: Self.config(ledger))
+            try await driver.connect()
+            defer { driver.disconnect() }
+
+            #expect(!FileManager.default.fileExists(atPath: marker.path))
+            let diagnostics = try await driver.execute(query: """
+                SELECT phase, severity, message FROM diagnostics WHERE phase = 'security'
+                """)
+            #expect(diagnostics.rows.count == 1)
+            #expect(diagnostics.rows.first?[1].asText == "warning")
+            #expect(diagnostics.rows.first?[2].asText?.contains("tablepro_marker_plugin") == true)
+        }
+    }
+
+    @Test(
+        "runs ledger-declared Python plugins for a trusted connection",
+        .enabled(if: PythonBeancountLocator.path != nil, "Python Beancount unavailable")
+    )
+    func runsLedgerDeclaredPythonPluginsWhenTrusted() async throws {
+        try await Self.withPythonBeancount { directory in
+            let marker = directory.appendingPathComponent("plugin-executed")
+            let ledger = try Self.writeMarkerPluginLedger(in: directory, marker: marker)
+
+            let driver = BeancountPluginDriver(
+                config: Self.config(ledger, additionalFields: ["beancountRunLedgerPlugins": "true"])
+            )
+            try await driver.connect()
+            defer { driver.disconnect() }
+
+            #expect(FileManager.default.fileExists(atPath: marker.path))
+        }
+    }
+
+    @Test(
+        "keeps running the plugins that ship with Beancount",
+        .enabled(if: PythonBeancountLocator.path != nil, "Python Beancount unavailable")
+    )
+    func keepsRunningPluginsThatShipWithBeancount() async throws {
+        try await Self.withPythonBeancount { directory in
+            let ledger = directory.appendingPathComponent("main.beancount")
+            try """
+            plugin "beancount.plugins.auto_accounts"
+
+            2024-01-02 * "Cafe" "Coffee"
+              Expenses:Food  3.00 USD
+              Assets:Cash
+            """.write(to: ledger, atomically: true, encoding: .utf8)
+
+            let driver = BeancountPluginDriver(config: Self.config(ledger))
+            try await driver.connect()
+            defer { driver.disconnect() }
+
+            let accounts = try await driver.execute(query: "SELECT name FROM accounts ORDER BY name")
+            #expect(accounts.rows.map { $0[0].asText } == ["Assets:Cash", "Expenses:Food"])
+
+            let diagnostics = try await driver.execute(query: """
+                SELECT message FROM diagnostics WHERE phase = 'security'
+                """)
+            #expect(diagnostics.rows.isEmpty)
+        }
+    }
+
+    @Test("reports the active Python Beancount backend and version")
+    func reportsActivePythonBeancountBackendAndVersion() async throws {
+        try await Self.withFakePythonBackend(reportedVersion: "3.2.3") { _, ledger in
+            let driver = BeancountPluginDriver(config: Self.config(ledger))
+            try await driver.connect()
+            defer { driver.disconnect() }
+
+            #expect(driver.serverVersion == "Python Beancount 3.2.3")
+        }
+    }
+
+    @Test("names the backend without a version when the executable reports none")
+    func namesBackendWithoutVersionWhenExecutableReportsNone() async throws {
+        try await Self.withFakePythonBackend(reportedVersion: "") { _, ledger in
+            let driver = BeancountPluginDriver(config: Self.config(ledger))
+            try await driver.connect()
+            defer { driver.disconnect() }
+
+            #expect(driver.serverVersion == "Python Beancount")
+        }
+    }
+
+    @Test("measures a backend version once per executable, not once per projection")
+    func measuresBackendVersionOncePerExecutable() async throws {
+        try await Self.withFakePythonBackend(reportedVersion: "3.2.3") { directory, ledger in
+            for _ in 0..<3 {
+                let driver = BeancountPluginDriver(config: Self.config(ledger))
+                try await driver.connect()
+                driver.disconnect()
+            }
+
+            let calls = try String(
+                contentsOf: directory.appendingPathComponent("version-calls"),
+                encoding: .utf8
+            )
+            #expect(calls.split(separator: "\n").count == 1)
+        }
+    }
+
     @Test(
         "executes BQL queries through the rledger executable",
         .enabled(if: RustledgerLocator.path != nil, "rledger executable unavailable")
@@ -458,6 +611,52 @@ struct BeancountPluginDriverTests {
     }
 
     @Test(
+        "projects the same core relations through both Beancount backends",
+        .enabled(
+            if: RustledgerLocator.path != nil && PythonBeancountLocator.path != nil,
+            "rledger and Python Beancount are both required"
+        )
+    )
+    func projectsSameCoreRelationsThroughBothBackends() async throws {
+        let rledger = try #require(RustledgerLocator.path)
+        let python = try #require(PythonBeancountLocator.path)
+        let directory = try Self.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let ledger = directory.appendingPathComponent("main.beancount")
+        try """
+        2024-01-01 commodity USD
+        2024-01-01 open Assets:Cash USD
+        2024-01-01 open Expenses:Food USD
+
+        2024-01-02 * "Cafe" "Coffee"
+          Expenses:Food  3.00 USD
+          Assets:Cash
+
+        2024-01-03 price USD 0.92 EUR
+        2024-01-04 balance Assets:Cash -3.00 USD
+        2024-01-05 event "location" "Taipei"
+        2024-01-06 note Assets:Cash "checked"
+        2024-06-30 close Expenses:Food
+        """.write(to: ledger, atomically: true, encoding: .utf8)
+
+        let rustledgerRows = try await Self.withEnvironment([
+            "TABLEPRO_BEANCOUNT_BACKEND": "rledger",
+            "TABLEPRO_RUSTLEDGER_BINARY": rledger
+        ]) {
+            try await Self.coreProjectionSnapshot(ledger: ledger)
+        }
+        let pythonRows = try await Self.withEnvironment([
+            "TABLEPRO_BEANCOUNT_BACKEND": "python",
+            "TABLEPRO_BEANCOUNT_PYTHON": python
+        ]) {
+            try await Self.coreProjectionSnapshot(ledger: ledger)
+        }
+
+        #expect(rustledgerRows == pythonRows)
+    }
+
+    @Test(
         "refreshes document diagnostics when an included document target changes",
         .enabled(if: RustledgerLocator.path != nil, "rledger executable unavailable")
     )
@@ -529,17 +728,28 @@ struct BeancountPluginDriverTests {
 
         try Data("pdf".utf8).write(to: directory.appendingPathComponent("receipt.pdf"))
 
+        let padsLedger = directory.appendingPathComponent("pads.beancount")
+        let crlfPadsLedger = [
+            "2024-01-01 open Equity:Opening-Balances USD",
+            "",
+            "2024/06/28 pad Assets:Cash Equity:Opening-Balances;opening",
+            "2024-06-29 balance Assets:Cash 0 ~ 0.02 USD",
+            "  note: \"crlf metadata\"",
+            "2024-06-29 note Assets:Cash \"crlf note\" #crlf ^crlf-1"
+        ].joined(separator: "\r\n")
+        try crlfPadsLedger.write(to: padsLedger, atomically: true, encoding: .utf8)
+
         let ledger = directory.appendingPathComponent("main.beancount")
         try """
         2024-01-01 commodity USD
           name: "US Dollar"
 
-        2024-01-01 open Assets:Cash USD
+        2024-01-01 open Assets:Cash USD "STRICT"
         2024-01-01 open Expenses:Food USD
 
         2024-01-02 event "location" "Taipei"
 
-        2024-01-03 note Assets:Cash "called the bank"
+        2024-01-03 note Assets:Cash "called the bank" #urgent ^case-1
 
         2024-01-04 document Assets:Cash "receipt.pdf"
 
@@ -550,8 +760,16 @@ struct BeancountPluginDriverTests {
             method: "card"
           Assets:Cash
 
-        2024-01-06 * "Archive" "No postings" #empty ^standalone
+        2024-01-06 balance Assets:Cash -3.00 ~ 0.01 USD
+
+        2024-01-07 * "Archive" "No postings" #empty ^standalone
           reason: "record only"
+
+        2024-01-07 query "cash" "SELECT account FROM accounts"
+
+        2024-01-08 custom "mixed" "text" 2024-12-31 TRUE 12.50 USD Assets:Cash 7
+
+        include "pads.beancount"
 
         2024-06-30 close Expenses:Food
         """.write(to: ledger, atomically: true, encoding: .utf8)
@@ -563,18 +781,120 @@ struct BeancountPluginDriverTests {
         try await body(driver, ledger)
     }
 
+    private static func withPostingSemanticsLedger(
+        _ body: (BeancountPluginDriver) async throws -> Void
+    ) async throws {
+        let directory = try Self.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let ledger = directory.appendingPathComponent("main.beancount")
+        try """
+        2023-12-31 open Assets:Brokerage HOOL
+        2023-12-31 open Assets:Cash USD
+
+        2024-01-02 * "Broker" "Buy"
+          ! Assets:Brokerage  2 HOOL {100 USD, 2023-12-31, "opening-lot"} @ 110 USD
+          Assets:Cash       -200 USD
+        """.write(to: ledger, atomically: true, encoding: .utf8)
+
+        let driver = BeancountPluginDriver(config: Self.config(ledger))
+        try await driver.connect()
+        defer { driver.disconnect() }
+
+        try await body(driver)
+    }
+
+    private static func expectPostingSemantics(_ driver: BeancountPluginDriver) async throws {
+        let result = try await driver.execute(query: """
+            SELECT account, amount, commodity, flag,
+                   cost_number, cost_currency, cost_date, cost_label,
+                   price_number, price_currency
+            FROM postings ORDER BY account
+            """)
+        #expect(result.rows.map { $0.map(\.asText) } == [
+            ["Assets:Brokerage", "2", "HOOL", "!", "100", "USD", "2023-12-31", "opening-lot", "110", "USD"],
+            ["Assets:Cash", "-200", "USD", nil, nil, nil, nil, nil, nil, nil]
+        ])
+    }
+
     private static func expectRichDirectives(_ driver: BeancountPluginDriver, ledger: URL) async throws {
+        let booking = try await driver.execute(query: "SELECT booking FROM accounts WHERE name = 'Assets:Cash'")
+        #expect(booking.rows.first?.first?.asText == "STRICT")
+
+        let queries = try await driver.execute(query: "SELECT date, name, query FROM queries")
+        #expect(queries.rows.map { $0.map(\.asText) } == [[
+            "2024-01-07", "cash", "SELECT account FROM accounts"
+        ]])
+
+        let custom = try await driver.execute(query: "SELECT date, type FROM custom")
+        #expect(custom.rows.map { $0.map(\.asText) } == [["2024-01-08", "mixed"]])
+
+        let customValues = try await driver.execute(query: """
+            SELECT position, value_type, value, number, currency
+            FROM custom_values ORDER BY position
+            """)
+        #expect(customValues.rows.map { $0.map(\.asText) } == [
+            ["0", "string", "text", nil, nil],
+            ["1", "date", "2024-12-31", nil, nil],
+            ["2", "boolean", "TRUE", nil, nil],
+            ["3", "amount", "12.50 USD", "12.50", "USD"],
+            ["4", "account", "Assets:Cash", nil, nil],
+            ["5", "number", "7", "7", nil]
+        ])
+
         let commodities = try await driver.execute(query: "SELECT date, commodity FROM commodities")
         #expect(commodities.rows.map { $0.map(\.asText) } == [["2024-01-01", "USD"]])
 
         let events = try await driver.execute(query: "SELECT date, type, description FROM events")
         #expect(events.rows.map { $0.map(\.asText) } == [["2024-01-02", "location", "Taipei"]])
 
-        let notes = try await driver.execute(query: "SELECT date, account, comment FROM notes")
-        #expect(notes.rows.map { $0.map(\.asText) } == [["2024-01-03", "Assets:Cash", "called the bank"]])
+        let notes = try await driver.execute(query: """
+            SELECT date, account, comment, tags, links FROM notes ORDER BY date
+            """)
+        #expect(notes.rows.map { $0.map(\.asText) } == [
+            ["2024-01-03", "Assets:Cash", "called the bank", "urgent", "case-1"],
+            ["2024-06-29", "Assets:Cash", "crlf note", "crlf", "crlf-1"]
+        ])
+
+        let assertion = try await driver.execute(query: """
+            SELECT tolerance, difference_amount, difference_currency FROM balance_assertions
+            WHERE date = '2024-01-06'
+            """)
+        #expect(assertion.rows.map { $0.map(\.asText) } == [["0.01", "0", "USD"]])
+
+        let crlfAssertion = try await driver.execute(query: """
+            SELECT tolerance FROM balance_assertions WHERE date = '2024-06-29'
+            """)
+        #expect(crlfAssertion.rows.map { $0.map(\.asText) } == [["0.02"]])
+
+        let crlfMetadata = try await driver.execute(query: """
+            SELECT d.type, d.line, m.key, m.value FROM directive_metadata m
+            JOIN directives d ON d.id = m.directive_id
+            WHERE m.key = 'note'
+            """)
+        #expect(crlfMetadata.rows.map { $0.map(\.asText) } == [["balance", "4", "note", "crlf metadata"]])
+
+        let directiveMetadata = try await driver.execute(query: """
+            SELECT d.type, m.key, m.value, d.line FROM directive_metadata m
+            JOIN directives d ON d.id = m.directive_id
+            WHERE d.type = 'commodity' ORDER BY m.key
+            """)
+        #expect(directiveMetadata.rows.map { $0.map(\.asText) } == [["commodity", "name", "US Dollar", "1"]])
 
         let closes = try await driver.execute(query: "SELECT date, account FROM closes")
         #expect(closes.rows.map { $0.map(\.asText) } == [["2024-06-30", "Expenses:Food"]])
+
+        let pads = try await driver.execute(query: """
+            SELECT date, account, source_account, source_file, line, source_location FROM pads
+            """)
+        #expect(pads.rows.count == 1)
+        let pad = try #require(pads.rows.first)
+        #expect(pad[0].asText == "2024-06-28")
+        #expect(pad[1].asText == "Assets:Cash")
+        #expect(pad[2].asText == "Equity:Opening-Balances")
+        #expect(pad[3].asText?.hasSuffix("pads.beancount") == true)
+        #expect(pad[4].asText == "3")
+        #expect(pad[5].asText?.hasSuffix("pads.beancount:3") == true)
 
         let documents = try await driver.execute(query: "SELECT date, account, path FROM documents")
         #expect(documents.rows.count == 1)
@@ -644,15 +964,15 @@ struct BeancountPluginDriverTests {
         let transactionWithoutPostings = try #require(postingFree.rows.first)
         #expect(transactionWithoutPostings[0].asText != nil)
         #expect(transactionWithoutPostings.dropFirst().prefix(4).map(\.asText) == [
-            "2024-01-06",
+            "2024-01-07",
             "*",
             "Archive",
             "No postings"
         ])
         let sourceFile = try #require(transactionWithoutPostings[5].asText)
         #expect(Self.canonicalPath(URL(fileURLWithPath: sourceFile)) == Self.canonicalPath(ledger))
-        #expect(transactionWithoutPostings[6].asText == "20")
-        #expect(transactionWithoutPostings[7].asText == "\(sourceFile):20")
+        #expect(transactionWithoutPostings[6].asText == "22")
+        #expect(transactionWithoutPostings[7].asText == "\(sourceFile):22")
 
         let postingFreeMetadata = try await driver.execute(query: """
             SELECT metadata.key, metadata.value
@@ -703,10 +1023,10 @@ struct BeancountPluginDriverTests {
         ], body)
     }
 
-    private static func withEnvironment(
+    private static func withEnvironment<T>(
         _ values: [String: String],
-        _ body: () async throws -> Void
-    ) async throws {
+        _ body: () async throws -> T
+    ) async throws -> T {
         let previous = values.keys.map { ($0, ProcessInfo.processInfo.environment[$0]) }
         for (name, value) in values {
             setenv(name, value, 1)
@@ -720,11 +1040,91 @@ struct BeancountPluginDriverTests {
                 }
             }
         }
-        try await body()
+        return try await body()
     }
 
-    private static func config(_ ledger: URL) -> DriverConnectionConfig {
-        DriverConnectionConfig(host: "", port: 0, username: "", password: "", database: ledger.path)
+    private static func coreProjectionSnapshot(ledger: URL) async throws -> [String: [[String?]]] {
+        let driver = BeancountPluginDriver(config: Self.config(ledger))
+        try await driver.connect()
+        defer { driver.disconnect() }
+
+        // Row ids are per-backend: rledger numbers every entry in the ledger, the Python script
+        // numbers only the transactions it walks. Comparing them would never match, so the
+        // snapshot compares the values and orders by them.
+        let queries = [
+            "accounts": "SELECT name, open_date, currencies FROM accounts ORDER BY name",
+            "balance_assertions": """
+                SELECT date, account, amount, commodity FROM balance_assertions
+                ORDER BY date, account, commodity
+                """,
+            "balances": "SELECT account, amount, commodity FROM balances ORDER BY account, commodity",
+            "closes": "SELECT date, account FROM closes ORDER BY date, account",
+            "commodities": "SELECT date, commodity FROM commodities ORDER BY date, commodity",
+            "events": "SELECT date, type, description FROM events ORDER BY date, type",
+            "notes": "SELECT date, account, comment FROM notes ORDER BY date, account",
+            "postings": """
+                SELECT date, account, amount, commodity FROM postings
+                ORDER BY date, account, commodity
+                """,
+            "prices": "SELECT date, commodity, amount, currency FROM prices ORDER BY date, commodity",
+            "transactions": """
+                SELECT date, flag, payee, narration FROM transactions
+                ORDER BY date, payee, narration
+                """
+        ]
+
+        var snapshot: [String: [[String?]]] = [:]
+        for (table, query) in queries {
+            let result = try await driver.execute(query: query)
+            snapshot[table] = result.rows.map { $0.map(\.asText) }
+        }
+        return snapshot
+    }
+
+    private static func withFakePythonBackend(
+        reportedVersion: String,
+        _ body: (URL, URL) async throws -> Void
+    ) async throws {
+        let directory = try Self.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let python = directory.appendingPathComponent("python3")
+        try """
+        #!/bin/sh
+        case "$2" in
+          *importlib.metadata*)
+            echo called >> "$(dirname "$0")/version-calls"
+            printf '%s' '\(reportedVersion)'
+            ;;
+          "import beancount") exit 0 ;;
+          *) printf '{"transactions":[]}' ;;
+        esac
+        """.write(to: python, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: python.path)
+
+        let ledger = directory.appendingPathComponent("main.beancount")
+        try "".write(to: ledger, atomically: true, encoding: .utf8)
+
+        try await Self.withEnvironment([
+            "TABLEPRO_BEANCOUNT_BACKEND": "python",
+            "TABLEPRO_BEANCOUNT_PYTHON": python.path
+        ]) {
+            try await body(directory, ledger)
+        }
+    }
+
+    private static func config(
+        _ ledger: URL,
+        additionalFields: [String: String] = [:]
+    ) -> DriverConnectionConfig {
+        DriverConnectionConfig(
+            host: "",
+            port: 0,
+            username: "",
+            password: "",
+            database: ledger.path,
+            additionalFields: additionalFields
+        )
     }
 
     private static func canonicalPath(_ url: URL) -> String {
@@ -735,6 +1135,43 @@ struct BeancountPluginDriverTests {
             defer { free(resolvedPath) }
             return String(cString: resolvedPath)
         }
+    }
+
+    private static func withPythonBeancount(
+        _ body: (URL) async throws -> Void
+    ) async throws {
+        let python = try #require(PythonBeancountLocator.path)
+        try await Self.withEnvironment([
+            "TABLEPRO_BEANCOUNT_BACKEND": "python",
+            "TABLEPRO_BEANCOUNT_PYTHON": python
+        ]) {
+            let directory = try Self.makeTempDirectory()
+            defer { try? FileManager.default.removeItem(at: directory) }
+            try await body(directory)
+        }
+    }
+
+    private static func writeMarkerPluginLedger(in directory: URL, marker: URL) throws -> URL {
+        try """
+        from pathlib import Path
+
+        __plugins__ = ("write_marker",)
+
+        def write_marker(entries, options_map, marker_path):
+            Path(marker_path).write_text("executed", encoding="utf-8")
+            return entries, []
+        """.write(
+            to: directory.appendingPathComponent("tablepro_marker_plugin.py"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let ledger = directory.appendingPathComponent("main.beancount")
+        try """
+        option "insert_pythonpath" "TRUE"
+        plugin "tablepro_marker_plugin" "\(marker.path)"
+        """.write(to: ledger, atomically: true, encoding: .utf8)
+        return ledger
     }
 
     private static func makeTempDirectory() throws -> URL {

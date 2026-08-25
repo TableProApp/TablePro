@@ -220,4 +220,38 @@ struct LicenseManagerDecisionTests {
     func unreadableIssueDateDoesNotFailGrace() {
         #expect(Self.resolve(daysSinceValidation: nil) == .active)
     }
+
+    @Test("Nobody without a license is treated as having paid")
+    func noLicenseIsAlwaysAProspect() {
+        let everyStatus: [LicenseStatus] = [
+            .unlicensed, .active, .expired, .suspended, .deactivated, .validationFailed
+        ]
+
+        for status in everyStatus {
+            #expect(LicenseManager.resolveSupportAudience(hasLicense: false, status: status) == .prospect)
+        }
+    }
+
+    @Test("An offline license is never asked to buy the license it already has")
+    func offlineLicenseStaysASupporter() {
+        #expect(LicenseManager.resolveSupportAudience(hasLicense: true, status: .active) == .supporter)
+        #expect(LicenseManager.resolveSupportAudience(hasLicense: true, status: .validationFailed) == .supporter)
+    }
+
+    @Test("A license the server itself withdrew is offered a purchase again")
+    func withdrawnLicenseBecomesAProspect() {
+        #expect(LicenseManager.resolveSupportAudience(hasLicense: true, status: .expired) == .prospect)
+        #expect(LicenseManager.resolveSupportAudience(hasLicense: true, status: .suspended) == .prospect)
+        #expect(LicenseManager.resolveSupportAudience(hasLicense: true, status: .deactivated) == .prospect)
+        #expect(LicenseManager.resolveSupportAudience(hasLicense: true, status: .unlicensed) == .prospect)
+    }
+
+    @Test("The whole 30-day offline grace reads as a supporter, and the day after it still does")
+    func gracePeriodNeverShowsAPurchase() {
+        let duringGrace = Self.resolve(daysSinceValidation: 30)
+        let afterGrace = Self.resolve(daysSinceValidation: 31)
+
+        #expect(LicenseManager.resolveSupportAudience(hasLicense: true, status: duringGrace) == .supporter)
+        #expect(LicenseManager.resolveSupportAudience(hasLicense: true, status: afterGrace) == .supporter)
+    }
 }

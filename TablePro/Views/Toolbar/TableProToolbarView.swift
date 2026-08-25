@@ -45,7 +45,8 @@ struct ToolbarPrincipalContent: View {
                 databaseVersion: state.databaseVersion,
                 scopeComponents: state.scopeComponents,
                 connectionName: state.connectionName,
-                displayColor: state.displayColor,
+                brandColor: state.brandColor,
+                identityColor: state.identityColor,
                 safeModeLevel: state.safeModeLevel,
                 coordinator: coordinator
             )
@@ -107,19 +108,17 @@ struct ToolbarPrincipalContent: View {
         }
     }
 
-    /// A tag with no colour fills with `clear`, and a label derived from a transparent fill comes
-    /// back white and disappears, so an uncoloured tag takes the standard control fill instead of
-    /// a derived one.
+    /// `labelledFill` is `nil` for an uncoloured tag rather than the transparent fill the raw
+    /// palette entry returns, which a derived label would read as white and disappear into, so the
+    /// uncoloured case takes the standard control fill and the standard label.
     private func tagBadge(_ tag: ConnectionTag) -> some View {
-        Text(tag.name.uppercased())
+        let fill = tag.color.labelledFill
+        return Text(tag.name.uppercased())
             .font(.caption.weight(.semibold))
-            .foregroundStyle(tag.color.isDefault ? .primary : Color.legibleForeground(on: tag.color.color))
+            .foregroundStyle(fill.map(Color.legibleForeground(on:)) ?? .primary)
             .lineLimit(1)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(
-                tag.color.isDefault ? Color(nsColor: .quaternarySystemFill) : tag.color.color,
-                in: Capsule()
-            )
+            .background(fill ?? Color(nsColor: .quaternarySystemFill), in: Capsule())
     }
 }

@@ -118,7 +118,7 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     /// The export tree names every group after a schema on a schema-aware engine and after a
     /// database everywhere else, so only a schema-aware driver can read that name as its
     /// schema. An empty name means the table sits in the driver's own container.
-    private func exportSchema(for databaseName: String) -> String? {
+    func exportSchema(for databaseName: String) -> String? {
         guard let pluginDriver else { return nil }
         guard pluginDriver.supportsSchemas, !databaseName.isEmpty else { return pluginDriver.currentSchema }
         return databaseName

@@ -203,7 +203,7 @@ extension DatabaseManager {
     }
 
     private func databaseSwitchRequiresReconnect(_ connection: DatabaseConnection) -> Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: connection.type.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: connection.type)?
             .capabilities.requiresReconnectForDatabaseSwitch ?? false
     }
 
@@ -326,7 +326,7 @@ extension DatabaseManager {
 
             // Restart health monitoring if the plugin supports it
             let supportsHealthReconnect = PluginMetadataRegistry.shared.snapshot(
-                forTypeId: session.connection.type.pluginTypeId
+                for: session.connection.type
             )?.supportsHealthMonitor ?? true
 
             if supportsHealthReconnect {

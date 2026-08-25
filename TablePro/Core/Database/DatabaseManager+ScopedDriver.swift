@@ -156,7 +156,7 @@ extension DatabaseManager {
     private func canPool(_ session: ConnectionSession) -> Bool {
         guard session.connection.type.supportsConnectionPooling else { return false }
         let actions = PluginMetadataRegistry.shared.snapshot(
-            forTypeId: session.connection.type.pluginTypeId
+            for: session.connection.type
         )?.postConnectActions ?? []
         return !actions.contains { action in
             if case .selectDatabaseFromConnectionField = action { return true }

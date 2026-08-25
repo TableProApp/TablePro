@@ -135,10 +135,18 @@ internal class UITestCase: XCTestCase {
     /// Returning as soon as the launch was requested is what used to leave fourteen suites poking
     /// at a window that had no connection yet, and every one of those misses cost an XCUITest
     /// retry. The object browser having rows is the cheapest proof the connection is live.
+    ///
+    /// The query is built once and asks only whether a first match exists. Rebuilding
+    /// `app.windows.firstMatch.outlines.firstMatch` inside the poll re-resolves the chain from the
+    /// application element on every iteration, and `staticTexts.count` enumerates every static text
+    /// under the outline rather than stopping at the first. Together they cost seconds per
+    /// iteration once the window holds a loaded grid, so the timeout expires against the query
+    /// instead of against the app, and the failure reads as a launch that never finished.
     internal func waitForSampleDatabaseWindow(in app: XCUIApplication, timeout: TimeInterval = 30) -> Bool {
-        waitForPredicate(timeout: timeout) {
-            app.windows.firstMatch.outlines.firstMatch.staticTexts.count > 0
-        }
+        let firstObject = app.children(matching: .window).firstMatch
+            .descendants(matching: .outline).firstMatch
+            .descendants(matching: .staticText).firstMatch
+        return waitForPredicate(timeout: timeout) { firstObject.exists }
     }
 
     /// Opens the sample database the way a person does. Only the menu contract suite needs this;

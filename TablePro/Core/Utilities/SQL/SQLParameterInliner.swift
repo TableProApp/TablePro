@@ -19,7 +19,7 @@ struct SQLParameterInliner {
     ///   - databaseType: The database type, which determines placeholder style (`?` vs `$N`).
     /// - Returns: A SQL string with placeholders replaced by formatted literal values.
     static func inline(_ statement: ParameterizedStatement, databaseType: DatabaseType) -> String {
-        let style = PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?.parameterStyle ?? .questionMark
+        let style = PluginMetadataRegistry.shared.snapshot(for: databaseType)?.parameterStyle ?? .questionMark
         if style == .dollar {
             return inlineDollarPlaceholders(statement.sql, parameters: statement.parameters)
         } else {

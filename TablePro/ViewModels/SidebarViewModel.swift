@@ -359,13 +359,15 @@ final class SidebarViewModel {
 
     @ObservationIgnored private var cachedFilteredRoutines: [SidebarObjectKind: [RoutineInfo]] = [:]
     @ObservationIgnored private var cachedFilteredRoutinesFingerprint: (count: Int, generation: Int, query: String)?
+    @ObservationIgnored private var cachedFilteredTriggers: [TriggerInfo] = []
+    @ObservationIgnored private var cachedFilteredTriggersFingerprint: (count: Int, generation: Int, query: String)?
 
     private var schemaGeneration: Int {
         SchemaService.shared.generationToken(for: connectionId)
     }
 
     func tables(of kind: SidebarObjectKind, from tables: [TableInfo]) -> [TableInfo] {
-        guard !kind.isRoutine else { return [] }
+        guard kind.category == .table else { return [] }
         let fingerprint = (count: tables.count, generation: schemaGeneration)
         if cachedKindFingerprint?.count != fingerprint.count
             || cachedKindFingerprint?.generation != fingerprint.generation {
@@ -415,6 +417,18 @@ final class SidebarViewModel {
         return cachedFilteredRoutines[kind] ?? []
     }
 
+    func filteredTriggers(from triggers: [TriggerInfo]) -> [TriggerInfo] {
+        let query = filterQuery
+        let fingerprint = (count: triggers.count, generation: schemaGeneration, query: query)
+        if cachedFilteredTriggersFingerprint?.count != fingerprint.count
+            || cachedFilteredTriggersFingerprint?.generation != fingerprint.generation
+            || cachedFilteredTriggersFingerprint?.query != fingerprint.query {
+            cachedFilteredTriggers = DatabaseTreeFilter.filteredTriggers(triggers, searchText: query)
+            cachedFilteredTriggersFingerprint = fingerprint
+        }
+        return cachedFilteredTriggers
+    }
+
     func effectiveExpanded(kind: SidebarObjectKind, hasMatches: Bool) -> Bool {
         if !filterQuery.isEmpty && hasMatches { return true }
         return expanded[kind]
@@ -424,8 +438,12 @@ final class SidebarViewModel {
         SidebarNameFilter.ranked(tables, query: query, name: { $0.name })
     }
 
+    /// Goes through DatabaseTreeFilter so the flat root and the tree share one dedup owner. The
+    /// flat root used to rank without deduplicating, so a driver that returned one routine twice
+    /// handed NSOutlineView the same node object at several row indices and selection snapped back
+    /// to the first of them.
     private func applyRoutineQuery(_ query: String, to routines: [RoutineInfo]) -> [RoutineInfo] {
-        SidebarNameFilter.ranked(routines, query: query, name: { $0.name })
+        DatabaseTreeFilter.filteredRoutines(routines, searchText: query)
     }
 
     private func rebuildKindBuckets(from tables: [TableInfo]) {

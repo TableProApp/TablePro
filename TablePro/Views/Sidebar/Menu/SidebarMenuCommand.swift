@@ -35,6 +35,8 @@ internal enum SidebarMenuCommand: Equatable {
     case removeRecent(DatabaseTreeTableRef)
     case clearRecents
     case useAsActive(DatabaseContainerRef)
+    case setFavoriteDatabases(databases: [String], environment: FavoriteDatabaseEnvironment)
+    case removeFavoriteDatabases([String])
     case refreshContainers([DatabaseContainerRef])
     case copyContainerNames([DatabaseContainerRef])
     case exportContainers([DatabaseContainerRef])
@@ -44,7 +46,7 @@ internal enum SidebarMenuCommand: Equatable {
     case refreshContainerObjectKind(DatabaseTreeObjectGroup)
     case refreshHierarchicalSchema(String)
     case copyText(String)
-    case showRoutineDDL(DatabaseTreeRoutineRef)
+    case showObjectSource(DatabaseObjectRef)
     case copyRedisNamespacePrefix(String)
     case copyRedisKey(String)
     case openRedisKey(key: String, keyType: String)

@@ -14,7 +14,7 @@ struct PluginMetadataRegistryDownloadableTests {
     @Test("register preserves isDownloadable from registry default for downloadable types")
     func registerPreservesDownloadable() {
         let registry = PluginMetadataRegistry.shared
-        guard let original = registry.snapshot(forTypeId: "SQL Server") else {
+        guard let original = registry.snapshot(forRegisteredTypeId: "SQL Server") else {
             Issue.record("Registry default for SQL Server missing")
             return
         }
@@ -23,7 +23,7 @@ struct PluginMetadataRegistryDownloadableTests {
         let pluginSnapshot = original.withIsDownloadable(false)
         registry.register(snapshot: pluginSnapshot, forTypeId: "SQL Server", preserveIcon: true)
 
-        let resolved = registry.snapshot(forTypeId: "SQL Server")
+        let resolved = registry.snapshot(forRegisteredTypeId: "SQL Server")
         #expect(resolved?.isDownloadable == true)
 
         registry.register(snapshot: original, forTypeId: "SQL Server", preserveIcon: true)
@@ -32,14 +32,14 @@ struct PluginMetadataRegistryDownloadableTests {
     @Test("unregister restores registry default for downloadable types")
     func unregisterRestoresDefault() {
         let registry = PluginMetadataRegistry.shared
-        guard let original = registry.snapshot(forTypeId: "SQL Server") else {
+        guard let original = registry.snapshot(forRegisteredTypeId: "SQL Server") else {
             Issue.record("Registry default for SQL Server missing")
             return
         }
 
         registry.unregister(typeId: "SQL Server")
 
-        let restored = registry.snapshot(forTypeId: "SQL Server")
+        let restored = registry.snapshot(forRegisteredTypeId: "SQL Server")
         #expect(restored != nil)
         #expect(restored?.isDownloadable == true)
         #expect(restored?.displayName == original.displayName)
@@ -50,7 +50,7 @@ struct PluginMetadataRegistryDownloadableTests {
     func unregisterRemovesNonDefaultTypes() {
         let registry = PluginMetadataRegistry.shared
         let typeId = "TestThirdPartyDB"
-        guard registry.snapshot(forTypeId: typeId) == nil else {
+        guard registry.snapshot(forRegisteredTypeId: typeId) == nil else {
             Issue.record("Test type \(typeId) unexpectedly in registry defaults")
             return
         }
@@ -67,18 +67,18 @@ struct PluginMetadataRegistryDownloadableTests {
             capabilities: .defaults, schema: .defaults, editor: .defaults, connection: .defaults
         )
         registry.register(snapshot: snapshot, forTypeId: typeId)
-        #expect(registry.snapshot(forTypeId: typeId) != nil)
+        #expect(registry.snapshot(forRegisteredTypeId: typeId) != nil)
 
         registry.unregister(typeId: typeId)
 
-        #expect(registry.snapshot(forTypeId: typeId) == nil)
+        #expect(registry.snapshot(forRegisteredTypeId: typeId) == nil)
         #expect(registry.typeId(forUrlScheme: "thirdparty") == nil)
     }
 
     @Test("isDownloadablePlugin stays true for SQL Server after plugin uninstall")
     func isDownloadablePluginStaysTrueAfterUninstall() {
         let registry = PluginMetadataRegistry.shared
-        guard registry.snapshot(forTypeId: "SQL Server") != nil else {
+        guard registry.snapshot(forRegisteredTypeId: "SQL Server") != nil else {
             Issue.record("Registry default for SQL Server missing")
             return
         }
