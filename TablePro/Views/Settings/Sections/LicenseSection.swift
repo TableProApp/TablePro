@@ -39,7 +39,7 @@ struct LicenseSection: View {
                         .foregroundStyle(.orange)
                     Text(String(format: String(localized: "License expires in %lld day(s)"), days))
                     Spacer()
-                    Link(String(localized: "Renew"), destination: LicenseConstants.pricingURL)
+                    Link(String(localized: "Renew"), destination: SupportLinks.pricing(.licenseSettings))
                         .controlSize(.small)
                 }
                 .padding(6)
@@ -182,7 +182,7 @@ struct LicenseSection: View {
 
             HStack {
                 Spacer()
-                Link("Purchase License", destination: LicenseConstants.pricingURL)
+                Link("Purchase License", destination: SupportLinks.pricing(.licenseSettings))
                     .font(.subheadline)
             }
         }

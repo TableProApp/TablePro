@@ -57,7 +57,7 @@ struct ProFeatureGateModifier: ViewModifier {
                         showActivationSheet = true
                     }
                     .buttonStyle(.borderedProminent)
-                    Link(String(localized: "Renew License"), destination: LicenseConstants.pricingURL)
+                    Link(String(localized: "Renew License"), destination: SupportLinks.pricing(.featureGate(feature)))
                         .font(.subheadline)
                 case .validationFailed:
                     Text("License validation failed")
@@ -80,7 +80,7 @@ struct ProFeatureGateModifier: ViewModifier {
                         showActivationSheet = true
                     }
                     .buttonStyle(.borderedProminent)
-                    Link(String(localized: "Purchase License"), destination: LicenseConstants.pricingURL)
+                    Link(String(localized: "Purchase License"), destination: SupportLinks.pricing(.featureGate(feature)))
                         .font(.subheadline)
                 case .requiresUpgrade(let requiredTier):
                     Text("\(feature.displayName) requires the \(requiredTier.displayName) plan")
@@ -88,7 +88,7 @@ struct ProFeatureGateModifier: ViewModifier {
                     Text(feature.featureDescription)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    Link(String(localized: "Upgrade Plan"), destination: LicenseConstants.pricingURL)
+                    Link(String(localized: "Upgrade Plan"), destination: SupportLinks.pricing(.featureGate(feature)))
                         .buttonStyle(.borderedProminent)
                 }
             }

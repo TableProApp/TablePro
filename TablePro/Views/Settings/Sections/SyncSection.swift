@@ -31,7 +31,7 @@ struct SyncSection: View {
             HStack(spacing: 6) {
                 Text("iCloud Sync")
                 if !isProAvailable {
-                    ProBadge()
+                    ProBadge(feature: .iCloudSync)
                 }
             }
         }

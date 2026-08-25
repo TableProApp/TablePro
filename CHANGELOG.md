@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Support TablePro in the Help menu, and a standing link in the welcome window and sidebar until a license is active.
 - Pad directives as a read-only Beancount table, including their target and source accounts and source locations. (#2399)
 - Compare & Sync between two databases, comparing tables, views, procedures, functions and triggers, or row data. Starter license. (#721)
 - Triggers as a sidebar section, listed per database and schema alongside Procedures and Functions. (#2383)
@@ -23,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The PRO badge beside a gated control names what the feature does and links to the pricing page.
 - Autocomplete in a query tab follows that tab's own database and schema.
 - The query editor's database picker names the tab's schema beside its database.
 - The data grid draws its cells instead of building a view for each one, so a result with hundreds of columns opens at once and holds a fraction of the memory. (#2381)

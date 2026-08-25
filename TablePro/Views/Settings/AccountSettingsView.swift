@@ -32,7 +32,7 @@ struct AccountSettingsView: View {
                 Text(String(localized: "Sync paused, Pro license expired"))
                     .font(.callout)
                 Spacer()
-                Link(String(localized: "Renew License…"), destination: LicenseConstants.pricingURL)
+                Link(String(localized: "Renew License…"), destination: SupportLinks.pricing(.licenseSettings))
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
             }

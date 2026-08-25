@@ -66,7 +66,7 @@ struct LicenseActivationSheet: View {
                 }
 
                 HStack(spacing: 16) {
-                    Link("Purchase License", destination: LicenseConstants.pricingURL)
+                    Link("Purchase License", destination: SupportLinks.pricing(.activationSheet))
                         .font(.subheadline)
 
                     Button("Cancel") {

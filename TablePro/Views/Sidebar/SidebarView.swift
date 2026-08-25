@@ -98,13 +98,10 @@ struct SidebarView: View {
     // MARK: - Body
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
             switch sidebarState.selectedSidebarTab {
             case .tables:
-                VStack(spacing: 0) {
-                    tablesContent
-                    schemaFooter
-                }
+                tablesContent
             case .favorites:
                 if let coordinator {
                     FavoritesTabView(
@@ -118,6 +115,8 @@ struct SidebarView: View {
                     Color.clear
                 }
             }
+
+            sidebarFooter
         }
         .onChange(of: settingsManager.general.showRecentTables) { _, _ in
             sidebarState.reloadRecentTablesFromStore()
@@ -160,20 +159,30 @@ struct SidebarView: View {
         }
     }
 
-    // MARK: - Schema Footer
+    // MARK: - Footer
+
+    /// The schema picker belongs to the flat table list alone, and the support link belongs to
+    /// anyone without a license, so the bar draws when either has something to put in it.
+    private var showsSchemaPicker: Bool {
+        supportsSchemaFooter && sidebarState.selectedSidebarTab == .tables
+    }
 
     @ViewBuilder
-    private var schemaFooter: some View {
-        if supportsSchemaFooter {
+    private var sidebarFooter: some View {
+        if showsSchemaPicker || LicenseManager.shared.supportAudience == .prospect {
             VStack(spacing: 0) {
                 Divider()
                 HStack(spacing: 8) {
+                    SupportPromptLink()
+                        .font(.caption)
                     Spacer()
-                    SchemaPickerControl(
-                        connectionId: connectionId,
-                        databaseType: viewModel.databaseType,
-                        coordinator: coordinator
-                    )
+                    if showsSchemaPicker {
+                        SchemaPickerControl(
+                            connectionId: connectionId,
+                            databaseType: viewModel.databaseType,
+                            coordinator: coordinator
+                        )
+                    }
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)

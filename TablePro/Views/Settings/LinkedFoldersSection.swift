@@ -39,7 +39,7 @@ struct LinkedFoldersSection: View {
             HStack(spacing: 6) {
                 Text("Linked Folders")
                 if !isLicensed {
-                    ProBadge()
+                    ProBadge(feature: .linkedFolders)
                 }
             }
         } footer: {
