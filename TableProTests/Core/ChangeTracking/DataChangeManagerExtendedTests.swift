@@ -340,7 +340,7 @@ struct DataChangeManagerExtendedTests {
         #expect(!manager.isCellModified(rowIndex: 0, columnIndex: 1))
     }
 
-    @Test("discardChanges preserves undo/redo stacks unlike clearChanges")
+    @Test("only clearChangesAndUndoHistory drops the undo stack")
     func discardChangesPreservesUndoRedoUnlikeClearChanges() {
         // discardChanges preserves undo/redo
         let manager1 = makeManager()
@@ -353,7 +353,10 @@ struct DataChangeManagerExtendedTests {
         manager1.discardChanges()
         #expect(manager1.canRedo)
 
-        // clearChanges clears undo/redo
+        /// `clearChanges` drops the pending edits and leaves the undo stack standing, exactly as
+        /// `discardChanges` does. Clearing the history is a separate call,
+        /// `clearChangesAndUndoHistory`, and that distinction is the point: this case asserted that
+        /// `clearChanges` wiped undo, which would make the two indistinguishable.
         let manager2 = makeManager()
         manager2.recordCellChange(
             rowIndex: 0, columnIndex: 1, columnName: "name",
@@ -362,6 +365,9 @@ struct DataChangeManagerExtendedTests {
         manager2.undoManagerProvider?()?.undo()
         #expect(manager2.canRedo)
         manager2.clearChanges()
+        #expect(manager2.canRedo)
+
+        manager2.clearChangesAndUndoHistory()
         #expect(!manager2.canUndo)
         #expect(!manager2.canRedo)
     }
@@ -589,7 +595,9 @@ struct DataChangeManagerExtendedTests {
         )
         manager.undoManagerProvider?()?.undo()
         let state = manager.saveState()
-        #expect(state.insertedRowData[0]?[1] == nil)
+        /// `.null`, not a Swift nil. An inserted row holds an explicit SQL NULL for a cell with no
+        /// value, so undoing an edit restores `.null` rather than removing the entry.
+        #expect(state.insertedRowData[0]?[1] == .null)
     }
 
     @Test("Edit multiple cells in same row all tracked")

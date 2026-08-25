@@ -14,10 +14,21 @@ on:
       - ".github/workflows/ios-tests.yml"
   workflow_dispatch:
 
-# Only one run per PR/branch at a time; new pushes cancel pending older ones.
+# One run per PR/branch at a time. On a pull request a new push cancels the run in flight, because
+# only the newest commit's verdict is wanted and the older one is about to be replaced anyway.
+#
+# A push to main is different: its run is the only verdict that commit will ever get, and cancelling
+# it leaves main untested. That is not hypothetical: 3 of the last 20 main runs of this workflow were
+# cancelled by the next merge. This suite is fast enough to usually finish first, so it loses fewer
+# than the macOS one does, but a lost verdict is a lost verdict.
+#
+# Queueing them does not pile up. With cancel-in-progress false GitHub still replaces the *pending*
+# run in the group: "any existing pending job or workflow in the same concurrency group will be
+# canceled and the new queued job or workflow will take its place." So a burst of merges holds at
+# most one running plus one queued, and the one that ends up queued is the newest.
 concurrency:
   group: ios-tests-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 # A downgrade or an exact match is always allowed for a called workflow; only asking for more than
 # the caller holds fails at run creation. Declaring read cannot break a caller, and it stops every

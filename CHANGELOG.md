@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Query results stop fetching at the row limit on MySQL, PostgreSQL, SQLite, MSSQL, Oracle, Cassandra, Redis, DynamoDB, BigQuery, Snowflake, Trino and ClickHouse. (#2427)
 - ClickHouse reads a capped result in one request instead of a separate `LIMIT 0` round trip for the columns.
+- Structure editor undo steps are now set by the operation instead of run loop timing.
 
 ### Fixed
 
