@@ -48,6 +48,7 @@ private struct BeancountProjection {
     let handle: OpaquePointer
     let watchedURLs: [URL]
     let signatures: [String: BeancountSourceSignature]
+    let backendVersion: String
 }
 
 private enum PostingsColumnLevel: String, CaseIterable {
@@ -57,7 +58,7 @@ private enum PostingsColumnLevel: String, CaseIterable {
 }
 
 private enum BeancountBackend {
-    case rledger
+    case rledger(String)
     case python(String)
 }
 
@@ -70,6 +71,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var sourceSignatures: [String: BeancountSourceSignature] = [:]
     private var projectionGeneration: UInt64 = 0
     private var pendingConnectionGeneration: UInt64?
+    private var activeBackendVersion = "Beancount"
 
     private static let transactionsCoreColumns =
         "id, date, flag, payee, narration, filename, lineno"
@@ -104,6 +106,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private static let rledgerNoCacheSupport = OSAllocatedUnfairLock(initialState: [String: Bool]())
     private static let postingsColumnLevels =
         OSAllocatedUnfairLock(initialState: [String: PostingsColumnLevel]())
+    private static let backendVersions = OSAllocatedUnfairLock(initialState: [String: String]())
 
     private static let workQueue = DispatchQueue(
         label: "com.TablePro.BeancountDriver",
@@ -118,7 +121,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     var currentSchema: String? { nil }
-    var serverVersion: String? { "Beancount" }
+    var serverVersion: String? { lock.withLock { activeBackendVersion } }
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }
     var parameterStyle: ParameterStyle { .questionMark }
@@ -178,6 +181,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             ledgerURL = fileURL
             watchedURLs = projection.watchedURLs
             sourceSignatures = projection.signatures
+            activeBackendVersion = projection.backendVersion
             return true
         }
         guard installed else { throw CancellationError() }
@@ -194,6 +198,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             self.ledgerURL = ledgerURL
             watchedURLs = []
             sourceSignatures = [:]
+            activeBackendVersion = "Beancount"
         }
     }
 
@@ -208,6 +213,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             ledgerURL = nil
             watchedURLs = []
             sourceSignatures.removeAll()
+            activeBackendVersion = "Beancount"
         }
     }
 
@@ -512,6 +518,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             db = projection.handle
             watchedURLs = projection.watchedURLs
             sourceSignatures = projection.signatures
+            activeBackendVersion = projection.backendVersion
             projectionGeneration &+= 1
         }
     }
@@ -538,7 +545,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         for _ in 0..<2 {
             let initialGraph = try BeancountIncludeResolver().resolve(fileURL: ledgerURL)
             let initialSignatures = signatures(for: initialGraph.reloadDependencies)
-            let rows = try projectionRows(
+            let projectionSource = try projectionRows(
                 ledgerPath: ledgerURL.path,
                 allowsLedgerPlugins: allowsLedgerPlugins
             )
@@ -551,7 +558,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let finalSignatures = signatures(for: finalGraph.reloadDependencies)
             guard initialSignatures == finalSignatures else { continue }
 
-            let handle = try loadProjection(rows: rows, sourceFiles: finalGraph.sourceFiles)
+            let handle = try loadProjection(rows: projectionSource.rows, sourceFiles: finalGraph.sourceFiles)
             guard signatures(for: finalGraph.reloadDependencies) == finalSignatures else {
                 sqlite3_close(handle)
                 continue
@@ -559,7 +566,8 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return BeancountProjection(
                 handle: handle,
                 watchedURLs: finalGraph.reloadDependencies,
-                signatures: finalSignatures
+                signatures: finalSignatures,
+                backendVersion: projectionSource.backendVersion
             )
         }
 
@@ -571,13 +579,14 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private static func projectionRows(
         ledgerPath: String,
         allowsLedgerPlugins: Bool
-    ) throws -> BeancountProjectionRows {
-        switch try resolveProjectionBackend() {
+    ) throws -> (rows: BeancountProjectionRows, backendVersion: String) {
+        let backend = try resolveProjectionBackend()
+        switch backend {
         case .rledger:
             let transactions = try transactionRows(ledgerPath: ledgerPath)
             let postings = try postingRows(ledgerPath: ledgerPath)
             let pads = padProjection(ledgerPath: ledgerPath)
-            return BeancountProjectionRows(
+            let rows = BeancountProjectionRows(
                 transactions: transactionRowsByAddingPostingDetails(transactions, postings: postings),
                 postings: postings,
                 accounts: try query(ledgerPath: ledgerPath, bql: accountsQuery),
@@ -592,13 +601,14 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 closes: directiveRows(ledgerPath: ledgerPath, bql: closesQuery, table: "closes"),
                 diagnostics: validationDiagnostics(ledgerPath: ledgerPath) + pads.diagnostics
             )
+            return (rows, backendVersion(backend))
         case .python(let executablePath):
             let rows = try pythonProjectionRows(
                 ledgerPath: ledgerPath,
                 executablePath: executablePath,
                 allowsLedgerPlugins: allowsLedgerPlugins
             )
-            return BeancountProjectionRows(
+            let projectionRows = BeancountProjectionRows(
                 transactions: rows["transactions"] ?? [],
                 postings: rows["postings"] ?? [],
                 accounts: rows["accounts"] ?? [],
@@ -613,6 +623,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 closes: rows["closes"] ?? [],
                 diagnostics: rows["diagnostics"] ?? []
             )
+            return (projectionRows, backendVersion(backend))
         }
     }
 
@@ -833,13 +844,12 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let preference = ProcessInfo.processInfo.environment["TABLEPRO_BEANCOUNT_BACKEND"]?.lowercased()
         switch preference {
         case "rledger", "rustledger":
-            _ = try rustledgerExecutablePath()
-            return .rledger
+            return .rledger(try rustledgerExecutablePath())
         case "python", "beancount":
             return .python(try pythonBeancountExecutablePath())
         default:
-            if try optionalRustledgerExecutablePath() != nil {
-                return .rledger
+            if let rledgerPath = try optionalRustledgerExecutablePath() {
+                return .rledger(rledgerPath)
             }
             if let pythonPath = try optionalPythonBeancountExecutablePath() {
                 return .python(pythonPath)
@@ -848,6 +858,65 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 String(localized: "Beancount needs rledger or Python Beancount. Install one, or set TABLEPRO_RUSTLEDGER_BINARY or TABLEPRO_BEANCOUNT_PYTHON to its path.")
             )
         }
+    }
+
+    private static func backendVersion(_ backend: BeancountBackend) -> String {
+        let key = backendCacheKey(backend)
+        if let cached = backendVersions.withLock({ $0[key] }) {
+            return cached
+        }
+        let resolved = resolvedBackendVersion(backend)
+        backendVersions.withLock { $0[key] = resolved }
+        return resolved
+    }
+
+    private static func backendCacheKey(_ backend: BeancountBackend) -> String {
+        switch backend {
+        case .rledger(let executablePath):
+            return "rledger:\(executablePath)"
+        case .python(let executablePath):
+            return "python:\(executablePath)"
+        }
+    }
+
+    private static func resolvedBackendVersion(_ backend: BeancountBackend) -> String {
+        switch backend {
+        case .rledger(let executablePath):
+            let name = "rledger"
+            guard let version = reportedVersion(
+                executablePath: executablePath,
+                arguments: ["--version"]
+            ) else {
+                return name
+            }
+            return version.lowercased().hasPrefix("\(name) ") ? version : "\(name) \(version)"
+        case .python(let executablePath):
+            let name = "Python Beancount"
+            guard let version = reportedVersion(
+                executablePath: executablePath,
+                arguments: ["-c", "from importlib.metadata import version; print(version('beancount'))"]
+            ) else {
+                return name
+            }
+            return "\(name) \(version)"
+        }
+    }
+
+    private static func reportedVersion(executablePath: String, arguments: [String]) -> String? {
+        let output: Data
+        do {
+            output = try runProcess(
+                executablePath: executablePath,
+                arguments: arguments,
+                failureMessage: "Beancount backend version check failed"
+            )
+        } catch {
+            logger.warning("Beancount backend version unavailable: \(error)")
+            return nil
+        }
+        let version = String(decoding: output, as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return version.isEmpty ? nil : version
     }
 
     private static func rledgerQueryArguments(ledgerPath: String, query: String) throws -> [String] {

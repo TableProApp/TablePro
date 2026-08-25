@@ -476,6 +476,45 @@ struct BeancountPluginDriverTests {
         }
     }
 
+    @Test("reports the active Python Beancount backend and version")
+    func reportsActivePythonBeancountBackendAndVersion() async throws {
+        try await Self.withFakePythonBackend(reportedVersion: "3.2.3") { _, ledger in
+            let driver = BeancountPluginDriver(config: Self.config(ledger))
+            try await driver.connect()
+            defer { driver.disconnect() }
+
+            #expect(driver.serverVersion == "Python Beancount 3.2.3")
+        }
+    }
+
+    @Test("names the backend without a version when the executable reports none")
+    func namesBackendWithoutVersionWhenExecutableReportsNone() async throws {
+        try await Self.withFakePythonBackend(reportedVersion: "") { _, ledger in
+            let driver = BeancountPluginDriver(config: Self.config(ledger))
+            try await driver.connect()
+            defer { driver.disconnect() }
+
+            #expect(driver.serverVersion == "Python Beancount")
+        }
+    }
+
+    @Test("measures a backend version once per executable, not once per projection")
+    func measuresBackendVersionOncePerExecutable() async throws {
+        try await Self.withFakePythonBackend(reportedVersion: "3.2.3") { directory, ledger in
+            for _ in 0..<3 {
+                let driver = BeancountPluginDriver(config: Self.config(ledger))
+                try await driver.connect()
+                driver.disconnect()
+            }
+
+            let calls = try String(
+                contentsOf: directory.appendingPathComponent("version-calls"),
+                encoding: .utf8
+            )
+            #expect(calls.split(separator: "\n").count == 1)
+        }
+    }
+
     @Test(
         "executes BQL queries through the rledger executable",
         .enabled(if: RustledgerLocator.path != nil, "rledger executable unavailable")
@@ -569,6 +608,52 @@ struct BeancountPluginDriverTests {
                 try await Self.expectRichDirectives(driver, ledger: ledger)
             }
         }
+    }
+
+    @Test(
+        "projects the same core relations through both Beancount backends",
+        .enabled(
+            if: RustledgerLocator.path != nil && PythonBeancountLocator.path != nil,
+            "rledger and Python Beancount are both required"
+        )
+    )
+    func projectsSameCoreRelationsThroughBothBackends() async throws {
+        let rledger = try #require(RustledgerLocator.path)
+        let python = try #require(PythonBeancountLocator.path)
+        let directory = try Self.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let ledger = directory.appendingPathComponent("main.beancount")
+        try """
+        2024-01-01 commodity USD
+        2024-01-01 open Assets:Cash USD
+        2024-01-01 open Expenses:Food USD
+
+        2024-01-02 * "Cafe" "Coffee"
+          Expenses:Food  3.00 USD
+          Assets:Cash
+
+        2024-01-03 price USD 0.92 EUR
+        2024-01-04 balance Assets:Cash -3.00 USD
+        2024-01-05 event "location" "Taipei"
+        2024-01-06 note Assets:Cash "checked"
+        2024-06-30 close Expenses:Food
+        """.write(to: ledger, atomically: true, encoding: .utf8)
+
+        let rustledgerRows = try await Self.withEnvironment([
+            "TABLEPRO_BEANCOUNT_BACKEND": "rledger",
+            "TABLEPRO_RUSTLEDGER_BINARY": rledger
+        ]) {
+            try await Self.coreProjectionSnapshot(ledger: ledger)
+        }
+        let pythonRows = try await Self.withEnvironment([
+            "TABLEPRO_BEANCOUNT_BACKEND": "python",
+            "TABLEPRO_BEANCOUNT_PYTHON": python
+        ]) {
+            try await Self.coreProjectionSnapshot(ledger: ledger)
+        }
+
+        #expect(rustledgerRows == pythonRows)
     }
 
     @Test(
@@ -876,10 +961,10 @@ struct BeancountPluginDriverTests {
         ], body)
     }
 
-    private static func withEnvironment(
+    private static func withEnvironment<T>(
         _ values: [String: String],
-        _ body: () async throws -> Void
-    ) async throws {
+        _ body: () async throws -> T
+    ) async throws -> T {
         let previous = values.keys.map { ($0, ProcessInfo.processInfo.environment[$0]) }
         for (name, value) in values {
             setenv(name, value, 1)
@@ -893,7 +978,77 @@ struct BeancountPluginDriverTests {
                 }
             }
         }
-        try await body()
+        return try await body()
+    }
+
+    private static func coreProjectionSnapshot(ledger: URL) async throws -> [String: [[String?]]] {
+        let driver = BeancountPluginDriver(config: Self.config(ledger))
+        try await driver.connect()
+        defer { driver.disconnect() }
+
+        // Row ids are per-backend: rledger numbers every entry in the ledger, the Python script
+        // numbers only the transactions it walks. Comparing them would never match, so the
+        // snapshot compares the values and orders by them.
+        let queries = [
+            "accounts": "SELECT name, open_date, currencies FROM accounts ORDER BY name",
+            "balance_assertions": """
+                SELECT date, account, amount, commodity FROM balance_assertions
+                ORDER BY date, account, commodity
+                """,
+            "balances": "SELECT account, amount, commodity FROM balances ORDER BY account, commodity",
+            "closes": "SELECT date, account FROM closes ORDER BY date, account",
+            "commodities": "SELECT date, commodity FROM commodities ORDER BY date, commodity",
+            "events": "SELECT date, type, description FROM events ORDER BY date, type",
+            "notes": "SELECT date, account, comment FROM notes ORDER BY date, account",
+            "postings": """
+                SELECT date, account, amount, commodity FROM postings
+                ORDER BY date, account, commodity
+                """,
+            "prices": "SELECT date, commodity, amount, currency FROM prices ORDER BY date, commodity",
+            "transactions": """
+                SELECT date, flag, payee, narration FROM transactions
+                ORDER BY date, payee, narration
+                """
+        ]
+
+        var snapshot: [String: [[String?]]] = [:]
+        for (table, query) in queries {
+            let result = try await driver.execute(query: query)
+            snapshot[table] = result.rows.map { $0.map(\.asText) }
+        }
+        return snapshot
+    }
+
+    private static func withFakePythonBackend(
+        reportedVersion: String,
+        _ body: (URL, URL) async throws -> Void
+    ) async throws {
+        let directory = try Self.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let python = directory.appendingPathComponent("python3")
+        try """
+        #!/bin/sh
+        case "$2" in
+          *importlib.metadata*)
+            echo called >> "$(dirname "$0")/version-calls"
+            printf '%s' '\(reportedVersion)'
+            ;;
+          "import beancount") exit 0 ;;
+          *) printf '{"transactions":[]}' ;;
+        esac
+        """.write(to: python, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: python.path)
+
+        let ledger = directory.appendingPathComponent("main.beancount")
+        try "".write(to: ledger, atomically: true, encoding: .utf8)
+
+        try await Self.withEnvironment([
+            "TABLEPRO_BEANCOUNT_BACKEND": "python",
+            "TABLEPRO_BEANCOUNT_PYTHON": python.path
+        ]) {
+            try await body(directory, ledger)
+        }
     }
 
     private static func config(
