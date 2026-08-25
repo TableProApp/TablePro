@@ -43,32 +43,48 @@ internal enum WorkspaceRailStore {
     /// answered nothing for connections that were open. It never held an id `WindowManager` lacked,
     /// so the union only ever added wrong answers.
     internal static var entries: [WorkspaceRailEntry] {
-        let openIds = WindowManager.shared.allConnectionIds()
+        let hosted = WindowManager.shared.hostedWorkspaces()
+        let openIds = Set(hosted.map(\.connectionId))
         guard !openIds.isEmpty else { return [] }
 
         let sessions = DatabaseManager.shared.activeSessions
         let sessionless = openIds.filter { sessions[$0] == nil }
+        let workspacesById = hosted.reduce(into: [UUID: ConnectionWorkspace]()) { result, workspace in
+            result[workspace.connectionId] = workspace
+        }
         return resolveEntries(
             openConnectionIds: openIds,
             sessions: sessions,
+            hostedConnections: workspacesById.compactMapValues(\.connection),
             storedConnections: Self.storedConnections(for: Array(sessionless)),
             containerTarget: { PluginManager.shared.containerSwitchTarget(for: $0) },
-            tabs: { MainContentCoordinator.allTabs(for: $0) },
+            /// The hosted workspace's own coordinator, never the app-wide registry: that one also
+            /// lists the throwaway coordinators SwiftUI discards mid-body, whose stale copy of a
+            /// closed tab kept a container listed and made a closed entry come back.
+            tabs: { workspacesById[$0]?.sessionState?.coordinator.tabManager.tabs ?? [] },
+            openedContainers: { workspacesById[$0]?.openedContainers ?? [] },
+            closingContainers: { workspacesById[$0]?.closingContainer },
+            openedAt: workspacesById.mapValues(\.openedAt),
             storedOrder: WorkspaceRailOrderStore.shared.order
         )
     }
 
-    /// A connection contributes one row per container its tabs hold open, plus the one it
-    /// is browsing. A window can outlive its session: it exists before the connection is
-    /// established, and it stays open after a session is torn down. Such an entry falls
-    /// back to the saved connection record and reports `.disconnected`, which is what "no
-    /// session" means, rather than claiming a connection attempt that may not be running.
+    /// A connection contributes one row per container it has open: the ones it was told to open,
+    /// the ones its tabs hold, and the one it is browsing. A window can outlive its session: it
+    /// exists before the connection is established, and it stays open after a session is torn down.
+    /// Such an entry falls back to the record its own workspace carries, and to the saved connection
+    /// after that, and reports `.disconnected`, which is what "no session" means, rather than
+    /// claiming a connection attempt that may not be running.
     internal static func resolveEntries(
         openConnectionIds: Set<UUID>,
         sessions: [UUID: ConnectionSession],
+        hostedConnections: [UUID: DatabaseConnection] = [:],
         storedConnections: [UUID: DatabaseConnection],
         containerTarget: (DatabaseType) -> ContainerSwitchTarget?,
         tabs: (UUID) -> [QueryTab],
+        openedContainers: (UUID) -> Set<String> = { _ in [] },
+        closingContainers: (UUID) -> String? = { _ in nil },
+        openedAt: [UUID: Date] = [:],
         storedOrder: [WorkspaceID]
     ) -> [WorkspaceRailEntry] {
         var connections: [UUID: DatabaseConnection] = [:]
@@ -80,6 +96,7 @@ internal enum WorkspaceRailStore {
             guard let resolved = resolve(
                 connectionId: connectionId,
                 sessions: sessions,
+                hostedConnections: hostedConnections,
                 storedConnections: storedConnections
             ) else { continue }
 
@@ -89,7 +106,14 @@ internal enum WorkspaceRailStore {
             let target = containerTarget(resolved.connection.type)
             targets[connectionId] = target
 
-            for container in containers(for: resolved, tabs: tabs(connectionId), target: target) {
+            let held = containers(
+                for: resolved,
+                tabs: tabs(connectionId),
+                opened: openedContainers(connectionId),
+                closing: closingContainers(connectionId),
+                target: target
+            )
+            for container in held {
                 workspaces.insert(WorkspaceID(connectionId: connectionId, container: container))
             }
         }
@@ -97,7 +121,7 @@ internal enum WorkspaceRailStore {
         let ranked = WorkspaceRailOrdering.ranked(
             openIds: workspaces,
             storedOrder: storedOrder,
-            openedAt: sessions.mapValues(\.connectedAt)
+            openedAt: openedAt
         )
 
         return ranked.compactMap { workspace in
@@ -159,34 +183,58 @@ internal enum WorkspaceRailStore {
         let session: ConnectionSession?
     }
 
+    /// The window's own record comes before the saved one, and is the only one a connection opened
+    /// from a file or a URL ever has: `TabRouter.openDatabaseFile` builds that connection inline and
+    /// never writes it to `ConnectionStorage`. Resolving from storage alone dropped every one of its
+    /// entries the moment its session ended, while its window was still open and hosting it.
     private static func resolve(
         connectionId: UUID,
         sessions: [UUID: ConnectionSession],
+        hostedConnections: [UUID: DatabaseConnection],
         storedConnections: [UUID: DatabaseConnection]
     ) -> ResolvedConnection? {
         if let session = sessions[connectionId] {
             return ResolvedConnection(connection: session.connection, status: session.status, session: session)
         }
-        guard let stored = storedConnections[connectionId] else { return nil }
-        return ResolvedConnection(connection: stored, status: .disconnected, session: nil)
+        guard let record = hostedConnections[connectionId] ?? storedConnections[connectionId] else { return nil }
+        return ResolvedConnection(connection: record, status: .disconnected, session: nil)
     }
 
     /// An engine that switches neither database nor schema names no container, and a
     /// connection that has not reached one yet names nothing either. Both still get one
     /// row, keyed by the empty container, so every open window is reachable from the rail.
+    ///
+    /// `opened` is what the user has open and has not closed. Tabs are still read alongside it,
+    /// because a restored window has tabs before anything has browsed anywhere.
+    ///
+    /// The live browse cursor always earns a row: it is where the next tab opens, and a container
+    /// the connection is standing in cannot be closed without leaving it first. The saved default is
+    /// a last resort instead, for a window whose session has gone or has not arrived: taking it
+    /// unconditionally put the connection's own database back the moment its entry was closed, on
+    /// exactly the connection that has no session to browse away with.
     private static func containers(
         for resolved: ResolvedConnection,
         tabs: [QueryTab],
+        opened: Set<String>,
+        closing: String?,
         target: ContainerSwitchTarget?
     ) -> Set<String> {
         var containers = WorkspaceAnchoring.containers(in: tabs, target: target)
+        containers.formUnion(opened)
 
-        let browsed = resolved.session.flatMap {
+        if let browsed = resolved.session.flatMap({
             WorkspaceAnchoring.browsedContainer(of: $0, target: target)
-        } ?? WorkspaceAnchoring.defaultContainer(of: resolved.connection, target: target)
-
-        if let browsed {
-            containers.insert(browsed)
+        }) {
+            /// Except while a close is leaving it. The connection is still standing there until the
+            /// switch lands, which on an engine that reconnects to change database is seconds away,
+            /// and keeping the row until then left a closed entry on screen long after the click.
+            /// It comes back if the switch fails, because the connection never left after all.
+            if browsed != closing || containers.isEmpty {
+                containers.insert(browsed)
+            }
+        } else if containers.isEmpty,
+                  let saved = WorkspaceAnchoring.defaultContainer(of: resolved.connection, target: target) {
+            containers.insert(saved)
         }
         if containers.isEmpty {
             containers.insert("")

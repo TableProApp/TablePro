@@ -59,7 +59,9 @@ Closing the last tab leaves the connection open on its empty state. `Cmd+W` agai
 
 **Close Tabs for Other Databases** takes only tabs opened against a database other than the one the connection is browsing now, never the tab in front of you, and never another connection's tabs. On engines that switch schemas instead, such as BigQuery and Oracle, it reads **Close Tabs for Other Schemas**.
 
-Closing asks **Do you want to save changes?** when the tab holds unsaved cell edits, a `.sql` file that differs from disk, or staged structure, Create Table, or user and role changes. Save closes the tab once the save lands, except for user and role changes, where it opens the review sheet instead and leaves the tab open. A bulk close asks once, and Cancel stops the rest. A tab you are not looking at is selected first, putting the work in front of you before you answer.
+Closing asks **Do you want to save changes?** when the tab holds unsaved cell edits, a `.sql` file that differs from disk, or staged structure, Create Table, or user and role changes. Save closes the tab once the save lands, except for user and role changes, where it opens the review sheet instead and leaves the tab open. Closing one tab selects it first, putting the work in front of you before you answer.
+
+A bulk close asks once, and Cancel stops the rest. Save writes what it can reach in every tab it is closing: their `.sql` files and their staged structure changes, plus everything in the tab on screen. Cell edits, Create Table drafts, and staged user and role changes can only be saved from their own tab, so those tabs stay open instead and the alert says so. **Don't Save** closes all of them.
 
 A dot on the tab marks unsaved text or unsaved edits. It is deliberately wider than the prompt: a scratch query tab shows the dot and still closes without asking.
 
