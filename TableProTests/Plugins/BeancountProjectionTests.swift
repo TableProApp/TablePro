@@ -161,6 +161,31 @@ struct BeancountProjectionTests {
         #expect(values.first?["value"] as? String == "quoted \"text\"")
     }
 
+    @Test("reads query and custom directives out of a CRLF ledger")
+    func readsDirectivesFromCarriageReturnLineFeedSource() throws {
+        let sourceURL = URL(fileURLWithPath: "/ledger/crlf.beancount")
+        let projection = BeancountDirectiveProjectionReader.read(
+            contents: "2024-01-01 open Assets:Cash USD\r\n"
+                + "\r\n"
+                + "2024-01-04 query \"cash\" \"\r\n"
+                + "  SELECT account\r\n"
+                + "  FROM accounts\"\r\n"
+                + "\r\n"
+                + "2024-01-05 custom \"mixed\" \"text\" 12.50 USD\r\n",
+            sourceURL: sourceURL
+        )
+
+        #expect(projection.queries.count == 1)
+        #expect(projection.queries[0]["lineno"] as? Int == 3)
+        #expect(projection.queries[0]["query"] as? String == "\n  SELECT account\n  FROM accounts")
+
+        let custom = try #require(projection.custom.first)
+        #expect(custom["lineno"] as? Int == 7)
+        #expect(custom["location"] as? String == "/ledger/crlf.beancount:7")
+        let values = try #require(custom["values"] as? [[String: Any]])
+        #expect(values.map { $0["value"] as? String } == ["text", "12.50 USD"])
+    }
+
     @Test("projects pad directives with source locations")
     func projectsPads() async throws {
         let driver = try Self.makeDriver()

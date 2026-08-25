@@ -10,67 +10,53 @@ struct BeancountDirectiveProjection: @unchecked Sendable {
     var custom: [[String: Any]] = []
 }
 
+/// Projects `query` and `custom` directives, which neither backend reports.
+///
+/// `rledger` exposes no `#queries` or `#custom` table and its `#entries` rows carry no name, query
+/// text or value list for either, so both are read from the ledger source through
+/// `BeancountSourceScanner`.
 enum BeancountDirectiveProjectionReader {
-    private struct Token {
-        let value: String
-        let quoted: Bool
-    }
-
-    static func read(sourceFiles: [URL]) throws -> BeancountDirectiveProjection {
+    static func read(sourceGraph: BeancountSourceGraph) -> BeancountDirectiveProjection {
         var projection = BeancountDirectiveProjection()
-        for sourceFile in sourceFiles {
-            let contents = try String(contentsOf: sourceFile, encoding: .utf8)
-            append(contents: contents, sourceURL: sourceFile, to: &projection)
+        for sourceFile in sourceGraph.sourceFiles {
+            guard let lines = sourceGraph.lines[sourceFile] else { continue }
+            append(lines: lines, sourceURL: sourceFile, to: &projection)
         }
         return projection
     }
 
     static func read(contents: String, sourceURL: URL) -> BeancountDirectiveProjection {
         var projection = BeancountDirectiveProjection()
-        append(contents: contents, sourceURL: sourceURL, to: &projection)
+        append(
+            lines: BeancountSourceScanner.lines(of: contents),
+            sourceURL: sourceURL,
+            to: &projection
+        )
         return projection
     }
 
     private static func append(
-        contents: String,
+        lines: [String],
         sourceURL: URL,
         to projection: inout BeancountDirectiveProjection
     ) {
-        var statement: String?
-        var statementLine = 0
-
-        for (offset, line) in contents.components(separatedBy: .newlines).enumerated() {
-            if statement == nil {
-                guard isSupportedDirectiveStart(line) else { continue }
-                statement = line
-                statementLine = offset + 1
-            } else {
-                statement? += "\n" + line
-            }
-
-            guard let candidate = statement, !hasOpenQuote(candidate) else { continue }
-            append(
-                statement: candidate,
-                sourceURL: sourceURL,
-                line: statementLine,
-                to: &projection
-            )
-            statement = nil
+        BeancountSourceScanner.scanDirectives(lines: lines, sourceURL: sourceURL) { directive in
+            append(directive, to: &projection)
         }
     }
 
     private static func append(
-        statement: String,
-        sourceURL: URL,
-        line: Int,
+        _ directive: BeancountSourceDirective,
         to projection: inout BeancountDirectiveProjection
     ) {
-        let tokens = tokenize(statement)
-        guard tokens.count >= 4, let date = canonicalDate(tokens[0].value) else { return }
+        let tokens = directive.tokens
+        guard tokens.count >= 4, let date = BeancountSourceScanner.canonicalDate(tokens[0].value) else {
+            return
+        }
         let source: [String: Any] = [
-            "filename": sourceURL.path,
-            "lineno": line,
-            "location": "\(sourceURL.path):\(line)"
+            "filename": directive.sourceURL.path,
+            "lineno": directive.lineNumber,
+            "location": "\(directive.sourceURL.path):\(directive.lineNumber)"
         ]
 
         switch tokens[1].value {
@@ -95,14 +81,14 @@ enum BeancountDirectiveProjectionReader {
         }
     }
 
-    private static func customValues(_ tokens: [Token]) -> [[String: Any]] {
+    private static func customValues(_ tokens: [BeancountSourceToken]) -> [[String: Any]] {
         var rows: [[String: Any]] = []
         var index = 0
         while index < tokens.count {
             let token = tokens[index]
             if token.quoted {
                 rows.append(["value_type": "string", "value": token.value])
-            } else if let date = canonicalDate(token.value) {
+            } else if let date = BeancountSourceScanner.canonicalDate(token.value) {
                 rows.append(["value_type": "date", "value": date])
             } else if token.value == "TRUE" || token.value == "FALSE" {
                 rows.append(["value_type": "boolean", "value": token.value])
@@ -130,27 +116,6 @@ enum BeancountDirectiveProjectionReader {
         return rows
     }
 
-    private static func isSupportedDirectiveStart(_ line: String) -> Bool {
-        guard line.first?.isWhitespace == false else { return false }
-        let fields = line.split(maxSplits: 2, whereSeparator: { $0.isWhitespace })
-        guard fields.count >= 2, canonicalDate(String(fields[0])) != nil else { return false }
-        return fields[1] == "query" || fields[1] == "custom"
-    }
-
-    private static func canonicalDate(_ value: String) -> String? {
-        let parts = value.split(omittingEmptySubsequences: false) { $0 == "-" || $0 == "/" }
-        guard parts.count == 3,
-              parts[0].count == 4,
-              let year = Int(parts[0]),
-              let month = Int(parts[1]),
-              let day = Int(parts[2]),
-              (1...12).contains(month),
-              (1...31).contains(day) else {
-            return nil
-        }
-        return String(format: "%04d-%02d-%02d", year, month, day)
-    }
-
     private static func isNumber(_ value: String) -> Bool {
         Decimal(string: value, locale: Locale(identifier: "en_US_POSIX")) != nil
     }
@@ -158,71 +123,5 @@ enum BeancountDirectiveProjectionReader {
     private static func isCurrency(_ value: String) -> Bool {
         guard let first = value.first, first.isUppercase else { return false }
         return value.allSatisfy { $0.isUppercase || $0.isNumber || "'._-".contains($0) }
-    }
-
-    private static func hasOpenQuote(_ value: String) -> Bool {
-        var quoted = false
-        var escaped = false
-        for character in value {
-            if escaped {
-                escaped = false
-            } else if character == "\\" {
-                escaped = quoted
-            } else if character == "\"" {
-                quoted.toggle()
-            } else if character == ";", !quoted {
-                break
-            }
-        }
-        return quoted
-    }
-
-    private static func tokenize(_ value: String) -> [Token] {
-        let characters = Array(value)
-        var tokens: [Token] = []
-        var index = 0
-
-        while index < characters.count {
-            while index < characters.count, characters[index].isWhitespace { index += 1 }
-            guard index < characters.count, characters[index] != ";" else { break }
-
-            if characters[index] == "\"" {
-                index += 1
-                var decoded = ""
-                var escaped = false
-                while index < characters.count {
-                    let character = characters[index]
-                    index += 1
-                    if escaped {
-                        switch character {
-                        case "n": decoded.append("\n")
-                        case "r": decoded.append("\r")
-                        case "t": decoded.append("\t")
-                        case "\"", "\\": decoded.append(character)
-                        default:
-                            decoded.append("\\")
-                            decoded.append(character)
-                        }
-                        escaped = false
-                    } else if character == "\\" {
-                        escaped = true
-                    } else if character == "\"" {
-                        break
-                    } else {
-                        decoded.append(character)
-                    }
-                }
-                tokens.append(Token(value: decoded, quoted: true))
-            } else {
-                let start = index
-                while index < characters.count,
-                      !characters[index].isWhitespace,
-                      characters[index] != ";" {
-                    index += 1
-                }
-                tokens.append(Token(value: String(characters[start..<index]), quoted: false))
-            }
-        }
-        return tokens
     }
 }

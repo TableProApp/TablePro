@@ -7,15 +7,16 @@ import AppKit
 import Foundation
 
 /// The one path a user-requested connection close takes, whatever surface asked for it. A peer of
-/// `ConnectionDisconnectAction`, and the two are deliberately different: Disconnect ends the
-/// session and leaves the connection in place to reconnect, Close ends the connection.
+/// `ConnectionDisconnectAction` and of `WorkspaceCloseAction`, and the three are deliberately
+/// different: Disconnect ends the session and leaves the connection in place to reconnect, closing
+/// an entry takes one container of a connection, and this ends the connection and every entry it
+/// has.
 ///
-/// The rail used to offer this as "Close Workspace", wired to the tab strip's bulk-close family, so
-/// it closed a subset of one connection's tabs and left the row it was invoked on exactly where it
-/// was. No platform or competitor precedent puts that scope on a list of open sessions: the HIG has
-/// no close verb for a sidebar row at all, the one app shipping the literal string is Xcode's File
-/// menu where it means the whole project session, and Finder's Locations rows, the true analogue of
-/// a list of live remote sessions, end the session and drop the row.
+/// The strip used to send all three of its close routes here, because an entry had no lifetime of
+/// its own: it was derived from the tabs, so a close scoped to one container left the row it was
+/// invoked on exactly where it was, and the command read as doing nothing. An entry is now open
+/// until it is closed, so a close on one takes that container and `WorkspaceCloseAction` owns it;
+/// this is what a connection's last entry closes to, and what File > Close Connection runs.
 @MainActor
 internal enum ConnectionCloseAction {
     internal enum Decision: Equatable {
@@ -42,7 +43,10 @@ internal enum ConnectionCloseAction {
         }
 
         /// Shown, then asked. A data-loss alert over a connection the user cannot see names work
-        /// they have no way to look at before answering.
+        /// they have no way to look at before answering. Revealing switches the window to it, so an
+        /// answer that closes nothing puts the user back where they were: a close that leaves them
+        /// on another connection, with its entry still in the strip, reads as a switch.
+        let wasShowing = WindowManager.shared.shownConnection(besides: connectionId)
         let presentingWindow = reveal(connectionId: connectionId)
         switch await AlertHelper.confirmSaveChanges(
             message: String(localized: "Your changes will be lost if you don't save them."),
@@ -51,12 +55,15 @@ internal enum ConnectionCloseAction {
         case .save:
             /// Save closes too, once the save has actually landed. It used to start the save and
             /// stop there, so the connection the user asked to close stayed open.
-            guard await coordinator?.commandActions?.saveSelectedTabWork() == true else { break }
+            guard await coordinator?.commandActions?.saveSelectedTabWork() == true else {
+                WindowManager.shared.show(wasShowing, inWindowHosting: connectionId)
+                break
+            }
             WindowManager.shared.closeWindow(for: connectionId)
         case .dontSave:
             WindowManager.shared.closeWindow(for: connectionId)
         case .cancel:
-            break
+            WindowManager.shared.show(wasShowing, inWindowHosting: connectionId)
         }
     }
 
