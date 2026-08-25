@@ -13,6 +13,22 @@ final class SupportWindowUITests: UITestCase {
         return app
     }
 
+    /// Every case gets a fresh sandbox, and a sandbox that has never completed onboarding opens the
+    /// welcome window on `OnboardingContentView`. The window carries the `welcome` identifier
+    /// either way, so a test that only waits for the window is satisfied by a screen holding
+    /// nothing but Skip, three page dots and Continue.
+    ///
+    /// The defaults suite is per-sandbox, so seeding `hasCompletedOnboarding` through a launch
+    /// argument cannot work: `NSArgumentDomain` reaches the standard domain alone, and an override
+    /// aimed at a suite opened by name is an ordinary argument nothing reads. Skip is the supported
+    /// way past it and costs one click.
+    private func dismissOnboarding(in app: XCUIApplication) {
+        let skip = app.windows["welcome"].links["Skip"]
+        XCTAssertTrue(skip.waitToExist(timeout: 10), "A fresh sandbox must open the welcome window on onboarding")
+        XCTAssertTrue(waitUntilHittable(skip, timeout: 5))
+        skip.click()
+    }
+
     private func openSupportWindow(in app: XCUIApplication) -> XCUIElement {
         let item = app.menuBars.menuItems["Support TablePro"]
         XCTAssertTrue(item.waitToExist(timeout: 10), "Support TablePro must be in the Help menu")
@@ -52,6 +68,7 @@ final class SupportWindowUITests: UITestCase {
     /// the one that has to stay a line of text: no alert, no sheet, nothing over the window.
     func testTheWelcomeWindowCarriesTheStandingLink() throws {
         let app = try launchShowingWelcome()
+        dismissOnboarding(in: app)
         let link = app.windows["welcome"].descendants(matching: .any)["support-prompt-link"]
 
         XCTAssertTrue(link.waitToExist(timeout: 10), "An unlicensed welcome window must offer the link")
