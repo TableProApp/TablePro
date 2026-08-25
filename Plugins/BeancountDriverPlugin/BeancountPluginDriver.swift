@@ -100,6 +100,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "SELECT account, close FROM #accounts WHERE close IS NOT NULL ORDER BY close, account"
     private static let logger = Logger(subsystem: "com.TablePro", category: "BeancountPluginDriver")
     private static let rledgerNoCacheSupport = OSAllocatedUnfairLock(initialState: [String: Bool]())
+    private static let backendVersions = OSAllocatedUnfairLock(initialState: [String: String]())
 
     private static let workQueue = DispatchQueue(
         label: "com.TablePro.BeancountDriver",
@@ -793,39 +794,62 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private static func backendVersion(_ backend: BeancountBackend) -> String {
-        do {
-            switch backend {
-            case .rledger(let executablePath):
-                let output = try runProcess(
-                    executablePath: executablePath,
-                    arguments: ["--version"],
-                    failureMessage: "rledger version check failed"
-                )
-                let version = String(decoding: output, as: UTF8.self)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                return version.lowercased().hasPrefix("rledger ") ? version : "rledger \(version)"
-            case .python(let executablePath):
-                let output = try runProcess(
-                    executablePath: executablePath,
-                    arguments: [
-                        "-c",
-                        "from importlib.metadata import version; print(version('beancount'))"
-                    ],
-                    failureMessage: "Python Beancount version check failed"
-                )
-                let version = String(decoding: output, as: UTF8.self)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                return "Python Beancount \(version)"
+        let key = backendCacheKey(backend)
+        if let cached = backendVersions.withLock({ $0[key] }) {
+            return cached
+        }
+        let resolved = resolvedBackendVersion(backend)
+        backendVersions.withLock { $0[key] = resolved }
+        return resolved
+    }
+
+    private static func backendCacheKey(_ backend: BeancountBackend) -> String {
+        switch backend {
+        case .rledger(let executablePath):
+            return "rledger:\(executablePath)"
+        case .python(let executablePath):
+            return "python:\(executablePath)"
+        }
+    }
+
+    private static func resolvedBackendVersion(_ backend: BeancountBackend) -> String {
+        switch backend {
+        case .rledger(let executablePath):
+            let name = "rledger"
+            guard let version = reportedVersion(
+                executablePath: executablePath,
+                arguments: ["--version"]
+            ) else {
+                return name
             }
+            return version.lowercased().hasPrefix("\(name) ") ? version : "\(name) \(version)"
+        case .python(let executablePath):
+            let name = "Python Beancount"
+            guard let version = reportedVersion(
+                executablePath: executablePath,
+                arguments: ["-c", "from importlib.metadata import version; print(version('beancount'))"]
+            ) else {
+                return name
+            }
+            return "\(name) \(version)"
+        }
+    }
+
+    private static func reportedVersion(executablePath: String, arguments: [String]) -> String? {
+        let output: Data
+        do {
+            output = try runProcess(
+                executablePath: executablePath,
+                arguments: arguments,
+                failureMessage: "Beancount backend version check failed"
+            )
         } catch {
             logger.warning("Beancount backend version unavailable: \(error)")
-            switch backend {
-            case .rledger:
-                return "rledger (version unavailable)"
-            case .python:
-                return "Python Beancount (version unavailable)"
-            }
+            return nil
         }
+        let version = String(decoding: output, as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return version.isEmpty ? nil : version
     }
 
     private static func rledgerQueryArguments(ledgerPath: String, query: String) throws -> [String] {
