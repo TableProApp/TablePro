@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Structure editor undo steps are now set by the operation instead of run loop timing.
+
 ### Fixed
 
 - Stall on switching between two loaded table tabs, growing with the rows they hold. (#2424)

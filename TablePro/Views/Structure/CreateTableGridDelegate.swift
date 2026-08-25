@@ -83,27 +83,32 @@ final class CreateTableGridDelegate: DataGridViewDelegate {
     }
 
     func dataGridDeleteRows(_ rows: Set<Int>) {
-        switch structureTab {
-        case .columns:
-            for row in rows.sorted(by: >) {
-                guard row < structureChangeManager.workingColumns.count else { continue }
-                let column = structureChangeManager.workingColumns[row]
-                structureChangeManager.deleteColumn(id: column.id)
+        /// One Cmd+Z brings the whole selection back. The manager registers an undo per
+        /// deleted row, so the batch states that it is one step; without that a five-row
+        /// delete takes five undos.
+        structureChangeManager.performAsOneUndoStep {
+            switch structureTab {
+            case .columns:
+                for row in rows.sorted(by: >) {
+                    guard row < structureChangeManager.workingColumns.count else { continue }
+                    let column = structureChangeManager.workingColumns[row]
+                    structureChangeManager.deleteColumn(id: column.id)
+                }
+            case .indexes:
+                for row in rows.sorted(by: >) {
+                    guard row < structureChangeManager.workingIndexes.count else { continue }
+                    let index = structureChangeManager.workingIndexes[row]
+                    structureChangeManager.deleteIndex(id: index.id)
+                }
+            case .foreignKeys:
+                for row in rows.sorted(by: >) {
+                    guard row < structureChangeManager.workingForeignKeys.count else { continue }
+                    let fk = structureChangeManager.workingForeignKeys[row]
+                    structureChangeManager.deleteForeignKey(id: fk.id)
+                }
+            default:
+                break
             }
-        case .indexes:
-            for row in rows.sorted(by: >) {
-                guard row < structureChangeManager.workingIndexes.count else { continue }
-                let index = structureChangeManager.workingIndexes[row]
-                structureChangeManager.deleteIndex(id: index.id)
-            }
-        case .foreignKeys:
-            for row in rows.sorted(by: >) {
-                guard row < structureChangeManager.workingForeignKeys.count else { continue }
-                let fk = structureChangeManager.workingForeignKeys[row]
-                structureChangeManager.deleteForeignKey(id: fk.id)
-            }
-        default:
-            break
         }
 
         let newCount: Int

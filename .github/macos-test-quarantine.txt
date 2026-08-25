@@ -5,105 +5,51 @@
 # that would skip nothing, so a renamed case cannot leave an inert line behind and a Swift Testing
 # case cannot lose its parentheses and silently rejoin the run.
 #
-# This file used to name whole suites. 39 suites were listed, and running them measured 483 passing
-# cases against 53 failing ones: nine suites in the list were entirely green and the rest were
-# failing in ones and twos. Nine tenths of what the gate skipped was skipped because a sibling case
-# in the same file was broken.
+# The list is empty. Keep it that way: a failing case gets fixed, not listed.
 #
-# Burn this list down: fix a case, delete its line, and it rejoins the gate.
-
-# --- Asserts a fallback that no longer exists.
+# It began as 39 whole suites. Running them measured 483 passing cases against 53 failing ones, so
+# nine tenths of what the gate skipped was skipped because a sibling case in the same file was
+# broken. Naming cases instead of suites returned those 483 to the gate; the 53 were then worked
+# through one at a time.
 #
-#     The completion case that was here was two bugs in the test, both in its own setup. It expected
-#     a bare `user_name`, but `allColumnsInScope` qualifies a column whenever more than one table is
-#     in scope, so two tables always produce `u.user_name`. And SQLSchemaProvider.cachedDriver is
-#     weak, correctly, because the connection session owns the driver in the app; nothing else held
-#     the mock, so it deallocated and getColumns returned nothing at all. It now pins the driver by
-#     asserting what was fetched, and a second case covers the alias-prefix shape.
-#     TableOperationSQLBuilder delegates every statement to the connected plugin adapter and returns
-#     nothing when there is none: `adapterProvider()?.foreignKeyDisableStatements() ?? []`. The
-#     built-in DatabaseType switches these expect were deleted, so the empty result is correct and
-#     the expectation is what is stale. Each needs rewriting against a stub adapter.
+# Not one of them was a bug in the app. Every single case either asserted a contract the app had
+# deliberately changed, or could not reach the code it was asserting. That is worth knowing before
+# adding a line here: the reflex reading of a red case, that the app regressed, was wrong 53 times
+# out of 53.
 #
-#     TableOperationsPluginTests, 12 of these, is gone: every case asserted the deleted fallback and
-#     the thirteenth passed only because an absent driver returns nothing. Its coverage lives in
-#     TableProTests/Core/Database/TableOperationSQLBuilderTests.swift, against a stub driver.
+# Four patterns covered nearly all of them, and each is worth recognising on sight.
 #
-#     The three ClickHouse cases are gone the same way: ALTER TABLE ... UPDATE and DELETE WHERE are
-#     written only by ClickHousePlugin.generateStatements, and the app's SQLStatementGenerator emits
-#     the plain form for every engine. Asserted at the layer that owns them in
-#     TableProTests/Core/ClickHouse/ClickHouseDMLStatementTests.swift.
-
-# --- (empty) The two cases that were here now register their own occupant in driverPlugins, which
-#     is internal(set), instead of assuming the MySQL bundle had loaded. It never had: discovery
-#     ends at "will load on first use" and the bundles do not register in the xctest host at all.
-#     Both duplicate-ID checks report "an error was expected but none was thrown", which is what an
-#     empty registry produces: with nothing registered there is no duplicate to reject.
-
-# --- Stale fixture: the model gained a field the fixture JSON does not carry, so decoding throws
-#     before the assertion is reached.
+#   Engine knowledge moved into the plugins. Tests kept the old lever: a query builder with no
+#   dialect, `sshConfig.enabled` after the field became `sshTunnelMode`, `DataChangeManager` after
+#   ClickHouse's ALTER TABLE ... UPDATE moved to ClickHousePluginDriver, a DatabaseType switch after
+#   the built-in arms were deleted.
 #
-#     The three that were here are gone, and they were not all the same. SSHConfiguration required
-#     agentSocketPath despite the property having a default, so any stored config written before
-#     that field existed threw keyNotFound and took the whole connection with it; the decoder now
-#     treats every defaulted key as optional, the way its siblings already did. The row-height one
-#     was the other way round: DataGridRowHeight has been Int-backed since it was introduced, so the
-#     fixture's "rowHeight": "normal" described JSON that never shipped.
-
-# --- Asserts a string the app no longer produces. The behaviour changed on purpose; the expected
-#     value did not follow.
+#   The test could not reach the code. SaveCompletionTests had no connected driver, so no statements
+#   were generated and saveChanges bailed before touching what the cases asserted;
+#   ValidateDriverDescriptorTests assumed MySQL was registered, but plugin discovery stops at "will
+#   load on first use" and nothing registers in the xctest host. Both seams already existed
+#   (`DatabaseManager.injectSession`, and `driverPlugins` being internal(set)) and neither was used.
 #
-#     The four that were here shared one shape with several other groups in this file: the test held
-#     a handle that used to steer the code and no longer does. The URL cases set sshConfig.enabled,
-#     but resolvedSSHConfig reads sshTunnelMode, so they formatted a plain mysql:// URL and asserted
-#     it contained ssh://. ScyllaDB stopped borrowing Cassandra's icon when it got its own registry
-#     entry and its own asset.
+#   The test's own setup was the bug. SQLCompletionProviderTests expected a bare `user_name` where
+#   `allColumnsInScope` qualifies whenever more than one table is in scope, and it let the mock
+#   driver deallocate: SQLSchemaProvider.cachedDriver is weak, correctly, so getColumns returned
+#   nothing and every column expectation failed as though scoping were broken.
 #
-#     Two SaveCompletionTests read-only cases are gone as well. saveChanges carries no read-only
-#     guard, correctly: the block lives in DefaultExecutionGate, which denies a write with the
-#     "Safe Mode is set to read-only" reason, and the toolbar disables Save through
-#     MainWindowToolbar+Validation. ExecutionGateTests.readOnlyBlocksWrites already asserts it at
-#     that layer and is not quarantined.
+#   Two protective invariants read backwards. reloadVersion deliberately does not bump on an edit,
+#   because a reload would discard the edit the user just made, and insertQueryFromAI only reuses a
+#   tab that is empty. "Fixing the app to match" either one would have caused data loss.
 #
-#     The three SaveCompletionTests cases that were here are gone, and the reason recorded for them
-#     was wrong: scope(for:) falls back to a scope built from the tab, so selectedTabScope is never
-#     nil once a tab exists. They failed for the same reason TableOperationsPluginTests did, no
-#     connected driver, so assemblePendingStatements produced nothing and saveChanges bailed at
-#     "Could not generate SQL for changes." before reaching the inout parameters.
-#     DatabaseManager.shared.injectSession takes a ConnectionSession with a driver, which is the
-#     seam those needed.
-
-# --- Undo grouping, not drift. The cases left here call undo directly after two or more
-#     operations, and NSUndoManager leaves groupsByEvent on, so those land in one group and a single
-#     undo reverts all of them. The app gets a run loop turn between user actions and a test does
-#     not. Neither RunLoop.current.run(until: Date()) nor a 20ms interval closes the group.
+# Three cases were left here longest for a reason that turned out to be wrong, which is the last
+# lesson. StructureChangeManagerUndoTests failed because NSUndoManager groups by run loop event, so
+# two operations with no turn between them undo as one. The recorded conclusion was that a seam on
+# the manager hangs the test host, after three runs wedged. That was the host wedging on its own:
+# an unrelated six-suite run wedged identically the same day at 0% CPU and passed on a re-run. The
+# real fix was architectural. Undo granularity was a property of run loop timing rather than of the
+# operation, so a multi-row delete collapsed into one undo by luck and two separate user actions
+# stayed separate by luck. StructureChangeManager now turns groupsByEvent off, routes all 25
+# registrations through one helper that opens a group per mutation, and exposes
+# performAsOneUndoStep for the grid delegates' delete loops. Both behaviours are now stated.
 #
-#     Injecting the undo manager was tried too, mirroring the `undoManagerProvider` DataChangeManager
-#     already has, and it hangs the test host: three runs in a row wedged with no output and were
-#     killed at the hour mark, reporting every case in the suite as failed at 0.000 seconds, which
-#     reads exactly like a mass regression. Reverted. Whatever the next attempt is, it should not be
-#     that, and a run that reports the whole suite failing instantly is a hang rather than a result.
-#     Needs deciding case by case whether the manager or the expectation is wrong.
-#
-#     The four reloadVersion cases are gone. reloadVersion is the grid's "throw away what you are
-#     showing and fetch again" signal, and it increments on clearChanges, discardChanges and
-#     configureForTable but deliberately not on recording an edit, because a reload there would
-#     discard the edit the user just made. Each now pins that from both sides.
-#
-#     The three StructureChangeManagerUndoTests cases below are an undo-grouping artifact rather
-#     than drift: NSUndoManager leaves groupsByEvent on, so operations called without a run loop
-#     turn between them land in one group and one undo reverts them all. The app gets a turn
-#     between user actions and the test does not. Spinning the run loop with
-#     RunLoop.current.run(until: Date()) does not close the group, so a working fix needs either a
-#     real interval or a seam on the manager.
-StructureChangeManagerUndoTests/multipleUndos()
-StructureChangeManagerUndoTests/undoDeleteNewColumnReAdds()
-StructureChangeManagerUndoTests/undoTwoDeletesNoDuplicates()
-
-# --- Environment-coupled: reads the login keychain or an app installed on the machine.
-KeychainHelperTests/writeOverwritesExistingValue()
-SequelAceImporterTests/testIsAvailable_whenFileExists_returnsTrue()
-TablePlusImporterTests/testImportConnections_mapsDriverCorrectly()
-
-# --- Genuine behaviour difference, needs investigation.
-#     allMaxBytes: an all-0xFF prefix returns the replacement characters rather than "\0".
+# Before quarantining a case, check the three cheap things first: does a seam already exist, is the
+# expectation older than a deliberate change, and did the run actually run (a suite reporting every
+# case failed at 0.000 seconds, or a log frozen mid-line at 0% CPU, is a wedge and not a result).

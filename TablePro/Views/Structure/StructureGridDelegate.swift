@@ -129,24 +129,30 @@ final class StructureGridDelegate: DataGridViewDelegate {
         switch selectedTab {
         case .columns:
             guard connection.type.supportsDropColumn else { return }
-            for row in translated.sorted(by: >) {
-                guard row < structureChangeManager.workingColumns.count else { continue }
-                let column = structureChangeManager.workingColumns[row]
-                structureChangeManager.deleteColumn(id: column.id)
+            structureChangeManager.performAsOneUndoStep {
+                for row in translated.sorted(by: >) {
+                    guard row < structureChangeManager.workingColumns.count else { continue }
+                    let column = structureChangeManager.workingColumns[row]
+                    structureChangeManager.deleteColumn(id: column.id)
+                }
             }
         case .indexes:
             guard connection.type.supportsDropIndex else { return }
-            for row in translated.sorted(by: >) {
-                guard row < structureChangeManager.workingIndexes.count else { continue }
-                let index = structureChangeManager.workingIndexes[row]
-                structureChangeManager.deleteIndex(id: index.id)
+            structureChangeManager.performAsOneUndoStep {
+                for row in translated.sorted(by: >) {
+                    guard row < structureChangeManager.workingIndexes.count else { continue }
+                    let index = structureChangeManager.workingIndexes[row]
+                    structureChangeManager.deleteIndex(id: index.id)
+                }
             }
         case .foreignKeys:
             guard connection.type.supportsForeignKeys else { return }
-            for row in translated.sorted(by: >) {
-                guard row < structureChangeManager.workingForeignKeys.count else { continue }
-                let fk = structureChangeManager.workingForeignKeys[row]
-                structureChangeManager.deleteForeignKey(id: fk.id)
+            structureChangeManager.performAsOneUndoStep {
+                for row in translated.sorted(by: >) {
+                    guard row < structureChangeManager.workingForeignKeys.count else { continue }
+                    let fk = structureChangeManager.workingForeignKeys[row]
+                    structureChangeManager.deleteForeignKey(id: fk.id)
+                }
             }
         case .parts, .ddl, .triggers:
             onSelectedRowsChanged?([])
