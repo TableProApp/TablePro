@@ -20,14 +20,16 @@ internal enum MemoryPressureAdvisor {
             eventMask: [.warning, .critical, .normal],
             queue: .main
         )
-        source.setEventHandler {
-            let event = source.data
-            let wasPressured = isUnderPressure
-            isUnderPressure = event.contains(.warning) || event.contains(.critical)
-            if isUnderPressure && !wasPressured {
-                logger.info("Memory pressure detected — reducing tab eviction budget")
-            } else if !isUnderPressure && wasPressured {
-                logger.info("Memory pressure resolved — restoring tab eviction budget")
+        source.setEventHandler { @Sendable in
+            MainActor.assumeIsolated {
+                let event = source.data
+                let wasPressured = isUnderPressure
+                isUnderPressure = event.contains(.warning) || event.contains(.critical)
+                if isUnderPressure && !wasPressured {
+                    logger.info("Memory pressure detected, reducing tab eviction budget")
+                } else if !isUnderPressure && wasPressured {
+                    logger.info("Memory pressure resolved, restoring tab eviction budget")
+                }
             }
         }
         source.activate()

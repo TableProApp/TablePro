@@ -142,13 +142,13 @@ final class LinkedFolderWatcher {
                 queue: .global(qos: .utility)
             )
 
-            source.setEventHandler { [weak self] in
+            source.setEventHandler { @Sendable [weak self] in
                 Task { @MainActor [weak self] in
                     self?.scheduleDebouncedRescan()
                 }
             }
 
-            source.setCancelHandler {
+            source.setCancelHandler { @Sendable in
                 close(fd)
             }
 
