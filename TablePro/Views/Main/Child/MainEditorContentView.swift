@@ -893,7 +893,8 @@ struct MainEditorContentView: View {
             ),
             sortState: sortStateBinding(for: tab),
             columnLayout: columnLayoutBinding(for: tab),
-            valueFilter: valueFilterBinding(for: tab)
+            valueFilter: valueFilterBinding(for: tab),
+            displayState: coordinator.displayState(for: tab)
         )
         .id(tabId)
         .frame(maxHeight: .infinity, alignment: .top)

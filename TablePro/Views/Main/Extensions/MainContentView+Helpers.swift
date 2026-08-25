@@ -13,10 +13,12 @@ extension MainContentView {
     // MARK: - Helper Methods
 
     func loadTableMetadataIfNeeded() async {
-        guard let tableName = currentTab?.tableContext.tableName,
-            coordinator.tableMetadata?.tableName != tableName
+        guard let tab = currentTab,
+            let tableName = tab.tableContext.tableName,
+            !(coordinator.tableMetadata?.tableName == tableName
+                && coordinator.hasCurrentTableMetadata(for: tab, tableName: tableName))
         else { return }
-        await coordinator.loadTableMetadata(tableName: tableName)
+        await coordinator.loadTableMetadata(tableName: tableName, for: tab)
     }
 
     func handleConnectionStatusChange() {

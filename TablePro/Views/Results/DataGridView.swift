@@ -48,6 +48,10 @@ struct DataGridView: NSViewRepresentable {
     /// menu's row commands all read it with no grid mounted. A grid with no owner keeps the filter
     /// on its own coordinator, which is all a structure or create-table grid ever needs. (#2251)
     var valueFilter: Binding<GridValueFilterState>?
+    /// The formatted text and viewport anchor for this result, owned the same way and for the same
+    /// reason as the value filter above. The owner hands back a fresh instance whenever the inputs
+    /// that decide the text have moved, so adopting one is always safe. (#2424)
+    var displayState: DataGridDisplayState?
     var contentRevision: Int = 0
 
     // MARK: - NSViewRepresentable
@@ -104,6 +108,9 @@ struct DataGridView: NSViewRepresentable {
         coordinator.valueFilterBinding = valueFilter
         if let valueFilter {
             coordinator.adoptValueFilter(valueFilter.wrappedValue)
+        }
+        if let displayState {
+            coordinator.adoptDisplayState(displayState)
         }
         coordinator.delegate = delegate
         coordinator.syncDisplayFormats(displayFormats)
@@ -174,6 +181,9 @@ struct DataGridView: NSViewRepresentable {
             coordinator.adoptValueFilter(valueFilter.wrappedValue)
             coordinator.recomputeValueFilteredIDs()
         }
+        if let displayState {
+            coordinator.adoptDisplayState(displayState)
+        }
 
         let latestRows = tableRowsProvider()
         let rowDisplayCount = coordinator.valueFilteredIDs?.count ?? latestRows.count
@@ -200,8 +210,15 @@ struct DataGridView: NSViewRepresentable {
         )
 
         if snapshot != coordinator.lastUpdateSnapshot {
-            let contentChanged = snapshot.reloadVersion != coordinator.lastUpdateSnapshot?.reloadVersion
-                || snapshot.contentRevision != coordinator.lastUpdateSnapshot?.contentRevision
+            // Read from the retained state rather than from `lastUpdateSnapshot`, which is nil on a
+            // freshly mounted coordinator and would therefore report every remount as a content
+            // change and discard the text the owner just handed over.
+            let contentIdentity = DataGridContentIdentity(
+                reloadVersion: changeManager.reloadVersion,
+                contentRevision: contentRevision
+            )
+            let contentChanged = coordinator.displayState.contentIdentity != contentIdentity
+            coordinator.displayState.contentIdentity = contentIdentity
             applyStructuralUpdate(
                 tableView: tableView,
                 coordinator: coordinator,
@@ -282,7 +299,7 @@ struct DataGridView: NSViewRepresentable {
 
         if oldRowCount == 0, rowDisplayCount > 0, rowHeight > 0 {
             let visibleRows = Int(tableView.visibleRect.height / rowHeight) + 5
-            coordinator.preWarmDisplayCache(upTo: visibleRows)
+            coordinator.preWarmDisplayCache(rowCount: visibleRows, from: coordinator.scrollAnchorRow)
         }
 
         coordinator.updateCache()
@@ -332,6 +349,7 @@ struct DataGridView: NSViewRepresentable {
         if needsFullReload || remappedValueFilters {
             coordinator.selectionController.clear()
             tableView.reloadData()
+            coordinator.restoreScrollAnchor()
             coordinator.startBackgroundPrewarm()
         } else if displayFormatsChanged {
             coordinator.reloadAfterDisplayFormatChange()
@@ -439,6 +457,7 @@ struct DataGridView: NSViewRepresentable {
 
     static func dismantleNSView(_ nsView: NSScrollView, coordinator: TableViewCoordinator) {
         coordinator.overlayEditor?.dismiss(commit: true)
+        coordinator.recordScrollAnchor()
         coordinator.flushPendingColumnLayoutPersistence()
         coordinator.settingsCancellable = nil
         coordinator.themeCancellable = nil

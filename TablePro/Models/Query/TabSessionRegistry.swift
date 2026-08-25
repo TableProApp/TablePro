@@ -42,6 +42,7 @@ final class TabSessionRegistry {
         session.tableRows = rows
         session.isEvicted = false
         session.dataRevision &+= 1
+        session.bufferEpoch &+= 1
     }
 
     /// A mutation of what the tab already holds, so it cannot resurrect a tab that holds nothing.
@@ -68,6 +69,7 @@ final class TabSessionRegistry {
         session.tableRows = TableRows()
         session.isEvicted = false
         session.dataRevision &+= 1
+        session.bufferEpoch &+= 1
     }
 
     func isEvicted(_ tabId: UUID) -> Bool {
@@ -85,6 +87,7 @@ final class TabSessionRegistry {
         session.tableRows.discardRowsKeepingMetadata()
         session.isEvicted = true
         session.dataRevision &+= 1
+        session.bufferEpoch &+= 1
     }
 
     private func ensureSession(for tabId: UUID) -> TabSession {

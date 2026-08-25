@@ -69,7 +69,12 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var displayIDs: [RowID]? { valueFilteredIDs }
     private(set) var columnDisplayFormats: [ValueDisplayFormat?] = []
     private(set) var currentFindMatch: FindMatch?
-    private let displayCache = RowDisplayCache()
+    /// Owned by whoever outlives this coordinator when there is one, so a remount reuses the text it
+    /// already formatted instead of formatting the whole result again. A grid with no owner keeps
+    /// its own, which is all a structure or create-table grid ever needs. (#2424)
+    private(set) var displayState = DataGridDisplayState()
+    var displayCache: RowDisplayCache { displayState.cache }
+    private var pendingScrollAnchorRow: Int?
     weak var delegate: (any DataGridViewDelegate)?
     weak var activeFKPreviewPopover: NSPopover?
     weak var activeCellEditorPopover: NSPopover?
@@ -111,6 +116,51 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// Takes an owner-driven filter change without writing it back, which a plain assignment would.
     func adoptValueFilter(_ state: GridValueFilterState) {
         storedValueFilterState = state
+    }
+
+    /// Takes over the formatted text and viewport anchor the owner kept while no grid was mounted.
+    ///
+    /// The owner hands back a fresh state whenever the inputs that decide the text have moved, so
+    /// there is nothing to validate here.
+    func adoptDisplayState(_ state: DataGridDisplayState) {
+        guard state !== displayState else { return }
+        displayState = state
+        pendingScrollAnchorRow = state.firstVisibleRow
+        /// Both directions, because either side can be the one that knows. A fresh coordinator
+        /// takes the schema and formats the state carries, so its first update does not report them
+        /// as a change and clear the text. A state handed over while the grid stays mounted carries
+        /// neither, and the writers that would fill them are change-gated and will not fire, so it
+        /// takes them from here instead and the next remount still restores.
+        if let schema = state.identitySchema {
+            identitySchema = schema
+        } else {
+            state.identitySchema = identitySchema
+        }
+        if let formats = state.displayFormats {
+            columnDisplayFormats = formats
+        } else {
+            state.displayFormats = columnDisplayFormats
+        }
+    }
+
+    var scrollAnchorRow: Int { pendingScrollAnchorRow ?? 0 }
+
+    /// Records where the user was looking, so returning to this tab does not start at the first row.
+    func recordScrollAnchor() {
+        guard let tableView else { return }
+        let visible = tableView.rows(in: tableView.visibleRect)
+        displayState.firstVisibleRow = max(0, visible.location)
+    }
+
+    /// `scrollRowToVisible` only guarantees visibility, so from a grid scrolled to the top it puts
+    /// the anchor at the bottom of the viewport rather than back where the user left it.
+    func restoreScrollAnchor() {
+        guard let tableView, let row = pendingScrollAnchorRow else { return }
+        pendingScrollAnchorRow = nil
+        guard row > 0, row < tableView.numberOfRows else { return }
+        let origin = tableView.rect(ofRow: row).origin
+        let x = tableView.enclosingScrollView?.contentView.bounds.origin.x ?? 0
+        tableView.scroll(NSPoint(x: x, y: origin.y))
     }
 
     func invalidateColumnIndexCache() {
@@ -459,11 +509,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var pendingColumnLayoutPersistence: PendingColumnLayoutPersistence?
     var columnLayoutPersistenceGeneration = 0
     var lastUpdateSnapshot: DataGridUpdateSnapshot?
-    private var prewarmTask: Task<Void, Never>?
-    private var prewarmResumeTask: Task<Void, Never>?
-    private var scrollObservers: [NSObjectProtocol] = []
-    private static let prewarmFrameBudget: Duration = .milliseconds(2)
-    private static let prewarmResumeDelay: Duration = .milliseconds(300)
+    var prewarmTask: Task<Void, Never>?
+    var prewarmResumeTask: Task<Void, Never>?
+    var scrollObservers: [NSObjectProtocol] = []
+    static let prewarmFrameBudget: Duration = .milliseconds(2)
+    static let prewarmResumeDelay: Duration = .milliseconds(300)
 
     static let rowViewIdentifier = NSUserInterfaceItemIdentifier("TableRowView")
     let visualIndex = RowVisualIndex()
@@ -812,6 +862,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     private func applyDisplayFormats(_ formats: [ValueDisplayFormat?]) -> Bool {
         let remappedValueFilters = remapValueFilters(from: columnDisplayFormats, to: formats)
         columnDisplayFormats = formats
+        displayState.displayFormats = formats
         displayCache.removeAll()
         delegate?.dataGridDisplayFormatChanged()
         return remappedValueFilters
@@ -890,105 +941,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         startBackgroundPrewarm()
     }
 
-    func preWarmDisplayCache(upTo rowCount: Int) {
-        let tableRows = tableRowsProvider()
-        let displayCount = displayIDs?.count ?? tableRows.count
-        let count = min(rowCount, displayCount)
-        guard count > 0 else { return }
-        for displayIndex in 0..<count {
-            cacheDisplayRow(at: displayIndex, in: tableRows)
-        }
-    }
-
-    /// Fills displayCache off the scroll hot path so viewFor:row: stays a cache hit.
-    func startBackgroundPrewarm() {
-        prewarmResumeTask?.cancel()
-        prewarmResumeTask = nil
-        prewarmTask?.cancel()
-        prewarmTask = Task { @MainActor [weak self] in
-            await self?.runBackgroundPrewarm()
-        }
-    }
-
-    /// Pauses prewarm during live scroll; resumes after a debounce so rapid scrolls do not restart it repeatedly.
-    func attachScrollObservers(scrollView: NSScrollView) {
-        detachScrollObservers()
-        let start = NotificationCenter.default.addObserver(
-            forName: NSScrollView.willStartLiveScrollNotification,
-            object: scrollView,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.pausePrewarmForScroll()
-            }
-        }
-        let end = NotificationCenter.default.addObserver(
-            forName: NSScrollView.didEndLiveScrollNotification,
-            object: scrollView,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.schedulePrewarmResume()
-            }
-        }
-        /// The clip view rather than the scroll view's live-scroll pair, because it is the only one
-        /// that also reports a programmatic scroll: `scrollRowToVisible`, which is how VoiceOver
-        /// reaches a row that is not on screen.
-        scrollView.contentView.postsBoundsChangedNotifications = true
-        let bounds = NotificationCenter.default.addObserver(
-            forName: NSView.boundsDidChangeNotification,
-            object: scrollView.contentView,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.remountAccessibilityCells()
-            }
-        }
-        scrollObservers = [start, end, bounds]
-    }
-
-    private func detachScrollObservers() {
-        for observer in scrollObservers {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        scrollObservers.removeAll()
-    }
-
-    private func pausePrewarmForScroll() {
-        prewarmResumeTask?.cancel()
-        prewarmResumeTask = nil
-        prewarmTask?.cancel()
-        prewarmTask = nil
-    }
-
-    private func schedulePrewarmResume() {
-        prewarmResumeTask?.cancel()
-        prewarmResumeTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: Self.prewarmResumeDelay)
-            guard !Task.isCancelled, let self else { return }
-            self.startBackgroundPrewarm()
-        }
-    }
-
-    private func runBackgroundPrewarm() async {
-        var nextIndex = 0
-        while !Task.isCancelled {
-            let tableRows = tableRowsProvider()
-            let displayCount = displayIDs?.count ?? tableRows.count
-            guard nextIndex < displayCount else { return }
-
-            let deadline = ContinuousClock.now.advanced(by: Self.prewarmFrameBudget)
-            while nextIndex < displayCount {
-                if Task.isCancelled { return }
-                cacheDisplayRow(at: nextIndex, in: tableRows)
-                nextIndex += 1
-                if ContinuousClock.now >= deadline { break }
-            }
-            await Task.yield()
-        }
-    }
-
-    private func cacheDisplayRow(at displayIndex: Int, in tableRows: TableRows) {
+    func cacheDisplayRow(at displayIndex: Int, in tableRows: TableRows) {
         guard let row = displayRow(at: displayIndex, in: tableRows) else { return }
         guard displayCache.box(forID: row.id) == nil else { return }
 
@@ -1265,6 +1218,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
         guard schemaChanged else { return false }
         identitySchema = nextSchema
+        displayState.identitySchema = nextSchema
         displayCache.removeAll()
         invalidateColumnIndexCache()
         return true

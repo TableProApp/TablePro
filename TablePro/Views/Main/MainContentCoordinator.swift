@@ -240,6 +240,9 @@ final class MainContentCoordinator {
 
     @ObservationIgnored var displayFormatsCache: [UUID: DisplayFormatsCacheEntry] = [:]
     @ObservationIgnored var displayOrderCache: [UUID: DisplayOrderCacheEntry] = [:]
+    @ObservationIgnored var displayStateCache: [UUID: DisplayStateCacheEntry] = [:]
+    @ObservationIgnored var tableMetadataCache: [UUID: TableMetadataCacheEntry] = [:]
+    @ObservationIgnored var displayStateClock = 0
 
     @ObservationIgnored let schemaColumns = SchemaColumnStore()
     @ObservationIgnored var columnScopeRequeryTask: Task<Void, Never>?
@@ -880,6 +883,8 @@ final class MainContentCoordinator {
         createTableDrafts.removeAll()
         displayFormatsCache.removeAll()
         displayOrderCache.removeAll()
+        displayStateCache.removeAll()
+        tableMetadataCache.removeAll()
         schemaColumns.removeAll()
         columnScopeRequeryTask?.cancel()
 

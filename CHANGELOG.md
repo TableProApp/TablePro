@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Stall on switching between two loaded table tabs, growing with the rows they hold. (#2424)
+- Scroll position lost when switching away from a table tab and back. (#2424)
+- A table statistics command on every switch between two table tabs. (#2424)
+- Another table's size and row count in Table Info when its statistics arrive late. (#2424)
+
 ## [0.68.0] - 2026-08-25
 
 ### Added
