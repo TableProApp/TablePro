@@ -14,13 +14,12 @@
 
 # --- Asserts a fallback that no longer exists.
 #
-#     The one case left here is not a fallback problem. Comma-separated FROM is supported on
-#     purpose: SQLContextAnalyzer.fromListRegex captures the list and its comment says every listed
-#     table stays in scope for column completion. The provider also caps a result set at
-#     defaultMaxSuggestions, 20, and an unfiltered WHERE fills that with keywords before a column
-#     reaches it, so the case now asks for each column behind its own prefix and still fails. What
-#     is left to check is the test's own schema setup, MockDatabaseDriver through
-#     SQLSchemaProvider.loadSchema, not the analyzer.
+#     The completion case that was here was two bugs in the test, both in its own setup. It expected
+#     a bare `user_name`, but `allColumnsInScope` qualifies a column whenever more than one table is
+#     in scope, so two tables always produce `u.user_name`. And SQLSchemaProvider.cachedDriver is
+#     weak, correctly, because the connection session owns the driver in the app; nothing else held
+#     the mock, so it deallocated and getColumns returned nothing at all. It now pins the driver by
+#     asserting what was fetched, and a second case covers the alias-prefix shape.
 #     TableOperationSQLBuilder delegates every statement to the connected plugin adapter and returns
 #     nothing when there is none: `adapterProvider()?.foreignKeyDisableStatements() ?? []`. The
 #     built-in DatabaseType switches these expect were deleted, so the empty result is correct and
@@ -34,7 +33,6 @@
 #     written only by ClickHousePlugin.generateStatements, and the app's SQLStatementGenerator emits
 #     the plain form for every engine. Asserted at the layer that owns them in
 #     TableProTests/Core/ClickHouse/ClickHouseDMLStatementTests.swift.
-SQLCompletionProviderTests/testCommaFromScopesColumnsToAllTables()
 
 # --- (empty) The two cases that were here now register their own occupant in driverPlugins, which
 #     is internal(set), instead of assuming the MySQL bundle had loaded. It never had: discovery
