@@ -143,13 +143,40 @@ internal final class ConnectionWorkspace {
     /// listens to the same events this does, and Combine delivers them in subscription order, so a
     /// rail that reloaded first would list the set as it was a moment ago. An event of its own is
     /// what makes the order stop mattering.
+    /// A container a close is currently leaving is not reopened by the events that fire while it
+    /// leaves. The browse cursor sits on it until the switch lands, and any status event in that
+    /// window would otherwise record it again and put the entry the user just closed back on screen.
+    /// `endClosing` runs before the one caller that does want it back.
     internal func openContainer(_ container: String) {
-        guard !isReleased, !container.isEmpty, openedContainers.insert(container).inserted else { return }
+        guard !isReleased, !container.isEmpty, container != closingContainer else { return }
+        guard openedContainers.insert(container).inserted else { return }
         AppEvents.shared.connectionWindowsChanged.send()
     }
 
     internal func closeContainer(_ container: String) {
         guard openedContainers.remove(container) != nil else { return }
+        AppEvents.shared.connectionWindowsChanged.send()
+    }
+
+    /// The container a close has taken but the connection has not left yet.
+    ///
+    /// The browse cursor always earns an entry, which is what keeps the strip honest about where the
+    /// connection is standing. It also meant a closed entry stayed on screen until the switch away
+    /// finished, and on an engine that reconnects to change database that is a reconnect and a schema
+    /// reload later: the row sat there for seconds after the user closed it. Naming it here lets the
+    /// strip drop it at once and the cursor follow, and a switch that fails puts the entry back
+    /// rather than leaving the connection somewhere the strip does not list.
+    internal private(set) var closingContainer: String?
+
+    internal func beginClosing(_ container: String) {
+        guard closingContainer != container else { return }
+        closingContainer = container
+        AppEvents.shared.connectionWindowsChanged.send()
+    }
+
+    internal func endClosing() {
+        guard closingContainer != nil else { return }
+        closingContainer = nil
         AppEvents.shared.connectionWindowsChanged.send()
     }
 

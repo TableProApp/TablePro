@@ -87,19 +87,16 @@ internal enum WorkspaceCloseAction {
             )
             return
         }
-        guard await browseAway(from: workspace, among: containers, coordinator: coordinator) else {
-            WindowManager.shared.show(wasShowing, inWindowHosting: workspace.connectionId)
-            Self.logger.error(
-                "close stopped: could not leave container=\(workspace.container, privacy: .public)"
-            )
-            return
-        }
-
+        /// The entry goes now, before the connection leaves the container, because leaving it is a
+        /// reconnect and a schema reload on every engine that cannot change database on a live
+        /// connection: waiting for that left the row the user just closed sitting there for seconds
+        /// while the window loaded somewhere else. `beginClosing` is what lets the strip drop the
+        /// browse cursor's own row early, and the cursor follows underneath.
         if !victims.isEmpty {
             coordinator?.closeTabsByUser(ids: victims.map(\.id))
         }
         hosted.closeContainer(workspace.container)
-        landOnRemainingTab(after: workspace, among: containers, coordinator: coordinator)
+        hosted.beginClosing(workspace.container)
         Self.logger.info(
             """
             close done container=\(workspace.container, privacy: .public) \
@@ -107,6 +104,30 @@ internal enum WorkspaceCloseAction {
             opened=[\(hosted.openedContainers.sorted().joined(separator: " "), privacy: .public)]
             """
         )
+
+        let left = await browseAway(from: workspace, among: containers, coordinator: coordinator)
+        hosted.endClosing()
+        guard left else {
+            /// The connection never left, so the container is open again: it is where the next tab
+            /// still opens, and a strip that did not list it would be lying about where the user is.
+            /// The driver's own error is already on screen.
+            hosted.openContainer(workspace.container)
+            WindowManager.shared.show(wasShowing, inWindowHosting: workspace.connectionId)
+            Self.logger.error(
+                "close could not leave container=\(workspace.container, privacy: .public)"
+            )
+            return
+        }
+
+        /// Read again rather than reusing the list from before the switch: a table opened while the
+        /// reconnect ran anchors the container all over again, and the entry would come back with
+        /// one stray tab under it. A tab that new has nothing to lose.
+        let opened = tabs(in: workspace.container, of: coordinator)
+        if !opened.isEmpty {
+            coordinator?.closeTabsByUser(ids: opened.map(\.id))
+            hosted.closeContainer(workspace.container)
+        }
+        landOnRemainingTab(after: workspace, among: containers, coordinator: coordinator)
     }
 
     /// Shown, then asked, for the same reason a connection close reveals itself first: an alert
