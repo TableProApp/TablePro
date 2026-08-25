@@ -71,12 +71,13 @@ ValidateDriverDescriptorTests/rejectsDuplicatePrimaryTypeId()
 #     MainWindowToolbar+Validation. ExecutionGateTests.readOnlyBlocksWrites already asserts it at
 #     that layer and is not quarantined.
 #
-#     The three left below fail for a different reason: saveChanges returns at
-#     `guard let scope = parent.selectedTabScope` long before it clears the inout parameters, so
-#     they need a connected scope the current harness does not build.
-SaveCompletionTests/alertLevel_pendingTruncates_clearsParams()
-SaveCompletionTests/safeModeLevel_pendingDeletes_clearsParams()
-SaveCompletionTests/silentLevel_pendingTruncates_clearsViaNormalPath()
+#     The three SaveCompletionTests cases that were here are gone, and the reason recorded for them
+#     was wrong: scope(for:) falls back to a scope built from the tab, so selectedTabScope is never
+#     nil once a tab exists. They failed for the same reason TableOperationsPluginTests did, no
+#     connected driver, so assemblePendingStatements produced nothing and saveChanges bailed at
+#     "Could not generate SQL for changes." before reaching the inout parameters.
+#     DatabaseManager.shared.injectSession takes a ConnectionSession with a driver, which is the
+#     seam those needed.
 
 # --- Undo grouping, not drift. The cases left here call undo directly after two or more
 #     operations, and NSUndoManager leaves groupsByEvent on, so those land in one group and a single
