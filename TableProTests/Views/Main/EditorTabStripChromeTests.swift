@@ -11,18 +11,24 @@ import Testing
 
 /// What this suite can and cannot see is decided by Liquid Glass, not by the strip.
 ///
-/// The track and the selected tab are both `glassEffect` surfaces, and glass is composited by the
-/// window server rather than drawn into a view's own context: `cacheDisplay`, `layer.render` and
-/// `dataWithPDF` all come back with zero non-transparent pixels for it, measured. So no assertion
-/// here can describe the track's material. That is checked by comparing the running app against
-/// the system's own tab bar, which is where the geometry in `EditorTabStripLayout` came from too.
+/// Glass is composited by the window server rather than drawn into a view's own context, so
+/// `cacheDisplay`, `layer.render` and `dataWithPDF` all come back with zero non-transparent pixels
+/// for it. Once the glass carries a tint that goes further: the bitmap is empty for the *whole*
+/// hosting view, the strip's own titles and close button included, and every measurement below
+/// reads exactly zero. Measured, and it is why this suite pins the surface style rather than
+/// letting the strip choose.
 ///
-/// What rasterises is everything drawn *on* the glass: the titles, the separators and the close
-/// button. That is the half worth guarding anyway, because it is the half that broke. A
-/// `GlassEffectContainer` raises the glass it holds above the container's other content, so the
-/// first two attempts at this strip painted the glass over the selected tab's own title and then
-/// over its close button, leaving a tab whose label was dimmer than its neighbours' and which had
-/// no visible way to close it. Both tests below fail if that returns.
+/// So the strip is rendered here as `.solid`, which is what macOS 14 and 15 draw and what anyone
+/// with Increase Contrast or Reduce Transparency on draws at any version. That half had no
+/// coverage at all until it shipped a background window with no selected tab. The glass half is
+/// checked by comparing the running app against the system's own tab bar, which is where the
+/// geometry in `EditorTabStripLayout` came from too.
+///
+/// What these tests guard is everything drawn *on* the surface: the titles, the separators and the
+/// close button. That is the half that broke twice. A `GlassEffectContainer` raises the glass it
+/// holds above the container's other content, so the first two attempts at this strip painted the
+/// glass over the selected tab's own title and then over its close button, leaving a tab whose
+/// label was dimmer than its neighbours' and which had no visible way to close it.
 @Suite("Editor tab strip chrome")
 @MainActor
 struct EditorTabStripChromeTests {
@@ -61,13 +67,24 @@ struct EditorTabStripChromeTests {
         return Array(stride(from: leading, to: leading + EditorTabStripLayout.accessoryWidth, by: 1))
     }
 
+    /// Between the close-button box and the title, so the sample lands on the tab's own surface
+    /// and on no glyph.
+    private static func surfaceColumns(ofTabAt index: Int) -> [CGFloat] {
+        let leading = tabOrigin(index) + EditorTabStripLayout.accessoryInset
+            + EditorTabStripLayout.accessoryWidth + 4
+        return [leading]
+    }
+
     /// The middle of a tab, where its title is centred and no accessory reaches.
     private static func titleColumns(ofTabAt index: Int) -> [CGFloat] {
         let centre = tabOrigin(index) + tabWidth / 2
         return Array(stride(from: centre - 40, through: centre + 40, by: 2))
     }
 
-    private func makeHost(appearance: NSAppearance.Name) -> NSView {
+    private func makeHost(
+        appearance: NSAppearance.Name,
+        activeState: ControlActiveState = .inactive
+    ) -> NSView {
         let manager = QueryTabManager()
         manager.tabs = ["Album", "Artist", "Customer"].map { QueryTab(title: $0) }
         manager.selectedTabId = manager.tabs.first?.id
@@ -78,7 +95,8 @@ struct EditorTabStripChromeTests {
             onClose: { _ in },
             onCloseOthers: { _ in },
             onCloseAll: {},
-            onNewTab: {}
+            onNewTab: {},
+            surfaceStyle: .solid
         )
 
         let content = ZStack {
@@ -90,6 +108,7 @@ struct EditorTabStripChromeTests {
             }
         }
         .frame(width: Self.width, height: Self.totalHeight)
+        .environment(\.controlActiveState, activeState)
 
         let host = NSHostingView(rootView: AnyView(content))
         host.frame = NSRect(x: 0, y: 0, width: Self.width, height: Self.totalHeight)
@@ -181,6 +200,32 @@ struct EditorTabStripChromeTests {
         #expect(selected > 0.1)
         #expect(unselected > 0.1)
         #expect(selected > unselected)
+    }
+
+    /// The bug this pins: the selected capsule used to be filled with the track's own
+    /// `unemphasizedSelectedContentBackgroundColor` whenever the window was not in front, and both
+    /// resolve opaque, so a background window on macOS 14 and 15 showed no selected tab at all.
+    /// The shadow that was meant to cover for it was drawn in light alone and clipped away by the
+    /// track's own 24pt capsule.
+    ///
+    /// Sampled away from the title and the close button, and in both window states, because the
+    /// state that broke is the one this suite renders by default.
+    @Test(
+        "The selected tab's surface stands clear of the track in either window state",
+        arguments: [NSAppearance.Name.aqua, .darkAqua], [ControlActiveState.key, .inactive]
+    )
+    func selectedSurfaceStandsClearOfTheTrack(appearance: NSAppearance.Name, activeState: ControlActiveState) {
+        let host = makeHost(appearance: appearance, activeState: activeState)
+
+        let row = Self.margin + EditorTabStripLayout.trackHeight / 2
+        let selected = brightness(of: host, rows: [row], columns: Self.surfaceColumns(ofTabAt: 0))
+        let plain = brightness(of: host, rows: [row], columns: Self.surfaceColumns(ofTabAt: 2))
+
+        guard let selectedTone = selected.first, let plainTone = plain.first else {
+            Issue.record("The strip did not rasterise")
+            return
+        }
+        #expect(abs(selectedTone - plainTone) > 0.05)
     }
 
     /// The band is 36pt and only its top 28 carry the track, so the strip must not paint the
