@@ -167,13 +167,41 @@ struct LicensePresentationTests {
         #expect(later?.message.contains("5") == true)
     }
 
+    // MARK: - Plan line
+
+    /// Shipped as "Team · Lifetime · Lifetime": the billing cycle is already the word, and the
+    /// absent expiry said it a second time.
+    @Test("A lifetime license says lifetime once")
+    func lifetimePlanSaysItOnce() {
+        let line = LicensePresentation.planDescription(tier: "team", billingCycle: "lifetime", expiry: nil)
+        #expect(line.components(separatedBy: "Lifetime").count - 1 == 1, "Got: \(line)")
+    }
+
+    @Test("A recurring license states its cycle and its expiry")
+    func recurringPlanStatesBoth() {
+        let line = LicensePresentation.planDescription(
+            tier: "starter", billingCycle: "yearly", expiry: "12 Mar 2027"
+        )
+        #expect(line.contains("Yearly"))
+        #expect(line.contains("12 Mar 2027"))
+    }
+
+    @Test("A license with no billing cycle still reads cleanly")
+    func planWithoutCycle() {
+        let line = LicensePresentation.planDescription(tier: "starter", billingCycle: nil, expiry: "1 Jan 2030")
+        #expect(line.hasPrefix("Starter"))
+        #expect(line.contains(" ·  · ") == false, "No empty segment")
+    }
+
     // MARK: - Key masking
 
-    @Test("A key is masked to its first group, so a screen share never carries the whole credential")
+    @Test("A key shows its first group only, so a screen share never carries the whole credential")
     func maskedKeyKeepsOnlyTheFirstGroup() {
         let masked = LicensePresentation.maskedKey("ABCDE-FGHIJ-KLMNO-PQRST-UVWXY")
-        #expect(masked == "ABCDE-•••••-•••••-•••••-•••••")
-        #expect(masked.contains("FGHIJ") == false)
+        #expect(masked == "ABCDE…")
+        for group in ["FGHIJ", "KLMNO", "PQRST", "UVWXY"] {
+            #expect(masked.contains(group) == false)
+        }
     }
 
     @Test("A key that is not the expected shape is left alone rather than mangled")

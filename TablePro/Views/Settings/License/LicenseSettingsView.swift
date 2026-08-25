@@ -94,8 +94,13 @@ struct LicenseSettingsView: View {
         Section {
             LabeledContent(String(localized: "License key")) {
                 HStack(spacing: 8) {
+                    /// Enough of the key to tell which licence this is, and no more. A full-length
+                    /// mask is the same secret-shaped run of dots for everyone, so it earned its
+                    /// width by being unreadable and then lost the end of itself to truncation.
                     Text(LicensePresentation.maskedKey(license.key))
                         .font(.system(.body, design: .monospaced))
+                        .lineLimit(1)
+                        .accessibilityLabel(Text(String(localized: "License key, hidden")))
 
                     Button(String(localized: "Copy Key")) {
                         ClipboardService.shared.writeSecretText(license.key)
@@ -189,26 +194,12 @@ struct LicenseSettingsView: View {
     /// One line under the email carrying what was bought and how long it runs, so neither needs a
     /// row of its own further down.
     private func planDescription(_ license: License) -> String {
-        var parts = [LicenseTier(rawValue: license.tier).displayName]
-
-        if let cycle = license.billingCycle, !cycle.isEmpty {
-            parts.append(cycle.capitalized)
-        }
-
-        if let expiresAt = license.expiresAt {
-            parts.append(
-                String(
-                    format: String(localized: "Expires %@"),
-                    expiresAt.formatted(date: .abbreviated, time: .omitted)
-                )
-            )
-        } else {
-            parts.append(String(localized: "Lifetime"))
-        }
-
-        return parts.joined(separator: " · ")
-    }
-}
+        LicensePresentation.planDescription(
+            tier: license.tier,
+            billingCycle: license.billingCycle,
+            expiry: license.expiresAt.map { $0.formatted(date: .abbreviated, time: .omitted) }
+        )
+    }}
 
 /// A degraded state, stated where it applies rather than floated over the pane.
 private struct LicenseNoticeSection: View {

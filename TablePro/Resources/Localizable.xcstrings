@@ -1111,8 +1111,108 @@
         }
       }
     },
-    "%1$lld of %2$lld devices" : {},
-    "%1$lld of %2$lld seats" : {},
+    "%1$lld of %2$lld devices" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기기 %2$lld대 중 %1$lld대"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$lld cihazdan %1$lld tanesi"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld trên %2$lld thiết bị"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$lld 台设备中的 %1$lld 台"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$lld 台裝置中的 %1$lld 台"
+          }
+        }
+      }
+    },
+    "%1$lld of %2$lld members" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "멤버 %2$lld명 중 %1$lld명"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$lld üyeden %1$lld tanesi"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld trên %2$lld thành viên"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$lld 位成员中的 %1$lld 位"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$lld 位成員中的 %1$lld 位"
+          }
+        }
+      }
+    },
+    "%1$lld of %2$lld seats" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "좌석 %2$lld개 중 %1$lld개"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$lld koltuktan %1$lld tanesi"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld trên %2$lld chỗ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$lld 个席位中的 %1$lld 个"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$lld 個席位中的 %1$lld 個"
+          }
+        }
+      }
+    },
     "%1$lld of %2$lld statements were applied. This connection does not roll back user and role changes." : {
       "localizations" : {
         "ko" : {
@@ -2827,6 +2927,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在這個系統上找不到 %@。請使用 `brew install libpq` 安裝並連結它。"
+          }
+        }
+      }
+    },
+    "%@ · You" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · 나"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Siz"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Bạn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · 你"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · 你"
           }
         }
       }
@@ -13700,7 +13834,40 @@
         }
       }
     },
-    "Admin" : {},
+    "Admin" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "관리자"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yönetici"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quản trị viên"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理员"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理員"
+          }
+        }
+      }
+    },
     "Administration" : {
       "localizations" : {
         "ko" : {
@@ -23700,7 +23867,40 @@
         }
       }
     },
-    "Check Again" : {},
+    "Check Again" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다시 확인"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yeniden Denetle"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kiểm tra lại"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再次检查"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再次檢查"
+          }
+        }
+      }
+    },
     "Check Status" : {
       "localizations" : {
         "en" : {
@@ -34683,7 +34883,40 @@
         }
       }
     },
-    "Could Not Check This License" : {},
+    "Could Not Check This License" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 라이선스를 확인하지 못했습니다"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu lisans denetlenemedi"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không kiểm tra được giấy phép này"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法检查此许可证"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法檢查此授權"
+          }
+        }
+      }
+    },
     "Could Not Compare" : {
       "localizations" : {
         "ko" : {
@@ -38879,7 +39112,40 @@
         }
       }
     },
-    "Database Favorites" : {},
+    "Database Favorites" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "데이터베이스 즐겨찾기"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Veritabanı Favorileri"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cơ sở dữ liệu yêu thích"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "数据库收藏"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "資料庫收藏"
+          }
+        }
+      }
+    },
     "Database File" : {
       "localizations" : {
         "ko" : {
@@ -39840,8 +40106,74 @@
         }
       }
     },
-    "Deactivate on This Mac…" : {},
-    "Deactivate this license?" : {},
+    "Deactivate on This Mac…" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Mac에서 비활성화…"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu Mac'te Devre Dışı Bırak…"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hủy kích hoạt trên máy Mac này…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在此 Mac 上停用…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在此 Mac 上停用…"
+          }
+        }
+      }
+    },
+    "Deactivate this license?" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 라이선스를 비활성화하시겠습니까?"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu lisans devre dışı bırakılsın mı?"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hủy kích hoạt giấy phép này?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要停用此许可证吗？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要停用此授權嗎？"
+          }
+        }
+      }
+    },
     "Deactivated" : {
       "localizations" : {
         "ko" : {
@@ -42852,7 +43184,40 @@
         }
       }
     },
-    "Devices" : {},
+    "Devices" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기기"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cihazlar"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thiết bị"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设备"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "裝置"
+          }
+        }
+      }
+    },
     "Diagnostic Info" : {
       "localizations" : {
         "ko" : {
@@ -50197,7 +50562,40 @@
         }
       }
     },
-    "Everything else keeps working without a license, with nothing counting down." : {},
+    "Everything else keeps working without a license, with nothing counting down." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "나머지 기능은 라이선스 없이도 계속 작동하며, 남은 기간을 세지 않습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geri kalan her şey lisans olmadan da çalışmayı sürdürür ve hiçbir süre geri saymaz."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mọi thứ khác vẫn hoạt động khi không có giấy phép, và không có thời gian đếm ngược."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其余功能没有许可证也照常使用，也不会倒计时。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其餘功能沒有授權也照常使用，也不會倒數計時。"
+          }
+        }
+      }
+    },
     "Exact value" : {
       "localizations" : {
         "ko" : {
@@ -51358,7 +51756,40 @@
         }
       }
     },
-    "Expires %@" : {},
+    "Expires %@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 만료"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitiş: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hết hạn %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 到期"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 到期"
+          }
+        }
+      }
+    },
     "Expires:" : {
       "localizations" : {
         "en" : {
@@ -59642,7 +60073,40 @@
         }
       }
     },
-    "Get in touch and we will sort it out." : {},
+    "Get in touch and we will sort it out." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "문의해 주시면 해결해 드리겠습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bize ulaşın, birlikte çözelim."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hãy liên hệ và chúng tôi sẽ xử lý."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请联系我们，我们会协助解决。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請聯絡我們，我們會協助解決。"
+          }
+        }
+      }
+    },
     "Get intelligent SQL suggestions and query assistance" : {
       "localizations" : {
         "ko" : {
@@ -60461,7 +60925,40 @@
         }
       }
     },
-    "Groups & Tags" : {},
+    "Groups & Tags" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그룹 및 태그"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gruplar ve Etiketler"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhóm và thẻ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "群组与标签"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "群組與標籤"
+          }
+        }
+      }
+    },
     "Groups & Tags:" : {
       "localizations" : {
         "ko" : {
@@ -68802,7 +69299,40 @@
         }
       }
     },
-    "Last Synced" : {},
+    "Last Synced" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "마지막 동기화"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Son Eşitleme"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đồng bộ lần cuối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上次同步"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上次同步"
+          }
+        }
+      }
+    },
     "Last Synced:" : {
       "localizations" : {
         "ko" : {
@@ -69075,7 +69605,40 @@
         }
       }
     },
-    "Last used %@" : {},
+    "Last used %@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "마지막 사용 %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Son kullanım %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dùng lần cuối %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上次使用 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上次使用 %@"
+          }
+        }
+      }
+    },
     "Latency: %dms" : {
       "localizations" : {
         "ko" : {
@@ -69454,8 +70017,74 @@
         }
       }
     },
-    "License Expired" : {},
-    "License Expiring Soon" : {},
+    "License Expired" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "라이선스가 만료되었습니다"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lisansın süresi doldu"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giấy phép đã hết hạn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "许可证已过期"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "授權已過期"
+          }
+        }
+      }
+    },
+    "License Expiring Soon" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "라이선스가 곧 만료됩니다"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lisansın süresi yakında doluyor"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giấy phép sắp hết hạn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "许可证即将过期"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "授權即將到期"
+          }
+        }
+      }
+    },
     "License Key:" : {
       "localizations" : {
         "ko" : {
@@ -69490,7 +70119,40 @@
         }
       }
     },
-    "License Not Recognized" : {},
+    "License Not Recognized" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "라이선스를 인식할 수 없습니다"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lisans tanınmadı"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không nhận ra giấy phép"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法识别此许可证"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法識別此授權"
+          }
+        }
+      }
+    },
     "License Removed" : {
       "localizations" : {
         "ko" : {
@@ -69525,7 +70187,40 @@
         }
       }
     },
-    "License Suspended" : {},
+    "License Suspended" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "라이선스가 정지되었습니다"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lisans askıya alındı"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giấy phép đã bị tạm ngưng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "许可证已被暂停"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "授權已被暫停"
+          }
+        }
+      }
+    },
     "License expired — sync paused" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -69635,9 +70330,142 @@
         }
       }
     },
-    "License key" : {},
-    "License key or invite code" : {},
-    "License not verified in 30 days, sync paused. Click to check again." : {},
+    "License key" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "라이선스 키"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lisans anahtarı"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khóa giấy phép"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "许可证密钥"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "授權金鑰"
+          }
+        }
+      }
+    },
+    "License key or invite code" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "라이선스 키 또는 초대 코드"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lisans anahtarı veya davet kodu"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khóa giấy phép hoặc mã mời"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "许可证密钥或邀请码"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "授權金鑰或邀請碼"
+          }
+        }
+      }
+    },
+    "License key, hidden" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "라이선스 키, 가려짐"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lisans anahtarı, gizli"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khóa giấy phép, đã ẩn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "许可证密钥，已隐藏"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "授權金鑰，已隱藏"
+          }
+        }
+      }
+    },
+    "License not verified in 30 days, sync paused. Click to check again." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "30일 동안 라이선스를 확인하지 못해 동기화가 일시 중지되었습니다. 다시 확인하려면 클릭하십시오."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lisans 30 gündür doğrulanmadı, eşitleme duraklatıldı. Yeniden denetlemek için tıklayın."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giấy phép chưa được xác minh trong 30 ngày, đồng bộ đã tạm dừng. Bấm để kiểm tra lại."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "许可证已 30 天未验证，同步已暂停。点按以再次检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "授權已 30 天未驗證，同步已暫停。請點按以再次檢查。"
+          }
+        }
+      }
+    },
     "License public key is invalid." : {
       "localizations" : {
         "ko" : {
@@ -71399,7 +72227,40 @@
         }
       }
     },
-    "Loading devices…" : {},
+    "Loading devices…" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기기를 불러오는 중…"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cihazlar yükleniyor…"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đang tải thiết bị…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入设备…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在載入裝置…"
+          }
+        }
+      }
+    },
     "Loading insights…" : {
       "localizations" : {
         "ko" : {
@@ -71815,7 +72676,40 @@
         }
       }
     },
-    "Loading team…" : {},
+    "Loading team…" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "팀을 불러오는 중…"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Takım yükleniyor…"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đang tải nhóm…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入团队…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在載入團隊…"
+          }
+        }
+      }
+    },
     "Loading users and roles…" : {
       "localizations" : {
         "ko" : {
@@ -73124,7 +74018,40 @@
         }
       }
     },
-    "Manage Billing" : {},
+    "Manage Billing" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "결제 관리"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Faturalandırmayı Yönet"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quản lý thanh toán"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理账单"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理帳單"
+          }
+        }
+      }
+    },
     "Manage Connections" : {
       "localizations" : {
         "ko" : {
@@ -74426,7 +75353,40 @@
         }
       }
     },
-    "Member" : {},
+    "Member" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "멤버"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Üye"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thành viên"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "成员"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "成員"
+          }
+        }
+      }
+    },
     "Member Of" : {
       "localizations" : {
         "ko" : {
@@ -79958,7 +80918,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No Matching Favorites"
+            "value" : "Eşleşen favori yok"
           }
         },
         "vi" : {
@@ -81733,7 +82693,40 @@
         }
       }
     },
-    "No devices are activated on this license." : {},
+    "No devices are activated on this license." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 라이선스로 활성화된 기기가 없습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu lisansta etkinleştirilmiş cihaz yok."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chưa có thiết bị nào được kích hoạt với giấy phép này."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此许可证尚未激活任何设备。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此授權尚未啟用任何裝置。"
+          }
+        }
+      }
+    },
     "No export formats available. Enable export plugins in Settings > Plugins." : {
       "localizations" : {
         "ko" : {
@@ -84040,7 +85033,40 @@
         }
       }
     },
-    "Nobody has joined this team yet." : {},
+    "Nobody has joined this team yet." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "아직 이 팀에 참여한 사람이 없습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu takıma henüz kimse katılmadı."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chưa có ai tham gia nhóm này."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有人加入此团队。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "還沒有人加入此團隊。"
+          }
+        }
+      }
+    },
     "Node Changes" : {
       "localizations" : {
         "ko" : {
@@ -85471,7 +86497,40 @@
         }
       }
     },
-    "Notifications" : {},
+    "Notifications" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "알림"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildirimler"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thông báo"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知"
+          }
+        }
+      }
+    },
     "Null" : {
       "localizations" : {
         "ko" : {
@@ -89487,7 +90546,40 @@
         }
       }
     },
-    "Owner" : {},
+    "Owner" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "소유자"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sahip"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chủ sở hữu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拥有者"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "擁有者"
+          }
+        }
+      }
+    },
     "PHP Serialized" : {
       "localizations" : {
         "ko" : {
@@ -90801,7 +91893,40 @@
         }
       }
     },
-    "Passwords" : {},
+    "Passwords" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "암호"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parolalar"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mật khẩu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密码"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密碼"
+          }
+        }
+      }
+    },
     "Passwords will be encrypted with the passphrase you provide." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -94974,8 +96099,74 @@
         }
       }
     },
-    "Pro features stop here right away. You can activate this license again later." : {},
-    "Pro features stop on this Mac right away. You can activate this license again later." : {},
+    "Pro features stop here right away. You can activate this license again later." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pro 기능이 이 Mac에서 즉시 중지됩니다. 나중에 이 라이선스를 다시 활성화할 수 있습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pro özellikleri burada hemen durur. Bu lisansı daha sonra yeniden etkinleştirebilirsiniz."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Các tính năng Pro dừng ngay tại đây. Bạn có thể kích hoạt lại giấy phép này sau."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pro 功能会在此立即停用。你之后可以重新激活此许可证。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pro 功能會在此立即停用。你之後可以重新啟用此授權。"
+          }
+        }
+      }
+    },
+    "Pro features stop on this Mac right away. You can activate this license again later." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pro 기능이 이 Mac에서 즉시 중지됩니다. 나중에 이 라이선스를 다시 활성화할 수 있습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pro özellikleri bu Mac'te hemen durur. Bu lisansı daha sonra yeniden etkinleştirebilirsiniz."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Các tính năng Pro dừng ngay trên máy Mac này. Bạn có thể kích hoạt lại giấy phép này sau."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pro 功能会在此 Mac 上立即停用。你之后可以重新激活此许可证。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pro 功能會在此 Mac 上立即停用。你之後可以重新啟用此授權。"
+          }
+        }
+      }
+    },
     "Pro license required for iCloud Sync" : {
       "localizations" : {
         "ko" : {
@@ -99691,7 +100882,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Referenced table"
+            "value" : "Başvurulan tablo"
           }
         },
         "vi" : {
@@ -100233,10 +101424,176 @@
         }
       }
     },
-    "Release" : {},
-    "Release the seat on “%@”?" : {},
-    "Release this Mac's seat?" : {},
-    "Release…" : {},
+    "Release" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "해제"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bırak"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giải phóng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "释放"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "釋出"
+          }
+        }
+      }
+    },
+    "Release the seat on %@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@의 좌석 해제"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ üzerindeki koltuğu bırak"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giải phóng chỗ trên %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "释放 %@ 上的席位"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "釋出 %@ 上的席位"
+          }
+        }
+      }
+    },
+    "Release the seat on “%@”?" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@”의 좌석을 해제하시겠습니까?"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” üzerindeki koltuk bırakılsın mı?"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giải phóng chỗ trên “%@”?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要释放“%@”上的席位吗？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要釋出「%@」上的席位嗎？"
+          }
+        }
+      }
+    },
+    "Release this Mac's seat?" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Mac의 좌석을 해제하시겠습니까?"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu Mac'in koltuğu bırakılsın mı?"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giải phóng chỗ của máy Mac này?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要释放此 Mac 的席位吗？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要釋出此 Mac 的席位嗎？"
+          }
+        }
+      }
+    },
+    "Release…" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "해제…"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bırak…"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giải phóng…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "释放…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "釋出…"
+          }
+        }
+      }
+    },
     "Reload" : {
       "localizations" : {
         "ko" : {
@@ -101791,7 +103148,40 @@
         }
       }
     },
-    "Renew it to use Pro features again. Everything else keeps working." : {},
+    "Renew it to use Pro features again. Everything else keeps working." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pro 기능을 다시 사용하려면 갱신하십시오. 나머지 기능은 계속 작동합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pro özelliklerini yeniden kullanmak için yenileyin. Geri kalan her şey çalışmayı sürdürür."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hãy gia hạn để dùng lại các tính năng Pro. Mọi thứ khác vẫn hoạt động."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "续订即可再次使用 Pro 功能。其余功能照常使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "續訂即可再次使用 Pro 功能。其餘功能照常使用。"
+          }
+        }
+      }
+    },
     "Reopen Closed Tab" : {
       "localizations" : {
         "ko" : {
@@ -107099,7 +108489,40 @@
         }
       }
     },
-    "SSH Profiles" : {},
+    "SSH Profiles" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SSH 프로파일"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SSH Profilleri"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hồ sơ SSH"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SSH 描述文件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SSH 描述檔"
+          }
+        }
+      }
+    },
     "SSH Profiles:" : {
       "localizations" : {
         "en" : {
@@ -110985,7 +112408,40 @@
         }
       }
     },
-    "Seats on a team license are managed on tablepro.app." : {},
+    "Seats on a team license are managed on tablepro.app." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "팀 라이선스의 좌석은 tablepro.app에서 관리합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Takım lisansındaki koltuklar tablepro.app üzerinden yönetilir."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Các chỗ trên giấy phép nhóm được quản lý tại tablepro.app."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "团队许可证的席位在 tablepro.app 上管理。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "團隊授權的席位在 tablepro.app 上管理。"
+          }
+        }
+      }
+    },
     "Second filter value" : {
       "localizations" : {
         "ko" : {
@@ -122347,7 +123803,40 @@
         }
       }
     },
-    "Sync Paused" : {},
+    "Sync Paused" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "동기화 일시 중지됨"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eşitleme Duraklatıldı"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đồng bộ đã tạm dừng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同步已暂停"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同步已暫停"
+          }
+        }
+      }
+    },
     "Sync Status" : {
       "localizations" : {
         "ko" : {
@@ -122520,7 +124009,40 @@
         }
       }
     },
-    "Sync this Mac with iCloud" : {},
+    "Sync this Mac with iCloud" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Mac을 iCloud와 동기화"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu Mac'i iCloud ile eşitle"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đồng bộ máy Mac này với iCloud"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将此 Mac 与 iCloud 同步"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將此 Mac 與 iCloud 同步"
+          }
+        }
+      }
+    },
     "Sync token expired. A full sync will be performed." : {
       "localizations" : {
         "ko" : {
@@ -123594,7 +125116,40 @@
         }
       }
     },
-    "Table Favorites" : {},
+    "Table Favorites" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "테이블 즐겨찾기"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tablo Favorileri"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bảng yêu thích"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "表收藏"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "資料表收藏"
+          }
+        }
+      }
+    },
     "Table Favorites:" : {
       "localizations" : {
         "ko" : {
@@ -124186,8 +125741,74 @@
         }
       }
     },
-    "TablePro has not confirmed this license with the server in 30 days." : {},
-    "TablePro has not reached the license server in 30 days, so Pro features are paused." : {},
+    "TablePro has not confirmed this license with the server in 30 days." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro가 30일 동안 서버에서 이 라이선스를 확인하지 못했습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro bu lisansı 30 gündür sunucuyla doğrulamadı."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro chưa xác nhận giấy phép này với máy chủ trong 30 ngày."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 已 30 天未与服务器确认此许可证。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 已 30 天未與伺服器確認此授權。"
+          }
+        }
+      }
+    },
+    "TablePro has not reached the license server in 30 days, so Pro features are paused." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro가 30일 동안 라이선스 서버에 연결하지 못해 Pro 기능이 일시 중지되었습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 30 gündür lisans sunucusuna ulaşamadı, bu yüzden Pro özellikleri duraklatıldı."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro chưa kết nối được máy chủ giấy phép trong 30 ngày, nên các tính năng Pro đã tạm dừng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 已 30 天未连接许可证服务器，因此 Pro 功能已暂停。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 已 30 天未連接授權伺服器，因此 Pro 功能已暫停。"
+          }
+        }
+      }
+    },
     "TablePro runs Anthropic's claude tool in headless mode. Claude Code is built for you to use directly, not as a backend for other apps, so this path can break with any Claude Code release." : {
       "localizations" : {
         "ko" : {
@@ -125693,7 +127314,40 @@
         }
       }
     },
-    "That Mac keeps working until its next check, within 7 days, and then Pro features pause there." : {},
+    "That Mac keeps working until its next check, within 7 days, and then Pro features pause there." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "해당 Mac은 7일 이내의 다음 확인까지 계속 작동하며, 그 후 Pro 기능이 일시 중지됩니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Mac, 7 gün içindeki bir sonraki denetime kadar çalışmayı sürdürür, ardından Pro özellikleri orada duraklar."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máy Mac đó vẫn hoạt động cho đến lần kiểm tra kế tiếp trong vòng 7 ngày, sau đó các tính năng Pro sẽ tạm dừng ở đó."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "那台 Mac 会持续使用到 7 天内的下次检查，之后 Pro 功能会在该设备上暂停。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "那台 Mac 會持續使用到 7 天內的下次檢查，之後 Pro 功能會在該裝置上暫停。"
+          }
+        }
+      }
+    },
     "That doesn't look like a valid license key. Check for typos and try again." : {
       "localizations" : {
         "ko" : {
@@ -127778,8 +129432,74 @@
         }
       }
     },
-    "The license server could not be reached, so that seat may stay in use until it expires." : {},
-    "The license that covers iCloud Sync has expired. Renew it to start syncing again." : {},
+    "The license server could not be reached, so that seat may stay in use until it expires." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "라이선스 서버에 연결하지 못해 해당 좌석이 만료될 때까지 사용 중으로 남을 수 있습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lisans sunucusuna ulaşılamadı, bu yüzden o koltuk süresi dolana dek kullanımda kalabilir."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không kết nối được máy chủ giấy phép, nên chỗ đó có thể vẫn được dùng cho đến khi hết hạn."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接许可证服务器，该席位可能会一直占用到过期为止。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法連接授權伺服器，該席位可能會一直佔用到過期為止。"
+          }
+        }
+      }
+    },
+    "The license that covers iCloud Sync has expired. Renew it to start syncing again." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud 동기화를 포함하는 라이선스가 만료되었습니다. 다시 동기화하려면 갱신하십시오."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud Eşitleme'yi kapsayan lisansın süresi doldu. Yeniden eşitlemeye başlamak için yenileyin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giấy phép bao gồm Đồng bộ iCloud đã hết hạn. Hãy gia hạn để đồng bộ trở lại."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "涵盖 iCloud 同步的许可证已过期。续订后即可再次同步。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "涵蓋 iCloud 同步的授權已過期。續訂後即可再次同步。"
+          }
+        }
+      }
+    },
     "The listener does not know the requested SID" : {
       "localizations" : {
         "ko" : {
@@ -128667,7 +130387,40 @@
         }
       }
     },
-    "The server no longer knows this license key." : {},
+    "The server no longer knows this license key." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버가 이 라이선스 키를 더 이상 알지 못합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sunucu bu lisans anahtarını artık tanımıyor."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máy chủ không còn nhận ra khóa giấy phép này."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器已不再识别此许可证密钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器已不再識別此授權金鑰。"
+          }
+        }
+      }
+    },
     "The server sent an unexpected message and the connection was reset. Run the query again." : {
       "localizations" : {
         "ko" : {
@@ -129812,7 +131565,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "This Mac"
+            "value" : "Bu Mac"
           }
         },
         "vi" : {
@@ -129835,7 +131588,74 @@
         }
       }
     },
-    "This Mac no longer holds a seat. Activate a license to use Pro features." : {},
+    "This Mac no longer holds a seat." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Mac은 더 이상 좌석을 보유하지 않습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu Mac artık bir koltuk tutmuyor."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máy Mac này không còn giữ chỗ nào."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Mac 不再占用席位。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Mac 不再佔用席位。"
+          }
+        }
+      }
+    },
+    "This Mac no longer holds a seat. Activate a license to use Pro features." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Mac은 더 이상 좌석을 보유하지 않습니다. Pro 기능을 사용하려면 라이선스를 활성화하십시오."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu Mac artık bir koltuk tutmuyor. Pro özelliklerini kullanmak için bir lisans etkinleştirin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máy Mac này không còn giữ chỗ nào. Hãy kích hoạt giấy phép để dùng các tính năng Pro."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Mac 不再占用席位。请激活许可证以使用 Pro 功能。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Mac 不再佔用席位。請啟用授權以使用 Pro 功能。"
+          }
+        }
+      }
+    },
     "This Month" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -131187,7 +133007,108 @@
         }
       }
     },
-    "This license expires in %lld days." : {},
+    "This license expires in %lld days." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 라이선스는 %lld일 후 만료됩니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu lisansın süresi %lld gün sonra doluyor."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giấy phép này hết hạn sau %lld ngày."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此许可证将在 %lld 天后过期。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此授權將在 %lld 天後到期。"
+          }
+        }
+      }
+    },
+    "This license expires today." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 라이선스는 오늘 만료됩니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu lisansın süresi bugün doluyor."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giấy phép này hết hạn hôm nay."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此许可证今天过期。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此授權今天到期。"
+          }
+        }
+      }
+    },
+    "This license expires tomorrow." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 라이선스는 내일 만료됩니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu lisansın süresi yarın doluyor."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giấy phép này hết hạn vào ngày mai."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此许可证明天过期。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此授權明天到期。"
+          }
+        }
+      }
+    },
     "This license has been suspended. Contact support for help." : {
       "localizations" : {
         "ko" : {
@@ -136934,7 +138855,40 @@
         }
       }
     },
-    "Unlock the Pro features" : {},
+    "Unlock the Pro features" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pro 기능 잠금 해제"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pro özelliklerinin kilidini açın"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mở khóa các tính năng Pro"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解锁 Pro 功能"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解鎖 Pro 功能"
+          }
+        }
+      }
+    },
     "Unpin" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -140124,7 +142078,40 @@
         }
       }
     },
-    "View License" : {},
+    "View License" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "라이선스 보기"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lisansı Görüntüle"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xem giấy phép"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看许可证"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看授權"
+          }
+        }
+      }
+    },
     "View Mode" : {
       "localizations" : {
         "ko" : {

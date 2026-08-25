@@ -164,13 +164,34 @@ internal enum LicensePresentation {
         String(format: String(localized: "%1$lld of %2$lld members"), used, limit)
     }
 
-    /// The masked form of a license key: the first group, then the rest concealed.
+    /// What a licence is, in one line under the licensee's email.
     ///
-    /// A key is a bearer credential, so it is never on screen in full. Copy puts the real one on the
-    /// pasteboard instead, which is the task anybody actually has.
+    /// A lifetime licence states that once. Its billing cycle is already the word "lifetime", so
+    /// taking the cycle and the absent expiry both spelled the plan "Team · Lifetime · Lifetime".
+    static func planDescription(tier: String, billingCycle: String?, expiry: String?) -> String {
+        var parts = [LicenseTier(rawValue: tier).displayName]
+
+        if let expiry {
+            if let cycle = billingCycle, !cycle.isEmpty {
+                parts.append(cycle.capitalized)
+            }
+            parts.append(String(format: String(localized: "Expires %@"), expiry))
+        } else {
+            parts.append(String(localized: "Lifetime"))
+        }
+
+        return parts.joined(separator: " · ")
+    }
+
+    /// The first group of a license key, with the rest withheld.
+    ///
+    /// A key is a bearer credential, so it is never on screen in full, and Copy puts the real one on
+    /// the pasteboard instead. Only the first group is shown: a full-length run of dots is identical
+    /// for every licence, so it took the width of a real key to say nothing and then had its own end
+    /// truncated away. One group is enough to tell which licence this is.
     static func maskedKey(_ key: String) -> String {
         let parts = key.split(separator: "-")
-        guard parts.count == 5 else { return key }
-        return ([String(parts[0])] + Array(repeating: "•••••", count: 4)).joined(separator: "-")
+        guard parts.count == 5, let first = parts.first else { return key }
+        return String(first) + "…"
     }
 }
