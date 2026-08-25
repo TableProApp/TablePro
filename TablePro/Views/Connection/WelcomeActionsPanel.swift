@@ -93,17 +93,38 @@ struct WelcomeActionsPanel: View {
     /// The badge follows entitlement and the support link follows whether anything has been paid,
     /// which are different questions: a license the server has not confirmed in 30 days still
     /// pauses Pro features, and its owner is still not someone to ask for a purchase.
+    ///
+    /// Unlicensed is the widest this line ever gets, and it is the only state that draws two link
+    /// buttons: `Activate License` and `Support TablePro` side by side all but fill the panel's
+    /// 240pt. An `HStack` that cannot fit its children compresses them instead of overflowing, and
+    /// a link button whose label compresses to nothing leaves the accessibility tree with it, so
+    /// the link stops being reachable before it visibly disappears. Stacking is the fallback rather
+    /// than the layout, so the line keeps its shape wherever it does fit.
     private var licenseLine: some View {
-        HStack(spacing: 6) {
-            licenseBadge
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+                licenseBadge
 
-            if LicenseManager.shared.supportAudience == .prospect {
-                Text(verbatim: "·")
-                    .foregroundStyle(.tertiary)
-                SupportPromptLink()
+                if isProspect {
+                    Text(verbatim: "·")
+                        .foregroundStyle(.tertiary)
+                    SupportPromptLink()
+                }
+            }
+
+            VStack(spacing: 4) {
+                licenseBadge
+
+                if isProspect {
+                    SupportPromptLink()
+                }
             }
         }
         .font(.subheadline)
+    }
+
+    private var isProspect: Bool {
+        LicenseManager.shared.supportAudience == .prospect
     }
 
     /// Exhaustive on purpose. This used to read `status.isValid`, so the one status that means
