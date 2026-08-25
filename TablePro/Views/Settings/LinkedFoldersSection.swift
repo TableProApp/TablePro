@@ -47,6 +47,11 @@ struct LinkedFoldersSection: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+        /// The list is seeded once at init, so without this a folder added or removed anywhere else
+        /// leaves this pane showing the set as it stood when the window was first built.
+        .onReceive(AppEvents.shared.linkedFoldersDidUpdate) { _ in
+            folders = LinkedFolderStorage.shared.loadFolders()
+        }
     }
 
     // MARK: - Folder Row

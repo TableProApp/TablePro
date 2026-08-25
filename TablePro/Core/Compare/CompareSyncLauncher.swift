@@ -24,7 +24,7 @@ internal enum CompareSyncLauncher {
         alert.alertStyle = .informational
         alert.messageText = String(localized: "Compare & Sync requires a license")
         alert.informativeText = ProFeature.compareSync.featureDescription
-        alert.addButton(withTitle: String(localized: "View Account"))
+        alert.addButton(withTitle: String(localized: "View License"))
         alert.addButton(withTitle: String(localized: "Cancel"))
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         WindowOpener.shared.openSettings(tab: .account)

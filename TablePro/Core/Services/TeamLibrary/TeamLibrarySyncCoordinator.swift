@@ -75,6 +75,18 @@ final class TeamLibrarySyncCoordinator {
         Task { await pull() }
     }
 
+    /// Drop the team's shared set, on disk and in the copy every view reads.
+    ///
+    /// Clearing the store alone is not enough: `library` is what the welcome window and the
+    /// Favorites sidebar render from, so a licence removed without this leaves the previous team's
+    /// connections and saved queries on screen, and openable, until the next launch.
+    func clear() async {
+        await store.clear()
+        library = .empty
+        TeamLibraryMetadataStorage.reset()
+        AppEvents.shared.teamLibraryDidUpdate.send()
+    }
+
     @discardableResult
     func publish(
         connections: [DatabaseConnection],

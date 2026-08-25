@@ -141,6 +141,36 @@ struct LicenseTests {
         #expect(Self.license(Self.payload(status: "unknown")).status == .validationFailed)
     }
 
+    // MARK: - Team Identity
+
+    /// Whether a license has other people on it decides whether releasing somebody else's seat is
+    /// offered, so it is read from the signed payload rather than from the tier string, which the
+    /// envelope could otherwise claim.
+    @Test("A signed team id marks the license as a team one, and carries the member's role")
+    func teamPayloadExposesTeamIdentity() {
+        let license = Self.license(Self.payload(tier: "team", teamId: "01JXYZ", role: "member"))
+
+        #expect(license.isTeamLicense)
+        #expect(license.teamId == "01JXYZ")
+        #expect(license.teamRole == .member)
+    }
+
+    @Test("A license with nobody else on it carries no team id and no role")
+    func soloPayloadHasNoTeamIdentity() {
+        let license = Self.license(Self.payload(tier: "starter"))
+
+        #expect(license.isTeamLicense == false)
+        #expect(license.teamId == nil)
+        #expect(license.teamRole == nil)
+    }
+
+    @Test("A role the server adds later survives instead of being dropped")
+    func unknownRoleSurvives() {
+        let license = Self.license(Self.payload(tier: "team", teamId: "01JXYZ", role: "auditor"))
+
+        #expect(license.teamRole == .unknown("auditor"))
+    }
+
     // MARK: - Gating Reads Only the Signed Payload
 
     @Test("A cached blob whose outer fields claim Team over a signed Starter payload stays Starter")

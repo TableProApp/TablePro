@@ -7,90 +7,43 @@
 
 import SwiftUI
 
+/// A utility dialog around `LicenseActivationForm`, sized like its siblings.
+///
+/// It carries only what a sheet needs that a pane does not: a title, a Cancel button and a
+/// dismissal. Everything about activating itself lives in the shared form, so this and the settings
+/// pane cannot word the same failure two different ways again.
 struct LicenseActivationSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    @State private var licenseKeyInput = ""
-    @State private var isActivating = false
-    @State private var errorMessage: String?
-    @FocusState private var keyFocused: Bool
-
     var body: some View {
-        VStack(spacing: 0) {
-            VStack(spacing: 8) {
-                Image(systemName: "key.fill")
-                    .font(.title)
-                    .foregroundStyle(.secondary)
-
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text("Activate License")
-                    .font(.title2)
-                    .fontWeight(.semibold)
+                    .font(.headline)
 
                 Text("Enter your license key, or a team invite code to join a team.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.top, 24)
-            .padding(.bottom, 20)
 
-            VStack(spacing: 12) {
-                TextField("XXXXX-XXXXX-XXXXX-XXXXX-XXXXX", text: $licenseKeyInput)
-                    .font(.system(.body, design: .monospaced))
-                    .textFieldStyle(.roundedBorder)
-                    .disableAutocorrection(true)
-                    .multilineTextAlignment(.center)
-                    .focused($keyFocused)
-                    .onSubmit { Task { await activate() } }
+            LicenseActivationForm { dismiss() }
 
-                if let errorMessage {
-                    Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
-            }
-            .padding(.horizontal, 32)
+            HStack {
+                Link("Purchase License", destination: SupportLinks.pricing(.activationSheet))
+                    .font(.subheadline)
 
-            VStack(spacing: 10) {
-                if isActivating {
-                    ProgressView()
-                        .controlSize(.small)
-                        .frame(height: 32)
-                } else {
-                    Button("Activate") {
-                        Task { await activate() }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(licenseKeyInput.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
+                Spacer()
 
-                HStack(spacing: 16) {
-                    Link("Purchase License", destination: SupportLinks.pricing(.activationSheet))
-                        .font(.subheadline)
-
-                    Button("Cancel") {
-                        dismiss()
-                    }
+                Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                }
             }
-            .padding(.top, 20)
-            .padding(.bottom, 24)
         }
+        .padding(20)
         .frame(width: 400)
     }
+}
 
-    private func activate() async {
-        errorMessage = nil
-        isActivating = true
-        defer { isActivating = false }
-
-        do {
-            try await LicenseManager.shared.activate(codeOrKey: licenseKeyInput)
-            dismiss()
-        } catch {
-            errorMessage = (error as? LicenseError)?.friendlyDescription ?? error.localizedDescription
-        }
-    }
+#Preview {
+    LicenseActivationSheet()
 }

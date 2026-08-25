@@ -116,7 +116,7 @@ struct SyncStatusIndicator: View {
         case .disabled(.licenseRequired), .disabled(.licenseExpired):
             onActivateLicense()
         default:
-            WindowOpener.shared.openSettings(tab: .account)
+            WindowOpener.shared.openSettings(tab: .sync)
         }
     }
 }

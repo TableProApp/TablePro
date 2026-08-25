@@ -16,7 +16,7 @@ struct SyncSection: View {
 
     var body: some View {
         Section {
-            Toggle("iCloud Sync:", isOn: $settingsManager.sync.enabled)
+            Toggle("Sync this Mac with iCloud", isOn: $settingsManager.sync.enabled)
                 .onChange(of: settingsManager.sync.enabled) { _, newValue in
                     updatePasswordSyncFlag()
                     if newValue {
@@ -47,7 +47,7 @@ struct SyncSection: View {
     private var statusSection: some View {
         Section("Sync Status") {
             if syncCoordinator.iCloudAccountAvailable {
-                LabeledContent(String(localized: "Account:")) {
+                LabeledContent(String(localized: "Account")) {
                     HStack(spacing: 4) {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.green)
@@ -56,7 +56,7 @@ struct SyncSection: View {
                     }
                 }
             } else {
-                LabeledContent(String(localized: "Account:")) {
+                LabeledContent(String(localized: "Account")) {
                     Text(String(localized: "Not Available"))
                         .foregroundStyle(.secondary)
                 }
@@ -67,7 +67,7 @@ struct SyncSection: View {
             }
 
             if let lastSync = syncCoordinator.lastSyncDate {
-                LabeledContent(String(localized: "Last Synced:")) {
+                LabeledContent(String(localized: "Last Synced")) {
                     Text(lastSync, style: .relative)
                 }
             }
@@ -95,7 +95,7 @@ struct SyncSection: View {
 
     private var categoriesSection: some View {
         Section("Sync Categories") {
-            Toggle("Connections:", isOn: $settingsManager.sync.syncConnections)
+            Toggle("Connections", isOn: $settingsManager.sync.syncConnections)
                 .onChange(of: settingsManager.sync.syncConnections) { _, newValue in
                     if !newValue, settingsManager.sync.syncPasswords {
                         settingsManager.sync.syncPasswords = false
@@ -104,7 +104,7 @@ struct SyncSection: View {
                 }
 
             if settingsManager.sync.syncConnections {
-                Toggle("Passwords:", isOn: $settingsManager.sync.syncPasswords)
+                Toggle("Passwords", isOn: $settingsManager.sync.syncPasswords)
                     .onChange(of: settingsManager.sync.syncPasswords) { _, newValue in
                         onPasswordSyncChanged(newValue)
                     }
@@ -118,12 +118,12 @@ struct SyncSection: View {
                     .padding(.leading, 20)
             }
 
-            Toggle("Groups & Tags:", isOn: $settingsManager.sync.syncGroupsAndTags)
-            Toggle("SSH Profiles:", isOn: $settingsManager.sync.syncSSHProfiles)
-            Toggle("Settings:", isOn: $settingsManager.sync.syncSettings)
-            Toggle("Table Favorites:", isOn: $settingsManager.sync.syncTableFavorites)
-            Toggle("Database Favorites:", isOn: $settingsManager.sync.syncDatabaseFavorites)
-            Toggle("Saved Queries:", isOn: $settingsManager.sync.syncSQLFavorites)
+            Toggle("Groups & Tags", isOn: $settingsManager.sync.syncGroupsAndTags)
+            Toggle("SSH Profiles", isOn: $settingsManager.sync.syncSSHProfiles)
+            Toggle("Settings", isOn: $settingsManager.sync.syncSettings)
+            Toggle("Table Favorites", isOn: $settingsManager.sync.syncTableFavorites)
+            Toggle("Database Favorites", isOn: $settingsManager.sync.syncDatabaseFavorites)
+            Toggle("Saved Queries", isOn: $settingsManager.sync.syncSQLFavorites)
         }
     }
 

@@ -71,6 +71,41 @@ final class LicenseManager {
     /// the server has just approved.
     private var lastServerContact: Date?
 
+    /// Whether this Mac's license was removed here rather than never having existed. It is what
+    /// separates `.deactivated` from `.unlicensed`, and it is deliberately not persisted: a relaunch
+    /// with no license is simply unlicensed.
+    private var wasDeactivatedLocally = false
+
+    /// The seats this license is activated on. Owned here rather than by the settings view so the
+    /// list survives the pane being reselected, and so an activation elsewhere can reset it.
+    /// See `LicenseManager+Devices`.
+    internal var devices: [LicenseActivationInfo] = []
+
+    internal var maxDevices: Int = 0
+
+    internal var deviceListState: LicenseDeviceListState = .idle
+
+    /// A reload of a list that already has content. Separate from `deviceListState` so a refresh
+    /// never blanks the seats it is refreshing, per the CLAUDE.md invariant.
+    internal var isRefreshingDevices = false
+
+    /// Seats with a release in flight, so a row cannot be released twice.
+    internal var releasingMachineIds: Set<String> = []
+
+    /// Why the last release did not go through. Kept apart from `deviceListState` so a failure on
+    /// one seat is reported beside the list rather than replacing every other seat with an error.
+    internal var releaseErrorMessage: String?
+
+    /// The team roster, for a Team license. See `LicenseManager+Team`.
+    internal var team: LicenseTeamResponse?
+
+    internal var teamListState: LicenseDeviceListState = .idle
+
+    nonisolated internal static let deviceLogger = Logger(
+        subsystem: "com.TablePro",
+        category: "LicenseDevices"
+    )
+
     @ObservationIgnored private var revalidationTask: Task<Void, Never>?
 
     private init() {
@@ -219,7 +254,7 @@ final class LicenseManager {
             storage.saveLicense(newLicense)
 
             license = newLicense
-            acceptServerConfirmation()
+            adoptActivatedLicense()
 
             Self.logger.info("License activated for \(payloadData.email)")
         } catch let error as LicenseError {
@@ -262,7 +297,7 @@ final class LicenseManager {
             storage.saveLicense(newLicense)
 
             license = newLicense
-            acceptServerConfirmation()
+            adoptActivatedLicense()
 
             Self.logger.info("Joined team via invitation for \(payloadData.email)")
         } catch let error as LicenseError {
@@ -299,25 +334,72 @@ final class LicenseManager {
             serverSuccess = false
         }
 
-        storage.clearAll()
-        self.license = nil
-        serverRejection = nil
-        lastServerContact = nil
-        status = .deactivated
-
-        revalidationTask?.cancel()
-        revalidationTask = nil
+        await clearLocalLicense()
 
         Self.logger.info("License deactivated locally (server: \(serverSuccess ? "ok" : "failed"))")
         return serverSuccess
     }
 
-    // MARK: - Re-validation
+    /// Release a seat, which may be this Mac or another one on the same license.
+    ///
+    /// The two cases differ in what happens locally, not on the wire: releasing this Mac has to
+    /// clear the license here, while releasing another Mac must leave this one running. Without
+    /// that split, releasing your own seat would leave the pane showing an active license until the
+    /// next revalidation noticed, up to seven days later.
+    @discardableResult
+    func releaseSeat(machineId: String) async throws -> Bool {
+        guard let license else { return true }
 
-    var isExpiringSoon: Bool {
-        guard let days = license?.daysUntilExpiry else { return false }
-        return days >= 0 && days <= 7
+        /// Delegated before anything else is touched: `deactivate` runs the whole local teardown
+        /// and owns `isValidating` for the duration, so setting it here first would leave this
+        /// function's `defer` clearing a flag it did not raise.
+        guard machineId != storage.machineId else {
+            return await deactivate()
+        }
+
+        isValidating = true
+        defer { isValidating = false }
+
+        let request = LicenseDeactivationRequest(licenseKey: license.key, machineId: machineId)
+
+        do {
+            try await apiClient.deactivate(request: request)
+        } catch let error as LicenseError {
+            lastError = error
+            throw error
+        } catch {
+            let licenseError = LicenseError.networkError(error)
+            lastError = licenseError
+            throw licenseError
+        }
+
+        lastError = nil
+        Self.logger.info("Released a seat on another machine")
+        return true
     }
+
+    /// Drops every trace of the license this Mac was carrying.
+    ///
+    /// `evaluateStatus()` is what publishes the change, so the status is set through it rather than
+    /// assigned: `notifyIfChanged` is the only sender of `licenseStatusDidChange`, and it runs from
+    /// `evaluateStatus`'s `defer` alone. Assigning `status` directly left `SyncCoordinator` still
+    /// reporting a healthy sync for a license that no longer existed.
+    private func clearLocalLicense() async {
+        storage.clearAll()
+        await TeamLibrarySyncCoordinator.shared.clear()
+        license = nil
+        serverRejection = nil
+        lastServerContact = nil
+        wasDeactivatedLocally = true
+        resetDeviceList()
+        resetTeam()
+        evaluateStatus()
+
+        revalidationTask?.cancel()
+        revalidationTask = nil
+    }
+
+    // MARK: - Re-validation
 
     var daysUntilExpiry: Int? {
         license?.daysUntilExpiry
@@ -391,6 +473,20 @@ final class LicenseManager {
         evaluateStatus()
     }
 
+    /// Takes up a license this Mac has just activated.
+    ///
+    /// Restarting periodic validation is the point: `deactivate` cancels the task, and the only
+    /// other caller of `startPeriodicValidation` is a one-shot at launch, so without this a
+    /// deactivate-then-activate in one session left the process never revalidating again. The call
+    /// cancels before it restarts, so activating twice does not stack two tasks.
+    private func adoptActivatedLicense() {
+        wasDeactivatedLocally = false
+        resetDeviceList()
+        resetTeam()
+        acceptServerConfirmation()
+        startPeriodicValidation()
+    }
+
     /// Whether this Mac has heard from the server recently enough to keep the license running,
     /// which covers a freshly issued payload whose signed issue date looks stale to us.
     private var isWithinLocalGracePeriod: Bool {
@@ -406,7 +502,7 @@ final class LicenseManager {
         defer { notifyIfChanged(from: previousStatus) }
 
         guard let license else {
-            status = .unlicensed
+            status = Self.resolveUnlicensedStatus(wasDeactivatedLocally: wasDeactivatedLocally)
             return
         }
 
@@ -418,6 +514,13 @@ final class LicenseManager {
             serverRejection: serverRejection,
             hasRecentServerContact: isWithinLocalGracePeriod
         )
+    }
+
+    /// What "no license" means, which is not one state: a Mac that never had one is unlicensed, and
+    /// a Mac whose license was removed here is deactivated. Collapsing them loses the only signal
+    /// that separates "you have not bought this" from "you gave this seat up".
+    nonisolated static func resolveUnlicensedStatus(wasDeactivatedLocally: Bool) -> LicenseStatus {
+        wasDeactivatedLocally ? .deactivated : .unlicensed
     }
 
     /// Pure resolution of the effective status. Kept static and side-effect free so the whole grid
