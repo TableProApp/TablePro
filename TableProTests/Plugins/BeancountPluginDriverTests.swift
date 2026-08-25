@@ -398,6 +398,84 @@ struct BeancountPluginDriverTests {
         }
     }
 
+    @Test("reads the ledger plugin trust flag from the connection, not the environment")
+    func readsLedgerPluginTrustFromConnection() {
+        #expect(BeancountPluginDriver.allowsLedgerPlugins([:]) == false)
+        #expect(BeancountPluginDriver.allowsLedgerPlugins(["beancountRunLedgerPlugins": "false"]) == false)
+        #expect(BeancountPluginDriver.allowsLedgerPlugins(["beancountRunLedgerPlugins": "true"]))
+    }
+
+    @Test(
+        "does not run ledger-declared Python plugins for an untrusted connection",
+        .enabled(if: PythonBeancountLocator.path != nil, "Python Beancount unavailable")
+    )
+    func doesNotRunLedgerDeclaredPythonPluginsWhenUntrusted() async throws {
+        try await Self.withPythonBeancount { directory in
+            let marker = directory.appendingPathComponent("plugin-executed")
+            let ledger = try Self.writeMarkerPluginLedger(in: directory, marker: marker)
+
+            let driver = BeancountPluginDriver(config: Self.config(ledger))
+            try await driver.connect()
+            defer { driver.disconnect() }
+
+            #expect(!FileManager.default.fileExists(atPath: marker.path))
+            let diagnostics = try await driver.execute(query: """
+                SELECT phase, severity, message FROM diagnostics WHERE phase = 'security'
+                """)
+            #expect(diagnostics.rows.count == 1)
+            #expect(diagnostics.rows.first?[1].asText == "warning")
+            #expect(diagnostics.rows.first?[2].asText?.contains("tablepro_marker_plugin") == true)
+        }
+    }
+
+    @Test(
+        "runs ledger-declared Python plugins for a trusted connection",
+        .enabled(if: PythonBeancountLocator.path != nil, "Python Beancount unavailable")
+    )
+    func runsLedgerDeclaredPythonPluginsWhenTrusted() async throws {
+        try await Self.withPythonBeancount { directory in
+            let marker = directory.appendingPathComponent("plugin-executed")
+            let ledger = try Self.writeMarkerPluginLedger(in: directory, marker: marker)
+
+            let driver = BeancountPluginDriver(
+                config: Self.config(ledger, additionalFields: ["beancountRunLedgerPlugins": "true"])
+            )
+            try await driver.connect()
+            defer { driver.disconnect() }
+
+            #expect(FileManager.default.fileExists(atPath: marker.path))
+        }
+    }
+
+    @Test(
+        "keeps running the plugins that ship with Beancount",
+        .enabled(if: PythonBeancountLocator.path != nil, "Python Beancount unavailable")
+    )
+    func keepsRunningPluginsThatShipWithBeancount() async throws {
+        try await Self.withPythonBeancount { directory in
+            let ledger = directory.appendingPathComponent("main.beancount")
+            try """
+            plugin "beancount.plugins.auto_accounts"
+
+            2024-01-02 * "Cafe" "Coffee"
+              Expenses:Food  3.00 USD
+              Assets:Cash
+            """.write(to: ledger, atomically: true, encoding: .utf8)
+
+            let driver = BeancountPluginDriver(config: Self.config(ledger))
+            try await driver.connect()
+            defer { driver.disconnect() }
+
+            let accounts = try await driver.execute(query: "SELECT name FROM accounts ORDER BY name")
+            #expect(accounts.rows.map { $0[0].asText } == ["Assets:Cash", "Expenses:Food"])
+
+            let diagnostics = try await driver.execute(query: """
+                SELECT message FROM diagnostics WHERE phase = 'security'
+                """)
+            #expect(diagnostics.rows.isEmpty)
+        }
+    }
+
     @Test(
         "executes BQL queries through the rledger executable",
         .enabled(if: RustledgerLocator.path != nil, "rledger executable unavailable")
@@ -818,8 +896,18 @@ struct BeancountPluginDriverTests {
         try await body()
     }
 
-    private static func config(_ ledger: URL) -> DriverConnectionConfig {
-        DriverConnectionConfig(host: "", port: 0, username: "", password: "", database: ledger.path)
+    private static func config(
+        _ ledger: URL,
+        additionalFields: [String: String] = [:]
+    ) -> DriverConnectionConfig {
+        DriverConnectionConfig(
+            host: "",
+            port: 0,
+            username: "",
+            password: "",
+            database: ledger.path,
+            additionalFields: additionalFields
+        )
     }
 
     private static func canonicalPath(_ url: URL) -> String {
@@ -830,6 +918,43 @@ struct BeancountPluginDriverTests {
             defer { free(resolvedPath) }
             return String(cString: resolvedPath)
         }
+    }
+
+    private static func withPythonBeancount(
+        _ body: (URL) async throws -> Void
+    ) async throws {
+        let python = try #require(PythonBeancountLocator.path)
+        try await Self.withEnvironment([
+            "TABLEPRO_BEANCOUNT_BACKEND": "python",
+            "TABLEPRO_BEANCOUNT_PYTHON": python
+        ]) {
+            let directory = try Self.makeTempDirectory()
+            defer { try? FileManager.default.removeItem(at: directory) }
+            try await body(directory)
+        }
+    }
+
+    private static func writeMarkerPluginLedger(in directory: URL, marker: URL) throws -> URL {
+        try """
+        from pathlib import Path
+
+        __plugins__ = ("write_marker",)
+
+        def write_marker(entries, options_map, marker_path):
+            Path(marker_path).write_text("executed", encoding="utf-8")
+            return entries, []
+        """.write(
+            to: directory.appendingPathComponent("tablepro_marker_plugin.py"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let ledger = directory.appendingPathComponent("main.beancount")
+        try """
+        option "insert_pythonpath" "TRUE"
+        plugin "tablepro_marker_plugin" "\(marker.path)"
+        """.write(to: ledger, atomically: true, encoding: .utf8)
+        return ledger
     }
 
     private static func makeTempDirectory() throws -> URL {
