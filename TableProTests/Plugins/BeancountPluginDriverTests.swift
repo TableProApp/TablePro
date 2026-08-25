@@ -178,6 +178,64 @@ struct BeancountPluginDriverTests {
     }
 
     @Test(
+        "keeps posting source locations and metadata when the backend lacks the semantic columns",
+        .enabled(if: RustledgerLocator.path != nil, "rledger executable unavailable")
+    )
+    func keepsPostingSourceDetailWhenSemanticColumnsAreUnsupported() async throws {
+        let rledger = try #require(RustledgerLocator.path)
+        let directory = try Self.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let wrapper = directory.appendingPathComponent("rledger")
+        try """
+        #!/bin/sh
+        for argument in "$@"; do
+          case "$argument" in
+            *posting_flag*)
+              echo "evaluation error: column 'posting_flag' not found in subquery result" >&2
+              exit 1
+              ;;
+          esac
+        done
+        exec "\(rledger)" "$@"
+        """.write(to: wrapper, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: wrapper.path)
+
+        let ledger = directory.appendingPathComponent("main.beancount")
+        try """
+        2024-01-01 open Assets:Cash USD
+        2024-01-01 open Expenses:Food USD
+
+        2024-01-05 * "Cafe" "Coffee"
+          Expenses:Food  3.00 USD
+            method: "card"
+          Assets:Cash
+        """.write(to: ledger, atomically: true, encoding: .utf8)
+
+        try await Self.withEnvironment([
+            "TABLEPRO_BEANCOUNT_BACKEND": "rledger",
+            "TABLEPRO_RUSTLEDGER_BINARY": wrapper.path
+        ]) {
+            let driver = BeancountPluginDriver(config: Self.config(ledger))
+            try await driver.connect()
+            defer { driver.disconnect() }
+
+            let postings = try await driver.execute(query: """
+                SELECT account, flag, price_number, line FROM postings ORDER BY account
+                """)
+            #expect(postings.rows.map { $0.map(\.asText) } == [
+                ["Assets:Cash", nil, nil, "7"],
+                ["Expenses:Food", nil, nil, "5"]
+            ])
+
+            let metadata = try await driver.execute(query: """
+                SELECT key, value FROM posting_metadata ORDER BY key
+                """)
+            #expect(metadata.rows.map { $0.map(\.asText) } == [["method", "card"]])
+        }
+    }
+
+    @Test(
         "projects computed balances from postings",
         .enabled(if: RustledgerLocator.path != nil, "rledger executable unavailable")
     )

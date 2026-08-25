@@ -50,6 +50,12 @@ private struct BeancountProjection {
     let signatures: [String: BeancountSourceSignature]
 }
 
+private enum PostingsColumnLevel: String, CaseIterable {
+    case complete
+    case source
+    case core
+}
+
 private enum BeancountBackend {
     case rledger
     case python(String)
@@ -76,12 +82,9 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private static let postingsCoreColumns =
         "id, date, flag, payee, narration, account, number, currency, cost_number, cost_currency"
-    private static let postingsDetailColumns =
-        "posting_flag, price, cost_date, cost_label, "
-            + "filename, lineno, location, tags, links, _entry_meta, _posting_meta"
-    private static let postingsQuery =
-        "SELECT \(postingsCoreColumns), \(postingsDetailColumns) FROM #postings ORDER BY id"
-    private static let postingsCoreQuery = "SELECT \(postingsCoreColumns) FROM #postings ORDER BY id"
+    private static let postingsSourceColumns =
+        "filename, lineno, location, tags, links, _entry_meta, _posting_meta"
+    private static let postingsSemanticColumns = "posting_flag, price, cost_date, cost_label"
     private static let accountsQuery = "SELECT account, open, currencies FROM #accounts ORDER BY account"
     private static let pricesQuery = "SELECT date, currency, amount FROM #prices ORDER BY date, currency"
     private static let balancesQuery =
@@ -99,6 +102,8 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "SELECT account, close FROM #accounts WHERE close IS NOT NULL ORDER BY close, account"
     private static let logger = Logger(subsystem: "com.TablePro", category: "BeancountPluginDriver")
     private static let rledgerNoCacheSupport = OSAllocatedUnfairLock(initialState: [String: Bool]())
+    private static let postingsColumnLevels =
+        OSAllocatedUnfairLock(initialState: [String: PostingsColumnLevel]())
 
     private static let workQueue = DispatchQueue(
         label: "com.TablePro.BeancountDriver",
@@ -600,18 +605,55 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private static func postingRows(ledgerPath: String) throws -> [[String: Any]] {
-        let rows: [[String: Any]]
-        do {
-            rows = try query(ledgerPath: ledgerPath, bql: postingsQuery)
-        } catch {
-            logger.warning("Beancount postings detail unavailable, projecting core columns: \(error)")
-            rows = try query(ledgerPath: ledgerPath, bql: postingsCoreQuery)
-        }
+        let rows = try postingRowsFromWidestSupportedColumns(ledgerPath: ledgerPath)
         return rows.map { row in
             var normalized = row
             normalized["transaction_id"] = row["id"]
             return normalized
         }
+    }
+
+    // An rledger that does not know one column fails the whole SELECT, so the column groups are
+    // asked for separately: losing the posting semantics must not also cost the source locations
+    // and metadata. Which groups an executable answers is a property of the binary, so the answer
+    // is resolved once per executable path rather than once per projection build.
+    private static func postingRowsFromWidestSupportedColumns(
+        ledgerPath: String
+    ) throws -> [[String: Any]] {
+        let executablePath = try rustledgerExecutablePath()
+        if let cached = postingsColumnLevels.withLock({ $0[executablePath] }) {
+            return try query(ledgerPath: ledgerPath, bql: postingsQuery(cached))
+        }
+
+        var failure: Error?
+        for level in PostingsColumnLevel.allCases {
+            do {
+                let rows = try query(ledgerPath: ledgerPath, bql: postingsQuery(level))
+                postingsColumnLevels.withLock { $0[executablePath] = level }
+                if level != .complete, let failure {
+                    logger.warning(
+                        "Beancount postings fell back to \(level.rawValue, privacy: .public): \(failure)"
+                    )
+                }
+                return rows
+            } catch {
+                failure = error
+            }
+        }
+        throw failure ?? BeancountDriverError.queryFailed(String(localized: "rustledger command failed"))
+    }
+
+    private static func postingsQuery(_ level: PostingsColumnLevel) -> String {
+        let columns: String
+        switch level {
+        case .complete:
+            columns = "\(postingsCoreColumns), \(postingsSemanticColumns), \(postingsSourceColumns)"
+        case .source:
+            columns = "\(postingsCoreColumns), \(postingsSourceColumns)"
+        case .core:
+            columns = postingsCoreColumns
+        }
+        return "SELECT \(columns) FROM #postings ORDER BY id"
     }
 
     static func transactionRowsByAddingPostingDetails(
