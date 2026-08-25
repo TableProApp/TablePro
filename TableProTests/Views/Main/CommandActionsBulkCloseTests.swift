@@ -223,6 +223,88 @@ struct CommandActionsBulkCloseTests {
         #expect(databaseEngine.actions.openContainerSwitcherTitle == "Open Database…")
     }
 
+    // MARK: - What a save can reach
+
+    /// The alert and the save read one classifier. A batch close saves what it can reach and leaves
+    /// the rest open, so "is there work" and "can Save have it" have to be the same switch: Save
+    /// used to run on the selected tab whatever the victims were, which on Close Other Tabs and
+    /// Close Tabs for Other Databases is never one of them.
+    @Test("a background tab's file is saveable, its grid edits are not")
+    func savabilitySeparatesFileWorkFromGridWork() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let current = makeWindow(connection: connection)
+        defer { current.coordinator.teardown() }
+
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 1", databaseName: "db_a")
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 2", databaseName: "db_a")
+        let background = try #require(current.coordinator.tabManager.tabs.first)
+        #expect(!current.coordinator.isSelectedTab(background))
+
+        #expect(current.coordinator.savability(of: background) == .nothingAtRisk)
+
+        current.coordinator.tabManager.mutate(tabId: background.id) { tab in
+            tab.content.sourceFileURL = URL(fileURLWithPath: "/tmp/tablepro-savability.sql")
+            tab.content.savedFileContent = "SELECT 1"
+            tab.content.query = "SELECT 2"
+        }
+        let dirtyFile = try #require(current.coordinator.tabManager.tabs.first)
+        #expect(current.coordinator.savability(of: dirtyFile) == .saveable)
+    }
+
+    /// A tab can hold more than one kind at once: a query opened from a file, edited, with unsaved
+    /// cell edits in its result. Answering "saveable" for the file would let a close write the file
+    /// and destroy the grid edits beside it, which is the loss the category exists to prevent.
+    @Test("grid edits outrank a dirty file on a background tab")
+    func savabilityPrefersTheKindNoSaveCanReach() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let current = makeWindow(connection: connection)
+        defer { current.coordinator.teardown() }
+
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 1", databaseName: "db_a")
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 2", databaseName: "db_a")
+        let background = try #require(current.coordinator.tabManager.tabs.first)
+
+        current.coordinator.tabManager.mutate(tabId: background.id) { tab in
+            tab.content.sourceFileURL = URL(fileURLWithPath: "/tmp/tablepro-mixed.sql")
+            tab.content.savedFileContent = "SELECT 1"
+            tab.content.query = "SELECT 2"
+            tab.pendingChanges.deletedRowIndices = [0]
+        }
+
+        let mixed = try #require(current.coordinator.tabManager.tabs.first)
+        #expect(current.coordinator.savability(of: mixed) == .mountedOnly)
+    }
+
+    @Test("the selected tab's own work is always reachable")
+    func savabilityOfTheSelectedTabIsSaveable() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let current = makeWindow(connection: connection)
+        defer { current.coordinator.teardown() }
+
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 1", databaseName: "db_a")
+        let selected = try #require(current.coordinator.tabManager.selectedTab)
+
+        #expect(current.coordinator.isSelectedTab(selected))
+        #expect(current.coordinator.savability(of: selected) == .nothingAtRisk)
+    }
+
+    /// Nothing at risk means no prompt and every victim closes, which is the path a batch close
+    /// takes almost every time.
+    @Test("a clean batch closes without asking")
+    func cleanBatchNeedsNoPrompt() async {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let current = makeWindow(connection: connection)
+        defer { current.coordinator.teardown() }
+
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 1", databaseName: "db_a")
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 2", databaseName: "db_b")
+        let victims = current.coordinator.tabManager.tabs
+
+        let outcome = await current.actions.resolveUnsavedWork(in: victims)
+
+        #expect(outcome == .close(Set(victims.map(\.id))))
+    }
+
     // MARK: - Enablement
 
     @Test("closing all tabs is offered while the window still holds a tab")

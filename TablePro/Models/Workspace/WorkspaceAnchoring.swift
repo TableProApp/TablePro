@@ -7,11 +7,16 @@ import Foundation
 
 /// Which containers a connection's open tabs hold open.
 ///
-/// The workspace rail lists work, not history: a container earns a row by having a tab
-/// that would be lost if the row went away. A brand new query tab with nothing in it is
-/// not work, so browsing away from it reuses its row instead of leaving a dead one
-/// behind. Everything else, including a query tab the user has typed into, holds its
-/// container until its last tab closes.
+/// This answers for tabs alone. What the connections strip lists is what the connection has open:
+/// `ConnectionWorkspace.openedContainers`, which the user adds to by browsing to a container and
+/// empties by closing its entry, plus whatever tabs hold. Anchoring used to be the whole of that
+/// membership, under the rule "the rail lists work, not history", and deriving a switcher's rows
+/// from what its rows were being used for is what let clicking one entry delete another.
+///
+/// A tab holds its container when it carries work that would be lost if the row went away. A brand
+/// new query tab with nothing in it is not work, so a window restoring an empty scratch tab into a
+/// container nobody has opened does not open a row for it. Everything else, including a query tab
+/// the user has typed into, holds its container until its last tab closes.
 internal enum WorkspaceAnchoring {
     /// A tab's identity as far as anchoring is concerned. Comparing these across a tab
     /// mutation is what tells the rail whether it has to reload.

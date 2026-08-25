@@ -38,26 +38,52 @@ extension MainContentCoordinator {
     /// change fields, so closing a table tab is the one gesture that destroys them for good.
     func hasUnsavedWork(in tab: QueryTab?) -> Bool {
         guard let tab else { return false }
-        if tab.content.isFileDirty { return true }
-        guard isSelectedTab(tab) else { return backgroundUnsavedWork(in: tab) }
-        return liveUnsavedWork(in: tab)
+        return savability(of: tab) != .nothingAtRisk
     }
 
-    /// A deselected tab left its editors behind, so the answer is whatever they wrote down before
-    /// they went. Users and roles keeps its own record because its view model outlives the view
-    /// while `usersRolesActions` does not, so the staged principals survive a deselect even though
-    /// nothing on the coordinator can still reach them.
-    private func backgroundUnsavedWork(in tab: QueryTab) -> Bool {
-        switch tab.tabType {
-        case .usersRoles:
-            return tabsWithStagedPrincipals.contains(tab.id)
-        case .createTable:
-            return hasTableDraftWork(in: tab)
-        default:
-            return tab.pendingChanges.hasChanges || hasStagedStructureEdits(in: tab)
+    /// What a save can actually do for one tab, which is not the same question as whether it holds
+    /// work. A batch close asks both: it saves what it can reach and leaves the rest open, so the
+    /// two answers have to come from one switch. Reading the categories apart, in a second
+    /// classifier beside this one, is how the alert and the save came to disagree about what Save
+    /// covers.
+    enum TabWorkSavability: Equatable {
+        case nothingAtRisk
+        /// Reachable without the tab on screen: its file, and the ALTERs staged in its own session.
+        case saveable
+        /// Only the tab's own editors can save it: grid edits, staged principals, a table draft.
+        case mountedOnly
+    }
+
+    /// The unreachable kinds are asked about first. A tab can hold more than one: a query opened
+    /// from a file, edited, with unsaved cell edits in its result. Answering `.saveable` for the file
+    /// would let a close write the file and destroy the grid edits beside it, which is the loss this
+    /// category exists to prevent.
+    func savability(of tab: QueryTab) -> TabWorkSavability {
+        guard isSelectedTab(tab) else {
+            switch tab.tabType {
+            case .usersRoles:
+                guard !tabsWithStagedPrincipals.contains(tab.id) else { return .mountedOnly }
+            case .createTable:
+                guard !hasTableDraftWork(in: tab) else { return .mountedOnly }
+            default:
+                guard !tab.pendingChanges.hasChanges else { return .mountedOnly }
+                if hasStagedStructureEdits(in: tab) { return .saveable }
+            }
+            return fileSavability(of: tab)
         }
+        return liveUnsavedWork(in: tab) ? .saveable : fileSavability(of: tab)
     }
 
+    private func fileSavability(of tab: QueryTab) -> TabWorkSavability {
+        tab.content.isFileDirty ? .saveable : .nothingAtRisk
+    }
+
+    /// The selected tab's editors are mounted, so everything they hold is reachable and saving the
+    /// selected tab covers all of it. A deselected tab left its editors behind, which is why
+    /// `savability` answers for it from what they wrote down before they went: users and roles keeps
+    /// its own record because its view model outlives the view while `usersRolesActions` does not,
+    /// so the staged principals survive a deselect even though nothing on the coordinator can still
+    /// reach them to apply.
     private func liveUnsavedWork(in tab: QueryTab) -> Bool {
         switch tab.tabType {
         case .usersRoles:
