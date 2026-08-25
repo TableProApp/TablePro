@@ -161,6 +161,8 @@ for entry in entries:
         for posting in entry.postings:
             units = getattr(posting, "units", None)
             cost = getattr(posting, "cost", None)
+            price = getattr(posting, "price", None)
+            posting_flag = getattr(posting, "flag", None)
             posting_meta = getattr(posting, "meta", None)
             if units is not None and getattr(units, "number", None) is not None and getattr(units, "currency", None):
                 balances[(posting.account, units.currency)] += units.number
@@ -170,8 +172,12 @@ for entry in entries:
                 "account": posting.account,
                 "number": decimal_value(getattr(units, "number", None)) if units is not None else None,
                 "currency": getattr(units, "currency", None) if units is not None else None,
+                "posting_flag": str(posting_flag) if posting_flag is not None else None,
                 "cost_number": decimal_value(getattr(cost, "number", None)) if cost is not None else None,
                 "cost_currency": getattr(cost, "currency", None) if cost is not None else None,
+                "cost_date": date_value(getattr(cost, "date", None)) if cost is not None else None,
+                "cost_label": getattr(cost, "label", None) if cost is not None else None,
+                "price": amount_value(price),
                 "filename": source_file(posting_meta) or source_file(entry.meta),
                 "lineno": source_line(posting_meta) or source_line(entry.meta),
                 "location": source_location(posting_meta) or source_location(entry.meta),
