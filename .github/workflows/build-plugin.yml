@@ -181,6 +181,12 @@ jobs:
           for ARCH in arm64 x86_64; do
             WORK="$(mktemp -d)"
             unzip -oq "build/Plugins/${BUNDLE_NAME}-${ARCH}.zip" -d "$WORK"
+            # The distribution zip carries the plugin alone, so dyld has nothing to resolve
+            # @rpath/TableProPluginKit.framework against and every plugin fails for the wrong
+            # reason. build-plugin.sh builds both into one flat CONFIGURATION_BUILD_DIR, so the
+            # framework is put beside the unzipped bundle rather than added as a second search
+            # directory, which would make the script scan the build dir as another bundle.
+            cp -R "build/Plugins/${ARCH}/TableProPluginKit.framework" "$WORK/"
             # Only the native slice can be dlopened on this runner; the other is checked by
             # `lipo -info` having produced it and by Gatekeeper below.
             if [ "$ARCH" = "arm64" ]; then
