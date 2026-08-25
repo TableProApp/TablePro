@@ -27060,6 +27060,76 @@
         }
       }
     },
+    "Close Connection “%@”" : {
+      "comment" : "The title of a menu item that closes a connection and everything it has open. The argument is the name of the connection.",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결 “%@” 닫기"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” Bağlantısını Kapat"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đóng kết nối “%@”"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭连接“%@”"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關閉連線「%@」"
+          }
+        }
+      }
+    },
+    "Close Database “%@”" : {
+      "comment" : "The title of a menu item that closes one database of a connection. The argument is the name of the database.",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "데이터베이스 “%@” 닫기"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” Veritabanını Kapat"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đóng cơ sở dữ liệu “%@”"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭数据库“%@”"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關閉資料庫「%@」"
+          }
+        }
+      }
+    },
     "Close Other Tabs" : {
       "localizations" : {
         "ko" : {
@@ -27158,6 +27228,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "關閉結果分頁"
+          }
+        }
+      }
+    },
+    "Close Schema “%@”" : {
+      "comment" : "The title of a menu item that closes one schema of a connection. The argument is the name of the schema.",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "스키마 “%@” 닫기"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” Şemasını Kapat"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đóng schema “%@”"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭 Schema“%@”"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關閉綱要「%@」"
           }
         }
       }

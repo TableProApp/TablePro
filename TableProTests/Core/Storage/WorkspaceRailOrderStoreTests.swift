@@ -83,4 +83,39 @@ struct WorkspaceRailOrderStoreTests {
 
         #expect(WorkspaceRailOrderStore(defaults: defaults).order == [logs, app])
     }
+
+    /// Deleting a connection takes its arrangement with it. Nothing removed an entry before, so the
+    /// ids of connections the user had deleted stayed in defaults for good and every drag added
+    /// more.
+    @Test("Deleting a connection drops its entries and leaves the others alone")
+    func removeEntriesDropsOnlyTheNamedConnection() throws {
+        let (store, defaults, suiteName) = try makeStore()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let deleted = UUID()
+        let kept = UUID()
+        let app = WorkspaceID(connectionId: deleted, container: "app")
+        let logs = WorkspaceID(connectionId: deleted, container: "logs")
+        let other = WorkspaceID(connectionId: kept, container: "app")
+        store.setOrder([app, other, logs])
+
+        store.removeEntries(for: [deleted])
+
+        #expect(store.order == [other])
+        #expect(WorkspaceRailOrderStore(defaults: defaults).order == [other])
+    }
+
+    @Test("Deleting a connection with no entries changes nothing")
+    func removeEntriesIsInertWithoutAMatch() throws {
+        let (store, defaults, suiteName) = try makeStore()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let kept = WorkspaceID(connectionId: UUID(), container: "app")
+        store.setOrder([kept])
+
+        store.removeEntries(for: [UUID()])
+        store.removeEntries(for: [])
+
+        #expect(store.order == [kept])
+    }
 }

@@ -266,15 +266,55 @@ internal final class WindowManager {
         Set(hosts().flatMap(\.workspaces.connectionIds))
     }
 
+    /// Every hosted connection's workspace, which is where the containers it has open live and
+    /// where its connection record survives the end of its session.
+    internal func hostedWorkspaces() -> [ConnectionWorkspace] {
+        hosts().flatMap(\.workspaces.workspaces)
+    }
+
+    internal func workspace(for connectionId: UUID) -> ConnectionWorkspace? {
+        hosts()
+            .lazy
+            .compactMap { $0.workspaces.workspace(for: connectionId) }
+            .first
+    }
+
+    /// The window hosting this connection, whatever state it is in.
+    ///
+    /// Visibility is not the test: a miniaturized window still hosts its connections, so filtering
+    /// on `isVisible` answered nothing for one and left the connection unreachable from the strip
+    /// and from a close command. `host(for:)` is a different question, "which window should adopt
+    /// this connection", and falls back to the frontmost window for one nobody hosts yet.
     internal func window(for connectionId: UUID) -> NSWindow? {
-        controllers.values
-            .first { controller in
-                guard controller.window?.isVisible == true else { return false }
-                guard let host = controller.window?.contentViewController as? MainSplitViewController
-                else { return false }
-                return host.workspaces.contains(connectionId)
-            }?
-            .window
+        hostingController(for: connectionId)?.window
+    }
+
+    /// The connection the window hosting `connectionId` is showing, when that is a different one.
+    ///
+    /// A close reveals the work it is about to destroy before asking, which switches the window to
+    /// that connection. An answer that closes nothing has to put the user back, so both close paths
+    /// take this first and hand it to `show(_:inWindowHosting:)` afterwards.
+    internal func shownConnection(besides connectionId: UUID) -> UUID? {
+        guard let host = window(for: connectionId)?.contentViewController as? MainSplitViewController
+        else { return nil }
+        let showing = host.workspaces.selectedConnectionId
+        return showing == connectionId ? nil : showing
+    }
+
+    internal func show(_ connectionId: UUID?, inWindowHosting hostedId: UUID) {
+        guard let connectionId,
+              let host = window(for: hostedId)?.contentViewController as? MainSplitViewController,
+              host.workspaces.contains(connectionId)
+        else { return }
+        host.selectHostedConnection(connectionId)
+    }
+
+    internal func hostingController(for connectionId: UUID) -> NSWindowController? {
+        controllers.values.first { controller in
+            guard let host = controller.window?.contentViewController as? MainSplitViewController
+            else { return false }
+            return host.workspaces.contains(connectionId)
+        }
     }
 
     internal func connectionIdsRetainingRestoreIntent() -> [UUID] {
