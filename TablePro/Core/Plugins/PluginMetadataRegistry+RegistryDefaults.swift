@@ -824,6 +824,15 @@ extension PluginMetadataRegistry {
                     ]
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: [
+                        ConnectionField(
+                            id: "beancountRunLedgerPlugins",
+                            label: String(localized: "Run Ledger Plugins"),
+                            defaultValue: "false",
+                            fieldType: .toggle,
+                            section: .advanced
+                        )
+                    ],
                     category: .analytical,
                     tagline: String(localized: "Plain-text accounting ledgers")
                 )

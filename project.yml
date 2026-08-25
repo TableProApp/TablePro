@@ -325,6 +325,9 @@ targets:
       # Plugin logic under test. Plugin bundles load at runtime, so the test bundle
       # compiles the pure-logic files its suites cover.
       - Plugins/BeancountDriverPlugin/BeancountIncludeResolver.swift
+      - Plugins/BeancountDriverPlugin/BeancountDirectiveDetails.swift
+      - Plugins/BeancountDriverPlugin/BeancountDirectiveProjection.swift
+      - Plugins/BeancountDriverPlugin/BeancountSourceScanner.swift
       - Plugins/BeancountDriverPlugin/BeancountPluginDriver+Projection.swift
       - Plugins/BeancountDriverPlugin/BeancountPluginDriver+PythonScript.swift
       - Plugins/BeancountDriverPlugin/BeancountPluginDriver.swift

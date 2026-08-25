@@ -42,7 +42,18 @@ final class BeancountPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let immutableColumns: [String] = [
         "id", "transaction_id", "date", "flag", "payee", "narration",
         "account", "amount", "commodity", "cost_number", "cost_currency",
+        "cost_date", "cost_label", "price_number", "price_currency",
         "currency", "currencies", "name", "open_date", "path"
+    ]
+
+    static let additionalConnectionFields: [ConnectionField] = [
+        ConnectionField(
+            id: BeancountPluginDriver.ledgerPluginsFieldId,
+            label: String(localized: "Run Ledger Plugins"),
+            defaultValue: "false",
+            fieldType: .toggle,
+            section: .advanced
+        )
     ]
 
     static let sqlDialect: SQLDialectDescriptor? = SQLDialectDescriptor(
