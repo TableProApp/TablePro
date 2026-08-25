@@ -45,6 +45,16 @@ final class BeancountPlugin: NSObject, TableProPlugin, DriverPlugin {
         "currency", "currencies", "name", "open_date", "path"
     ]
 
+    static let additionalConnectionFields: [ConnectionField] = [
+        ConnectionField(
+            id: BeancountPluginDriver.ledgerPluginsFieldId,
+            label: String(localized: "Run Ledger Plugins"),
+            defaultValue: "false",
+            fieldType: .toggle,
+            section: .advanced
+        )
+    ]
+
     static let sqlDialect: SQLDialectDescriptor? = SQLDialectDescriptor(
         identifierQuote: "\"",
         keywords: [
