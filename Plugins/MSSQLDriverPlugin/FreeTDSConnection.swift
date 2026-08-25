@@ -481,14 +481,19 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         )
     }
 
+    /// `isAborted` is how a consumer that stopped reaches this loop. It is a closure rather than a
+    /// PluginKit type because this file is compiled into the iOS app too and may not import
+    /// PluginKit. It is polled instead of `Task.isCancelled`, which is always false here: the body
+    /// runs inside a bare `queue.async` with no task context.
     func streamQuery(
         _ query: String,
+        isAborted: @escaping @Sendable () -> Bool = { false },
         continuation: AsyncThrowingStream<MSSQLStreamElement, Error>.Continuation
     ) async throws {
         let queryToRun = String(query)
         try await withTaskCancellationHandler {
             try await freetdsDispatchAsync(on: queue) { [self] in
-                try self.streamQuerySync(queryToRun, continuation: continuation)
+                try self.streamQuerySync(queryToRun, isAborted: isAborted, continuation: continuation)
             }
         } onCancel: { [weak self] in
             self?.cancelCurrentQuery()
@@ -497,6 +502,7 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
 
     private func streamQuerySync(
         _ query: String,
+        isAborted: @escaping @Sendable () -> Bool,
         continuation: AsyncThrowingStream<MSSQLStreamElement, Error>.Continuation
     ) throws {
         guard let proc = dbproc else {
@@ -524,7 +530,7 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
 
         while true {
             lock.lock()
-            let cancelledBetweenResults = _isCancelled || Task.isCancelled
+            let cancelledBetweenResults = _isCancelled || isAborted()
             if cancelledBetweenResults { _isCancelled = false }
             lock.unlock()
             if cancelledBetweenResults {
@@ -565,7 +571,7 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
                 if rowCode == FAIL { break }
 
                 lock.lock()
-                let cancelled = _isCancelled || Task.isCancelled
+                let cancelled = _isCancelled || isAborted()
                 if cancelled { _isCancelled = false }
                 lock.unlock()
                 if cancelled {

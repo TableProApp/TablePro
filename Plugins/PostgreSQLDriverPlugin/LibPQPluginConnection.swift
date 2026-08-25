@@ -770,41 +770,19 @@ final class LibPQPluginConnection: @unchecked Sendable {
         while let res = PQgetResult(conn) { PQclear(res) }
     }
 
+    /// The abort is polled by the producer rather than acted on from `onTermination`, because both
+    /// run on one serial queue: a drain enqueued from the handler sits behind the producer and runs
+    /// only once the whole result has been read, which is no abort at all.
     func streamQuery(_ query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
-        let queue = self.queue
-        let suppressCancel = suppressServerSideCancel
 
-        final class StreamState: @unchecked Sendable {
-            var conn: OpaquePointer?
-            var drained = false
-            let lock = NSLock()
-        }
-        let streamState = StreamState()
+        return PluginRowStream.make { continuation, abort in
+            self.queue.async { [self] in
+                stateLock.lock()
+                let handle = self.conn
+                stateLock.unlock()
 
-        stateLock.lock()
-        let connForStream = self.conn
-        stateLock.unlock()
-
-        streamState.lock.lock()
-        streamState.conn = connForStream
-        streamState.lock.unlock()
-
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
-            continuation.onTermination = { @Sendable _ in
-                queue.async {
-                    streamState.lock.lock()
-                    let conn = streamState.conn
-                    let alreadyDrained = streamState.drained
-                    streamState.drained = true
-                    streamState.lock.unlock()
-                    guard let conn, !alreadyDrained else { return }
-                    Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
-                }
-            }
-
-            queue.async { [self] in
-                guard !isShuttingDown, let conn = connForStream else {
+                guard !isShuttingDown, let conn = handle else {
                     continuation.finish(throwing: LibPQPluginError.notConnected)
                     return
                 }
@@ -812,25 +790,31 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 let generation = cancellationGate.beginQuery()
                 defer { cancellationGate.endQuery(generation) }
 
+                /// The consumer can go away before this block is scheduled, in which case the
+                /// query is never sent at all.
+                guard !abort.isAborted else {
+                    continuation.finish()
+                    return
+                }
+
                 while let res = PQgetResult(conn) { PQclear(res) }
+
+                /// Read before the query goes out: once it is in flight the status is
+                /// PQTRANS_ACTIVE, and the transaction this guard exists for is invisible.
+                let suppressCancel = suppressServerSideCancel
+                    || PQtransactionStatus(conn) == PQTRANS_INTRANS
 
                 let sendOk = queryToRun.withCString { queryPtr in
                     PQsendQuery(conn, queryPtr)
                 }
 
                 if sendOk == 0 {
-                    streamState.lock.lock()
-                    streamState.drained = true
-                    streamState.lock.unlock()
                     continuation.finish(throwing: getError(from: conn))
                     return
                 }
 
                 if PQsetSingleRowMode(conn) == 0 {
-                    while let res = PQgetResult(conn) { PQclear(res) }
-                    streamState.lock.lock()
-                    streamState.drained = true
-                    streamState.lock.unlock()
+                    Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
                     continuation.finish(throwing: LibPQPluginError(
                         message: "Failed to enter single-row mode", sqlState: nil, detail: nil))
                     return
@@ -893,14 +877,11 @@ final class LibPQPluginConnection: @unchecked Sendable {
                             batch.removeAll(keepingCapacity: true)
                         }
 
-                        if Task.isCancelled {
+                        if abort.isAborted || cancellationGate.isCancelled(generation) {
                             if !batch.isEmpty {
                                 continuation.yield(.rows(batch))
                             }
                             Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
-                            streamState.lock.lock()
-                            streamState.drained = true
-                            streamState.lock.unlock()
                             continuation.finish(throwing: CancellationError())
                             return
                         }
@@ -914,9 +895,6 @@ final class LibPQPluginConnection: @unchecked Sendable {
                         let error = getResultError(from: result)
                         PQclear(result)
                         while let res = PQgetResult(conn) { PQclear(res) }
-                        streamState.lock.lock()
-                        streamState.drained = true
-                        streamState.lock.unlock()
                         if cancellationGate.isCancelled(generation) {
                             continuation.finish(throwing: CancellationError())
                             return
@@ -930,9 +908,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                     continuation.yield(.rows(batch))
                 }
 
-                streamState.lock.lock()
-                streamState.drained = true
-                streamState.lock.unlock()
+                while let res = PQgetResult(conn) { PQclear(res) }
                 continuation.finish()
             }
         }

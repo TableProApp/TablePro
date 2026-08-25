@@ -575,6 +575,10 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Streaming
 
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        try await boundedQueryFromStream(query: query, rowCap: rowCap)
+    }
+
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let task = Task {

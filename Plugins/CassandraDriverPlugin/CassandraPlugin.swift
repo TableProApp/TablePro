@@ -257,21 +257,36 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
 
     // MARK: - Streaming
 
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        guard let bounded = try await boundedQueryFromStream(query: query, rowCap: rowCap) as PluginQueryResult?
+        else {
+            return nil
+        }
+        /// The buffered path reports a read's row count here, so a bounded read reports the same
+        /// rather than the collector's neutral zero.
+        return PluginQueryResult(
+            columns: bounded.columns,
+            columnTypeNames: bounded.columnTypeNames,
+            rows: bounded.rows,
+            rowsAffected: bounded.rows.count,
+            executionTime: bounded.executionTime,
+            isTruncated: bounded.isTruncated,
+            statusMessage: bounded.statusMessage
+        )
+    }
+
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let cql = stripTrailingSemicolon(query)
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        return PluginRowStream.make { continuation, abort in
             let streamTask = Task {
                 do {
-                    try await self.connectionActor.streamQuery(cql, continuation: continuation)
+                    try await self.connectionActor.streamQuery(cql, abort: abort, continuation: continuation)
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
-
-            continuation.onTermination = { @Sendable _ in
-                streamTask.cancel()
-            }
+            _ = streamTask
         }
     }
 

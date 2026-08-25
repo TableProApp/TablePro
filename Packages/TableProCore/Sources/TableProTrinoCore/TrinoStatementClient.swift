@@ -40,10 +40,13 @@ public final class TrinoStatementClient: @unchecked Sendable {
         )
     }
 
+    /// The paging loop runs in an unstructured task, so terminating the stream has to cancel it
+    /// explicitly. Without that the loop keeps fetching pages nobody reads, and its own
+    /// `abortIfCancelled` never fires because nothing ever cancels the task it runs in.
     public func executeStreamed(_ sql: String) -> AsyncThrowingStream<TrinoStreamElement, Error> {
         AsyncThrowingStream { continuation in
             let client = self
-            Task {
+            let statementTask = Task {
                 do {
                     _ = try await client.runStatement(
                         sql,
@@ -55,6 +58,7 @@ public final class TrinoStatementClient: @unchecked Sendable {
                     continuation.finish(throwing: error)
                 }
             }
+            continuation.onTermination = { @Sendable _ in statementTask.cancel() }
         }
     }
 

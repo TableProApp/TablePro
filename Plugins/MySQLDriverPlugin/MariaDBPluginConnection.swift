@@ -896,32 +896,22 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     func streamQuery(_ query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
-        let queue = self.queue
 
-        final class StreamState: @unchecked Sendable {
-            var resultPtr: UnsafeMutablePointer<MYSQL_RES>?
-            var drained = false
-            let lock = NSLock()
-        }
-        let streamState = StreamState()
-
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
-            continuation.onTermination = { @Sendable _ in
-                queue.async {
-                    streamState.lock.lock()
-                    let ptr = streamState.resultPtr
-                    let alreadyDrained = streamState.drained
-                    streamState.drained = true
-                    streamState.lock.unlock()
-                    guard let resultPtr = ptr, !alreadyDrained else { return }
-                    while mysql_fetch_row(resultPtr) != nil {}
-                    mysql_free_result(resultPtr)
-                }
-            }
-
-            queue.async { [self] in
+        /// The drain belongs to the producer. Enqueued from `onTermination` it would sit behind the
+        /// producer on this one serial queue and run only after the whole result had been read,
+        /// which is why the abort is a polled flag instead.
+        return PluginRowStream.make { continuation, abort in
+            self.queue.async { [self] in
                 guard !isShuttingDown, let mysql = self.mysql else {
                     continuation.finish(throwing: MariaDBPluginError.notConnected)
+                    return
+                }
+
+                let generation = cancellationGate.beginQuery()
+                defer { cancellationGate.endQuery(generation) }
+
+                guard !abort.isAborted else {
+                    continuation.finish()
                     return
                 }
 
@@ -945,10 +935,6 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                     }
                     return
                 }
-
-                streamState.lock.lock()
-                streamState.resultPtr = resultPtr
-                streamState.lock.unlock()
 
                 let numFields = Int(mysql_num_fields(resultPtr))
                 var columns: [String] = []
@@ -993,11 +979,11 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 var batch: [PluginRow] = []
                 batch.reserveCapacity(batchSize)
                 while let rowPtr = mysql_fetch_row(resultPtr) {
-                    if Task.isCancelled {
+                    if abort.isAborted || cancellationGate.isCancelled(generation) {
+                        /// Same shape as the capped buffered read: stop the server first, then
+                        /// drain what is already in flight so the connection stays usable.
+                        killQueryOnServer(threadId: mysql_thread_id(mysql))
                         while mysql_fetch_row(resultPtr) != nil {}
-                        streamState.lock.lock()
-                        streamState.drained = true
-                        streamState.lock.unlock()
                         mysql_free_result(resultPtr)
                         continuation.finish(throwing: CancellationError())
                         return
@@ -1041,17 +1027,11 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
                 if mysql_errno(mysql) != 0 {
                     let error = self.getError()
-                    streamState.lock.lock()
-                    streamState.drained = true
-                    streamState.lock.unlock()
                     mysql_free_result(resultPtr)
                     continuation.finish(throwing: error)
                     return
                 }
 
-                streamState.lock.lock()
-                streamState.drained = true
-                streamState.lock.unlock()
                 mysql_free_result(resultPtr)
                 continuation.finish()
             }

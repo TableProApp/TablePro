@@ -89,9 +89,13 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return pluginResult(last, executionTime: Date().timeIntervalSince(start))
     }
 
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        try await boundedQueryFromStream(query: query, rowCap: rowCap)
+    }
+
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let statement = query.contains(";") ? (TrinoStatementSplitter.split(query).last ?? query) : query
-        return AsyncThrowingStream { continuation in
+        return PluginRowStream.make { continuation, abort in
             let driver = self
             let streamTask = Task {
                 guard let client = driver.client else {
@@ -120,9 +124,7 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { @Sendable _ in
-                streamTask.cancel()
-            }
+            abort.onAbort { streamTask.cancel() }
         }
     }
 

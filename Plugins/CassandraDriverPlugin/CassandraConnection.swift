@@ -685,13 +685,20 @@ actor CassandraConnectionActor {
         return "Unknown error"
     }
 
+    /// The whole loop is one non-suspending actor job holding the cooperative-pool thread, and
+    /// cass_future_wait blocks it, so nothing outside can interrupt a page. `abort` is the only
+    /// way the consumer's departure reaches this body, and it is read between pages and between
+    /// rows rather than mid-request.
     func streamQuery(
         _ cql: String,
+        abort: PluginStreamAbort,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) throws {
         guard let session else {
             throw CassandraPluginError.notConnected
         }
+
+        guard !abort.isAborted else { return }
 
         let pageSize: Int32 = 5_000
         let statement = cass_statement_new(cql, 0)
@@ -705,7 +712,10 @@ actor CassandraConnectionActor {
 
         defer { cass_statement_free(statement) }
 
+        var aborted = false
+
         while true {
+            if abort.isAborted { break }
             let future = cass_session_execute(session, statement)
             guard let future else {
                 throw CassandraPluginError.queryFailed("Failed to execute query")
@@ -755,7 +765,13 @@ actor CassandraConnectionActor {
             let iterator = cass_iterator_from_result(result)
 
             if let iterator {
+                var rowsThisPage = 0
                 while cass_iterator_next(iterator) == cass_true {
+                    rowsThisPage += 1
+                    if rowsThisPage % 256 == 0, abort.isAborted {
+                        aborted = true
+                        break
+                    }
                     let row = cass_iterator_get_row(iterator)
                     guard let row else { continue }
 
@@ -780,16 +796,16 @@ actor CassandraConnectionActor {
 
             let hasMore = cass_result_has_more_pages(result) == cass_true
 
-            if hasMore {
+            if hasMore, !aborted {
                 cass_statement_set_paging_state(statement, result)
             }
 
             cass_result_free(result)
 
-            if !hasMore { break }
+            if !hasMore || aborted { break }
         }
 
-        if !headerSent {
+        if !headerSent, !aborted {
             continuation.yield(.header(PluginStreamHeader(
                 columns: [],
                 columnTypeNames: [],

@@ -417,21 +417,31 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Streaming
 
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        try await boundedQueryFromStream(query: query, rowCap: rowCap)
+    }
+
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         guard let core else {
             return AsyncThrowingStream { $0.finish(throwing: OraclePluginError(core: .notConnected)) }
         }
 
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        return PluginRowStream.make { continuation, abort in
             let streamTask = Task {
+                /// The core read runs in its own unstructured task, which the outer one cannot
+                /// cancel: a plain `Task {}` inherits context but is not a child. Cancelling it
+                /// explicitly on abort is what stops oracle-nio, whose own loop already checks
+                /// cancellation once it is reachable.
                 let coreStream = AsyncThrowingStream<OracleStreamElement, Error> { coreContinuation in
-                    Task {
+                    let coreTask = Task {
                         do {
                             try await core.streamQuery(query, continuation: coreContinuation)
                         } catch {
                             coreContinuation.finish(throwing: error)
                         }
                     }
+                    abort.onAbort { coreTask.cancel() }
+                    coreContinuation.onTermination = { @Sendable _ in coreTask.cancel() }
                 }
                 do {
                     for try await element in coreStream {
@@ -452,9 +462,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { @Sendable _ in
-                streamTask.cancel()
-            }
+            abort.onAbort { streamTask.cancel() }
         }
     }
 

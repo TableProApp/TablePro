@@ -592,16 +592,26 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Streaming
 
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        try await boundedQueryFromStream(query: query, rowCap: rowCap)
+    }
+
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         guard let conn = freeTDSConn else {
             return AsyncThrowingStream { $0.finish(throwing: MSSQLPluginError.notConnected) }
         }
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        return PluginRowStream.make { continuation, abort in
             let streamTask = Task {
                 let coreStream = AsyncThrowingStream<MSSQLStreamElement, Error> { coreContinuation in
+                    /// A plain `Task {}` inherits context but is not a child, so cancelling the
+                    /// outer task never reaches this one. The abort closure is what does.
                     Task {
                         do {
-                            try await conn.streamQuery(query, continuation: coreContinuation)
+                            try await conn.streamQuery(
+                                query,
+                                isAborted: { abort.isAborted },
+                                continuation: coreContinuation
+                            )
                         } catch let error as MSSQLCoreError {
                             coreContinuation.finish(throwing: MSSQLPluginError(coreError: error))
                         } catch {
@@ -632,9 +642,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { @Sendable _ in
-                streamTask.cancel()
-            }
+            abort.onAbort { streamTask.cancel() }
         }
     }
 

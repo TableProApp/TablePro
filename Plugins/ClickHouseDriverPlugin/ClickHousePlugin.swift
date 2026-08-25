@@ -484,6 +484,120 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Streaming
 
+    /// A bounded read is one HTTP request. The unbounded `streamRows` path still pays a separate
+    /// `LIMIT 0` probe to learn its columns, so it is deliberately not reused here.
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        let started = Date()
+        let stream = PluginRowStream.make { continuation, abort in
+            let streamTask = Task {
+                do {
+                    try await self.performBoundedStreamRows(
+                        query: query,
+                        rowCap: rowCap,
+                        continuation: continuation
+                    )
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            abort.onAbort { streamTask.cancel() }
+        }
+        return try await PluginBoundedStream.collect(stream, rowCap: rowCap, startedAt: started)
+    }
+
+    private func performBoundedStreamRows(
+        query: String,
+        rowCap: Int,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        let (session, database) = try lock.withLock { () throws -> (URLSession, String) in
+            guard let session = self.session else { throw ClickHouseError.notConnected }
+            return (session, _currentDatabase)
+        }
+
+        var trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        while trimmedQuery.hasSuffix(";") {
+            trimmedQuery = String(trimmedQuery.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        let request = try buildStreamRequest(query: trimmedQuery, database: database, rowCap: rowCap)
+        let (bytes, response) = try await session.bytes(for: request)
+
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode >= 400 {
+            var body = ""
+            for try await line in bytes.lines {
+                body += line
+            }
+            throw ClickHouseError(message: body.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+
+        /// JSONCompactEachRowWithNamesAndTypes puts the names on line one and the types on line
+        /// two, both as positional arrays, so the columns arrive without a second round trip and
+        /// survive a zero-row result.
+        var columns: [String] = []
+        var columnTypeNames: [String] = []
+        var headerSent = false
+        let batchSize = min(5_000, rowCap + 1)
+        var batch: [PluginRow] = []
+        batch.reserveCapacity(batchSize)
+
+        for try await line in bytes.lines {
+            try Task.checkCancellation()
+
+            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedLine.isEmpty { continue }
+            guard let lineData = trimmedLine.data(using: .utf8) else { continue }
+
+            if columns.isEmpty {
+                columns = (try? JSONSerialization.jsonObject(with: lineData) as? [String]) ?? []
+                continue
+            }
+            if columnTypeNames.isEmpty {
+                columnTypeNames = (try? JSONSerialization.jsonObject(with: lineData) as? [String]) ?? []
+                continuation.yield(.header(PluginStreamHeader(
+                    columns: columns,
+                    columnTypeNames: columnTypeNames,
+                    estimatedRowCount: nil
+                )))
+                headerSent = true
+                continue
+            }
+
+            guard let values = try? JSONSerialization.jsonObject(with: lineData) as? [Any] else { continue }
+            var row: [PluginCellValue] = []
+            row.reserveCapacity(columns.count)
+            for index in columns.indices {
+                let value: Any? = index < values.count ? values[index] : nil
+                row.append(Self.boundedCellValue(value))
+            }
+            batch.append(row)
+            if batch.count >= batchSize {
+                continuation.yield(.rows(batch))
+                batch.removeAll(keepingCapacity: true)
+            }
+        }
+
+        if !headerSent {
+            continuation.yield(.header(PluginStreamHeader(
+                columns: columns,
+                columnTypeNames: columnTypeNames,
+                estimatedRowCount: nil
+            )))
+        }
+        if !batch.isEmpty {
+            continuation.yield(.rows(batch))
+        }
+        continuation.finish()
+    }
+
+    private static func boundedCellValue(_ value: Any?) -> PluginCellValue {
+        guard let value, !(value is NSNull) else { return .null }
+        if let str = value as? String { return .text(str) }
+        if let num = value as? NSNumber { return .text(NumberText.text(for: num)) }
+        if let jsonStr = NumberText.json(from: value, sortedKeys: false) { return .text(jsonStr) }
+        return .text(String(describing: value))
+    }
+
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let streamTask = Task {
@@ -591,7 +705,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         continuation.finish()
     }
 
-    private func buildStreamRequest(query: String, database: String) throws -> URLRequest {
+    private func buildStreamRequest(query: String, database: String, rowCap: Int? = nil) throws -> URLRequest {
         let useTLS = config.ssl.isEnabled
 
         var components = URLComponents()
@@ -604,7 +718,16 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if !database.isEmpty {
             queryItems.append(URLQueryItem(name: "database", value: database))
         }
-        queryItems.append(URLQueryItem(name: "default_format", value: "JSONEachRow"))
+        if let rowCap {
+            /// The bound rides as an HTTP setting so the SQL in the body stays exactly what the
+            /// user wrote. One row past the cap, so a full page can be told from a truncated one.
+            queryItems.append(URLQueryItem(name: "default_format", value: "JSONCompactEachRowWithNamesAndTypes"))
+            queryItems.append(URLQueryItem(name: "max_result_rows", value: String(rowCap + 1)))
+            queryItems.append(URLQueryItem(name: "result_overflow_mode", value: "break"))
+            queryItems.append(URLQueryItem(name: "cancel_http_readonly_queries_on_client_close", value: "1"))
+        } else {
+            queryItems.append(URLQueryItem(name: "default_format", value: "JSONEachRow"))
+        }
         components.queryItems = queryItems
 
         guard let url = components.url else {

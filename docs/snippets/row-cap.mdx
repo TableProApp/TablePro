@@ -1,8 +1,9 @@
 Your SQL reaches the server exactly as you wrote it. The cap applies to the rows read back, so a
 query carrying its own `LIMIT`, `FETCH FIRST` or `TOP` is never touched, and `EXPLAIN`, `SHOW`,
 writes and DDL are never capped. The read itself stops at the cap on MySQL, MariaDB, PostgreSQL,
-CockroachDB, Redshift, SQLite, Redis, DynamoDB, BigQuery and MongoDB, so the rest of the result never
-crosses the network. Every other engine still reads the whole result and keeps the first rows. A plan
-that has to finish before it can return a first row, a sort with no index or a `GROUP BY`, runs to
-completion on the server either way. Both numbers are in **Settings > Data**
+CockroachDB, Redshift, SQLite, MSSQL, Oracle, Cassandra, Redis, DynamoDB, BigQuery, Snowflake, Trino,
+ClickHouse and MongoDB, so the rest of the result never crosses the network. Cloudflare D1, LibSQL,
+Etcd, DuckDB, Elasticsearch, SurrealDB, Beancount and Dameng still read the whole result and keep the
+first rows. A plan that has to finish before it can return a first row, a sort with no index or a
+`GROUP BY`, runs to completion on the server either way. Both numbers are in **Settings > Data**
 ([Data settings](/customization/data-settings)).
