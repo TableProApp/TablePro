@@ -92,10 +92,18 @@ struct ValidateDriverDescriptorTests {
     }
 
     @Test("rejects duplicate primary type ID already registered")
+    /// The collision is set up here rather than assumed. `driverPlugins` is filled when a plugin
+    /// loads, and discovery ends with "will load on first use", so nothing had put MySQL in the
+    /// table and the duplicate check had nothing to collide with. Calling `loadPlugins()` does not
+    /// fill it either: the bundles do not register in the xctest host.
     @MainActor func rejectsDuplicatePrimaryTypeId() {
-        // "MySQL" is registered by the built-in MySQL plugin
-        MockDriverPlugin.reset(typeId: "MySQL", displayName: "Fake MySQL")
         let pm = PluginManager.shared
+        MockDriverPlugin.reset(typeId: "occupied-primary-id", displayName: "Occupant")
+        let occupant = MockDriverPlugin()
+        pm.driverPlugins["occupied-primary-id"] = occupant
+        defer { pm.driverPlugins.removeValue(forKey: "occupied-primary-id") }
+
+        MockDriverPlugin.reset(typeId: "occupied-primary-id", displayName: "Fake Occupant")
         #expect(throws: PluginError.self) {
             try pm.validateDriverDescriptor(MockDriverPlugin.self, pluginId: "test")
         }
@@ -103,12 +111,17 @@ struct ValidateDriverDescriptorTests {
 
     @Test("rejects duplicate additional type ID already registered")
     @MainActor func rejectsDuplicateAdditionalTypeId() {
+        let pm = PluginManager.shared
+        MockDriverPlugin.reset(typeId: "occupied-additional-id", displayName: "Occupant")
+        let occupant = MockDriverPlugin()
+        pm.driverPlugins["occupied-additional-id"] = occupant
+        defer { pm.driverPlugins.removeValue(forKey: "occupied-additional-id") }
+
         MockDriverPlugin.reset(
             typeId: "unique-test-db-type-2",
             displayName: "Test DB",
-            additionalIds: ["MySQL"]
+            additionalIds: ["occupied-additional-id"]
         )
-        let pm = PluginManager.shared
         #expect(throws: PluginError.self) {
             try pm.validateDriverDescriptor(MockDriverPlugin.self, pluginId: "test")
         }

@@ -36,15 +36,11 @@
 #     TableProTests/Core/ClickHouse/ClickHouseDMLStatementTests.swift.
 SQLCompletionProviderTests/testCommaFromScopesColumnsToAllTables()
 
-# --- Needs a driver actually registered in the host.
-#     Confirmed: validateDriverDescriptor checks `driverPlugins[typeId] != nil`, and that table is
-#     filled when a plugin loads rather than when it is discovered. Calling PluginManager.loadPlugins()
-#     from the test does not fill it either, so the bundles do not register in the xctest host and
-#     the duplicate check has nothing to collide with. A stub registration seam is what these need.
+# --- (empty) The two cases that were here now register their own occupant in driverPlugins, which
+#     is internal(set), instead of assuming the MySQL bundle had loaded. It never had: discovery
+#     ends at "will load on first use" and the bundles do not register in the xctest host at all.
 #     Both duplicate-ID checks report "an error was expected but none was thrown", which is what an
 #     empty registry produces: with nothing registered there is no duplicate to reject.
-ValidateDriverDescriptorTests/rejectsDuplicateAdditionalTypeId()
-ValidateDriverDescriptorTests/rejectsDuplicatePrimaryTypeId()
 
 # --- Stale fixture: the model gained a field the fixture JSON does not carry, so decoding throws
 #     before the assertion is reached.
