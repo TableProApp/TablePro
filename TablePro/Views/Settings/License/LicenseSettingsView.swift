@@ -77,7 +77,10 @@ struct LicenseSettingsView: View {
                 Button(String(localized: "Refresh")) {
                     Task { await licenseManager.refreshLicenseAndDevices() }
                 }
-                .disabled(licenseManager.isValidating)
+                /// `revalidate` releases `isValidating` before the seat list is even requested, so
+                /// gating on it alone re-enabled the button while the longer half was still running
+                /// and let a second Refresh start on top of the first.
+                .disabled(licenseManager.isValidating || licenseManager.isRefreshingDevices)
                 .accessibilityIdentifier("license-refresh")
             }
             .padding(.vertical, 4)

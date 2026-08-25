@@ -24,6 +24,10 @@ internal enum LicenseNoticeTone: Equatable {
 
 /// A notice shown inside the pane, never as an alert or a floating banner.
 ///
+/// The tone follows what the reader can do about the state, not how bad the state sounds.
+/// `.critical` is reserved for a state offering no way out, which is why a suspended license is red
+/// and an expired one, which offers Renew, is not.
+///
 /// Title, body and one action, which is the shape Apple's own settings panes use for a degraded
 /// state (`Action Required` plus `Try Again`), and what the HIG asks for when it says to put status
 /// feedback next to what it describes.
@@ -76,7 +80,7 @@ internal enum LicensePresentation {
                 title: String(localized: "License Expired"),
                 message: String(localized: "Renew it to use Pro features again. Everything else keeps working."),
                 action: .renew,
-                tone: statusTone(for: .expired)
+                tone: .warning
             )
 
         case .suspended:
@@ -84,7 +88,7 @@ internal enum LicensePresentation {
                 title: String(localized: "License Suspended"),
                 message: String(localized: "Get in touch and we will sort it out."),
                 action: nil,
-                tone: statusTone(for: .suspended)
+                tone: .critical
             )
 
         case .validationFailed:
@@ -94,7 +98,7 @@ internal enum LicensePresentation {
                     localized: "TablePro has not reached the license server in 30 days, so Pro features are paused."
                 ),
                 action: .retryValidation,
-                tone: statusTone(for: .validationFailed)
+                tone: .warning
             )
 
         case .deactivated:
@@ -102,9 +106,8 @@ internal enum LicensePresentation {
                 title: String(localized: "License Removed"),
                 message: String(localized: "This Mac no longer holds a seat."),
                 action: nil,
-                /// The one state that does not take its tone from `statusTone`: the status colour
-                /// calls a license without entitlement gone, which is right for a badge, but this
-                /// notice reports something the reader just chose to do.
+                /// Informational, not a warning: this reports something the reader just chose to
+                /// do, and the field below it is already the way back.
                 tone: .informational
             )
 
@@ -114,7 +117,7 @@ internal enum LicensePresentation {
                     title: String(localized: "License Not Recognized"),
                     message: String(localized: "The server no longer knows this license key."),
                     action: .purchase,
-                    tone: statusTone(for: .expired)
+                    tone: .warning
                 )
                 : nil
         }
@@ -159,24 +162,6 @@ internal enum LicensePresentation {
     /// spends, and using one noun for both made releasing a Mac look like it freed a person.
     static func memberCount(used: Int, limit: Int) -> String {
         String(format: String(localized: "%1$lld of %2$lld members"), used, limit)
-    }
-
-    /// Red is for a license that is gone. A license the app has simply not been able to check is
-    /// not gone, and painting it red told a paying customer their license had failed.
-    ///
-    /// The single owner of that decision: `notice` derives every notice's tone from here rather
-    /// than repeating a literal per case, so a test of this function guards what the pane draws.
-    /// Returns the semantic role rather than a `Color` so this file stays free of any view type and
-    /// the whole grid can be tested without SwiftUI.
-    static func statusTone(for status: LicenseStatus) -> LicenseNoticeTone {
-        switch status {
-        case .active:
-            return .informational
-        case .validationFailed:
-            return .warning
-        case .unlicensed, .expired, .suspended, .deactivated:
-            return .critical
-        }
     }
 
     /// The masked form of a license key: the first group, then the rest concealed.

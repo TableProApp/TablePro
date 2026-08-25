@@ -73,7 +73,7 @@ struct LicensePresentationTests {
     func expiredOffersRenewal() {
         let notice = LicensePresentation.notice(status: .expired, daysUntilExpiry: -3, isExpired: true, hasLicense: true)
         #expect(notice?.action == .renew)
-        #expect(notice?.tone == LicensePresentation.statusTone(for: .expired))
+        #expect(notice?.tone == .warning, "Renew is a way out, so this is not critical")
     }
 
     @Test("A suspended license offers no self-service action")
@@ -120,25 +120,25 @@ struct LicensePresentationTests {
         }
     }
 
-    // MARK: - Tone is owned in one place
+    // MARK: - Tone follows what the reader can do
 
-    /// `notice` derives every tone from `statusTone`, so this guards what the pane actually draws
-    /// rather than a constant nothing renders.
-    @Test("An unverified license reads as a warning, a gone one as critical")
-    func toneSeparatesUnverifiedFromGone() {
-        #expect(LicensePresentation.statusTone(for: .validationFailed) == .warning)
-        #expect(LicensePresentation.statusTone(for: .expired) == .critical)
-        #expect(LicensePresentation.statusTone(for: .active) == .informational)
-
-        let unverified = LicensePresentation.notice(
-            status: .validationFailed, daysUntilExpiry: nil, isExpired: false, hasLicense: true
-        )
-        #expect(unverified?.tone == LicensePresentation.statusTone(for: .validationFailed))
-
+    /// Reserved for a state with no way out. An expired licence offers Renew and an unrecognised
+    /// one offers a purchase, so painting either red overstates them.
+    @Test("Only a state offering no action is critical")
+    func criticalIsReservedForADeadEnd() {
         let suspended = LicensePresentation.notice(
             status: .suspended, daysUntilExpiry: nil, isExpired: false, hasLicense: true
         )
-        #expect(suspended?.tone == LicensePresentation.statusTone(for: .suspended))
+        #expect(suspended?.tone == .critical)
+        #expect(suspended?.action == nil)
+
+        for status in [LicenseStatus.expired, .validationFailed, .unlicensed] {
+            let notice = LicensePresentation.notice(
+                status: status, daysUntilExpiry: -1, isExpired: status == .expired, hasLicense: true
+            )
+            #expect(notice?.tone != .critical, "\(status.rawValue) offers a way out")
+            #expect(notice?.action != nil)
+        }
     }
 
     // MARK: - Which states ask for a key

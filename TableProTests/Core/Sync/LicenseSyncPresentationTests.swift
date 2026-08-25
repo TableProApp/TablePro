@@ -41,14 +41,21 @@ struct LicenseSyncPresentationTests {
         #expect(!reasons.contains(.userDisabled))
     }
 
+    /// Guards the notice the pane draws, not a colour table nothing renders: #2417 exists because
+    /// a licence the app merely could not check was painted like one that had failed.
     @Test("An unverified license reads as a warning, never as a failure")
     func statusToneSeparatesUnverifiedFromGone() {
-        #expect(LicensePresentation.statusTone(for: .active) == .informational)
-        #expect(LicensePresentation.statusTone(for: .validationFailed) == .warning)
+        let unverified = LicensePresentation.notice(
+            status: .validationFailed, daysUntilExpiry: nil, isExpired: false, hasLicense: true
+        )
+        #expect(unverified?.tone == .warning)
+        #expect(unverified?.action == .retryValidation, "The way out is the network, never a purchase")
 
-        for status in [LicenseStatus.unlicensed, .expired, .suspended, .deactivated] {
-            #expect(LicensePresentation.statusTone(for: status) == .critical)
-        }
+        let suspended = LicensePresentation.notice(
+            status: .suspended, daysUntilExpiry: nil, isExpired: false, hasLicense: true
+        )
+        #expect(suspended?.tone == .critical, "Critical is for a state offering no way out")
+
     }
 
     @Test("A license that already lapsed is not expiring soon")
