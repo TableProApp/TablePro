@@ -289,6 +289,26 @@ internal final class WindowManager {
         hostingController(for: connectionId)?.window
     }
 
+    /// The connection the window hosting `connectionId` is showing, when that is a different one.
+    ///
+    /// A close reveals the work it is about to destroy before asking, which switches the window to
+    /// that connection. An answer that closes nothing has to put the user back, so both close paths
+    /// take this first and hand it to `show(_:inWindowHosting:)` afterwards.
+    internal func shownConnection(besides connectionId: UUID) -> UUID? {
+        guard let host = window(for: connectionId)?.contentViewController as? MainSplitViewController
+        else { return nil }
+        let showing = host.workspaces.selectedConnectionId
+        return showing == connectionId ? nil : showing
+    }
+
+    internal func show(_ connectionId: UUID?, inWindowHosting hostedId: UUID) {
+        guard let connectionId,
+              let host = window(for: hostedId)?.contentViewController as? MainSplitViewController,
+              host.workspaces.contains(connectionId)
+        else { return }
+        host.selectHostedConnection(connectionId)
+    }
+
     internal func hostingController(for connectionId: UUID) -> NSWindowController? {
         controllers.values.first { controller in
             guard let host = controller.window?.contentViewController as? MainSplitViewController

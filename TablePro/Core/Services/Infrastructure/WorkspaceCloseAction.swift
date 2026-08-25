@@ -63,7 +63,13 @@ internal enum WorkspaceCloseAction {
 
         let coordinator = hosted.sessionState?.coordinator
         let victims = tabs(in: workspace.container, of: coordinator)
+        /// Where the user was before the alert. Confirming reveals the work at risk, which switches
+        /// the window to that connection and selects one of the tabs, and an answer that closes
+        /// nothing has to put all of that back: leaving the user on a connection they did not ask
+        /// for, with the entry still listed, is a close that reads as a switch.
+        let wasShowing = WindowManager.shared.shownConnection(besides: workspace.connectionId)
         guard let closable = await confirm(victims, coordinator: coordinator, revealing: workspace) else {
+            WindowManager.shared.show(wasShowing, inWindowHosting: workspace.connectionId)
             Self.logger.info("close cancelled at the save prompt container=\(workspace.container, privacy: .public)")
             return
         }
@@ -72,6 +78,7 @@ internal enum WorkspaceCloseAction {
         /// stay, which is the promise the wording makes.
         guard closable.isSuperset(of: Set(victims.map(\.id))) else {
             coordinator?.closeTabsByUser(ids: victims.map(\.id).filter { closable.contains($0) })
+            WindowManager.shared.show(wasShowing, inWindowHosting: workspace.connectionId)
             Self.logger.info(
                 """
                 close kept container=\(workspace.container, privacy: .public) \
@@ -81,6 +88,7 @@ internal enum WorkspaceCloseAction {
             return
         }
         guard await browseAway(from: workspace, among: containers, coordinator: coordinator) else {
+            WindowManager.shared.show(wasShowing, inWindowHosting: workspace.connectionId)
             Self.logger.error(
                 "close stopped: could not leave container=\(workspace.container, privacy: .public)"
             )

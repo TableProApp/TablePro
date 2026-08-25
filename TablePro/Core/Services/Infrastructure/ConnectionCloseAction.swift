@@ -43,7 +43,10 @@ internal enum ConnectionCloseAction {
         }
 
         /// Shown, then asked. A data-loss alert over a connection the user cannot see names work
-        /// they have no way to look at before answering.
+        /// they have no way to look at before answering. Revealing switches the window to it, so an
+        /// answer that closes nothing puts the user back where they were: a close that leaves them
+        /// on another connection, with its entry still in the strip, reads as a switch.
+        let wasShowing = WindowManager.shared.shownConnection(besides: connectionId)
         let presentingWindow = reveal(connectionId: connectionId)
         switch await AlertHelper.confirmSaveChanges(
             message: String(localized: "Your changes will be lost if you don't save them."),
@@ -52,12 +55,15 @@ internal enum ConnectionCloseAction {
         case .save:
             /// Save closes too, once the save has actually landed. It used to start the save and
             /// stop there, so the connection the user asked to close stayed open.
-            guard await coordinator?.commandActions?.saveSelectedTabWork() == true else { break }
+            guard await coordinator?.commandActions?.saveSelectedTabWork() == true else {
+                WindowManager.shared.show(wasShowing, inWindowHosting: connectionId)
+                break
+            }
             WindowManager.shared.closeWindow(for: connectionId)
         case .dontSave:
             WindowManager.shared.closeWindow(for: connectionId)
         case .cancel:
-            break
+            WindowManager.shared.show(wasShowing, inWindowHosting: connectionId)
         }
     }
 

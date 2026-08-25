@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - The connections strip disappearing when you click the entry you came from.
+- Cancelling a close from the connections strip leaving the window on the connection it revealed.
 - Save on a bulk tab close applying to the tab on screen instead of the tabs being closed.
 - A connections-strip entry in another window raising that window without showing the connection.
 - A disconnected connection's entries dropping to the bottom of the connections strip.
