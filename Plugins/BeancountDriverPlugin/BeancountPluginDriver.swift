@@ -105,6 +105,12 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         attributes: .concurrent
     )
 
+    static let ledgerPluginsFieldId = "beancountRunLedgerPlugins"
+
+    static func allowsLedgerPlugins(_ additionalFields: [String: String]) -> Bool {
+        additionalFields[ledgerPluginsFieldId] == "true"
+    }
+
     var currentSchema: String? { nil }
     var serverVersion: String? { "Beancount" }
     var supportsSchemas: Bool { false }
@@ -139,7 +145,10 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         let projection: BeancountProjection
         do {
-            projection = try await perform { try Self.buildProjection(ledgerURL: fileURL) }
+            let allowsPlugins = Self.allowsLedgerPlugins(config.additionalFields)
+            projection = try await perform {
+                try Self.buildProjection(ledgerURL: fileURL, allowsLedgerPlugins: allowsPlugins)
+            }
         } catch {
             lock.withLock {
                 if pendingConnectionGeneration == generation {
@@ -480,7 +489,10 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let currentSignatures = Self.signatures(for: snapshot.watched)
         guard currentSignatures != snapshot.signatures else { return }
 
-        let projection = try Self.buildProjection(ledgerURL: snapshot.url)
+        let projection = try Self.buildProjection(
+            ledgerURL: snapshot.url,
+            allowsLedgerPlugins: Self.allowsLedgerPlugins(config.additionalFields)
+        )
 
         lock.withLock {
             guard ledgerURL == snapshot.url,
@@ -513,11 +525,17 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    private static func buildProjection(ledgerURL: URL) throws -> BeancountProjection {
+    private static func buildProjection(
+        ledgerURL: URL,
+        allowsLedgerPlugins: Bool
+    ) throws -> BeancountProjection {
         for _ in 0..<2 {
             let initialGraph = try BeancountIncludeResolver().resolve(fileURL: ledgerURL)
             let initialSignatures = signatures(for: initialGraph.reloadDependencies)
-            let rows = try projectionRows(ledgerPath: ledgerURL.path)
+            let rows = try projectionRows(
+                ledgerPath: ledgerURL.path,
+                allowsLedgerPlugins: allowsLedgerPlugins
+            )
             let finalGraph = try BeancountIncludeResolver().resolve(fileURL: ledgerURL)
             guard initialGraph.sourceFiles == finalGraph.sourceFiles,
                   initialGraph.reloadDependencies == finalGraph.reloadDependencies else {
@@ -544,7 +562,10 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    private static func projectionRows(ledgerPath: String) throws -> BeancountProjectionRows {
+    private static func projectionRows(
+        ledgerPath: String,
+        allowsLedgerPlugins: Bool
+    ) throws -> BeancountProjectionRows {
         switch try resolveProjectionBackend() {
         case .rledger:
             let transactions = try transactionRows(ledgerPath: ledgerPath)
@@ -566,7 +587,11 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 diagnostics: validationDiagnostics(ledgerPath: ledgerPath) + pads.diagnostics
             )
         case .python(let executablePath):
-            let rows = try pythonProjectionRows(ledgerPath: ledgerPath, executablePath: executablePath)
+            let rows = try pythonProjectionRows(
+                ledgerPath: ledgerPath,
+                executablePath: executablePath,
+                allowsLedgerPlugins: allowsLedgerPlugins
+            )
             return BeancountProjectionRows(
                 transactions: rows["transactions"] ?? [],
                 postings: rows["postings"] ?? [],
@@ -805,11 +830,16 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         executablePath: String,
         arguments: [String],
         failureMessage: String,
-        allowsNonZeroExit: Bool = false
+        allowsNonZeroExit: Bool = false,
+        environment: [String: String] = [:]
     ) throws -> Data {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executablePath)
         process.arguments = arguments
+        if !environment.isEmpty {
+            process.environment = ProcessInfo.processInfo.environment
+                .merging(environment, uniquingKeysWith: { _, override in override })
+        }
 
         let stdout = Pipe()
         let stderr = Pipe()
@@ -917,12 +947,14 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private static func pythonProjectionRows(
         ledgerPath: String,
-        executablePath: String
+        executablePath: String,
+        allowsLedgerPlugins: Bool
     ) throws -> [String: [[String: Any]]] {
         let output = try runProcess(
             executablePath: executablePath,
             arguments: ["-c", pythonProjectionScript, ledgerPath],
-            failureMessage: String(localized: "Python Beancount projection failed")
+            failureMessage: String(localized: "Python Beancount projection failed"),
+            environment: ["TABLEPRO_BEANCOUNT_RUN_LEDGER_PLUGINS": allowsLedgerPlugins ? "1" : "0"]
         )
         let object = try JSONSerialization.jsonObject(with: output)
         guard let dictionary = object as? [String: Any] else {
