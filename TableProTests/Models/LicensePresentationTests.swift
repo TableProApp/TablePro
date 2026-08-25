@@ -32,61 +32,76 @@ struct LicensePresentationTests {
 
     @Test("A healthy license with no expiry in sight says nothing")
     func activeLicenseHasNoNotice() {
-        let notice = LicensePresentation.notice(status: .active, daysUntilExpiry: 90, hasLicense: true)
+        let notice = LicensePresentation.notice(status: .active, daysUntilExpiry: 90, isExpired: false, hasLicense: true)
         #expect(notice == nil)
     }
 
     @Test("A lifetime license never warns about expiry")
     func lifetimeLicenseHasNoNotice() {
-        let notice = LicensePresentation.notice(status: .active, daysUntilExpiry: nil, hasLicense: true)
+        let notice = LicensePresentation.notice(status: .active, daysUntilExpiry: nil, isExpired: false, hasLicense: true)
         #expect(notice == nil)
     }
 
     @Test("Expiry is raised inside the last week and not before")
     func expiryWarningWindow() {
-        let eightDays = LicensePresentation.notice(status: .active, daysUntilExpiry: 8, hasLicense: true)
+        let eightDays = LicensePresentation.notice(status: .active, daysUntilExpiry: 8, isExpired: false, hasLicense: true)
         #expect(eightDays == nil)
 
-        let sevenDays = LicensePresentation.notice(status: .active, daysUntilExpiry: 7, hasLicense: true)
+        let sevenDays = LicensePresentation.notice(status: .active, daysUntilExpiry: 7, isExpired: false, hasLicense: true)
         #expect(sevenDays?.action == .renew)
         #expect(sevenDays?.tone == .informational)
 
-        let today = LicensePresentation.notice(status: .active, daysUntilExpiry: 0, hasLicense: true)
+        let today = LicensePresentation.notice(status: .active, daysUntilExpiry: 0, isExpired: false, hasLicense: true)
         #expect(today?.action == .renew)
+    }
+
+    /// `daysUntilExpiry` counts whole days, so a license that ran out this morning still reports
+    /// zero. Without the expiry guard the notice read "expires in 0 days" for a license the pane
+    /// was simultaneously reporting as expired.
+    @Test("A license that already lapsed is not warned about as expiring soon")
+    func lapsedLicenseIsNotExpiringSoon() {
+        let notice = LicensePresentation.notice(
+            status: .active,
+            daysUntilExpiry: 0,
+            isExpired: true,
+            hasLicense: true
+        )
+        #expect(notice == nil)
     }
 
     @Test("An expired license offers renewal")
     func expiredOffersRenewal() {
-        let notice = LicensePresentation.notice(status: .expired, daysUntilExpiry: -3, hasLicense: true)
+        let notice = LicensePresentation.notice(status: .expired, daysUntilExpiry: -3, isExpired: true, hasLicense: true)
         #expect(notice?.action == .renew)
-        #expect(notice?.tone == .warning)
+        #expect(notice?.tone == LicensePresentation.statusTone(for: .expired))
     }
 
     @Test("A suspended license offers no self-service action")
     func suspendedOffersNoAction() {
-        let notice = LicensePresentation.notice(status: .suspended, daysUntilExpiry: nil, hasLicense: true)
+        let notice = LicensePresentation.notice(status: .suspended, daysUntilExpiry: nil, isExpired: false, hasLicense: true)
         #expect(notice?.action == nil)
         #expect(notice?.tone == .critical)
     }
 
     @Test("A license that ran out of offline grace offers to try the server again")
     func validationFailedOffersRetry() {
-        let notice = LicensePresentation.notice(status: .validationFailed, daysUntilExpiry: nil, hasLicense: true)
+        let notice = LicensePresentation.notice(status: .validationFailed, daysUntilExpiry: nil, isExpired: false, hasLicense: true)
         #expect(notice?.action == .retryValidation)
     }
 
     @Test("A Mac whose seat was given up is told so, rather than looking like it never had one")
     func deactivatedIsDistinctFromUnlicensed() {
-        let deactivated = LicensePresentation.notice(status: .deactivated, daysUntilExpiry: nil, hasLicense: false)
-        #expect(deactivated?.action == .activate)
+        let deactivated = LicensePresentation.notice(status: .deactivated, daysUntilExpiry: nil, isExpired: false, hasLicense: false)
+        #expect(deactivated != nil, "Giving up a seat here is worth saying")
+        #expect(deactivated?.action == nil, "The landing field below it is already the way back in")
 
-        let neverLicensed = LicensePresentation.notice(status: .unlicensed, daysUntilExpiry: nil, hasLicense: false)
+        let neverLicensed = LicensePresentation.notice(status: .unlicensed, daysUntilExpiry: nil, isExpired: false, hasLicense: false)
         #expect(neverLicensed == nil, "Somebody who never bought a license is not in a degraded state")
     }
 
     @Test("A key the server no longer knows is reported rather than silently blank")
     func unlicensedWithARecordIsReported() {
-        let notice = LicensePresentation.notice(status: .unlicensed, daysUntilExpiry: nil, hasLicense: true)
+        let notice = LicensePresentation.notice(status: .unlicensed, daysUntilExpiry: nil, isExpired: false, hasLicense: true)
         #expect(notice?.action == .purchase)
     }
 
@@ -95,9 +110,61 @@ struct LicensePresentationTests {
         let all: [LicenseStatus] = [.unlicensed, .active, .expired, .suspended, .deactivated, .validationFailed]
         for status in all {
             for hasLicense in [true, false] {
-                _ = LicensePresentation.notice(status: status, daysUntilExpiry: 3, hasLicense: hasLicense)
+                _ = LicensePresentation.notice(
+                    status: status,
+                    daysUntilExpiry: 3,
+                    isExpired: false,
+                    hasLicense: hasLicense
+                )
             }
         }
+    }
+
+    // MARK: - Tone is owned in one place
+
+    /// `notice` derives every tone from `statusTone`, so this guards what the pane actually draws
+    /// rather than a constant nothing renders.
+    @Test("An unverified license reads as a warning, a gone one as critical")
+    func toneSeparatesUnverifiedFromGone() {
+        #expect(LicensePresentation.statusTone(for: .validationFailed) == .warning)
+        #expect(LicensePresentation.statusTone(for: .expired) == .critical)
+        #expect(LicensePresentation.statusTone(for: .active) == .informational)
+
+        let unverified = LicensePresentation.notice(
+            status: .validationFailed, daysUntilExpiry: nil, isExpired: false, hasLicense: true
+        )
+        #expect(unverified?.tone == LicensePresentation.statusTone(for: .validationFailed))
+
+        let suspended = LicensePresentation.notice(
+            status: .suspended, daysUntilExpiry: nil, isExpired: false, hasLicense: true
+        )
+        #expect(suspended?.tone == LicensePresentation.statusTone(for: .suspended))
+    }
+
+    // MARK: - Which states ask for a key
+
+    /// A licence the server has not confirmed in 30 days is one its owner already holds, so asking
+    /// for a key needs the very network the state is defined by lacking.
+    @Test("An unverified license is not asked for a new key; an expired one is")
+    func renewalFieldOnlyWhereAKeyHelps() {
+        #expect(LicensePresentation.showsRenewalField(status: .expired))
+        #expect(LicensePresentation.showsRenewalField(status: .unlicensed))
+        #expect(LicensePresentation.showsRenewalField(status: .validationFailed) == false)
+        #expect(LicensePresentation.showsRenewalField(status: .active) == false)
+    }
+
+    // MARK: - Expiry wording
+
+    @Test("The last two days are named, not counted")
+    func expiryNamesTodayAndTomorrow() {
+        let today = LicensePresentation.notice(status: .active, daysUntilExpiry: 0, isExpired: false, hasLicense: true)
+        #expect(today?.message.contains("0") == false, "\"in 0 days\" is not something to ship")
+
+        let tomorrow = LicensePresentation.notice(status: .active, daysUntilExpiry: 1, isExpired: false, hasLicense: true)
+        #expect(tomorrow?.message.contains("1 days") == false, "\"in 1 days\" is not grammatical")
+
+        let later = LicensePresentation.notice(status: .active, daysUntilExpiry: 5, isExpired: false, hasLicense: true)
+        #expect(later?.message.contains("5") == true)
     }
 
     // MARK: - Key masking
@@ -121,7 +188,7 @@ struct LicensePresentationTests {
     func countsAreFormatted() {
         #expect(LicensePresentation.deviceCount(used: 1, limit: 5).contains("1"))
         #expect(LicensePresentation.deviceCount(used: 1, limit: 5).contains("5"))
-        #expect(LicensePresentation.seatCount(used: 4, limit: 5).contains("4"))
-        #expect(LicensePresentation.seatCount(used: 0, limit: 0).isEmpty == false)
+        #expect(LicensePresentation.memberCount(used: 4, limit: 5).contains("4"))
+        #expect(LicensePresentation.memberCount(used: 0, limit: 0).isEmpty == false)
     }
 }

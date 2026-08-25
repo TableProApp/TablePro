@@ -55,6 +55,10 @@ internal enum SupportLinks {
 
     private static let sponsorsPage = URL(string: "https://github.com/sponsors/datlechin")!
 
+    /// Where a licence is actually administered: invoices, seats, team members. A different place
+    /// from the pricing page, and the one the docs already send people to.
+    internal static let account = URL(string: "https://tablepro.app/account")!
+
     internal static func pricing(_ referrer: SupportReferrer) -> URL {
         pricingPage.appending(queryItems: [URLQueryItem(name: "ref", value: referrer.parameterValue)])
     }

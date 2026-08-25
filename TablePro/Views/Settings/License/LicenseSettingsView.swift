@@ -16,6 +16,7 @@ struct LicenseSettingsView: View {
         LicensePresentation.notice(
             status: licenseManager.status,
             daysUntilExpiry: licenseManager.daysUntilExpiry,
+            isExpired: licenseManager.license?.isExpired ?? false,
             hasLicense: licenseManager.license != nil
         )
     }
@@ -32,7 +33,7 @@ struct LicenseSettingsView: View {
             if let license = licenseManager.license {
                 identitySection(license)
 
-                if !LicensePresentation.showsLicensedLayout(status: licenseManager.status) {
+                if LicensePresentation.showsRenewalField(status: licenseManager.status) {
                     renewalSection
                 }
 
@@ -100,16 +101,12 @@ struct LicenseSettingsView: View {
                     .accessibilityIdentifier("license-copy-key")
                 }
             }
-
-            if license.isTeamLicense, let role = license.teamRole {
-                LabeledContent(String(localized: "Role"), value: role.displayName)
-            }
         }
     }
 
     private var actionsSection: some View {
         Section {
-            Link(String(localized: "Manage Billing"), destination: SupportLinks.pricing(.licenseSettings))
+            Link(String(localized: "Manage Billing"), destination: SupportLinks.account)
 
             Button(String(localized: "Deactivate on This Mac…"), role: .destructive) {
                 Task { @MainActor in
@@ -139,13 +136,8 @@ struct LicenseSettingsView: View {
     /// purchase link, without the pitch, which they have plainly already read.
     private var renewalSection: some View {
         Section {
-            VStack(alignment: .leading, spacing: 12) {
-                LicenseActivationForm()
-
-                Link("Buy a License", destination: SupportLinks.pricing(.licenseSettings))
-                    .font(.subheadline)
-            }
-            .padding(.vertical, 4)
+            LicenseActivationForm()
+                .padding(.vertical, 4)
         }
     }
 
@@ -243,7 +235,6 @@ private struct LicenseNoticeSection: View {
                 Spacer()
             }
             .padding(.vertical, 4)
-            .accessibilityIdentifier("license-notice")
         }
     }
 
@@ -258,8 +249,6 @@ private struct LicenseNoticeSection: View {
             Button(String(localized: "Try Again")) {
                 Task { await LicenseManager.shared.revalidate() }
             }
-        case .activate:
-            EmptyView()
         }
     }
 

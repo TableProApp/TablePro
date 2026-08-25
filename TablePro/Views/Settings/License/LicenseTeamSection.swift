@@ -39,7 +39,7 @@ struct LicenseTeamSection: View {
                 Text("Team")
                 Spacer()
                 if let team = licenseManager.team, licenseManager.teamListState == .loaded {
-                    Text(LicensePresentation.seatCount(used: team.seatsUsed, limit: team.maxSeats))
+                    Text(LicensePresentation.memberCount(used: team.seatsUsed, limit: team.maxSeats))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -53,12 +53,13 @@ struct LicenseTeamSection: View {
             List(team.members) { member in
                 HStack(spacing: 10) {
                     Text(member.email)
+                        .fontWeight(isCurrentUser(member) ? .semibold : .regular)
                         .lineLimit(1)
                         .truncationMode(.middle)
 
                     Spacer()
 
-                    Text(TeamRole(rawValue: member.role).displayName)
+                    Text(roleDescription(member))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -66,10 +67,21 @@ struct LicenseTeamSection: View {
             }
             .listStyle(.inset)
             .frame(minHeight: 96, maxHeight: 190)
-            .accessibilityIdentifier("license-team-list")
         } else {
             Text("Nobody has joined this team yet.")
                 .foregroundStyle(.secondary)
         }
+    }
+
+    /// The signed payload carries the licence owner's email for every member, so this marks the
+    /// owner rather than claiming to know which row is the reader on a member's Mac.
+    private func isCurrentUser(_ member: LicenseTeamMember) -> Bool {
+        member.email == licenseManager.license?.email
+    }
+
+    private func roleDescription(_ member: LicenseTeamMember) -> String {
+        let role = TeamRole(rawValue: member.role).displayName
+        guard isCurrentUser(member) else { return role }
+        return String(format: String(localized: "%@ · You"), role)
     }
 }

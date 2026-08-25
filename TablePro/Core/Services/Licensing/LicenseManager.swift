@@ -41,8 +41,19 @@ final class LicenseManager {
     /// Current cached license (nil = unlicensed)
     private(set) var license: License?
 
-    /// Current license status
-    private(set) var status: LicenseStatus = .unlicensed
+    /// Current license status.
+    ///
+    /// Every write announces itself, so no caller has to remember to. `deactivate` wrote this
+    /// directly and skipped the announcement, which left `SyncCoordinator`, its only observer,
+    /// reporting a healthy sync for a license that no longer existed until the next launch.
+    /// The observer subscribes with `.receive(on: RunLoop.main)`, so this cannot re-enter a
+    /// mutation that is still in progress.
+    private(set) var status: LicenseStatus = .unlicensed {
+        didSet {
+            guard status != oldValue else { return }
+            AppEvents.shared.licenseStatusDidChange.send(())
+        }
+    }
 
     /// Whether a network operation is in progress
     private(set) var isValidating: Bool = false
@@ -95,6 +106,10 @@ final class LicenseManager {
     /// Why the last release did not go through. Kept apart from `deviceListState` so a failure on
     /// one seat is reported beside the list rather than replacing every other seat with an error.
     internal var releaseErrorMessage: String?
+
+    /// Why the last refresh of an already-loaded list did not go through. Separate from
+    /// `releaseErrorMessage` because its wording is about reloading, not about giving up a seat.
+    internal var refreshErrorMessage: String?
 
     /// The team roster, for a Team license. See `LicenseManager+Team`.
     internal var team: LicenseTeamResponse?
@@ -378,12 +393,21 @@ final class LicenseManager {
         return true
     }
 
+    /// Whether the renewal warning applies, which a license that has already lapsed does not.
+    ///
+    /// `daysUntilExpiry` counts whole days, so a license that ran out this morning still reports
+    /// zero until tomorrow. Without the expiry check the pane warned "License expires in 0 day(s)"
+    /// directly above "Status: Expired", stating both readings of the same date at once.
+    nonisolated static func isExpiringSoon(daysUntilExpiry: Int?, isExpired: Bool) -> Bool {
+        guard !isExpired, let daysUntilExpiry else { return false }
+        return daysUntilExpiry >= 0 && daysUntilExpiry <= 7
+    }
+
     /// Drops every trace of the license this Mac was carrying.
     ///
-    /// `evaluateStatus()` is what publishes the change, so the status is set through it rather than
-    /// assigned: `notifyIfChanged` is the only sender of `licenseStatusDidChange`, and it runs from
-    /// `evaluateStatus`'s `defer` alone. Assigning `status` directly left `SyncCoordinator` still
-    /// reporting a healthy sync for a license that no longer existed.
+    /// The status is settled through `evaluateStatus()` rather than assigned, so `.deactivated`
+    /// comes out of the one resolver that decides what "no license" means. Announcing it is the
+    /// `status` observer's job, which is why no caller has to remember to.
     private func clearLocalLicense() async {
         storage.clearAll()
         await TeamLibrarySyncCoordinator.shared.clear()
@@ -478,7 +502,11 @@ final class LicenseManager {
     /// Restarting periodic validation is the point: `deactivate` cancels the task, and the only
     /// other caller of `startPeriodicValidation` is a one-shot at launch, so without this a
     /// deactivate-then-activate in one session left the process never revalidating again. The call
-    /// cancels before it restarts, so activating twice does not stack two tasks.
+    /// cancels before it restarts, so activating twice does not stack two tasks. It cannot live in
+    /// `acceptServerConfirmation`, which `revalidate` calls from inside the very task this cancels.
+    ///
+    /// The seat and roster lists are dropped rather than kept, because they describe the license
+    /// that was here a moment ago, not the one just activated.
     private func adoptActivatedLicense() {
         wasDeactivatedLocally = false
         resetDeviceList()
@@ -498,9 +526,6 @@ final class LicenseManager {
 
     /// Evaluate current license status based on expiration, grace period, and signature validity
     private func evaluateStatus() {
-        let previousStatus = status
-        defer { notifyIfChanged(from: previousStatus) }
-
         guard let license else {
             status = Self.resolveUnlicensedStatus(wasDeactivatedLocally: wasDeactivatedLocally)
             return
@@ -554,11 +579,5 @@ final class LicenseManager {
         }
 
         return .active
-    }
-
-    private func notifyIfChanged(from previousStatus: LicenseStatus) {
-        if status != previousStatus {
-            AppEvents.shared.licenseStatusDidChange.send(())
-        }
     }
 }

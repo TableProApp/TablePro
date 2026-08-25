@@ -11,7 +11,6 @@ import Foundation
 internal enum LicenseNoticeAction: Equatable {
     case renew
     case retryValidation
-    case activate
     case purchase
 }
 
@@ -47,22 +46,37 @@ internal enum LicensePresentation {
         status == .active
     }
 
+    /// Whether typing a new key is the way out of this state.
+    ///
+    /// Not simply "is not entitled": a license the server has not confirmed for 30 days is one the
+    /// owner already holds, and asking them for a key needs the network the state is defined by
+    /// lacking. Their way out is the check, which the notice offers.
+    static func showsRenewalField(status: LicenseStatus) -> Bool {
+        switch status {
+        case .expired, .unlicensed, .suspended, .deactivated:
+            return true
+        case .active, .validationFailed:
+            return false
+        }
+    }
+
     /// The notice for a state that needs saying something, or nil when everything is in order.
     static func notice(
         status: LicenseStatus,
         daysUntilExpiry: Int?,
+        isExpired: Bool,
         hasLicense: Bool
     ) -> LicenseNotice? {
         switch status {
         case .active:
-            return expiryNotice(daysUntilExpiry: daysUntilExpiry)
+            return expiryNotice(daysUntilExpiry: daysUntilExpiry, isExpired: isExpired)
 
         case .expired:
             return LicenseNotice(
                 title: String(localized: "License Expired"),
                 message: String(localized: "Renew it to use Pro features again. Everything else keeps working."),
                 action: .renew,
-                tone: .warning
+                tone: statusTone(for: .expired)
             )
 
         case .suspended:
@@ -70,7 +84,7 @@ internal enum LicensePresentation {
                 title: String(localized: "License Suspended"),
                 message: String(localized: "Get in touch and we will sort it out."),
                 action: nil,
-                tone: .critical
+                tone: statusTone(for: .suspended)
             )
 
         case .validationFailed:
@@ -80,14 +94,17 @@ internal enum LicensePresentation {
                     localized: "TablePro has not reached the license server in 30 days, so Pro features are paused."
                 ),
                 action: .retryValidation,
-                tone: .warning
+                tone: statusTone(for: .validationFailed)
             )
 
         case .deactivated:
             return LicenseNotice(
                 title: String(localized: "License Removed"),
-                message: String(localized: "This Mac no longer holds a seat. Activate a license to use Pro features."),
-                action: .activate,
+                message: String(localized: "This Mac no longer holds a seat."),
+                action: nil,
+                /// The one state that does not take its tone from `statusTone`: the status colour
+                /// calls a license without entitlement gone, which is right for a badge, but this
+                /// notice reports something the reader just chose to do.
                 tone: .informational
             )
 
@@ -97,28 +114,39 @@ internal enum LicensePresentation {
                     title: String(localized: "License Not Recognized"),
                     message: String(localized: "The server no longer knows this license key."),
                     action: .purchase,
-                    tone: .warning
+                    tone: statusTone(for: .expired)
                 )
                 : nil
         }
     }
 
     /// Warns only inside the last week, and never for a lifetime license, which has no expiry to
-    /// count down to. This is the single owner of that window.
-    private static func expiryNotice(daysUntilExpiry: Int?) -> LicenseNotice? {
-        guard let days = daysUntilExpiry, days >= 0, days <= 7 else { return nil }
+    /// count down to. The window itself is `LicenseManager.isExpiringSoon`, which also refuses a
+    /// license that has already lapsed: whole-day counting leaves one that ran out this morning
+    /// still reporting zero, which read as "expires in 0 days" beside a state saying Expired.
+    private static func expiryNotice(daysUntilExpiry: Int?, isExpired: Bool) -> LicenseNotice? {
+        guard LicenseManager.isExpiringSoon(daysUntilExpiry: daysUntilExpiry, isExpired: isExpired),
+              let days = daysUntilExpiry else { return nil }
 
         return LicenseNotice(
             title: String(localized: "License Expiring Soon"),
-            message: String(format: expiryMessageFormat, days),
+            message: expiryMessage(days: days),
             action: .renew,
             tone: .informational
         )
     }
 
-    /// Held apart so the plural variation has a stable key to hang off.
-    private static var expiryMessageFormat: String {
-        String(localized: "This license expires in %lld days.")
+    /// Today and tomorrow are named rather than counted, because a countdown reads "in 0 days" and
+    /// "in 1 days" on exactly the two days the notice exists to act on.
+    private static func expiryMessage(days: Int) -> String {
+        switch days {
+        case 0:
+            return String(localized: "This license expires today.")
+        case 1:
+            return String(localized: "This license expires tomorrow.")
+        default:
+            return String(format: String(localized: "This license expires in %lld days."), days)
+        }
     }
 
     /// The seat count, as a phrase rather than two numbers glued together, so a translation can put
@@ -127,8 +155,28 @@ internal enum LicensePresentation {
         String(format: String(localized: "%1$lld of %2$lld devices"), used, limit)
     }
 
-    static func seatCount(used: Int, limit: Int) -> String {
-        String(format: String(localized: "%1$lld of %2$lld seats"), used, limit)
+    /// The Team section lists members, so it counts members. "Seats" is what the Devices list
+    /// spends, and using one noun for both made releasing a Mac look like it freed a person.
+    static func memberCount(used: Int, limit: Int) -> String {
+        String(format: String(localized: "%1$lld of %2$lld members"), used, limit)
+    }
+
+    /// Red is for a license that is gone. A license the app has simply not been able to check is
+    /// not gone, and painting it red told a paying customer their license had failed.
+    ///
+    /// The single owner of that decision: `notice` derives every notice's tone from here rather
+    /// than repeating a literal per case, so a test of this function guards what the pane draws.
+    /// Returns the semantic role rather than a `Color` so this file stays free of any view type and
+    /// the whole grid can be tested without SwiftUI.
+    static func statusTone(for status: LicenseStatus) -> LicenseNoticeTone {
+        switch status {
+        case .active:
+            return .informational
+        case .validationFailed:
+            return .warning
+        case .unlicensed, .expired, .suspended, .deactivated:
+            return .critical
+        }
     }
 
     /// The masked form of a license key: the first group, then the rest concealed.

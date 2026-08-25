@@ -1111,6 +1111,8 @@
         }
       }
     },
+    "%1$lld of %2$lld devices" : {},
+    "%1$lld of %2$lld seats" : {},
     "%1$lld of %2$lld statements were applied. This connection does not roll back user and role changes." : {
       "localizations" : {
         "ko" : {
@@ -13698,6 +13700,7 @@
         }
       }
     },
+    "Admin" : {},
     "Administration" : {
       "localizations" : {
         "ko" : {
@@ -23697,6 +23700,7 @@
         }
       }
     },
+    "Check Again" : {},
     "Check Status" : {
       "localizations" : {
         "en" : {
@@ -34679,6 +34683,7 @@
         }
       }
     },
+    "Could Not Check This License" : {},
     "Could Not Compare" : {
       "localizations" : {
         "ko" : {
@@ -38874,6 +38879,7 @@
         }
       }
     },
+    "Database Favorites" : {},
     "Database File" : {
       "localizations" : {
         "ko" : {
@@ -39834,6 +39840,8 @@
         }
       }
     },
+    "Deactivate on This Mac…" : {},
+    "Deactivate this license?" : {},
     "Deactivated" : {
       "localizations" : {
         "ko" : {
@@ -42844,6 +42852,7 @@
         }
       }
     },
+    "Devices" : {},
     "Diagnostic Info" : {
       "localizations" : {
         "ko" : {
@@ -50188,6 +50197,7 @@
         }
       }
     },
+    "Everything else keeps working without a license, with nothing counting down." : {},
     "Exact value" : {
       "localizations" : {
         "ko" : {
@@ -51348,6 +51358,7 @@
         }
       }
     },
+    "Expires %@" : {},
     "Expires:" : {
       "localizations" : {
         "en" : {
@@ -59631,6 +59642,7 @@
         }
       }
     },
+    "Get in touch and we will sort it out." : {},
     "Get intelligent SQL suggestions and query assistance" : {
       "localizations" : {
         "ko" : {
@@ -60449,6 +60461,7 @@
         }
       }
     },
+    "Groups & Tags" : {},
     "Groups & Tags:" : {
       "localizations" : {
         "ko" : {
@@ -68789,6 +68802,7 @@
         }
       }
     },
+    "Last Synced" : {},
     "Last Synced:" : {
       "localizations" : {
         "ko" : {
@@ -69061,6 +69075,7 @@
         }
       }
     },
+    "Last used %@" : {},
     "Latency: %dms" : {
       "localizations" : {
         "ko" : {
@@ -69439,6 +69454,8 @@
         }
       }
     },
+    "License Expired" : {},
+    "License Expiring Soon" : {},
     "License Key:" : {
       "localizations" : {
         "ko" : {
@@ -69473,6 +69490,7 @@
         }
       }
     },
+    "License Not Recognized" : {},
     "License Removed" : {
       "localizations" : {
         "ko" : {
@@ -69507,6 +69525,7 @@
         }
       }
     },
+    "License Suspended" : {},
     "License expired — sync paused" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -69616,6 +69635,9 @@
         }
       }
     },
+    "License key" : {},
+    "License key or invite code" : {},
+    "License not verified in 30 days, sync paused. Click to check again." : {},
     "License public key is invalid." : {
       "localizations" : {
         "ko" : {
@@ -71377,6 +71399,7 @@
         }
       }
     },
+    "Loading devices…" : {},
     "Loading insights…" : {
       "localizations" : {
         "ko" : {
@@ -71792,6 +71815,7 @@
         }
       }
     },
+    "Loading team…" : {},
     "Loading users and roles…" : {
       "localizations" : {
         "ko" : {
@@ -73100,6 +73124,7 @@
         }
       }
     },
+    "Manage Billing" : {},
     "Manage Connections" : {
       "localizations" : {
         "ko" : {
@@ -74401,6 +74426,7 @@
         }
       }
     },
+    "Member" : {},
     "Member Of" : {
       "localizations" : {
         "ko" : {
@@ -81707,6 +81733,7 @@
         }
       }
     },
+    "No devices are activated on this license." : {},
     "No export formats available. Enable export plugins in Settings > Plugins." : {
       "localizations" : {
         "ko" : {
@@ -84013,6 +84040,7 @@
         }
       }
     },
+    "Nobody has joined this team yet." : {},
     "Node Changes" : {
       "localizations" : {
         "ko" : {
@@ -85443,6 +85471,7 @@
         }
       }
     },
+    "Notifications" : {},
     "Null" : {
       "localizations" : {
         "ko" : {
@@ -89458,6 +89487,7 @@
         }
       }
     },
+    "Owner" : {},
     "PHP Serialized" : {
       "localizations" : {
         "ko" : {
@@ -90771,6 +90801,7 @@
         }
       }
     },
+    "Passwords" : {},
     "Passwords will be encrypted with the passphrase you provide." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -94943,6 +94974,8 @@
         }
       }
     },
+    "Pro features stop here right away. You can activate this license again later." : {},
+    "Pro features stop on this Mac right away. You can activate this license again later." : {},
     "Pro license required for iCloud Sync" : {
       "localizations" : {
         "ko" : {
@@ -100200,6 +100233,10 @@
         }
       }
     },
+    "Release" : {},
+    "Release the seat on “%@”?" : {},
+    "Release this Mac's seat?" : {},
+    "Release…" : {},
     "Reload" : {
       "localizations" : {
         "ko" : {
@@ -101754,6 +101791,7 @@
         }
       }
     },
+    "Renew it to use Pro features again. Everything else keeps working." : {},
     "Reopen Closed Tab" : {
       "localizations" : {
         "ko" : {
@@ -107061,6 +107099,7 @@
         }
       }
     },
+    "SSH Profiles" : {},
     "SSH Profiles:" : {
       "localizations" : {
         "en" : {
@@ -110946,6 +110985,7 @@
         }
       }
     },
+    "Seats on a team license are managed on tablepro.app." : {},
     "Second filter value" : {
       "localizations" : {
         "ko" : {
@@ -122307,6 +122347,7 @@
         }
       }
     },
+    "Sync Paused" : {},
     "Sync Status" : {
       "localizations" : {
         "ko" : {
@@ -122479,6 +122520,7 @@
         }
       }
     },
+    "Sync this Mac with iCloud" : {},
     "Sync token expired. A full sync will be performed." : {
       "localizations" : {
         "ko" : {
@@ -123552,6 +123594,7 @@
         }
       }
     },
+    "Table Favorites" : {},
     "Table Favorites:" : {
       "localizations" : {
         "ko" : {
@@ -124143,6 +124186,8 @@
         }
       }
     },
+    "TablePro has not confirmed this license with the server in 30 days." : {},
+    "TablePro has not reached the license server in 30 days, so Pro features are paused." : {},
     "TablePro runs Anthropic's claude tool in headless mode. Claude Code is built for you to use directly, not as a backend for other apps, so this path can break with any Claude Code release." : {
       "localizations" : {
         "ko" : {
@@ -125648,6 +125693,7 @@
         }
       }
     },
+    "That Mac keeps working until its next check, within 7 days, and then Pro features pause there." : {},
     "That doesn't look like a valid license key. Check for typos and try again." : {
       "localizations" : {
         "ko" : {
@@ -127732,6 +127778,8 @@
         }
       }
     },
+    "The license server could not be reached, so that seat may stay in use until it expires." : {},
+    "The license that covers iCloud Sync has expired. Renew it to start syncing again." : {},
     "The listener does not know the requested SID" : {
       "localizations" : {
         "ko" : {
@@ -128619,6 +128667,7 @@
         }
       }
     },
+    "The server no longer knows this license key." : {},
     "The server sent an unexpected message and the connection was reset. Run the query again." : {
       "localizations" : {
         "ko" : {
@@ -129786,6 +129835,7 @@
         }
       }
     },
+    "This Mac no longer holds a seat. Activate a license to use Pro features." : {},
     "This Month" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -131137,6 +131187,7 @@
         }
       }
     },
+    "This license expires in %lld days." : {},
     "This license has been suspended. Contact support for help." : {
       "localizations" : {
         "ko" : {
@@ -136883,6 +136934,7 @@
         }
       }
     },
+    "Unlock the Pro features" : {},
     "Unpin" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -140072,6 +140124,7 @@
         }
       }
     },
+    "View License" : {},
     "View Mode" : {
       "localizations" : {
         "ko" : {

@@ -102,9 +102,12 @@ struct FieldLevelMergeTests {
 struct SyncRecordCacheTests {
     private let zoneID = CKRecordZone.ID(zoneName: "TestZone", ownerName: CKCurrentUserDefaultName)
 
+    /// A throwaway directory per cache, because the cache is file-backed now: keeping it in
+    /// UserDefaults put the whole com.TablePro domain over the 4 MB CFPreferences ceiling.
     private func makeCache() throws -> SyncRecordCache {
-        let defaults = try #require(UserDefaults(suiteName: "com.TablePro.tests.\(UUID().uuidString)"))
-        return SyncRecordCache(defaults: defaults, storageKey: "recordCache")
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("SyncRecordCacheTests/\(UUID().uuidString)", isDirectory: true)
+        return SyncRecordCache(directory: directory, defaults: nil, storageKey: "recordCache")
     }
 
     private func makeRecord(_ name: String) -> CKRecord {
@@ -147,6 +150,27 @@ struct SyncRecordCacheTests {
         cache.remove([record.recordID])
 
         #expect(cache.record(for: record.recordID) == nil)
+    }
+
+    /// The whole point of moving off UserDefaults: an existing cache has to come with, and the key
+    /// has to go, or the domain stays over the CFPreferences limit and every write keeps failing.
+    @Test("A cache written to UserDefaults by an older build moves to disk and frees the key")
+    func legacyCacheMigratesOffUserDefaults() throws {
+        let suite = "com.TablePro.tests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let record = makeRecord("Connection_Legacy")
+        let archived = try NSKeyedArchiver.archivedData(withRootObject: record, requiringSecureCoding: true)
+        defaults.set(["Connection_Legacy": archived], forKey: "recordCache")
+
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("SyncRecordCacheTests/\(UUID().uuidString)", isDirectory: true)
+        let cache = SyncRecordCache(directory: directory, defaults: defaults, storageKey: "recordCache")
+
+        let restored = cache.record(for: record.recordID)
+        #expect(restored?["name"] as? String == "Production")
+        #expect(defaults.object(forKey: "recordCache") == nil, "The oversized key must be released")
     }
 
     @Test("An unknown record is absent")

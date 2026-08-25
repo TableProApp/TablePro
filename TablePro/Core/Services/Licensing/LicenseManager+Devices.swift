@@ -56,6 +56,7 @@ extension LicenseManager {
         guard force || deviceListState == .idle else { return }
 
         releaseErrorMessage = nil
+        refreshErrorMessage = nil
         if deviceListState.hasContent {
             isRefreshingDevices = true
         } else {
@@ -72,12 +73,20 @@ extension LicenseManager {
             maxDevices = response.maxActivations
             deviceListState = .loaded
         } catch {
+            /// A cancelled load is not an outcome. Recording it as `.failed` also latched the
+            /// appearance guard, so the pane that cancelled its own `.task` could never retry and
+            /// sat on an error nobody caused.
+            guard !Self.isCancellation(error) else {
+                if !deviceListState.hasContent { deviceListState = .idle }
+                return
+            }
+
             let message = (error as? LicenseError)?.friendlyDescription ?? error.localizedDescription
             Self.deviceLogger.warning("Failed to load activations: \(error.localizedDescription)")
             /// A refresh that could not reach the server leaves the seats already on screen alone
             /// and reports beside them. Only a list with nothing in it becomes an error.
             if deviceListState.hasContent {
-                releaseErrorMessage = message
+                refreshErrorMessage = message
             } else {
                 deviceListState = .failed(message)
             }
@@ -126,6 +135,16 @@ extension LicenseManager {
         deviceListState = .loaded
     }
 
+    /// Whether an error is the caller's own cancellation rather than something the server said.
+    nonisolated static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if case .networkError(let underlying)? = error as? LicenseError,
+           (underlying as? URLError)?.code == .cancelled {
+            return true
+        }
+        return (error as? URLError)?.code == .cancelled
+    }
+
     /// Said whenever a seat was given up locally but the server never confirmed it.
     static var unreachableServerSeatMessage: String {
         String(
@@ -140,6 +159,7 @@ extension LicenseManager {
     func refreshLicenseAndDevices() async {
         await revalidate()
         await loadDevices(force: true)
+        await loadTeam(force: true)
     }
 
     func resetDeviceList() {
@@ -147,6 +167,7 @@ extension LicenseManager {
         maxDevices = 0
         releasingMachineIds = []
         releaseErrorMessage = nil
+        refreshErrorMessage = nil
         deviceListState = .idle
     }
 }

@@ -1,6 +1,36 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Beancount Ledger" : {
+
+    },
+    "CFBundleDisplayName" : {
+      "comment" : "Bundle display name",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "TablePro"
+          }
+        }
+      }
+    },
+    "CFBundleName" : {
+      "comment" : "Bundle name",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "TablePro"
+          }
+        }
+      }
+    },
+    "DuckDB Database" : {
+
+    },
     "NSDesktopFolderUsageDescription" : {
       "comment" : "Privacy - Desktop Folder Usage Description",
       "extractionState" : "manual",
@@ -168,6 +198,21 @@
           }
         }
       }
+    },
+    "SQL File" : {
+
+    },
+    "SQLite Database" : {
+
+    },
+    "TablePro Connection" : {
+
+    },
+    "TablePro Filter Row" : {
+
+    },
+    "TablePro Plugin" : {
+
     }
   },
   "version" : "1.0"

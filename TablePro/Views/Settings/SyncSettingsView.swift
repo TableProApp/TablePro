@@ -16,8 +16,32 @@ struct SyncSettingsView: View {
 
     var body: some View {
         Form {
-            if case .disabled(.licenseExpired) = syncCoordinator.syncStatus {
-                licensePausedSection
+            switch syncCoordinator.syncStatus {
+            case .disabled(.licenseExpired):
+                pausedSection(
+                    title: String(localized: "Sync Paused"),
+                    message: String(
+                        localized: "The license that covers iCloud Sync has expired. Renew it to start syncing again."
+                    )
+                ) {
+                    Link(String(localized: "Renew License"), destination: SupportLinks.pricing(.licenseSettings))
+                }
+            case .disabled(.licenseUnverified):
+                /// Not a license to buy again. The way out is the network, so the action is the
+                /// check, never a purchase.
+                pausedSection(
+                    title: String(localized: "Sync Paused"),
+                    message: String(
+                        localized: "TablePro has not confirmed this license with the server in 30 days."
+                    )
+                ) {
+                    Button(String(localized: "Check Again")) {
+                        Task { await LicenseManager.shared.revalidate() }
+                    }
+                    .disabled(LicenseManager.shared.isValidating)
+                }
+            default:
+                EmptyView()
             }
 
             SyncSection()
@@ -26,9 +50,13 @@ struct SyncSettingsView: View {
         .scrollContentBackground(.hidden)
     }
 
-    /// The expired-license notice that used to float over the account pane. Sync is what stopped,
-    /// so it is stated here, inline, beside the switch it explains.
-    private var licensePausedSection: some View {
+    /// The notice that used to float over the account pane. Sync is what stopped, so it is stated
+    /// here, inline, beside the switch it explains, with the one action that state needs.
+    private func pausedSection(
+        title: String,
+        message: String,
+        @ViewBuilder action: () -> some View
+    ) -> some View {
         Section {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -36,21 +64,20 @@ struct SyncSettingsView: View {
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Sync Paused")
+                    Text(title)
                         .font(.headline)
 
-                    Text("The license that covers iCloud Sync has expired. Renew it to start syncing again.")
+                    Text(message)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Link(String(localized: "Renew License"), destination: SupportLinks.pricing(.licenseSettings))
+                    action()
                         .padding(.top, 2)
                 }
 
                 Spacer()
             }
             .padding(.vertical, 4)
-            .accessibilityIdentifier("sync-license-paused")
         }
     }
 }

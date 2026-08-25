@@ -29,6 +29,10 @@ struct LicenseDevicesSection: View {
             HStack {
                 Text("Devices")
                 Spacer()
+                if licenseManager.isRefreshingDevices {
+                    ProgressView().controlSize(.small)
+                }
+
                 if licenseManager.deviceListState == .loaded {
                     Text(
                         LicensePresentation.deviceCount(
@@ -106,15 +110,13 @@ struct LicenseDevicesSection: View {
             }
             .listStyle(.inset)
             .frame(minHeight: 96, maxHeight: 190)
-            .accessibilityIdentifier("license-devices-list")
         }
 
-        if let releaseError = licenseManager.releaseErrorMessage {
-            Label(releaseError, systemImage: "exclamationmark.triangle.fill")
+        if let message = licenseManager.releaseErrorMessage ?? licenseManager.refreshErrorMessage {
+            Label(message, systemImage: "exclamationmark.triangle.fill")
                 .font(.callout)
                 .foregroundStyle(.orange)
                 .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("license-release-error")
         }
     }
 
@@ -141,21 +143,20 @@ struct LicenseDevicesSection: View {
 
             if licenseManager.releasingMachineIds.contains(device.machineId) {
                 ProgressView().controlSize(.small)
-            } else if canRelease(isThisMac: isThisMac) {
+            } else if !isThisMac, licenseManager.canReleaseOtherDevices {
                 Button(String(localized: "Release…")) {
                     releaseCandidate = device
                 }
-                .accessibilityIdentifier(isThisMac ? "license-release-this-mac" : "license-release-device")
+                .accessibilityLabel(
+                    Text(String(format: String(localized: "Release the seat on %@"), device.machineName))
+                )
+                .accessibilityIdentifier("license-release-\(device.machineId)")
             }
         }
         .padding(.vertical, 2)
     }
 
     // MARK: - Helpers
-
-    private func canRelease(isThisMac: Bool) -> Bool {
-        isThisMac || licenseManager.canReleaseOtherDevices
-    }
 
     /// Which Mac you are on, when it last checked in, and what it is running. Last use is the fact
     /// somebody actually decides on when choosing a seat to release, so it earns its place over the
@@ -189,15 +190,15 @@ struct LicenseDevicesSection: View {
         )
     }
 
+    /// Only another Mac reaches this, so the copy speaks about that Mac. Giving up this Mac's own
+    /// seat goes through the pane's single Deactivate control instead, which is the split Apple's
+    /// own Apple Account pane makes: the device list removes other devices, never the one in front
+    /// of you.
     private func releaseTitle(for device: LicenseActivationInfo) -> String {
-        device.machineId == licenseManager.currentMachineId
-            ? String(localized: "Release this Mac's seat?")
-            : String(format: String(localized: "Release the seat on “%@”?"), device.machineName)
+        String(format: String(localized: "Release the seat on “%@”?"), device.machineName)
     }
 
     private func releaseMessage(for device: LicenseActivationInfo) -> String {
-        device.machineId == licenseManager.currentMachineId
-            ? String(localized: "Pro features stop here right away. You can activate this license again later.")
-            : String(localized: "That Mac keeps working until its next check, within 7 days, and then Pro features pause there.")
+        String(localized: "That Mac keeps working until its next check, within 7 days, and then Pro features pause there.")
     }
 }
