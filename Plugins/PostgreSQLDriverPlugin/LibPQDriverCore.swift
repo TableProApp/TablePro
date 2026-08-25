@@ -126,6 +126,39 @@ final class LibPQDriverCore: @unchecked Sendable {
         )
     }
 
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        try await boundedQueryWithReconnect(query: query, rowCap: rowCap, isRetry: false)
+    }
+
+    /// A bounded read only ever runs a statement the host classified as a read, so retrying it after
+    /// a dropped connection is safe, the same way the buffered path retries.
+    private func boundedQueryWithReconnect(
+        query: String,
+        rowCap: Int,
+        isRetry: Bool
+    ) async throws -> PluginQueryResult {
+        guard let pqConn = libpqConnection else {
+            throw LibPQPluginError.notConnected
+        }
+
+        let startTime = Date()
+
+        do {
+            let result = try await pqConn.boundedQuery(query, rowCap: rowCap)
+            return PluginQueryResult(
+                columns: result.columns,
+                columnTypeNames: result.columnTypeNames,
+                rows: result.rows,
+                rowsAffected: result.affectedRows,
+                executionTime: Date().timeIntervalSince(startTime),
+                isTruncated: result.isTruncated
+            )
+        } catch let error as NSError where !isRetry && Self.isConnectionLostError(error) {
+            try await reconnect()
+            return try await boundedQueryWithReconnect(query: query, rowCap: rowCap, isRetry: true)
+        }
+    }
+
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         guard let pqConn = libpqConnection else {
             return AsyncThrowingStream { $0.finish(throwing: LibPQPluginError.notConnected) }
@@ -224,6 +257,10 @@ extension LibPQBackedDriver {
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         try await core.executeParameterized(query: query, parameters: parameters)
+    }
+
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        try await core.executeBoundedQuery(query: query, rowCap: rowCap)
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {

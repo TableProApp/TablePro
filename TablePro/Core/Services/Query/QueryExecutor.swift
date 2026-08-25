@@ -69,11 +69,44 @@ final class QueryExecutor {
 
     // MARK: - Driver fetch (nonisolated, runs on background)
 
+    /// Bounding a fetch abandons the rest of it, which for some drivers cancels the statement on the
+    /// server, so it is only ever offered a cap that `resolveRowCap` produced. That gate excludes
+    /// writes and DDL; a caller computing its own cap (the MCP bridge caps a write that RETURNs)
+    /// must not route here.
+    nonisolated static func fetchBoundedQueryData(
+        driver: DatabaseDriver,
+        sql: String,
+        rowCap: Int?
+    ) async throws -> QueryFetchResult? {
+        guard let rowCap, rowCap > 0 else { return nil }
+        let start = CFAbsoluteTimeGetCurrent()
+        guard let result = try await driver.executeBoundedQuery(query: sql, rowCap: rowCap) else {
+            return nil
+        }
+        let elapsed = CFAbsoluteTimeGetCurrent() - start
+        queryExecutorLog.info(
+            "[executeBoundedQuery] rows=\(result.rows.count) truncated=\(result.isTruncated) totalTime=\(String(format: "%.3f", elapsed))s"
+        )
+        return QueryFetchResult(
+            columns: result.columns,
+            columnTypes: result.columnTypes,
+            rows: result.rows,
+            executionTime: result.executionTime,
+            rowsAffected: result.rowsAffected,
+            statusMessage: result.statusMessage,
+            isTruncated: result.isTruncated,
+            resultColumnMeta: result.columnMeta
+        )
+    }
+
     nonisolated static func fetchQueryData(
         driver: DatabaseDriver,
         sql: String,
         rowCap: Int?
     ) async throws -> QueryFetchResult {
+        if let bounded = try await fetchBoundedQueryData(driver: driver, sql: sql, rowCap: rowCap) {
+            return bounded
+        }
         let start = CFAbsoluteTimeGetCurrent()
         queryExecutorLog.info("[executeUserQuery] sql=\(sql.prefix(100), privacy: .public) rowCap=\(rowCap?.description ?? "nil")")
         let result = try await driver.executeUserQuery(query: sql, rowCap: rowCap, parameters: nil)
@@ -221,10 +254,12 @@ final class QueryExecutor {
         return cap > 0 ? cap : nil
     }
 
+    private static let rowProducingKeywords: Set<String> = ["SELECT", "WITH", "TABLE", "VALUES"]
+
     static func qualifiesForRowCap(sql: String, tabType: TabType, databaseType: DatabaseType) -> Bool {
         guard tabType == .query else { return false }
         let keyword = QueryClassifier.leadingKeyword(of: sql)
-        return (keyword == "SELECT" || keyword == "WITH")
+        return rowProducingKeywords.contains(keyword)
             && !QueryClassifier.isWriteQuery(sql, databaseType: databaseType)
             && !isDDLStatement(sql)
     }

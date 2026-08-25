@@ -158,8 +158,10 @@ extension MainContentCoordinator {
             } else {
                 tab.pagination.resetLoadMore()
             }
-            tab.pagination.baseQueryForMore = resultSet.baseQuery
-            tab.pagination.baseQueryParameterValues = resultSet.baseQueryParameterValues
+            tab.pagination.setBaseQueryForMore(
+                resultSet.baseQuery,
+                parameterValues: resultSet.baseQueryParameterValues
+            )
         }
     }
 

@@ -408,6 +408,27 @@ struct PaginationStateTests {
         #expect(state.isApproximateRowCount)
     }
 
+    @Test("Setting the base query clears the previous run's bindings")
+    func setBaseQueryForMoreClearsStaleBindings() {
+        var state = PaginationState()
+        state.setBaseQueryForMore("SELECT * FROM orders WHERE id = $1", parameterValues: ["42"])
+
+        state.setBaseQueryForMore("SELECT * FROM events", parameterValues: nil)
+
+        #expect(state.baseQueryForMore == "SELECT * FROM events")
+        #expect(state.baseQueryParameterValues == nil)
+    }
+
+    @Test("Setting the base query carries its own bindings")
+    func setBaseQueryForMoreCarriesBindings() {
+        var state = PaginationState()
+
+        state.setBaseQueryForMore("SELECT * FROM orders WHERE id = $1", parameterValues: ["7"])
+
+        #expect(state.baseQueryForMore == "SELECT * FROM orders WHERE id = $1")
+        #expect(state.baseQueryParameterValues == ["7"])
+    }
+
     @Test("Busy covers every kind of pending work")
     func busyCoversEveryPendingKind() {
         #expect(!PaginationState().isBusy)

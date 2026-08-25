@@ -70,6 +70,13 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// - Returns: Query result with `isTruncated` set when the cap clipped rows
     func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult
 
+    /// Run a read that stops once `rowCap` rows are known to be exceeded, rather than fetching the
+    /// whole result and discarding the tail. Returns nil when the driver cannot bound its own fetch.
+    ///
+    /// Call this only for a statement already classified as a read. Bounding means abandoning the
+    /// rest of the fetch, which for some drivers cancels the statement on the server.
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult?
+
     // MARK: - Schema Operations
 
     /// Fetch all tables in the database
@@ -286,6 +293,8 @@ extension DatabaseDriver {
     func connectReporting(stage report: @escaping ConnectionStageReporter) async throws {
         try await connect()
     }
+
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult? { nil }
 
     func resolveQueryCompletionProfile(
         databaseTypeId: String,

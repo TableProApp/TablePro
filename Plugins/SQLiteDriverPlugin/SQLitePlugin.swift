@@ -678,60 +678,47 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - User Query
 
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        guard Self.returnsRows(query) else { return nil }
+        return try await boundedQueryFromStream(query: query, rowCap: rowCap)
+    }
+
+    /// A capped read from a caller that resolves its own cap, the MCP bridge among them, still
+    /// streams. Routing every uncapped statement through the stream is what made a DML statement
+    /// report no row count, because a stepped statement carries its `sqlite3_changes` nowhere.
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
+        if parameters == nil, let cap = rowCap, cap > 0,
+           let bounded = try await executeBoundedQuery(query: query, rowCap: cap) {
+            return bounded
+        }
+
+        let raw: PluginQueryResult
         if let parameters {
-            let raw = try await executeParameterized(query: query, parameters: parameters)
-            guard let cap = rowCap, cap > 0, raw.rows.count > cap else { return raw }
-            return PluginQueryResult(
-                columns: raw.columns,
-                columnTypeNames: raw.columnTypeNames,
-                rows: Array(raw.rows.prefix(cap)),
-                rowsAffected: raw.rowsAffected,
-                executionTime: raw.executionTime,
-                isTruncated: true,
-                statusMessage: raw.statusMessage
-            )
+            raw = try await executeParameterized(query: query, parameters: parameters)
+        } else {
+            raw = try await execute(query: query)
         }
-
-        let startTime = Date()
-        var columns: [String] = []
-        var columnTypeNames: [String] = []
-        var rows: [[PluginCellValue]] = []
-        var truncated = false
-
-        let stream = streamRows(query: query)
-        for try await element in stream {
-            switch element {
-            case .header(let header):
-                columns = header.columns
-                columnTypeNames = header.columnTypeNames
-            case .rows(let batch):
-                if let cap = rowCap, cap > 0 {
-                    let remaining = cap - rows.count
-                    if remaining <= 0 {
-                        truncated = true
-                    } else if batch.count > remaining {
-                        rows.append(contentsOf: batch.prefix(remaining))
-                        truncated = true
-                    } else {
-                        rows.append(contentsOf: batch)
-                    }
-                } else {
-                    rows.append(contentsOf: batch)
-                }
-                if truncated { break }
-            }
-            if truncated { break }
-        }
-
+        guard let cap = rowCap, cap > 0, raw.rows.count > cap else { return raw }
         return PluginQueryResult(
-            columns: columns,
-            columnTypeNames: columnTypeNames,
-            rows: rows,
-            rowsAffected: 0,
-            executionTime: Date().timeIntervalSince(startTime),
-            isTruncated: truncated
+            columns: raw.columns,
+            columnTypeNames: raw.columnTypeNames,
+            rows: Array(raw.rows.prefix(cap)),
+            rowsAffected: raw.rowsAffected,
+            executionTime: raw.executionTime,
+            isTruncated: true,
+            statusMessage: raw.statusMessage
         )
+    }
+
+    private static let rowReturningKeywords: Set<String> = ["SELECT", "WITH", "VALUES", "TABLE", "PRAGMA", "EXPLAIN"]
+
+    private static func returnsRows(_ query: String) -> Bool {
+        var remaining = Substring(query).drop { $0.isWhitespace }
+        while remaining.first == "(" {
+            remaining = remaining.dropFirst().drop { $0.isWhitespace }
+        }
+        let keyword = remaining.prefix { $0.isLetter }.uppercased()
+        return rowReturningKeywords.contains(keyword)
     }
 
     // MARK: - Schema Operations

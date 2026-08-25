@@ -228,7 +228,7 @@ extension QueryExecutionCoordinator {
             } else {
                 tab.pagination.resetLoadMore()
             }
-            tab.pagination.baseQueryForMore = sql
+            tab.pagination.setBaseQueryForMore(sql, parameterValues: nil)
 
             if tab.display.isResultsCollapsed {
                 tab.display.isResultsCollapsed = false

@@ -93,7 +93,7 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let statement = query.contains(";") ? (TrinoStatementSplitter.split(query).last ?? query) : query
         return AsyncThrowingStream { continuation in
             let driver = self
-            Task {
+            let streamTask = Task {
                 guard let client = driver.client else {
                     continuation.finish(throwing: TrinoError.notConnected)
                     return
@@ -119,6 +119,9 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 } catch {
                     continuation.finish(throwing: error)
                 }
+            }
+            continuation.onTermination = { @Sendable _ in
+                streamTask.cancel()
             }
         }
     }

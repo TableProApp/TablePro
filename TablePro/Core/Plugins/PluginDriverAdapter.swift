@@ -190,6 +190,13 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         return mapQueryResult(pluginResult)
     }
 
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult? {
+        guard let pluginResult = try await pluginDriver.executeBoundedQuery(query: query, rowCap: rowCap) else {
+            return nil
+        }
+        return mapQueryResult(pluginResult)
+    }
+
     // MARK: - Schema Operations
 
     func fetchTables() async throws -> [TableInfo] {

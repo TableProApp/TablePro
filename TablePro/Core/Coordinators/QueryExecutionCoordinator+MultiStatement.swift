@@ -21,6 +21,10 @@ extension QueryExecutionCoordinator {
         parameters: [Any?]? = nil
     ) async throws -> QueryResult {
         if rowCap != nil {
+            if parameters == nil, let cap = rowCap, cap > 0,
+               let bounded = try await driver.executeBoundedQuery(query: originalSQL, rowCap: cap) {
+                return bounded
+            }
             return try await driver.executeUserQuery(query: originalSQL, rowCap: rowCap, parameters: parameters)
         }
         if let parameters {
@@ -163,8 +167,10 @@ extension QueryExecutionCoordinator {
             } else {
                 tab.pagination.resetLoadMore()
             }
-            tab.pagination.baseQueryForMore = activeResultSet?.baseQuery
-            tab.pagination.baseQueryParameterValues = activeResultSet?.baseQueryParameterValues
+            tab.pagination.setBaseQueryForMore(
+                activeResultSet?.baseQuery,
+                parameterValues: activeResultSet?.baseQueryParameterValues
+            )
         }
         parent.toolbarState.isResultsCollapsed = false
 

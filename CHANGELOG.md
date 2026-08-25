@@ -7,8 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Query results stop fetching at the row limit on MySQL, PostgreSQL, SQLite, Redis, DynamoDB and BigQuery. (#2427)
+
 ### Fixed
 
+- Row limit ignored for a parenthesised `SELECT`, a `TABLE` statement or a `VALUES` list. (#2427)
+- Syntax error when sorting a query result whose SQL ends in `LIMIT`.
+- The user's own `LIMIT` dropped when sorting replaced an existing `ORDER BY`.
+- Fetch All sending the previous run's parameters after a query that had none.
+- A SQLite `UPDATE` or `DELETE` alone in a query tab reporting success instead of the rows affected.
 - Stall on switching between two loaded table tabs, growing with the rows they hold. (#2424)
 - Scroll position lost when switching away from a table tab and back. (#2424)
 - A table statistics command on every switch between two table tabs. (#2424)

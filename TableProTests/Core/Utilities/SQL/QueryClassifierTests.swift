@@ -140,6 +140,39 @@ struct QueryClassifierKeywordBoundaryTests {
     }
 }
 
+@Suite("QueryClassifier parenthesised statements")
+struct QueryClassifierParenthesisedTests {
+    @Test("leadingKeyword reaches past opening parentheses")
+    func leadingKeywordSkipsParens() {
+        #expect(QueryClassifier.leadingKeyword(of: "(SELECT * FROM t)") == "SELECT")
+        #expect(QueryClassifier.leadingKeyword(of: "((SELECT * FROM t))") == "SELECT")
+        #expect(QueryClassifier.leadingKeyword(of: "( /* c */ SELECT 1 )") == "SELECT")
+        #expect(QueryClassifier.leadingKeyword(of: "(  VALUES (1), (2)") == "VALUES")
+    }
+
+    @Test("A parenthesised set operation reads as safe")
+    func parenthesisedUnionIsSafe() {
+        let sql = "(SELECT * FROM events ORDER BY id) UNION ALL (SELECT * FROM events_archive)"
+        #expect(!QueryClassifier.isWriteQuery(sql, databaseType: .postgresql))
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .postgresql) == .safe)
+    }
+
+    @Test("Skipping parentheses cannot downgrade a write or a destructive statement")
+    func parenthesesDoNotDowngradeWrites() {
+        #expect(QueryClassifier.isWriteQuery("(DELETE FROM users)", databaseType: .postgresql))
+        #expect(QueryClassifier.classifyTier("(DROP TABLE users)", databaseType: .postgresql) == .destructive)
+        #expect(QueryClassifier.classifyTier("(UPDATE t SET x = 1)", databaseType: .postgresql) == .write)
+        #expect(QueryClassifier.isWriteQuery("(SELECT * INTO backup FROM t)", databaseType: .postgresql))
+    }
+
+    @Test("A filesystem or code surface inside parentheses is still flagged")
+    func parenthesesDoNotHideUnsafeSurface() {
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode(
+            "(COPY t FROM PROGRAM 'sh')", databaseType: .postgresql
+        ))
+    }
+}
+
 @Suite("QueryClassifier isMultiStatement")
 struct QueryClassifierMultiStatementTests {
     @Test("A trailing comment after the terminating semicolon is not a second statement")

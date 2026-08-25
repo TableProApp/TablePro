@@ -441,6 +441,16 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
     }
 
+    func boundedQuery(_ query: String, rowCap: Int) async throws -> LibPQPluginQueryResult {
+        let queryToRun = String(query)
+        let cap = max(rowCap, 1)
+
+        return try await pluginDispatchAsync(on: queue) { [self] in
+            guard !isShuttingDown else { throw LibPQPluginError.notConnected }
+            return try boundedQuerySync(queryToRun, rowCap: cap)
+        }
+    }
+
     func executeParameterizedQuery(_ query: String, parameters: [PluginCellValue]) async throws -> LibPQPluginQueryResult {
         let queryToRun = String(query)
         let params = parameters
@@ -515,6 +525,128 @@ final class LibPQPluginConnection: @unchecked Sendable {
             if cancellationGate.isCancelled(generation) { throw CancellationError() }
             throw error
         }
+    }
+
+    /// Reads at most `rowCap` rows through libpq's single-row mode, then cancels the statement and
+    /// drains the connection instead of pulling the rest of the result across the socket.
+    ///
+    /// One row past the cap is read so `isTruncated` can tell "exactly `rowCap` rows" from "more
+    /// rows exist". The cancel is not an optimization: libpq drains an abandoned result inside the
+    /// next `PQexec`, charging that cost to the user's next statement, and the backend stays active
+    /// holding its snapshot until it can finish writing to the client.
+    private func boundedQuerySync(_ query: String, rowCap: Int) throws -> LibPQPluginQueryResult {
+        stateLock.lock()
+        let conn = self.conn
+        stateLock.unlock()
+
+        guard !isShuttingDown, let conn else {
+            throw LibPQPluginError.notConnected
+        }
+
+        let generation = cancellationGate.beginQuery()
+        defer { cancellationGate.endQuery(generation) }
+
+        while let stale = PQgetResult(conn) { PQclear(stale) }
+
+        /// Cancelling a statement inside a transaction block puts the transaction into the aborted
+        /// state, and every later command fails until ROLLBACK. Reading the tail of one result costs
+        /// less than throwing away the transaction the user opened, so the cancel is withheld here
+        /// and the connection is drained instead.
+        let insideTransaction = PQtransactionStatus(conn) == PQTRANS_INTRANS
+        let suppressCancel = suppressServerSideCancel || insideTransaction
+
+        let localQuery = String(query)
+        let sendOk = localQuery.withCString { queryPtr in
+            PQsendQuery(conn, queryPtr)
+        }
+        guard sendOk != 0 else { throw getError(from: conn) }
+
+        guard PQsetSingleRowMode(conn) != 0 else {
+            Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
+            throw LibPQPluginError(message: "Failed to enter single-row mode", sqlState: nil, detail: nil)
+        }
+
+        var metadata: ColumnMetadata?
+        var rows: [[PluginCellValue]] = []
+        rows.reserveCapacity(min(rowCap, 10_000))
+        var affectedRows = 0
+        var commandTag: String?
+        var truncated = false
+        var pendingError: Error?
+
+        while let result = PQgetResult(conn) {
+            let status = PQresultStatus(result)
+
+            if status == PGRES_SINGLE_TUPLE {
+                let columns = metadata ?? readColumnMetadata(from: result)
+                metadata = columns
+
+                var row: [PluginCellValue] = []
+                row.reserveCapacity(columns.columnOids.count)
+                for columnIndex in columns.columnOids.indices {
+                    row.append(Self.decodeCell(
+                        from: result,
+                        row: 0,
+                        column: Int32(columnIndex),
+                        oid: columns.columnOids[columnIndex]
+                    ))
+                }
+                PQclear(result)
+                rows.append(row)
+
+                if cancellationGate.isCancelled(generation) {
+                    Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
+                    throw CancellationError()
+                }
+                if rows.count > rowCap {
+                    truncated = true
+                    break
+                }
+                continue
+            }
+
+            if status == PGRES_TUPLES_OK {
+                if metadata == nil { metadata = readColumnMetadata(from: result) }
+                PQclear(result)
+                continue
+            }
+
+            if status == PGRES_COMMAND_OK {
+                affectedRows = getAffectedRows(from: result)
+                commandTag = getCommandTag(from: result)
+                PQclear(result)
+                continue
+            }
+
+            pendingError = getResultError(from: result)
+            PQclear(result)
+            break
+        }
+
+        if truncated {
+            Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
+        } else {
+            while let trailing = PQgetResult(conn) { PQclear(trailing) }
+        }
+
+        if let pendingError {
+            if cancellationGate.isCancelled(generation) { throw CancellationError() }
+            throw pendingError
+        }
+        if cancellationGate.isCancelled(generation) { throw CancellationError() }
+
+        if truncated { rows.removeLast() }
+
+        let bounded = LibPQPluginQueryResult(
+            columns: metadata?.columns ?? [],
+            columnOids: metadata?.columnOids ?? [],
+            columnTypeNames: metadata?.columnTypeNames ?? [],
+            rows: rows,
+            affectedRows: affectedRows,
+            commandTag: commandTag,
+            isTruncated: truncated
+        )
+        return applySpatialRendering(to: bounded)
     }
 
     private func executeParameterizedQuerySync(_ query: String, parameters: [PluginCellValue]) throws -> LibPQPluginQueryResult {
@@ -818,16 +950,20 @@ final class LibPQPluginConnection: @unchecked Sendable {
             generation: generation
         )
 
-        let oidMap = postgisOidMap
-        guard !oidMap.isEmpty else { return parsed }
+        return applySpatialRendering(to: parsed)
+    }
 
-        let spatialColumns = metadata.columnOids.enumerated().compactMap { index, oid -> (index: Int, typeName: String)? in
+    private func applySpatialRendering(to result: LibPQPluginQueryResult) -> LibPQPluginQueryResult {
+        let oidMap = postgisOidMap
+        guard !oidMap.isEmpty else { return result }
+
+        let spatialColumns = result.columnOids.enumerated().compactMap { index, oid -> (index: Int, typeName: String)? in
             guard let typeName = oidMap[oid] else { return nil }
             return (index, typeName)
         }
-        guard !spatialColumns.isEmpty else { return parsed }
+        guard !spatialColumns.isEmpty else { return result }
 
-        return renderSpatialColumns(parsed, spatialColumns: spatialColumns)
+        return renderSpatialColumns(result, spatialColumns: spatialColumns)
     }
 
     private struct ColumnMetadata {

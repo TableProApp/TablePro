@@ -41,7 +41,7 @@ The results panel expands itself when a query runs. The toolbar's trash button c
 
 ## The row cap
 
-A `SELECT` or `WITH` query with no `LIMIT`, `FETCH FIRST` or `TOP` of its own stops at the row cap.
+A query that returns rows and carries no `LIMIT`, `FETCH FIRST` or `TOP` of its own stops at the row cap: `SELECT`, `WITH`, `TABLE`, `VALUES`, and a set operation whose arms are parenthesised.
 
 <RowCap />
 

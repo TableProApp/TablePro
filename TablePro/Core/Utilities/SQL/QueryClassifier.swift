@@ -93,9 +93,18 @@ enum QueryClassifier {
         return explainInnerStatement(trimmed, keyword: keyword)?.statement
     }
 
+    /// A parenthesised query expression is idiomatic when each arm of a set operation carries its
+    /// own ORDER BY, so the opening parens are skipped to reach the keyword that classifies the
+    /// statement. Skipping cannot loosen the classification: an unrecognised keyword still falls to
+    /// the write arm, and the body-wide filesystem and destructive scans run over the whole text.
     static func leadingKeyword(of sql: String) -> String {
-        let stripped = strippingLeadingComments(sql)
-        return stripped.prefix { $0.isLetter || $0.isNumber || $0 == "_" }.uppercased()
+        var remaining = strippingLeadingComments(sql)[...]
+        while remaining.first == "(" {
+            remaining = remaining.dropFirst().drop { $0.isWhitespace }
+            guard remaining.hasPrefix("--") || remaining.hasPrefix("/*") else { continue }
+            remaining = strippingLeadingComments(String(remaining))[...]
+        }
+        return remaining.prefix { $0.isLetter || $0.isNumber || $0 == "_" }.uppercased()
     }
 
     static func strippingLeadingComments(_ sql: String) -> String {

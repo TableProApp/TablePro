@@ -80,7 +80,17 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func ping() async throws
 
     func execute(query: String) async throws -> PluginQueryResult
+
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult
+
+    /// Runs a read and stops once `rowCap` rows are known to be exceeded, instead of materializing
+    /// the whole result and discarding the tail. Optional: return nil when the driver cannot bound
+    /// the fetch at its source.
+    ///
+    /// Only the host may call this, and only for a statement it has already classified as a read:
+    /// bounding a fetch means abandoning the rest of it, which for some drivers means cancelling the
+    /// statement on the server.
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult?
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo]
     func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo]
@@ -489,6 +499,25 @@ public extension PluginDatabaseDriver {
     func quoteIdentifier(_ name: String) -> String {
         let escaped = name.replacingOccurrences(of: "\"", with: "\"\"")
         return "\"\(escaped)\""
+    }
+
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? { nil }
+
+    /// The bounded read for a driver whose `streamRows` yields rows as they arrive and whose
+    /// producer stops when its consumer does. Opt in by returning this from `executeBoundedQuery`.
+    ///
+    /// The second half of that precondition is the one that gets missed. Terminating the stream
+    /// only cancels the task `streamRows` created, so the producer has to be reachable from it and
+    /// has to poll: a producer in a nested unstructured `Task {}` never sees the cancel, because a
+    /// plain `Task {}` inherits context but is not a child, and a synchronous C paging loop with no
+    /// cancellation check never sees it either. A driver that gets this wrong returns early while
+    /// its connection stays busy pulling the rest of the result, which is worse than not opting in.
+    func boundedQueryFromStream(query: String, rowCap: Int) async throws -> PluginQueryResult {
+        try await PluginBoundedStream.collect(
+            streamRows(query: query),
+            rowCap: rowCap,
+            startedAt: Date()
+        )
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {

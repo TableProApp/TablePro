@@ -243,6 +243,14 @@ struct PaginationState: Equatable {
     var isLoadingMore: Bool = false
     var baseQueryForMore: String?
     var baseQueryParameterValues: [String?]?
+
+    /// The query and its bindings are one fact, so they are replaced together. Setting the query
+    /// alone left the previous run's bindings in place, and Fetch All then sent them with a query
+    /// that no longer had placeholders, which the server rejects.
+    mutating func setBaseQueryForMore(_ sql: String?, parameterValues: [String?]?) {
+        baseQueryForMore = sql
+        baseQueryParameterValues = parameterValues
+    }
     var sortExecutionOverride: String?  // Derived ORDER BY query run for a grid sort; never written back to the editor
 
     /// Default page size constant (used when no explicit value is provided)

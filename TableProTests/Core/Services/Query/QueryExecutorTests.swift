@@ -162,6 +162,88 @@ struct QueryExecutorTests {
         #expect(!QueryExecutor.isDDLStatement("DELETE FROM foo"))
     }
 
+    // MARK: - Sorting a query result
+
+    @Test("applyingOrderBy puts the clause before a LIMIT the user wrote")
+    func applyingOrderByPrecedesLimit() {
+        let sorted = QuerySqlParser.applyingOrderBy(
+            "\"total\" ASC",
+            to: "SELECT * FROM orders LIMIT 100",
+            lexicalDialect: .postgres
+        )
+        #expect(sorted == "SELECT * FROM orders ORDER BY \"total\" ASC LIMIT 100")
+    }
+
+    @Test("applyingOrderBy keeps the user's LIMIT when replacing an existing ORDER BY")
+    func applyingOrderByKeepsLimitWhenReplacing() {
+        let sorted = QuerySqlParser.applyingOrderBy(
+            "\"total\" DESC",
+            to: "SELECT * FROM orders ORDER BY id LIMIT 100",
+            lexicalDialect: .postgres
+        )
+        #expect(sorted == "SELECT * FROM orders ORDER BY \"total\" DESC LIMIT 100")
+    }
+
+    @Test("applyingOrderBy preserves a LIMIT with an OFFSET")
+    func applyingOrderByPreservesOffset() {
+        let sorted = QuerySqlParser.applyingOrderBy(
+            "\"id\" ASC",
+            to: "SELECT * FROM orders LIMIT 10 OFFSET 20",
+            lexicalDialect: .postgres
+        )
+        #expect(sorted == "SELECT * FROM orders ORDER BY \"id\" ASC LIMIT 10 OFFSET 20")
+    }
+
+    @Test("applyingOrderBy appends to a query with no row-limiting clause")
+    func applyingOrderByAppendsWhenNoLimit() {
+        let sorted = QuerySqlParser.applyingOrderBy(
+            "\"id\" ASC",
+            to: "SELECT * FROM orders",
+            lexicalDialect: .postgres
+        )
+        #expect(sorted == "SELECT * FROM orders ORDER BY \"id\" ASC")
+    }
+
+    @Test("applyingOrderBy ignores a LIMIT inside a subquery")
+    func applyingOrderByIgnoresSubqueryLimit() {
+        let sorted = QuerySqlParser.applyingOrderBy(
+            "\"id\" ASC",
+            to: "SELECT * FROM (SELECT * FROM t LIMIT 5) s",
+            lexicalDialect: .postgres
+        )
+        #expect(sorted == "SELECT * FROM (SELECT * FROM t LIMIT 5) s ORDER BY \"id\" ASC")
+    }
+
+    @Test("applyingOrderBy with no columns strips the old ORDER BY and keeps the LIMIT")
+    func applyingOrderByEmptyClauseKeepsLimit() {
+        let sorted = QuerySqlParser.applyingOrderBy(
+            "",
+            to: "SELECT * FROM orders ORDER BY id LIMIT 100",
+            lexicalDialect: .postgres
+        )
+        #expect(sorted == "SELECT * FROM orders LIMIT 100")
+    }
+
+    @Test("applyingOrderBy with no columns drops an OFFSET FETCH tail, which needs an ORDER BY")
+    func applyingOrderByEmptyClauseDropsAnsiTail() {
+        let sorted = QuerySqlParser.applyingOrderBy(
+            "",
+            to: "SELECT * FROM t ORDER BY id OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY",
+            lexicalDialect: .generic
+        )
+        #expect(sorted == "SELECT * FROM t")
+    }
+
+    @Test("applyingOrderBy leaves a column named offset alone")
+    func applyingOrderByIgnoresOffsetColumn() {
+        let sorted = QuerySqlParser.applyingOrderBy(
+            "`name` ASC",
+            to: "SELECT offset, name FROM events",
+            lexicalDialect: .mysql
+        )
+        #expect(sorted == "SELECT offset, name FROM events ORDER BY `name` ASC")
+    }
+
     // MARK: - Row cap qualification
 
     @Test("qualifiesForRowCap accepts SELECT and WITH queries on query tabs")
@@ -187,6 +269,34 @@ struct QueryExecutorTests {
         ))
         #expect(!QueryExecutor.qualifiesForRowCap(
             sql: "SELECTX FROM t", tabType: .query, databaseType: .mysql
+        ))
+    }
+
+    @Test("qualifiesForRowCap accepts the other row-producing statement forms")
+    func qualifiesForRowCapRowProducingForms() {
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "(SELECT * FROM events) UNION ALL (SELECT * FROM events_archive)",
+            tabType: .query,
+            databaseType: .postgresql
+        ))
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "TABLE big_table", tabType: .query, databaseType: .postgresql
+        ))
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "VALUES (1), (2), (3)", tabType: .query, databaseType: .postgresql
+        ))
+        #expect(QueryExecutor.qualifiesForRowCap(
+            sql: "((SELECT * FROM t))", tabType: .query, databaseType: .postgresql
+        ))
+    }
+
+    @Test("qualifiesForRowCap still rejects a write hidden behind a leading parenthesis")
+    func qualifiesForRowCapParenthesisedWrite() {
+        #expect(!QueryExecutor.qualifiesForRowCap(
+            sql: "(DELETE FROM users)", tabType: .query, databaseType: .postgresql
+        ))
+        #expect(!QueryExecutor.qualifiesForRowCap(
+            sql: "( SELECT * FROM t INTO OUTFILE '/tmp/x' )", tabType: .query, databaseType: .mysql
         ))
     }
 
