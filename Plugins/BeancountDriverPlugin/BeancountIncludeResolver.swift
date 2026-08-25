@@ -9,6 +9,9 @@ struct BeancountSourceGraph: Sendable {
     let sourceFiles: [URL]
     let watchedDirectories: [URL]
     let reloadDependencies: [URL]
+    /// The physical lines of each source file, split as the resolver read them. The projections
+    /// that read directives out of the source take them from here instead of reopening the ledger.
+    let lines: [URL: [String]]
 }
 
 enum BeancountResolverError: LocalizedError {
@@ -36,6 +39,7 @@ final class BeancountIncludeResolver {
     private var visited: Set<URL> = []
     private var activeStack: Set<URL> = []
     private var sourceFiles: [URL] = []
+    private var sourceLines: [URL: [String]] = [:]
     private var watchedDirectories: Set<URL> = []
     private var documentDeclarations: [BeancountDocumentDeclaration] = []
     private var documentRootPaths: [String] = []
@@ -45,6 +49,7 @@ final class BeancountIncludeResolver {
         visited.removeAll()
         activeStack.removeAll()
         sourceFiles.removeAll()
+        sourceLines.removeAll()
         watchedDirectories.removeAll()
         documentDeclarations.removeAll()
         documentRootPaths.removeAll()
@@ -62,7 +67,8 @@ final class BeancountIncludeResolver {
         return BeancountSourceGraph(
             sourceFiles: sourceFiles,
             watchedDirectories: watchedDirectories.sorted { $0.path < $1.path },
-            reloadDependencies: dependencies.sorted { $0.path < $1.path }
+            reloadDependencies: dependencies.sorted { $0.path < $1.path },
+            lines: sourceLines
         )
     }
 
@@ -86,7 +92,10 @@ final class BeancountIncludeResolver {
         visited.insert(normalized)
         sourceFiles.append(normalized)
 
-        for rawLine in contents.components(separatedBy: .newlines) {
+        let fileLines = BeancountSourceScanner.lines(of: contents)
+        sourceLines[normalized] = fileLines
+
+        for rawLine in fileLines {
             let line = stripComment(rawLine).trimmingCharacters(in: .whitespaces)
             let quotedValues = quotedStrings(in: line)
             let directive = line.split(maxSplits: 1, whereSeparator: { $0.isWhitespace }).first

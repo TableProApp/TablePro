@@ -110,18 +110,34 @@ struct BeancountProjectionTests {
         #expect(closes.rows.map { $0.map(\.asText) } == [["2024-06-30", "Expenses:Food"]])
     }
 
-    @Test("projects user metadata from non-transaction dated directives")
+    @Test("joins directive metadata to the directive that declared it")
     func projectsDirectiveMetadata() async throws {
         let driver = try Self.makeDriver()
         defer { driver.disconnect() }
 
         let metadata = try await driver.execute(query: """
-            SELECT directive_type, date, key, value, source_file, line
-            FROM directive_metadata ORDER BY id
+            SELECT d.type, d.date, m.key, m.value, d.source_file, d.line
+            FROM directive_metadata m JOIN directives d ON d.id = m.directive_id
+            ORDER BY m.id
             """)
-        #expect(metadata.rows.map { $0.map(\.asText) } == [[
-            "commodity", "2024-01-01", "name", "US Dollar", "/ledger/main.beancount", "2"
-        ]])
+        #expect(metadata.rows.map { $0.map(\.asText) } == [
+            ["commodity", "2024-01-01", "name", "US Dollar", "/ledger/main.beancount", "2"],
+            ["commodity", "2024-01-05", "name", "Hooli", "/ledger/main.beancount", "9"]
+        ])
+    }
+
+    @Test("keeps two same-day directives of one type apart")
+    func keepsSameDayDirectivesApart() async throws {
+        let driver = try Self.makeDriver()
+        defer { driver.disconnect() }
+
+        let directives = try await driver.execute(query: """
+            SELECT id, type, date, line FROM directives WHERE type = 'commodity' ORDER BY id
+            """)
+        #expect(directives.rows.map { $0.map(\.asText) } == [
+            ["1", "commodity", "2024-01-01", "2"],
+            ["2", "commodity", "2024-01-05", "9"]
+        ])
     }
 
     @Test("reads directive details and computes assertion differences")
@@ -136,11 +152,11 @@ struct BeancountProjectionTests {
                 """,
             sourceURL: sourceURL
         )
+        #expect(details.notes.count == 1)
+        #expect(details.balances.count == 1)
         #expect(details.notes.first?["tags"] as? [String] == ["urgent"])
         #expect(details.notes.first?["links"] as? [String] == ["case-1"])
         #expect(details.balances.first?["tolerance"] as? String == "0.05")
-        #expect(details.metadata.first?["value"] as? String == "US Dollar")
-        #expect(details.metadata.first?["lineno"] as? Int == 2)
 
         let rows = BeancountPluginDriver.balanceRowsByAddingDetails(
             [[
@@ -154,6 +170,23 @@ struct BeancountProjectionTests {
         )
         #expect(rows.first?["difference_amount"] as? String == "-2.5")
         #expect(rows.first?["difference_currency"] as? String == "USD")
+    }
+
+    @Test("reads a note whose comment spans lines, in a CRLF ledger")
+    func readsMultilineNoteFromCarriageReturnLineFeedSource() throws {
+        let sourceURL = URL(fileURLWithPath: "/ledger/crlf.beancount")
+        let details = BeancountDirectiveDetailsReader.read(
+            contents: "2024-01-02 note Assets:Cash \"called the\r\n"
+                + "  bank\" #urgent ^case-1\r\n"
+                + "2024-01-03 balance Assets:Cash 10.00 ~ 0.05 USD\r\n",
+            sourceURL: sourceURL
+        )
+
+        #expect(details.notes.count == 1)
+        #expect(details.notes.first?["comment"] as? String == "called the\n  bank")
+        #expect(details.notes.first?["tags"] as? [String] == ["urgent"])
+        #expect(details.notes.first?["links"] as? [String] == ["case-1"])
+        #expect(details.balances.first?["tolerance"] as? String == "0.05")
     }
 
     @Test("projects pad directives with source locations")
@@ -589,10 +622,18 @@ struct BeancountProjectionTests {
         closes: [
             ["account": "Expenses:Food", "close": "2024-06-30"]
         ],
-        directiveMetadata: [[
-            "directive_type": "commodity", "date": "2024-01-01", "key": "name", "value": "US Dollar",
-            "filename": "/ledger/main.beancount", "lineno": 2
-        ]],
+        directives: [
+            [
+                "id": 1, "type": "commodity", "date": "2024-01-01",
+                "filename": "/ledger/main.beancount", "lineno": 2,
+                "_entry_meta": ["name": "US Dollar"]
+            ],
+            [
+                "id": 2, "type": "commodity", "date": "2024-01-05",
+                "filename": "/ledger/main.beancount", "lineno": 9,
+                "_entry_meta": ["name": "Hooli"]
+            ]
+        ],
         diagnostics: [
             [
                 "file": "/ledger/main.beancount", "line": 20, "column": 1, "end_line": 22, "end_column": 1,

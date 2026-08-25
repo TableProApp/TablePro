@@ -50,6 +50,29 @@ private struct BeancountProjection {
     let signatures: [String: BeancountSourceSignature]
 }
 
+private struct BookedSeriesKey: Hashable {
+    let account: String
+    let currency: String
+}
+
+private struct BookedSeries {
+    let cumulative: [(date: String, running: Decimal)]
+
+    func total(before date: String) -> Decimal {
+        var low = 0
+        var high = cumulative.count
+        while low < high {
+            let middle = (low + high) / 2
+            if cumulative[middle].date < date {
+                low = middle + 1
+            } else {
+                high = middle
+            }
+        }
+        return low == 0 ? .zero : cumulative[low - 1].running
+    }
+}
+
 private enum BeancountBackend {
     case rledger
     case python(String)
@@ -95,6 +118,12 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private static let padsQuery =
         "SELECT id, date, filename, lineno FROM #entries WHERE type = 'pad' ORDER BY id"
     private static let padDirectivesQuery = "PRINT FROM FALSE"
+    // `_entry_meta` is the backend's own metadata for a directive, alongside the entry id and the
+    // authoritative filename and line the parser recorded. Re-deriving any of that by reading the
+    // ledger text would be a second, weaker parser that cannot see plugin-generated entries.
+    private static let directivesQuery =
+        "SELECT id, type, date, filename, lineno, _entry_meta FROM #entries "
+            + "WHERE type != 'transaction' ORDER BY id"
     private static let closesQuery =
         "SELECT account, close FROM #accounts WHERE close IS NOT NULL ORDER BY close, account"
     private static let logger = Logger(subsystem: "com.TablePro", category: "BeancountPluginDriver")
@@ -105,6 +134,12 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         qos: .userInitiated,
         attributes: .concurrent
     )
+
+    static let ledgerPluginsFieldId = "beancountRunLedgerPlugins"
+
+    static func allowsLedgerPlugins(_ additionalFields: [String: String]) -> Bool {
+        additionalFields[ledgerPluginsFieldId] == "true"
+    }
 
     var currentSchema: String? { nil }
     var serverVersion: String? { "Beancount" }
@@ -140,7 +175,10 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         let projection: BeancountProjection
         do {
-            projection = try await perform { try Self.buildProjection(ledgerURL: fileURL) }
+            let allowsPlugins = Self.allowsLedgerPlugins(config.additionalFields)
+            projection = try await perform {
+                try Self.buildProjection(ledgerURL: fileURL, allowsLedgerPlugins: allowsPlugins)
+            }
         } catch {
             lock.withLock {
                 if pendingConnectionGeneration == generation {
@@ -481,7 +519,10 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let currentSignatures = Self.signatures(for: snapshot.watched)
         guard currentSignatures != snapshot.signatures else { return }
 
-        let projection = try Self.buildProjection(ledgerURL: snapshot.url)
+        let projection = try Self.buildProjection(
+            ledgerURL: snapshot.url,
+            allowsLedgerPlugins: Self.allowsLedgerPlugins(config.additionalFields)
+        )
 
         lock.withLock {
             guard ledgerURL == snapshot.url,
@@ -514,13 +555,17 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    private static func buildProjection(ledgerURL: URL) throws -> BeancountProjection {
+    private static func buildProjection(
+        ledgerURL: URL,
+        allowsLedgerPlugins: Bool
+    ) throws -> BeancountProjection {
         for _ in 0..<2 {
             let initialGraph = try BeancountIncludeResolver().resolve(fileURL: ledgerURL)
             let initialSignatures = signatures(for: initialGraph.reloadDependencies)
             let rows = try projectionRows(
                 ledgerPath: ledgerURL.path,
-                sourceFiles: initialGraph.sourceFiles
+                sourceGraph: initialGraph,
+                allowsLedgerPlugins: allowsLedgerPlugins
             )
             let finalGraph = try BeancountIncludeResolver().resolve(fileURL: ledgerURL)
             guard initialGraph.sourceFiles == finalGraph.sourceFiles,
@@ -550,9 +595,10 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private static func projectionRows(
         ledgerPath: String,
-        sourceFiles: [URL]
+        sourceGraph: BeancountSourceGraph,
+        allowsLedgerPlugins: Bool
     ) throws -> BeancountProjectionRows {
-        let details = try BeancountDirectiveDetailsReader.read(sourceFiles: sourceFiles)
+        let details = BeancountDirectiveDetailsReader.read(sourceGraph: sourceGraph)
         switch try resolveProjectionBackend() {
         case .rledger:
             let transactions = try transactionRows(ledgerPath: ledgerPath)
@@ -579,11 +625,15 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 events: directiveRows(ledgerPath: ledgerPath, bql: eventsQuery, table: "events"),
                 pads: pads.rows,
                 closes: directiveRows(ledgerPath: ledgerPath, bql: closesQuery, table: "closes"),
-                directiveMetadata: details.metadata,
+                directives: directiveRows(ledgerPath: ledgerPath, bql: directivesQuery, table: "directives"),
                 diagnostics: validationDiagnostics(ledgerPath: ledgerPath) + pads.diagnostics
             )
         case .python(let executablePath):
-            let rows = try pythonProjectionRows(ledgerPath: ledgerPath, executablePath: executablePath)
+            let rows = try pythonProjectionRows(
+                ledgerPath: ledgerPath,
+                executablePath: executablePath,
+                allowsLedgerPlugins: allowsLedgerPlugins
+            )
             let postings = rows["postings"] ?? []
             return BeancountProjectionRows(
                 transactions: rows["transactions"] ?? [],
@@ -602,7 +652,8 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 events: rows["events"] ?? [],
                 pads: rows["pads"] ?? [],
                 closes: rows["closes"] ?? [],
-                directiveMetadata: details.metadata
+                directives: rows["directives"] ?? [],
+                diagnostics: rows["diagnostics"] ?? []
             )
         }
     }
@@ -620,17 +671,28 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         _ rows: [[String: Any]],
         details: [[String: Any]]
     ) -> [[String: Any]] {
-        var used: Set<Int> = []
-        return rows.map { row in
-            guard let index = details.indices.first(where: { index in
-                !used.contains(index)
-                    && stringValue(details[index]["date"]) == stringValue(row["date"])
-                    && stringValue(details[index]["account"]) == stringValue(row["account"])
-                    && stringValue(details[index]["comment"]) == stringValue(row["comment"])
-            }) else { return row }
-            used.insert(index)
-            return row.merging(details[index], uniquingKeysWith: { _, detail in detail })
+        var pending: [String: [[String: Any]]] = [:]
+        for detail in details {
+            pending[noteKey(detail), default: []].append(detail)
         }
+
+        return rows.map { row in
+            let key = noteKey(row)
+            guard var queue = pending[key], !queue.isEmpty else { return row }
+            let detail = queue.removeFirst()
+            pending[key] = queue
+            return row.merging(detail, uniquingKeysWith: { _, detail in detail })
+        }
+    }
+
+    private static func noteKey(_ row: [String: Any]) -> String {
+        [
+            stringValue(row["date"]),
+            stringValue(row["account"]),
+            stringValue(row["comment"])
+        ]
+        .map { $0 ?? "" }
+        .joined(separator: "\u{1F}")
     }
 
     static func balanceRowsByAddingDetails(
@@ -638,7 +700,12 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         details: [[String: Any]],
         postings: [[String: Any]]
     ) -> [[String: Any]] {
-        var used: Set<Int> = []
+        var pending: [String: [[String: Any]]] = [:]
+        for detail in details {
+            pending[balanceKey(detail), default: []].append(detail)
+        }
+        let history = bookedHistory(postings)
+
         return rows.map { row in
             guard let date = stringValue(row["date"]),
                   let account = stringValue(row["account"]),
@@ -650,30 +717,56 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             }
 
             var enriched = row
-            if let index = details.indices.first(where: { index in
-                !used.contains(index)
-                    && stringValue(details[index]["date"]) == date
-                    && stringValue(details[index]["account"]) == account
-                    && stringValue(details[index]["currency"]) == currency
-            }) {
-                used.insert(index)
-                enriched.merge(details[index], uniquingKeysWith: { _, detail in detail })
+            let key = balanceKey(["date": date, "account": account, "currency": currency])
+            if var queue = pending[key], !queue.isEmpty {
+                let detail = queue.removeFirst()
+                pending[key] = queue
+                enriched.merge(detail, uniquingKeysWith: { _, detail in detail })
             }
 
-            let actual = postings.reduce(into: Decimal.zero) { total, posting in
-                guard stringValue(posting["account"]) == account,
-                      stringValue(posting["currency"]) == currency,
-                      let postingDate = stringValue(posting["date"]),
-                      postingDate < date,
-                      let numberText = stringValue(posting["number"]),
-                      let number = Decimal(string: numberText, locale: Locale(identifier: "en_US_POSIX")) else {
-                    return
-                }
-                total += number
-            }
-            enriched["difference_amount"] = NSDecimalNumber(decimal: actual - expected).stringValue
+            let booked = history[BookedSeriesKey(account: account, currency: currency)]?
+                .total(before: date) ?? .zero
+            enriched["difference_amount"] = NSDecimalNumber(decimal: booked - expected).stringValue
             enriched["difference_currency"] = currency
             return enriched
+        }
+    }
+
+    private static func balanceKey(_ row: [String: Any]) -> String {
+        [
+            stringValue(row["date"]),
+            stringValue(row["account"]),
+            stringValue(row["currency"])
+        ]
+        .map { $0 ?? "" }
+        .joined(separator: "\u{1F}")
+    }
+
+    /// A balance assertion holds for the start of its date, so its booked side is the running total
+    /// of every earlier posting on that account and commodity. Scanning the whole posting array per
+    /// assertion is quadratic, so the postings are bucketed once into a sorted running total and
+    /// each assertion binary-searches it.
+    private static func bookedHistory(_ postings: [[String: Any]]) -> [BookedSeriesKey: BookedSeries] {
+        var buckets: [BookedSeriesKey: [(date: String, number: Decimal)]] = [:]
+        for posting in postings {
+            guard let account = stringValue(posting["account"]),
+                  let currency = stringValue(posting["currency"]),
+                  let date = stringValue(posting["date"]),
+                  let numberText = stringValue(posting["number"]),
+                  let number = Decimal(string: numberText, locale: Locale(identifier: "en_US_POSIX")) else {
+                continue
+            }
+            buckets[BookedSeriesKey(account: account, currency: currency), default: []]
+                .append((date: date, number: number))
+        }
+
+        return buckets.mapValues { entries in
+            var running = Decimal.zero
+            let cumulative = entries.sorted { $0.date < $1.date }.map { entry -> (String, Decimal) in
+                running += entry.number
+                return (entry.date, running)
+            }
+            return BookedSeries(cumulative: cumulative)
         }
     }
 
@@ -897,11 +990,16 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         executablePath: String,
         arguments: [String],
         failureMessage: String,
-        allowsNonZeroExit: Bool = false
+        allowsNonZeroExit: Bool = false,
+        environment: [String: String] = [:]
     ) throws -> Data {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executablePath)
         process.arguments = arguments
+        if !environment.isEmpty {
+            process.environment = ProcessInfo.processInfo.environment
+                .merging(environment, uniquingKeysWith: { _, override in override })
+        }
 
         let stdout = Pipe()
         let stderr = Pipe()
@@ -1009,12 +1107,14 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private static func pythonProjectionRows(
         ledgerPath: String,
-        executablePath: String
+        executablePath: String,
+        allowsLedgerPlugins: Bool
     ) throws -> [String: [[String: Any]]] {
         let output = try runProcess(
             executablePath: executablePath,
             arguments: ["-c", pythonProjectionScript, ledgerPath],
-            failureMessage: String(localized: "Python Beancount projection failed")
+            failureMessage: String(localized: "Python Beancount projection failed"),
+            environment: ["TABLEPRO_BEANCOUNT_RUN_LEDGER_PLUGINS": allowsLedgerPlugins ? "1" : "0"]
         )
         let object = try JSONSerialization.jsonObject(with: output)
         guard let dictionary = object as? [String: Any] else {

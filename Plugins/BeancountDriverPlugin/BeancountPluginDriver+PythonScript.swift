@@ -20,6 +20,28 @@ os.environ["BEANCOUNT_LOAD_CACHE_FILENAME"] = os.path.join(cache_directory.name,
 
 from beancount import loader
 
+allow_ledger_plugins = os.environ.get("TABLEPRO_BEANCOUNT_RUN_LEDGER_PLUGINS") == "1"
+suppressed_plugins = []
+original_run_transformations = loader.run_transformations
+
+def ships_with_beancount(name):
+    return name == "beancount" or name.startswith("beancount.")
+
+if not allow_ledger_plugins:
+    def run_transformations_without_ledger_plugins(entries, parse_errors, options_map, log_timings):
+        declared = options_map.get("plugin", [])
+        bundled = [plugin for plugin in declared if ships_with_beancount(plugin[0])]
+        suppressed_plugins.extend(
+            plugin[0] for plugin in declared if not ships_with_beancount(plugin[0])
+        )
+        if len(bundled) == len(declared):
+            return original_run_transformations(entries, parse_errors, options_map, log_timings)
+        safe_options_map = options_map.copy()
+        safe_options_map["plugin"] = bundled
+        return original_run_transformations(entries, parse_errors, safe_options_map, log_timings)
+
+    loader.run_transformations = run_transformations_without_ledger_plugins
+
 def date_value(value):
     return value.isoformat() if value is not None else None
 
@@ -76,7 +98,17 @@ def name_list(values):
     return sorted(str(value) for value in (values or []))
 
 entries, errors, options_map = loader.load_file(sys.argv[1])
+suppressed = sorted(set(suppressed_plugins))
 if errors:
+    if suppressed:
+        print(
+            "TablePro did not run these ledger-declared plugins: " + ", ".join(suppressed),
+            file=sys.stderr,
+        )
+        print(
+            'Turn on "Run Ledger Plugins" for this connection if you trust this ledger.',
+            file=sys.stderr,
+        )
     for error in errors:
         print(str(error), file=sys.stderr)
     sys.exit(1)
@@ -94,12 +126,34 @@ rows = {
     "events": [],
     "pads": [],
     "closes": [],
+    "directives": [],
+    "diagnostics": [],
 }
 balances = defaultdict(Decimal)
 transaction_id = 0
 
+for plugin_name in suppressed:
+    rows["diagnostics"].append({
+        "severity": "warning",
+        "phase": "security",
+        "message": "Ledger-declared Python plugin not run: " + plugin_name,
+    })
+
+directive_id = 0
+
 for entry in entries:
     entry_type = type(entry).__name__
+    if entry_type != "Transaction":
+        directive_id += 1
+        rows["directives"].append({
+            "id": directive_id,
+            "type": entry_type.lower(),
+            "date": date_value(getattr(entry, "date", None)),
+            "filename": source_file(entry.meta),
+            "lineno": source_line(entry.meta),
+            "location": source_location(entry.meta),
+            "_entry_meta": user_meta(entry.meta),
+        })
     if entry_type == "Transaction":
         transaction_id += 1
         entry_meta = user_meta(entry.meta)

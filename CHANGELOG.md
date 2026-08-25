@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Account booking, note tags and links, balance assertion details, and metadata for other dated Beancount directives. (#2415)
+- Account booking, note tags and links, balance assertion details, and a `directives` table with metadata for every dated Beancount directive that is not a transaction. (#2415)
 - Pad directives as a read-only Beancount table, including their target and source accounts and source locations. (#2399)
 - Compare & Sync between two databases, comparing tables, views, procedures, functions and triggers, or row data. Starter license. (#721)
 - Triggers as a sidebar section, listed per database and schema alongside Procedures and Functions. (#2383)
@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Third-party plugins a Beancount ledger declares are skipped unless the connection turns on Run Ledger Plugins.
 - Autocomplete in a query tab follows that tab's own database and schema.
 - The query editor's database picker names the tab's schema beside its database.
 - The data grid draws its cells instead of building a view for each one, so a result with hundreds of columns opens at once and holds a fraction of the memory. (#2381)
@@ -33,10 +34,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The connection color as a filled badge behind the connection name, with the database icon back to its engine color. (#2398)
 - Deeper fills on tag badges and the connection name badge. (#2398)
 - Turkish, Vietnamese, Simplified Chinese and Traditional Chinese cover every string that was still in English.
+- A database stays in the connections strip until you close its entry.
+- Close on a connections-strip entry closes that database, and the connection only when it is the last entry.
 - The connection color in the workspace rail as a dot on the engine icon, kept visible on the selected row. (#2398)
 
 ### Fixed
 
+- The connections strip disappearing when you click the entry you came from.
+- Cancelling a close from the connections strip leaving the window on the connection it revealed.
+- Save on a bulk tab close applying to the tab on screen instead of the tabs being closed.
+- A connections-strip entry in another window raising that window without showing the connection.
+- A disconnected connection's entries dropping to the bottom of the connections strip.
+- The connections strip's saved arrangement growing without bound.
+- Every database entry but one leaving the connections strip when a connection is disconnected.
+- A connection opened from a file or a URL losing its strip entries when its session ends.
+- Closing one database's tabs asking to save unsaved work in another.
 - A connection's color and name not reaching the toolbar and workspace rail until the next reconnect. (#2398)
 - An invisible connection dot in the query history drawer and the compare status strip. (#2398)
 - A failed connection's warning icon in the workspace rail wearing the database engine's color. (#2398)

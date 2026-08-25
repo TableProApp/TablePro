@@ -105,7 +105,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         tableView.menu = contextMenu()
         tableView.registerForDraggedTypes([Self.reorderType])
         tableView.setDraggingSourceOperationMask(.move, forLocal: true)
-        tableView.onMiddleClick = { [weak self] row in self?.closeConnection(atRow: row) }
+        tableView.onMiddleClick = { [weak self] row in self?.closeWorkspace(atRow: row) }
         tableView.setAccessibilityIdentifier("workspace-rail")
         tableView.setAccessibilityLabel(String(localized: "Open Connections"))
 
@@ -287,7 +287,8 @@ internal final class WorkspaceRailViewController: NSViewController {
         commit(row: tableView.selectedRow)
     }
 
-    /// Close means the connection highlighted here while the strip holds the keyboard.
+    /// Close means the entry highlighted here while the strip holds the keyboard, and the
+    /// connection when that entry is the only one it has.
     ///
     /// The selector is the window's, deliberately: `performClose:` reaching the responder chain
     /// finds this implementation before the window's whenever the strip is focused, which is the
@@ -297,13 +298,13 @@ internal final class WorkspaceRailViewController: NSViewController {
     @objc
     internal func performClose(_ sender: Any?) {
         guard let workspace = appliedSelection else {
-            /// Nothing highlighted means the strip has no connection to close, not that Close does
+            /// Nothing highlighted means the strip has no entry to close, not that Close does
             /// nothing: swallowing it here would leave the command dead in a window that has tabs,
             /// which is the failure this whole route exists to prevent.
             view.window?.performClose(sender)
             return
         }
-        close(connectionId: workspace.connectionId)
+        close(workspace)
     }
 
     private func commit(row: Int) {
@@ -332,30 +333,29 @@ internal final class WorkspaceRailViewController: NSViewController {
     /// saved. Moving between two containers of the same connection stays in one window and
     /// only moves that window's browse cursor.
     ///
-    /// Both paths end at `applySelection`, which reads the host's own selection back. A workspace
-    /// this window hosts leaves the highlight on the row the user picked; one belonging to another
-    /// window leaves it where it was, because this window did not move. The rail needed a rule for
-    /// when to put its highlight back only while it was guessing at the answer.
+    /// One path, whichever window owns the entry. Selecting the connection in its own window comes
+    /// first and always: the cross-window case used to raise the target window and move the target
+    /// connection's browse cursor without ever telling that window to show it, so it came forward
+    /// still showing the connection it had, its tabs and toolbar named that one, and the work the
+    /// user clicked moved silently behind it.
+    ///
+    /// It ends at `applySelection`, which reads this window's own selection back: a workspace this
+    /// window hosts leaves the highlight on the row the user picked; one belonging to another window
+    /// leaves it where it was, because this window did not move.
     private func activate(_ workspace: WorkspaceID) {
-        /// One window hosts every connection, so switching is a selection change in that
-        /// window's own registry. Raising a different window is what made the rail read as a
-        /// window switcher rather than a workspace switcher.
-        if let host, host.hostedConnectionIds.contains(workspace.connectionId) {
-            host.selectHostedConnection(workspace.connectionId)
-            if let window = view.window {
-                moveBrowseCursor(of: window, to: workspace)
-            }
-            applySelection()
-            return
-        }
-
-        let target = entries.first { $0.workspace == workspace }?.containerTarget
-        let showing = MainContentCoordinator.window(showing: workspace, target: target)
-        guard let window = showing
-            ?? WindowLifecycleMonitor.shared.mostRecentWindow(for: workspace.connectionId) else {
+        guard let window = WindowManager.shared.window(for: workspace.connectionId),
+              let target = window.contentViewController as? MainSplitViewController else {
             Self.logger.error(
                 "activate has no window target=\(Self.describe(workspace), privacy: .public)"
             )
+            return
+        }
+
+        target.selectHostedConnection(workspace.connectionId)
+
+        guard window !== view.window else {
+            moveBrowseCursor(of: window, to: workspace)
+            applySelection()
             return
         }
 
@@ -366,8 +366,7 @@ internal final class WorkspaceRailViewController: NSViewController {
             target=\(Self.describe(workspace), privacy: .public) \
             window=\(window.windowNumber, privacy: .public) visible=\(window.isVisible, privacy: .public) \
             tabs=\(group?.windows.count ?? 0, privacy: .public) \
-            wasSelectedTab=\(group?.selectedWindow === window, privacy: .public) \
-            showsItsOwnWork=\(showing != nil, privacy: .public)
+            wasSelectedTab=\(group?.selectedWindow === window, privacy: .public)
             """
         )
 
@@ -469,14 +468,41 @@ internal final class WorkspaceRailViewController: NSViewController {
     }
 
     @objc
+    private func closeWorkspace(_ sender: NSMenuItem) {
+        guard let workspace = sender.representedObject as? WorkspaceID else { return }
+        close(workspace)
+    }
+
+    @objc
     private func closeConnection(_ sender: NSMenuItem) {
         guard let workspace = sender.representedObject as? WorkspaceID else { return }
         close(connectionId: workspace.connectionId)
     }
 
-    private func closeConnection(atRow row: Int) {
+    private func closeWorkspace(atRow row: Int) {
         guard entries.indices.contains(row) else { return }
-        close(connectionId: entries[row].workspace.connectionId)
+        close(entries[row].workspace)
+    }
+
+    private func close(_ workspace: WorkspaceID) {
+        Task { await WorkspaceCloseAction.close(workspace) }
+    }
+
+    /// Named after what the engine calls a container, not after the row. "Close “logs”" would read
+    /// as the connection on the one key the app already uses for exactly that, and its translations
+    /// say so: the Turkish for `Close “%@”` is "close %@'s connection".
+    internal static func containerCloseTitle(for entry: WorkspaceRailEntry) -> String {
+        let format = entry.containerTarget == .schema
+            ? String(localized: "Close Schema “%@”")
+            : String(localized: "Close Database “%@”")
+        return String(format: format, entry.container)
+    }
+
+    /// Read from the entries this rail is showing, which is the list the user is looking at.
+    private func closeScope(for workspace: WorkspaceID) -> WorkspaceCloseAction.Scope {
+        guard !workspace.container.isEmpty else { return .connection }
+        let count = entries.count { $0.workspace.connectionId == workspace.connectionId }
+        return WorkspaceCloseAction.scope(entryCount: count)
     }
 
     private func close(connectionId: UUID) {
@@ -507,15 +533,19 @@ internal final class WorkspaceRailViewController: NSViewController {
 // MARK: - CloseCommandNaming
 
 extension WorkspaceRailViewController: CloseCommandNaming {
-    /// The strip's own contextual menu names the connection it would close, and the menu bar has to
-    /// agree with it: the command is the same one.
+    /// The strip's own contextual menu names what it would close, and the menu bar has to agree with
+    /// it word for word: the command is the same one, so an entry that is its connection's only one
+    /// reads "Close Connection" in both, because that is what closing it takes.
     /// nil while nothing is highlighted, so the resolver falls back to the window, which is where
     /// the command goes in that state too.
     internal var closeCommandTitle: String? {
         guard let workspace = appliedSelection,
               let entry = entries.first(where: { $0.workspace == workspace })
         else { return nil }
-        return String(format: String(localized: "Close “%@”"), entry.connection.name)
+        guard closeScope(for: workspace) == .container else {
+            return String(format: String(localized: "Close Connection “%@”"), entry.connection.name)
+        }
+        return Self.containerCloseTitle(for: entry)
     }
 }
 
@@ -551,9 +581,18 @@ extension WorkspaceRailViewController: NSMenuDelegate {
             menu.addItem(.separator())
         }
 
+        if closeScope(for: entry.workspace) == .container {
+            addItem(
+                to: menu,
+                title: Self.containerCloseTitle(for: entry),
+                action: #selector(closeWorkspace(_:)),
+                workspace: entry.workspace
+            )
+        }
+
         addItem(
             to: menu,
-            title: String(format: String(localized: "Close “%@”"), entry.connection.name),
+            title: String(format: String(localized: "Close Connection “%@”"), entry.connection.name),
             action: #selector(closeConnection(_:)),
             workspace: entry.workspace
         )

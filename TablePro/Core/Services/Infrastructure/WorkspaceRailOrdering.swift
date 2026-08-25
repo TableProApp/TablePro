@@ -7,10 +7,13 @@ import Foundation
 
 internal enum WorkspaceRailOrdering {
     /// Workspaces the user has arranged keep that arrangement; the rest append in the order
-    /// their connection opened, and within one connection by container name. A connection
-    /// whose window exists before its session does has no timestamp yet and sorts last, so
-    /// it appears at the bottom while connecting and stays there once its session lands,
-    /// rather than showing up on top and then jumping.
+    /// their connection opened, and within one connection by container name.
+    ///
+    /// `openedAt` is when the connection joined the app, taken from its workspace, and it never
+    /// moves: it is stamped before the connect and survives a disconnect, so an entry stays where it
+    /// was through both. Taking it from the session instead meant a disconnect deleted the timestamp
+    /// and sent the connection's entries to the bottom, where a reconnect could not put them back,
+    /// because it minted a new session with a new one.
     internal static func ranked(
         openIds: Set<WorkspaceID>,
         storedOrder: [WorkspaceID],
@@ -65,6 +68,12 @@ internal enum WorkspaceRailOrdering {
         return ids[destination]
     }
 
+    /// How many arrangements are kept. A database that is renamed or dropped raises no event, so its
+    /// entry can never be removed the way a deleted connection's is, and without a ceiling the
+    /// stored order only grows. Everything open is kept whatever the count; the ceiling applies to
+    /// the closed ones alone, oldest first, so a strip you are using is never trimmed.
+    internal static let maxStoredEntries = 500
+
     internal static func merged(
         visibleOrder: [WorkspaceID],
         into storedOrder: [WorkspaceID]
@@ -82,6 +91,25 @@ internal enum WorkspaceRailOrdering {
             result.append(next)
         }
 
-        return result + pending
+        return capped(result + pending, keeping: visible)
+    }
+
+    /// Drops closed entries from the front, which is the oldest arrangement, until the list is
+    /// within budget. Truncating the list itself would take the newest workspaces instead: `merged`
+    /// appends the ones it has just seen at the end.
+    internal static func capped(_ ids: [WorkspaceID], keeping visible: Set<WorkspaceID>) -> [WorkspaceID] {
+        guard ids.count > maxStoredEntries else { return ids }
+        var surplus = ids.count - maxStoredEntries
+        var kept: [WorkspaceID] = []
+        kept.reserveCapacity(maxStoredEntries)
+
+        for id in ids {
+            if surplus > 0, !visible.contains(id) {
+                surplus -= 1
+                continue
+            }
+            kept.append(id)
+        }
+        return kept
     }
 }

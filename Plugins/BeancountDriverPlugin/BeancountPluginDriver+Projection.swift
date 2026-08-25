@@ -71,7 +71,7 @@ struct BeancountProjectionRows: @unchecked Sendable {
     var events: [[String: Any]] = []
     var pads: [[String: Any]] = []
     var closes: [[String: Any]] = []
-    var directiveMetadata: [[String: Any]] = []
+    var directives: [[String: Any]] = []
     var diagnostics: [[String: Any]] = []
 }
 
@@ -108,7 +108,7 @@ extension BeancountPluginDriver {
             try loadEvents(rows.events, into: writer)
             try loadPads(rows.pads, into: writer)
             try loadCloses(rows.closes, into: writer)
-            try loadDirectiveMetadata(rows.directiveMetadata, into: writer)
+            try loadDirectives(rows.directives, into: writer)
             try loadDiagnostics(rows.diagnostics, into: writer)
             try loadSourceFiles(sourceFiles, into: writer)
             try exec(handle, "PRAGMA query_only = ON")
@@ -253,15 +253,19 @@ extension BeancountPluginDriver {
             CREATE TABLE source_files (
                 path TEXT PRIMARY KEY
             );
-            CREATE TABLE directive_metadata (
+            CREATE TABLE directives (
                 id INTEGER PRIMARY KEY,
-                directive_type TEXT NOT NULL,
-                date DATE NOT NULL,
-                key TEXT NOT NULL,
-                value TEXT,
+                type TEXT NOT NULL,
+                date DATE,
                 source_file TEXT,
                 line INTEGER,
                 source_location TEXT
+            );
+            CREATE TABLE directive_metadata (
+                id INTEGER PRIMARY KEY,
+                directive_id INTEGER NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT
             );
             """)
     }
@@ -577,23 +581,30 @@ extension BeancountPluginDriver {
         }
     }
 
-    private static func loadDirectiveMetadata(
+    private static func loadDirectives(
         _ rows: [[String: Any]],
         into writer: BeancountProjectionWriter
     ) throws {
-        for (index, row) in rows.enumerated() {
-            guard let type = stringValue(row["directive_type"]),
-                  let date = stringValue(row["date"]),
-                  let key = stringValue(row["key"]) else { continue }
+        var metadataId = 0
+        for row in rows {
+            guard let type = stringValue(row["type"]),
+                  let directiveId = intValue(row["id"]) else { continue }
             let position = sourcePosition(file: row["filename"], line: row["lineno"], formatted: row["location"])
             try writer.insert(sql: """
-                INSERT INTO directive_metadata
-                    (id, directive_type, date, key, value, source_file, line, source_location)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO directives (id, type, date, source_file, line, source_location)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """, values: [
-                    String(index + 1), type, date, key, stringValue(row["value"]), position?.file,
+                    String(directiveId), type, stringValue(row["date"]), position?.file,
                     position?.line.map(String.init), position?.formatted
                 ])
+
+            for pair in metadataPairs(row["_entry_meta"]) {
+                metadataId += 1
+                try writer.insert(sql: """
+                    INSERT INTO directive_metadata (id, directive_id, key, value)
+                    VALUES (?, ?, ?, ?)
+                    """, values: [String(metadataId), String(directiveId), pair.key, pair.value])
+            }
         }
     }
 
