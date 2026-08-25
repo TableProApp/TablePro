@@ -765,6 +765,10 @@ struct BeancountPluginDriverTests {
         2024-01-07 * "Archive" "No postings" #empty ^standalone
           reason: "record only"
 
+        2024-01-07 query "cash" "SELECT account FROM accounts"
+
+        2024-01-08 custom "mixed" "text" 2024-12-31 TRUE 12.50 USD Assets:Cash 7
+
         include "pads.beancount"
 
         2024-06-30 close Expenses:Food
@@ -816,6 +820,27 @@ struct BeancountPluginDriverTests {
     private static func expectRichDirectives(_ driver: BeancountPluginDriver, ledger: URL) async throws {
         let booking = try await driver.execute(query: "SELECT booking FROM accounts WHERE name = 'Assets:Cash'")
         #expect(booking.rows.first?.first?.asText == "STRICT")
+
+        let queries = try await driver.execute(query: "SELECT date, name, query FROM queries")
+        #expect(queries.rows.map { $0.map(\.asText) } == [[
+            "2024-01-07", "cash", "SELECT account FROM accounts"
+        ]])
+
+        let custom = try await driver.execute(query: "SELECT date, type FROM custom")
+        #expect(custom.rows.map { $0.map(\.asText) } == [["2024-01-08", "mixed"]])
+
+        let customValues = try await driver.execute(query: """
+            SELECT position, value_type, value, number, currency
+            FROM custom_values ORDER BY position
+            """)
+        #expect(customValues.rows.map { $0.map(\.asText) } == [
+            ["0", "string", "text", nil, nil],
+            ["1", "date", "2024-12-31", nil, nil],
+            ["2", "boolean", "TRUE", nil, nil],
+            ["3", "amount", "12.50 USD", "12.50", "USD"],
+            ["4", "account", "Assets:Cash", nil, nil],
+            ["5", "number", "7", "7", nil]
+        ])
 
         let commodities = try await driver.execute(query: "SELECT date, commodity FROM commodities")
         #expect(commodities.rows.map { $0.map(\.asText) } == [["2024-01-01", "USD"]])

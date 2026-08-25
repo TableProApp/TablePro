@@ -115,6 +115,89 @@ struct BeancountProjectionTests {
         #expect(closes.rows.map { $0.map(\.asText) } == [["2024-06-30", "Expenses:Food"]])
     }
 
+    @Test("projects named queries and typed custom values")
+    func projectsQueriesAndCustomValues() async throws {
+        let driver = try Self.makeDriver()
+        defer { driver.disconnect() }
+
+        let queries = try await driver.execute(query: """
+            SELECT date, name, query, source_file, line FROM queries
+            """)
+        #expect(queries.rows.map { $0.map(\.asText) } == [[
+            "2024-01-06", "cash", "SELECT account FROM accounts", "/ledger/main.beancount", "50"
+        ]])
+
+        let custom = try await driver.execute(query: "SELECT date, type FROM custom")
+        #expect(custom.rows.map { $0.map(\.asText) } == [["2024-01-07", "mixed"]])
+
+        let values = try await driver.execute(query: """
+            SELECT position, value_type, value, number, currency
+            FROM custom_values ORDER BY position
+            """)
+        #expect(values.rows.map { $0.map(\.asText) } == [
+            ["0", "string", "text", nil, nil],
+            ["1", "date", "2024-12-31", nil, nil],
+            ["2", "boolean", "TRUE", nil, nil],
+            ["3", "amount", "12.50 USD", "12.50", "USD"],
+            ["4", "account", "Assets:Cash", nil, nil],
+            ["5", "number", "7", "7", nil]
+        ])
+    }
+
+    @Test("reads multiline queries and all custom value types from source")
+    func readsQueryAndCustomDirectivesFromSource() throws {
+        let sourceURL = URL(fileURLWithPath: "/ledger/included.beancount")
+        let projection = BeancountDirectiveProjectionReader.read(
+            contents: """
+                2024/1/6 query "cash" "
+                  SELECT account
+                  FROM accounts" ; visible only in source
+                2024-01-07 custom "mixed" "quoted \\"text\\"" 2024-12-31 TRUE 12.50 USD Assets:Cash 7
+                  note: "metadata is not a custom value"
+                """,
+            sourceURL: sourceURL
+        )
+
+        #expect(projection.queries.count == 1)
+        #expect(projection.queries[0]["date"] as? String == "2024-01-06")
+        #expect(projection.queries[0]["name"] as? String == "cash")
+        #expect(projection.queries[0]["query"] as? String == "\n  SELECT account\n  FROM accounts")
+        #expect(projection.queries[0]["lineno"] as? Int == 1)
+
+        let custom = try #require(projection.custom.first)
+        #expect(custom["lineno"] as? Int == 4)
+        let values = try #require(custom["values"] as? [[String: Any]])
+        #expect(values.map { $0["value_type"] as? String } == [
+            "string", "date", "boolean", "amount", "account", "number"
+        ])
+        #expect(values.first?["value"] as? String == "quoted \"text\"")
+    }
+
+    @Test("reads query and custom directives out of a CRLF ledger")
+    func readsDirectivesFromCarriageReturnLineFeedSource() throws {
+        let sourceURL = URL(fileURLWithPath: "/ledger/crlf.beancount")
+        let projection = BeancountDirectiveProjectionReader.read(
+            contents: "2024-01-01 open Assets:Cash USD\r\n"
+                + "\r\n"
+                + "2024-01-04 query \"cash\" \"\r\n"
+                + "  SELECT account\r\n"
+                + "  FROM accounts\"\r\n"
+                + "\r\n"
+                + "2024-01-05 custom \"mixed\" \"text\" 12.50 USD\r\n",
+            sourceURL: sourceURL
+        )
+
+        #expect(projection.queries.count == 1)
+        #expect(projection.queries[0]["lineno"] as? Int == 3)
+        #expect(projection.queries[0]["query"] as? String == "\n  SELECT account\n  FROM accounts")
+
+        let custom = try #require(projection.custom.first)
+        #expect(custom["lineno"] as? Int == 7)
+        #expect(custom["location"] as? String == "/ledger/crlf.beancount:7")
+        let values = try #require(custom["values"] as? [[String: Any]])
+        #expect(values.map { $0["value"] as? String } == ["text", "12.50 USD"])
+    }
+
     @Test("joins directive metadata to the directive that declared it")
     func projectsDirectiveMetadata() async throws {
         let driver = try Self.makeDriver()
@@ -632,6 +715,23 @@ struct BeancountProjectionTests {
         closes: [
             ["account": "Expenses:Food", "close": "2024-06-30"]
         ],
+        queries: [[
+            "date": "2024-01-06", "name": "cash", "query": "SELECT account FROM accounts",
+            "filename": "/ledger/main.beancount", "lineno": 50
+        ]],
+        custom: [[
+            "id": 1,
+            "date": "2024-01-07",
+            "type": "mixed",
+            "values": [
+                ["value_type": "string", "value": "text"],
+                ["value_type": "date", "value": "2024-12-31"],
+                ["value_type": "boolean", "value": "TRUE"],
+                ["value_type": "amount", "value": "12.50 USD", "number": "12.50", "currency": "USD"],
+                ["value_type": "account", "value": "Assets:Cash"],
+                ["value_type": "number", "value": "7", "number": "7"]
+            ]
+        ]],
         directives: [
             [
                 "id": 1, "type": "commodity", "date": "2024-01-01",

@@ -85,6 +85,9 @@ Three slashes: the path is absolute. See [Connection URL Reference](/connections
 | `events` | Event type and description directives |
 | `pads` | Pad directives, their target and source accounts, and source locations |
 | `closes` | Close directives |
+| `queries` | Named query directives and their source locations |
+| `custom` | Custom directive type and source location |
+| `custom_values` | Ordered, typed values belonging to each custom directive |
 | `transaction_metadata`, `posting_metadata` | Metadata key/value pairs |
 | `transaction_tags`, `transaction_links` | Tags and links |
 | `directives` | Every dated directive that is not a transaction, with its source location |
@@ -92,7 +95,7 @@ Three slashes: the path is absolute. See [Connection URL Reference](/connections
 | `diagnostics` | Validation output from `rledger check` |
 | `source_files` | Parsed ledger and include files |
 
-`postings.transaction_id` points at `transactions.id`, and so do `transaction_metadata`, `transaction_tags`, and `transaction_links`. `posting_metadata.posting_id` points at `postings.id`, and `directive_metadata.directive_id` points at `directives.id`. The rest join by name: an account column against `accounts.name`, a `source_file` column against `source_files.path`.
+`postings.transaction_id` points at `transactions.id`, and so do `transaction_metadata`, `transaction_tags`, and `transaction_links`. `posting_metadata.posting_id` points at `postings.id`, `custom_values.custom_id` points at `custom.id`, and `directive_metadata.directive_id` points at `directives.id`. The rest join by name: an account column against `accounts.name`, a `source_file` column against `source_files.path`.
 
 ```sql
 SELECT t.date, t.payee, p.account, p.amount, p.commodity
@@ -106,13 +109,15 @@ Amounts arrive booked, so thousands separators, arithmetic, cost (`{}`) and pric
 
 Posting costs use `cost_number`, `cost_currency`, `cost_date`, and `cost_label`. Resolved inline prices use `price_number` and `price_currency`; `flag` is the posting's own flag, independent of the transaction flag.
 
+`custom_values.value_type` is `string`, `date`, `boolean`, `amount`, `account`, or `number`. `value` is the complete readable value; amounts also split into `number` and `currency`, and standalone numbers repeat in `number` so exports do not have to parse the display text.
+
 `balance_assertions.difference_amount` is the booked balance immediately before the assertion date minus the expected amount. Its currency is in `difference_currency`; an explicit `~` value is in `tolerance`.
 
 Every ledger file, glob directory, and referenced document is watched by modification date, size, and directory listing. Change one and the next query rebuilds the projection first, so an edit in your text editor lands without reconnecting.
 
 ## Source locations
 
-`transactions`, `postings`, and `pads` carry `source_file`, `line`, and `source_location`, the last formatted `path:line` so it copies, filters, and exports as it stands. A posting points at its own line, not at its transaction's.
+`transactions`, `postings`, `pads`, `queries`, and `custom` carry `source_file`, `line`, and `source_location`, the last formatted `path:line` so it copies, filters, and exports as it stands. A posting points at its own line, not at its transaction's.
 
 `directives` carries the source location of each non-transaction directive, so metadata joined through `directive_id` reaches the line the directive is on. That is how two same-day directives of one type stay apart. Transaction and posting metadata stay in their dedicated tables.
 

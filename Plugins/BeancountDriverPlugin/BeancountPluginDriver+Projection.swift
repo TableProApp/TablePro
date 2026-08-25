@@ -71,6 +71,8 @@ struct BeancountProjectionRows: @unchecked Sendable {
     var events: [[String: Any]] = []
     var pads: [[String: Any]] = []
     var closes: [[String: Any]] = []
+    var queries: [[String: Any]] = []
+    var custom: [[String: Any]] = []
     var directives: [[String: Any]] = []
     var diagnostics: [[String: Any]] = []
 }
@@ -108,6 +110,8 @@ extension BeancountPluginDriver {
             try loadEvents(rows.events, into: writer)
             try loadPads(rows.pads, into: writer)
             try loadCloses(rows.closes, into: writer)
+            try loadQueries(rows.queries, into: writer)
+            try loadCustom(rows.custom, into: writer)
             try loadDirectives(rows.directives, into: writer)
             try loadDiagnostics(rows.diagnostics, into: writer)
             try loadSourceFiles(sourceFiles, into: writer)
@@ -220,6 +224,32 @@ extension BeancountPluginDriver {
                 date DATE NOT NULL,
                 account TEXT NOT NULL
             );
+            CREATE TABLE queries (
+                id INTEGER PRIMARY KEY,
+                date DATE NOT NULL,
+                name TEXT NOT NULL,
+                query TEXT NOT NULL,
+                source_file TEXT,
+                line INTEGER,
+                source_location TEXT
+            );
+            CREATE TABLE custom (
+                id INTEGER PRIMARY KEY,
+                date DATE NOT NULL,
+                type TEXT NOT NULL,
+                source_file TEXT,
+                line INTEGER,
+                source_location TEXT
+            );
+            CREATE TABLE custom_values (
+                id INTEGER PRIMARY KEY,
+                custom_id INTEGER NOT NULL,
+                position INTEGER NOT NULL,
+                value_type TEXT NOT NULL,
+                value TEXT NOT NULL,
+                number TEXT,
+                currency TEXT
+            );
             CREATE TABLE transaction_metadata (
                 id INTEGER PRIMARY KEY,
                 transaction_id INTEGER NOT NULL,
@@ -273,6 +303,74 @@ extension BeancountPluginDriver {
                 value TEXT
             );
             """)
+    }
+
+    private static func loadQueries(
+        _ rows: [[String: Any]],
+        into writer: BeancountProjectionWriter
+    ) throws {
+        for (index, row) in rows.enumerated() {
+            guard let date = stringValue(row["date"]),
+                  let name = stringValue(row["name"]),
+                  let query = stringValue(row["query"]) else {
+                continue
+            }
+            let position = sourcePosition(
+                file: row["filename"],
+                line: row["lineno"],
+                formatted: row["location"]
+            )
+            try writer.insert(sql: """
+                INSERT INTO queries (id, date, name, query, source_file, line, source_location)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, values: [
+                    String(index + 1), date, name, query, position?.file,
+                    position?.line.map(String.init), position?.formatted
+                ])
+        }
+    }
+
+    private static func loadCustom(
+        _ rows: [[String: Any]],
+        into writer: BeancountProjectionWriter
+    ) throws {
+        var valueID = 0
+        for (index, row) in rows.enumerated() {
+            guard let date = stringValue(row["date"]),
+                  let type = stringValue(row["type"]) else {
+                continue
+            }
+            let customID = intValue(row["id"]) ?? index + 1
+            let position = sourcePosition(
+                file: row["filename"],
+                line: row["lineno"],
+                formatted: row["location"]
+            )
+            try writer.insert(sql: """
+                INSERT INTO custom (id, date, type, source_file, line, source_location)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """, values: [
+                    String(customID), date, type, position?.file,
+                    position?.line.map(String.init), position?.formatted
+                ])
+
+            guard let values = row["values"] as? [[String: Any]] else { continue }
+            for (valuePosition, value) in values.enumerated() {
+                guard let valueType = stringValue(value["value_type"]),
+                      let rendered = stringValue(value["value"]) else {
+                    continue
+                }
+                valueID += 1
+                try writer.insert(sql: """
+                    INSERT INTO custom_values
+                        (id, custom_id, position, value_type, value, number, currency)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, values: [
+                        String(valueID), String(customID), String(valuePosition), valueType, rendered,
+                        stringValue(value["number"]), stringValue(value["currency"])
+                    ])
+            }
+        }
     }
 
     private static func loadTransactions(

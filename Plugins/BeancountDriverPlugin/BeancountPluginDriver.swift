@@ -613,6 +613,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         allowsLedgerPlugins: Bool
     ) throws -> (rows: BeancountProjectionRows, backendVersion: String) {
         let details = BeancountDirectiveDetailsReader.read(sourceGraph: sourceGraph)
+        let sourceDirectives = BeancountDirectiveProjectionReader.read(sourceGraph: sourceGraph)
         let backend = try resolveProjectionBackend()
         switch backend {
         case .rledger:
@@ -640,6 +641,8 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 events: directiveRows(ledgerPath: ledgerPath, bql: eventsQuery, table: "events"),
                 pads: pads.rows,
                 closes: directiveRows(ledgerPath: ledgerPath, bql: closesQuery, table: "closes"),
+                queries: sourceDirectives.queries,
+                custom: sourceDirectives.custom,
                 directives: directiveRows(ledgerPath: ledgerPath, bql: directivesQuery, table: "directives"),
                 diagnostics: validationDiagnostics(ledgerPath: ledgerPath) + pads.diagnostics
             )
@@ -668,6 +671,8 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 events: rows["events"] ?? [],
                 pads: rows["pads"] ?? [],
                 closes: rows["closes"] ?? [],
+                queries: sourceDirectives.queries,
+                custom: sourceDirectives.custom,
                 directives: rows["directives"] ?? [],
                 diagnostics: rows["diagnostics"] ?? []
             )
