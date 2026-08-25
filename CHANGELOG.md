@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Sync Paused, a separate state for a license the app could not check, offering to check again rather than to buy.
 - The PRO badge beside a gated control names what the feature does and links to the pricing page.
 - Beancount postings preserve their own flag, price, and resolved lot date and label in the SQL projection.
 - Beancount connections report the active `rledger` or Python Beancount version instead of a generic backend name.
@@ -45,6 +46,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The welcome window offering Activate License to a Mac that already holds one and has just been offline.
+- iCloud Sync reporting that a license is required when the license was only unverified.
+- iCloud Sync still reporting a live sync after the license was removed from that Mac.
+- The sync status returning to Synced when sync was turned off while a sync was running.
+- The license server never being contacted again after removing and re-adding a license in one session.
+- The Activations error staying on screen after a later refresh loaded the list.
+- A renewal warning counting down zero days above a status that already reads Expired.
 - The connections strip disappearing when you click the entry you came from.
 - Cancelling a close from the connections strip leaving the window on the connection it revealed.
 - Save on a bulk tab close applying to the tab on screen instead of the tabs being closed.

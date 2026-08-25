@@ -51,6 +51,8 @@ struct SyncStatusIndicator: View {
             return "icloud.slash"
         case .disabled(.licenseRequired), .disabled(.licenseExpired):
             return "xmark.icloud"
+        case .disabled(.licenseUnverified):
+            return "exclamationmark.icloud"
         case .disabled(.userDisabled):
             return "icloud.slash"
         }
@@ -68,6 +70,8 @@ struct SyncStatusIndicator: View {
             return String(localized: "No iCloud")
         case .disabled(.licenseRequired), .disabled(.licenseExpired):
             return String(localized: "Sync Off")
+        case .disabled(.licenseUnverified):
+            return String(localized: "Sync Paused")
         case .disabled(.userDisabled):
             return ""
         }
@@ -106,15 +110,21 @@ struct SyncStatusIndicator: View {
             return String(localized: "Pro license required for iCloud Sync")
         case .disabled(.licenseExpired):
             return String(localized: "License expired, sync paused")
+        case .disabled(.licenseUnverified):
+            return String(localized: "License not verified in 30 days, sync paused. Click to check again.")
         case .disabled(.userDisabled):
             return ""
         }
     }
 
+    /// An unverified license is the one degraded state activation cannot mend, so it retries the
+    /// check instead of opening a sheet that asks for a key the person already gave.
     private func handleTap() {
         switch syncCoordinator.syncStatus {
         case .disabled(.licenseRequired), .disabled(.licenseExpired):
             onActivateLicense()
+        case .disabled(.licenseUnverified):
+            Task { await LicenseManager.shared.revalidate() }
         default:
             WindowOpener.shared.openSettings(tab: .account)
         }

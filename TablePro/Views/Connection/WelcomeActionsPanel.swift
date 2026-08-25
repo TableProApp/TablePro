@@ -95,16 +95,7 @@ struct WelcomeActionsPanel: View {
     /// pauses Pro features, and its owner is still not someone to ask for a purchase.
     private var licenseLine: some View {
         HStack(spacing: 6) {
-            if LicenseManager.shared.status.isValid {
-                Label(String(localized: "Pro"), systemImage: "checkmark.seal.fill")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.green)
-            } else {
-                Button(action: onActivateLicense) {
-                    Text(String(localized: "Activate License"))
-                }
-                .buttonStyle(.link)
-            }
+            licenseBadge
 
             if LicenseManager.shared.supportAudience == .prospect {
                 Text(verbatim: "·")
@@ -113,5 +104,28 @@ struct WelcomeActionsPanel: View {
             }
         }
         .font(.subheadline)
+    }
+
+    /// Exhaustive on purpose. This used to read `status.isValid`, so the one status that means
+    /// "a paying customer who has been offline" was offered an activation sheet that needs the
+    /// network to succeed, which is the one thing it could not do.
+    @ViewBuilder
+    private var licenseBadge: some View {
+        switch LicenseManager.shared.status {
+        case .active:
+            Label(String(localized: "Pro"), systemImage: "checkmark.seal.fill")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.green)
+        case .validationFailed:
+            Label(String(localized: "Pro"), systemImage: "exclamationmark.seal.fill")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.orange)
+                .help(String(localized: "License not verified in 30 days. Connect to the internet to check it."))
+        case .unlicensed, .expired, .suspended, .deactivated:
+            Button(action: onActivateLicense) {
+                Text(String(localized: "Activate License"))
+            }
+            .buttonStyle(.link)
+        }
     }
 }

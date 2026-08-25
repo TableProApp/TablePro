@@ -41,8 +41,19 @@ final class LicenseManager {
     /// Current cached license (nil = unlicensed)
     private(set) var license: License?
 
-    /// Current license status
-    private(set) var status: LicenseStatus = .unlicensed
+    /// Current license status.
+    ///
+    /// Every write announces itself, so no caller has to remember to. `deactivate` wrote this
+    /// directly and skipped the announcement, which left `SyncCoordinator`, its only observer,
+    /// reporting a healthy sync for a license that no longer existed until the next launch.
+    /// The observer subscribes with `.receive(on: RunLoop.main)`, so this cannot re-enter a
+    /// mutation that is still in progress.
+    private(set) var status: LicenseStatus = .unlicensed {
+        didSet {
+            guard status != oldValue else { return }
+            AppEvents.shared.licenseStatusDidChange.send(())
+        }
+    }
 
     /// Whether a network operation is in progress
     private(set) var isValidating: Bool = false
@@ -219,7 +230,7 @@ final class LicenseManager {
             storage.saveLicense(newLicense)
 
             license = newLicense
-            acceptServerConfirmation()
+            adoptActivatedLicense()
 
             Self.logger.info("License activated for \(payloadData.email)")
         } catch let error as LicenseError {
@@ -262,7 +273,7 @@ final class LicenseManager {
             storage.saveLicense(newLicense)
 
             license = newLicense
-            acceptServerConfirmation()
+            adoptActivatedLicense()
 
             Self.logger.info("Joined team via invitation for \(payloadData.email)")
         } catch let error as LicenseError {
@@ -315,8 +326,18 @@ final class LicenseManager {
     // MARK: - Re-validation
 
     var isExpiringSoon: Bool {
-        guard let days = license?.daysUntilExpiry else { return false }
-        return days >= 0 && days <= 7
+        guard let license else { return false }
+        return Self.isExpiringSoon(daysUntilExpiry: license.daysUntilExpiry, isExpired: license.isExpired)
+    }
+
+    /// Whether the renewal warning applies, which a license that has already lapsed does not.
+    ///
+    /// `daysUntilExpiry` counts whole days, so a license that ran out this morning still reports
+    /// zero until tomorrow. Without the expiry check the pane warned "License expires in 0 day(s)"
+    /// directly above "Status: Expired", stating both readings of the same date at once.
+    nonisolated static func isExpiringSoon(daysUntilExpiry: Int?, isExpired: Bool) -> Bool {
+        guard !isExpired, let daysUntilExpiry else { return false }
+        return daysUntilExpiry >= 0 && daysUntilExpiry <= 7
     }
 
     var daysUntilExpiry: Int? {
@@ -385,6 +406,18 @@ final class LicenseManager {
         }
     }
 
+    /// Takes up a license this Mac has just activated.
+    ///
+    /// Restarting periodic validation is the point. `deactivate` cancels that task and nils it, and
+    /// the only other caller is a one-shot at launch, so a deactivate followed by an activate in
+    /// the same session left the process never contacting the server again. It cannot live in
+    /// `acceptServerConfirmation`, which `revalidate` also calls from inside the very task this
+    /// would cancel.
+    private func adoptActivatedLicense() {
+        acceptServerConfirmation()
+        startPeriodicValidation()
+    }
+
     private func acceptServerConfirmation() {
         serverRejection = nil
         lastServerContact = Date()
@@ -402,9 +435,6 @@ final class LicenseManager {
 
     /// Evaluate current license status based on expiration, grace period, and signature validity
     private func evaluateStatus() {
-        let previousStatus = status
-        defer { notifyIfChanged(from: previousStatus) }
-
         guard let license else {
             status = .unlicensed
             return
@@ -451,11 +481,5 @@ final class LicenseManager {
         }
 
         return .active
-    }
-
-    private func notifyIfChanged(from previousStatus: LicenseStatus) {
-        if status != previousStatus {
-            AppEvents.shared.licenseStatusDidChange.send(())
-        }
     }
 }

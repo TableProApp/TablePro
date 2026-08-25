@@ -33,6 +33,10 @@ final class SyncCoordinator {
     @ObservationIgnored private var syncTask: Task<Void, Never>?
     @ObservationIgnored private var hasStarted = false
 
+    /// Bumped every time something other than a sync run decides the status, so a run that has been
+    /// suspended across the network can tell whether its outcome is still the current answer.
+    @ObservationIgnored private var statusGeneration = 0
+
     init(services: AppServices = .live) {
         self.services = services
         self.changeTracker = services.syncTracker
@@ -93,6 +97,7 @@ final class SyncCoordinator {
             return
         }
 
+        let generation = statusGeneration
         syncStatus = .syncing
 
         do {
@@ -109,21 +114,36 @@ final class SyncCoordinator {
             await performPull()
 
             if let pushError {
-                syncStatus = .error(SyncError.from(pushError))
+                settle(.error(SyncError.from(pushError)), from: generation)
                 return
             }
 
             lastSyncDate = Date()
             metadataStorage.lastSyncDate = lastSyncDate
-            syncStatus = .idle
+            settle(.idle, from: generation)
             metadataStorage.pruneTombstones(olderThan: 30)
 
             Self.logger.info("Sync completed successfully")
         } catch {
             let syncError = SyncError.from(error)
-            syncStatus = .error(syncError)
+            settle(.error(syncError), from: generation)
             Self.logger.error("Sync failed: \(error.localizedDescription)")
         }
+    }
+
+    /// Publishes the outcome of a sync run, unless something decided the status while it was in
+    /// flight.
+    ///
+    /// A run reads `canSync()` once on entry and then suspends across the whole CloudKit round
+    /// trip, so turning sync off, or losing the license, used to be overwritten by the returning
+    /// run: the indicator went back to "Synced" for a sync that would now be refused. Whoever
+    /// decided last wins, and a stale run reports nothing.
+    private func settle(_ outcome: SyncStatus, from generation: Int) {
+        guard generation == statusGeneration else {
+            Self.logger.info("Discarding a sync outcome the status moved on from")
+            return
+        }
+        syncStatus = outcome
     }
 
     /// Triggered by remote push notification
@@ -226,7 +246,7 @@ final class SyncCoordinator {
     /// Called when user disables sync in settings
     func disableSync() {
         syncTask?.cancel()
-        syncStatus = .disabled(.userDisabled)
+        decide(.disabled(.userDisabled))
     }
 
     // MARK: - Status
@@ -235,29 +255,51 @@ final class SyncCoordinator {
         let licenseManager = services.licenseManager
 
         guard licenseManager.isFeatureAvailable(.iCloudSync) else {
-            switch licenseManager.status {
-            case .expired:
-                syncStatus = .disabled(.licenseExpired)
-            default:
-                syncStatus = .disabled(.licenseRequired)
-            }
+            decide(.disabled(Self.licenseDisableReason(for: licenseManager.status)))
             return
         }
 
         let syncSettings = services.appSettingsStorage.loadSync()
         guard syncSettings.enabled else {
-            syncStatus = .disabled(.userDisabled)
+            decide(.disabled(.userDisabled))
             return
         }
 
         guard iCloudAccountAvailable else {
-            syncStatus = .disabled(.noAccount)
+            decide(.disabled(.noAccount))
             return
         }
 
         // If we were in an error or disabled state, transition to idle
         if !syncStatus.isSyncing {
-            syncStatus = .idle
+            decide(.idle)
+        }
+    }
+
+    /// Settles the status from outside a sync run, and retires whatever run is in flight.
+    ///
+    /// The branch that leaves a running sync alone deliberately does not come through here: it has
+    /// decided nothing, so invalidating the run would leave the status stuck on Syncing with
+    /// nothing left to move it.
+    private func decide(_ status: SyncStatus) {
+        statusGeneration += 1
+        syncStatus = status
+    }
+
+    /// Why sync is off, for a license that does not currently unlock it.
+    ///
+    /// Exhaustive on purpose. The arm that used to be `default:` swallowed `.validationFailed`,
+    /// which is a paying customer the app has not reached the server about, and told them a license
+    /// was required. A new `LicenseStatus` case has to be answered here rather than inheriting the
+    /// wrong answer.
+    nonisolated static func licenseDisableReason(for status: LicenseStatus) -> DisableReason {
+        switch status {
+        case .expired:
+            return .licenseExpired
+        case .validationFailed:
+            return .licenseUnverified
+        case .active, .unlicensed, .suspended, .deactivated:
+            return .licenseRequired
         }
     }
 
