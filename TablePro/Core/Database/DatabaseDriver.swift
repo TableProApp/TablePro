@@ -581,6 +581,7 @@ enum DatabaseDriverFactory {
             additionalFields["enableCleartextPlugin"] = "true"
         }
         additionalFields["queryTimeoutSeconds"] = String(AppSettingsManager.shared.general.queryTimeoutSeconds)
+        additionalFields["connectionId"] = connection.id.uuidString
         let config = DriverConnectionConfig(
             host: connection.host,
             port: connection.port,

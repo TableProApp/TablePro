@@ -40,19 +40,30 @@ final class SnowflakeConnection: @unchecked Sendable {
 
     let host: String
     let params: ResolvedParameters
+    private let connectionIdentifier: String
 
     private let session: URLSession
     private let lock = NSLock()
     private let heartbeat = SnowflakeHeartbeat()
     private var sessionToken: String?
     private var renewalToken: String?
-    private var activeRequestIDs: Set<String> = []
+    private var activeRequestIDs: [String: Set<String>] = [:]
     private var sequenceId = 0
     private var connectTask: Task<Void, Error>?
 
     var sessionFingerprint: String {
-        [host, params.user.uppercased(), params.authMethod, params.role.uppercased()].joined(separator: "|")
+        SnowflakeSessionKey.fingerprint(
+            connectionId: connectionIdentifier,
+            host: host,
+            user: params.user,
+            authMethod: params.authMethod,
+            role: params.role
+        )
     }
+
+    /// Statements the connection issues for itself, such as the connect-time `USE` calls, belong to
+    /// no driver and are never the target of a Stop.
+    static let sessionOwner = "session"
 
     private var _currentDatabase: String?
     private var _currentSchema: String?
@@ -71,6 +82,7 @@ final class SnowflakeConnection: @unchecked Sendable {
     init(config: DriverConnectionConfig) {
         self.params = Self.resolveParameters(from: config)
         self.host = SnowflakeAccount.host(forAccount: params.account)
+        self.connectionIdentifier = config.additionalFields["connectionId"] ?? ""
 
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 120
@@ -419,9 +431,13 @@ final class SnowflakeConnection: @unchecked Sendable {
 
     // MARK: - Query Execution
 
-    func query(_ sql: String, parameters: [PluginCellValue] = []) async throws -> SnowflakeQueryResult {
+    func query(
+        _ sql: String,
+        parameters: [PluginCellValue] = [],
+        owner: String = SnowflakeConnection.sessionOwner
+    ) async throws -> SnowflakeQueryResult {
         try await withReauthentication {
-            try await performQuery(sql, parameters: parameters)
+            try await performQuery(sql, parameters: parameters, owner: owner)
         }
     }
 
@@ -439,8 +455,12 @@ final class SnowflakeConnection: @unchecked Sendable {
         }
     }
 
-    func cancelAllQueries() {
-        let (requestIDs, token) = lock.withLock { (activeRequestIDs, sessionToken) }
+    /// One Snowflake session is shared by the driver the user sees and by every pooled metadata
+    /// driver behind it, so an abort has to name whose work it is stopping. Aborting the whole
+    /// session made Stop on a query cancel a sidebar refresh running beside it, and cancel a save's
+    /// remaining statements.
+    func cancelQueries(owner: String) {
+        let (requestIDs, token) = lock.withLock { (activeRequestIDs[owner] ?? [], sessionToken) }
         guard !requestIDs.isEmpty, let token else { return }
         Task { [weak self] in
             for requestID in requestIDs {
@@ -454,8 +474,12 @@ final class SnowflakeConnection: @unchecked Sendable {
         }
     }
 
-    private func performQuery(_ sql: String, parameters: [PluginCellValue] = []) async throws -> SnowflakeQueryResult {
-        let (data, token) = try await submitQuery(sql, parameters: parameters)
+    private func performQuery(
+        _ sql: String,
+        parameters: [PluginCellValue] = [],
+        owner: String
+    ) async throws -> SnowflakeQueryResult {
+        let (data, token) = try await submitQuery(sql, parameters: parameters, owner: owner)
         if let resultIds = data["resultIds"] as? String, !resultIds.isEmpty {
             return try await collectMultiStatementResults(ids: resultIds, token: token)
         }
@@ -465,7 +489,8 @@ final class SnowflakeConnection: @unchecked Sendable {
 
     private func submitQuery(
         _ sql: String,
-        parameters: [PluginCellValue]
+        parameters: [PluginCellValue],
+        owner: String
     ) async throws -> (data: [String: Any], token: String) {
         guard let token = lock.withLock({ sessionToken }) else {
             throw SnowflakeError.notConnected
@@ -474,11 +499,14 @@ final class SnowflakeConnection: @unchecked Sendable {
         let requestID = UUID().uuidString.lowercased()
         let sequence = lock.withLock { () -> Int in
             sequenceId += 1
-            activeRequestIDs.insert(requestID)
+            activeRequestIDs[owner, default: []].insert(requestID)
             return sequenceId
         }
         defer {
-            lock.withLock { _ = activeRequestIDs.remove(requestID) }
+            lock.withLock {
+                activeRequestIDs[owner]?.remove(requestID)
+                if activeRequestIDs[owner]?.isEmpty == true { activeRequestIDs[owner] = nil }
+            }
         }
 
         var body: [String: Any] = [
@@ -611,9 +639,12 @@ final class SnowflakeConnection: @unchecked Sendable {
         let batches: AsyncThrowingStream<[[PluginCellValueBox]], Error>
     }
 
-    func queryStreamed(_ sql: String) async throws -> StreamedResult {
+    func queryStreamed(
+        _ sql: String,
+        owner: String = SnowflakeConnection.sessionOwner
+    ) async throws -> StreamedResult {
         let (data, _) = try await withReauthentication {
-            try await submitQuery(sql, parameters: [])
+            try await submitQuery(sql, parameters: [], owner: owner)
         }
         applyFinalSessionInfo(data)
 

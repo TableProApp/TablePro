@@ -486,6 +486,7 @@ targets:
       - Plugins/SnowflakeDriverPlugin/SnowflakeMFATokenStore.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeObjectQueries.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeSchemaQueries.swift
+      - Plugins/SnowflakeDriverPlugin/SnowflakeSessionKey.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeSQL.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeStatementGenerator.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeStatementType.swift
