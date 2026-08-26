@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An abandoned editor tab drag reordering the strip anyway, and keeping that order across relaunch.
+- An editor tab reorder stopping partway when the pointer strayed a couple of points off the track.
+- Text dropped on the editor tab strip reported as accepted and then discarded.
+- An editor tab left faded and the strip's separators hidden after a cancelled drag.
 - Size All Columns to Fit slowing down with the square of the column count.
 - Column-resize cursor over the leading edge of the data grid header, where there is no divider to drag.
 - A data grid shortcut bound to `Cmd+G` silently taking the key from Find Next, with no conflict warning.

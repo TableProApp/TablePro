@@ -4,7 +4,6 @@
 //
 
 import SwiftUI
-import UniformTypeIdentifiers
 
 /// The editor tabs for one connection, drawn to the geometry of `NSTabBar`, the private control
 /// the system's own window tab bar is built from. Native window tabs cannot express this: a window
@@ -32,6 +31,10 @@ import UniformTypeIdentifiers
 /// elements" (WWDC25 session 219). The band is already the system's glass, so these fills are the
 /// top layer on it rather than a second pane of it.
 internal struct EditorTabStrip: View {
+    /// The space a reorder measures the pointer in. Named on the scroll view's content, so it spans
+    /// the whole run of tabs rather than the part of it currently on screen.
+    private static let trackContentSpace = "editor-tab-track-content"
+
     internal let tabManager: QueryTabManager
     /// The dimension this engine's tabs are anchored to, so a label can name the container it
     /// shares a title with. Resolved by the window, because a view has no business asking the
@@ -46,10 +49,20 @@ internal struct EditorTabStrip: View {
     internal var surfaceStyle: EditorTabStripSurfaceStyle?
 
     @State private var hoveredTabId: UUID?
-    /// The tab under the pointer during a reorder. Held here rather than in the item, because the
-    /// separators are a property of the row: they are hidden for the whole strip while a tab is in
-    /// flight, so a line does not appear between two tabs that are mid-swap.
-    @State private var draggingTabId: UUID?
+    /// The reorder in flight, holding both the order the strip draws and the order it came from.
+    /// Held here rather than in the item, because the order is a property of the row: the strip
+    /// draws from it, and the separators are hidden for the whole strip while a tab is in flight so
+    /// a line does not appear between two tabs that are mid-swap.
+    ///
+    /// The manager is not written until the pointer comes up. Writing it live, as this did before,
+    /// saved the tab list to disk on every neighbour crossed, so a drag the user abandoned was
+    /// already committed and could not be taken back.
+    @State private var reorder: EditorTabReorder?
+    /// Latched by a cancel and cleared only when the gesture itself ends. `reorder == nil` cannot
+    /// carry this: it means both "not started" and "cancelled", so the next `onChanged` of a
+    /// gesture the user had already abandoned started a fresh reorder from the manager's order and
+    /// the release committed it. Escape read as working and then reordered the strip anyway.
+    @State private var reorderCancelled = false
     /// The tab the previous click activated, so the second click of a double-click can be told
     /// from a click on a neighbour that happened to land inside the double-click window.
     @State private var lastActivatedTabId: UUID?
@@ -82,9 +95,17 @@ internal struct EditorTabStrip: View {
         /// otherwise light up under a pointer that never moved onto it.
         .onChange(of: tabManager.tabs.map(\.id)) { _, ids in
             if let hoveredTabId, !ids.contains(hoveredTabId) { self.hoveredTabId = nil }
-            if let draggingTabId, !ids.contains(draggingTabId) { self.draggingTabId = nil }
             if let lastActivatedTabId, !ids.contains(lastActivatedTabId) { self.lastActivatedTabId = nil }
+            dropClosedTabsFromReorder(keeping: ids)
         }
+        /// The pointer and the keyboard are independent streams, so `Cmd+W` can close the tab that
+        /// is mid-drag, and `Cmd+T` can add one beside it. Neither may reach the commit: a stale id
+        /// would put back a tab that is gone, and a new one would be left out of the order.
+        ///
+        /// Switching connection unparents this pane while the state survives, which SwiftUI reports
+        /// as `onDisappear`, so the drag is ended there too. Nothing here needs rebuilding on the
+        /// way back: a reorder belongs to the gesture, not to the view's lifetime.
+        .onDisappear(perform: cancelReorder)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Editor Tabs"))
         .accessibilityAddTraits(.isTabBar)
@@ -111,20 +132,22 @@ internal struct EditorTabStrip: View {
     private var track: some View {
         GeometryReader { proxy in
             ScrollViewReader { scroller in
-                let labels = EditorTabLabelResolver.resolve(tabs: tabManager.tabs, target: containerTarget)
+                let tabs = displayedTabs
+                let labels = EditorTabLabelResolver.resolve(tabs: tabs, target: containerTarget)
+                let tabWidth = EditorTabStripLayout.tabWidth(forTrack: proxy.size.width, count: tabs.count)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 0) {
-                        ForEach(Array(tabManager.tabs.enumerated()), id: \.element.id) { index, tab in
-                            item(for: tab, at: index, label: labels[tab.id])
-                                .frame(
-                                    width: EditorTabStripLayout.tabWidth(
-                                        forTrack: proxy.size.width,
-                                        count: tabManager.tabs.count
-                                    )
-                                )
+                        ForEach(Array(tabs.enumerated()), id: \.element.id) { index, tab in
+                            item(for: tab, at: index, in: tabs, label: labels[tab.id], tabWidth: tabWidth)
+                                .frame(width: tabWidth)
                                 .id(tab.id)
                         }
                     }
+                    /// Named on the content rather than on the track, so a pointer position is
+                    /// measured against the whole run of tabs. A space named outside the scroll
+                    /// view is viewport-relative, which would place the drag one tab further along
+                    /// for every tab the track has scrolled past.
+                    .coordinateSpace(name: Self.trackContentSpace)
                 }
                 /// Cmd+1..9, opening a table from the sidebar and closing a tab can all land on
                 /// a tab that is scrolled out of sight, so the selection pulls itself into view.
@@ -147,13 +170,15 @@ internal struct EditorTabStrip: View {
         }
         .frame(height: EditorTabStripLayout.trackHeight)
         .trackSurface()
-        .onDrop(of: [.text], delegate: EditorTabStripDropReset(draggingTabId: $draggingTabId))
+        .background(EditorTabReorderCancelMonitor(isReordering: reorder != nil, onCancel: cancelReorder))
     }
 
     private func item(
         for tab: QueryTab,
         at index: Int,
-        label: EditorTabLabelResolver.Label?
+        in tabs: [QueryTab],
+        label: EditorTabLabelResolver.Label?,
+        tabWidth: CGFloat
     ) -> some View {
         EditorTabStripItem(
             tab: tab,
@@ -163,19 +188,16 @@ internal struct EditorTabStrip: View {
             isWindowActive: isWindowActive,
             showsLeadingSeparator: EditorTabStripLayout.showsSeparator(
                 before: index,
-                tabIds: tabManager.tabs.map(\.id),
+                tabIds: tabs.map(\.id),
                 selectedId: tabManager.selectedTab?.id,
                 hoveredId: hoveredTabId,
-                isReordering: draggingTabId != nil
+                isReordering: reorder != nil
             ),
             position: index + 1,
-            count: tabManager.tabs.count,
+            count: tabs.count,
             onHover: { hovering in
                 if hovering {
                     hoveredTabId = tab.id
-                    /// The one drag ending SwiftUI never reports is a cancel, so this is where a
-                    /// strip left mid-reorder by Escape comes back.
-                    draggingTabId = nil
                 } else if hoveredTabId == tab.id {
                     hoveredTabId = nil
                 }
@@ -191,21 +213,89 @@ internal struct EditorTabStrip: View {
             onMoveLeft: { tabManager.moveTab(id: tab.id, by: -1) },
             onMoveRight: { tabManager.moveTab(id: tab.id, by: 1) }
         )
-        .opacity(draggingTabId == tab.id ? EditorTabStripLayout.draggingOpacity : 1)
-        .onDrag {
-            draggingTabId = tab.id
-            /// The id travels as text so a tab dragged onto anything else is inert rather than
-            /// dropping a filename or a URL into it.
-            return NSItemProvider(object: tab.id.uuidString as NSString)
-        }
-        .onDrop(
-            of: [.text],
-            delegate: EditorTabDropDelegate(
-                targetId: tab.id,
-                draggingTabId: $draggingTabId,
-                tabManager: tabManager
+        .opacity(reorder?.draggedId == tab.id ? EditorTabStripLayout.draggingOpacity : 1)
+        /// Simultaneous rather than plain, so the tab's own button keeps the click that selects it.
+        /// A plain `.gesture` here would sit below that button and never see the press at all, and
+        /// a high-priority one would take the click away from it.
+        .simultaneousGesture(
+            DragGesture(
+                minimumDistance: EditorTabStripLayout.reorderThreshold,
+                coordinateSpace: .named(Self.trackContentSpace)
             )
+            .onChanged { value in updateReorder(of: tab.id, toward: value.location.x, tabWidth: tabWidth) }
+            .onEnded { _ in endReorder() }
         )
+    }
+
+    /// The order the strip draws: the reorder's while one is in flight, the manager's otherwise.
+    private var displayedTabs: [QueryTab] {
+        guard let reorder else { return tabManager.tabs }
+        let byId = Dictionary(tabManager.tabs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return reorder.order.compactMap { byId[$0] }
+    }
+
+    /// Starts the reorder on the first movement past the threshold, then moves the tab as the
+    /// pointer passes each neighbour's centre.
+    private func updateReorder(of tabId: UUID, toward location: CGFloat, tabWidth: CGFloat) {
+        guard !reorderCancelled else { return }
+        var live = reorder ?? EditorTabReorder(draggedId: tabId, order: tabManager.tabs.map(\.id))
+        guard live.draggedId == tabId, let currentIndex = live.destinationIndex else { return }
+        let destination = EditorTabReorderResolver.settledDestination(
+            forLocation: location,
+            tabWidth: tabWidth,
+            currentIndex: currentIndex,
+            count: live.order.count
+        )
+        if let destination {
+            withMotion(.easeInOut(duration: 0.18)) {
+                live.move(to: destination)
+                reorder = live
+            }
+            return
+        }
+        reorder = live
+    }
+
+    /// The gesture is over: commit what it asked for, unless it was cancelled. Releasing is also
+    /// the only thing that lifts the cancel latch, so a gesture abandoned by Escape stays abandoned
+    /// however far the pointer travels afterwards.
+    private func endReorder() {
+        defer { reorderCancelled = false }
+        guard !reorderCancelled else { return }
+        commitReorder()
+    }
+
+    /// Writes the order to the manager once, on release, or not at all when nothing moved. This is
+    /// the only place a drag reaches `QueryTabManager`, which is what keeps a reorder out of the
+    /// persisted tab list until the user has finished asking for it.
+    private func commitReorder() {
+        guard let reorder else { return }
+        defer { self.reorder = nil }
+        guard reorder.movedFromOriginal, let destination = reorder.destinationIndex else { return }
+        tabManager.moveTab(id: reorder.draggedId, to: destination)
+    }
+
+    /// Escape, a closed tab, or the pane going away. The strip goes back to the manager's order,
+    /// which the drag never wrote to, so there is nothing to undo.
+    private func cancelReorder() {
+        guard reorder != nil else { return }
+        reorderCancelled = true
+        withMotion(.easeInOut(duration: 0.18)) {
+            reorder = nil
+        }
+    }
+
+    /// A tab that closed mid-drag leaves both orders, and the drag ends outright when the tab being
+    /// dragged is the one that went. A tab opened mid-drag is not folded in: the order it would
+    /// join is already stale, so the drag is abandoned rather than committed against a list the
+    /// user did not drag over.
+    private func dropClosedTabsFromReorder(keeping ids: [UUID]) {
+        guard var live = reorder else { return }
+        guard live.removingClosedTabs(keeping: ids), Set(live.order) == Set(ids) else {
+            cancelReorder()
+            return
+        }
+        reorder = live
     }
 
     /// Selects the tab, and keeps it when the click that got here was the second of a double-click.
@@ -243,62 +333,6 @@ internal struct EditorTabStrip: View {
             reduceTransparency: reduceTransparency,
             contrast: colorSchemeContrast
         )
-    }
-}
-
-/// Reorders the strip as a tab is dragged over its neighbours, rather than waiting for the drop.
-///
-/// The swap happens in `dropEntered`, so the tabs move under the pointer the way the system's own
-/// window tabs do. `performDrop` has nothing left to do but clear the drag, and returning true
-/// there is what tells AppKit the drag was accepted rather than snapping the tab back.
-private struct EditorTabDropDelegate: DropDelegate {
-    let targetId: UUID
-    @Binding var draggingTabId: UUID?
-    let tabManager: QueryTabManager
-
-    func dropEntered(info: DropInfo) {
-        guard let draggingTabId, draggingTabId != targetId else { return }
-        guard let destination = tabManager.tabs.firstIndex(where: { $0.id == targetId }) else { return }
-        withMotion(.easeInOut(duration: 0.18)) {
-            tabManager.moveTab(id: draggingTabId, to: destination)
-        }
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        draggingTabId = nil
-        return true
-    }
-
-    func validateDrop(info: DropInfo) -> Bool {
-        draggingTabId != nil
-    }
-}
-
-/// Ends the reorder when the drag finishes anywhere that is not a tab.
-///
-/// `onDrag` reports no cancellation, so the drag state has to be cleared from whatever happens
-/// next instead. Releasing over a gap in the track lands here, and leaving the track entirely fires
-/// `dropExited`. The remaining case is a drag cancelled with Escape, which reports nothing at all;
-/// the strip clears that on the next hover, because a pointer that cancelled a drag is still over
-/// the strip and about to move.
-private struct EditorTabStripDropReset: DropDelegate {
-    @Binding var draggingTabId: UUID?
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func dropExited(info: DropInfo) {
-        draggingTabId = nil
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        draggingTabId = nil
-        return true
     }
 }
 
