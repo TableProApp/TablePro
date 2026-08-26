@@ -2,11 +2,10 @@
 //  EditorTabStripSurfacesTests.swift
 //  TableProTests
 //
-//  The tab strip's selected surface cannot be rasterised on macOS 26 and later, because glass is
-//  composited by the window server rather than drawn into a view's context. What can be pinned is
-//  the arithmetic underneath it: that the track and the selection are pulled in opposite
-//  directions, and that the opaque surfaces the strip falls back to are two colours rather than
-//  one. They were one, and a background window on macOS 14 and 15 showed no selected tab at all.
+//  The strip's track and selected tab are opaque fills, so what these pin is the one
+//  property the selection rests on: that it can never resolve at or below the track, in any
+//  appearance. It used to be a pair of Liquid Glass tints, whose step was a function of the
+//  wallpaper behind the window and inverted outright on macOS 27 (#2439).
 //
 
 import AppKit
@@ -18,11 +17,22 @@ import Testing
 @Suite("Editor tab strip surfaces")
 @MainActor
 struct EditorTabStripSurfacesTests {
+    /// The two appearances that can actually be instantiated, and no more.
+    ///
+    /// This list used to carry `.accessibilityHighContrastAqua` and its dark twin as well, which
+    /// covered nothing: those constants carry the raw values "NSAppearanceNameAccessibilityAqua"
+    /// and "NSAppearanceNameAccessibilityDarkAqua", and `NSAppearance(named:)` resolves both back
+    /// to plain Aqua and DarkAqua, which `NSAppearance.currentDrawing().name` confirms from inside
+    /// the block. So the suite ran the same two appearances twice and reported four.
+    ///
+    /// Spelling the real names out does not rescue it either: "NSAppearanceNameAccessibilityHigh-
+    /// ContrastAqua" instantiates in a plain process and returns nil in the test host, so the
+    /// cases fail rather than cover anything. Increase Contrast is a system setting, not an
+    /// appearance to borrow, which is why the app reads it through `colorSchemeContrast` and why
+    /// `solidSurfacesAnswerBothSettings` below is where that contract is pinned.
     nonisolated private static let appearances: [NSAppearance.Name] = [
         .aqua,
         .darkAqua,
-        .accessibilityHighContrastAqua,
-        .accessibilityHighContrastDarkAqua,
     ]
 
     /// `NSColor.relativeLuminance` drops the alpha component, so a translucent fill has to be laid
@@ -101,37 +111,65 @@ struct EditorTabStripSurfacesTests {
         #expect(measured > 1.25)
     }
 
-    // MARK: - The glass tints
+    // MARK: - The selection can never invert
 
-    /// Neither tint means anything on its own. What holds the selection apart from its track is
-    /// that they are pushed in opposite directions from the same backdrop, which is the one thing
-    /// two `.regular` surfaces cannot do.
-    @Test("The track and the selection are tinted away from each other")
-    func tintsPullInOppositeDirections() {
-        let backdrop = NSColor(srgbRed: 0.5, green: 0.5, blue: 0.5, alpha: 1)
-        let subdued = composite(EditorTabStripEmphasis.trackTint, over: backdrop)
-        let lifted = composite(EditorTabStripEmphasis.selectionTint, over: backdrop)
-
-        #expect(subdued.relativeLuminance < backdrop.relativeLuminance)
-        #expect(lifted.relativeLuminance > backdrop.relativeLuminance)
-        #expect(lifted.relativeLuminance > subdued.relativeLuminance)
+    /// The defect behind #2439, expressed as the property that prevents it. In light appearance
+    /// `controlColor` is opaque white, so it is the ceiling and no track can rise above it; in
+    /// dark it is white at alpha 0.247, so it composites *over* whatever the track resolved to and
+    /// always lifts. Either way the selected tab is lighter than its track, by construction rather
+    /// than by a tuned distance. The Liquid Glass tints it replaced had neither guarantee.
+    @Test(
+        "The selected fill can never resolve at or below the track",
+        arguments: EditorTabStripSurfacesTests.appearances
+    )
+    func selectionNeverInverts(appearance: NSAppearance.Name) {
+        let measured = resolve(appearance) { () -> (CGFloat, CGFloat) in
+            let track = self.composite(EditorTabStripPalette.trackFill, over: .windowBackgroundColor)
+            let selected = self.composite(EditorTabStripPalette.selectedFill, over: track)
+            return (track.relativeLuminance, selected.relativeLuminance)
+        }
+        guard let measured else {
+            Issue.record("The strip's fills did not resolve")
+            return
+        }
+        #expect(measured.1 > measured.0)
     }
 
-    /// `Glass.regular` discards hue and reads only lightness, so a tint that carries a colour
-    /// measures the same as no tint at all and the selection goes back to being whatever the
-    /// backdrop makes it.
-    @Test("Both tints are neutral")
-    func tintsCarryNoHue() {
-        for tint in [EditorTabStripEmphasis.trackTint, EditorTabStripEmphasis.selectionTint] {
-            guard let resolved = NSColor(tint).usingColorSpace(.sRGB) else {
-                Issue.record("A tab strip tint did not resolve")
-                return
-            }
-            #expect(resolved.redComponent == resolved.greenComponent)
-            #expect(resolved.greenComponent == resolved.blueComponent)
-            #expect(resolved.alphaComponent > 0)
-            #expect(resolved.alphaComponent < 1)
+    /// A hovered tab has to stay a hint. The system darkens one in light appearance rather than
+    /// lightening it, so hover and selection travel in opposite directions and the only thing
+    /// worth pinning is that hover never travels further.
+    @Test(
+        "A hovered tab never moves further from the track than the selected one",
+        arguments: EditorTabStripSurfacesTests.appearances
+    )
+    func hoverNeverOutreadsTheSelection(appearance: NSAppearance.Name) {
+        let measured = resolve(appearance) { () -> (CGFloat, CGFloat) in
+            let track = self.composite(EditorTabStripPalette.trackFill, over: .windowBackgroundColor)
+            let hovered = self.composite(EditorTabStripPalette.hoverFill, over: track)
+            let selected = self.composite(EditorTabStripPalette.selectedFill, over: track)
+            return (
+                abs(hovered.relativeLuminance - track.relativeLuminance),
+                abs(selected.relativeLuminance - track.relativeLuminance)
+            )
         }
+        guard let measured else {
+            Issue.record("The strip's fills did not resolve")
+            return
+        }
+        #expect(measured.0 < measured.1)
+    }
+
+    /// The tab is inset inside the track by the padding on every side, so the two capsules stay
+    /// concentric at their ends and the selected one never overruns the track's curve. Both are
+    /// fully rounded, which is what the system's own tab bar draws: its runtime view tree reports
+    /// `cornerRadius = 12` on each 24pt tab, exactly half the height.
+    @Test("The tab is inset inside the track on every side")
+    func tabIsInsetInsideTheTrack() {
+        #expect(
+            EditorTabStripLayout.tabHeight
+                == EditorTabStripLayout.trackHeight - EditorTabStripLayout.trackPadding * 2
+        )
+        #expect(EditorTabStripLayout.trackHeight < EditorTabStripLayout.bandHeight)
     }
 
     // MARK: - Leaving glass behind

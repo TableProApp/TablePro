@@ -22,11 +22,15 @@ import UniformTypeIdentifiers
 /// concentric at their ends, the selected one inset two points inside the track, which is why it
 /// never overruns the track's curve.
 ///
-/// Track, selected tab and new-tab button are all glass, which is what the system does too, but
-/// the track and the tab on it are not the same glass. Two `.regular` surfaces stacked carry no
-/// step of their own, because each samples the backdrop under the window rather than the glass it
-/// sits on, so the selection would be whatever the content behind the strip happened to be.
-/// `EditorTabStripEmphasis` holds them apart, and carries the measurements that set the distance.
+/// The track and the selected tab are opaque fills, and only the new-tab button is
+/// glass. A selection cannot be drawn in glass, because glass takes its colour from whatever is
+/// behind the window and a selection has to mean the same thing over every wallpaper. Measured
+/// across twenty arrangements on macOS 27, every glass surface nested in, beside, or unioned with
+/// another one rendered *darker* than its track in light appearance, and the pair that shipped
+/// inverted again whenever the window lost key. That is also what Apple asks for: "avoid applying
+/// the material to both layers. Instead, use fills, transparency, and vibrancy for the top
+/// elements" (WWDC25 session 219). The band is already the system's glass, so these fills are the
+/// top layer on it rather than a second pane of it.
 internal struct EditorTabStrip: View {
     internal let tabManager: QueryTabManager
     /// The dimension this engine's tabs are anchored to, so a label can name the container it
@@ -136,13 +140,13 @@ internal struct EditorTabStrip: View {
                 }
             }
             .frame(height: EditorTabStripLayout.tabHeight)
-            /// Clipped to the same capsule the tabs are drawn as, so a tab scrolled under the
+            /// Clipped to the same shape the tabs are drawn as, so a tab scrolled under the
             /// track's rounded end is cut by that curve instead of squaring it off.
-            .clipShape(Capsule(style: .continuous))
+            .clipShape(EditorTabStripLayout.tabShape)
             .padding(EditorTabStripLayout.trackPadding)
         }
         .frame(height: EditorTabStripLayout.trackHeight)
-        .trackSurface(prefersSolidSurfaces: prefersSolidSurfaces)
+        .trackSurface()
         .onDrop(of: [.text], delegate: EditorTabStripDropReset(draggingTabId: $draggingTabId))
     }
 
@@ -157,7 +161,6 @@ internal struct EditorTabStrip: View {
             isSelected: tabManager.selectedTab?.id == tab.id,
             isHovered: hoveredTabId == tab.id,
             isWindowActive: isWindowActive,
-            prefersSolidSurfaces: prefersSolidSurfaces,
             showsLeadingSeparator: EditorTabStripLayout.showsSeparator(
                 before: index,
                 tabIds: tabManager.tabs.map(\.id),
@@ -233,8 +236,7 @@ internal struct EditorTabStrip: View {
         controlActiveState != .inactive
     }
 
-    /// One reader for the whole strip, so a track and the tab on it can never disagree about
-    /// whether they are glass.
+    /// Read only by the new-tab button now, which is the one surface still allowed to be glass.
     private var prefersSolidSurfaces: Bool {
         if let surfaceStyle { return surfaceStyle == .solid }
         return EditorTabStripEmphasis.prefersSolidSurfaces(
@@ -306,7 +308,6 @@ private struct EditorTabStripItem: View {
     let isSelected: Bool
     let isHovered: Bool
     let isWindowActive: Bool
-    let prefersSolidSurfaces: Bool
     let showsLeadingSeparator: Bool
     let position: Int
     let count: Int
@@ -401,8 +402,7 @@ private struct EditorTabStripItem: View {
         .tabSurface(
             isSelected: isSelected,
             isHovered: isHovered,
-            isWindowActive: isWindowActive,
-            prefersSolidSurfaces: prefersSolidSurfaces
+            isWindowActive: isWindowActive
         )
     }
 
@@ -556,36 +556,22 @@ private struct EditorTabStripNewButton: View {
 }
 
 private extension View {
-    /// The track is a material, not a wash. Sampling the system's own bar against three different
-    /// chrome colours shows it converging on a fixed tone rather than tinting whatever is behind
-    /// it: about 78 percent opaque over rgb(77) in dark, and 85 percent over rgb(228) in light.
-    /// `secondarySystemFill` is a white wash in dark and a black one in light, so it lands within a
-    /// few points of the system in dark and inverts in light, a track darker than the titlebar it
-    /// sits in.
-    ///
-    /// The tint is what makes it a *track* rather than a second pane at the same height as the tab
-    /// on it. `EditorTabStripEmphasis` carries the measurements.
-    ///
-    /// The glass goes on the track's own content rather than behind it as a `.background`, because
-    /// a `GlassEffectContainer` raises the glass it holds above the container's other content: a
-    /// track drawn as a sibling layer paints over the tabs it is supposed to sit under.
-    @ViewBuilder
-    func trackSurface(prefersSolidSurfaces: Bool) -> some View {
-        if #available(macOS 26.0, *), !prefersSolidSurfaces {
-            glassEffect(.regular.tint(EditorTabStripEmphasis.trackTint), in: Capsule(style: .continuous))
-        } else {
-            background(
-                Capsule(style: .continuous)
-                    .fill(EditorTabStripPalette.trackFill)
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .strokeBorder(
-                                EditorTabStripPalette.trackEdge,
-                                lineWidth: EditorTabStripLayout.hairline
-                            )
-                    )
-            )
-        }
+    /// An opaque tone rather than a wash, for the same reason the system's own track is one: a
+    /// wash tints whatever is behind it, and the track has to stay below the selected tab whatever
+    /// that happens to be. The system's own tab bar measures a track of rgb(232) in light against
+    /// this fill's rgb(220), and rgb(71) in dark against this fill's rgb(70).
+    func trackSurface() -> some View {
+        background(
+            EditorTabStripLayout.trackShape
+                .fill(EditorTabStripPalette.trackFill)
+                .overlay(
+                    EditorTabStripLayout.trackShape
+                        .strokeBorder(
+                            EditorTabStripPalette.trackEdge,
+                            lineWidth: EditorTabStripLayout.hairline
+                        )
+                )
+        )
     }
 
     /// The selected tab is the one pane of glass the system raises out of the track. An unselected
@@ -595,45 +581,41 @@ private extension View {
     func tabSurface(
         isSelected: Bool,
         isHovered: Bool,
-        isWindowActive: Bool,
-        prefersSolidSurfaces: Bool
+        isWindowActive: Bool
     ) -> some View {
         if isSelected {
-            selectedTabSurface(prefersSolidSurfaces: prefersSolidSurfaces)
+            selectedTabSurface()
         } else if isHovered, isWindowActive {
-            background(Capsule(style: .continuous).fill(EditorTabStripPalette.hoverFill))
+            background(EditorTabStripLayout.tabShape.fill(EditorTabStripPalette.hoverFill))
         } else {
             self
         }
     }
 
-    /// Glass on macOS 26 and later, and the flat control fill that preceded it before that.
-    /// `controlBackgroundColor` is not the fallback: it matches the window background exactly in
-    /// dark mode, so the raised tab would read as a hole punched in its own track.
+    /// A fill and a rim, which is how the system draws a raised segment. A vertical section
+    /// through a selected segment reads track 236, rim 215, highlight 255, body 242: the fill
+    /// carries six levels and the edge carries twenty-one. Only the fill was drawn here before,
+    /// which is why the selection read as flat even at the distance the system uses.
+    ///
+    /// `controlBackgroundColor` is not the fill: it matches the window background exactly in dark,
+    /// so the raised tab would read as a hole punched in its own track.
     ///
     /// The fill does not step down for a background window. Reaching for the track's own
-    /// `unemphasizedSelectedContentBackgroundColor` there left the two identical, and the shadow
-    /// that was supposed to cover for it was drawn in light alone and clipped away by the track's
-    /// own 24pt capsule anyway, so a background window showed no selected tab at all. The system
-    /// keeps its selected tab drawn in a background window; only the labels step down, which they
-    /// already do in `titleColor`.
-    ///
-    /// The rim is the half of the selection that survives a background window on glass, where
-    /// macOS attenuates the tint.
-    @ViewBuilder
-    func selectedTabSurface(prefersSolidSurfaces: Bool) -> some View {
-        if #available(macOS 26.0, *), !prefersSolidSurfaces {
-            glassEffect(.regular.tint(EditorTabStripEmphasis.selectionTint), in: Capsule(style: .continuous))
+    /// `unemphasizedSelectedContentBackgroundColor` there left the two identical, so a background
+    /// window showed no selected tab at all. The system keeps its selected tab drawn there; only
+    /// the labels step down, which they already do in `titleColor`.
+    func selectedTabSurface() -> some View {
+        background(
+            EditorTabStripLayout.tabShape
+                .fill(EditorTabStripPalette.selectedFill)
                 .overlay(
-                    Capsule(style: .continuous)
+                    EditorTabStripLayout.tabShape
                         .strokeBorder(
-                            EditorTabStripEmphasis.selectionEdge,
-                            lineWidth: EditorTabStripEmphasis.selectionEdgeWidth
+                            EditorTabStripPalette.selectionEdge,
+                            lineWidth: EditorTabStripLayout.hairline
                         )
                 )
-        } else {
-            background(Capsule(style: .continuous).fill(EditorTabStripPalette.selectedFill))
-        }
+        )
     }
 
     /// The one genuine press target in the strip, so this is where interactive glass belongs.
