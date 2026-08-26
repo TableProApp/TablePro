@@ -64,7 +64,12 @@ for archive in "$MAIN_ROOT"/Libs/*.a; do
     [ -e "$archive" ] && ln -sf "$archive" "$DIR/Libs/$(basename "$archive")"
 done
 link "$MAIN_ROOT/Libs/dylibs" "$DIR/Libs/dylibs"
-link "$MAIN_ROOT/Libs/ios" "$DIR/Libs/ios"
+# Libs/ios/checksums.sha256 is tracked, so git already created Libs/ios as a real directory and
+# a symlink named after it would land inside as Libs/ios/ios. Link the xcframeworks themselves.
+mkdir -p "$DIR/Libs/ios"
+for framework in "$MAIN_ROOT"/Libs/ios/*.xcframework; do
+    [ -e "$framework" ] && ln -sfn "$framework" "$DIR/Libs/ios/$(basename "$framework")"
+done
 link "$MAIN_ROOT/Native/DamengBridge/lib" "$DIR/Native/DamengBridge/lib"
 
 missing=""
@@ -72,9 +77,10 @@ missing=""
 [ -e "$DIR/Libs/dylibs" ] || missing="$missing Libs/dylibs"
 [ -e "$DIR/Native/DamengBridge/lib" ] || missing="$missing Native/DamengBridge/lib"
 ls "$DIR"/Libs/*.a > /dev/null 2>&1 || missing="$missing Libs/*.a"
+ls "$DIR"/Libs/ios/*.xcframework > /dev/null 2>&1 || missing="$missing Libs/ios/*.xcframework"
 if [ -n "$missing" ]; then
     echo "warning: not linked, the main checkout does not have them:$missing" >&2
 fi
 
 echo "$DIR"
-echo "note: Libs/dylibs and Libs/ios show as untracked here because the .gitignore entries end in a slash and these are symlinks. Stage explicit paths." >&2
+echo "note: Libs/dylibs shows as untracked here because its .gitignore entry ends in a slash and it is a symlink. Stage explicit paths." >&2

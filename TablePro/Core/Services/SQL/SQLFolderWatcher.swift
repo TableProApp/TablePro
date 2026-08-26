@@ -20,6 +20,14 @@ internal final class SQLFolderWatcher {
     @ObservationIgnored private var debounceTask: Task<Void, Never>?
     @ObservationIgnored private var hasStarted = false
 
+    nonisolated private static let eventCallback: FSEventStreamCallback = { _, info, _, _, _, _ in
+        guard let info else { return }
+        let watcher = Unmanaged<SQLFolderWatcher>.fromOpaque(info).takeUnretainedValue()
+        Task { @MainActor in
+            watcher.scheduleDebouncedRescan()
+        }
+    }
+
     private init() {}
 
     func start() {
@@ -65,13 +73,7 @@ internal final class SQLFolderWatcher {
 
         guard let stream = FSEventStreamCreate(
             kCFAllocatorDefault,
-            { _, info, _, _, _, _ in
-                guard let info else { return }
-                let watcher = Unmanaged<SQLFolderWatcher>.fromOpaque(info).takeUnretainedValue()
-                Task { @MainActor in
-                    watcher.scheduleDebouncedRescan()
-                }
-            },
+            Self.eventCallback,
             &context,
             paths,
             FSEventStreamEventId(kFSEventStreamEventIdSinceNow),

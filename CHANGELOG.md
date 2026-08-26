@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Active editor tab barely distinguishable from the inactive ones, worst in light appearance. (#2428)
 - No selected editor tab at all in a background window on macOS 14 and 15. (#2428)
 - Editor tab strip ignoring Increase Contrast and Reduce Transparency. (#2428)
+- Crash when a file changes in a linked SQL folder. (#2432)
+- Crash when a file changes in a linked connection folder, and on quit with one configured.
+- iOS: crash the first time the system reports memory pressure.
 
 ## [0.68.0] - 2026-08-25
 
