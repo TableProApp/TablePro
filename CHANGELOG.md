@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Data Rewind settings in Settings > Data & Results, with an off switch and Clear Saved Changes.
 - Restore Previous Values in the toolbar's Table Actions group.
 
+### Changed
+
+- Editor tabs drawn as a segmented tab picker rather than in Liquid Glass, on every macOS version. (#2439)
+
 ### Fixed
 
 - Save reporting the number of statements it ran as the number of rows it changed.
@@ -28,13 +32,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A save reported as failed on an engine without transactions after some statements had been written.
 - Keep Open for a preview tab, by double-clicking it in the tab strip or from its contextual menu. (#2436)
 - Kafka driver plugin: topics in the grid, consumer group lag, and KafkaQL for seeking and producing. (#2419)
-
-### Changed
-
-- Editor tabs drawn as a segmented tab picker rather than in Liquid Glass, on every macOS version. (#2439)
-
-### Fixed
-
 - Active editor tab indistinguishable from the inactive ones in light appearance. (#2439)
 - Active editor tab drawn darker than its track on macOS 27, and inverting when the window lost focus.
 - Editor tab selection changing with the desktop picture behind the window.
