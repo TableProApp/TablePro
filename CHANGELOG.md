@@ -53,6 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connections strip not scrolling to the entry you switch to.
 - Grid cells left at the old column positions until the next click, after a resize, an auto-fit, a reorder, hiding a column, or a row-number width change. (#2449, #2446)
 - The row-number column draggable out of first place, which walked it to the far right on the next refresh.
+- A time entered into a date cell discarded when the stored value carried no time.
+- A timestamp with an offset showing one day in the grid and another in its date picker.
+- Opening a date picker and confirming without changing anything rewriting the cell.
 - Cell overlay appearance test failing at random when its window was released before the appearance changed.
 - A reordered column snapping back on the next refresh in the Structure tab and in query results.
 - Double-clicking a cell editing the wrong row, after deleting one of several rows added in the same session.

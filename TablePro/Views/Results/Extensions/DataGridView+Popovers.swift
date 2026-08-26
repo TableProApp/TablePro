@@ -196,7 +196,9 @@ extension TableViewCoordinator {
                 components: components,
                 timeZone: timeZone,
                 onCommit: { picked in
-                    let newValue = parsed.map { DateEditingService.string(from: picked, like: $0) }
+                    guard picked != initialDate else { return }
+                    let newValue = parsed
+                        .map { DateEditingService.string(from: picked, like: $0, offered: components) }
                         ?? DateEditingService.defaultString(from: picked, columnType: columnType)
                     self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
                 },
