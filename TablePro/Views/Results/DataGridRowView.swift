@@ -50,7 +50,14 @@ class DataGridRowView: NSTableRowView {
     }
 
     func redrawCells() {
-        contentView.needsDisplay = true
+        cellsNeedDisplay = true
+    }
+
+    /// Whether the drawn cells are waiting on a repaint. The row's own `needsDisplay` answers for
+    /// the background and the selection fill, which are painted separately from the cells.
+    var cellsNeedDisplay: Bool {
+        get { contentView.needsDisplay }
+        set { contentView.needsDisplay = newValue }
     }
 
     // MARK: - Accessibility

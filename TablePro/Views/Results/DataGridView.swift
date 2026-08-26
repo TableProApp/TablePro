@@ -257,6 +257,7 @@ struct DataGridView: NSViewRepresentable {
                 if !shouldHide {
                     coordinator.resizeRowNumberColumnForCurrentRange()
                 }
+                coordinator.columnGeometryDidChange()
             }
         }
 
@@ -375,7 +376,7 @@ struct DataGridView: NSViewRepresentable {
         columnComments: [String: String],
         savedLayout: ColumnLayoutState?
     ) {
-        coordinator.columnPool.reconcile(
+        let visibilityChanged = coordinator.columnPool.reconcile(
             tableView: tableView,
             schema: coordinator.identitySchema,
             columnTypes: tableRows.columnTypes,
@@ -391,6 +392,8 @@ struct DataGridView: NSViewRepresentable {
                 )
             }
         )
+        guard visibilityChanged else { return }
+        coordinator.columnGeometryDidChange()
     }
 
     private func syncSortState(tableView: NSTableView, coordinator: TableViewCoordinator) {
@@ -421,6 +424,16 @@ struct DataGridView: NSViewRepresentable {
     }
 
     @MainActor
+    /// The column is pinned to one width, so the interval has to be opened before the width can be
+    /// assigned through it.
+    ///
+    /// Raising `minWidth` past the current width does move `width` with it, but `NSTableView` keeps
+    /// its cumulative column geometry at the old value and posts no `columnDidResizeNotification`,
+    /// and the assignment that follows then has nothing left to change, so `rect(ofColumn:)` never
+    /// catches up. Measured on macOS 27: pinning 40 to 60 reported `width == 60` while the
+    /// row-number rect stayed 47pt wide and the next column's origin stayed at 57, and neither
+    /// `tile()` nor a display pass repaired it. Assigning the width while it genuinely moves is what
+    /// makes AppKit adopt the geometry and announce it.
     static func sizeRowNumberColumn(_ column: NSTableColumn, forMaxRowNumber maxNumber: Int) {
         let display = "\(max(maxNumber, 1))"
         let font = ThemeEngine.shared.dataGridFonts.rowNumber
@@ -429,9 +442,14 @@ struct DataGridView: NSViewRepresentable {
             + 2 * DataGridMetrics.cellHorizontalInset
             + DataGridMetrics.rowNumberHeaderPadding
         let columnWidth = max(DataGridMetrics.rowNumberColumnMinWidth, measured)
+        guard column.width != columnWidth
+            || column.minWidth != columnWidth
+            || column.maxWidth != columnWidth else { return }
+        column.minWidth = min(column.minWidth, columnWidth)
+        column.maxWidth = max(column.maxWidth, columnWidth)
+        column.width = columnWidth
         column.minWidth = columnWidth
         column.maxWidth = columnWidth
-        column.width = columnWidth
     }
 
     private func installSelectionOverlay(tableView: KeyHandlingTableView, coordinator: TableViewCoordinator) {

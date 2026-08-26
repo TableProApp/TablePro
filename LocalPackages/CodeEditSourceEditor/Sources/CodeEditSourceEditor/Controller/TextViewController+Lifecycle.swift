@@ -259,10 +259,6 @@ extension TextViewController {
         case (commandKey, "]"):
             handleIndent()
             return nil
-        case (commandKey, "f"):
-            _ = self.textView.resignFirstResponder()
-            self.findViewController?.showFindPanel()
-            return nil
         case ([commandKey, .shift], "D"):
             duplicateLine()
             return nil

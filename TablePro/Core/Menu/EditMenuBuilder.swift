@@ -119,8 +119,8 @@ enum EditMenuBuilder {
             MenuItemFactory.item(
                 String(localized: "Find…"),
                 action: #selector(MainSplitViewController.performFind(_:)),
-                keyEquivalent: "f",
-                modifiers: .command
+                shortcut: .find,
+                keyboard: keyboard
             ),
             MenuItemFactory.item(
                 String(localized: "Find Next"),

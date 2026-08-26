@@ -55,7 +55,7 @@ final class CellOverlayEditor: CellOverlayBase, NSTextViewDelegate {
     }
 
     override func handleDismiss(reason: CellOverlayDismissReason) {
-        dismiss(commit: reason != .columnResize)
+        dismiss(commit: reason != .columnGeometry)
     }
 
     func dismiss(commit: Bool) {

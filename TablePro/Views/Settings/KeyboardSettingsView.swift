@@ -69,7 +69,9 @@ struct KeyboardSettingsView: View {
             }
             Button(String(localized: "Reassign")) {
                 if let state = conflictAlert {
-                    settings.clearShortcut(for: state.conflictingAction)
+                    if settings.isCustomized(state.conflictingAction) {
+                        settings.clearShortcut(for: state.conflictingAction)
+                    }
                     settings.setShortcut(state.combo, for: state.action)
                 }
                 conflictAlert = nil

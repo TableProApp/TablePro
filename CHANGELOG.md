@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Restore Previous Values in the Edit menu, taking back a save that already committed. Starter license. (#2107)
 - Data Rewind settings in Settings > Data & Results, with an off switch and Clear Saved Changes.
 - Restore Previous Values in the toolbar's Table Actions group.
+- Rebindable Find shortcut in Settings > Keyboard, for giving `Cmd+F` to the filter bar instead.
 
 ### Changed
 
@@ -44,6 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Editor tab strip tests reporting four appearances while running plain Aqua and Dark Aqua twice.
 - Icon cut off the entry at the top of a scrolled connections strip. (#2452)
 - Connections strip not scrolling to the entry you switch to.
+- Grid cells left at the old column positions until the next click, after a resize, an auto-fit, a reorder, hiding a column, or a row-number width change. (#2449)
+- The row-number column draggable out of first place, which walked it to the far right on the next refresh.
 
 ## [0.68.1] - 2026-08-26
 

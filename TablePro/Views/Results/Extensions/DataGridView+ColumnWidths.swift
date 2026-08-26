@@ -76,21 +76,12 @@ extension TableViewCoordinator {
         _ changes: DataGridColumnPresentationChanges,
         tableRows: TableRows
     ) {
-        guard widenAutomaticColumns(forPresentationChanges: changes, tableRows: tableRows) else { return }
-        redrawVisibleCells()
-    }
-
-    private func widenAutomaticColumns(
-        forPresentationChanges changes: DataGridColumnPresentationChanges,
-        tableRows: TableRows
-    ) -> Bool {
-        guard let tableView, !changes.isEmpty else { return false }
+        guard let tableView, !changes.isEmpty else { return }
 
         let wasRebuildingColumns = isRebuildingColumns
         isRebuildingColumns = true
         defer { isRebuildingColumns = wasRebuildingColumns }
 
-        var didWiden = false
         for dataIndex in changes.indices {
             guard dataIndex < tableRows.columns.count else { continue }
             let columnName = tableRows.columns[dataIndex]
@@ -107,8 +98,6 @@ extension TableViewCoordinator {
             let width = automaticColumnWidth(for: columnName, columnIndex: dataIndex, tableRows: tableRows)
             guard width > column.width else { continue }
             column.width = width
-            didWiden = true
         }
-        return didWiden
     }
 }

@@ -8,7 +8,7 @@ import AppKit
 enum CellOverlayDismissReason {
     case userAction
     case scroll
-    case columnResize
+    case columnGeometry
     case appResign
     case windowResignKey
     case outsideClick
@@ -19,7 +19,7 @@ class CellOverlayBase: NSObject {
     private var container: CellOverlayContainerView?
     private weak var hostTableView: NSTableView?
     private var scrollObserver: NSObjectProtocol?
-    private var columnResizeObserver: NSObjectProtocol?
+    private var columnGeometryObservers: [any NSObjectProtocol] = []
     private var appResignObserver: NSObjectProtocol?
     private var windowResignKeyObserver: NSObjectProtocol?
     private var outsideClickMonitor: Any?
@@ -157,13 +157,14 @@ class CellOverlayBase: NSObject {
             }
         }
 
-        columnResizeObserver = NotificationCenter.default.addObserver(
-            forName: NSTableView.columnDidResizeNotification,
-            object: hostTableView,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.handleDismiss(reason: .columnResize)
+        columnGeometryObservers = [
+            NSTableView.columnDidResizeNotification,
+            NSTableView.columnDidMoveNotification,
+        ].map { name in
+            NotificationCenter.default.addObserver(forName: name, object: hostTableView, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.handleDismiss(reason: .columnGeometry)
+                }
             }
         }
 
@@ -202,10 +203,8 @@ class CellOverlayBase: NSObject {
             NotificationCenter.default.removeObserver(observer)
             scrollObserver = nil
         }
-        if let observer = columnResizeObserver {
-            NotificationCenter.default.removeObserver(observer)
-            columnResizeObserver = nil
-        }
+        columnGeometryObservers.forEach(NotificationCenter.default.removeObserver)
+        columnGeometryObservers = []
         if let observer = appResignObserver {
             NotificationCenter.default.removeObserver(observer)
             appResignObserver = nil
