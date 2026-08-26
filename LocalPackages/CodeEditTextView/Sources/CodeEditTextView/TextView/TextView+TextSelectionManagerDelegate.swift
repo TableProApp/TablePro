@@ -9,7 +9,7 @@ import Foundation
 
 extension TextView: TextSelectionManagerDelegate {
     public func setNeedsDisplay() {
-        self.setNeedsDisplay(frame)
+        self.setNeedsDisplay(bounds)
     }
 
     public func estimatedLineHeight() -> CGFloat {

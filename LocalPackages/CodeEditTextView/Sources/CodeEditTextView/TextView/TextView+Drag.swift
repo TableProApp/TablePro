@@ -20,9 +20,10 @@ extension TextView: NSDraggingSource {
                 return
             }
 
+            // A click is visible by definition, and the frame is the whole document.
             let clickPoint = view.convert(event.locationInWindow, from: nil)
             let selectionRects = view.selectionManager.textSelections.filter({ !$0.range.isEmpty }).flatMap {
-                view.selectionManager.getFillRects(in: view.frame, for: $0)
+                view.selectionManager.getFillRects(in: view.visibleRect, for: $0)
             }
             if !selectionRects.contains(where: { $0.contains(clickPoint) }) {
                 state = .failed
@@ -37,6 +38,11 @@ extension TextView: NSDraggingSource {
     func setUpDragGesture() {
         let dragGesture = DragSelectionGesture(target: self, action: #selector(dragGestureHandler(_:)))
         dragGesture.minimumPressDuration = NSEvent.doubleClickInterval / 3
+        // `NSPressGestureRecognizer` turns this on for itself, which withheld every primary mouse-down inside a
+        // selection for the press duration: measured at 167ms of a completely dead pointer. The view no longer
+        // needs the delay, because a press inside a selection defers its caret to mouse up rather than collapsing
+        // the selection immediately, so there is nothing for the gesture to protect the selection from.
+        dragGesture.delaysPrimaryMouseButtonEvents = false
         dragGesture.isEnabled = isSelectable
         addGestureRecognizer(dragGesture)
     }
@@ -118,6 +124,7 @@ extension TextView: NSDraggingSource {
             self.draggingCursorView = nil
         }
         isDragging = true
+        pendingCaretOffset = nil
         setUpMouseAutoscrollTimer()
     }
 

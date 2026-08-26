@@ -20,6 +20,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Selection highlight missing from part of a long selection after scrolling back up to it.
+- Editor not scrolling to follow a selection extended past the edge of the viewport.
+- Find highlight and the run band covering only the first line of a match that spans several lines.
+- Nothing selected when double-clicking `=`, `<`, `>` or any other SQL operator.
+- Shift+Arrow extending the wrong end of a selection made by dragging.
+- Selection starting a few characters away from the press point on a quick drag.
+- A pause before the pointer responds when pressing inside selected text.
+- Shift+double-click and Shift+triple-click doing nothing.
+- Drag-select scrolling faster on a mouse than on a trackpad, and stalling mid-drag.
+- Statement selection with `Option+Shift+Down` leaving the highlight behind.
+- No arrow-key movement or Shift+Arrow selection in the JSON, DDL and SQL preview editors.
+- Explain with AI acting on the previous selection after a right-click somewhere else.
+- Selection painted in the accent colour in a window that is not the active one.
+- Selection bounds reported to VoiceOver covering only the first line, and no announcement when the selection moved.
 - An abandoned editor tab drag reordering the strip anyway, and keeping that order across relaunch.
 - An editor tab reorder stopping partway when the pointer strayed a couple of points off the track.
 - Text dropped on the editor tab strip reported as accepted and then discarded.

@@ -247,10 +247,10 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         vimCursorManager?.updatePosition()
         statementRunController.refreshHighlight(in: controller)
 
-        // When the find panel navigates to a match, it changes the selection
-        // but the editor is not first responder. Scroll to the match manually
-        // because CodeEditTextView's scrollSelectionToVisible() fails for
-        // off-screen matches (TextSelection.boundingRect is .zero until drawn).
+        // A find match is centred rather than nudged just far enough into view, so the next and previous matches
+        // land in the same place instead of hugging whichever edge they came from. The editor's own
+        // `scrollSelectionToVisible` deliberately scrolls the minimum distance, which is right when the user is
+        // extending a selection and wrong when they are stepping through matches.
         guard !isEditorFirstResponder else { return }
         guard let range = newPositions.first?.range, range.location != NSNotFound else { return }
 

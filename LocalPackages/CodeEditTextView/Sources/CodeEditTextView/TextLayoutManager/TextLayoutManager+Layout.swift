@@ -85,6 +85,10 @@ extension TextLayoutManager {
         var yContentAdjustment: CGFloat = 0
         var maxFoundLineWidth = maxLineWidth
 
+        // The layout view draws its own decorations into a backing store nothing else invalidates when the
+        // viewport moves, so a band drawn before its lines were laid out would stay blank forever.
+        var relaidOutRect: CGRect = .null
+
 #if DEBUG
         var laidOutLines: Set<TextLine.ID> = []
 #endif
@@ -107,6 +111,14 @@ extension TextLayoutManager {
                     maxFoundLineWidth: &maxFoundLineWidth
                 )
                 yContentAdjustment += yAdjustment
+                relaidOutRect = relaidOutRect.union(
+                    CGRect(
+                        x: 0,
+                        y: linePosition.yPos,
+                        width: layoutView?.frame.width ?? 0,
+                        height: max(linePosition.height, linePosition.data.lineFragments.height)
+                    )
+                )
 #if DEBUG
                 laidOutLines.insert(linePosition.data.id)
 #endif
@@ -161,6 +173,19 @@ extension TextLayoutManager {
 
         if originalHeight != lineStorage.height || layoutView?.frame.size.height != lineStorage.height {
             delegate?.layoutManagerHeightDidUpdate(newHeight: lineStorage.height)
+        }
+
+        if !relaidOutRect.isNull {
+            let movedEverythingBelow = didLayoutChange || yContentAdjustment != 0
+            let invalidRect = movedEverythingBelow
+                ? CGRect(
+                    x: relaidOutRect.minX,
+                    y: relaidOutRect.minY,
+                    width: relaidOutRect.width,
+                    height: max(maxY - relaidOutRect.minY, relaidOutRect.height)
+                )
+                : relaidOutRect
+            layoutView?.setNeedsDisplay(invalidRect)
         }
 
 #if DEBUG

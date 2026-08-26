@@ -49,16 +49,7 @@ extension TextView {
     }
 
     public var visibleTextRange: NSRange? {
-        let minY = max(visibleRect.minY, 0)
-        let maxY = min(visibleRect.maxY, layoutManager.estimatedHeight())
-        guard let minYLine = layoutManager.textLineForPosition(minY),
-              let maxYLine = layoutManager.textLineForPosition(maxY) else {
-            return nil
-        }
-        return NSRange(
-            location: minYLine.range.location,
-            length: (maxYLine.range.location - minYLine.range.location) + maxYLine.range.length
-        )
+        layoutManager.textRange(covering: visibleRect)
     }
 
     public func updatedViewport(_ newRect: CGRect) {

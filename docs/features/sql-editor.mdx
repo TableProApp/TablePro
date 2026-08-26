@@ -68,6 +68,26 @@ Turn either marker off in **Settings > Editor** with **Highlight current stateme
 
 A statement hidden inside a [collapsed fold](/features/code-folding) unfolds when the cursor lands on it. All three commands are in the Query menu and rebindable in **Settings > Keyboard**.
 
+## Selecting text
+
+Double-click takes a word, triple-click takes a line, and holding the button after either keeps
+extending at that size: a double-click drag moves whole words, a triple-click drag moves whole
+lines. Drag back past where the gesture started and that first word or line stays whole.
+
+`Shift`-click moves the far end of the selection and leaves the end you started from where it is, so
+a `Shift`-click on the other side of the anchor turns the selection around instead of trimming it.
+`Shift`-double-click and `Shift`-triple-click do the same to whole words and whole lines.
+
+Operators select as one unit. Double-click the `=` in `WHERE id = 1` and the operator comes back;
+`<=` and `||` come back whole.
+
+Drag past the top or bottom edge and the editor scrolls to follow at a steady speed. Extending with
+`Shift`+arrow follows the end that is moving, so the moving edge stays on screen no matter how far
+the selection already runs.
+
+The JSON viewer, a table's DDL and an import preview are read-only, and take the same arrow-key
+movement and `Shift`+arrow selection as the editor here.
+
 ## Inline diagnostics
 
 A structural mistake is underlined in red 500ms after you stop typing, and the underline clears as soon as you fix it. Only two things are reported, both of them problems more typing cannot fix:

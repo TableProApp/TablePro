@@ -80,7 +80,8 @@ public class TextSelectionManager: NSObject {
         selection.suggestedXPos = layoutManager?.rectForOffset(range.location)?.minX
         textSelections = [selection]
         updateSelectionViews()
-        NotificationCenter.default.post(Notification(name: Self.selectionChangedNotification, object: self))
+        delegate?.setNeedsDisplay()
+        notifySelectionChanged()
     }
 
     /// Set the selected ranges to new ranges. Overrides any existing selections.
@@ -105,7 +106,7 @@ public class TextSelectionManager: NSObject {
         delegate?.setNeedsDisplay()
 
         if oldRanges != textSelections.map(\.range) {
-            NotificationCenter.default.post(Notification(name: Self.selectionChangedNotification, object: self))
+            notifySelectionChanged()
         }
     }
 
@@ -132,8 +133,18 @@ public class TextSelectionManager: NSObject {
         }
 
         updateSelectionViews()
-        NotificationCenter.default.post(Notification(name: Self.selectionChangedNotification, object: self))
+        notifySelectionChanged()
         delegate?.setNeedsDisplay()
+    }
+
+    /// The single place a selection change is announced, to observers and to assistive clients alike.
+    func notifySelectionChanged() {
+        NotificationCenter.default.post(Notification(name: Self.selectionChangedNotification, object: self))
+        // Only the manager the text view answers to speaks for it. The minimap builds a second manager over the
+        // same text view and mirrors every selection into it, which would announce each move twice.
+        if let textView, textView.selectionManager === self {
+            NSAccessibility.post(element: textView, notification: .selectedTextChanged)
+        }
     }
 
     // MARK: - Selection Views

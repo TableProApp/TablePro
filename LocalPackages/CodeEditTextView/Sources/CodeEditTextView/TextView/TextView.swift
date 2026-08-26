@@ -264,6 +264,20 @@ open class TextView: NSView, NSTextContent {
     var mouseDragTimer: Timer?
     var cursorSelectionMode: CursorSelectionMode = .character
 
+    /// The range a drag selection grows from, in document offsets, at the granularity the gesture started with.
+    ///
+    /// Captured on mouse *down* rather than on the first drag event: the pointer has already travelled by the time
+    /// the first drag arrives, so anchoring there starts the selection several characters from where the user
+    /// pressed. Holding a whole word or line here is also what keeps the anchor word intact when the pointer moves
+    /// back past it, matching `NSTextView`.
+    var selectionDragAnchor: NSRange?
+
+    /// A click inside an existing selection whose caret placement is waiting for mouse up.
+    ///
+    /// `NSTextView` does not collapse a selection the moment you press inside it, because that press may be the
+    /// start of a drag of the selected text. The caret lands on mouse up instead, and only if no drag happened.
+    var pendingCaretOffset: Int?
+
     /// When we receive a drag operation we add a temporary cursor view not managed by the selection manager.
     /// This is the reference to that view, it is cleaned up when a drag ends.
     var draggingCursorView: NSView?

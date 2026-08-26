@@ -15,6 +15,10 @@ extension TextSelectionManager {
         // multi-cursor IME path replaces each marked range char-for-char).
         let delta = replacementLength - range.length
         for textSelection in self.textSelections {
+            // A pivot that survives the edit points at an offset that no longer means what it did, and the
+            // modifying motions subtract against it until the range length goes negative.
+            textSelection.pivot = nil
+            textSelection.suggestedXPos = nil
             if textSelection.range.location > range.max {
                 textSelection.range.location = max(0, textSelection.range.location + delta)
                 textSelection.range.length = 0
@@ -45,6 +49,6 @@ extension TextSelectionManager {
 
     public func notifyAfterEdit(force: Bool = false) {
         updateSelectionViews(force: force)
-        NotificationCenter.default.post(Notification(name: Self.selectionChangedNotification, object: self))
+        notifySelectionChanged()
     }
 }

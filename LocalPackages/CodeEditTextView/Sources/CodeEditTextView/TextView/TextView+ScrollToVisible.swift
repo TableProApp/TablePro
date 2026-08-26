@@ -12,28 +12,30 @@ extension TextView {
     fileprivate typealias Direction = TextSelectionManager.Direction
     fileprivate typealias TextSelection = TextSelectionManager.TextSelection
 
-    /// Scrolls the upmost selection to the visible rect if `scrollView` is not `nil`.
+    /// Scrolls the moving end of the upmost selection into view, if `scrollView` is not `nil`.
+    ///
+    /// Follows the end that moved, never the selection's whole bounding rect. `scrollToVisible` only scrolls far
+    /// enough to bring a rect into view, so once a selection grows past the height of the viewport its bounding
+    /// rect already spans the visible area and the scroll becomes a no-op: extending further stops following.
+    /// `NSTextView` scrolls to the moving end for the same reason.
     public func scrollSelectionToVisible() {
-        guard let scrollView else {
+        guard let scrollView, let selection = getSelection() else {
             return
         }
 
-        // There's a bit of a chicken-and-the-egg issue going on here. We need to know the rect to scroll to, but we
-        // can't know the exact rect to make visible without laying out the text. Then, once text is laid out the
-        // selection rect may be different again. To solve this, we loop until the frame doesn't change after a layout
-        // pass and scroll to that rect.
-
+        // Laying out changes line heights, which moves the offset we are scrolling to, so converge instead of
+        // scrolling to the first estimate. `rectForOffset` answers a not-yet-laid-out line from the line storage's
+        // estimated heights, which can be off by whole screens in a wrapped document.
+        let offset = offsetNotPivot(selection)
         var lastFrame: CGRect = .zero
-        while let boundingRect = getSelection()?.boundingRect, lastFrame != boundingRect {
-            lastFrame = boundingRect
+        let deadline = Date().addingTimeInterval(0.5)
+
+        while let rect = layoutManager.rectForOffset(offset), lastFrame != rect, Date() < deadline {
+            lastFrame = rect
             layoutManager.layoutLines()
             selectionManager.updateSelectionViews()
-            selectionManager.drawSelections(in: visibleRect)
-
-            if lastFrame != .zero {
-                scrollView.contentView.scrollToVisible(lastFrame)
-                scrollView.reflectScrolledClipView(scrollView.contentView)
-            }
+            scrollView.contentView.scrollToVisible(rect)
+            scrollView.reflectScrolledClipView(scrollView.contentView)
         }
     }
 
@@ -82,7 +84,6 @@ extension TextView {
             lastFrame = newRect
             layoutManager.layoutLines()
             selectionManager.updateSelectionViews()
-            selectionManager.drawSelections(in: visibleRect)
         }
 
         // Scroll to make the range appear at the desired position

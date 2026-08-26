@@ -11,8 +11,8 @@ import TextStory
 extension TextView {
     override public func selectAll(_ sender: Any?) {
         selectionManager.setSelectedRange(documentRange)
+        selectionManager.textSelections.first?.pivot = documentRange.location
         unmarkTextIfNeeded()
-        needsDisplay = true
     }
 
     override public func selectLine(_ sender: Any?) {
@@ -24,7 +24,6 @@ extension TextView {
         }
         selectionManager.setSelectedRanges(newSelections)
         unmarkTextIfNeeded()
-        needsDisplay = true
     }
 
     override public func selectWord(_ sender: Any?) {
@@ -33,7 +32,6 @@ extension TextView {
         }
         selectionManager.setSelectedRanges(newSelections)
         unmarkTextIfNeeded()
-        needsDisplay = true
     }
 
     /// Given a position, find the range of the word that exists at that position.
@@ -56,6 +54,11 @@ extension TextView {
             characterSet = .newlines
         } else if CharacterSet.punctuationCharacters.isSuperset(of: charSet) {
             characterSet = .punctuationCharacters
+        } else if CharacterSet.symbols.isSuperset(of: charSet) {
+            // Operators are Unicode symbols, not punctuation: `= < > + | ~ ^ $` are all in Sm or Sk. Without this
+            // branch every one of them fell through to the zero-length return, so double-clicking an operator in a
+            // SQL statement selected nothing.
+            characterSet = .symbols
         } else {
             return NSRange(location: position, length: 0)
         }

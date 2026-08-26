@@ -17,8 +17,11 @@ extension TextSelectionManager {
     ///   - textSelection: The selection to use.
     /// - Returns: An array of rects that the selection overlaps.
     func getFillRects(in rect: NSRect, for textSelection: TextSelection) -> [CGRect] {
+        // Bound the work by the rect we were asked to fill, never by the viewport: under responsive scrolling
+        // `draw(_:)` is called with rects outside the visible area and the result is cached.
         guard let layoutManager,
-              let range = textSelection.range.intersection(delegate?.visibleTextRange ?? .zero) else {
+              let drawnRange = layoutManager.textRange(covering: rect),
+              let range = textSelection.range.intersection(drawnRange) else {
             return []
         }
 
@@ -43,8 +46,11 @@ extension TextSelectionManager {
             )
         }
 
-        // Pixel align these to avoid aliasing on the edges of each rect that should be a solid box.
-        return fillRects.map { $0.intersection(validTextDrawingRect).pixelAligned }
+        // Pixel align these to avoid aliasing on the edges of each rect that should be a solid box. A fragment
+        // that misses the drawing rect intersects to `CGRect.null`, whose origin is infinite.
+        return fillRects
+            .map { $0.intersection(validTextDrawingRect).pixelAligned }
+            .filter { !$0.isNull && !$0.isEmpty }
     }
 
     /// Find fill rects for a specific line position.

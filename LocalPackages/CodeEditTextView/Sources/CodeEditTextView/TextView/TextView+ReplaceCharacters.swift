@@ -53,9 +53,11 @@ extension TextView {
         }
         NotificationCenter.default.post(name: Self.textDidChangeNotification, object: self)
 
-        // `scrollSelectionToVisible` is a little expensive to call every time. Instead we just check if the first
-        // selection is entirely visible. `.contains` checks that all points in the rect are inside. 
-        if let selection = selectionManager.textSelections.first, !visibleRect.contains(selection.boundingRect) {
+        // `scrollSelectionToVisible` is a little expensive to call every time. Instead we just check if the caret
+        // the edit left behind is visible. `.contains` checks that all points in the rect are inside.
+        if let selection = selectionManager.textSelections.first,
+           let caretRect = layoutManager.rectForOffset(selection.range.max),
+           !visibleRect.contains(caretRect) {
             scrollSelectionToVisible()
         }
     }

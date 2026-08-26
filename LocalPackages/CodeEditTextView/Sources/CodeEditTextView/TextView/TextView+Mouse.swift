@@ -23,6 +23,8 @@ extension TextView {
             return
         }
 
+        mouseDragAnchor = self.convert(event.locationInWindow, from: nil)
+
         switch event.clickCount {
         case 1:
             handleSingleClick(event: event, offset: offset)
@@ -33,8 +35,18 @@ extension TextView {
         default:
             break
         }
+    }
 
-        setUpMouseAutoscrollTimer()
+    /// The range a gesture at this offset anchors on, for the current selection granularity.
+    func selectionRange(at offset: Int, for mode: CursorSelectionMode) -> NSRange {
+        switch mode {
+        case .character:
+            return NSRange(location: offset, length: 0)
+        case .word:
+            return findWordBoundary(at: offset)
+        case .line:
+            return findLineBoundary(at: offset)
+        }
     }
 
     /// Single click, if control-shift we add a cursor
@@ -42,6 +54,7 @@ extension TextView {
     /// else we set the cursor
     fileprivate func handleSingleClick(event: NSEvent, offset: Int) {
         cursorSelectionMode = .character
+        pendingCaretOffset = nil
 
         let eventFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if eventFlags == [.control, .shift] {
@@ -51,13 +64,20 @@ extension TextView {
             }
             unmarkText()
             selectionManager.addSelectedRange(NSRange(location: offset, length: 0))
+            selectionDragAnchor = NSRange(location: offset, length: 0)
         } else if eventFlags.contains(.shift) {
             if isEditable {
                 unmarkText()
             }
             shiftClickExtendSelection(to: offset)
+        } else if selectionManager.textSelections.contains(where: { $0.range.contains(offset) }) {
+            // Pressing inside the selection may be the start of a drag of that text, so leave the selection alone
+            // and place the caret on mouse up if no drag follows.
+            pendingCaretOffset = offset
         } else {
             selectionManager.setSelectedRange(NSRange(location: offset, length: 0))
+            selectionDragAnchor = NSRange(location: offset, length: 0)
+            selectionManager.textSelections.first?.pivot = offset
             if isEditable {
                 unmarkTextIfNeeded()
             }
@@ -72,29 +92,35 @@ extension TextView {
     /// falls inside an existing selection, and a document swap can leave the view with no selection
     /// at all.
     fileprivate func handleDoubleClick(event: NSEvent, offset: Int) {
-        guard !event.modifierFlags.contains(.shift) else {
-            super.mouseDown(with: event)
+        if event.modifierFlags.contains(.shift) {
+            extendSelection(to: offset, granularity: .word)
             return
         }
         if isEditable {
             unmarkText()
         }
-        selectionManager.setSelectedRange(findWordBoundary(at: offset))
         cursorSelectionMode = .word
-        needsDisplay = true
+        pendingCaretOffset = nil
+        let wordRange = findWordBoundary(at: offset)
+        selectionManager.setSelectedRange(wordRange)
+        selectionDragAnchor = wordRange
+        selectionManager.textSelections.first?.pivot = wordRange.location
     }
 
     fileprivate func handleTripleClick(event: NSEvent, offset: Int) {
-        guard !event.modifierFlags.contains(.shift) else {
-            super.mouseDown(with: event)
+        if event.modifierFlags.contains(.shift) {
+            extendSelection(to: offset, granularity: .line)
             return
         }
         if isEditable {
             unmarkText()
         }
-        selectionManager.setSelectedRange(findLineBoundary(at: offset))
         cursorSelectionMode = .line
-        needsDisplay = true
+        pendingCaretOffset = nil
+        let lineRange = findLineBoundary(at: offset)
+        selectionManager.setSelectedRange(lineRange)
+        selectionDragAnchor = lineRange
+        selectionManager.textSelections.first?.pivot = lineRange.location
     }
 
     fileprivate func handleAttachmentClick(event: NSEvent, offset: Int, attachment: AnyTextAttachment) {
@@ -126,7 +152,16 @@ extension TextView {
     }
 
     override public func mouseUp(with event: NSEvent) {
+        if let pendingCaretOffset {
+            selectionManager.setSelectedRange(NSRange(location: pendingCaretOffset, length: 0))
+            selectionManager.textSelections.first?.pivot = pendingCaretOffset
+            if isEditable {
+                unmarkTextIfNeeded()
+            }
+        }
+        pendingCaretOffset = nil
         mouseDragAnchor = nil
+        selectionDragAnchor = nil
         disableMouseAutoscrollTimer()
         super.mouseUp(with: event)
     }
@@ -136,33 +171,34 @@ extension TextView {
             return
         }
 
+        if let pendingCaretOffset {
+            selectionDragAnchor = NSRange(location: pendingCaretOffset, length: 0)
+            selectionManager.setSelectedRange(NSRange(location: pendingCaretOffset, length: 0))
+            selectionManager.textSelections.first?.pivot = pendingCaretOffset
+            self.pendingCaretOffset = nil
+        }
+
         // We receive global events because our view received the drag event, but we need to clamp the potentially
         // out-of-bounds positions to a position our layout manager can deal with.
-        let locationInWindow = convert(event.locationInWindow, from: nil)
-        let locationInView = CGPoint(
-            x: max(0.0, min(locationInWindow.x, frame.width)),
-            y: max(0.0, min(locationInWindow.y, frame.height))
+        let locationInView = convert(event.locationInWindow, from: nil)
+        let clampedLocation = CGPoint(
+            x: max(0.0, min(locationInView.x, frame.width)),
+            y: max(0.0, min(locationInView.y, frame.height))
         )
 
-        if mouseDragAnchor == nil {
-            mouseDragAnchor = locationInView
-            super.mouseDragged(with: event)
+        guard let mouseDragAnchor,
+              let anchorRange = selectionDragAnchor,
+              let endPosition = layoutManager.textOffsetAtPoint(clampedLocation) else {
+            return
+        }
+
+        setUpMouseAutoscrollTimer()
+
+        let modifierFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if modifierFlags.contains(.option) {
+            dragColumnSelection(mouseDragAnchor: mouseDragAnchor, locationInView: clampedLocation)
         } else {
-            guard let mouseDragAnchor,
-                  let startPosition = layoutManager.textOffsetAtPoint(mouseDragAnchor),
-                  let endPosition = layoutManager.textOffsetAtPoint(locationInView) else {
-                return
-            }
-
-            let modifierFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            if modifierFlags.contains(.option) {
-                dragColumnSelection(mouseDragAnchor: mouseDragAnchor, locationInView: locationInView)
-            } else {
-                dragSelection(startPosition: startPosition, endPosition: endPosition, mouseDragAnchor: mouseDragAnchor)
-            }
-
-            setNeedsDisplay()
-            self.autoscroll(with: event)
+            dragSelection(from: anchorRange, to: endPosition)
         }
     }
 
@@ -175,22 +211,33 @@ extension TextView {
     /// - Parameter offset: The offset clicked on.
     fileprivate func shiftClickExtendSelection(to offset: Int) {
         // Use the last added selection, this is behavior copied from Xcode.
-        guard var selectedRange = selectionManager.textSelections.last?.range else { return }
-        if selectedRange.contains(offset) {
-            if offset - selectedRange.location <= selectedRange.max - offset {
-                selectedRange.length -= offset - selectedRange.location
-                selectedRange.location = offset
-            } else {
-                selectedRange.length -= selectedRange.max - offset
-            }
-        } else {
-            selectedRange.formUnion(NSRange(
-                start: min(offset, selectedRange.location),
-                end: max(offset, selectedRange.max)
-            ))
+        guard let selection = selectionManager.textSelections.last else { return }
+        // Move the free end and keep the anchor fixed, which is what `NSTextView` does and what makes a shift-click
+        // that crosses the anchor reverse the selection instead of trimming the near edge. Fall back to the far end
+        // for a selection whose anchor was never recorded.
+        let anchor = selection.pivot ?? (offset > selection.range.location ? selection.range.location
+                                                                           : selection.range.max)
+        let extended = NSRange(start: min(anchor, offset), end: max(anchor, offset))
+        selectionManager.setSelectedRange(extended)
+        selectionManager.textSelections.first?.pivot = anchor
+        selectionDragAnchor = NSRange(location: anchor, length: 0)
+    }
+
+    /// Extends the current selection to the offset, rounding both ends out to the given granularity.
+    ///
+    /// This is Shift+double-click and Shift+triple-click, which `NSTextView` answers by extending to whole words
+    /// and whole paragraphs. Both used to fall through to `super.mouseDown`, so neither did anything.
+    fileprivate func extendSelection(to offset: Int, granularity: CursorSelectionMode) {
+        guard let selection = selectionManager.textSelections.last else { return }
+        if isEditable {
+            unmarkText()
         }
-        selectionManager.setSelectedRange(selectedRange)
-        setNeedsDisplay()
+        cursorSelectionMode = granularity
+        let anchorOffset = selection.pivot ?? (offset > selection.range.location ? selection.range.location
+                                                                                : selection.range.max)
+        let anchorRange = selectionRange(at: anchorOffset, for: granularity)
+        selectionDragAnchor = anchorRange
+        dragSelection(from: anchorRange, to: offset)
     }
 
     // MARK: - Mouse Autoscroll
@@ -198,14 +245,20 @@ extension TextView {
     /// Sets up a timer that fires at a predetermined period to autoscroll the text view.
     /// Ensure the timer is disabled using ``disableMouseAutoscrollTimer``.
     func setUpMouseAutoscrollTimer() {
-        mouseDragTimer?.invalidate()
+        guard mouseDragTimer == nil else { return }
+        // The timer is the single autoscroll driver. `mouseDragged` deliberately does not scroll: the pointer
+        // delivers drag events at whatever rate the input device runs at, so scrolling from there made the speed
+        // track the device rather than the clock, and the timer used to scroll a second time for the same event.
+        //
+        // Scheduled in `.common` so it keeps firing inside the event tracking loop a drag runs in.
         // https://cocoadev.github.io/AutoScrolling/ (fired at ~45Hz)
-        mouseDragTimer = Timer.scheduledTimer(withTimeInterval: 0.022, repeats: true) { [weak self] _ in
-            if let event = self?.window?.currentEvent, event.type == .leftMouseDragged {
-                self?.mouseDragged(with: event)
-                self?.autoscroll(with: event)
-            }
+        let timer = Timer(timeInterval: 0.022, repeats: true) { [weak self] _ in
+            guard let self, let event = self.window?.currentEvent, event.type == .leftMouseDragged else { return }
+            self.mouseDragged(with: event)
+            self.autoscroll(with: event)
         }
+        RunLoop.current.add(timer, forMode: .common)
+        mouseDragTimer = timer
     }
 
     /// Disables the mouse drag timer started by ``setUpMouseAutoscrollTimer``
@@ -216,42 +269,24 @@ extension TextView {
 
     // MARK: - Drag Selection
 
-    private func dragSelection(startPosition: Int, endPosition: Int, mouseDragAnchor: CGPoint) {
-        switch cursorSelectionMode {
-        case .character:
-            selectionManager.setSelectedRange(
-                NSRange(
-                    location: min(startPosition, endPosition),
-                    length: max(startPosition, endPosition) - min(startPosition, endPosition)
-                )
-            )
-
-        case .word:
-            let startWordRange = findWordBoundary(at: startPosition)
-            let endWordRange = findWordBoundary(at: endPosition)
-
-            selectionManager.setSelectedRange(
-                NSRange(
-                    location: min(startWordRange.location, endWordRange.location),
-                    length: max(startWordRange.location + startWordRange.length,
-                                endWordRange.location + endWordRange.length) -
-                    min(startWordRange.location, endWordRange.location)
-                )
-            )
-
-        case .line:
-            let startLineRange = findLineBoundary(at: startPosition)
-            let endLineRange = findLineBoundary(at: endPosition)
-
-            selectionManager.setSelectedRange(
-                NSRange(
-                    location: min(startLineRange.location, endLineRange.location),
-                    length: max(startLineRange.location + startLineRange.length,
-                                endLineRange.location + endLineRange.length) -
-                    min(startLineRange.location, endLineRange.location)
-                )
-            )
-        }
+    /// Extends a drag selection from its anchor range to the offset under the pointer.
+    ///
+    /// The anchor range and the range under the pointer are unioned, which rounds both ends of the selection
+    /// outward to the current granularity. That single rule is what `NSTextView` does, and it is why dragging back
+    /// past the anchor keeps the anchor's whole word or line selected instead of splitting it.
+    ///
+    /// The anchor also becomes the selection's pivot, so a following Shift+Arrow moves the free end rather than
+    /// guessing which end is live from the arrow's direction.
+    private func dragSelection(from anchorRange: NSRange, to endPosition: Int) {
+        let headRange = selectionRange(at: endPosition, for: cursorSelectionMode)
+        let selectedRange = NSRange(
+            start: min(anchorRange.location, headRange.location),
+            end: max(anchorRange.max, headRange.max)
+        )
+        selectionManager.setSelectedRange(selectedRange)
+        selectionManager.textSelections.first?.pivot = endPosition >= anchorRange.max
+            ? anchorRange.location
+            : anchorRange.max
     }
 
     private func dragColumnSelection(mouseDragAnchor: CGPoint, locationInView: CGPoint) {
