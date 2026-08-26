@@ -28,7 +28,6 @@ enum enum_pvio_tls_type {
 ((m)->options.extension->tls_fp_list && (m)->options.extension->tls_fp_list[0]))
 
 extern char tls_library_version[TLS_VERSION_LENGTH];
-extern my_bool ma_is_ip_address(const char *s);
 
 typedef struct st_ma_pvio_tls {
   void *data;

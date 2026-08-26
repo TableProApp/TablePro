@@ -226,7 +226,7 @@ extern const char *SQLSTATE_UNKNOWN;
     MYSQL_OPT_TLS_VERSION,
     MYSQL_OPT_ZSTD_COMPRESSION_LEVEL,
 
-    /* MariaDB-specific */
+    /* MariaDB specific */
     MYSQL_PROGRESS_CALLBACK=5999,
     MYSQL_OPT_NONBLOCK,
     /* MariaDB Connector/C specific */
