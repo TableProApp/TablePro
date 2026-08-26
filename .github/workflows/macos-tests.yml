@@ -306,6 +306,10 @@ jobs:
           # mapfile nor readarray, and a `run:` block gets that bash.
           SKIP_ARGS=()
           while IFS= read -r arg; do
+            # A blank line would become a literal empty argument, and xcodebuild reads that as a
+            # build action and refuses the whole run. An empty array expands to nothing and is
+            # fine; one empty string is not.
+            [ -n "$arg" ] || continue
             SKIP_ARGS+=("$arg")
           done < <(scripts/ci/quarantine-args.sh .github/macos-test-quarantine.txt TableProTests "$XCTESTRUN" "$TEST_DESTINATION")
           xcodebuild test-without-building \

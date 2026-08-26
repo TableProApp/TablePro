@@ -83,6 +83,13 @@ jobs:
       - name: Validate the registry update script
         run: python3 .github/scripts/test_update_registry.py
 
+      # The macOS suite cannot catch this one: the script runs before any test does, and when it
+      # gets this wrong no test runs at all. An empty quarantine list made it print a blank line,
+      # which the caller turned into an empty xcodebuild argument, and main went red for three
+      # commits with `Unknown build action ''`.
+      - name: Validate the test quarantine script
+        run: python3 scripts/ci/test_quarantine_args.py
+
       # A check that guarded a real invariant and ran nowhere. Pure grep over Swift sources, so it
       # belongs on the free Linux runner. The MongoDB filter-shape check is the other one that was
       # orphaned, but it compiles a C probe against Libs/libbson, so it lives in the macOS build

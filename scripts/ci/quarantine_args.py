@@ -69,7 +69,14 @@ def main():
 
     if not ok:
         sys.exit(1)
-    print("\n".join(args))
+
+    # Nothing at all when there is nothing to skip, because `print("")` is a blank line and the
+    # caller reads this stdout one line per argument. An empty list therefore reached xcodebuild as
+    # a literal empty argument and it stopped with `Unknown build action ''` before running a
+    # single test. An empty quarantine file is the goal, not an edge case: main went red the
+    # commit the last entry was removed and stayed red.
+    if args:
+        print("\n".join(args))
 
 
 if __name__ == "__main__":
