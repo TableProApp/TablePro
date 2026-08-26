@@ -54,7 +54,7 @@ struct DatabaseTypeTests {
 
     @Test("allKnownTypes contains all expected types")
     func allKnownTypesComplete() {
-        #expect(DatabaseType.allKnownTypes.count == 23)
+        #expect(DatabaseType.allKnownTypes.count == 24)
         #expect(DatabaseType.allKnownTypes.contains(.mysql))
         #expect(DatabaseType.allKnownTypes.contains(.bigquery))
         #expect(DatabaseType.allKnownTypes.contains(.snowflake))
@@ -64,6 +64,15 @@ struct DatabaseTypeTests {
         #expect(DatabaseType.allKnownTypes.contains(.teradata))
         #expect(DatabaseType.allKnownTypes.contains(.trino))
         #expect(DatabaseType.allKnownTypes.contains(.dameng))
+        #expect(DatabaseType.allKnownTypes.contains(.kafka))
+    }
+
+    /// The list has no duplicates, which a count alone would not catch: adding a type twice
+    /// keeps the count moving in the right direction while the picker shows it twice.
+    @Test("allKnownTypes holds no duplicates")
+    func allKnownTypesAreUnique() {
+        let raw = DatabaseType.allKnownTypes.map(\.rawValue)
+        #expect(Set(raw).count == raw.count)
     }
 
     @Test("Hashable conformance")

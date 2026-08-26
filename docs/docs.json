@@ -154,6 +154,7 @@
               "databases/elasticsearch",
               "databases/etcd",
               "databases/bigquery",
+              "databases/kafka",
               "databases/libsql",
               "databases/mariadb",
               "databases/mssql",

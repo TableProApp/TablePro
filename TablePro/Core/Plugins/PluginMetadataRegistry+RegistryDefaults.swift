@@ -1199,6 +1199,7 @@ extension PluginMetadataRegistry {
                 )
             )),
         ] + cloudPluginDefaults() + elasticsearchPluginDefaults() + surrealDBPluginDefaults()
+            + kafkaPluginDefaults()
     }
     // swiftlint:enable function_body_length
 }

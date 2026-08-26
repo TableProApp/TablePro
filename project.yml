@@ -58,6 +58,22 @@ packages:
   Yams:
     url: https://github.com/jpsim/Yams
     majorVersion: 5.1.0
+  # Kafka brokers hand a consumer whatever codec the producer stored, and never transcode.
+  # macOS supplies no zstd at any layer, so a zstd topic is unreadable without this.
+  zstd:
+    url: https://github.com/facebook/zstd
+    majorVersion: 1.5.0
+  # Already in the graph through Packages/TableProOracle. Declared here so the Kafka plugin
+  # can link them directly: Kafka is a length-prefixed binary protocol over TCP, and NIOSSL
+  # reads the PEM paths SSLConfiguration already carries.
+  swift-nio:
+    url: https://github.com/apple/swift-nio
+    minVersion: 2.81.0
+    maxVersion: 3.0.0
+  swift-nio-ssl:
+    url: https://github.com/apple/swift-nio-ssl
+    minVersion: 2.29.0
+    maxVersion: 3.0.0
 
 # Every .tableplugin bundle is this template plus a folder name and a principal class.
 # Plugins that link a C library add their search paths and OTHER_LDFLAGS themselves.
@@ -409,6 +425,34 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTransactionStatement.swift
       - Plugins/PostgreSQLDriverPlugin/RedshiftExternalSchemaQueries.swift
       - Plugins/PostgreSQLDriverPlugin/RedshiftSchemaQueries.swift
+      - Plugins/KafkaDriverPlugin/KafkaApiKey.swift
+      - Plugins/KafkaDriverPlugin/KafkaBrowseEngine.swift
+      - Plugins/KafkaDriverPlugin/KafkaCluster.swift
+      - Plugins/KafkaDriverPlugin/KafkaConnection.swift
+      - Plugins/KafkaDriverPlugin/KafkaFetchRequest.swift
+      - Plugins/KafkaDriverPlugin/KafkaGroupsRequest.swift
+      - Plugins/KafkaDriverPlugin/KafkaMetadataRequest.swift
+      - Plugins/KafkaDriverPlugin/KafkaOffsetsRequest.swift
+      - Plugins/KafkaDriverPlugin/KafkaPlugin.swift
+      - Plugins/KafkaDriverPlugin/KafkaPluginDriver.swift
+      - Plugins/KafkaDriverPlugin/KafkaProduceRequest.swift
+      - Plugins/KafkaDriverPlugin/KafkaSASL.swift
+      - Plugins/KafkaDriverPlugin/KafkaCRC32C.swift
+      - Plugins/KafkaDriverPlugin/KafkaCompression.swift
+      - Plugins/KafkaDriverPlugin/KafkaClusterTypes.swift
+      - Plugins/KafkaDriverPlugin/KafkaConnectionField.swift
+      - Plugins/KafkaDriverPlugin/KafkaCredentials.swift
+      - Plugins/KafkaDriverPlugin/KafkaError.swift
+      - Plugins/KafkaDriverPlugin/KafkaMessageFlattener.swift
+      - Plugins/KafkaDriverPlugin/KafkaPartitioner.swift
+      - Plugins/KafkaDriverPlugin/KafkaProtocolReader.swift
+      - Plugins/KafkaDriverPlugin/KafkaProtocolWriter.swift
+      - Plugins/KafkaDriverPlugin/KafkaQL.swift
+      - Plugins/KafkaDriverPlugin/KafkaRecordBatch.swift
+      - Plugins/KafkaDriverPlugin/KafkaRecordOrdering.swift
+      - Plugins/KafkaDriverPlugin/KafkaRequest.swift
+      - Plugins/KafkaDriverPlugin/KafkaScram.swift
+      - Plugins/KafkaDriverPlugin/SnappyDecoder.swift
       - Plugins/RedisDriverPlugin/RedisArgumentCodec.swift
       - Plugins/RedisDriverPlugin/RedisAuthCommand.swift
       - Plugins/RedisDriverPlugin/RedisClusterAggregator.swift
@@ -458,6 +502,16 @@ targets:
       - target: TablePro
       - package: TableProCore
         products: [TableProMSSQLCore, TableProNumberFormatting]
+      # The Kafka integration suite drives the real driver, so the test target links what
+      # the plugin target links: zstd for decompression and NIO for the transport.
+      - package: zstd
+        product: libzstd
+      - package: swift-nio
+        product: NIOCore
+      - package: swift-nio
+        product: NIOPosix
+      - package: swift-nio-ssl
+        product: NIOSSL
     settings:
       base:
         CURRENT_PROJECT_VERSION: 1
@@ -842,6 +896,21 @@ targets:
       folder: EtcdDriverPlugin
       principalClass: EtcdPlugin
 
+  KafkaDriverPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: KafkaDriverPlugin
+      principalClass: KafkaPlugin
+    dependencies:
+      - package: zstd
+        product: libzstd
+      - package: swift-nio
+        product: NIOCore
+      - package: swift-nio
+        product: NIOPosix
+      - package: swift-nio-ssl
+        product: NIOSSL
+
   LibSQLDriverPlugin:
     templates: [DriverPlugin]
     templateAttributes:
@@ -983,6 +1052,7 @@ aggregateTargets:
       - EtcdDriverPlugin
       - JSONExport
       - JSONImport
+      - KafkaDriverPlugin
       - LibSQLDriverPlugin
       - MQLExport
       - MSSQLDriver

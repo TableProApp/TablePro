@@ -18,6 +18,7 @@ Finder
 Homebrew
 Insights
 Instant
+Kafka
 Kerberos
 Keyspaces
 Library

@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A save that deletes a row and reuses its unique value failing on the constraint.
 - "Ignore foreign key checks" doing nothing on SQLite, libSQL and Cloudflare D1.
 - A save reported as failed on an engine without transactions after some statements had been written.
+- Keep Open for a preview tab, by double-clicking it in the tab strip or from its contextual menu. (#2436)
+- Kafka driver plugin: topics in the grid, consumer group lag, and KafkaQL for seeking and producing. (#2419)
 
 ## [0.68.1] - 2026-08-26
 

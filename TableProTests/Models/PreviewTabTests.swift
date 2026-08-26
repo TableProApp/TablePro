@@ -103,4 +103,75 @@ struct PreviewTabTests {
         let payload = EditorTabPayload(connectionId: UUID(), isPreview: true)
         #expect(payload.isPreview == true)
     }
+
+    // MARK: - Keeping a preview tab (issue #2436)
+
+    @Test("promotePreviewTab keeps a tab that is not the selected one")
+    @MainActor
+    func promoteKeepsAnUnselectedTab() throws {
+        let manager = QueryTabManager()
+        try manager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb", isPreview: true)
+        let previewTabId = try #require(manager.selectedTabId)
+        try manager.addTableTab(tableName: "orders", databaseType: .mysql, databaseName: "mydb")
+
+        manager.promotePreviewTab(id: previewTabId)
+
+        #expect(manager.tabs.first { $0.id == previewTabId }?.isPreview == false)
+        #expect(manager.selectedTabId != previewTabId)
+    }
+
+    @Test("promotePreviewTab is a no-op on a tab that is already permanent")
+    @MainActor
+    func promoteIsANoOpOnAPermanentTab() throws {
+        let manager = QueryTabManager()
+        try manager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb")
+        let tabId = try #require(manager.selectedTabId)
+
+        manager.promotePreviewTab(id: tabId)
+
+        #expect(manager.tabs.first { $0.id == tabId }?.isPreview == false)
+    }
+
+    @Test("promotePreviewTab ignores an id no tab has")
+    @MainActor
+    func promoteIgnoresAnUnknownId() throws {
+        let manager = QueryTabManager()
+        try manager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb", isPreview: true)
+
+        manager.promotePreviewTab(id: UUID())
+
+        #expect(manager.selectedTab?.isPreview == true)
+    }
+
+    /// Keeping a tab is not pinning: the tab holds its place in the strip.
+    @Test("promotePreviewTab does not reorder the strip")
+    @MainActor
+    func promoteDoesNotReorderTheStrip() throws {
+        let manager = QueryTabManager()
+        try manager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb", isPreview: true)
+        let previewTabId = try #require(manager.selectedTabId)
+        try manager.addTableTab(tableName: "orders", databaseType: .mysql, databaseName: "mydb")
+        let orderBefore = manager.tabs.map(\.id)
+
+        manager.promotePreviewTab(id: previewTabId)
+
+        #expect(manager.tabs.map(\.id) == orderBefore)
+    }
+
+    @Test("canPromotePreviewTab answers for a preview tab, a permanent tab and an unknown id")
+    @MainActor
+    func canPromoteAnswersEachCase() throws {
+        let manager = QueryTabManager()
+        try manager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb", isPreview: true)
+        let previewTabId = try #require(manager.selectedTabId)
+        try manager.addTableTab(tableName: "orders", databaseType: .mysql, databaseName: "mydb")
+        let permanentTabId = try #require(manager.selectedTabId)
+
+        #expect(manager.canPromotePreviewTab(id: previewTabId))
+        #expect(manager.canPromotePreviewTab(id: permanentTabId) == false)
+        #expect(manager.canPromotePreviewTab(id: UUID()) == false)
+
+        manager.promotePreviewTab(id: previewTabId)
+        #expect(manager.canPromotePreviewTab(id: previewTabId) == false)
+    }
 }

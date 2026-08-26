@@ -392,9 +392,8 @@ extension MainContentCoordinator {
     }
 
     func promotePreviewTab() {
-        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex,
-              tab.isPreview else { return }
-        tabManager.mutate(at: tabIndex) { $0.isPreview = false }
+        guard let selectedTabId = tabManager.selectedTabId else { return }
+        tabManager.promotePreviewTab(id: selectedTabId)
     }
 
     func showAllTablesMetadata() {

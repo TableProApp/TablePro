@@ -279,6 +279,33 @@ struct OpenTableTabTests {
         #expect(coordinator.tabManager.selectedTab?.isPreview == false)
     }
 
+    /// The whole point of keeping a tab: the next table opened from the sidebar gets one of its
+    /// own instead of taking this one over. (#2436)
+    @Test("A kept tab is not reused by the next table opened from the sidebar")
+    @MainActor
+    func keptTabIsNotReusedByTheNextOpen() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(
+            tableName: "users", databaseType: connection.type, databaseName: "db_a", isPreview: true
+        )
+        let keptTabId = try #require(tabManager.selectedTabId)
+        #expect(coordinator.isActiveTabReusable)
+
+        tabManager.promotePreviewTab(id: keptTabId)
+
+        #expect(coordinator.isActiveTabReusable == false)
+        #expect(tabManager.tabs.first { $0.id == keptTabId }?.tableContext.tableName == "users")
+    }
+
     @Test("Double-click (forceNonPreview) replaces the preview tab with a permanent tab")
     @MainActor
     func forceNonPreviewReplacesWithPermanentTab() throws {
