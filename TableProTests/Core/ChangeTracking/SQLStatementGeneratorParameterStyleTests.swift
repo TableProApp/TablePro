@@ -191,7 +191,7 @@ struct SQLStatementGeneratorParameterStyleTests {
                 rowIndex: 0,
                 type: .update,
                 cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Jane")
+                    CellChange(columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Jane")
                 ],
                 originalRow: ["1", "John", "john@example.com"]
             )

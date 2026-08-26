@@ -40,7 +40,7 @@ struct RowWriteOperationBuilderTests {
             rowIndex: 0,
             type: .update,
             cellChanges: [
-                CellChange(rowIndex: 0, columnIndex: index, columnName: column, oldValue: old, newValue: new),
+                CellChange(columnIndex: index, columnName: column, oldValue: old, newValue: new),
             ],
             originalRow: ["7", "Ada", "2026-01-01"]
         )

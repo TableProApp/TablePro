@@ -58,7 +58,6 @@ enum TestFixtures {
         new: String? = "value"
     ) -> CellChange {
         return CellChange(
-            rowIndex: row,
             columnIndex: col,
             columnName: colName,
             oldValue: PluginCellValue.fromOptional(old),

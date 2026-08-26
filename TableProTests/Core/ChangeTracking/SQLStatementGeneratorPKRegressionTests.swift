@@ -47,7 +47,7 @@ struct SQLStatementGeneratorPKRegressionTests {
         RowChange(
             rowIndex: rowIndex,
             type: .update,
-            cellChanges: [CellChange(rowIndex: rowIndex, columnIndex: columnIndex, columnName: columnName, oldValue: PluginCellValue.fromOptional(oldValue), newValue: PluginCellValue.fromOptional(newValue))],
+            cellChanges: [CellChange(columnIndex: columnIndex, columnName: columnName, oldValue: PluginCellValue.fromOptional(oldValue), newValue: PluginCellValue.fromOptional(newValue))],
             originalRow: originalRow.map(PluginCellValue.fromOptional)
         )
     }

@@ -125,7 +125,7 @@ struct RewindExecutor {
         )
 
         let route = DatabaseManager.shared.executionRoute(for: scope)
-        let results = try await ExecutionGateProvider.shared.authorizing(
+        let run = try await ExecutionGateProvider.shared.authorizing(
             OperationRequest(
                 connectionId: connection.id,
                 databaseType: connection.type,
@@ -145,16 +145,16 @@ struct RewindExecutor {
             }
         }
 
-        recordHistory(for: plan, results: results)
+        recordHistory(for: plan, results: run.results)
         await captureInverseRecord(for: plan)
 
         Self.logger.info(
-            "Restored \(plan.restorableCount, privacy: .public) rows in \(results.count, privacy: .public) statements"
+            "Restored \(plan.restorableCount, privacy: .public) rows in \(run.results.count, privacy: .public) statements"
         )
         return RewindApplyResult(
             restoredRows: plan.restorableCount,
             skippedRows: plan.skippedCount,
-            statementCount: results.count
+            statementCount: run.results.count
         )
     }
 }

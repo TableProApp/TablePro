@@ -61,16 +61,15 @@ extension MainContentCoordinator {
         let hasPendingTableOps = !pendingTruncates.isEmpty || !pendingDeletes.isEmpty
         var steps: [DataWriteStep] = []
 
-        // FK disable must be FIRST, before any transaction begins
+        /// The foreign-key toggles are not steps. A step runs inside the transaction, and
+        /// `PRAGMA foreign_keys` is a no-op there on every SQLite-derived engine, so the option
+        /// would silently do nothing. They travel as the plan's prologue and epilogue instead.
         let needsDisableFK = PluginManager.shared.supportsForeignKeyDisable(for: dbType)
             && pendingTruncates.union(pendingDeletes).contains { tableName in
                 tableOperationOptions[tableName]?.ignoreForeignKeys == true
             }
-        if needsDisableFK {
-            steps.append(contentsOf: fkDisableStatements(for: dbType).map {
-                DataWriteStep(kind: .foreignKeyToggle, statement: ParameterizedStatement(sql: $0, parameters: []))
-            })
-        }
+        let prologue = needsDisableFK ? fkDisableStatements(for: dbType) : []
+        let epilogue = needsDisableFK ? fkEnableStatements(for: dbType) : []
 
         let scope = selectedTabScope ?? DatabaseScope(connectionId: connection.id, database: "", schema: nil)
 
@@ -99,18 +98,13 @@ extension MainContentCoordinator {
             })
         }
 
-        // FK re-enable must be LAST, after the row work
-        let foreignKeyEnableStatements = needsDisableFK ? fkEnableStatements(for: dbType) : []
-        steps.append(contentsOf: foreignKeyEnableStatements.map {
-            DataWriteStep(kind: .foreignKeyToggle, statement: ParameterizedStatement(sql: $0, parameters: []))
-        })
-
         return DataWritePlan(
             scope: scope,
             databaseType: dbType,
             steps: steps,
             rowOperations: rowOperations,
-            epilogue: foreignKeyEnableStatements
+            prologue: prologue,
+            epilogue: epilogue
         )
     }
 

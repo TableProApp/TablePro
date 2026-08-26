@@ -104,7 +104,17 @@ struct DataWritePlan: Sendable {
     /// The rows this plan writes, in the order the user changed them. Built from the change set
     /// rather than from the statements, so it is complete even for a driver that writes its own.
     let rowOperations: [RowWriteOperation]
-    /// Statements that must run after the transaction, never inside it.
+    /// Statements that must run before the transaction opens, never inside it.
+    ///
+    /// SQLite, libSQL and Cloudflare D1 disable foreign keys with `PRAGMA foreign_keys = OFF`,
+    /// which SQLite documents as a no-op inside a transaction. Run there, "Ignore foreign key
+    /// checks" silently does nothing. MySQL's session variable would work either side, so outside
+    /// is the placement that is correct for every engine rather than most of them.
+    let prologue: [String]
+
+    /// Statements that must run after the transaction, never inside it. They run on the way out of
+    /// both a commit and a rollback, because leaving foreign keys disabled is worse than the
+    /// failure that got there.
     let epilogue: [String]
 
     init(
@@ -112,17 +122,23 @@ struct DataWritePlan: Sendable {
         databaseType: DatabaseType,
         steps: [DataWriteStep],
         rowOperations: [RowWriteOperation] = [],
+        prologue: [String] = [],
         epilogue: [String] = []
     ) {
         self.scope = scope
         self.databaseType = databaseType
         self.steps = steps
         self.rowOperations = rowOperations
+        self.prologue = prologue
         self.epilogue = epilogue
     }
 
     var statements: [ParameterizedStatement] {
-        steps.map(\.statement)
+        (prologue + epilogue).isEmpty
+            ? steps.map(\.statement)
+            : prologue.map { ParameterizedStatement(sql: $0, parameters: []) }
+                + steps.map(\.statement)
+                + epilogue.map { ParameterizedStatement(sql: $0, parameters: []) }
     }
 
     var containsTableOperation: Bool {
@@ -131,6 +147,7 @@ struct DataWritePlan: Sendable {
 
     var isEmpty: Bool {
         steps.allSatisfy { $0.statement.sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            && prologue.isEmpty
     }
 
     /// The plan as a person would read it, with the bound values written in.
@@ -139,7 +156,9 @@ struct DataWritePlan: Sendable {
     /// Safe Mode confirmation and the authorization gate. Showing them the parameterized form
     /// asks someone to approve `WHERE "id" = ?`, which names no row at all.
     var displayStatements: [String] {
-        steps.map { SQLParameterInliner.inline($0.statement, databaseType: databaseType) }
+        prologue
+            + steps.map { SQLParameterInliner.inline($0.statement, databaseType: databaseType) }
+            + epilogue
     }
 
     var displaySQL: String {
