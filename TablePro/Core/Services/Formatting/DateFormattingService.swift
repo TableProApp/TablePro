@@ -54,10 +54,19 @@ final class DateFormattingService {
     /// - Parameter date: The date to format
     /// - Returns: Formatted date string
     func format(_ date: Date) -> String {
-        formatter.string(from: date)
+        formatter.timeZone = .current
+        return formatter.string(from: date)
     }
 
-    /// Format a string date value (parse then format)
+    /// Format a string date value (parse then format).
+    ///
+    /// The value is rendered in the zone it was written in, not the reader's. A value carrying an
+    /// offset names an instant in that offset, and the cell editor opens it there, so formatting it
+    /// somewhere else made the grid and the picker disagree about which day the row held. A value
+    /// with no offset is naive and parses in the reader's own zone, so this is the same zone it
+    /// always used.
+    ///
+    /// The cache key needs no zone: the zone is read off the value, so the string determines it.
     /// - Parameter dateString: Date string from database (ISO 8601, MySQL timestamp, etc.)
     /// - Parameter columnType: Column type, used to pick date-only / time-only / datetime variant
     /// - Returns: Formatted date string, or nil if unparseable
@@ -68,11 +77,12 @@ final class DateFormattingService {
             return cached.length == 0 ? nil : cached as String
         }
 
-        guard let date = DatabaseDateParser.date(from: dateString) else {
+        guard let parsed = DatabaseDateParser.parse(dateString) else {
             formatCache.setObject("" as NSString, forKey: cacheKey)
             return nil
         }
-        let result = targetFormatter.string(from: date)
+        targetFormatter.timeZone = parsed.timeZone
+        let result = targetFormatter.string(from: parsed.date)
         formatCache.setObject(result as NSString, forKey: cacheKey)
         return result
     }

@@ -57,6 +57,11 @@ internal enum EditorTabStripLayout {
     /// strip, not so far that its title stops being legible on the way past its neighbours.
     internal static let draggingOpacity: CGFloat = 0.45
 
+    /// How far the pointer travels before a press on a tab becomes a reorder rather than a click.
+    /// The same distance AppKit uses to tell a click from a drag, so a hand that shifts a point or
+    /// two while clicking still selects the tab.
+    internal static let reorderThreshold: CGFloat = 4
+
     /// A separator is drawn at the leading edge of a tab only when both it and its leading
     /// neighbour are plain and untouched. A line against the raised capsule reads as a seam in
     /// it, and one against a hovered tab fights that tab's fill. Two tabs therefore never show

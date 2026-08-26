@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An abandoned editor tab drag reordering the strip anyway, and keeping that order across relaunch.
+- An editor tab reorder stopping partway when the pointer strayed a couple of points off the track.
+- Text dropped on the editor tab strip reported as accepted and then discarded.
+- An editor tab left faded and the strip's separators hidden after a cancelled drag.
 - Size All Columns to Fit slowing down with the square of the column count.
 - Column-resize cursor over the leading edge of the data grid header, where there is no divider to drag.
 - A data grid shortcut bound to `Cmd+G` silently taking the key from Find Next, with no conflict warning.
@@ -53,6 +57,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connections strip not scrolling to the entry you switch to.
 - Grid cells left at the old column positions until the next click, after a resize, an auto-fit, a reorder, hiding a column, or a row-number width change. (#2449, #2446)
 - The row-number column draggable out of first place, which walked it to the far right on the next refresh.
+- A time entered into a date cell discarded when the stored value carried no time.
+- A timestamp with an offset showing one day in the grid and another in its date picker.
+- Opening a date picker and confirming without changing anything rewriting the cell.
 - Cell overlay appearance test failing at random when its window was released before the appearance changed.
 - A reordered column snapping back on the next refresh in the Structure tab and in query results.
 - Double-clicking a cell editing the wrong row, after deleting one of several rows added in the same session.
