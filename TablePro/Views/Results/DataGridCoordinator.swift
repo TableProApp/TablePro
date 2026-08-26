@@ -262,11 +262,26 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         tabType = configuration.tabType
     }
 
+    /// A grid with no table behind it keeps a saved column order only while its columns are still
+    /// the ones that order was saved for.
+    ///
+    /// A query result's columns are authored by the SELECT list and their order is meaningful, so an
+    /// order saved for a different set must not be replayed over it: `computeTargetOrder` appends
+    /// every column the saved order does not name, which landed a newly written column at the far
+    /// right instead of where it was typed (#1565). Dropping the order outright was the first answer
+    /// to that, and it also threw away an order the columns had not moved under, so a reorder was
+    /// captured and persisted and then silently undone on the next update. Comparing the sets keeps
+    /// #1565 fixed, lets a reorder survive a re-run of the same query, and is what lets the Structure
+    /// grid, whose columns never change, hold one at all.
     func savedColumnLayout(binding: ColumnLayoutState) -> ColumnLayoutState? {
         guard tabType == .table else {
-            guard !binding.columnWidths.isEmpty || binding.columnContentWidths?.isEmpty == false else { return nil }
             var layout = binding
-            layout.columnOrder = nil
+            if let order = layout.columnOrder, Set(order) != Set(identitySchema.columnNames) {
+                layout.columnOrder = nil
+            }
+            guard !layout.columnWidths.isEmpty
+                || layout.columnContentWidths?.isEmpty == false
+                || layout.columnOrder?.isEmpty == false else { return nil }
             return layout
         }
 

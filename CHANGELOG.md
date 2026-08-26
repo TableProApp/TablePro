@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connections strip not scrolling to the entry you switch to.
 - Grid cells left at the old column positions until the next click, after a resize, an auto-fit, a reorder, hiding a column, or a row-number width change. (#2449)
 - The row-number column draggable out of first place, which walked it to the far right on the next refresh.
+- A reordered column snapping back on the next refresh in the Structure tab and in query results.
 
 ## [0.68.1] - 2026-08-26
 
