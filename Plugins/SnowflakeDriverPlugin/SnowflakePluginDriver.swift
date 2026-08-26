@@ -535,13 +535,11 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - SQL Generation Helpers
 
     func quoteIdentifier(_ name: String) -> String {
-        "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+        SnowflakeSQL.quoteIdentifier(name)
     }
 
     func escapeStringLiteral(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "''")
+        SnowflakeSQL.escapeLiteral(value)
     }
 
     func castColumnToText(_ column: String) -> String {
