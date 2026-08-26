@@ -698,6 +698,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         switch box {
         case .null: return .null
         case .text(let value): return .text(value)
+        case .bytes(let data): return .bytes(data)
         }
     }
 

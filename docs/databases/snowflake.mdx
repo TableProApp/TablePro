@@ -87,6 +87,7 @@ No SSL/TLS pane, and no plaintext option. Every request is HTTPS to the account 
 
 - No SSH tunnel. The form has no SSH pane, and the endpoint is reached over HTTPS only.
 - A grid edit keys on the declared primary key, or on every column when there is none, and a duplicate key value updates or deletes every row that matches it. Snowflake never enforces key constraints, so check a table for duplicates before editing it.
+- `TIMESTAMP_LTZ` values read as the UTC instant, marked `Z`, rather than converted to the session's `TIMEZONE`.
 
 ## Troubleshooting
 

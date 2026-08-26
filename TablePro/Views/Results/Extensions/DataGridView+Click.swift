@@ -109,7 +109,11 @@ extension TableViewCoordinator {
         } else if columnType.isBlobType {
             showBlobEditorPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
         } else if columnType.isDateType {
-            showDateTimePickerPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+            if opensDatePicker(row: row, columnIndex: columnIndex) {
+                showDateTimePickerPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+            } else {
+                beginEditing(displayRow: row, column: columnIndex)
+            }
         } else if columnType.isEnumOrSetType {
             beginEditing(displayRow: row, column: columnIndex)
         }

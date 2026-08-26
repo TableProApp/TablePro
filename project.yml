@@ -476,6 +476,7 @@ targets:
       - Plugins/SQLImportPlugin/SQLImportOptions.swift
       - Plugins/SQLImportPlugin/SQLImportOptionsView.swift
       - Plugins/SQLImportPlugin/SQLImportPlugin.swift
+      - Plugins/SnowflakeDriverPlugin/PluginCellValueBox.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeAuth.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeBindingEncoder.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeDDLGenerator.swift
@@ -486,6 +487,7 @@ targets:
       - Plugins/SnowflakeDriverPlugin/SnowflakeSchemaQueries.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeStatementGenerator.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeTypeMapper.swift
+      - Plugins/SnowflakeDriverPlugin/SnowflakeValueDecoder.swift
       - Plugins/SurrealDBDriverPlugin/SurrealCBOR.swift
       - Plugins/SurrealDBDriverPlugin/SurrealCellCoder.swift
       - Plugins/SurrealDBDriverPlugin/SurrealDBConnectionConfig.swift

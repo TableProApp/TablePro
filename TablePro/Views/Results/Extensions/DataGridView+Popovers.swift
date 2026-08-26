@@ -174,6 +174,19 @@ extension TableViewCoordinator {
         }
     }
 
+    /// A date control has no vocabulary for "I could not read this": `NSDatePicker.dateValue` and
+    /// every SwiftUI `DatePicker` binding are a non-optional `Date`, so a cell the parser rejects
+    /// gets seeded with today and an unchanged confirm writes today over the stored value in a
+    /// spelling the column never used. Such a cell goes to the text editor instead, where the value
+    /// stays visible and the user can repair it. An empty cell has nothing to misrepresent and keeps
+    /// the picker.
+    func opensDatePicker(row: Int, columnIndex: Int) -> Bool {
+        guard let value = cellValue(at: row, column: columnIndex),
+              !value.trimmingCharacters(in: .whitespaces).isEmpty
+        else { return true }
+        return DatabaseDateParser.parse(value) != nil
+    }
+
     func showDateTimePickerPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         let tableRows = tableRowsProvider()
         guard columnIndex >= 0, columnIndex < tableRows.columnTypes.count else { return }
