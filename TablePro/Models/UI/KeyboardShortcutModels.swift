@@ -168,18 +168,17 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    /// `find` is deliberately `.global` rather than `.editor`: it dispatches to whichever
-    /// surface holds focus, and only a global context overlaps `.dataGrid`, which is what
-    /// lets it yield `Cmd+F` to a user who binds the filter bar there instead.
+    /// A command that dispatches to whichever surface holds focus must be `.global`, or the
+    /// conflict resolver treats its combo as free in the other context and AppKit blanks one of
+    /// the two menu items that end up claiming it. The three find commands all route that way.
     var context: ShortcutContext {
         switch self {
-        case .find:
+        case .find, .findNext, .findPrevious:
             return .global
         case .executeQuery, .executeAllStatements, .executeQueryWithoutLimit,
              .cancelQuery, .explainQuery, .formatQuery, .foldAll, .unfoldAll,
              .toggleFold, .previousStatement, .nextStatement, .runStatementAndAdvance,
-             .previewSQL, .findNext,
-             .findPrevious, .aiExplainQuery, .aiOptimizeQuery:
+             .previewSQL, .aiExplainQuery, .aiOptimizeQuery:
             return .editor
         case .previousPage, .nextPage, .firstPage, .lastPage, .addRow, .duplicateRow,
              .delete, .truncateTable, .previewFKReference, .saveAsFavorite,

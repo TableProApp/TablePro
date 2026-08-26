@@ -148,6 +148,30 @@ struct MainMenuShortcutCoverageTests {
         #expect(KeyboardSettings.default.findConflict(for: commandF, excluding: .toggleFilters) == .find)
     }
 
+    @Test("Cmd+F parked on Find Next is still reported against a later claim from the filter bar")
+    func commandFOnFindNextStillConflictsWithFilterBar() {
+        let commandF = BoundKey.character("f", command: true)
+        var keyboard = KeyboardSettings()
+        keyboard.setShortcut(commandF, for: .findNext)
+
+        #expect(keyboard.findConflict(for: commandF, excluding: .toggleFilters) == .findNext)
+        #expect(keyboard.findConflict(for: commandF, excluding: .find) == .findNext)
+    }
+
+    @Test("A grid binding conflicts with Find Next, which owns a window-wide key equivalent")
+    func gridBindingConflictsWithFindNext() {
+        let commandG = BoundKey.character("g", command: true)
+        #expect(KeyboardSettings.defaultShortcuts[.findNext] == commandG)
+        #expect(KeyboardSettings.default.findConflict(for: commandG, excluding: .nextPage) == .findNext)
+    }
+
+    @Test("Every find command shares one context so none can be shadowed by a grid binding")
+    func findCommandsAreGlobal() {
+        #expect(ShortcutAction.find.context == .global)
+        #expect(ShortcutAction.findNext.context == .global)
+        #expect(ShortcutAction.findPrevious.context == .global)
+    }
+
     @Test("Reassigning Cmd+F leaves Find on its default so it recovers when the filter bar moves back")
     func reassigningCommandFDoesNotStrandFind() {
         var keyboard = KeyboardSettings()
