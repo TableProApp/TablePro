@@ -44,15 +44,30 @@ internal final class DataGridCellAccessibilityView: NSView {
     internal static let reuseIdentifier = NSUserInterfaceItemIdentifier("DataGridCellAccessibilityView")
 
     private weak var coordinator: TableViewCoordinator?
-    private var row = 0
+    private var seededRow = 0
     private var dataColumn = 0
+
+    /// The row this cell is showing now, asked of the table rather than remembered, for the reason
+    /// `DataGridRowView.rowIndex` is: an incremental insert or remove moves a mounted cell view to
+    /// its new slot without asking for it again, so a stored index outlives the row it named and the
+    /// cell then speaks a different row's value under the old row's number.
+    private var row: Int {
+        guard let tableView = coordinator?.tableView else { return seededRow }
+        let resolved = tableView.row(for: self)
+        return resolved >= 0 ? resolved : seededRow
+    }
 
     internal func configure(coordinator: TableViewCoordinator, row: Int, dataColumn: Int) {
         self.coordinator = coordinator
-        self.row = row
+        seededRow = row
         self.dataColumn = dataColumn
-        setAccessibilityRowIndexRange(NSRange(location: row, length: 1))
         setAccessibilityColumnIndexRange(NSRange(location: dataColumn, length: 1))
+    }
+
+    /// Answered live for the same reason, rather than stamped in `configure`, so a client reading the
+    /// tree after a row moved is told where the cell is rather than where it was built.
+    override internal func accessibilityRowIndexRange() -> NSRange {
+        NSRange(location: row, length: 1)
     }
 
     override internal func hitTest(_ point: NSPoint) -> NSView? { nil }

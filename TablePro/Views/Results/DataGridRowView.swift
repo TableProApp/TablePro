@@ -15,7 +15,27 @@ class DataGridRowView: NSTableRowView {
     }
 
     weak var coordinator: TableViewCoordinator?
-    var rowIndex: Int = 0
+
+    /// The row this view is showing now, asked of the table rather than remembered.
+    ///
+    /// `insertRows(at:)` and `removeRows(at:)` move an already-built row view to its new slot
+    /// without calling `tableView(_:rowViewForRow:)` for it again, so an index captured at mount
+    /// goes stale the moment a row is inserted or removed above this one, and every read of it then
+    /// names a different row. Measured: after `removeRows(at: [1])` the view at display row 1 still
+    /// carried 2, the one at 2 carried 3, and an insert left two views both claiming 0, while
+    /// `row(for:)` answered correctly throughout at 26ns a call. AppKit keeps that mapping itself,
+    /// so it is asked for it. The seed answers only for a row view that is in no table, which is how
+    /// the copy tests build one.
+    var rowIndex: Int {
+        get {
+            guard let tableView = coordinator?.tableView else { return seededRowIndex }
+            let resolved = tableView.row(for: self)
+            return resolved >= 0 ? resolved : seededRowIndex
+        }
+        set { seededRowIndex = newValue }
+    }
+
+    private var seededRowIndex: Int = 0
 
     private(set) var visualState: RowVisualState = .empty
     private var rowTint: NSColor?
@@ -132,13 +152,14 @@ class DataGridRowView: NSTableRowView {
         guard let coordinator, let tableView = coordinator.tableView else { return }
         let inTableView = view.convert(dirtyRect, to: tableView)
         let onEmphasizedSelection = isSelected && isEmphasized
+        let row = rowIndex
 
         for tableColumnIndex in tableView.columnIndexes(in: inTableView) {
             guard tableColumnIndex < tableView.tableColumns.count else { continue }
             let identifier = tableView.tableColumns[tableColumnIndex].identifier
             guard let dataColumn = coordinator.dataColumnIndex(from: identifier) else { continue }
             guard let appearance = coordinator.cellAppearance(
-                row: rowIndex,
+                row: row,
                 columnIndex: dataColumn,
                 onEmphasizedSelection: onEmphasizedSelection
             ) else { continue }

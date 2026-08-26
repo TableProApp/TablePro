@@ -292,6 +292,7 @@ extension ShortcutAction {
         (.special(.space, control: true), String(localized: "Show Completions")),
         (.special(.upArrow, option: true), String(localized: "Move Line Up")),
         (.special(.downArrow, option: true), String(localized: "Move Line Down")),
+        (.character("j", command: true, control: true), String(localized: "Jump to Definition")),
         (.special(.upArrow, shift: true, option: true), String(localized: "Extend Selection to Previous Statement")),
         (.special(.downArrow, shift: true, option: true), String(localized: "Extend Selection to Next Statement"))
     ]
@@ -314,13 +315,21 @@ extension ShortcutAction {
         (.special(.rightArrow, option: true), String(localized: "Move Word Right"))
     ]
 
-    /// App-level shortcuts that are wired directly in the menu and are not
-    /// customizable: tab selection (Cmd+1 through Cmd+9) and editor zoom. These
-    /// fire regardless of focus, so a user binding would silently collide.
+    /// Every key equivalent a menu builder hardcodes, and so every combo no `ShortcutAction`
+    /// can be bound to. These fire regardless of focus, and AppKit blanks the loser when two
+    /// menu items claim one combo, so a binding the recorder let through would silently kill
+    /// the hardcoded command instead. An entry added to a menu builder belongs here too.
     static let reservedAppShortcuts: [(key: BoundKey, name: String)] = {
         var shortcuts: [(key: BoundKey, name: String)] = [
             (.character("=", command: true), String(localized: "Zoom In")),
-            (.character("-", command: true), String(localized: "Zoom Out"))
+            (.character("-", command: true), String(localized: "Zoom Out")),
+            (.character(",", command: true), String(localized: "Settings…")),
+            (.character("h", command: true), String(localized: "Hide TablePro")),
+            (.character("h", command: true, option: true), String(localized: "Hide Others")),
+            (.character("q", command: true), String(localized: "Quit TablePro")),
+            (.character("m", command: true), String(localized: "Minimize")),
+            (.character("t", command: true, option: true), String(localized: "Show Toolbar")),
+            (.character("f", command: true, control: true), String(localized: "Enter Full Screen"))
         ]
         for number in 1...9 {
             shortcuts.append((

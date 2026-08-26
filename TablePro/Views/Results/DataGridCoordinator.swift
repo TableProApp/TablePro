@@ -262,11 +262,24 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         tabType = configuration.tabType
     }
 
+    /// A grid with no table behind it keeps a saved column order only while its columns are still the
+    /// ones that order was saved for.
+    ///
+    /// A query result's columns are authored by the SELECT list and their order is meaningful, so an
+    /// order saved for a different set must not be replayed over it: `computeTargetOrder` appends
+    /// every column the saved order does not name, which landed a newly written column at the far
+    /// right instead of where it was typed (#1565). Dropping the order outright answered that and
+    /// also threw away orders the columns had never moved under, so a reorder was captured, persisted
+    /// and then silently undone on the next update.
     func savedColumnLayout(binding: ColumnLayoutState) -> ColumnLayoutState? {
         guard tabType == .table else {
-            guard !binding.columnWidths.isEmpty || binding.columnContentWidths?.isEmpty == false else { return nil }
             var layout = binding
-            layout.columnOrder = nil
+            if let order = layout.columnOrder, !canRestoreColumnOrder(order) {
+                layout.columnOrder = nil
+            }
+            guard !layout.columnWidths.isEmpty
+                || layout.columnContentWidths?.isEmpty == false
+                || layout.columnOrder?.isEmpty == false else { return nil }
             return layout
         }
 
@@ -279,6 +292,15 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             return nil
         }
         return binding
+    }
+
+    /// A saved order is a list of names, and a name identifies a column only while the names are
+    /// unique. `SELECT a.id, b.id` gives two columns called `id`, and `ColumnIdentitySchema` resolves
+    /// a duplicate name to its last slot, so replaying such an order swaps the two columns.
+    private func canRestoreColumnOrder(_ order: [String]) -> Bool {
+        let columns = identitySchema.columnNames
+        let names = Set(columns)
+        return names.count == columns.count && Set(order) == names
     }
 
     /// A saved width is the width the column had, accessory or not. Nothing here re-derives it from
