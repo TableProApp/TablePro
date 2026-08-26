@@ -148,8 +148,7 @@ actor KafkaCluster {
 
     private func leaderNode(topic: String, partition: Int32, refresh: Bool = false) async throws -> Int32 {
         let meta = try await metadata(topics: [topic], refresh: refresh)
-        guard let found = meta.topic(named: topic) else { throw KafkaError.unknownTopic(topic) }
-        try KafkaErrorCode.check(found.errorCode, api: "Metadata")
+        let found = try meta.requireTopic(named: topic)
         guard let match = found.partitions.first(where: { $0.index == partition }) else {
             throw KafkaError.producedToUnknownPartition(topic: topic, partition: partition)
         }

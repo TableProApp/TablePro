@@ -69,4 +69,20 @@ struct KafkaClusterMetadata: Sendable {
     func topic(named name: String) -> KafkaTopic? {
         topics.first { $0.name == name }
     }
+
+    /// The topic, or an error saying why there isn't one.
+    ///
+    /// A Metadata reply for a topic that does not exist still CARRIES that topic, with an
+    /// error code and an empty partition list, so a plain `topic(named:)` finds it and every
+    /// caller downstream then reports an empty topic instead of an unknown one. That is how a
+    /// mistyped name came back as "0 messages" rather than as an error.
+    func requireTopic(named name: String) throws -> KafkaTopic {
+        guard let found = topic(named: name) else { throw KafkaError.unknownTopic(name) }
+        guard found.errorCode != KafkaErrorCode.unknownTopicOrPartition,
+              found.errorCode != KafkaErrorCode.unknownTopicId else {
+            throw KafkaError.unknownTopic(name)
+        }
+        try KafkaErrorCode.check(found.errorCode, api: "Metadata")
+        return found
+    }
 }

@@ -22,10 +22,7 @@ enum KafkaBrowseEngine {
 
     static func consume(_ query: KafkaConsumeQuery, cluster: KafkaCluster) async throws -> KafkaBrowsePage {
         let metadata = try await cluster.metadata(topics: [query.topic])
-        guard let topic = metadata.topic(named: query.topic) else {
-            throw KafkaError.unknownTopic(query.topic)
-        }
-        try KafkaErrorCode.check(topic.errorCode, api: "Metadata")
+        let topic = try metadata.requireTopic(named: query.topic)
 
         let available = topic.partitions.map(\.index).sorted()
         let selected = query.partitions.map { requested in

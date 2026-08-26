@@ -426,6 +426,17 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/RedshiftExternalSchemaQueries.swift
       - Plugins/PostgreSQLDriverPlugin/RedshiftSchemaQueries.swift
       - Plugins/KafkaDriverPlugin/KafkaApiKey.swift
+      - Plugins/KafkaDriverPlugin/KafkaBrowseEngine.swift
+      - Plugins/KafkaDriverPlugin/KafkaCluster.swift
+      - Plugins/KafkaDriverPlugin/KafkaConnection.swift
+      - Plugins/KafkaDriverPlugin/KafkaFetchRequest.swift
+      - Plugins/KafkaDriverPlugin/KafkaGroupsRequest.swift
+      - Plugins/KafkaDriverPlugin/KafkaMetadataRequest.swift
+      - Plugins/KafkaDriverPlugin/KafkaOffsetsRequest.swift
+      - Plugins/KafkaDriverPlugin/KafkaPlugin.swift
+      - Plugins/KafkaDriverPlugin/KafkaPluginDriver.swift
+      - Plugins/KafkaDriverPlugin/KafkaProduceRequest.swift
+      - Plugins/KafkaDriverPlugin/KafkaSASL.swift
       - Plugins/KafkaDriverPlugin/KafkaCRC32C.swift
       - Plugins/KafkaDriverPlugin/KafkaCompression.swift
       - Plugins/KafkaDriverPlugin/KafkaClusterTypes.swift
@@ -491,9 +502,16 @@ targets:
       - target: TablePro
       - package: TableProCore
         products: [TableProMSSQLCore, TableProNumberFormatting]
-      # KafkaRecordBatch decompresses through KafkaCompression, which links zstd.
+      # The Kafka integration suite drives the real driver, so the test target links what
+      # the plugin target links: zstd for decompression and NIO for the transport.
       - package: zstd
         product: libzstd
+      - package: swift-nio
+        product: NIOCore
+      - package: swift-nio
+        product: NIOPosix
+      - package: swift-nio-ssl
+        product: NIOSSL
     settings:
       base:
         CURRENT_PROJECT_VERSION: 1

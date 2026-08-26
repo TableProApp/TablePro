@@ -127,7 +127,7 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo] {
         let metadata = try await cluster.metadata(topics: [table])
-        guard let topic = metadata.topic(named: table) else { return [] }
+        let topic = try metadata.requireTopic(named: table)
         return topic.partitions.sorted { $0.index < $1.index }.map { partition in
             PluginTableInfo(name: "\(table)-\(partition.index)", type: "partition", rowCount: nil)
         }
@@ -145,7 +145,7 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let metadata = try await cluster.metadata(topics: [table])
-        guard let topic = metadata.topic(named: table) else { throw KafkaError.unknownTopic(table) }
+        let topic = try metadata.requireTopic(named: table)
         var lines = ["Topic: \(topic.name)"]
         if !topic.topicId.isZero { lines.append("Id: \(topic.topicId.uuidString)") }
         lines.append("Internal: \(topic.isInternal ? "yes" : "no")")
@@ -162,7 +162,7 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
         let metadata = try await cluster.metadata(topics: [table])
-        guard let topic = metadata.topic(named: table) else { throw KafkaError.unknownTopic(table) }
+        let topic = try metadata.requireTopic(named: table)
         let bounds = try await KafkaOffsetsRequest.bounds(
             topic: table,
             partitions: topic.partitions.map(\.index),
@@ -357,9 +357,7 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private func runProduce(_ query: KafkaProduceQuery) async throws -> PluginQueryResult {
         let metadata = try await cluster.metadata(topics: [query.topic])
-        guard let topic = metadata.topic(named: query.topic) else {
-            throw KafkaError.unknownTopic(query.topic)
-        }
+        let topic = try metadata.requireTopic(named: query.topic)
         let partitions = topic.partitions.map(\.index).sorted()
         guard !partitions.isEmpty else { throw KafkaError.unknownTopic(query.topic) }
 
@@ -506,7 +504,7 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private func runDescribeTopic(_ topic: String) async throws -> PluginQueryResult {
         let metadata = try await cluster.metadata(topics: [topic])
-        guard let found = metadata.topic(named: topic) else { throw KafkaError.unknownTopic(topic) }
+        let found = try metadata.requireTopic(named: topic)
         let bounds = try await KafkaOffsetsRequest.bounds(
             topic: topic,
             partitions: found.partitions.map(\.index),
