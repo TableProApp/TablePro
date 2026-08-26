@@ -82,6 +82,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case nextStatement
     case runStatementAndAdvance
     case previewSQL
+    case find
     case findNext
     case findPrevious
     case aiExplainQuery
@@ -149,7 +150,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .executeQueryWithoutLimit, .cancelQuery, .explainQuery, .formatQuery,
              .foldAll, .unfoldAll, .toggleFold,
              .previousStatement, .nextStatement, .runStatementAndAdvance,
-             .previewSQL, .findNext, .findPrevious, .aiExplainQuery, .aiOptimizeQuery:
+             .previewSQL, .find, .findNext, .findPrevious, .aiExplainQuery, .aiOptimizeQuery:
             return .editor
         case .undo, .redo, .cut, .copy, .copyRowsExplicit, .copyWithHeaders, .copyAsJson,
              .paste, .delete, .selectAll, .clearSelection, .addRow, .duplicateRow,
@@ -167,8 +168,13 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         }
     }
 
+    /// `find` is deliberately `.global` rather than `.editor`: it dispatches to whichever
+    /// surface holds focus, and only a global context overlaps `.dataGrid`, which is what
+    /// lets it yield `Cmd+F` to a user who binds the filter bar there instead.
     var context: ShortcutContext {
         switch self {
+        case .find:
+            return .global
         case .executeQuery, .executeAllStatements, .executeQueryWithoutLimit,
              .cancelQuery, .explainQuery, .formatQuery, .foldAll, .unfoldAll,
              .toggleFold, .previousStatement, .nextStatement, .runStatementAndAdvance,
@@ -224,6 +230,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .previousStatement: return String(localized: "Previous Statement")
         case .nextStatement: return String(localized: "Next Statement")
         case .runStatementAndAdvance: return String(localized: "Run Statement and Advance")
+        case .find: return String(localized: "Find")
         case .findNext: return String(localized: "Find Next")
         case .findPrevious: return String(localized: "Find Previous")
         case .export: return String(localized: "Export")
@@ -281,7 +288,6 @@ extension ShortcutAction {
         (.character("/", command: true), String(localized: "Toggle Comment")),
         (.character("[", command: true), String(localized: "Indent")),
         (.character("]", command: true), String(localized: "Outdent")),
-        (.character("f", command: true), String(localized: "Find")),
         (.character("d", command: true, shift: true), String(localized: "Duplicate Line")),
         (.character("k", command: true, shift: true), String(localized: "Delete Line")),
         (.special(.space, control: true), String(localized: "Show Completions")),
@@ -315,8 +321,7 @@ extension ShortcutAction {
     static let reservedAppShortcuts: [(key: BoundKey, name: String)] = {
         var shortcuts: [(key: BoundKey, name: String)] = [
             (.character("=", command: true), String(localized: "Zoom In")),
-            (.character("-", command: true), String(localized: "Zoom Out")),
-            (.character("f", command: true), String(localized: "Find"))
+            (.character("-", command: true), String(localized: "Zoom Out"))
         ]
         for number in 1...9 {
             shortcuts.append((
@@ -517,6 +522,7 @@ struct KeyboardSettings: Codable, Equatable {
         .unfoldAll: .special(.rightArrow, command: true, shift: true, option: true),
         .toggleFold: .special(.leftArrow, command: true, option: true),
         .previewSQL: .character("p", command: true, shift: true),
+        .find: .character("f", command: true),
         .findNext: .character("g", command: true),
         .findPrevious: .character("g", command: true, shift: true),
         .aiExplainQuery: .character("l", command: true),
