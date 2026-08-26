@@ -168,6 +168,33 @@ struct TableViewCoordinatorLayoutTests {
         #expect(coordinator.savedColumnLayout(binding: binding) == binding)
     }
 
+    /// A saved order names its columns, and `SELECT a.id, b.id` gives two of them the same name.
+    /// `ColumnIdentitySchema` resolves a duplicate to its last slot, so replaying such an order
+    /// silently swaps the pair.
+    @Test("Query tab drops a column order when two columns share a name")
+    func queryTabDropsColumnOrderForDuplicateNames() {
+        let coordinator = makeCoordinator(
+            tabType: .query,
+            connectionId: nil,
+            tableName: nil,
+            persister: FakeColumnLayoutPersister()
+        )
+        let rows = TableRows.from(
+            queryRows: [[.text("1"), .text("2")]],
+            columns: ["id", "id"],
+            columnTypes: Array(repeating: ColumnType.text(rawType: "TEXT"), count: 2)
+        )
+        coordinator.rebuildColumnMetadataCache(from: rows)
+        var binding = ColumnLayoutState()
+        binding.columnWidths = ["id": 60]
+        binding.columnOrder = ["id", "id"]
+
+        var expected = ColumnLayoutState()
+        expected.columnWidths = ["id": 60]
+
+        #expect(coordinator.savedColumnLayout(binding: binding) == expected)
+    }
+
     /// A reorder with no width change is the whole layout, and it used to fall through the
     /// emptiness guard and come back as nil.
     @Test("Query tab keeps an order-only layout")
