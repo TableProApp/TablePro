@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Keep Open for a preview tab, by double-clicking it in the tab strip or from its contextual menu. (#2436)
+
 ## [0.68.1] - 2026-08-26
 
 ### Changed

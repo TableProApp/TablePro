@@ -80,6 +80,26 @@ final class QueryTabManager {
         moveTab(id: id, to: index + offset)
     }
 
+    /// Keeps a preview tab, so the next table opened from the sidebar lands in a tab of its own
+    /// instead of replacing this one. The single mutator of `isPreview`: every promotion path,
+    /// the sidebar's, the editor's and the tab strip's, comes through here.
+    ///
+    /// Promotion never reorders. A tab that moves as it is kept would be a different feature,
+    /// which is what pinning is in the editors that offer both.
+    ///
+    /// One way, deliberately. Nothing turns a kept tab back into a preview, so a tab the user
+    /// asked to hold on to cannot be thrown away by a later click.
+    func promotePreviewTab(id: UUID) {
+        guard let index = tabs.firstIndex(where: { $0.id == id }), tabs[index].isPreview else { return }
+        mutate(at: index) { $0.isPreview = false }
+    }
+
+    /// Whether keeping this tab would change anything, so a menu item can dim rather than be
+    /// offered and do nothing.
+    func canPromotePreviewTab(id: UUID) -> Bool {
+        tabs.first { $0.id == id }?.isPreview ?? false
+    }
+
     func selectTab(at index: Int) {
         guard tabs.indices.contains(index) else { return }
         selectedTabId = tabs[index].id

@@ -46,6 +46,13 @@ internal struct EditorTabStrip: View {
     /// separators are a property of the row: they are hidden for the whole strip while a tab is in
     /// flight, so a line does not appear between two tabs that are mid-swap.
     @State private var draggingTabId: UUID?
+    /// The tab the previous click activated, so the second click of a double-click can be told
+    /// from a click on a neighbour that happened to land inside the double-click window.
+    @State private var lastActivatedTabId: UUID?
+    /// A tab whose selection came from a click on the tab itself, which must not be recentred.
+    /// The track scrolls once the tabs stop fitting, and sliding the clicked tab to the middle
+    /// takes it out from under a second click that is already on its way.
+    @State private var clickSelectedTabId: UUID?
     @Environment(\.controlActiveState) private var controlActiveState
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -72,6 +79,7 @@ internal struct EditorTabStrip: View {
         .onChange(of: tabManager.tabs.map(\.id)) { _, ids in
             if let hoveredTabId, !ids.contains(hoveredTabId) { self.hoveredTabId = nil }
             if let draggingTabId, !ids.contains(draggingTabId) { self.draggingTabId = nil }
+            if let lastActivatedTabId, !ids.contains(lastActivatedTabId) { self.lastActivatedTabId = nil }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Editor Tabs"))
@@ -118,6 +126,10 @@ internal struct EditorTabStrip: View {
                 /// a tab that is scrolled out of sight, so the selection pulls itself into view.
                 .onChange(of: tabManager.selectedTabId) { _, newValue in
                     guard let newValue else { return }
+                    guard clickSelectedTabId != newValue else {
+                        clickSelectedTabId = nil
+                        return
+                    }
                     withMotion(.easeOut(duration: 0.15)) {
                         scroller.scrollTo(newValue, anchor: .center)
                     }
@@ -165,10 +177,12 @@ internal struct EditorTabStrip: View {
                     hoveredTabId = nil
                 }
             },
-            onSelect: { tabManager.selectedTabId = tab.id },
+            onActivate: { activate(tab.id) },
             onClose: { onClose(tab.id) },
             onCloseOthers: { onCloseOthers(tab.id) },
             onCloseAll: onCloseAll,
+            canKeepOpen: tabManager.canPromotePreviewTab(id: tab.id),
+            onKeepOpen: { tabManager.promotePreviewTab(id: tab.id) },
             canMoveLeft: tabManager.canMoveTab(id: tab.id, by: -1),
             canMoveRight: tabManager.canMoveTab(id: tab.id, by: 1),
             onMoveLeft: { tabManager.moveTab(id: tab.id, by: -1) },
@@ -189,6 +203,30 @@ internal struct EditorTabStrip: View {
                 tabManager: tabManager
             )
         )
+    }
+
+    /// Selects the tab, and keeps it when the click that got here was the second of a double-click.
+    ///
+    /// The click count is read off the event AppKit is currently dispatching rather than arbitrated
+    /// by a SwiftUI gesture, which is what `NSTableView` does with `action` and `doubleAction`.
+    /// Measured against the shipping strip: a `TapGesture(count: 2)` in any composition holds the
+    /// selection back 371ms on every click and drops it entirely on the double, and a
+    /// `simultaneousGesture` selects twice; reading the event costs the same 22ms as selecting.
+    private func activate(_ tabId: UUID) {
+        let activation = EditorTabActivationResolver.resolve(
+            click: EditorTabClick(event: NSApp.currentEvent),
+            tabId: tabId,
+            lastActivatedTabId: lastActivatedTabId
+        )
+        lastActivatedTabId = tabId
+        /// Set only when the selection is about to change, so the flag is always consumed by the
+        /// `onChange` it is meant for rather than left behind to swallow a later Cmd+1.
+        if tabManager.selectedTabId != tabId {
+            clickSelectedTabId = tabId
+        }
+        tabManager.selectedTabId = tabId
+        guard activation == .selectAndKeep else { return }
+        tabManager.promotePreviewTab(id: tabId)
     }
 
     private var isWindowActive: Bool {
@@ -273,10 +311,12 @@ private struct EditorTabStripItem: View {
     let position: Int
     let count: Int
     let onHover: (Bool) -> Void
-    let onSelect: () -> Void
+    let onActivate: () -> Void
     let onClose: () -> Void
     let onCloseOthers: () -> Void
     let onCloseAll: () -> Void
+    let canKeepOpen: Bool
+    let onKeepOpen: () -> Void
     let canMoveLeft: Bool
     let canMoveRight: Bool
     let onMoveLeft: () -> Void
@@ -301,8 +341,14 @@ private struct EditorTabStripItem: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .onHover(perform: onHover)
-        .help(Text(label.description))
+        .help(Text(tooltip))
         .contextMenu {
+            /// The double-click that keeps a tab is an editor idiom rather than a system one, so
+            /// it needs a command beside it: a gesture with no menu equivalent cannot be found by
+            /// a user who does not already expect it, and cannot be performed at all by VoiceOver.
+            Button(String(localized: "Keep Open"), action: onKeepOpen)
+                .disabled(!canKeepOpen)
+            Divider()
             Button(String(localized: "Close Tab"), action: onClose)
             Button(String(localized: "Close Other Tabs"), action: onCloseOthers)
             Button(String(localized: "Close All Tabs"), action: onCloseAll)
@@ -322,6 +368,13 @@ private struct EditorTabStripItem: View {
         .accessibilityValue(Text(positionDescription))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityAction(named: Text("Close Tab"), onClose)
+        /// Offered only where it does something, so the actions rotor matches the contextual menu
+        /// rather than announcing a command that silently does nothing on a tab already kept.
+        .accessibilityActions {
+            if canKeepOpen {
+                Button(String(localized: "Keep Open"), action: onKeepOpen)
+            }
+        }
         .accessibilityAction(named: Text("Move Tab Left")) { if canMoveLeft { onMoveLeft() } }
         .accessibilityAction(named: Text("Move Tab Right")) { if canMoveRight { onMoveRight() } }
     }
@@ -336,7 +389,7 @@ private struct EditorTabStripItem: View {
     /// label never receives the click.
     private var surface: some View {
         ZStack {
-            Button(action: onSelect) { title }
+            Button(action: onActivate) { title }
                 .buttonStyle(.plain)
 
             HStack(spacing: 0) {
@@ -394,10 +447,26 @@ private struct EditorTabStripItem: View {
         }
     }
 
+    /// Carries the preview state, because the italic title cannot: an assistive technology is told
+    /// the string, never the face it is set in, and the HIG asks that no interface rely on a single
+    /// method to convey a change in state.
     private var positionDescription: String {
-        let place = String(format: String(localized: "%1$d of %2$d"), position, count)
-        guard tab.execution.finishedUnseenAt != nil, !isSelected else { return place }
-        return String(format: String(localized: "%@, finished"), place)
+        var description = String(format: String(localized: "%1$d of %2$d"), position, count)
+        if tab.isPreview {
+            description = String(format: String(localized: "%@, preview tab"), description)
+        }
+        guard tab.execution.finishedUnseenAt != nil, !isSelected else { return description }
+        return String(format: String(localized: "%@, finished"), description)
+    }
+
+    /// The pointer's route to the same state the title's italic carries, and the only place the
+    /// gesture that keeps the tab is named outside the context menu.
+    private var tooltip: String {
+        guard tab.isPreview else { return label.description }
+        return String(
+            format: String(localized: "%@\nPreview tab. Double-click to keep it open."),
+            label.description
+        )
     }
 
     /// The system draws both labels in the same face at the same size and separates them by colour
