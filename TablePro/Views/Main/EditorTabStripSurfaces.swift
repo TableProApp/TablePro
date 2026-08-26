@@ -23,7 +23,12 @@ internal enum EditorTabStripPalette {
     internal static var selectedFill: Color { Color(nsColor: .controlColor) }
     /// Half the weight of a separator. `separatorColor` was twice the measured edge and read as a
     /// drawn outline rather than the lit rim the system puts there.
-    internal static var trackEdge: Color { Color(nsColor: .quinaryLabelColor) }
+    ///
+    /// `quinaryLabel`, not `quinaryLabelColor`. The two spellings swap places between toolchains:
+    /// the Xcode 27 beta deprecates this one in favour of `quinaryLabelColor`, and Xcode 26.4, the
+    /// one CI builds with, rejects `quinaryLabelColor` outright as renamed to this. Take the
+    /// spelling CI accepts and ignore the beta's deprecation hint.
+    internal static var trackEdge: Color { Color(nsColor: .quinaryLabel) }
     internal static var hoverFill: Color { Color(nsColor: .tertiarySystemFill) }
     internal static var separator: Color { Color(nsColor: .separatorColor) }
 }
