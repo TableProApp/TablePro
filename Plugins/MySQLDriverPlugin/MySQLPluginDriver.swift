@@ -200,7 +200,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 columnMeta: result.columnMeta
             )
         } catch let error as MariaDBPluginError
-            where !isRetry && isConnectionLostError(error) && mysqlStatementIsReadOnly(query) {
+            where !isRetry && isConnectionLostError(error) && mysqlStatementIsSafeToReplay(query) {
             try await reconnect()
             return try await executeWithReconnect(query: query, isRetry: true, rowCap: rowCap)
         }

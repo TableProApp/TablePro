@@ -152,6 +152,10 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private var mysql: UnsafeMutablePointer<MYSQL>?
     private let queue = DispatchQueue(label: "com.TablePro.mariadb.plugin", qos: .userInitiated)
 
+    /// Serial, and separate from `queue`, which the read being cancelled is sitting on. Serial so a
+    /// user pressing Stop repeatedly opens one connection at a time rather than one per press.
+    private let cancelQueue = DispatchQueue(label: "com.TablePro.mariadb.plugin.cancel", qos: .userInitiated)
+
     private let host: String
     private let port: UInt32
     private let user: String
@@ -402,11 +406,23 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     // MARK: - Query Cancellation
 
+    /// Stop reaches the server over a second connection, and building one is a TCP connect, a TLS
+    /// handshake and an auth exchange. `DatabaseManager.cancelRunningQuery` calls this synchronously
+    /// from the main actor on purpose, because the user is waiting, so the connect cannot happen
+    /// there: against a host that has stopped answering, which is exactly when someone presses Stop,
+    /// `mysql_real_connect` blocks for the full five-second `MYSQL_OPT_CONNECT_TIMEOUT`.
+    ///
+    /// The half the caller needs is the gate, which is already synchronous: it is what makes the
+    /// in-flight read give up. The kill is server-side cleanup and carries only a thread id, no
+    /// handle, so it is safe to finish on its own queue.
     func cancelCurrentQuery() {
         guard cancellationGate.cancel() != nil else { return }
 
         guard let mysql = mysql else { return }
-        killQueryOnServer(threadId: mysql_thread_id(mysql))
+        let threadId = mysql_thread_id(mysql)
+        cancelQueue.async { [self] in
+            killQueryOnServer(threadId: threadId)
+        }
     }
 
     /// The kill has to reach the server the query is running on, which means repeating the transport
