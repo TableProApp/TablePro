@@ -47,6 +47,14 @@ struct CellOverlayAppearanceTests {
     /// `NSAppearance.currentDrawing()` is still the old one, so a bare `.cgColor` resolves to the old
     /// colour. Setting `container.appearance` directly does not reproduce that and would pass even
     /// without `performAsCurrentDrawingAppearance`. The container has to be in a real window.
+    ///
+    /// The window has to be held across the flip. AppKit does not retain a window that was never
+    /// ordered front, and this one's last use is the `contentView` read below, so an autorelease pool
+    /// draining between that and the flip deallocates it. Measured: after a pool drain the window is
+    /// gone, `NSApp.windows` is empty, the container's `window` is nil, and the appearance change
+    /// produces zero `viewDidChangeEffectiveAppearance` calls, leaving `effectiveAppearance` at Aqua
+    /// and both reads at the light colour. That is the failure this suite showed once and could not
+    /// explain, and it is intermittent because where the pool drains is not the test's to decide.
     @Test("An app appearance change repaints an open overlay")
     func appAppearanceChangeRepaintsAnOpenOverlay() throws {
         let originalAppearance = NSApp.appearance
@@ -60,6 +68,7 @@ struct CellOverlayAppearanceTests {
             backing: .buffered,
             defer: false
         )
+        window.isReleasedWhenClosed = false
         let tableView = NSTableView(frame: NSRect(x: 0, y: 0, width: 400, height: 200))
         let contentView = try #require(window.contentView)
         contentView.addSubview(tableView)
@@ -67,15 +76,20 @@ struct CellOverlayAppearanceTests {
         let container = makeContainer()
         tableView.addSubview(container)
 
-        let lightBackground = try components(of: container.layer?.backgroundColor)
-        let lightBorder = try components(of: container.layer?.borderColor)
+        try withExtendedLifetime(window) {
+            let lightBackground = try components(of: container.layer?.backgroundColor)
+            let lightBorder = try components(of: container.layer?.borderColor)
 
-        NSApp.appearance = try #require(NSAppearance(named: .darkAqua))
+            NSApp.appearance = try #require(NSAppearance(named: .darkAqua))
 
-        let darkBackground = try components(of: container.layer?.backgroundColor)
-        let darkBorder = try components(of: container.layer?.borderColor)
+            #expect(container.window === window)
+            #expect(container.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua)
 
-        #expect(lightBackground.brightness > darkBackground.brightness)
-        #expect(lightBorder.brightness != darkBorder.brightness)
+            let darkBackground = try components(of: container.layer?.backgroundColor)
+            let darkBorder = try components(of: container.layer?.borderColor)
+
+            #expect(lightBackground.brightness > darkBackground.brightness)
+            #expect(lightBorder.brightness != darkBorder.brightness)
+        }
     }
 }
