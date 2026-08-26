@@ -34,7 +34,9 @@ struct HistorySection: View {
                     Task { @MainActor in
                         let confirmed = await AlertHelper.confirmDestructive(
                             title: String(localized: "Clear All History?"),
-                            message: String(localized: "This will permanently delete all query history entries, and the saved changes kept for restoring. This action cannot be undone."),
+                            message: String(
+                                localized: "This will permanently delete all query history entries, and the saved changes kept for restoring. This action cannot be undone."
+                            ),
                             confirmButton: String(localized: "Clear"),
                             cancelButton: String(localized: "Cancel")
                         )

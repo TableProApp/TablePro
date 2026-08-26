@@ -25,7 +25,7 @@ extension QueryHistoryStorage {
     /// A save older than this is not worth the disk. Long enough to cover "I noticed the next
     /// morning", short enough that production values are not sitting there for a quarter.
     static let rewindSnapshotRetention: TimeInterval = 7 * 24 * 60 * 60
-    static let rewindSnapshotByteLimit: Int64 = 32 * 1024 * 1024
+    static let rewindSnapshotByteLimit: Int64 = 32 * 1_024 * 1_024
     static let maximumRewindSnapshotsPerTable = 50
 
     private static var rewindLogger: Logger {
