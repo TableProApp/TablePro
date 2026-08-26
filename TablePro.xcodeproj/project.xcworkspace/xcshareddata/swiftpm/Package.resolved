@@ -241,6 +241,15 @@
         "revision" : "3d6871d5b4a5cd519adf233fbb576e0a2af71c17",
         "version" : "5.4.0"
       }
+    },
+    {
+      "identity" : "zstd",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/facebook/zstd",
+      "state" : {
+        "revision" : "f8745da6ff1ad1e7bab384bd1f9d742439278e99",
+        "version" : "1.5.7"
+      }
     }
   ],
   "version" : 2

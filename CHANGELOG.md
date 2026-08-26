@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Kafka driver plugin: topics in the grid, consumer group lag, and KafkaQL for seeking and producing. (#2419)
+
 ## [0.68.1] - 2026-08-26
 
 ### Changed

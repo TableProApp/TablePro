@@ -13,6 +13,7 @@ enum DatabaseCategory: String, CaseIterable, Hashable, Sendable, Comparable {
     case wideColumn
     case cloud
     case coordination
+    case streaming
     case other
 
     var displayName: String {
@@ -24,6 +25,7 @@ enum DatabaseCategory: String, CaseIterable, Hashable, Sendable, Comparable {
         case .wideColumn:   return String(localized: "Wide-Column")
         case .cloud:        return String(localized: "Cloud Native")
         case .coordination: return String(localized: "Coordination & Config")
+        case .streaming:    return String(localized: "Event Streaming")
         case .other:        return String(localized: "Other")
         }
     }
@@ -37,7 +39,8 @@ enum DatabaseCategory: String, CaseIterable, Hashable, Sendable, Comparable {
         case .wideColumn:   return 4
         case .cloud:        return 5
         case .coordination: return 6
-        case .other:        return 7
+        case .streaming:    return 7
+        case .other:        return 8
         }
     }
 
