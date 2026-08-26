@@ -75,6 +75,8 @@ A table without a primary key is matched on every original column value instead,
 
 On an engine with transactions, the statements run inside one, so a failure rolls the whole save back and the table is left as it was. Without them, the statements that ran before the failure stand. Either way a failed save reports **Save Failed** with the server's message and keeps the queue intact, so correct the value and save again. A save that succeeds clears the queue, clears undo, and reloads the grid.
 
+Each statement is held to the number of rows it was written for. On a table with no primary key, two identical rows cannot be told apart, so a statement meant for one of them matches both; the save stops there and reports what happened instead of rewriting the other row.
+
 There is no discard button. Undo the edits, or take the **Discard Unsaved Changes?** prompt that appears when you refresh, sort, filter, change page, or close the tab with edits pending.
 
 ## Previewing the SQL
@@ -84,6 +86,30 @@ There is no discard button. Undo the edits, or take the **Discard Unsaved Change
 ## Undo and redo
 
 `Cmd+Z` and `Cmd+Shift+Z`. Focus decides what they act on: text in the SQL editor, queued changes in the grid. Deleting several rows undoes as one step. The stacks are per tab, and a save clears them.
+
+## Restoring a save
+
+**Edit > Restore Previous Values…** puts back what the rows held before the last save on the current table. Starter license.
+
+Values are kept on this Mac for 7 days, encrypted, and never synced. Turn the capture off, or delete what is stored, in **Settings > Data & Results**.
+
+Every row is planned against the table as it stands now, and the sheet says what will happen to each one before anything runs:
+
+| Outcome | Means |
+|---|---|
+| Will restore | The row still holds what the save wrote |
+| Changed since the save | Someone else wrote to the same column, and the row is left alone |
+| Already restored | The row is back at its old value, so a rewind that stopped halfway is safe to run again |
+| Row no longer exists | Nothing left to write to |
+| A row with this key already exists | Something took the deleted row's key |
+
+**Restore** writes the changes back the way any other save does: through the same [safe mode](/features/safe-mode) prompt, in one transaction where the engine has them, and into query history. The restore is itself restorable.
+
+<Warning>
+Only what TablePro wrote is restored. Triggers that fired, audit rows they wrote, and rows a cascade deleted stay as they are.
+</Warning>
+
+A save is not restorable at all when it also truncated or dropped a table. Within a save, a row is skipped when the table has no primary key, when a column was set to `DEFAULT` or a function such as `NOW()` whose stored value the app never read back, when the server chose the key of an inserted row, or when a value was larger than 1 MB.
 
 ## Structure changes
 

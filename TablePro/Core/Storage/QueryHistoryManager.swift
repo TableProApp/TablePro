@@ -4,7 +4,9 @@ import Foundation
 final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, QueryPlanSnapshotReading, Sendable {
     static let shared = QueryHistoryManager()
 
-    private let storage: QueryHistoryStorage
+    /// Not private: the rewind snapshot API lives in its own extension file rather than growing
+    /// this one, and an extension in another file cannot reach a private stored property.
+    internal let storage: QueryHistoryStorage
     private let isCapturePaused: @Sendable () -> Bool
 
     init(

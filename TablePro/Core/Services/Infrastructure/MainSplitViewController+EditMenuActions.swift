@@ -94,4 +94,8 @@ extension MainSplitViewController {
     @objc func duplicateRow(_ sender: Any?) {
         commandActions?.duplicateRow()
     }
+
+    @objc func restorePreviousValues(_ sender: Any?) {
+        commandActions?.restorePreviousValues()
+    }
 }

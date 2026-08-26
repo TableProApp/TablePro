@@ -18,6 +18,7 @@ internal enum ProFeature: String, CaseIterable {
     case teamCatalog
     case teamLibrary
     case compareSync
+    case dataRewind
 
     var displayName: String {
         switch self {
@@ -39,6 +40,8 @@ internal enum ProFeature: String, CaseIterable {
             return String(localized: "Team Library")
         case .compareSync:
             return String(localized: "Compare & Sync")
+        case .dataRewind:
+            return String(localized: "Data Rewind")
         }
     }
 
@@ -62,6 +65,8 @@ internal enum ProFeature: String, CaseIterable {
             return "books.vertical.fill"
         case .compareSync:
             return "arrow.left.arrow.right.square"
+        case .dataRewind:
+            return "clock.arrow.circlepath"
         }
     }
 
@@ -85,6 +90,8 @@ internal enum ProFeature: String, CaseIterable {
             return String(localized: "Share connections and saved queries with your team through your account. Passwords are never included.")
         case .compareSync:
             return String(localized: "Compare structure or data between two connections and generate the sync script.")
+        case .dataRewind:
+            return String(localized: "Restore the previous values of rows you already saved.")
         }
     }
 
@@ -92,7 +99,7 @@ internal enum ProFeature: String, CaseIterable {
     var requiredTier: LicenseTier {
         switch self {
         case .iCloudSync, .encryptedExport, .envVarReferences, .linkedFolders, .queryInsights, .resultCharts,
-             .compareSync:
+             .compareSync, .dataRewind:
             return .starter
         case .teamCatalog, .teamLibrary:
             return .team

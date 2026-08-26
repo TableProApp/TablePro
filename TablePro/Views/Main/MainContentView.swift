@@ -287,6 +287,12 @@ struct MainContentView: View {
                 statements: coordinator.toolbarState.previewStatements,
                 databaseType: coordinator.toolbarState.databaseType
             )
+        case .rewind:
+            if let plan = coordinator.rewindPlan {
+                RewindReviewSheet(plan: plan) {
+                    await coordinator.applyRewind()
+                }
+            }
         }
     }
 

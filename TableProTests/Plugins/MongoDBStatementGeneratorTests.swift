@@ -1033,6 +1033,50 @@ struct MongoDBStatementGeneratorTests {
         #expect(results.isEmpty)
     }
 
+    // MARK: - Restore
+
+    /// An ordinary insert drops `_id` so the server picks one. Undoing a delete has the opposite
+    /// requirement: a new `_id` is a different document, and whatever referenced the old one is
+    /// still pointing at nothing.
+    @Test("Restoring a deleted document keeps its original _id")
+    func restoreKeepsObjectId() {
+        let gen = MongoDBStatementGenerator(collectionName: "users", columns: ["_id", "name"])
+
+        let statements = gen.generateRestore(rows: [["507f1f77bcf86cd799439011", "Alice"]])
+
+        #expect(statements?.count == 1)
+        let statement = statements?.first?.statement ?? ""
+        #expect(statement.hasPrefix("db[\"users\"].insertOne("))
+        let document = firstArgumentObject(in: statement)
+        #expect((document?["_id"] as? [String: Any])?["$oid"] as? String == "507f1f77bcf86cd799439011")
+        #expect(document?["name"] as? String == "Alice")
+    }
+
+    @Test("A numeric key is restored as a number, not a string")
+    func restoreKeepsNumericId() {
+        let gen = MongoDBStatementGenerator(collectionName: "counters", columns: ["_id", "value"])
+
+        let statement = gen.generateRestore(rows: [["42", "7"]])?.first?.statement ?? ""
+
+        let document = firstArgumentObject(in: statement)
+        #expect(document?["_id"] as? Int == 42)
+    }
+
+    /// Dropping the field would restore a document that is missing it, and report success.
+    @Test("A document with a binary field is refused rather than restored without it")
+    func restoreRefusesBinaryField() {
+        let gen = MongoDBStatementGenerator(collectionName: "users", columns: ["_id", "avatar"])
+
+        #expect(gen.generateRestore(rows: [["507f1f77bcf86cd799439011", .bytes(Data([0x01]))]]) == nil)
+    }
+
+    @Test("A collection with no _id column cannot be restored")
+    func restoreRefusesWithoutIdColumn() {
+        let gen = MongoDBStatementGenerator(collectionName: "users", columns: ["name", "email"])
+
+        #expect(gen.generateRestore(rows: [["Alice", "alice@example.com"]]) == nil)
+    }
+
 }
 
 private func firstArgumentObject(in statement: String) -> [String: Any]? {

@@ -8,6 +8,7 @@ struct HistoryListPane: View {
     let onRunInNewTab: (QueryHistoryEntry) -> Void
     let onCopy: (QueryHistoryEntry) -> Void
     let onSaveAsFavorite: (QueryHistoryEntry) -> Void
+    let onRestorePreviousValues: (QueryHistoryEntry) -> Void
 
     var body: some View {
         content
@@ -140,9 +141,21 @@ struct HistoryListPane: View {
             FieldDrivenMenuItem(title: String(localized: "Copy Query")) { onCopy(entry) },
             FieldDrivenMenuItem(title: String(localized: "Save as Favorite…")) { onSaveAsFavorite(entry) },
             .separator,
+        ] + rewindItems(for: entry) + [
             FieldDrivenMenuItem(title: String(localized: "Delete")) {
                 Task { await viewModel.delete(entry) }
-            }
+            },
+        ]
+    }
+
+    /// Only a grid save has rows to put back. Everything else in this list is SQL somebody typed.
+    private func rewindItems(for entry: QueryHistoryEntry) -> [FieldDrivenMenuItem] {
+        guard entry.source == .rowEdit else { return [] }
+        return [
+            FieldDrivenMenuItem(title: String(localized: "Restore Previous Values…")) {
+                onRestorePreviousValues(entry)
+            },
+            .separator,
         ]
     }
 }

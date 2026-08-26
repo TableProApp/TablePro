@@ -59,6 +59,7 @@ enum ActiveSheet: Identifiable {
     /// This is the rule the sidebar's other destructive commands already keep by carrying their ref.
     case maintenance(operation: String, tableName: String, database: String?, schema: String?)
     case createDatabase
+    case rewind
 
     var id: String {
         switch self {
@@ -72,6 +73,7 @@ enum ActiveSheet: Identifiable {
         case .maintenance(let operation, let tableName, let database, let schema):
             "maintenance-\(operation)-\(database ?? "")-\(schema ?? "")-\(tableName)"
         case .createDatabase: "createDatabase"
+        case .rewind: "rewind"
         }
     }
 }
@@ -327,6 +329,9 @@ final class MainContentCoordinator {
 
     /// Guards against duplicate safe mode confirmation prompts
     @ObservationIgnored internal var isShowingSafeModePrompt = false
+
+    /// What restoring the last save would do, once it has been planned against the live rows.
+    internal var rewindPlan: RewindPlan?
 
     /// Continuation for callers that need to await the result of a fire-and-forget save
     /// (e.g. save-then-close). Set before calling `saveChanges`, resumed by `executeCommitStatements`.

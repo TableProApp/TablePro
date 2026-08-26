@@ -16,6 +16,13 @@ struct ParameterizedStatement: @unchecked Sendable {
     let parameters: [Any?]
 }
 
+/// A statement plus the number of rows it is meant to touch, so a caller can hold the server to it.
+struct AttributedStatement: @unchecked Sendable {
+    let statement: ParameterizedStatement
+    let kind: RowWriteKind
+    let rowCount: Int
+}
+
 /// Generates SQL statements from data changes
 struct SQLStatementGenerator {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLStatementGenerator")
@@ -73,7 +80,26 @@ struct SQLStatementGenerator {
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) -> [ParameterizedStatement] {
-        var statements: [ParameterizedStatement] = []
+        generateAttributedStatements(
+            from: changes,
+            insertedRowData: insertedRowData,
+            deletedRowIndices: deletedRowIndices,
+            insertedRowIndices: insertedRowIndices
+        ).map(\.statement)
+    }
+
+    /// The same statements, each carrying how many rows it is meant to touch.
+    ///
+    /// A delete is batched, so the count is not always one and the batching rule lives here. A
+    /// caller that verified the server's affected-row count against a rule of its own would be a
+    /// second copy of that rule with nothing keeping the two in step.
+    func generateAttributedStatements(
+        from changes: [RowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>
+    ) -> [AttributedStatement] {
+        var statements: [AttributedStatement] = []
 
         // Collect UPDATE and DELETE changes to batch them
         var updateChanges: [RowChange] = []
@@ -89,7 +115,7 @@ struct SQLStatementGenerator {
                     continue
                 }
                 if let stmt = generateInsertSQL(for: change, insertedRowData: insertedRowData) {
-                    statements.append(stmt)
+                    statements.append(AttributedStatement(statement: stmt, kind: .insert, rowCount: 1))
                 }
             case .delete:
                 // SAFETY: Verify the row is still marked as deleted
@@ -104,7 +130,7 @@ struct SQLStatementGenerator {
         if !updateChanges.isEmpty {
             for change in updateChanges {
                 if let stmt = generateUpdateSQL(for: change) {
-                    statements.append(stmt)
+                    statements.append(AttributedStatement(statement: stmt, kind: .update, rowCount: 1))
                 }
             }
         }
@@ -346,18 +372,24 @@ struct SQLStatementGenerator {
         let boundValue: PluginCellValue?
     }
 
-    private func generateDeleteStatements(for changes: [RowChange]) -> [ParameterizedStatement] {
+    private func generateDeleteStatements(for changes: [RowChange]) -> [AttributedStatement] {
         let rowMatches = changes.compactMap { deleteRowMatches(for: $0) }
         guard !rowMatches.isEmpty else { return [] }
 
-        var statements: [ParameterizedStatement] = []
+        var statements: [AttributedStatement] = []
         var chunk: [[DeleteColumnMatch]] = []
         var chunkParameterCount = 0
+
+        func flush() {
+            statements.append(
+                AttributedStatement(statement: deleteStatement(for: chunk), kind: .delete, rowCount: chunk.count)
+            )
+        }
 
         for matches in rowMatches {
             let rowParameterCount = matches.count(where: { $0.boundValue != nil })
             if !chunk.isEmpty, chunkParameterCount + rowParameterCount > maxBindParameters {
-                statements.append(deleteStatement(for: chunk))
+                flush()
                 chunk = []
                 chunkParameterCount = 0
             }
@@ -366,7 +398,7 @@ struct SQLStatementGenerator {
         }
 
         if !chunk.isEmpty {
-            statements.append(deleteStatement(for: chunk))
+            flush()
         }
 
         return statements

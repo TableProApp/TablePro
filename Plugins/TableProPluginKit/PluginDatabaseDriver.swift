@@ -166,6 +166,15 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func generateStatements(table: String, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]?
     func generateStatements(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], changes: [PluginRowChange], insertedRowData: [Int: [PluginCellValue]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [PluginCellValue])]?
 
+    /// Writes a row back exactly as it was, key included, to undo a delete.
+    ///
+    /// `generateStatements` writes an insert for a row the user just added, so it is free to let
+    /// the server pick the key and MongoDB's drops `_id` on purpose. Replaying that to undo a
+    /// delete produces a different document rather than the one that went missing. Return nil to
+    /// say this driver cannot restore a row's identity, and the host will refuse rather than write
+    /// something close.
+    func generateIdentityPreservingInsert(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], rows: [[PluginCellValue]]) -> [(statement: String, parameters: [PluginCellValue])]?
+
     // Database switching (SQL Server USE, ClickHouse database switch, etc.)
     func switchDatabase(to database: String) async throws
 
@@ -461,6 +470,7 @@ public extension PluginDatabaseDriver {
             insertedRowData: insertedRowData, deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
         )
     }
+    func generateIdentityPreservingInsert(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], rows: [[PluginCellValue]]) -> [(statement: String, parameters: [PluginCellValue])]? { nil }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? { nil }
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? { nil }

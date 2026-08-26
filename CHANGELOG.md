@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Restore Previous Values in the Edit menu, taking back a save that already committed. Starter license. (#2107)
+- Data Rewind settings in Settings > Data & Results, with an off switch and Clear Saved Changes.
+
+### Fixed
+
+- Save reporting the number of statements it ran as the number of rows it changed.
+- An edit or a delete on a table with no primary key changing every identical row. (#2107)
+- The same statements committed twice when Cmd+S is pressed again during a slow save.
+- Switching tabs during a save clearing the edits of the tab switched to, and re-running its query.
+- Placeholder SQL with no values in the Safe Mode confirmation and the authorization prompt.
+
 ## [0.68.1] - 2026-08-26
 
 ### Changed

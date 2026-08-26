@@ -289,16 +289,23 @@ struct HistorySettings: Codable, Equatable {
     var maxDays: Int // 0 = unlimited
     var autoCleanup: Bool
 
+    /// Keep what rows looked like before each save, so a committed save can be restored.
+    ///
+    /// This is the only setting in the app that governs storing real row values on disk, which is
+    /// why it is a switch rather than an assumption.
+    var keepRewindHistory: Bool
+
     static let `default` = HistorySettings(
         maxEntries: 10_000,
         maxDays: 90,
         autoCleanup: true
     )
 
-    init(maxEntries: Int = 10_000, maxDays: Int = 90, autoCleanup: Bool = true) {
+    init(maxEntries: Int = 10_000, maxDays: Int = 90, autoCleanup: Bool = true, keepRewindHistory: Bool = true) {
         self.maxEntries = maxEntries
         self.maxDays = maxDays
         self.autoCleanup = autoCleanup
+        self.keepRewindHistory = keepRewindHistory
     }
 
     init(from decoder: Decoder) throws {
@@ -306,6 +313,7 @@ struct HistorySettings: Codable, Equatable {
         maxEntries = try container.decodeIfPresent(Int.self, forKey: .maxEntries) ?? 10_000
         maxDays = try container.decodeIfPresent(Int.self, forKey: .maxDays) ?? 90
         autoCleanup = try container.decodeIfPresent(Bool.self, forKey: .autoCleanup) ?? true
+        keepRewindHistory = try container.decodeIfPresent(Bool.self, forKey: .keepRewindHistory) ?? true
     }
 
     // MARK: - Validated Properties

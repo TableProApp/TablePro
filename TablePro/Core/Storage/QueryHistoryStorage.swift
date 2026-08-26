@@ -90,6 +90,7 @@ actor QueryHistoryStorage {
         migrateIfNeeded()
         createFingerprintIndex()
         createPlanSnapshotStorage()
+        createRewindSnapshotStorage()
         protectDatabaseFiles(at: dbPath)
     }
 
@@ -1123,6 +1124,7 @@ actor QueryHistoryStorage {
         /// part of the transaction above: a full scan of the plan table has no business holding the
         /// write lock that every history insert needs.
         prunePlanSnapshots(toByteLimit: QueryPlanStorageLimits.maximumTotalByteCount)
+        pruneRewindSnapshots()
 
         return sqlite3_total_changes(db) != changesBefore
     }

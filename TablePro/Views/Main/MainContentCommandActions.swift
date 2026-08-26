@@ -403,6 +403,10 @@ final class MainContentCommandActions {
         return coordinator.canEditActiveResult
     }
 
+    var canRestorePreviousValues: Bool {
+        coordinator?.canRewindSelectedTab ?? false
+    }
+
     /// Find and the filter panel act on the result grid, so they need a table tab that is showing
     /// one. Chart mode is not, and neither is Structure, whose own grid has its own commands.
     var canUseTableResultCommands: Bool {
@@ -934,6 +938,10 @@ final class MainContentCommandActions {
               let session = coordinator.structureSessions[tabId],
               session.changeManager.hasChanges else { return }
         Task { _ = await session.applyStagedChanges(coordinator: coordinator) }
+    }
+
+    func restorePreviousValues() {
+        coordinator?.rewindLastSave()
     }
 
     func saveChanges() {

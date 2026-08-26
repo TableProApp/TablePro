@@ -782,6 +782,19 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
+    func generateIdentityPreservingInsert(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        rows: [[PluginCellValue]]
+    ) -> [(statement: String, parameters: [PluginCellValue])]? {
+        let generator = MongoDBStatementGenerator(
+            collectionName: table, columns: columns, columnKinds: columnKinds(for: table)
+        )
+        return generator.generateRestore(rows: rows)
+    }
+
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {

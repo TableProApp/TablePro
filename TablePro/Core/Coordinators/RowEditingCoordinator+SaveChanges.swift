@@ -28,14 +28,29 @@ extension RowEditingCoordinator {
             return
         }
 
+        /// One change manager serves the whole window, so a second save cannot start while one is
+        /// in flight. Say so: over the slow link this guard exists for, a Save that silently does
+        /// nothing is indistinguishable from a Save that is broken.
+        guard beginSaveInFlight() else {
+            saveChangesLogger.debug("Save already in flight, refusing the repeat")
+            if let index = parent.tabManager.selectedTabIndex {
+                parent.tabManager.mutate(at: index) {
+                    $0.execution.errorMessage = String(localized: "A save is already running in this window.")
+                }
+            }
+            parent.saveCompletionContinuation?.resume(returning: false)
+            parent.saveCompletionContinuation = nil
+            return
+        }
+
         guard let scope = parent.selectedTabScope else {
             failSave(message: String(localized: "Not connected to database"))
             return
         }
 
-        let allStatements: [ParameterizedStatement]
+        let plan: DataWritePlan
         do {
-            allStatements = try parent.assemblePendingStatements(
+            plan = try parent.buildDataWritePlan(
                 pendingTruncates: pendingTruncates,
                 pendingDeletes: pendingDeletes,
                 tableOperationOptions: tableOperationOptions
@@ -45,12 +60,11 @@ extension RowEditingCoordinator {
             return
         }
 
-        guard !allStatements.isEmpty else {
+        guard !plan.isEmpty else {
             failSave(message: String(localized: "Could not generate SQL for changes."))
             return
         }
 
-        let sqlPreview = allStatements.map(\.sql).joined(separator: "\n")
         let snapshotTruncates = pendingTruncates
         let snapshotDeletes = pendingDeletes
         let snapshotOptions = tableOperationOptions
@@ -83,17 +97,21 @@ extension RowEditingCoordinator {
                             options: snapshotOptions
                         )
                     }
+                    endSaveInFlight()
                     parent.saveCompletionContinuation?.resume(returning: false)
                     parent.saveCompletionContinuation = nil
                     return
                 }
             }
 
+            /// The gate and the confirmation alert show the plan with its values written in.
+            /// Approving `UPDATE "users" SET "email" = ? WHERE "id" = ?` is approving nothing:
+            /// it names no row and no value.
             let decision = await ExecutionGateProvider.shared.authorize(
                 OperationRequest(
                     connectionId: connId,
                     databaseType: parent.connection.type,
-                    sql: sqlPreview,
+                    sql: plan.displaySQL,
                     kind: kind,
                     caller: .userInterface,
                     capabilities: .interactiveUser,
@@ -105,8 +123,8 @@ extension RowEditingCoordinator {
                 var truncs = snapshotTruncates
                 var dels = snapshotDeletes
                 var opts = snapshotOptions
-                executeCommitStatements(
-                    allStatements,
+                executeCommitPlan(
+                    plan,
                     scope: scope,
                     clearTableOps: hasPendingTableOps,
                     pendingTruncates: &truncs,
@@ -131,16 +149,17 @@ extension RowEditingCoordinator {
     /// `withScopedDriver` lease, so they all reach the same handle on the tab's own
     /// database. Everything else stays outside it: the connection's driver gate is not
     /// reentrant, so refreshing or re-running a query from inside the body would deadlock.
-    private func executeCommitStatements(
-        _ statements: [ParameterizedStatement],
+    private func executeCommitPlan(
+        _ plan: DataWritePlan,
         scope: DatabaseScope,
         clearTableOps: Bool,
         pendingTruncates: inout Set<String>,
         pendingDeletes: inout Set<String>,
         tableOperationOptions: inout [String: TableOperationOptions]
     ) {
-        let validStatements = statements.filter { !$0.sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        guard !validStatements.isEmpty else {
+        let validSteps = plan.steps.filter { !$0.statement.sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard !validSteps.isEmpty else {
+            endSaveInFlight()
             parent.saveCompletionContinuation?.resume(returning: true)
             parent.saveCompletionContinuation = nil
             return
@@ -149,13 +168,6 @@ extension RowEditingCoordinator {
         let deletedTables = Set(pendingDeletes)
         let truncatedTables = Set(pendingTruncates)
         let conn = parent.connection
-        let dbType = parent.connection.type
-
-        let fkWasDisabled = PluginManager.shared.supportsForeignKeyDisable(for: dbType)
-            && deletedTables.union(truncatedTables).contains { tableName in
-                tableOperationOptions[tableName]?.ignoreForeignKeys == true
-            }
-        let foreignKeyEnableStatements = fkWasDisabled ? parent.fkEnableStatements(for: dbType) : []
 
         var capturedOptions: [String: TableOperationOptions] = [:]
         for table in deletedTables.union(truncatedTables) {
@@ -171,92 +183,39 @@ extension RowEditingCoordinator {
         }
 
         let route = DatabaseManager.shared.executionRoute(for: scope)
+        let savingTabId = parent.tabManager.selectedTabId
 
         Task { [weak self, parent] in
             guard let self else { return }
             let overallStartTime = Date()
             let operationStart = ContinuousClock.Instant.now
-            let savingTabId = parent.tabManager.selectedTabId
 
             do {
-                let executionTimes = try await DatabaseManager.shared.withScopedDriver(
+                let results = try await DatabaseManager.shared.withScopedDriver(
                     scope: scope,
                     route: route,
                     cancellation: .protectedWrite
                 ) { driver in
-                    try await Self.runStatementsInTransaction(
-                        validStatements,
-                        mode: .readWrite,
-                        foreignKeyEnableStatements: foreignKeyEnableStatements,
-                        on: driver
-                    )
+                    try await DataWriteExecutor.run(plan, mode: .readWrite, on: driver)
                 }
 
-                for (statement, executionTime) in zip(validStatements, executionTimes) {
-                    let historySQL = statement.sql.trimmingCharacters(in: .whitespacesAndNewlines)
-                    parent.recordHistory(
-                        QueryHistoryRecordRequest(
-                            query: historySQL.hasSuffix(";") ? historySQL : historySQL + ";",
-                            connectionId: conn.id,
-                            databaseName: scope.database,
-                            databaseType: conn.type,
-                            schemaName: scope.schema,
-                            source: .rowEdit,
-                            executionTime: executionTime,
-                            rowCount: -1,
-                            wasSuccessful: true
-                        )
-                    )
-                }
+                let history = recordSuccessHistory(
+                    steps: validSteps, results: results, connection: conn, scope: scope
+                )
+                captureRewindRecord(plan: plan, history: history, connection: conn)
 
-                parent.changeManager.clearChangesAndUndoHistory()
-                if let index = parent.tabManager.selectedTabIndex {
-                    parent.tabManager.mutate(at: index) {
-                        $0.pendingChanges = TabChangeSnapshot()
-                        $0.execution.errorMessage = nil
-                    }
-                }
+                finishSuccessfulSave(
+                    plan: plan,
+                    savingTabId: savingTabId,
+                    clearTableOps: clearTableOps,
+                    deletedTables: deletedTables
+                )
 
-                if clearTableOps {
-                    if !deletedTables.isEmpty {
-                        let tabIdsToRemove = Set(
-                            parent.tabManager.tabs
-                                .filter { $0.tabType == .table && deletedTables.contains($0.tableContext.tableName ?? "") }
-                                .map(\.id)
-                        )
-
-                        if !tabIdsToRemove.isEmpty {
-                            let firstRemovedIndex = parent.tabManager.tabs
-                                .firstIndex { tabIdsToRemove.contains($0.id) } ?? 0
-                            for tabId in tabIdsToRemove {
-                                parent.tabSessionRegistry.removeTableRows(for: tabId)
-                            }
-                            parent.tabManager.tabs.removeAll { tabIdsToRemove.contains($0.id) }
-                            if !parent.tabManager.tabs.isEmpty {
-                                let neighborIndex = min(firstRemovedIndex, parent.tabManager.tabs.count - 1)
-                                parent.tabManager.selectedTabId = parent.tabManager.tabs[neighborIndex].id
-                            } else {
-                                parent.tabManager.selectedTabId = nil
-                            }
-                        }
-                    }
-
-                    Task { [parent] in await parent.refreshTables() }
-                }
-
-                if let savedTabIndex = parent.tabManager.selectedTabIndex, !parent.tabManager.tabs.isEmpty {
-                    /// An insert or a delete changes the number this tab is reporting, so a count
-                    /// the user asked for before the save no longer describes the table. Without
-                    /// retiring it the reload's automatic count refuses to replace it, and the bar
-                    /// keeps the pre-save total with no `Count Exactly` offered to correct it.
-                    parent.tabManager.mutate(at: savedTabIndex) { $0.pagination.retireDerivedRowCount() }
-                    parent.runQuery()
-                }
-
+                endSaveInFlight()
                 parent.saveCompletionContinuation?.resume(returning: true)
                 parent.saveCompletionContinuation = nil
                 reportSaveFinished(
-                    .succeeded(OperationSummary(rowsAffected: validStatements.count)),
+                    .succeeded(OperationSummary(rowsAffected: results.reduce(0) { $0 + $1.rowsAffected })),
                     connection: conn,
                     database: scope.database,
                     tabId: savingTabId,
@@ -272,8 +231,8 @@ extension RowEditingCoordinator {
                     startedAt: operationStart
                 )
 
-                for statement in validStatements {
-                    let historySQL = statement.sql.trimmingCharacters(in: .whitespacesAndNewlines)
+                for step in validSteps {
+                    let historySQL = step.statement.sql.trimmingCharacters(in: .whitespacesAndNewlines)
                     parent.recordHistory(
                         QueryHistoryRecordRequest(
                             query: historySQL.hasSuffix(";") ? historySQL : historySQL + ";",
@@ -291,11 +250,12 @@ extension RowEditingCoordinator {
                 }
 
                 let diagnosis = DatabaseWriteRejectionDiagnosis.classify(error)
+                let writeError = error as? DataWriteError
 
                 AlertHelper.showErrorSheet(
                     title: String(localized: "Save Failed"),
-                    message: diagnosis?.errorDescription ?? error.localizedDescription,
-                    recoverySuggestion: diagnosis?.recoverySuggestion,
+                    message: writeError?.errorDescription ?? diagnosis?.errorDescription ?? error.localizedDescription,
+                    recoverySuggestion: writeError?.recoverySuggestion ?? diagnosis?.recoverySuggestion,
                     window: parent.contentWindow
                 )
 
@@ -318,56 +278,146 @@ extension RowEditingCoordinator {
         }
     }
 
-    /// The rollback and the foreign-key re-enable are part of the same lease as the
-    /// statements: resolving a driver again afterwards can reach a handle that has
-    /// already been released, or one sitting on another database.
-    nonisolated static func runStatementsInTransaction(
-        _ statements: [ParameterizedStatement],
-        mode: PluginTransactionAccessMode,
-        foreignKeyEnableStatements: [String] = [],
-        on driver: DatabaseDriver
-    ) async throws -> [TimeInterval] {
-        let useTransaction = driver.supportsTransactions
-        if useTransaction {
-            try await driver.beginTransaction(mode: mode)
+    /// The tab that started the save owns the outcome of it.
+    ///
+    /// One `changeManager` serves the whole window and swaps contents on every tab switch, so
+    /// writing the completion into whichever tab is selected when the write lands clears the edits
+    /// of a tab that had nothing to do with it, and re-runs that tab's query.
+    private func finishSuccessfulSave(
+        plan: DataWritePlan,
+        savingTabId: UUID?,
+        clearTableOps: Bool,
+        deletedTables: Set<String>
+    ) {
+        let savingTabIsSelected = savingTabId != nil && parent.tabManager.selectedTabId == savingTabId
+        if savingTabIsSelected {
+            parent.changeManager.clearChangesAndUndoHistory()
+        }
+        if let savingTabId, let index = parent.tabManager.tabs.firstIndex(where: { $0.id == savingTabId }) {
+            parent.tabManager.mutate(at: index) {
+                $0.pendingChanges = TabChangeSnapshot()
+                $0.execution.errorMessage = nil
+            }
         }
 
-        var executionTimes: [TimeInterval] = []
-        do {
-            for statement in statements {
-                let statementStartTime = Date()
-                if statement.parameters.isEmpty {
-                    _ = try await driver.execute(query: statement.sql)
-                } else {
-                    _ = try await driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
-                }
-                executionTimes.append(Date().timeIntervalSince(statementStartTime))
+        if clearTableOps {
+            if !deletedTables.isEmpty {
+                closeTabsForDroppedTables(deletedTables)
             }
-
-            if useTransaction {
-                try await driver.commitTransaction()
-            }
-        } catch {
-            if useTransaction {
-                do {
-                    try await driver.rollbackTransaction()
-                } catch {
-                    saveChangesLogger.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
-                }
-            }
-            for statement in foreignKeyEnableStatements {
-                do {
-                    _ = try await driver.execute(query: statement)
-                } catch {
-                    saveChangesLogger.warning("Failed to re-enable foreign key checks with statement '\(statement, privacy: .public)': \(error.localizedDescription, privacy: .public)")
-                }
-            }
-            throw error
+            Task { [parent] in await parent.refreshTables() }
         }
-        return executionTimes
+
+        guard savingTabIsSelected,
+              let savedTabIndex = parent.tabManager.selectedTabIndex,
+              !parent.tabManager.tabs.isEmpty
+        else { return }
+
+        /// An insert or a delete changes the number this tab is reporting, so a count
+        /// the user asked for before the save no longer describes the table. Without
+        /// retiring it the reload's automatic count refuses to replace it, and the bar
+        /// keeps the pre-save total with no `Count Exactly` offered to correct it.
+        parent.tabManager.mutate(at: savedTabIndex) { $0.pagination.retireDerivedRowCount() }
+        parent.runQuery()
+    }
+
+    private func closeTabsForDroppedTables(_ deletedTables: Set<String>) {
+        let tabIdsToRemove = Set(
+            parent.tabManager.tabs
+                .filter { $0.tabType == .table && deletedTables.contains($0.tableContext.tableName ?? "") }
+                .map(\.id)
+        )
+        guard !tabIdsToRemove.isEmpty else { return }
+
+        let firstRemovedIndex = parent.tabManager.tabs.firstIndex { tabIdsToRemove.contains($0.id) } ?? 0
+        for tabId in tabIdsToRemove {
+            parent.tabSessionRegistry.removeTableRows(for: tabId)
+        }
+        parent.tabManager.tabs.removeAll { tabIdsToRemove.contains($0.id) }
+        if parent.tabManager.tabs.isEmpty {
+            parent.tabManager.selectedTabId = nil
+            return
+        }
+        let neighborIndex = min(firstRemovedIndex, parent.tabManager.tabs.count - 1)
+        parent.tabManager.selectedTabId = parent.tabManager.tabs[neighborIndex].id
+    }
+
+    /// Zipped against the steps that ran, not the steps that were planned: the executor drops
+    /// blank statements, so pairing on the planned list shifts every later entry's timing and row
+    /// count onto the wrong statement.
+    private func recordSuccessHistory(
+        steps: [DataWriteStep],
+        results: [DataWriteStepResult],
+        connection: DatabaseConnection,
+        scope: DatabaseScope
+    ) -> (id: UUID, stored: Task<Bool, Never>)? {
+        var firstRowEdit: (id: UUID, stored: Task<Bool, Never>)?
+        for (step, result) in zip(steps, results) {
+            let historySQL = step.statement.sql.trimmingCharacters(in: .whitespacesAndNewlines)
+            let request = QueryHistoryRecordRequest(
+                query: historySQL.hasSuffix(";") ? historySQL : historySQL + ";",
+                connectionId: connection.id,
+                databaseName: scope.database,
+                databaseType: connection.type,
+                schemaName: scope.schema,
+                source: .rowEdit,
+                executionTime: result.executionTime,
+                rowCount: result.rowsAffected,
+                wasSuccessful: true
+            )
+            let task = parent.recordHistory(request)
+            if firstRowEdit == nil, step.kind == .rowWrite {
+                firstRowEdit = (id: request.id, stored: task)
+            }
+        }
+        return firstRowEdit
+    }
+
+    /// Keeps what the rows looked like before this save, so it can be offered back.
+    ///
+    /// Written after the commit and before the change set is cleared, which is the only window
+    /// where both the write is known to have happened and the pre-images still exist.
+    ///
+    /// `history_id` is a foreign key, so the snapshot waits for the history row to be confirmed
+    /// written and carries nil when it was not. History capture can be paused, in which case there
+    /// is no row to point at and every snapshot would otherwise be rejected outright.
+    private func captureRewindRecord(
+        plan: DataWritePlan,
+        history: (id: UUID, stored: Task<Bool, Never>)?,
+        connection: DatabaseConnection
+    ) {
+        guard parent.services.licenseManager.isFeatureAvailable(.dataRewind) else { return }
+        guard AppSettingsManager.shared.history.keepRewindHistory else { return }
+        let operations = plan.rowOperations
+        guard !operations.isEmpty, let target = operations.first?.target else { return }
+
+        let storage = parent.services.queryHistoryManager
+        let generatedColumns = Array(parent.changeManager.generatedColumns)
+        let databaseType = connection.type
+        let connectionId = connection.id
+        let capturedAt = Date()
+
+        Task(priority: .utility) {
+            var historyId: UUID?
+            if let history, await history.stored.value {
+                historyId = history.id
+            }
+            await storage.recordRewindSnapshot(
+                RewindRecord(
+                    id: UUID(),
+                    historyId: historyId,
+                    connectionId: connectionId,
+                    databaseType: databaseType,
+                    target: target,
+                    capturedAt: capturedAt,
+                    generatedColumns: generatedColumns,
+                    operations: operations
+                )
+            )
+        }
     }
 
     private func failSave(message: String) {
+        endSaveInFlight()
         if let index = parent.tabManager.selectedTabIndex {
             parent.tabManager.mutate(at: index) { $0.execution.errorMessage = message }
         }

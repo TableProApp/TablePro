@@ -24,6 +24,7 @@ struct MenuValidationContext: Equatable {
     /// Export Results exports the selected tab's rows, so an empty grid has nothing to offer.
     var hasResultRows = false
     var isCurrentTabEditable = false
+    var canRestorePreviousValues = false
     var isQueryExecuting = false
     var hasQueryText = false
     var hasPendingChanges = false
@@ -157,6 +158,8 @@ extension MainSplitViewController: NSMenuItemValidation {
 
         case #selector(addRow(_:)), #selector(duplicateRow(_:)):
             return context.isConnected && context.isCurrentTabEditable && !context.isReadOnly
+        case #selector(restorePreviousValues(_:)):
+            return context.isConnected && context.canRestorePreviousValues && !context.isReadOnly
         case #selector(truncateTable(_:)):
             return context.isConnected && context.hasTableSelection && !context.isReadOnly
         case #selector(performFind(_:)):
@@ -239,6 +242,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             isQueryTab: actions.isQueryTab,
             hasResultRows: actions.hasResultRows,
             isCurrentTabEditable: actions.isCurrentTabEditable,
+            canRestorePreviousValues: actions.canRestorePreviousValues,
             isQueryExecuting: actions.isQueryExecuting,
             hasQueryText: actions.hasQueryText,
             hasPendingChanges: actions.hasPendingChanges,

@@ -41,7 +41,7 @@ extension RowEditingCoordinator {
             route: DatabaseManager.shared.executionRoute(for: scope),
             cancellation: .protectedWrite
         ) { driver in
-            try await Self.runStatementsInTransaction(statements, mode: mode, on: driver)
+            try await DataWriteExecutor.run(statements: statements, mode: mode, on: driver)
         }
     }
 
