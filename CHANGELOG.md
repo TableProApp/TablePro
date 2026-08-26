@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A data grid shortcut bound to `Cmd+G` silently taking the key from Find Next, with no conflict warning.
 - Stale cells after fitting, hiding or reordering a data grid column on a result narrower than the window. (#2446)
+- A shortcut recorded with only Option or Shift beeping with no reason given, against docs that said it would work.
 - Autocomplete keeping an earlier prefix's ordering after the typed word becomes an exact match. (#2444)
 - Whole MySQL and MariaDB result set fetched before a capped query returned its first rows. (#2427)
 - KILL sent to a different server when a MySQL or MariaDB connection's host is spelled `localhost`.
