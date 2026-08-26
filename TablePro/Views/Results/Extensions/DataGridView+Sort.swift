@@ -371,7 +371,6 @@ extension TableViewCoordinator {
                 fittedColumnCount: fittedColumns.count
             )
         }
-        redrawVisibleCells()
         scheduleLayoutPersist()
     }
 
