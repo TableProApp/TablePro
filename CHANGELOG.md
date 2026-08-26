@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - A data grid shortcut bound to `Cmd+G` silently taking the key from Find Next, with no conflict warning.
+- Stale cells after fitting, hiding or reordering a data grid column on a result narrower than the window. (#2446)
 - Autocomplete keeping an earlier prefix's ordering after the typed word becomes an exact match. (#2444)
 - Whole MySQL and MariaDB result set fetched before a capped query returned its first rows. (#2427)
 - KILL sent to a different server when a MySQL or MariaDB connection's host is spelled `localhost`.
@@ -43,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Active editor tab drawn darker than its track on macOS 27, and inverting when the window lost focus.
 - Editor tab selection changing with the desktop picture behind the window.
 - Editor tab strip tests reporting four appearances while running plain Aqua and Dark Aqua twice.
+- Icon cut off the entry at the top of a scrolled connections strip. (#2452)
+- Connections strip not scrolling to the entry you switch to.
+- Grid cells left at the old column positions until the next click, after a resize, an auto-fit, a reorder, hiding a column, or a row-number width change. (#2449)
+- The row-number column draggable out of first place, which walked it to the far right on the next refresh.
 
 ## [0.68.1] - 2026-08-26
 

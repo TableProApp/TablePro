@@ -64,7 +64,20 @@ internal final class WorkspaceRailViewController: NSViewController {
     private var layout: WorkspaceRailMetrics.Layout = WorkspaceRailMetrics.medium
     private var changeCancellable: AnyCancellable?
     private let activationObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
+    private let scrollObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
     private var contentTopConstraint: NSLayoutConstraint?
+
+    /// A scroll is settled once it has stopped changing, which is the only signal every input
+    /// device gives. `NSScrollViewWillStartLiveScroll`/`DidEndLiveScroll` would be the obvious pair,
+    /// and `NSScrollView.h` says outright that a legacy mouse is not bracketed by them, which is the
+    /// device most likely to leave the strip resting mid-tile.
+    private var scrollSettle: DispatchWorkItem?
+
+    /// A reorder scrolls the strip itself as the pointer nears an edge, so settling during one would
+    /// fight the drag it is reacting to.
+    private var isReordering = false
+
+    private var needsSelectionReveal = false
 
     /// What the rail last put on screen as selected, which after every `applySelection` is the
     /// workspace the host is really showing. A commit for that same workspace has nothing to do,
@@ -97,7 +110,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         tableView.backgroundColor = .clear
         tableView.allowsMultipleSelection = false
         tableView.allowsEmptySelection = true
-        tableView.intercellSpacing = NSSize(width: 0, height: 2)
+        tableView.intercellSpacing = NSSize(width: 0, height: layout.rowSpacing)
         tableView.dataSource = self
         tableView.delegate = self
         tableView.target = self
@@ -114,6 +127,12 @@ internal final class WorkspaceRailViewController: NSViewController {
         scrollView.autohidesScrollers = true
         scrollView.hasHorizontalScroller = false
         scrollView.drawsBackground = false
+        /// The bottom inset is the rail's own, and `contentInsets` and the automatic flag are one
+        /// property: writing the inset clears the flag anyway, so it is cleared here where it can be
+        /// read. Nothing is given up, because the automatic inset reads the scroll view's own safe
+        /// area, which `pinContentBelowTitleBar` has already reduced to nothing.
+        scrollView.automaticallyAdjustsContentInsets = false
+        scrollView.contentView.postsBoundsChangedNotifications = true
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scrollView)
 
@@ -152,8 +171,104 @@ internal final class WorkspaceRailViewController: NSViewController {
             MainActor.assumeIsolated { self?.refreshLayoutIfNeeded() }
         }
         activationObserver.withLockUnchecked { $0 = observer }
+        observeScrollPosition()
         observeRowSizePreference()
         reload()
+    }
+
+    private func observeScrollPosition() {
+        let observer = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.scheduleScrollSettle() }
+        }
+        scrollObserver.withLockUnchecked { $0 = observer }
+    }
+
+    /// Re-armed on every bounds change, so the strip settles once the scrolling stops rather than
+    /// once per frame of it. Settling itself changes the bounds, which comes back through here and
+    /// finds nothing left to do.
+    private func scheduleScrollSettle() {
+        scrollSettle?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated { self?.settleScrollPosition() }
+        }
+        scrollSettle = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.scrollSettleDelay, execute: work)
+    }
+
+    private static let scrollSettleDelay: TimeInterval = 0.12
+
+    private func settleScrollPosition() {
+        guard !isReordering else { return }
+        let clipView = scrollView.contentView
+        let settled = WorkspaceRailScrollGeometry.settledOrigin(
+            proposed: clipView.bounds.origin.y,
+            selectedRow: entries.indices.contains(tableView.selectedRow) ? tableView.selectedRow : nil,
+            rowCount: entries.count,
+            rowPitch: layout.rowPitch,
+            rowHeight: layout.rowHeight,
+            viewportHeight: clipView.bounds.height
+        )
+        guard abs(settled - clipView.bounds.origin.y) > 0.5 else { return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            clipView.animator().setBoundsOrigin(NSPoint(x: clipView.bounds.origin.x, y: settled))
+        } completionHandler: { [weak self] in
+            guard let self else { return }
+            self.scrollView.reflectScrolledClipView(clipView)
+        }
+    }
+
+    /// Recomputed rather than set once, because the row count, the row height and the viewport all
+    /// move: an entry opens or closes, the sidebar icon size changes, the window resizes.
+    private func applyBottomInset() {
+        let clipView = scrollView.contentView
+        let inset = WorkspaceRailScrollGeometry.bottomInset(
+            rowCount: entries.count,
+            rowPitch: layout.rowPitch,
+            rowHeight: layout.rowHeight,
+            documentHeight: tableView.frame.height,
+            viewportHeight: clipView.bounds.height
+        )
+        guard abs(scrollView.contentInsets.bottom - inset) > 0.5 else { return }
+        scrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: inset, right: 0)
+    }
+
+    /// Asked for when the highlight moves, and held until the strip has a viewport to move inside.
+    ///
+    /// The rail is laid out after `viewDidLoad` has already applied the first selection, so the
+    /// clip view can still be zero high when the entry to show is below the fold. Nothing arrives
+    /// later to say so: `NSView.boundsDidChangeNotification` is not posted for a bounds change that
+    /// came from the frame resizing, and `NSTableView` does not reveal a selection it already holds.
+    private func requestSelectionReveal() {
+        needsSelectionReveal = true
+        revealSelectedRowIfNeeded()
+    }
+
+    private func revealSelectedRowIfNeeded() {
+        guard needsSelectionReveal, scrollView.contentView.bounds.height > 0 else { return }
+        needsSelectionReveal = false
+        revealSelectedRow()
+    }
+
+    /// Silent while the entry is already whole and on screen. Every rail lists every workspace, so
+    /// one window's change reloads all of them; the callers are the paths where the highlight
+    /// actually moved, so a strip whose own entry did not change stays where its window left it.
+    private func revealSelectedRow() {
+        let clipView = scrollView.contentView
+        guard let origin = WorkspaceRailScrollGeometry.revealOrigin(
+            row: tableView.selectedRow,
+            rowCount: entries.count,
+            rowPitch: layout.rowPitch,
+            rowHeight: layout.rowHeight,
+            viewportHeight: clipView.bounds.height,
+            currentOrigin: clipView.bounds.origin.y
+        ) else { return }
+        clipView.scroll(to: NSPoint(x: clipView.bounds.origin.x, y: origin))
+        scrollView.reflectScrolledClipView(clipView)
     }
 
     override func viewWillAppear() {
@@ -166,11 +281,16 @@ internal final class WorkspaceRailViewController: NSViewController {
         if let observer = activationObserver.withLockUnchecked({ $0 }) {
             NotificationCenter.default.removeObserver(observer)
         }
+        if let observer = scrollObserver.withLockUnchecked({ $0 }) {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     override func viewDidLayout() {
         super.viewDidLayout()
         tableView.sizeLastColumnToFit()
+        applyBottomInset()
+        revealSelectedRowIfNeeded()
     }
 
     // MARK: - Data
@@ -185,6 +305,7 @@ internal final class WorkspaceRailViewController: NSViewController {
             """
         )
         tableView.reloadData()
+        applyBottomInset()
         applySelection()
         onEntryCountChange?(entries.count)
     }
@@ -227,8 +348,10 @@ internal final class WorkspaceRailViewController: NSViewController {
         let resolved = WorkspaceRailMetrics.layout(for: resolvedRowSizeStyle)
         guard resolved != layout else { return }
         layout = resolved
+        tableView.intercellSpacing = NSSize(width: 0, height: layout.rowSpacing)
         tableView.sizeLastColumnToFit()
         tableView.reloadData()
+        applyBottomInset()
         applySelection()
         onLayoutChange?(resolved)
     }
@@ -263,6 +386,7 @@ internal final class WorkspaceRailViewController: NSViewController {
             tableView.deselectAll(nil)
             return
         }
+        let previousSelection = appliedSelection
         appliedSelection = entries[row].workspace
         Self.logger.debug(
             """
@@ -272,6 +396,8 @@ internal final class WorkspaceRailViewController: NSViewController {
             """
         )
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        guard previousSelection != appliedSelection else { return }
+        requestSelectionReveal()
     }
 
     // MARK: - Activation
@@ -450,6 +576,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         ) else { return }
         guard let row = entries.firstIndex(where: { $0.id == next }) else { return }
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        requestSelectionReveal()
         commit(row: row)
     }
 
@@ -613,6 +740,25 @@ extension WorkspaceRailViewController: NSTableViewDataSource {
         entries.count
     }
 
+    internal func tableView(
+        _ tableView: NSTableView,
+        draggingSession session: NSDraggingSession,
+        willBeginAt screenPoint: NSPoint,
+        forRowIndexes rowIndexes: IndexSet
+    ) {
+        isReordering = true
+    }
+
+    internal func tableView(
+        _ tableView: NSTableView,
+        draggingSession session: NSDraggingSession,
+        endedAt screenPoint: NSPoint,
+        operation: NSDragOperation
+    ) {
+        isReordering = false
+        scheduleScrollSettle()
+    }
+
     internal func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         guard entries.indices.contains(row) else { return nil }
         guard let data = try? JSONEncoder().encode(entries[row].workspace) else { return nil }
@@ -686,6 +832,10 @@ extension WorkspaceRailViewController: NSTableViewDelegate {
     internal func tableViewSelectionDidChange(_ notification: Notification) {
         let row = tableView.selectedRow
         guard entries.indices.contains(row) else { return }
+        /// The arrow keys move the highlight through `NSTableView` itself, which reveals the row it
+        /// lands on by scrolling the least it can and so stops between entries. Landing on the
+        /// boundary here keeps the strip from having to slide again once the scroll settles.
+        requestSelectionReveal()
         Self.logger.debug(
             """
             selectionDidChange rail=\(self.railName, privacy: .public) row=\(row, privacy: .public) \

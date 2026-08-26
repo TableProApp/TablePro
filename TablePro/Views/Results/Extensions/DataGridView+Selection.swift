@@ -7,7 +7,12 @@ import AppKit
 import SwiftUI
 
 extension TableViewCoordinator {
+    /// The repaint runs ahead of both guards below on purpose. `isRebuildingColumns` and
+    /// `markColumnWidthUserSized` decide whether the new width is the user's to keep, which is a
+    /// question about persistence; the body has to be redrawn either way, and the second guard is
+    /// false for the row-number column and for every unused pool slot.
     func tableViewColumnDidResize(_ notification: Notification) {
+        columnGeometryDidChange()
         guard !isRebuildingColumns else { return }
         guard let column = notification.userInfo?["NSTableColumn"] as? NSTableColumn else { return }
         guard markColumnWidthUserSized(column) else { return }
@@ -15,6 +20,7 @@ extension TableViewCoordinator {
     }
 
     func tableViewColumnDidMove(_ notification: Notification) {
+        columnGeometryDidChange()
         guard !isRebuildingColumns else { return }
         invalidateColumnIndexCache()
         hasUnpersistedColumnLayoutChanges = true

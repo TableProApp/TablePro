@@ -73,6 +73,11 @@ final class DataGridColumnPool {
         attachedTableView = nil
     }
 
+    /// - Returns: whether a column's visibility changed. `NSTableColumn.isHidden` moves every column
+    ///   after it and is the one geometry change `NSTableView` announces through no notification, so
+    ///   the caller has to repaint the drawn body itself. See
+    ///   `TableViewCoordinator.columnGeometryDidChange()`.
+    @discardableResult
     func reconcile(
         tableView: NSTableView,
         schema: ColumnIdentitySchema,
@@ -82,7 +87,7 @@ final class DataGridColumnPool {
         isEditable: Bool,
         hiddenColumnNames: Set<String>,
         widthCalculator: (String, Int) -> CGFloat
-    ) {
+    ) -> Bool {
         attach(to: tableView)
         let visibleCount = schema.columnNames.count
         activeIdentifiers = Set(schema.identifiers)
@@ -93,6 +98,7 @@ final class DataGridColumnPool {
         let hiddenFromLayout = savedLayout?.hiddenColumns ?? []
         var comments: [NSUserInterfaceItemIdentifier: String] = [:]
         var showsComments = false
+        var visibilityChanged = false
 
         for slot in 0..<pooledColumns.count {
             let column = pooledColumns[slot]
@@ -116,17 +122,15 @@ final class DataGridColumnPool {
                 } else {
                     userHiddenIdentifiers.remove(column.identifier)
                 }
-                if column.isHidden != hidden {
-                    column.isHidden = hidden
-                }
+                visibilityChanged = setHidden(hidden, on: column) || visibilityChanged
                 if let comment {
                     comments[column.identifier] = comment
                     if !hidden {
                         showsComments = true
                     }
                 }
-            } else if !column.isHidden {
-                column.isHidden = true
+            } else {
+                visibilityChanged = setHidden(true, on: column) || visibilityChanged
             }
         }
         applyComments(comments, showsComments: showsComments, in: tableView)
@@ -142,6 +146,13 @@ final class DataGridColumnPool {
             visibleCount: visibleCount,
             targetOrder: targetOrder
         )
+        return visibilityChanged
+    }
+
+    private func setHidden(_ hidden: Bool, on column: NSTableColumn) -> Bool {
+        guard column.isHidden != hidden else { return false }
+        column.isHidden = hidden
+        return true
     }
 
     private func growBackingPoolIfNeeded(to count: Int) {
