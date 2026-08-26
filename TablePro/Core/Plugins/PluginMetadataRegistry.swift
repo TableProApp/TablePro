@@ -1223,6 +1223,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             return .coordination
         case "Cloudflare D1", "libSQL", "DynamoDB":
             return .cloud
+        case "Kafka":
+            return .streaming
         default:
             return .other
         }
@@ -1250,6 +1252,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         case "DynamoDB":       return String(localized: "AWS managed key-value/document store")
         case "BigQuery":       return String(localized: "Google Cloud serverless data warehouse")
         case "SurrealDB":      return String(localized: "Multi-model database with SurrealQL")
+        case "Kafka":          return String(localized: "Event streaming platform")
         default:               return ""
         }
     }

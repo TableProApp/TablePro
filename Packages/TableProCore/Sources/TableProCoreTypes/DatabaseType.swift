@@ -35,12 +35,13 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
     public static let surrealdb = DatabaseType(rawValue: "SurrealDB")
     public static let teradata = DatabaseType(rawValue: "Teradata")
     public static let trino = DatabaseType(rawValue: "Trino")
+    public static let kafka = DatabaseType(rawValue: "Kafka")
 
     public static let allKnownTypes: [DatabaseType] = [
         .mysql, .mariadb, .postgresql, .sqlite, .redis, .mongodb,
         .clickhouse, .mssql, .oracle, .dameng, .duckdb, .cassandra, .redshift,
         .etcd, .cloudflareD1, .dynamodb, .bigquery, .snowflake, .libsql, .beancount,
-        .surrealdb, .teradata, .trino
+        .surrealdb, .teradata, .trino, .kafka
     ]
 
     /// Icon name for this database type — asset catalog name (e.g. "mysql-icon") or SF Symbol fallback
@@ -69,6 +70,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
         case .surrealdb: return "surrealdb-icon"
         case .teradata: return "teradata-icon"
         case .trino: return "trino-icon"
+        case .kafka: return "kafka-icon"
         default: return "externaldrive"
         }
     }

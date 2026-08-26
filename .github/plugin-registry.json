@@ -158,6 +158,20 @@
       "category": "database-driver",
       "homepage": "https://docs.tablepro.app/databases/etcd"
     },
+    "kafka": {
+      "target": "KafkaDriverPlugin",
+      "bundleName": "KafkaDriverPlugin",
+      "bundleId": "com.TablePro.KafkaDriverPlugin",
+      "bundled": false,
+      "displayName": "Kafka Driver",
+      "summary": "Apache Kafka topic and message browser over the native wire protocol",
+      "databaseTypeIds": [
+        "Kafka"
+      ],
+      "icon": "kafka-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/kafka"
+    },
     "libsql": {
       "target": "LibSQLDriverPlugin",
       "bundleName": "LibSQLDriverPlugin",

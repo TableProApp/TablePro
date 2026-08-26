@@ -17,6 +17,6 @@ Read `### Plugin System` and `### DatabaseType (String-Based Struct)` in `CLAUDE
 - **Bundled versus registry-only.** The app scheme depends on the bundled plugins alone, and PR CI never compiles the registry-only ones, so a hard compile error there still produces `BUILD SUCCEEDED`. Build the aggregate yourself with `verify.sh plugins`.
 - **Regenerate after any target change.** `project.yml` is the source of truth and the `.xcodeproj` is generated. Never hand-edit or commit it.
 
-A new driver also needs its `project.yml` target, its `DatabaseType` constant, a `case` arm in the `Resolve plugin info` step of `.github/workflows/build-plugin.yml` (the `case "$PLUGIN_NAME"` block that maps the tag to its target, bundle id, display name, and type ids), a row in the `docs/index.mdx` table, and a CHANGELOG entry.
+A new driver also needs its `project.yml` target (plus the `AllPlugins` aggregate list, which nothing forces to stay complete), its `DatabaseType` constant, an entry in `.github/plugin-registry.json` keyed by its tag slug, a curated snapshot in `PluginMetadataRegistry` (without one the type never reaches the New Connection picker, so nobody can trigger its install), a row in the `docs/databases/index.mdx` table, and a CHANGELOG entry. `.github/workflows/build-plugin.yml` needs no edit: its `Resolve plugin info` step reads the manifest through `scripts/ci/plugin-info.py`, and the `case` block that used to live there is gone.
 
 This rule adds domain constraints and does not pick your workflow.
