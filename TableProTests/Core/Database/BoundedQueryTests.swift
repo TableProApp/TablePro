@@ -79,6 +79,30 @@ struct BoundedQueryTests {
         #expect(result.rows.count == 10)
         #expect(result.isTruncated)
     }
+
+    /// MySQL and Kafka bound the read inside `executeUserQuery` and opt in by delegating to it, so
+    /// the hook must answer with a result rather than nil. Returning nil would leave the caller on
+    /// the buffered fallback and the opt-in would look present while doing nothing.
+    @Test("A driver bounded at its source answers the hook instead of falling back")
+    func sourceBoundedDriverAnswersTheHook() async throws {
+        let driver = SourceBoundedStubDriver(rowCount: 50)
+
+        let result = try await driver.executeBoundedQuery(query: "SELECT * FROM t", rowCap: 10)
+
+        #expect(result != nil)
+        #expect(result?.rows.count == 10)
+        #expect(result?.isTruncated == true)
+    }
+
+    @Test("A driver bounded at its source reports a short result untruncated")
+    func sourceBoundedDriverBelowCap() async throws {
+        let driver = SourceBoundedStubDriver(rowCount: 4)
+
+        let result = try await driver.executeBoundedQuery(query: "SELECT * FROM t", rowCap: 10)
+
+        #expect(result?.rows.count == 4)
+        #expect(result?.isTruncated == false)
+    }
 }
 
 @Suite("PluginBoundedStream collector")
@@ -216,6 +240,39 @@ private final class NonBoundedStubDriver: PluginDatabaseDriver, @unchecked Senda
             rowsAffected: 0,
             executionTime: 0
         )
+    }
+
+    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
+    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
+    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
+    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
+    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
+    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
+        PluginTableMetadata(tableName: table)
+    }
+    func fetchDatabases() async throws -> [String] { [] }
+    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
+        PluginDatabaseMetadata(name: database)
+    }
+}
+
+private final class SourceBoundedStubDriver: PluginDatabaseDriver, @unchecked Sendable {
+    private let inner: NonBoundedStubDriver
+
+    init(rowCount: Int) {
+        inner = NonBoundedStubDriver(rowCount: rowCount)
+    }
+
+    func connect() async throws {}
+    func disconnect() {}
+
+    func execute(query: String) async throws -> PluginQueryResult {
+        try await inner.execute(query: query)
+    }
+
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        try await executeUserQuery(query: query, rowCap: rowCap, parameters: nil)
     }
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
