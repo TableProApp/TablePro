@@ -484,7 +484,9 @@ targets:
       - Plugins/SnowflakeDriverPlugin/SnowflakeHTTPRetry.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeHeartbeat.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeMFATokenStore.swift
+      - Plugins/SnowflakeDriverPlugin/SnowflakeObjectQueries.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeSchemaQueries.swift
+      - Plugins/SnowflakeDriverPlugin/SnowflakeSQL.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeStatementGenerator.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeTypeMapper.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeValueDecoder.swift

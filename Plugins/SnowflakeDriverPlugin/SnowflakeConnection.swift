@@ -743,7 +743,7 @@ final class SnowflakeConnection: @unchecked Sendable {
     }
 
     func quoteIdentifier(_ name: String) -> String {
-        "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+        SnowflakeSQL.quoteIdentifier(name)
     }
 
     // MARK: - HTTP Helpers

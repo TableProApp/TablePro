@@ -143,12 +143,10 @@ struct SnowflakeDDLGenerator {
     }
 
     private func quoteIdentifier(_ name: String) -> String {
-        "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+        SnowflakeSQL.quoteIdentifier(name)
     }
 
     private func escapeLiteral(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "''")
+        SnowflakeSQL.escapeLiteral(value)
     }
 }
