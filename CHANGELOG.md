@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Whole MySQL and MariaDB result set fetched before a capped query returned its first rows. (#2427)
+- KILL sent to a different server when a MySQL or MariaDB connection's host is spelled `localhost`.
 - Save reporting the number of statements it ran as the number of rows it changed.
 - An edit or a delete on a table with no primary key changing every identical row. (#2107)
 - The same statements committed twice when Cmd+S is pressed again during a slow save.
