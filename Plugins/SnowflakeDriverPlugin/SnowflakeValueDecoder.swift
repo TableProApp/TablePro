@@ -67,7 +67,7 @@ enum SnowflakeValueDecoder {
         let fields = raw.split(separator: " ", omittingEmptySubsequences: true)
         guard fields.count == 2, let biased = Int(fields[1]) else { return .text(raw) }
         let offsetMinutes = biased - offsetBias
-        guard abs(offsetMinutes) < minutesPerDay else { return .text(raw) }
+        guard abs(offsetMinutes) <= maximumOffsetMinutes else { return .text(raw) }
         return timestamp(
             fromEpochSeconds: String(fields[0]),
             scale: scale,
@@ -117,8 +117,13 @@ enum SnowflakeValueDecoder {
     // MARK: - Constants
 
     private static let secondsPerDay = 86_400
-    private static let minutesPerDay = 1_440
     private static let offsetBias = 1_440
+
+    /// `TimeZone(secondsFromGMT:)` returns nil beyond eighteen hours, and `DatabaseDateParser` reads
+    /// that nil as GMT, so a `+18:30` suffix would come back as an instant eighteen and a half hours
+    /// from the one Snowflake sent. A payload that cannot survive the round trip keeps its raw text
+    /// instead of being written in a spelling the reader will misread.
+    private static let maximumOffsetMinutes = 1_080
 }
 
 /// How a decoded timestamp names the zone it was read in. `TIMESTAMP_NTZ` genuinely has none, so it

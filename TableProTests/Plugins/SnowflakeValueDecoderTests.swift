@@ -155,6 +155,17 @@ struct SnowflakeValueDecoderTests {
         #expect(decodedText("1616173619.000000000 9999", "timestamp_tz", scale: 0) == "1616173619.000000000 9999")
     }
 
+    /// `TimeZone(secondsFromGMT:)` is nil beyond eighteen hours and the shared parser reads that nil
+    /// as GMT, so emitting `+18:30` would move the instant by eighteen and a half hours. Eighteen
+    /// hours exactly is the last offset that survives the round trip.
+    @Test("An offset the shared parser cannot represent keeps its raw text")
+    func testOutOfRangeOffsetIsPreserved() {
+        #expect(decodedText("0.000000000 2520", "timestamp_tz", scale: 0) == "1970-01-01 18:00:00+18:00")
+        #expect(decodedText("0.000000000 360", "timestamp_tz", scale: 0) == "1969-12-31 06:00:00-18:00")
+        #expect(decodedText("0.000000000 2550", "timestamp_tz", scale: 0) == "0.000000000 2550")
+        #expect(decodedText("0.000000000 330", "timestamp_tz", scale: 0) == "0.000000000 330")
+    }
+
     /// The wire writes nine decimal places, so the value carries more significant digits than a
     /// `Double` holds. Parsing it as a floating-point number drops the last nanoseconds silently.
     @Test("Nanosecond precision survives decoding")
