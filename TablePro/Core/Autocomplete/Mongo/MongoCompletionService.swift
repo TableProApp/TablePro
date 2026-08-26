@@ -8,6 +8,12 @@ final class MongoCompletionService: QueryCompletionService {
 
     private static let windowRadius = 5_000
 
+    /// How many candidates a session may keep for re-ranking as the prefix grows. Every position's
+    /// vocabulary is well under this except a collection's sampled field paths, which a wide
+    /// document schema can run into the thousands; those sessions prefer what the popup showed,
+    /// and the cap holds either way because filtering an empty opening prefix returns everything.
+    private static let sessionPoolLimit = 400
+
     init(schemaProvider: SQLSchemaProvider?, databaseType: DatabaseType?) {
         self.schemaProvider = schemaProvider
         _ = databaseType
@@ -29,14 +35,17 @@ final class MongoCompletionService: QueryCompletionService {
         MongoContextAnalyzer.prefixRange(in: text, endingAt: offset).location
     }
 
-    func filter(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
+    private func filter(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
         guard !prefix.isEmpty else { return items }
         let needle = prefix.lowercased()
         return items.filter { $0.filterText.hasPrefix(needle) || $0.filterText.contains(needle) }
             .sorted { lhs, rhs in
-                let lhsExact = lhs.filterText.hasPrefix(needle)
-                let rhsExact = rhs.filterText.hasPrefix(needle)
-                if lhsExact != rhsExact { return lhsExact }
+                let lhsComplete = lhs.filterText == needle
+                let rhsComplete = rhs.filterText == needle
+                if lhsComplete != rhsComplete { return lhsComplete }
+                let lhsAnchored = lhs.filterText.hasPrefix(needle)
+                let rhsAnchored = rhs.filterText.hasPrefix(needle)
+                if lhsAnchored != rhsAnchored { return lhsAnchored }
                 if lhs.sortPriority != rhs.sortPriority { return lhs.sortPriority < rhs.sortPriority }
                 return lhs.label < rhs.label
             }
@@ -58,8 +67,12 @@ final class MongoCompletionService: QueryCompletionService {
         let items = await items(for: context.position)
         guard !items.isEmpty else { return nil }
 
+        let shown = filter(items, prefix: context.prefix)
+        let pool = items.count <= Self.sessionPoolLimit ? items : shown
+
         return QueryCompletionSession(
-            items: filter(items, prefix: context.prefix),
+            items: shown,
+            candidates: Array(pool.prefix(Self.sessionPoolLimit)),
             replacementRange: NSRange(
                 location: context.prefixRange.location + windowStart,
                 length: context.prefixRange.length

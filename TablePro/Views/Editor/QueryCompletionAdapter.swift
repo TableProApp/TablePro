@@ -14,17 +14,9 @@ import TableProPluginKit
 
 @MainActor
 final class QueryCompletionAdapter: CodeSuggestionDelegate {
-    private enum SessionKind {
-        case seed
-        case resolved
-    }
-
     private struct Session {
-        var items: [SQLCompletionItem]
+        var candidates: [SQLCompletionItem]
         var replacementRange: NSRange
-        var kind: SessionKind
-        var lastPrefix: String?
-        var lastItems: [SQLCompletionItem]?
     }
 
     private struct Configuration: Equatable {
@@ -79,10 +71,6 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
     init(serviceForTesting service: QueryCompletionService) {
         self.service = service
     }
-
-    func seedSessionForTesting(textView: TextViewController, cursorPosition: CursorPosition) {
-        seedSessionIfNeeded(textView: textView, cursorPosition: cursorPosition)
-    }
     #endif
 
     func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
@@ -128,13 +116,7 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
             return nil
         }
 
-        session = Session(
-            items: result.items,
-            replacementRange: result.replacementRange,
-            kind: .resolved,
-            lastPrefix: nil,
-            lastItems: nil
-        )
+        session = Session(candidates: result.candidates, replacementRange: result.replacementRange)
 
         return (windowPosition: liveCursorPosition, items: result.items.map { SQLSuggestionEntry(item: $0) })
     }
@@ -150,15 +132,19 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
               offset >= 0, offset <= text.length else { return }
 
         let start = service.tokenStart(in: text, endingAt: offset)
-        session = Session(
-            items: items,
-            replacementRange: NSRange(location: start, length: offset - start),
-            kind: .seed,
-            lastPrefix: nil,
-            lastItems: nil
-        )
+        session = Session(candidates: items, replacementRange: NSRange(location: start, length: offset - start))
     }
 
+    /// Filters and ranks the open session's candidates for the token the cursor sits at the end of.
+    ///
+    /// Ranking happens here, on the keystroke, rather than on a debounced task writing to a cache:
+    /// the list handed back is the list the suggestion window shows and preselects its first row
+    /// from, so a list ordered for an earlier prefix commits the wrong item on Return. It costs no
+    /// debounce, because filtering already matches every candidate in the session and ordering the
+    /// survivors is the cheaper half.
+    ///
+    /// The survivors come from the session's own candidates rather than the previous keystroke's,
+    /// so deleting a character widens the list back out.
     func completionOnCursorMove(
         textView: TextViewController,
         cursorPosition: CursorPosition
@@ -176,25 +162,8 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         let prefix = text.substring(with: NSRange(location: start, length: length)).lowercased()
         guard !prefix.isEmpty else { return nil }
 
-        let sourceItems: [SQLCompletionItem]
-        if let lastPrefix = session.lastPrefix,
-           prefix.hasPrefix(lastPrefix),
-           let lastItems = session.lastItems {
-            sourceItems = lastItems
-        } else {
-            sourceItems = session.items
-        }
-
-        let items: [SQLCompletionItem]
-        switch session.kind {
-        case .seed:
-            items = service.filter(sourceItems, prefix: prefix)
-        case .resolved:
-            items = service.rank(sourceItems, prefix: prefix)
-        }
-        self.session?.lastPrefix = prefix
-        self.session?.lastItems = items
-        return items.isEmpty ? nil : items.map { SQLSuggestionEntry(item: $0) }
+        let ranked = service.rank(session.candidates, prefix: prefix)
+        return ranked.isEmpty ? nil : ranked.map { SQLSuggestionEntry(item: $0) }
     }
 
     func completionWindowDidClose() {

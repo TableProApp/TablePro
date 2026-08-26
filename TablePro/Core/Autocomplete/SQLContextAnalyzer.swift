@@ -142,6 +142,20 @@ struct SQLContext {
             comparisonColumn: comparisonColumn
         )
     }
+
+    /// The context to rank against before the analyzer has produced one, which is the window
+    /// between the popup seeding itself with statement-start keywords and the first analyzed
+    /// request completing. It carries no clause and no tables, so ranking falls back to the
+    /// prefix and exact-match bonuses alone rather than not ranking at all.
+    static let unanalyzed = SQLContext(
+        clauseType: .unknown,
+        prefix: "",
+        prefixRange: 0..<0,
+        dotPrefix: nil,
+        tableReferences: [],
+        isInsideString: false,
+        isInsideComment: false
+    )
 }
 
 /// Analyzes SQL query to determine completion context
