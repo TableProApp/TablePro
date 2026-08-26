@@ -72,6 +72,30 @@ struct MainMenuStructureTests {
         #expect(duplicates.isEmpty, "AppKit blanks the loser when two items claim one combo: \(duplicates)")
     }
 
+    /// A menu builder that hardcodes a key equivalent takes that combo off the table for every
+    /// `ShortcutAction`, and only `reservedAppShortcuts` tells the recorder so. Nothing else
+    /// forces the two to agree, so a hardcoded item added without a matching entry ships a
+    /// binding the recorder accepts and AppKit then blanks.
+    @Test("Every hardcoded menu key equivalent is reserved against user binding")
+    func hardcodedKeyEquivalentsAreReserved() {
+        func canonical(_ key: BoundKey) -> String? {
+            key.menuKeyEquivalent.map { "\(key.modifierFlags.rawValue)-\($0)" }
+        }
+
+        let keyboard = KeyboardSettings()
+        let customizable = Set(ShortcutAction.allCases.compactMap { keyboard.shortcut(for: $0).flatMap(canonical) })
+        let reserved = Set(ShortcutAction.reservedAppShortcuts.compactMap { canonical($0.key) })
+
+        let hardcoded = flatten(buildMenu())
+            .filter { !$0.keyEquivalent.isEmpty }
+            .map { (combo: "\($0.keyEquivalentModifierMask.rawValue)-\($0.keyEquivalent)", title: $0.title) }
+            .filter { !customizable.contains($0.combo) }
+        #expect(!hardcoded.isEmpty, "Found no hardcoded menu shortcuts, so this guard would pass vacuously")
+
+        let unreserved = hardcoded.filter { !reserved.contains($0.combo) }.map(\.title)
+        #expect(unreserved.isEmpty, "Hardcoded menu shortcuts missing from reservedAppShortcuts: \(unreserved)")
+    }
+
     @Test("Every menu item carries an action")
     func everyItemHasAnAction() {
         let dead = flatten(buildMenu())
