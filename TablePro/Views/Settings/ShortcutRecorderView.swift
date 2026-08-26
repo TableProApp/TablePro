@@ -19,6 +19,10 @@ final class ShortcutRecorderNSView: NSView {
     /// Callback when the shortcut is cleared (Delete key while recording)
     var onClear: (() -> Void)?
 
+    /// Callback when the captured combo carries no modifier the menu can use, so the
+    /// caller can say why instead of leaving the recorder to beep with no explanation.
+    var onUnusableModifiers: (() -> Void)?
+
     /// The currently displayed key combo
     var currentCombo: BoundKey? {
         didSet {
@@ -149,7 +153,8 @@ final class ShortcutRecorderNSView: NSView {
             return nil
         }
         guard let combo = BoundKey(from: event) else {
-            NSSound.beep()
+            endRecording()
+            onUnusableModifiers?()
             return nil
         }
         onRecord?(combo)
@@ -290,6 +295,9 @@ struct ShortcutRecorderView: NSViewRepresentable {
     /// Called when the shortcut is cleared
     var onClear: (() -> Void)?
 
+    /// Called when the pressed combo carries no modifier a menu key equivalent can use.
+    var onUnusableModifiers: (() -> Void)?
+
     func makeNSView(context: Context) -> ShortcutRecorderNSView {
         let view = ShortcutRecorderNSView()
         view.currentCombo = combo
@@ -299,6 +307,9 @@ struct ShortcutRecorderView: NSViewRepresentable {
         view.onClear = {
             onClear?()
         }
+        view.onUnusableModifiers = {
+            onUnusableModifiers?()
+        }
         return view
     }
 
@@ -306,5 +317,6 @@ struct ShortcutRecorderView: NSViewRepresentable {
         nsView.currentCombo = combo
         nsView.onRecord = { [onRecord] newCombo in onRecord?(newCombo) }
         nsView.onClear = { [onClear] in onClear?() }
+        nsView.onUnusableModifiers = { [onUnusableModifiers] in onUnusableModifiers?() }
     }
 }

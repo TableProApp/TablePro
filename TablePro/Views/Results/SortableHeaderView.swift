@@ -229,11 +229,15 @@ final class SortableHeaderView: NSTableHeaderView {
         updateFunnelHover(column: nil)
     }
 
-    private func isInResizeZone(point: NSPoint) -> Bool {
-        guard let tableView else { return false }
+    /// `headerRect(ofColumn:)` gives a hidden column a zero rect, so its trailing edge is x = 0. The
+    /// pool keeps user-hidden columns and the surplus slots of a wider result attached with
+    /// `userResizingMask` set, and each one reports a divider at the header's leading edge.
+    internal func isInResizeZone(point: NSPoint) -> Bool {
+        guard let tableView, let coordinator else { return false }
         let zone = Self.resizeZoneWidth
         return tableView.tableColumns.enumerated().contains { index, column in
-            guard column.resizingMask.contains(.userResizingMask) else { return false }
+            guard column.resizingMask.contains(.userResizingMask),
+                  coordinator.presentsColumn(column) else { return false }
             let edge = headerRect(ofColumn: index).maxX
             return abs(point.x - edge) <= zone
         }
