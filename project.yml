@@ -488,6 +488,7 @@ targets:
       - Plugins/SnowflakeDriverPlugin/SnowflakeSchemaQueries.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeSQL.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeStatementGenerator.swift
+      - Plugins/SnowflakeDriverPlugin/SnowflakeStatementType.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeTypeMapper.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeValueDecoder.swift
       - Plugins/SurrealDBDriverPlugin/SurrealCBOR.swift

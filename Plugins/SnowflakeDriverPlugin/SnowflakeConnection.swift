@@ -582,7 +582,10 @@ final class SnowflakeConnection: @unchecked Sendable {
             rows = Self.rows(from: inlineRowset, columns: columns)
         }
 
-        let affectedRows = Self.extractAffectedRows(columns: columns, rows: rows)
+        let affectedRows = SnowflakeStatementType.affectedRows(
+            statementTypeId: (data["statementTypeId"] as? NSNumber)?.intValue ?? 0,
+            row: rows.first
+        )
 
         if let chunks = data["chunks"] as? [[String: Any]], !chunks.isEmpty {
             rows.append(contentsOf: try await downloadChunks(
@@ -868,17 +871,6 @@ final class SnowflakeConnection: @unchecked Sendable {
         }
         guard let column else { return .text(text) }
         return SnowflakeValueDecoder.decode(text, as: column)
-    }
-
-    private static func extractAffectedRows(columns: [SnowflakeColumnMeta], rows: [[PluginCellValueBox]]) -> Int {
-        guard columns.count == 1,
-              columns[0].name.lowercased().contains("number of rows"),
-              let firstRow = rows.first,
-              case .text(let value) = firstRow.first ?? .null,
-              let count = Int(value) else {
-            return 0
-        }
-        return count
     }
 
     private static func parseChunkRows(

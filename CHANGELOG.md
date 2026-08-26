@@ -60,6 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Snowflake `DATE`, `TIME` and `TIMESTAMP_*` cells showing the raw epoch number the server sends. (#2454)
 - Snowflake `BINARY` cells showing the hex of their hex, which the hex editor then wrote back.
 - A date cell the app cannot read opening a picker set to today, which overwrote the value on OK. (#2454)
+- Snowflake reporting no rows changed for an `UPDATE` or `MERGE`, and a `SELECT`'s own result for a column named `number of rows`.
 
 ### Security
 
