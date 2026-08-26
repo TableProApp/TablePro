@@ -199,7 +199,7 @@ struct RewindPlanner {
                       index < preImage.count, index < postImage.count
                 else { return nil }
                 return CellChange(
-                    rowIndex: 0, columnIndex: index, columnName: column,
+                    columnIndex: index, columnName: column,
                     oldValue: postImage[index], newValue: preImage[index]
                 )
             }

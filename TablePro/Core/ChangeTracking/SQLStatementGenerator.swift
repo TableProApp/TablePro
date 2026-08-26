@@ -90,9 +90,14 @@ struct SQLStatementGenerator {
 
     /// The same statements, each carrying how many rows it is meant to touch.
     ///
-    /// A delete is batched, so the count is not always one and the batching rule lives here. A
-    /// caller that verified the server's affected-row count against a rule of its own would be a
-    /// second copy of that rule with nothing keeping the two in step.
+    /// Emitted in the order the user made the changes, because that order can be load-bearing: a
+    /// row deleted to free a unique value, and a new row taking that value, only work if the
+    /// DELETE runs first. Grouping every INSERT ahead of every DELETE, which is what this used to
+    /// do, turned that save into a constraint violation and rolled the whole thing back.
+    ///
+    /// Deletes still batch, but only across a consecutive run of them. That keeps the case that
+    /// matters, selecting many rows and pressing Delete, on one statement, while a delete
+    /// separated from another delete by an insert stays on its own side of it.
     func generateAttributedStatements(
         from changes: [RowChange],
         insertedRowData: [Int: [PluginCellValue]],
@@ -100,44 +105,35 @@ struct SQLStatementGenerator {
         insertedRowIndices: Set<Int>
     ) -> [AttributedStatement] {
         var statements: [AttributedStatement] = []
+        var deleteRun: [RowChange] = []
 
-        // Collect UPDATE and DELETE changes to batch them
-        var updateChanges: [RowChange] = []
-        var deleteChanges: [RowChange] = []
+        func flushDeleteRun() {
+            guard !deleteRun.isEmpty else { return }
+            statements.append(contentsOf: generateDeleteStatements(for: deleteRun))
+            deleteRun.removeAll(keepingCapacity: true)
+        }
 
-        for change in changes {
+        for change in changes.sorted(by: { $0.sequence < $1.sequence }) {
             switch change.type {
             case .update:
-                updateChanges.append(change)
+                flushDeleteRun()
+                if let stmt = generateUpdateSQL(for: change) {
+                    statements.append(AttributedStatement(statement: stmt, kind: .update, rowCount: 1))
+                }
             case .insert:
                 // SAFETY: Verify the row is still marked as inserted
-                guard insertedRowIndices.contains(change.rowIndex) else {
-                    continue
-                }
+                guard insertedRowIndices.contains(change.rowIndex) else { continue }
+                flushDeleteRun()
                 if let stmt = generateInsertSQL(for: change, insertedRowData: insertedRowData) {
                     statements.append(AttributedStatement(statement: stmt, kind: .insert, rowCount: 1))
                 }
             case .delete:
                 // SAFETY: Verify the row is still marked as deleted
-                guard deletedRowIndices.contains(change.rowIndex) else {
-                    continue
-                }
-                deleteChanges.append(change)
+                guard deletedRowIndices.contains(change.rowIndex) else { continue }
+                deleteRun.append(change)
             }
         }
-
-        // Generate individual UPDATE statements (safer than batched CASE/WHEN)
-        if !updateChanges.isEmpty {
-            for change in updateChanges {
-                if let stmt = generateUpdateSQL(for: change) {
-                    statements.append(AttributedStatement(statement: stmt, kind: .update, rowCount: 1))
-                }
-            }
-        }
-
-        if !deleteChanges.isEmpty {
-            statements.append(contentsOf: generateDeleteStatements(for: deleteChanges))
-        }
+        flushDeleteRun()
 
         return statements
     }

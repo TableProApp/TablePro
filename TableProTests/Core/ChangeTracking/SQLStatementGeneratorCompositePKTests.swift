@@ -40,7 +40,7 @@ struct SQLStatementGeneratorCompositePKTests {
             rowIndex: rowIndex,
             type: .update,
             cellChanges: [CellChange(
-                rowIndex: rowIndex, columnIndex: columnIndex,
+                columnIndex: columnIndex,
                 columnName: columnName,
                 oldValue: PluginCellValue.fromOptional(oldValue),
                 newValue: PluginCellValue.fromOptional(newValue)
@@ -149,8 +149,8 @@ struct SQLStatementGeneratorCompositePKTests {
         let stmts = generate([
             makeMultiCellUpdateChange(
                 cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 2, columnName: "quantity", oldValue: "5", newValue: "10"),
-                    CellChange(rowIndex: 0, columnIndex: 3, columnName: "price", oldValue: "9.99", newValue: "12.99"),
+                    CellChange(columnIndex: 2, columnName: "quantity", oldValue: "5", newValue: "10"),
+                    CellChange(columnIndex: 3, columnName: "price", oldValue: "9.99", newValue: "12.99"),
                 ],
                 originalRow: ["1", "42", "5", "9.99"]
             ),
@@ -467,9 +467,9 @@ struct SQLStatementGeneratorCompositePKTests {
             rowIndex: 0,
             type: .update,
             cellChanges: [
-                CellChange(rowIndex: 0, columnIndex: 0, columnName: "order_id", oldValue: "1", newValue: "1"),
-                CellChange(rowIndex: 0, columnIndex: 1, columnName: "product_id", oldValue: "42", newValue: "42"),
-                CellChange(rowIndex: 0, columnIndex: 2, columnName: "quantity", oldValue: "5", newValue: "10"),
+                CellChange(columnIndex: 0, columnName: "order_id", oldValue: "1", newValue: "1"),
+                CellChange(columnIndex: 1, columnName: "product_id", oldValue: "42", newValue: "42"),
+                CellChange(columnIndex: 2, columnName: "quantity", oldValue: "5", newValue: "10"),
             ],
             originalRow: nil
         )
@@ -488,7 +488,7 @@ struct SQLStatementGeneratorCompositePKTests {
             rowIndex: 0,
             type: .update,
             cellChanges: [
-                CellChange(rowIndex: 0, columnIndex: 2, columnName: "quantity", oldValue: "5", newValue: "10"),
+                CellChange(columnIndex: 2, columnName: "quantity", oldValue: "5", newValue: "10"),
             ],
             originalRow: nil // No originalRow, and only quantity in cellChanges — missing PK columns
         )

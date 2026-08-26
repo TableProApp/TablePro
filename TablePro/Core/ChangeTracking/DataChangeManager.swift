@@ -270,7 +270,8 @@ final class DataChangeManager: ChangeManaging {
             )
         } else {
             pending.reapplyCellChange(
-                rowIndex: rowIndex, columnIndex: columnIndex, columnName: columnName,
+                rowIndex: rowIndex,
+                columnIndex: columnIndex, columnName: columnName,
                 originalDBValue: newValue, newValue: previousValue, originalRow: originalRow
             )
         }

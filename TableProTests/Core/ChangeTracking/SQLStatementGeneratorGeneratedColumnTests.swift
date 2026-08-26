@@ -54,9 +54,8 @@ struct SQLStatementGeneratorGeneratedColumnTests {
                 rowIndex: 0,
                 type: .insert,
                 cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: .null, newValue: "John"),
+                    CellChange(columnIndex: 1, columnName: "name", oldValue: .null, newValue: "John"),
                     CellChange(
-                        rowIndex: 0,
                         columnIndex: 2,
                         columnName: "full_name",
                         oldValue: .null,
@@ -87,9 +86,8 @@ struct SQLStatementGeneratorGeneratedColumnTests {
                 rowIndex: 0,
                 type: .update,
                 cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny"),
+                    CellChange(columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny"),
                     CellChange(
-                        rowIndex: 0,
                         columnIndex: 2,
                         columnName: "full_name",
                         oldValue: "John Doe",
@@ -121,7 +119,6 @@ struct SQLStatementGeneratorGeneratedColumnTests {
                 type: .update,
                 cellChanges: [
                     CellChange(
-                        rowIndex: 0,
                         columnIndex: 2,
                         columnName: "full_name",
                         oldValue: "John Doe",

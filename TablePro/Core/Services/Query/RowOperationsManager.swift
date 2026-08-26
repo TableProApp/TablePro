@@ -180,10 +180,26 @@ final class RowOperationsManager {
         )
     }
 
-    func applyUndoResult(_ result: UndoResult, tableRows: inout TableRows) -> UndoApplicationResult {
+    /// `displayIDs` is the grid's display order when a per-column value filter is narrowing it.
+    ///
+    /// A cell edit is tracked by its display row, the same as the modified and deleted marks the
+    /// grid draws, but `TableRows` is indexed by storage position. The forward write converts; this
+    /// one has to as well, or undoing an edit under a filter puts the old value into whichever row
+    /// happens to sit at that storage offset. The row arms need no conversion: an inserted row is
+    /// tracked by its storage index from the start, which is what lets it be physically removed.
+    func applyUndoResult(
+        _ result: UndoResult,
+        displayIDs: [RowID]?,
+        tableRows: inout TableRows
+    ) -> UndoApplicationResult {
         switch result.action {
         case .cellEdit(let rowIndex, let columnIndex, _, let previousValue, _, _):
-            let delta = tableRows.edit(row: rowIndex, column: columnIndex, value: previousValue)
+            guard let storageRow = DisplayRowMapping.rowIndex(
+                forDisplay: rowIndex, displayIDs: displayIDs, in: tableRows
+            ) else {
+                return UndoApplicationResult(adjustedSelection: nil, delta: .none)
+            }
+            let delta = tableRows.edit(row: storageRow, column: columnIndex, value: previousValue)
             return UndoApplicationResult(adjustedSelection: nil, delta: delta)
 
         case .rowInsertion(let rowIndex):

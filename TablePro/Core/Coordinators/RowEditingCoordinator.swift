@@ -271,8 +271,11 @@ final class RowEditingCoordinator {
         let tabId = tab.id
 
         var application = RowOperationsManager.UndoApplicationResult(adjustedSelection: nil, delta: .none)
+        let displayIDs = parent.activeGridDisplayIDs
         parent.mutateActiveTableRows(for: tabId) { rows in
-            let applied = parent.rowOperationsManager.applyUndoResult(result, tableRows: &rows)
+            let applied = parent.rowOperationsManager.applyUndoResult(
+                result, displayIDs: displayIDs, tableRows: &rows
+            )
             application = applied
             return applied.delta
         }

@@ -14,21 +14,18 @@ enum ChangeType: Hashable {
 
 struct CellChange: Identifiable, Equatable {
     let id: UUID
-    let rowIndex: Int
     let columnIndex: Int
     let columnName: String
     let oldValue: PluginCellValue
     let newValue: PluginCellValue
 
     init(
-        rowIndex: Int,
         columnIndex: Int,
         columnName: String,
         oldValue: PluginCellValue,
         newValue: PluginCellValue
     ) {
         self.id = UUID()
-        self.rowIndex = rowIndex
         self.columnIndex = columnIndex
         self.columnName = columnName
         self.oldValue = oldValue
@@ -43,17 +40,27 @@ struct RowChange: Identifiable, Equatable {
     var cellChanges: [CellChange]
     let originalRow: [PluginCellValue]?
 
+    /// The order the user made this change in.
+    ///
+    /// Not the array position. `PendingChanges` removes a cancelled change by swapping the last
+    /// element into its slot, so array order stops matching edit order the first time anything is
+    /// undone. Statement generation has to know which change came first, because deleting a row
+    /// and reusing its unique value in a new one only works in that order.
+    var sequence: Int
+
     init(
         rowIndex: Int,
         type: ChangeType,
         cellChanges: [CellChange] = [],
-        originalRow: [PluginCellValue]? = nil
+        originalRow: [PluginCellValue]? = nil,
+        sequence: Int = 0
     ) {
         self.id = UUID()
         self.rowIndex = rowIndex
         self.type = type
         self.cellChanges = cellChanges
         self.originalRow = originalRow
+        self.sequence = sequence
     }
 }
 

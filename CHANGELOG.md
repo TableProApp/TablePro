@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The same statements committed twice when Cmd+S is pressed again during a slow save.
 - Switching tabs during a save clearing the edits of the tab switched to, and re-running its query.
 - Placeholder SQL with no values in the Safe Mode confirmation and the authorization prompt.
+- Deleting one row of a pasted batch dropping the other rows, or saving them with another row's values.
+- Undoing the deletion of a new row putting its values in the wrong columns.
+- Undoing a cell edit reverting the wrong row while a column filter is active.
+- A save that deletes a row and reuses its unique value failing on the constraint.
+- "Ignore foreign key checks" doing nothing on SQLite, libSQL and Cloudflare D1.
+- A save reported as failed on an engine without transactions after some statements had been written.
 
 ## [0.68.1] - 2026-08-26
 

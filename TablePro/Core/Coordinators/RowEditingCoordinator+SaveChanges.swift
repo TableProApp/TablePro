@@ -191,7 +191,7 @@ extension RowEditingCoordinator {
             let operationStart = ContinuousClock.Instant.now
 
             do {
-                let results = try await DatabaseManager.shared.withScopedDriver(
+                let run = try await DatabaseManager.shared.withScopedDriver(
                     scope: scope,
                     route: route,
                     cancellation: .protectedWrite
@@ -200,8 +200,9 @@ extension RowEditingCoordinator {
                 }
 
                 let history = recordSuccessHistory(
-                    steps: validSteps, results: results, connection: conn, scope: scope
+                    steps: validSteps, results: run.results, connection: conn, scope: scope
                 )
+                recordSideStatementHistory(run.sideStatements, connection: conn, scope: scope)
                 captureRewindRecord(plan: plan, history: history, connection: conn)
 
                 finishSuccessfulSave(
@@ -215,7 +216,7 @@ extension RowEditingCoordinator {
                 parent.saveCompletionContinuation?.resume(returning: true)
                 parent.saveCompletionContinuation = nil
                 reportSaveFinished(
-                    .succeeded(OperationSummary(rowsAffected: results.reduce(0) { $0 + $1.rowsAffected })),
+                    .succeeded(OperationSummary(rowsAffected: run.results.reduce(0) { $0 + $1.rowsAffected })),
                     connection: conn,
                     database: scope.database,
                     tabId: savingTabId,
@@ -231,33 +232,36 @@ extension RowEditingCoordinator {
                     startedAt: operationStart
                 )
 
-                for step in validSteps {
-                    let historySQL = step.statement.sql.trimmingCharacters(in: .whitespacesAndNewlines)
-                    parent.recordHistory(
-                        QueryHistoryRecordRequest(
-                            query: historySQL.hasSuffix(";") ? historySQL : historySQL + ";",
-                            connectionId: conn.id,
-                            databaseName: scope.database,
-                            databaseType: conn.type,
-                            schemaName: scope.schema,
-                            source: .rowEdit,
-                            executionTime: executionTime,
-                            rowCount: -1,
-                            wasSuccessful: false,
-                            errorMessage: error.localizedDescription
-                        )
-                    )
-                }
+                let partial = error as? DataWritePartialCommitError
+                recordFailureHistory(
+                    steps: validSteps,
+                    committed: partial?.committed ?? [],
+                    connection: conn,
+                    scope: scope,
+                    executionTime: executionTime,
+                    error: error
+                )
 
                 let diagnosis = DatabaseWriteRejectionDiagnosis.classify(error)
                 let writeError = error as? DataWriteError
 
-                AlertHelper.showErrorSheet(
-                    title: String(localized: "Save Failed"),
-                    message: writeError?.errorDescription ?? diagnosis?.errorDescription ?? error.localizedDescription,
-                    recoverySuggestion: writeError?.recoverySuggestion ?? diagnosis?.recoverySuggestion,
-                    window: parent.contentWindow
-                )
+                if let partial {
+                    AlertHelper.showErrorSheet(
+                        title: String(localized: "Save Incomplete"),
+                        message: [partial.errorDescription, partial.partialCommitMessage]
+                            .compactMap { $0 }.joined(separator: "\n\n"),
+                        recoverySuggestion: partial.recoverySuggestion,
+                        window: parent.contentWindow
+                    )
+                } else {
+                    AlertHelper.showErrorSheet(
+                        title: String(localized: "Save Failed"),
+                        message: writeError?.errorDescription ?? diagnosis?.errorDescription
+                            ?? error.localizedDescription,
+                        recoverySuggestion: writeError?.recoverySuggestion ?? diagnosis?.recoverySuggestion,
+                        window: parent.contentWindow
+                    )
+                }
 
                 if clearTableOps {
                     restorePendingTableOperations(
@@ -370,6 +374,68 @@ extension RowEditingCoordinator {
             }
         }
         return firstRowEdit
+    }
+
+    /// The foreign-key toggles run outside the transaction, so they are not steps and would
+    /// otherwise vanish from history even though they ran against the user's database.
+    private func recordSideStatementHistory(
+        _ statements: [String],
+        connection: DatabaseConnection,
+        scope: DatabaseScope
+    ) {
+        for statement in statements {
+            let sql = statement.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !sql.isEmpty else { continue }
+            parent.recordHistory(
+                QueryHistoryRecordRequest(
+                    query: sql.hasSuffix(";") ? sql : sql + ";",
+                    connectionId: connection.id,
+                    databaseName: scope.database,
+                    databaseType: connection.type,
+                    schemaName: scope.schema,
+                    source: .rowEdit,
+                    executionTime: 0,
+                    rowCount: -1,
+                    wasSuccessful: true
+                )
+            )
+        }
+    }
+
+    /// A statement that committed before the failure is recorded as the success it was.
+    ///
+    /// Marking the whole batch failed is a lie on any engine without transactions, and it is the
+    /// lie that makes the user press Save again and write those rows twice.
+    private func recordFailureHistory(
+        steps: [DataWriteStep],
+        committed: [DataWriteStepResult],
+        connection: DatabaseConnection,
+        scope: DatabaseScope,
+        executionTime: TimeInterval,
+        error: any Error
+    ) {
+        for (offset, step) in steps.enumerated() {
+            let sql = step.statement.sql.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !sql.isEmpty else { continue }
+            /// Only the statement right after the committed ones is the one that failed. Anything
+            /// past it never ran, so it is not history at all.
+            if offset > committed.count { break }
+            let didCommit = offset < committed.count
+            parent.recordHistory(
+                QueryHistoryRecordRequest(
+                    query: sql.hasSuffix(";") ? sql : sql + ";",
+                    connectionId: connection.id,
+                    databaseName: scope.database,
+                    databaseType: connection.type,
+                    schemaName: scope.schema,
+                    source: .rowEdit,
+                    executionTime: didCommit ? committed[offset].executionTime : executionTime,
+                    rowCount: didCommit ? committed[offset].rowsAffected : -1,
+                    wasSuccessful: didCommit,
+                    errorMessage: didCommit ? nil : error.localizedDescription
+                )
+            )
+        }
     }
 
     /// Keeps what the rows looked like before this save, so it can be offered back.

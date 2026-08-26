@@ -25,29 +25,92 @@ struct DataWriteStepResult: Sendable {
     let wasVerified: Bool
 }
 
+/// What a run of the plan did: one result per step that ran, plus the prologue and epilogue
+/// statements that were executed around them, which still belong in query history.
+struct DataWriteRun: Sendable {
+    let results: [DataWriteStepResult]
+    let sideStatements: [String]
+}
+
+/// Some of the batch is on the server and cannot be taken back.
+///
+/// Distinct from `DataWriteError` on purpose: that one is an `Equatable` enum whose cases are
+/// compared in tests, and results do not belong in it. Modelled on `PrincipalApplyError`, which
+/// reports the same shape for principals.
+struct DataWritePartialCommitError: LocalizedError {
+    let committed: [DataWriteStepResult]
+    let totalStatements: Int
+    let engine: String
+    let underlying: any Error
+
+    var errorDescription: String? {
+        underlying.localizedDescription
+    }
+
+    var partialCommitMessage: String {
+        String(
+            format: String(
+                localized: "%1$lld of %2$lld statements were already written, and %3$@ cannot roll them back."
+            ),
+            committed.count, totalStatements, engine
+        )
+    }
+
+    var recoverySuggestion: String? {
+        String(localized: "Refresh the table to see what was written. Saving again would write those rows a second time.")
+    }
+}
+
 enum DataWriteExecutor {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "DataWriteExecutor")
 
     /// Runs every step of the plan against one driver, and returns what each one actually did.
     ///
-    /// The rollback and the foreign-key re-enable are part of the same lease as the statements:
-    /// resolving a driver again afterwards can reach a handle that has already been released, or
-    /// one sitting on another database.
+    /// The prologue runs before the transaction opens and the epilogue after it closes, on both
+    /// the commit and the rollback path. The rollback and the epilogue are part of the same lease
+    /// as the statements: resolving a driver again afterwards can reach a handle that has already
+    /// been released, or one sitting on another database.
     nonisolated static func run(
         _ plan: DataWritePlan,
         mode: PluginTransactionAccessMode = .readWrite,
         on driver: DatabaseDriver
-    ) async throws -> [DataWriteStepResult] {
+    ) async throws -> DataWriteRun {
         let steps = plan.steps.filter { !$0.statement.sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        guard !steps.isEmpty else { return [] }
+        guard !steps.isEmpty || !plan.prologue.isEmpty else { return DataWriteRun(results: [], sideStatements: []) }
 
-        let useTransaction = driver.supportsTransactions
-        if useTransaction {
-            try await driver.beginTransaction(mode: mode)
+        var sideStatements: [String] = []
+        for statement in plan.prologue {
+            do {
+                _ = try await driver.execute(query: statement)
+                sideStatements.append(statement)
+            } catch {
+                logger.warning(
+                    "Prologue statement failed '\(statement, privacy: .public)': \(error.localizedDescription, privacy: .public)"
+                )
+            }
         }
 
+        let useTransaction = driver.supportsTransactions
         var results: [DataWriteStepResult] = []
+
+        func drainEpilogue() async {
+            for statement in plan.epilogue {
+                do {
+                    _ = try await driver.execute(query: statement)
+                    sideStatements.append(statement)
+                } catch {
+                    logger.warning(
+                        "Failed to re-enable foreign key checks with statement '\(statement, privacy: .public)': \(error.localizedDescription, privacy: .public)"
+                    )
+                }
+            }
+        }
+
         do {
+            if useTransaction {
+                try await driver.beginTransaction(mode: mode)
+            }
+
             for step in steps {
                 let start = Date()
                 let result: QueryResult
@@ -74,25 +137,33 @@ enum DataWriteExecutor {
                 try await driver.commitTransaction()
             }
         } catch {
+            var rollbackSucceeded = useTransaction
             if useTransaction {
                 do {
                     try await driver.rollbackTransaction()
                 } catch {
+                    rollbackSucceeded = false
                     logger.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
                 }
             }
-            for statement in plan.epilogue {
-                do {
-                    _ = try await driver.execute(query: statement)
-                } catch {
-                    logger.warning(
-                        "Failed to re-enable foreign key checks with statement '\(statement, privacy: .public)': \(error.localizedDescription, privacy: .public)"
-                    )
-                }
+            await drainEpilogue()
+
+            /// Without a transaction the statements that already ran are on the server for good,
+            /// and so they are when the rollback itself failed. Reporting that as a plain failure
+            /// tells the user to try again, and trying again writes them a second time.
+            if !rollbackSucceeded, !results.isEmpty {
+                throw DataWritePartialCommitError(
+                    committed: results,
+                    totalStatements: steps.count,
+                    engine: plan.databaseType.rawValue,
+                    underlying: error
+                )
             }
             throw error
         }
-        return results
+
+        await drainEpilogue()
+        return DataWriteRun(results: results, sideStatements: sideStatements)
     }
 
     /// For a caller that has statements rather than a plan: the discard path, which throws work
@@ -102,7 +173,7 @@ enum DataWriteExecutor {
         epilogue: [String] = [],
         mode: PluginTransactionAccessMode = .readWrite,
         on driver: DatabaseDriver
-    ) async throws -> [DataWriteStepResult] {
+    ) async throws -> DataWriteRun {
         try await run(
             DataWritePlan(
                 scope: DatabaseScope(connectionId: UUID(), database: "", schema: nil),
