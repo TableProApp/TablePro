@@ -2,10 +2,11 @@
 //  SQLCompletionProviderConcurrencyTests.swift
 //  TableProTests
 //
-//  Guards the invariant that filterByPrefix and filterAndRank are pure and
-//  safe to call off the main actor. SQLCompletionAdapter runs filterAndRank
-//  on a detached task while typing, so concurrent invocations from the main
-//  actor's synchronous fast path must not diverge.
+//  Guards the invariant that filterByPrefix and filterAndRank are pure: they read
+//  no mutable provider state, so repeated and concurrent invocations on the same
+//  input agree. QueryCompletionAdapter now ranks synchronously on the keystroke
+//  (#2444), and purity is what lets it, because the popup asks on every keystroke
+//  and must get the same answer for the same prefix.
 //
 
 @testable import TablePro
@@ -63,12 +64,13 @@ struct SQLCompletionProviderConcurrencyTests {
     }
 
     /// The point of the test is that `filterAndRank` reads no mutable state, which is what the
-    /// compiler cannot see from the provider's type alone.
+    /// compiler cannot see from the provider's type alone. Nothing calls it off the main actor
+    /// today; the guard is that nothing in it would break if something did.
     private struct ConcurrentProvider: @unchecked Sendable {
         let provider: SQLCompletionProvider
     }
 
-    @Test("filterAndRank is safe under concurrent invocations from a detached task")
+    @Test("filterAndRank is safe under concurrent invocations")
     func filterAndRankConcurrent() async {
         let provider = makeProvider()
         let items = makeItems()

@@ -4,7 +4,7 @@ import TableProPluginKit
 @MainActor
 final class SQLCompletionService: QueryCompletionService {
     private let engine: CompletionEngine
-    private var lastContext: SQLContext?
+    private var lastContext = SQLContext.unanalyzed
 
     private static let windowRadius = 5_000
 
@@ -28,8 +28,13 @@ final class SQLCompletionService: QueryCompletionService {
 
     var triggerCharacters: Set<String> { [".", " ", ":", "(", ","] }
 
+    /// Seeding starts a session the analyzer has not seen, so the context a previous session
+    /// left behind stops describing anything. Ranking a seeded session against it would score
+    /// the new prefix under the old clause.
     func seedItems() -> [SQLCompletionItem] {
-        engine.keywordCompletions() + engine.allFavoriteItems()
+        lastContext = .unanalyzed
+        let items = engine.keywordCompletions() + engine.allFavoriteItems()
+        return Array(items.prefix(engine.provider.seedPoolLimit))
     }
 
     func prepare() async {
@@ -44,13 +49,8 @@ final class SQLCompletionService: QueryCompletionService {
         SQLTokenBoundary.segmentStart(in: text, endingAt: offset)
     }
 
-    func filter(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
-        engine.provider.filterByPrefix(items, prefix: prefix)
-    }
-
     func rank(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
-        guard let context = lastContext else { return filter(items, prefix: prefix) }
-        return engine.provider.filterAndRank(items, prefix: prefix, context: context)
+        engine.provider.filterRankAndLimit(items, prefix: prefix, context: lastContext)
     }
 
     func completions(in text: NSString, at offset: Int, isManualTrigger: Bool) async -> QueryCompletionSession? {
@@ -68,6 +68,7 @@ final class SQLCompletionService: QueryCompletionService {
         lastContext = context.sqlContext
         return QueryCompletionSession(
             items: context.items,
+            candidates: context.candidates,
             replacementRange: NSRange(
                 location: context.replacementRange.location + windowStart,
                 length: context.replacementRange.length

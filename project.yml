@@ -410,6 +410,7 @@ targets:
       - Plugins/MySQLDriverPlugin/MySQLGeneratedColumnClassification.swift
       - Plugins/MySQLDriverPlugin/MySQLObjectQueries.swift
       - Plugins/MySQLDriverPlugin/MySQLQueryTimeoutStatement.swift
+      - Plugins/MySQLDriverPlugin/MySQLSelectLimitStatement.swift
       - Plugins/MySQLDriverPlugin/MySQLSocketTimeout.swift
       - Plugins/MySQLDriverPlugin/MySQLStatementClassification.swift
       - Plugins/MySQLDriverPlugin/MySQLTransactionStatement.swift

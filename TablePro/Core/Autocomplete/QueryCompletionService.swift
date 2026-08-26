@@ -2,7 +2,11 @@ import Foundation
 import TableProPluginKit
 
 struct QueryCompletionSession {
+    /// What the popup shows when it opens.
     let items: [SQLCompletionItem]
+    /// What it re-ranks against while it stays open, which is wider than `items` so a longer
+    /// prefix can promote a candidate the opening prefix ranked out of view.
+    let candidates: [SQLCompletionItem]
     let replacementRange: NSRange
 }
 
@@ -13,7 +17,6 @@ protocol QueryCompletionService: AnyObject {
     func seedItems() -> [SQLCompletionItem]
     func prepare() async
     func completions(in text: NSString, at offset: Int, isManualTrigger: Bool) async -> QueryCompletionSession?
-    func filter(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem]
     func rank(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem]
     func tokenStart(in text: NSString, endingAt offset: Int) -> Int
     func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)])

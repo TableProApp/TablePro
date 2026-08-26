@@ -135,6 +135,12 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
+    /// The read is already bounded at its source: the connection caps the statement with
+    /// `SQL_SELECT_LIMIT` before running it, so the server never produces the rows past the cap.
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        try await executeUserQuery(query: query, rowCap: rowCap, parameters: nil)
+    }
+
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         guard let conn = mariadbConnection else {
             throw MariaDBPluginError.notConnected
