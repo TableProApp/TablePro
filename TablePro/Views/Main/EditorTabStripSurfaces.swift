@@ -5,22 +5,24 @@
 
 import SwiftUI
 
-/// Read off the system's own tab bar rather than chosen. Every value is a semantic `NSColor` so
-/// the light appearance inverts with the system instead of needing a second hand-tuned palette.
+/// The strip's surfaces.
 ///
-/// These are also what the strip falls back to when it may not use glass at all, which is why the
-/// selected fill is a tone of its own rather than the track's. Sharing one constant between the
-/// two is what left a background window with no selection: both resolved to opaque rgb(220) in
-/// light and rgb(70) in dark, a delta of exactly zero.
+/// Every value is a semantic `NSColor`, so the light appearance inverts with the system instead of
+/// needing a second hand-tuned palette, and so nothing here has to be retuned when Apple moves a
+/// tone. The pair was checked against the system's own tab bar rather than chosen: `NSTabBar`
+/// measures a track of rgb(232) and a selected tab of rgb(253) in light, and rgb(71) and rgb(74)
+/// in dark. These resolve to rgb(220) and rgb(255) in light, and rgb(70) and rgb(116) in dark.
 internal enum EditorTabStripPalette {
-    /// An opaque tone rather than an alpha wash for the same reason the system's material is:
-    /// measured at rgb(220) light and rgb(70) dark, against a system track of rgb(228) and
-    /// rgb(77), it is the closest system colour that stays lighter than the chrome in both.
+    /// Measured at rgb(220) light and rgb(70) dark. The system's own tab track measures rgb(232)
+    /// and rgb(71), so this is within a level of it in dark and slightly deeper in light.
     internal static var trackFill: Color { Color(nsColor: .unemphasizedSelectedContentBackgroundColor) }
-    /// Measured at rgb(255) light and rgb(115) dark over the track, so the selected tab stands
-    /// 35 and 45 levels clear of it whether or not the window is in front. The system keeps its
-    /// own selected tab drawn in a background window too; only the labels step down.
+
+    /// Opaque white in light, and white at alpha 0.247 in dark. That asymmetry is the whole reason
+    /// the selection cannot invert: in light it is the ceiling, so no track can rise above it, and
+    /// in dark it composites *over* whatever the track resolved to, so it always lifts. The step
+    /// is a property of the colour rather than of a tuned distance.
     internal static var selectedFill: Color { Color(nsColor: .controlColor) }
+
     /// Half the weight of a separator. `separatorColor` was twice the measured edge and read as a
     /// drawn outline rather than the lit rim the system puts there.
     ///
@@ -29,63 +31,43 @@ internal enum EditorTabStripPalette {
     /// one CI builds with, rejects `quinaryLabelColor` outright as renamed to this. Take the
     /// spelling CI accepts and ignore the beta's deprecation hint.
     internal static var trackEdge: Color { Color(nsColor: .quinaryLabel) }
+
+    /// The system darkens a hovered tab rather than lightening it, in light appearance: a rendered
+    /// `NSTabBar` measures rgb(220) under the pointer against a rgb(232) track, and this resolves
+    /// to rgb(210) against rgb(220). The direction is deliberate and matches, so it is left alone.
     internal static var hoverFill: Color { Color(nsColor: .tertiarySystemFill) }
+
     internal static var separator: Color { Color(nsColor: .separatorColor) }
+
+    /// The rim is the other half of how the system draws a raised tab, and the half this strip was
+    /// missing. A vertical section through a selected segment reads track 236, rim 215, highlight
+    /// 255, body 242: the fill carries six levels and the edge carries twenty-one. Only the fill
+    /// was drawn here before, which is why the selection read as flat.
+    internal static var selectionEdge: Color { Color(nsColor: .separatorColor) }
 }
 
 /// Which of the two surface sets the strip draws.
 ///
-/// The app resolves this from the environment. A test pins it, because a tinted `glassEffect`
-/// cannot be rasterised at all: `cacheDisplay` comes back with an empty bitmap for the entire
-/// hosting view, the strip's own titles and close button included, not merely for the glass.
+/// The app resolves this from the environment. A test pins it, because a `glassEffect` cannot be
+/// rasterised at all: `cacheDisplay` comes back with an empty bitmap for the entire hosting view,
+/// the strip's own titles and close button included, not merely for the glass.
 internal enum EditorTabStripSurfaceStyle {
     case glass
     case solid
 }
 
-/// How far apart the track and the selected tab are held when both are glass.
+/// Whether the strip may use Liquid Glass at all.
 ///
-/// Liquid Glass samples the backdrop beneath a stack, never the glass it sits on, so a `.regular`
-/// capsule inside a `.regular` track carries no step of its own. Measured on the shipping strip,
-/// the selected tab was rgb(248) against a track of rgb(250) in light, a contrast of 1.017 to 1,
-/// and across a backdrop sweep the step turned over: +57 levels above black, -1 above white.
+/// Only the new-tab button asks any more. The track and the selected tab are opaque, because a
+/// selection drawn in glass cannot hold its own sign: measured across twenty
+/// arrangements on macOS 27, every glass surface nested in, beside, or unioned with another one
+/// rendered *darker* than its track in light appearance, and the shipped pair inverted again when
+/// the window lost key. Glass takes its colour from whatever is behind the window, and a selection
+/// has to mean the same thing over every wallpaper.
 ///
-/// The system never stacks one material on itself. A runtime probe of `NSTabBar` on macOS 27 gives
-/// an `NSSubduedGlassEffectView` track carrying plain `NSGlassEffectView` tabs, measured at
-/// rgb(236) and rgb(253) in light and rgb(83) and rgb(89) in dark. `NSGlassEffectViewStyle`
-/// publishes only `regular` and `clear`, so that subdued style is out of reach.
-///
-/// These two tints stand in for it. Both surfaces sample the same backdrop and are pushed in
-/// opposite directions, so the step between them stops being a function of what the window is
-/// over: measured from a black backdrop to a white one, the worst case is 1.189 to 1 in dark and
-/// 1.183 to 1 in light, above the system's own 1.098 and 1.161, and the sign never turns over.
-///
-/// Both are neutral because `Glass.regular` discards hue: a red track against a green selection
-/// measures exactly like no tint at all. Only lightness reaches the surface, which is what the
-/// Human Interface Guidelines ask for anyway, colour on the background rather than on the text.
+/// The rule itself belongs to `SolidSurfacePreference`, which the six views that reach both
+/// settings through `themeMaterial` also use.
 internal enum EditorTabStripEmphasis {
-    internal static let trackTint = Color.black.opacity(0.12)
-    internal static let selectionTint = Color.white.opacity(0.22)
-
-    /// Ink rather than material, so it survives what the tints do not. macOS attenuates a glass
-    /// tint in a window that is not key, measured at rgb(134) falling to rgb(94) for the selected
-    /// tab, and the system's own bar gives up there too: its selected tab reads seven levels
-    /// darker than its track in a background window. The rim is the part of the selection that
-    /// survives, and it is a shape rather than a colour, which is the channel Apple's
-    /// differentiate-without-colour criteria ask for.
-    internal static var selectionEdge: Color { Color(nsColor: .separatorColor) }
-
-    /// One device pixel on the 2x displays this chrome is drawn for.
-    internal static let selectionEdgeWidth: CGFloat = 0.5
-
-    /// Glass answers to neither Increase Contrast nor Reduce Transparency. Rendering the strip
-    /// under `accessibilityHighContrastAqua` and `accessibilityHighContrastDarkAqua` produces
-    /// pixels identical to plain aqua and darkAqua, measured. So the strip leaves glass behind for
-    /// the opaque surfaces above, which carry 1.371 to 1 in light and 1.991 to 1 in dark.
-    ///
-    /// The rule itself belongs to `SolidSurfacePreference`, which the six views that reach both
-    /// settings through `themeMaterial` also use. Glass has no `Material` to swap, so the strip
-    /// answers the same question with a different surface rather than a second rule.
     internal static func prefersSolidSurfaces(
         reduceTransparency: Bool,
         contrast: ColorSchemeContrast

@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep Open for a preview tab, by double-clicking it in the tab strip or from its contextual menu. (#2436)
 - Kafka driver plugin: topics in the grid, consumer group lag, and KafkaQL for seeking and producing. (#2419)
 
+### Changed
+
+- Editor tabs drawn as a segmented tab picker rather than in Liquid Glass, on every macOS version. (#2439)
+
+### Fixed
+
+- Active editor tab indistinguishable from the inactive ones in light appearance. (#2439)
+- Active editor tab drawn darker than its track on macOS 27, and inverting when the window lost focus.
+- Editor tab selection changing with the desktop picture behind the window.
+- Editor tab strip tests reporting four appearances while running plain Aqua and Dark Aqua twice.
+
 ## [0.68.1] - 2026-08-26
 
 ### Changed
