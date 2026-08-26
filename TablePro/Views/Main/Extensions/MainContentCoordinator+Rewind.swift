@@ -5,6 +5,7 @@
 //  Restoring the values a committed save replaced.
 //
 
+import AppKit
 import Foundation
 import os
 
@@ -14,15 +15,22 @@ extension MainContentCoordinator {
     }
 
     /// Whether the selected tab is one a save could be restored on. Says nothing about whether
-    /// there is a save to restore, which costs a read to find out.
+    /// there is a save to restore, which costs a read to find out, and nothing about the licence.
+    ///
+    /// Deliberately not gated on the licence. Someone who has just saved the wrong thing has to be
+    /// able to find this, and a dimmed control they never notice tells them nothing about what the
+    /// licence is for. The gate is at the point of use instead, where it can explain itself.
     var canRewindSelectedTab: Bool {
-        guard services.licenseManager.isFeatureAvailable(.dataRewind) else { return false }
-        guard AppSettingsManager.shared.history.keepRewindHistory else { return false }
         guard let tab = tabManager.selectedTab, tab.tabType == .table else { return false }
         return tab.tableContext.tableName != nil && !safeModeLevel.blocksAllWrites
     }
 
+    private var isDataRewindLicensed: Bool {
+        services.licenseManager.isFeatureAvailable(.dataRewind)
+    }
+
     func rewindLastSave() {
+        guard presentUpsellUnlessLicensed() else { return }
         guard canRewindSelectedTab,
               let tab = tabManager.selectedTab,
               let tableName = tab.tableContext.tableName,
@@ -59,7 +67,7 @@ extension MainContentCoordinator {
     /// rewind planned against the window's current scope would then read and write a same-named
     /// table in the wrong database, which is why the record's own target decides where it runs.
     func rewindSave(historyId: UUID) {
-        guard canRewindSelectedTab else { return }
+        guard presentUpsellUnlessLicensed(), canRewindSelectedTab else { return }
         Task { [weak self] in
             guard let self else { return }
             let manager = services.queryHistoryManager
@@ -85,6 +93,29 @@ extension MainContentCoordinator {
             }
             await presentRewind(for: record, scope: scope(for: record))
         }
+    }
+
+    /// Returns false, having explained itself, when the licence does not cover this.
+    ///
+    /// The control is reachable without a licence on purpose, so this is the moment the feature
+    /// gets described to the person who just discovered they want it.
+    private func presentUpsellUnlessLicensed() -> Bool {
+        guard !isDataRewindLicensed else { return true }
+        Task { @MainActor in
+            let alert = NSAlert()
+            alert.messageText = String(localized: "Data Rewind needs a Starter license")
+            alert.informativeText = String(
+                localized: "Restore the previous values of rows you already saved. Saves are kept on this Mac for 7 days, encrypted, and never leave it."
+            )
+            alert.alertStyle = .informational
+            alert.addButton(withTitle: String(localized: "Purchase License"))
+            AlertHelper.addCancelButton(to: alert, title: String(localized: "Not Now"))
+            AlertHelper.present(alert, in: contentWindow) { response in
+                guard response == .alertFirstButtonReturn else { return }
+                NSWorkspace.shared.open(SupportLinks.pricing(.featureGate(.dataRewind)))
+            }
+        }
+        return false
     }
 
     /// Where the record's own rows live, which is not necessarily where the window is pointing.

@@ -407,6 +407,7 @@ final class MainContentCommandActions {
         coordinator?.canRewindSelectedTab ?? false
     }
 
+
     /// Find and the filter panel act on the result grid, so they need a table tab that is showing
     /// one. Chart mode is not, and neither is Structure, whose own grid has its own commands.
     var canUseTableResultCommands: Bool {

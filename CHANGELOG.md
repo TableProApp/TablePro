@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Restore Previous Values in the Edit menu, taking back a save that already committed. Starter license. (#2107)
 - Data Rewind settings in Settings > Data & Results, with an off switch and Clear Saved Changes.
+- Restore Previous Values in the toolbar's Table Actions group.
 
 ### Fixed
 

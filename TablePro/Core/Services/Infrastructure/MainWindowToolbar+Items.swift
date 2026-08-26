@@ -106,6 +106,22 @@ extension MainWindowToolbar {
         )
     }
 
+    /// Rides in the Table Actions group for the same reason Add Row does: a brand new top-level
+    /// identifier never appears for anyone whose toolbar configuration is already saved.
+    ///
+    /// It stays enabled without a license. The point of it being here is that someone who has just
+    /// saved the wrong thing finds it, and finding it is what makes the licence worth buying; a
+    /// dimmed item they never notice sells nothing and helps nobody.
+    func subitemRestorePreviousValues() -> NSToolbarItem {
+        menuOnlyItem(
+            id: Self.restorePreviousValues,
+            label: String(localized: "Restore Previous Values"),
+            symbol: "clock.arrow.circlepath",
+            action: #selector(performRestorePreviousValues(_:)),
+            description: String(localized: "Restore the previous values of a save")
+        )
+    }
+
     func subitemExport() -> NSToolbarItem {
         menuOnlyItem(
             id: Self.exportTables,

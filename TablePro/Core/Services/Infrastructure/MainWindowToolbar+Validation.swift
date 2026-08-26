@@ -14,6 +14,7 @@ extension MainWindowToolbar: NSToolbarItemValidation {
         let connected: Bool
         let isTableTab: Bool
         let canAddRow: Bool
+        let canRestorePreviousValues: Bool
         let hasPendingChanges: Bool
         let hasDataPendingChanges: Bool
         let blocksAllWrites: Bool
@@ -49,6 +50,8 @@ extension MainWindowToolbar: NSToolbarItemValidation {
             return context.connected
         case Self.addRow:
             return context.connected && context.canAddRow
+        case Self.restorePreviousValues:
+            return context.connected && context.canRestorePreviousValues
         case Self.navigateBack:
             return context.connected && context.canNavigateBack
         case Self.navigateForward:
@@ -74,6 +77,7 @@ extension MainWindowToolbar: NSToolbarItemValidation {
             connected: Self.hasLiveSession(state.connectionState),
             isTableTab: state.isTableTab,
             canAddRow: coordinator?.canAddRow ?? false,
+            canRestorePreviousValues: coordinator?.canRewindSelectedTab ?? false,
             hasPendingChanges: state.hasPendingChanges,
             hasDataPendingChanges: state.hasDataPendingChanges,
             blocksAllWrites: state.safeModeLevel.blocksAllWrites,

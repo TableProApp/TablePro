@@ -229,6 +229,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     static let exportTables = NSToolbarItem.Identifier("com.TablePro.toolbar.export")
     static let importTables = NSToolbarItem.Identifier("com.TablePro.toolbar.import")
     static let refreshSaveGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.refreshSaveGroup")
+    static let restorePreviousValues = NSToolbarItem.Identifier("com.TablePro.toolbar.restorePreviousValues")
     static let exportImportGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.exportImportGroup")
     static let sidebarToggle = NSToolbarItem.Identifier("com.TablePro.toolbar.sidebarToggle")
     static let backForwardGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.backForwardGroup")

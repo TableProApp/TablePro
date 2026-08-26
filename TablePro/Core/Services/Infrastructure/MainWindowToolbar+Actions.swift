@@ -39,6 +39,10 @@ extension MainWindowToolbar {
         NSApp.sendAction(#selector(MainSplitViewController.addRow(_:)), to: nil, from: nil)
     }
 
+    @objc func performRestorePreviousValues(_ sender: Any?) {
+        NSApp.sendAction(#selector(MainSplitViewController.restorePreviousValues(_:)), to: nil, from: nil)
+    }
+
     @objc func performNewTab(_ sender: Any?) {
         NSApp.sendAction(#selector(MainSplitViewController.newEditorTab(_:)), to: nil, from: nil)
     }

@@ -45,6 +45,7 @@ struct MainWindowToolbarValidationTests {
         connected: Bool = true,
         isTableTab: Bool = false,
         canAddRow: Bool = false,
+        canRestorePreviousValues: Bool = false,
         hasPendingChanges: Bool = false,
         hasDataPendingChanges: Bool = false,
         blocksAllWrites: Bool = false,
@@ -59,6 +60,7 @@ struct MainWindowToolbarValidationTests {
             connected: connected,
             isTableTab: isTableTab,
             canAddRow: canAddRow,
+            canRestorePreviousValues: canRestorePreviousValues,
             hasPendingChanges: hasPendingChanges,
             hasDataPendingChanges: hasDataPendingChanges,
             blocksAllWrites: blocksAllWrites,
@@ -553,6 +555,7 @@ struct MainWindowToolbarNavigationValidationTests {
             connected: connected,
             isTableTab: true,
             canAddRow: false,
+            canRestorePreviousValues: false,
             hasPendingChanges: false,
             hasDataPendingChanges: false,
             blocksAllWrites: false,
@@ -624,11 +627,14 @@ struct MainWindowToolbarNavigationValidationTests {
 @Suite("MainWindowToolbar Add Row validation")
 @MainActor
 struct MainWindowToolbarAddRowValidationTests {
-    private func context(connected: Bool, canAddRow: Bool) -> MainWindowToolbar.ValidationContext {
+    private func context(
+        connected: Bool, canAddRow: Bool, canRestorePreviousValues: Bool = false
+    ) -> MainWindowToolbar.ValidationContext {
         MainWindowToolbar.ValidationContext(
             connected: connected,
             isTableTab: true,
             canAddRow: canAddRow,
+            canRestorePreviousValues: canRestorePreviousValues,
             hasPendingChanges: false,
             hasDataPendingChanges: false,
             blocksAllWrites: false,
@@ -654,6 +660,24 @@ struct MainWindowToolbarAddRowValidationTests {
         #expect(!MainWindowToolbar.isEnabled(
             itemIdentifier: MainWindowToolbar.addRow,
             context: context(connected: false, canAddRow: true)
+        ))
+    }
+
+    /// Reachable without a licence on purpose: the gate is at the point of use, where it can say
+    /// what the licence buys. A dimmed item explains nothing.
+    @Test("Restore Previous Values follows the tab, not the licence")
+    func restorePreviousValuesValidation() {
+        #expect(MainWindowToolbar.isEnabled(
+            itemIdentifier: MainWindowToolbar.restorePreviousValues,
+            context: context(connected: true, canAddRow: false, canRestorePreviousValues: true)
+        ))
+        #expect(!MainWindowToolbar.isEnabled(
+            itemIdentifier: MainWindowToolbar.restorePreviousValues,
+            context: context(connected: true, canAddRow: true, canRestorePreviousValues: false)
+        ))
+        #expect(!MainWindowToolbar.isEnabled(
+            itemIdentifier: MainWindowToolbar.restorePreviousValues,
+            context: context(connected: false, canAddRow: true, canRestorePreviousValues: true)
         ))
     }
 }

@@ -119,7 +119,10 @@ extension MainWindowToolbar {
             return makeNativeGroup(
                 id: itemIdentifier,
                 label: String(localized: "Table Actions"),
-                subitems: [subitemRefresh(), subitemSaveChanges(), subitemAddRow()]
+                subitems: [
+                    subitemRefresh(), subitemSaveChanges(), subitemAddRow(),
+                    subitemRestorePreviousValues(),
+                ]
             )
         case Self.exportImportGroup:
             return makeNativeGroup(
