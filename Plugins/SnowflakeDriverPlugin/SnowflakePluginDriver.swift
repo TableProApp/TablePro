@@ -17,6 +17,10 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var resolvedSchemaCache: [String: String] = [:]
     private var columnTypeCache: [String: [String: String]] = [:]
 
+    /// Several drivers share one Snowflake session, so a Stop has to name its own work. This
+    /// identifies the statements this driver issued and nobody else's.
+    private let queryOwner = UUID().uuidString
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "SnowflakePluginDriver")
 
     private var connection: SnowflakeConnection? {
@@ -41,7 +45,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func cancelQuery() throws {
-        connection?.cancelAllQueries()
+        connection?.cancelQueries(owner: queryOwner)
     }
 
     var supportsSchemas: Bool { true }
@@ -55,7 +59,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard !parameters.isEmpty else { return try await execute(query: query) }
         guard let conn = connection else { throw SnowflakeError.notConnected }
         let startTime = Date()
-        let result = try await conn.query(query, parameters: parameters)
+        let result = try await conn.query(query, parameters: parameters, owner: queryOwner)
         return PluginQueryResult(
             columns: result.columns.map(\.name),
             columnTypeNames: result.columns.map(SnowflakeTypeMapper.displayType),
@@ -79,7 +83,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         lock.withLock { _connection = conn }
 
-        if let result = try? await conn.query("SELECT CURRENT_VERSION()"),
+        if let result = try? await conn.query("SELECT CURRENT_VERSION()", owner: queryOwner),
            let first = result.rows.first?.first, case .text(let version) = first {
             lock.withLock { _serverVersion = "Snowflake \(version)" }
         } else {
@@ -114,7 +118,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func execute(query: String) async throws -> PluginQueryResult {
         guard let conn = connection else { throw SnowflakeError.notConnected }
         let startTime = Date()
-        let result = try await conn.query(query)
+        let result = try await conn.query(query, owner: queryOwner)
         let executionTime = Date().timeIntervalSince(startTime)
 
         if result.columns.isEmpty {
@@ -201,9 +205,9 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let conn = connection else { throw SnowflakeError.notConnected }
         switch id {
         case "warehouse":
-            _ = try await conn.query("USE WAREHOUSE \(quoteIdentifier(value))")
+            _ = try await conn.query("USE WAREHOUSE \(quoteIdentifier(value))", owner: queryOwner)
         case "role":
-            _ = try await conn.query("USE ROLE \(quoteIdentifier(value))")
+            _ = try await conn.query("USE ROLE \(quoteIdentifier(value))", owner: queryOwner)
             lock.withLock {
                 resolvedSchemaCache.removeAll()
                 columnTypeCache.removeAll()
@@ -583,7 +587,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 do {
                     guard let conn = self.connection else { throw SnowflakeError.notConnected }
                     let trimmed = query.replacingOccurrences(of: ";\\s*\\z", with: "", options: .regularExpression)
-                    let streamed = try await conn.queryStreamed(trimmed)
+                    let streamed = try await conn.queryStreamed(trimmed, owner: queryOwner)
                     continuation.yield(.header(PluginStreamHeader(
                         columns: streamed.columns.map(\.name),
                         columnTypeNames: streamed.columns.map(SnowflakeTypeMapper.displayType),
@@ -682,7 +686,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private func rawQuery(_ sql: String) async throws -> SnowflakeQueryResult {
         guard let conn = connection else { throw SnowflakeError.notConnected }
-        return try await conn.query(sql)
+        return try await conn.query(sql, owner: queryOwner)
     }
 
     private func namedValues(in result: SnowflakeQueryResult, column: String) -> [String] {
