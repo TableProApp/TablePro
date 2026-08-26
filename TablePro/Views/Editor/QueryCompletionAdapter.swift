@@ -9,15 +9,22 @@
 import AppKit
 import CodeEditSourceEditor
 import CodeEditTextView
-import os
 import SwiftUI
 import TableProPluginKit
 
 @MainActor
 final class QueryCompletionAdapter: CodeSuggestionDelegate {
+    private enum SessionKind {
+        case seed
+        case resolved
+    }
+
     private struct Session {
         var items: [SQLCompletionItem]
         var replacementRange: NSRange
+        var kind: SessionKind
+        var lastPrefix: String?
+        var lastItems: [SQLCompletionItem]?
     }
 
     private struct Configuration: Equatable {
@@ -32,14 +39,7 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
     private var session: Session?
 
     private let debounceNanoseconds: UInt64 = 50_000_000
-    private let refilterDebounceNanoseconds: UInt64 = 30_000_000
     private let maximumPrefixLength = 500
-
-    private var cursorRefilterTask: Task<Void, Never>?
-    private var lastRefilterPrefix: String?
-    private var lastRefilterItems: [SQLCompletionItem]?
-
-    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "QueryCompletionAdapter")
 
     init(schemaProvider: SQLSchemaProvider?, databaseType: DatabaseType? = nil) {
         self.service = QueryCompletionServiceFactory.make(schemaProvider: schemaProvider, databaseType: databaseType)
@@ -69,13 +69,20 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         )
         service.updateFavoriteKeywords(favoriteKeywords)
         session = nil
-        clearRefilterState()
     }
 
     #if DEBUG
     /// Identifies the built service so a test can tell a rebuild from a no-op without reaching
     /// for the private session state a rebuild discards.
     var serviceIdentityForTesting: ObjectIdentifier { ObjectIdentifier(service) }
+
+    init(serviceForTesting service: QueryCompletionService) {
+        self.service = service
+    }
+
+    func seedSessionForTesting(textView: TextViewController, cursorPosition: CursorPosition) {
+        seedSessionIfNeeded(textView: textView, cursorPosition: cursorPosition)
+    }
     #endif
 
     func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
@@ -121,8 +128,13 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
             return nil
         }
 
-        clearRefilterState()
-        session = Session(items: result.items, replacementRange: result.replacementRange)
+        session = Session(
+            items: result.items,
+            replacementRange: result.replacementRange,
+            kind: .resolved,
+            lastPrefix: nil,
+            lastItems: nil
+        )
 
         return (windowPosition: liveCursorPosition, items: result.items.map { SQLSuggestionEntry(item: $0) })
     }
@@ -138,7 +150,13 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
               offset >= 0, offset <= text.length else { return }
 
         let start = service.tokenStart(in: text, endingAt: offset)
-        session = Session(items: items, replacementRange: NSRange(location: start, length: offset - start))
+        session = Session(
+            items: items,
+            replacementRange: NSRange(location: start, length: offset - start),
+            kind: .seed,
+            lastPrefix: nil,
+            lastItems: nil
+        )
     }
 
     func completionOnCursorMove(
@@ -158,58 +176,29 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         let prefix = text.substring(with: NSRange(location: start, length: length)).lowercased()
         guard !prefix.isEmpty else { return nil }
 
-        let items = synchronousRefilter(fullItems: session.items, prefix: prefix)
-        scheduleRefilter(fullItems: session.items, prefix: prefix)
-
-        return items?.map { SQLSuggestionEntry(item: $0) }
-    }
-
-    private func synchronousRefilter(fullItems: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem]? {
-        if prefix == lastRefilterPrefix, let cached = lastRefilterItems {
-            return cached
+        let sourceItems: [SQLCompletionItem]
+        if let lastPrefix = session.lastPrefix,
+           prefix.hasPrefix(lastPrefix),
+           let lastItems = session.lastItems {
+            sourceItems = lastItems
+        } else {
+            sourceItems = session.items
         }
 
-        if let lastPrefix = lastRefilterPrefix, prefix.hasPrefix(lastPrefix), let lastItems = lastRefilterItems {
-            let narrowed = service.filter(lastItems, prefix: prefix)
-            return narrowed.isEmpty ? nil : narrowed
+        let items: [SQLCompletionItem]
+        switch session.kind {
+        case .seed:
+            items = service.filter(sourceItems, prefix: prefix)
+        case .resolved:
+            items = service.rank(sourceItems, prefix: prefix)
         }
-
-        let filtered = service.filter(fullItems, prefix: prefix)
-        return filtered.isEmpty ? nil : filtered
-    }
-
-    private func scheduleRefilter(fullItems: [SQLCompletionItem], prefix: String) {
-        cursorRefilterTask?.cancel()
-
-        cursorRefilterTask = Task { [weak self] in
-            guard let self else { return }
-
-            do {
-                try await Task.sleep(nanoseconds: self.refilterDebounceNanoseconds)
-            } catch {
-                return
-            }
-            guard !Task.isCancelled else { return }
-
-            let ranked = self.service.rank(fullItems, prefix: prefix)
-            guard !Task.isCancelled else { return }
-
-            self.lastRefilterPrefix = prefix
-            self.lastRefilterItems = ranked
-            Self.logger.debug("refilter cached prefix='\(prefix)' count=\(ranked.count)")
-        }
+        self.session?.lastPrefix = prefix
+        self.session?.lastItems = items
+        return items.isEmpty ? nil : items.map { SQLSuggestionEntry(item: $0) }
     }
 
     func completionWindowDidClose() {
         session = nil
-        clearRefilterState()
-    }
-
-    private func clearRefilterState() {
-        cursorRefilterTask?.cancel()
-        cursorRefilterTask = nil
-        lastRefilterPrefix = nil
-        lastRefilterItems = nil
     }
 
     func completionWindowApplyCompletion(

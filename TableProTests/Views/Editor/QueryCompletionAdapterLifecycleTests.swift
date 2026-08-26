@@ -10,6 +10,8 @@
 //  deterministically unit-testable; these tests cover the logic the fix relies on.
 //
 
+import CodeEditSourceEditor
+import CodeEditTextView
 import Foundation
 @testable import TablePro
 import TableProPluginKit
@@ -96,5 +98,170 @@ struct QueryCompletionAdapterLifecycleTests {
         adapter.configure(schemaProvider: SQLSchemaProvider(), databaseType: .postgresql)
 
         #expect(adapter.serviceIdentityForTesting != first)
+    }
+
+    @MainActor
+    @Test("incremental completion reranks exact keywords")
+    func incrementalCompletionReranksExactKeywords() async {
+        let cases = [
+            (initial: "t", completed: "true", exact: "TRUE", longer: "TRUNCATE"),
+            (initial: "n", completed: "null", exact: "NULL", longer: "NULLIF"),
+            (initial: "i", completed: "in", exact: "IN", longer: "INSTR")
+        ]
+
+        for testCase in cases {
+            let labels = await incrementalLabels(initial: testCase.initial, completed: testCase.completed)
+            let exactIndex = labels.firstIndex(of: testCase.exact)
+            let longerIndex = labels.firstIndex(of: testCase.longer)
+
+            #expect(exactIndex != nil, "Missing exact candidate \(testCase.exact)")
+            #expect(longerIndex != nil, "Missing longer candidate \(testCase.longer)")
+            if let exactIndex, let longerIndex {
+                #expect(
+                    exactIndex < longerIndex,
+                    "Expected \(testCase.exact) before \(testCase.longer) for \(testCase.completed)"
+                )
+            }
+        }
+    }
+
+    @MainActor
+    @Test("seed completion filters without ranking all favorites")
+    func seedCompletionFiltersWithoutRankingAllFavorites() async {
+        let initialQuery = "SELECT * WHERE t"
+        let controller = EditorControllerFixture.make(string: initialQuery)
+        let adapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: .mysql)
+        let initialCursor = CursorPosition(range: NSRange(location: initialQuery.utf16.count, length: 0))
+
+        _ = await adapter.completionSuggestionsRequested(
+            textView: controller,
+            cursorPosition: initialCursor,
+            isManualTrigger: false
+        )
+        adapter.completionWindowDidClose()
+
+        let favorites = Dictionary(uniqueKeysWithValues: (0..<1_000).map { index in
+            let keyword = String(format: "s%04d", index)
+            return (keyword, (name: keyword, query: "SELECT 1"))
+        })
+        adapter.updateFavoriteKeywords(favorites)
+
+        let seedQuery = "s"
+        controller.textView.setText(seedQuery)
+        let seedCursor = CursorPosition(range: NSRange(location: seedQuery.utf16.count, length: 0))
+        adapter.seedSessionForTesting(textView: controller, cursorPosition: seedCursor)
+
+        let labels = adapter.completionOnCursorMove(
+            textView: controller,
+            cursorPosition: seedCursor
+        )?.map(\.label) ?? []
+
+        #expect(labels.first == "SELECT")
+        #expect(labels.contains("s0000"))
+    }
+
+    @MainActor
+    @Test("resolved completion narrows the next ranking input")
+    func resolvedCompletionNarrowsTheNextRankingInput() async {
+        let items = (0..<500).flatMap { index in
+            [
+                SQLCompletionItem.keyword(String(format: "ab%03d", index)),
+                SQLCompletionItem.keyword(String(format: "ac%03d", index))
+            ]
+        }
+        let service = RankingInputRecordingCompletionService(items: items)
+        let adapter = QueryCompletionAdapter(serviceForTesting: service)
+        let controller = EditorControllerFixture.make(string: "a")
+        let initialCursor = CursorPosition(range: NSRange(location: 1, length: 0))
+
+        _ = await adapter.completionSuggestionsRequested(
+            textView: controller,
+            cursorPosition: initialCursor,
+            isManualTrigger: false
+        )
+
+        controller.textView.setText("ab")
+        _ = adapter.completionOnCursorMove(
+            textView: controller,
+            cursorPosition: CursorPosition(range: NSRange(location: 2, length: 0))
+        )
+
+        controller.textView.setText("ab0")
+        _ = adapter.completionOnCursorMove(
+            textView: controller,
+            cursorPosition: CursorPosition(range: NSRange(location: 3, length: 0))
+        )
+
+        #expect(service.rankingInputCounts == [1_000, 500])
+    }
+
+    @MainActor
+    private func incrementalLabels(initial: String, completed: String) async -> [String] {
+        let queryPrefix = "SELECT * WHERE "
+        let initialQuery = queryPrefix + initial
+        let controller = EditorControllerFixture.make(string: initialQuery)
+        let adapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: .mysql)
+        let initialCursor = CursorPosition(range: NSRange(location: initialQuery.utf16.count, length: 0))
+
+        _ = await adapter.completionSuggestionsRequested(
+            textView: controller,
+            cursorPosition: initialCursor,
+            isManualTrigger: false
+        )
+
+        let completedQuery = queryPrefix + completed
+        controller.textView.setText(completedQuery)
+        let completedCursor = CursorPosition(range: NSRange(location: completedQuery.utf16.count, length: 0))
+
+        return adapter.completionOnCursorMove(
+            textView: controller,
+            cursorPosition: completedCursor
+        )?.map(\.label) ?? []
+    }
+}
+
+@MainActor
+private final class RankingInputRecordingCompletionService: QueryCompletionService {
+    private let items: [SQLCompletionItem]
+    private(set) var rankingInputCounts: [Int] = []
+
+    init(items: [SQLCompletionItem]) {
+        self.items = items
+    }
+
+    var triggerCharacters: Set<String> { [] }
+
+    func seedItems() -> [SQLCompletionItem] { [] }
+
+    func prepare() async {}
+
+    func completions(
+        in text: NSString,
+        at offset: Int,
+        isManualTrigger: Bool
+    ) async -> QueryCompletionSession? {
+        _ = text
+        _ = offset
+        _ = isManualTrigger
+        return QueryCompletionSession(items: items, replacementRange: NSRange(location: 0, length: 1))
+    }
+
+    func filter(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
+        let lowerPrefix = prefix.lowercased()
+        return items.filter { $0.filterText.hasPrefix(lowerPrefix) }
+    }
+
+    func rank(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
+        rankingInputCounts.append(items.count)
+        return filter(items, prefix: prefix)
+    }
+
+    func tokenStart(in text: NSString, endingAt offset: Int) -> Int {
+        _ = text
+        return 0
+    }
+
+    func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
+        _ = keywords
     }
 }
