@@ -352,6 +352,10 @@ extension TableViewCoordinator {
         scheduleLayoutPersist()
     }
 
+    /// Every `column.width` write posts its own resize notification, and each one that reaches
+    /// `tableViewColumnDidResize` takes a fresh `captureColumnLayout()` walk across every attached
+    /// column, so fitting the table costs its column count squared. The loop claims ownership per
+    /// column already, and the repaint runs ahead of the same guard.
     @objc func sizeAllColumnsToFit(_ sender: NSMenuItem) {
         guard let tableView else { return }
 
@@ -360,6 +364,9 @@ extension TableViewCoordinator {
             guard presentsColumn(column), let index = dataColumnIndex(from: column.identifier) else { return false }
             return index < tableRows.columns.count
         }
+
+        let wasRebuildingColumns = isRebuildingColumns
+        isRebuildingColumns = true
         for column in fittedColumns {
             guard let dataColumnIndex = dataColumnIndex(from: column.identifier) else { continue }
 
@@ -371,6 +378,8 @@ extension TableViewCoordinator {
                 fittedColumnCount: fittedColumns.count
             )
         }
+        isRebuildingColumns = wasRebuildingColumns
+
         scheduleLayoutPersist()
     }
 

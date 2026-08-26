@@ -20,7 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Stale cells after fitting, hiding or reordering a data grid column on a result narrower than the window. (#2446)
+- Size All Columns to Fit slowing down with the square of the column count.
+- Column-resize cursor over the leading edge of the data grid header, where there is no divider to drag.
 - Autocomplete keeping an earlier prefix's ordering after the typed word becomes an exact match. (#2444)
 - Whole MySQL and MariaDB result set fetched before a capped query returned its first rows. (#2427)
 - KILL sent to a different server when a MySQL or MariaDB connection's host is spelled `localhost`.
@@ -45,7 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Editor tab strip tests reporting four appearances while running plain Aqua and Dark Aqua twice.
 - Icon cut off the entry at the top of a scrolled connections strip. (#2452)
 - Connections strip not scrolling to the entry you switch to.
-- Grid cells left at the old column positions until the next click, after a resize, an auto-fit, a reorder, hiding a column, or a row-number width change. (#2449)
+- Grid cells left at the old column positions until the next click, after a resize, an auto-fit, a reorder, hiding a column, or a row-number width change. (#2449, #2446)
 - The row-number column draggable out of first place, which walked it to the far right on the next refresh.
 
 ## [0.68.1] - 2026-08-26
