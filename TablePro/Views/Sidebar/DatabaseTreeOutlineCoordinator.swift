@@ -368,9 +368,15 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         publishedTables = selectedTables
         publishedSelectionDatabase = selectionDatabase
 
+        /// Matched on the object and scoped to the database on screen, in that order, rather than
+        /// on the whole reference. The model holds the row the user picked, database included, but
+        /// browsing elsewhere is meant to move the highlight onto that database's copy of the same
+        /// object; comparing references pins it to the database it was picked in and leaves the
+        /// tree with nothing selected the moment the browse cursor moves.
+        let selectedObjects = Set(selectedTables.map(\.table))
         var nodes: [DatabaseTreeNode] = []
         for node in nodeCache.values {
-            guard case .table(let ref) = node.kind, selectedTables.contains(ref) else { continue }
+            guard case .table(let ref) = node.kind, selectedObjects.contains(ref.table) else { continue }
             guard selectionDatabase == nil || ref.database == selectionDatabase else { continue }
             nodes.append(node)
         }
@@ -378,7 +384,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         lastSelection = Set(DatabaseTreeSelection.tableRefs(of: nodes))
         /// Still pending while a selected table has no row in the database being browsed: the row is
         /// usually one that has not been built yet, and the next sync adopts it.
-        isModelSelectionAdoptionPending = Set(lastSelection) != selectedTables
+        isModelSelectionAdoptionPending = Set(lastSelection.map(\.table)) != selectedObjects
     }
 
     private var modelSelectionDatabase: String? {
