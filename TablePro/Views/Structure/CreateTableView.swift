@@ -291,7 +291,7 @@ struct CreateTableView: View {
             changeManager: wrappedChangeManager,
             isEditable: true,
             configuration: DataGridConfiguration(
-                dropdownColumns: provider.dropdownColumns,
+                dropdownColumns: provider.dropdownColumns.union(Set(provider.customDropdownOptions.keys)),
                 typePickerColumns: provider.typePickerColumns,
                 customDropdownOptions: provider.customDropdownOptions,
                 connectionId: connection.id,

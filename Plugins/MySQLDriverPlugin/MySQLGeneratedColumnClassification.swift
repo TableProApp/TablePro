@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// MySQL and MariaDB report generated columns through the `Extra` column of
 /// `SHOW FULL COLUMNS` and `INFORMATION_SCHEMA.COLUMNS.EXTRA`.
@@ -25,4 +26,14 @@ internal func mysqlColumnIsGenerated(extra: String?) -> Bool {
     }
     let trimmed = upper.trimmingCharacters(in: .whitespaces)
     return trimmed == "VIRTUAL" || trimmed == "PERSISTENT"
+}
+
+/// The kind, from the same `Extra` value. MariaDB 10.1 and older spell stored as "PERSISTENT".
+internal func mysqlGenerationKind(extra: String?) -> GenerationKind? {
+    guard let extra, mysqlColumnIsGenerated(extra: extra) else { return nil }
+    let upper = extra.uppercased()
+    if upper.contains("STORED GENERATED") || upper.trimmingCharacters(in: .whitespaces) == "PERSISTENT" {
+        return .stored
+    }
+    return .virtual
 }

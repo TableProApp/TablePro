@@ -10,7 +10,7 @@ import TableProPluginKit
 
 /// Index definition for schema modification (editable structure tab)
 struct EditableIndexDefinition: Hashable, Codable, Identifiable {
-    let id: UUID
+    var id: UUID
     var name: String
     var columns: [String]
     var type: IndexType
@@ -85,5 +85,11 @@ struct EditableIndexDefinition: Hashable, Codable, Identifiable {
             columnPrefixes: columnPrefixes.isEmpty ? nil : columnPrefixes,
             whereClause: whereClause
         )
+    }
+
+    func withNewIdentity() -> EditableIndexDefinition {
+        var copy = self
+        copy.id = UUID()
+        return copy
     }
 }

@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Data Rewind settings in Settings > Data & Results, with an off switch and Clear Saved Changes.
 - Restore Previous Values in the toolbar's Table Actions group.
 - Rebindable Find shortcut in Settings > Keyboard, for giving `Cmd+F` to the filter bar instead.
+- Constraints tab in the structure editor, listing check constraints with their expression. (#2478)
+- Generated and Expression fields on the column row, with a stored or virtual choice. (#2478)
+- `check_constraints` and `generation_expression` in the MCP `describe_table` response.
 - Remote File pane for SQLite, opening a read-only copy of a database that lives on an SSH server. (#2474)
 - Rename on a table's right-click menu, editing the row's label in place. (#2482)
 - Rename Database and Rename Schema on the sidebar's container rows, where the engine has them. (#2482)
@@ -24,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Column charset and collation lost when reordering a MySQL column by dragging its row.
+- Free-text cells for foreign key actions and index types in Create Table, where Structure shows a menu.
+- A generated column comparing equal to a plain one in Compare & Sync.
+- Empty Indexes, Foreign Keys or DDL tab, with no error, when the structure read fails.
 - Connections strip absent from a window whose selected connection has nothing to show, when Show Connections is off.
 - Switch Connection disabled, in the Database menu and the toolbar, while the selected connection is disconnected.
 - One floating switcher panel per connection in a window, each centred on the same point.

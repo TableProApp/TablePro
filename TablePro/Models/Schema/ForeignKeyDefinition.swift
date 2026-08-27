@@ -10,7 +10,7 @@ import TableProPluginKit
 
 /// Foreign key definition for schema modification (editable structure tab)
 struct EditableForeignKeyDefinition: Hashable, Codable, Identifiable {
-    let id: UUID
+    var id: UUID
     var name: String
     var columns: [String]
     var referencedTable: String
@@ -87,5 +87,11 @@ struct EditableForeignKeyDefinition: Hashable, Codable, Identifiable {
             onDelete: onDelete.rawValue,
             onUpdate: onUpdate.rawValue
         )
+    }
+
+    func withNewIdentity() -> EditableForeignKeyDefinition {
+        var copy = self
+        copy.id = UUID()
+        return copy
     }
 }

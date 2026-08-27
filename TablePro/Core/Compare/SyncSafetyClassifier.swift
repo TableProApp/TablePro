@@ -38,6 +38,37 @@ internal struct SyncSafetyClassifier {
                     index.name
                 )
             )]
+        case .deleteCheckConstraint(let constraint):
+            return [SyncHazard(
+                kind: .dataLoss,
+                severity: .warning,
+                explanation: String(
+                    format: String(localized: "Dropping check constraint %@ stops it validating new rows."),
+                    constraint.name
+                )
+            )]
+        case .modifyCheckConstraint(let old, _):
+            return [SyncHazard(
+                kind: .tableRebuild,
+                severity: .warning,
+                explanation: String(
+                    format: String(
+                        localized: "Changing check constraint %@ re-checks every existing row and fails if any violates it."
+                    ),
+                    old.name
+                )
+            )]
+        case .addCheckConstraint(let constraint):
+            return [SyncHazard(
+                kind: .tableRebuild,
+                severity: .warning,
+                explanation: String(
+                    format: String(
+                        localized: "Adding check constraint %@ scans the table and fails if any existing row violates it."
+                    ),
+                    constraint.name
+                )
+            )]
         case .deleteForeignKey, .addForeignKey, .modifyForeignKey, .addColumn, .addIndex, .modifyIndex:
             return []
         }

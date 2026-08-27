@@ -108,6 +108,11 @@ struct TableStructureView: View {
         nonmutating set { session.foreignKeys = newValue }
     }
 
+    var checkConstraints: [CheckConstraintInfo] {
+        get { session.checkConstraints }
+        nonmutating set { session.checkConstraints = newValue }
+    }
+
     var triggers: [TriggerInfo] {
         get { session.triggers }
         nonmutating set { session.triggers = newValue }
@@ -177,6 +182,7 @@ struct TableStructureView: View {
         .onChange(of: columns) { onColumnsChanged() }
         .onChange(of: indexes) { onIndexesChanged() }
         .onChange(of: foreignKeys) { onForeignKeysChanged() }
+        .onChange(of: checkConstraints) { onCheckConstraintsChanged() }
         .onChange(of: searchText) { displayVersion += 1 }
         .onChange(of: displayVersion) { updateGridDelegate() }
         .onAppear {
@@ -262,6 +268,9 @@ struct TableStructureView: View {
         if !connection.type.supportsTriggers {
             tabs = tabs.filter { $0 != .triggers }
         }
+        if !connection.type.supportsCheckConstraints {
+            tabs = tabs.filter { $0 != .checkConstraints }
+        }
         return tabs
     }
 
@@ -308,6 +317,7 @@ struct TableStructureView: View {
         case .columns: return connection.type.supportsAddColumn
         case .indexes: return connection.type.supportsAddIndex
         case .foreignKeys: return connection.type.supportsForeignKeys
+        case .checkConstraints: return connection.type.supportsCheckConstraintEditing
         case .ddl, .parts, .triggers: return false
         }
     }
@@ -318,6 +328,7 @@ struct TableStructureView: View {
         case .columns: return connection.type.supportsDropColumn
         case .indexes: return connection.type.supportsDropIndex
         case .foreignKeys: return connection.type.supportsForeignKeys
+        case .checkConstraints: return connection.type.supportsCheckConstraintEditing
         case .ddl, .parts, .triggers: return false
         }
     }
@@ -330,6 +341,8 @@ struct TableStructureView: View {
             return (String(localized: "Add Index"), String(localized: "Remove Index"))
         case .foreignKeys:
             return (String(localized: "Add Foreign Key"), String(localized: "Remove Foreign Key"))
+        case .checkConstraints:
+            return (String(localized: "Add Check Constraint"), String(localized: "Remove Check Constraint"))
         case .ddl, .parts, .triggers:
             return nil
         }
@@ -348,6 +361,7 @@ struct TableStructureView: View {
         case .indexes: return indexes.count
         case .foreignKeys: return foreignKeys.count
         case .triggers: return triggers.count
+        case .checkConstraints: return checkConstraints.count
         case .ddl, .parts: return nil
         }
     }
@@ -380,6 +394,12 @@ struct TableStructureView: View {
             } else {
                 structureGrid
             }
+        case .checkConstraints:
+            if shouldShowCheckConstraintsEmptyState {
+                EmptyStateView.checkConstraints { gridDelegate.dataGridAddRow() }
+            } else {
+                structureGrid
+            }
         case .triggers:
             TriggerDetailView(
                 triggers: triggers,
@@ -409,6 +429,15 @@ struct TableStructureView: View {
         tabData.hasData(.foreignKeys)
             && structureChangeManager.workingForeignKeys.isEmpty
             && connection.type.supportsForeignKeys
+    }
+
+    /// Only offered where the engine can actually add one. An engine that lists constraints but
+    /// cannot edit them shows the grid, so a table's real constraints stay visible instead of being
+    /// replaced by an empty state whose only affordance is disabled.
+    private var shouldShowCheckConstraintsEmptyState: Bool {
+        tabData.hasData(.checkConstraints)
+            && structureChangeManager.workingCheckConstraints.isEmpty
+            && connection.type.supportsCheckConstraintEditing
     }
 
     // MARK: - Structure Grid (DataGridView)

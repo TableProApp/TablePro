@@ -243,6 +243,9 @@ extension PluginMetadataRegistry {
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
+                    supportsCheckConstraints: true,
+                    supportsCheckConstraintEditing: true,
+                    supportsGeneratedColumns: true,
                     supportsRoutines: true,
                     supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred
@@ -259,8 +262,8 @@ extension PluginMetadataRegistry {
                     fileExtensions: [],
                     databaseGroupingStrategy: .byDatabase,
                     structureColumnFields: [
-                        .name, .type, .nullable, .defaultValue, .onUpdate, .autoIncrement,
-                        .comment, .charset, .collation
+                        .name, .type, .nullable, .defaultValue, .generated, .generationExpression,
+                        .onUpdate, .autoIncrement, .comment, .charset, .collation
                     ]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
@@ -304,6 +307,9 @@ extension PluginMetadataRegistry {
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
+                    supportsCheckConstraints: true,
+                    supportsCheckConstraintEditing: true,
+                    supportsGeneratedColumns: true,
                     supportsRoutines: true,
                     supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred
@@ -320,8 +326,8 @@ extension PluginMetadataRegistry {
                     fileExtensions: [],
                     databaseGroupingStrategy: .byDatabase,
                     structureColumnFields: [
-                        .name, .type, .nullable, .defaultValue, .onUpdate, .autoIncrement,
-                        .comment, .charset, .collation
+                        .name, .type, .nullable, .defaultValue, .generated, .generationExpression,
+                        .onUpdate, .autoIncrement, .comment, .charset, .collation
                     ]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
@@ -367,6 +373,9 @@ extension PluginMetadataRegistry {
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
+                    supportsCheckConstraints: true,
+                    supportsCheckConstraintEditing: true,
+                    supportsGeneratedColumns: true,
                     supportsRoutines: true,
                     supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred
@@ -382,7 +391,9 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                    structureColumnFields: [
+                        .name, .type, .nullable, .defaultValue, .generated, .generationExpression, .comment
+                    ]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: postgresqlDialect,
@@ -497,6 +508,9 @@ extension PluginMetadataRegistry {
                     supportsAddIndex: false,
                     supportsDropIndex: false,
                     supportsModifyPrimaryKey: false,
+                    supportsCheckConstraints: true,
+                    supportsCheckConstraintEditing: true,
+                    supportsGeneratedColumns: true,
                     defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -510,7 +524,9 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                    structureColumnFields: [
+                        .name, .type, .nullable, .defaultValue, .generated, .generationExpression, .comment
+                    ]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: postgresqlDialect,
@@ -554,6 +570,9 @@ extension PluginMetadataRegistry {
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
+                    supportsCheckConstraints: true,
+                    supportsCheckConstraintEditing: true,
+                    supportsGeneratedColumns: true,
                     defaultSSLMode: .disabled,
                     supportsCloudflareTunnel: false,
                     supportsConnectionPooling: false
@@ -569,7 +588,9 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                    structureColumnFields: [
+                        .name, .type, .nullable, .defaultValue, .generated, .generationExpression, .comment
+                    ]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: postgresqlDialect,
@@ -615,6 +636,8 @@ extension PluginMetadataRegistry {
                     supportsModifyPrimaryKey: false,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
+                    supportsCheckConstraints: true,
+                    supportsGeneratedColumns: true,
                     supportsDatabaseTriggerBrowse: true,
                     supportsCloudflareTunnel: false,
                     localFilePathField: .database,
@@ -631,7 +654,10 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: [],
                     fileExtensions: ["db", "db3", "s3db", "sl3", "sqlite", "sqlite3", "sqlitedb"],
                     databaseGroupingStrategy: .flat,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                    structureColumnFields: [
+                        .name, .type, .nullable, .defaultValue, .generated, .generationExpression,
+                        .autoIncrement, .comment
+                    ]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: sqliteDialect,

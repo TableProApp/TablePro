@@ -239,6 +239,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         let safeTable = table.replacingOccurrences(of: "`", with: "``")
         let result = try await execute(query: "SHOW FULL COLUMNS FROM `\(safeTable)`")
+        let generationExpressions = try await fetchGenerationExpressions(table: table)
 
         return result.rows.compactMap { row in
             guard let name = row[safe: 0]?.asText,
@@ -273,8 +274,68 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 collation: collation == "NULL" ? nil : collation,
                 comment: comment?.isEmpty == false ? comment : nil,
                 isGenerated: mysqlColumnIsGenerated(extra: extra),
-                allowedValues: allowedValues
+                allowedValues: allowedValues,
+                generationExpression: generationExpressions[name],
+                generationKind: mysqlGenerationKind(extra: extra)
             )
+        }
+    }
+
+    private func fetchGenerationExpressions(table: String) async throws -> [String: String] {
+        guard MySQLServerVersion.hasGenerationExpression(banner: _serverVersion, isMariaDB: isMariaDB) else {
+            return [:]
+        }
+        let query = """
+            SELECT COLUMN_NAME, GENERATION_EXPRESSION
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = \'\(mysqlEscapeStringLiteral(_activeDatabase))\'
+                AND TABLE_NAME = \'\(mysqlEscapeStringLiteral(table))\'
+                AND GENERATION_EXPRESSION <> \'\'
+            """
+        let result = try await execute(query: query)
+        var expressions: [String: String] = [:]
+        for row in result.rows {
+            guard let name = row[safe: 0]?.asText,
+                  let expression = row[safe: 1]?.asText?.nilIfEmpty else { continue }
+            expressions[name] = expression
+        }
+        return expressions
+    }
+
+    /// MySQL and MariaDB disagree on this catalog: MySQL 8 has no TABLE_NAME on CHECK_CONSTRAINTS
+    /// and must join TABLE_CONSTRAINTS to find the owning table, while MariaDB carries TABLE_NAME
+    /// directly. Neither exposes the columns a check touches, so `columns` stays empty rather than
+    /// being guessed from the expression.
+    func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
+        guard MySQLServerVersion.hasCheckConstraints(banner: _serverVersion, isMariaDB: isMariaDB) else {
+            return []
+        }
+        let database = mysqlEscapeStringLiteral(_activeDatabase)
+        let safeTable = mysqlEscapeStringLiteral(table)
+        let query: String
+        if isMariaDB {
+            query = """
+                SELECT CONSTRAINT_NAME, CHECK_CLAUSE
+                FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS
+                WHERE CONSTRAINT_SCHEMA = \'\(database)\' AND TABLE_NAME = \'\(safeTable)\'
+                ORDER BY CONSTRAINT_NAME
+                """
+        } else {
+            query = """
+                SELECT cc.CONSTRAINT_NAME, cc.CHECK_CLAUSE
+                FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS cc
+                JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+                    ON tc.CONSTRAINT_SCHEMA = cc.CONSTRAINT_SCHEMA
+                    AND tc.CONSTRAINT_NAME = cc.CONSTRAINT_NAME
+                WHERE cc.CONSTRAINT_SCHEMA = \'\(database)\' AND tc.TABLE_NAME = \'\(safeTable)\'
+                ORDER BY cc.CONSTRAINT_NAME
+                """
+        }
+        let result = try await execute(query: query)
+        return result.rows.compactMap { row in
+            guard let name = row[safe: 0]?.asText,
+                  let clause = row[safe: 1]?.asText else { return nil }
+            return PluginCheckConstraintInfo(name: name, expression: clause)
         }
     }
 
@@ -852,6 +913,18 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {
         "ALTER TABLE \(quoteIdentifier(table)) DROP FOREIGN KEY \(quoteIdentifier(constraintName))"
+    }
+
+    func generateAddCheckConstraintSQL(table: String, constraint: PluginCheckConstraintDefinition) -> String? {
+        let expression = constraint.expression.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !expression.isEmpty, !constraint.name.isEmpty else { return nil }
+        return "ALTER TABLE \(quoteIdentifier(table)) ADD CONSTRAINT "
+            + "\(quoteIdentifier(constraint.name)) CHECK (\(expression))"
+    }
+
+    func generateDropCheckConstraintSQL(table: String, constraintName: String) -> String? {
+        guard !constraintName.isEmpty else { return nil }
+        return "ALTER TABLE \(quoteIdentifier(table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
     }
 
     func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? {

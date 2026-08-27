@@ -162,6 +162,8 @@ struct ColumnInfo: Identifiable, Hashable {
     let comment: String?
     let isGenerated: Bool
     let allowedValues: [String]?
+    let generationExpression: String?
+    let generationKind: GenerationKind?
 
     init(
         name: String,
@@ -174,7 +176,9 @@ struct ColumnInfo: Identifiable, Hashable {
         collation: String? = nil,
         comment: String? = nil,
         isGenerated: Bool = false,
-        allowedValues: [String]? = nil
+        allowedValues: [String]? = nil,
+        generationExpression: String? = nil,
+        generationKind: GenerationKind? = nil
     ) {
         self.name = name
         self.dataType = dataType
@@ -187,6 +191,27 @@ struct ColumnInfo: Identifiable, Hashable {
         self.comment = comment
         self.isGenerated = isGenerated
         self.allowedValues = allowedValues
+        self.generationExpression = generationExpression
+        self.generationKind = generationKind
+    }
+}
+
+/// Information about a table-level CHECK constraint.
+///
+/// `columns` is empty on engines whose catalog cannot answer it (MySQL, MariaDB, SQLite); the
+/// grid shows the cell blank there rather than guessing from the expression text.
+struct CheckConstraintInfo: Identifiable, Hashable {
+    let id = UUID()
+    let name: String
+    let expression: String
+    let columns: [String]
+    let isValidated: Bool
+
+    init(name: String, expression: String, columns: [String] = [], isValidated: Bool = true) {
+        self.name = name
+        self.expression = expression
+        self.columns = columns
+        self.isValidated = isValidated
     }
 }
 

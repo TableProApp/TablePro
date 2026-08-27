@@ -42,6 +42,17 @@ final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsTriggers = true
     static let supportsDatabaseTriggerBrowse = true
     static let supportsTriggerEditing = true
+    static let structureColumnFields: [StructureColumnField] =
+        [.name, .type, .nullable, .defaultValue, .generated, .generationExpression, .autoIncrement]
+
+    static let supportsCheckConstraints = true
+
+    /// ALTER TABLE ... ADD/DROP CONSTRAINT arrived in SQLite 3.53.0 (2026-04-09). The plugin links
+    /// the system libsqlite3, so this tracks the user's macOS rather than the app version, and it
+    /// is a per-process constant because one dylib is linked for the process's whole lifetime.
+    static let supportsCheckConstraintEditing = sqlite3_libversion_number() >= 3_053_000
+
+    static let supportsGeneratedColumns = true
     static let databaseGroupingStrategy: GroupingStrategy = .flat
     static let columnTypesByCategory: [String: [String]] = [
         "Integer": ["INTEGER", "INT", "TINYINT", "SMALLINT", "MEDIUMINT", "BIGINT"],
@@ -743,29 +754,56 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         let safeTable = escapeStringLiteral(table)
-        let query = "PRAGMA table_info('\(safeTable)')"
+        // table_xinfo rather than table_info: table_info omits generated columns entirely, so they
+        // were invisible to the structure editor and to every write path that reads this list.
+        let query = "PRAGMA table_xinfo('\(safeTable)')"
         let result = try await execute(query: query)
+        let generationExpressions = SQLiteCheckConstraintParser.generationExpressions(
+            inCreateStatement: try await createStatement(forTable: table) ?? ""
+        )
 
         return result.rows.compactMap { row in
-            guard row.count >= 6,
+            guard row.count >= 7,
                   let name = row[1].asText,
                   let dataType = row[2].asText else {
                 return nil
             }
 
+            // hidden: 0 normal, 1 a virtual table's hidden column, 2 VIRTUAL generated,
+            // 3 STORED generated.
+            let hidden = row[6].asText.flatMap { Int($0) } ?? 0
+            guard hidden != 1 else { return nil }
+
             let isNullable = row[3].asText == "0"
-            // PRAGMA table_info pk column: 0 = not PK, 1+ = position in composite PK
+            // PRAGMA pk column: 0 = not PK, 1+ = position in composite PK
             let pkText = row[5].asText
             let isPrimaryKey = pkText != nil && pkText != "0"
             let defaultValue = row[4].asText
+            let generationKind: GenerationKind? = hidden == 2 ? .virtual : (hidden == 3 ? .stored : nil)
 
             return PluginColumnInfo(
                 name: name,
                 dataType: dataType,
                 isNullable: isNullable,
                 isPrimaryKey: isPrimaryKey,
-                defaultValue: defaultValue
+                defaultValue: defaultValue,
+                isGenerated: generationKind != nil,
+                generationExpression: generationKind == nil ? nil : generationExpressions[name],
+                generationKind: generationKind
             )
+        }
+    }
+
+    private func createStatement(forTable table: String) async throws -> String? {
+        let query = "SELECT sql FROM sqlite_master WHERE type='table' AND name='\(escapeStringLiteral(table))'"
+        let result = try await execute(query: query)
+        return result.rows.first?[safe: 0]?.asText
+    }
+
+    func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
+        guard let statement = try await createStatement(forTable: table) else { return [] }
+        return SQLiteCheckConstraintParser.constraints(inCreateStatement: statement).map { parsed in
+            PluginCheckConstraintInfo(name: parsed.name, expression: parsed.expression)
         }
     }
 
@@ -1086,6 +1124,11 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private func sqliteColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
         var def = "\(quoteIdentifier(col.name)) \(col.dataType)"
+        if let expression = col.generationExpression?.nilIfEmpty {
+            def += " GENERATED ALWAYS AS (\(expression)) \((col.generationKind ?? .virtual).rawValue)"
+            if !col.isNullable { def += " NOT NULL" }
+            return def
+        }
         if inlinePK && col.isPrimaryKey {
             def += " PRIMARY KEY"
             if col.autoIncrement {
@@ -1139,8 +1182,30 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
-        let colDef = sqliteColumnDefinition(column, inlinePK: false)
+        let colDef = sqliteColumnDefinition(addableColumn(column), inlinePK: false)
         return "ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(colDef)"
+    }
+
+    /// ALTER TABLE ADD COLUMN refuses a STORED generated column outright once the table holds rows
+    /// ("cannot add a STORED column"), so the ALTER path downgrades to VIRTUAL. CREATE TABLE has no
+    /// such limit and keeps whichever kind was chosen.
+    private func addableColumn(_ column: PluginColumnDefinition) -> PluginColumnDefinition {
+        guard column.generationKind == .stored else { return column }
+        return PluginColumnDefinition(
+            name: column.name,
+            dataType: column.dataType,
+            isNullable: column.isNullable,
+            defaultValue: column.defaultValue,
+            isPrimaryKey: column.isPrimaryKey,
+            autoIncrement: column.autoIncrement,
+            comment: column.comment,
+            unsigned: column.unsigned,
+            onUpdate: column.onUpdate,
+            charset: column.charset,
+            collation: column.collation,
+            generationExpression: column.generationExpression,
+            generationKind: .virtual
+        )
     }
 
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
@@ -1150,6 +1215,22 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func generateDropColumnSQL(table: String, columnName: String) -> String? {
         "ALTER TABLE \(quoteIdentifier(table)) DROP COLUMN \(quoteIdentifier(columnName))"
+    }
+
+    /// ADD/DROP CONSTRAINT arrived in SQLite 3.53.0. Returning nil below that version makes
+    /// `SchemaStatementGenerator` refuse the change with "Unsupported schema operation" rather than
+    /// sending a statement the linked library cannot parse.
+    func generateAddCheckConstraintSQL(table: String, constraint: PluginCheckConstraintDefinition) -> String? {
+        guard SQLitePlugin.supportsCheckConstraintEditing else { return nil }
+        let expression = constraint.expression.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !expression.isEmpty, !constraint.name.isEmpty else { return nil }
+        return "ALTER TABLE \(quoteIdentifier(table)) ADD CONSTRAINT "
+            + "\(quoteIdentifier(constraint.name)) CHECK (\(expression))"
+    }
+
+    func generateDropCheckConstraintSQL(table: String, constraintName: String) -> String? {
+        guard SQLitePlugin.supportsCheckConstraintEditing, !constraintName.isEmpty else { return nil }
+        return "ALTER TABLE \(quoteIdentifier(table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
     }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {

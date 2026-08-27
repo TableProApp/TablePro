@@ -411,14 +411,18 @@ targets:
       - Plugins/MySQLDriverPlugin/MySQLObjectQueries.swift
       - Plugins/MySQLDriverPlugin/MySQLQueryTimeoutStatement.swift
       - Plugins/MySQLDriverPlugin/MySQLSelectLimitStatement.swift
+      - Plugins/MySQLDriverPlugin/MySQLServerVersion.swift
       - Plugins/MySQLDriverPlugin/MySQLSocketTimeout.swift
       - Plugins/MySQLDriverPlugin/MySQLStatementClassification.swift
       - Plugins/MySQLDriverPlugin/MySQLTransactionStatement.swift
+      - Plugins/SQLiteDriverPlugin/SQLiteCheckConstraintParser.swift
+      - Plugins/MSSQLDriverPlugin/MSSQLCheckConstraintDefinition.swift
       - Plugins/PostgreSQLDriverPlugin/ColumnQueryShape.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQByteaDecoder.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQSSLMapping.swift
       - Plugins/PostgreSQLDriverPlugin/PostGISSpatialRewrite.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogPresence.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLCheckConstraintDefinition.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLObjectQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSchemaQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSystemDatabases.swift

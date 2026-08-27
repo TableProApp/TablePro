@@ -18,7 +18,7 @@ internal enum StructureInspectorRowBuilder {
         canEditSchema: Bool
     ) -> InspectorRow? {
         switch tab {
-        case .columns, .indexes, .foreignKeys:
+        case .columns, .indexes, .foreignKeys, .checkConstraints:
             break
         case .ddl, .parts, .triggers:
             return nil

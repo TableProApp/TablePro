@@ -14,13 +14,26 @@ This is a DDL editor with a grid in front of it. Rename a column, add an index, 
 
 Open a table and switch the result view to **Structure**, or right-click it in the sidebar and choose **Show Structure**.
 
-The tabs are **Columns**, **Indexes**, **Foreign Keys**, **Triggers**, **DDL**, and **Parts** (ClickHouse only); the first four carry item counts. A tab the engine has no concept of is hidden: ClickHouse has no Foreign Keys, Redshift no Triggers. Every grid has a filter field, and clicking a header sorts.
+The tabs are **Columns**, **Indexes**, **Foreign Keys**, **Constraints**, **Triggers**, **DDL**, and **Parts** (ClickHouse only); the first five carry item counts. A tab the engine has no concept of is hidden: ClickHouse has no Foreign Keys, Redshift no Triggers, Redis no Constraints. Every grid has a filter field, and clicking a header sorts.
 
 ## Columns tab
 
 Columns are edited in place. **Nullable**, **Primary Key**, and **Auto Inc** are YES/NO dropdowns; **Primary Key** set to YES forces **Nullable** to NO and holds it there until the key comes back off. **Type** opens a picker of the engine's types by category: search to filter, or type a parametric value such as `VARCHAR(255)` and press Return to use it as written.
 
 Which remaining columns appear is the driver's choice. **Comment** is there on most engines and writes the column comment. MySQL and MariaDB add **Charset**, **Collation**, and **On Update**; **On Update** set to YES on a `TIMESTAMP` or `DATETIME` column adds `ON UPDATE CURRENT_TIMESTAMP` at that column's own precision, so `TIMESTAMP(6)` gets `ON UPDATE CURRENT_TIMESTAMP(6)`.
+
+### Generated columns
+
+PostgreSQL, CockroachDB, PGlite, MySQL, MariaDB and SQLite add two more fields. **Generated** is a menu of Not generated, STORED and VIRTUAL; **Expression** holds the SQL the value is computed from. Set both on a new row and the column is created as `GENERATED ALWAYS AS (expression)`.
+
+The keyword is always written out. PostgreSQL 17 and earlier accept STORED only, PostgreSQL 18 made VIRTUAL the default, and MySQL and MariaDB default to VIRTUAL, so leaving it implicit would mean different columns on different servers.
+
+<Frame caption="Generated column fields on the Columns tab">
+  <img className="block dark:hidden" src="/images/structure-generated-columns.png" alt="A column row with Generated set to VIRTUAL and an Expression beside it" />
+  <img className="hidden dark:block" src="/images/structure-generated-columns-dark.png" alt="A column row with Generated set to VIRTUAL and an Expression beside it" />
+</Frame>
+
+Two limits apply to a column that already exists. Switching **Generated** on it is refused by every engine: drop the column and add it back to make it generated, which discards its data. On SQLite, a column added to a populated table is VIRTUAL; `ALTER TABLE` refuses `cannot add a STORED column` there, so STORED is reachable only when the table is created.
 
 <Frame caption="Type picker popover">
   <img className="block dark:hidden" src="/images/structure-type-picker.png" alt="Type picker popover" />
@@ -52,6 +65,29 @@ Drag a column row to reorder it (MySQL and MariaDB only). That one runs immediat
 | **On Delete / On Update** | Dropdowns: NO ACTION, RESTRICT, CASCADE, SET NULL, SET DEFAULT |
 
 Right-click a foreign key and choose **Open [table]** to jump to the referenced table. Right-click any row in these three grids for **Copy Name**, **Copy Definition**, **Copy As** (CSV, JSON, SQL), **Duplicate** (`Cmd+D`), and **Delete**. A row already marked for deletion offers **Undo Delete**.
+
+## Constraints tab
+
+Check constraints are table-level, so a rule spanning two columns is one row here rather than something hidden on a column.
+
+| Field | Description |
+|-------|-------------|
+| **Name** | Constraint name, used to drop or rename it |
+| **Expression** | The condition every row must satisfy |
+| **Columns** | Columns the expression references, read-only |
+
+<Frame caption="Constraints tab">
+  <img className="block dark:hidden" src="/images/structure-constraints.png" alt="Two check constraints, one of them spanning two columns" />
+  <img className="hidden dark:block" src="/images/structure-constraints-dark.png" alt="Two check constraints, one of them spanning two columns" />
+</Frame>
+
+**Columns** is filled from the catalog on PostgreSQL and SQL Server. MySQL, MariaDB and SQLite publish no such catalog, so the cell stays empty there.
+
+Renaming a constraint runs a single `RENAME CONSTRAINT` where the engine has one. Changing the expression drops and re-adds it, because no engine can alter a check in place. Both the re-add and a brand-new constraint scan every existing row and fail if any row violates the rule, so a failed save means the data disagrees with the constraint.
+
+The tab is hidden on engines with no check constraints. SQL Server lists and edits them, but has computed columns rather than generated ones, so it gets this tab and not the two column fields.
+
+SQLite is the one engine where listing and editing part company. The tab appears on every version, but **+** and **-** need SQLite 3.53.0 or later, the release that added `ADD CONSTRAINT` and `DROP CONSTRAINT` to `ALTER TABLE`. The driver links the system SQLite, so the version is the one macOS ships. On an older one the constraints still list, read-only.
 
 ## Saving changes
 

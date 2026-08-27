@@ -17,6 +17,7 @@ extension PostgreSQLPluginDriver {
             tableLiteral: safeTable,
             identityProjection: projections.identity,
             generatedProjection: projections.generated,
+            generationExpressionProjection: projections.generationExpression,
             attributeJoin: projections.attributeJoin
         )
         let result = try await execute(query: query)
@@ -34,6 +35,7 @@ extension PostgreSQLPluginDriver {
             tableLiteral: nil,
             identityProjection: projections.identity,
             generatedProjection: projections.generated,
+            generationExpressionProjection: projections.generationExpression,
             attributeJoin: projections.attributeJoin
         )
         let result = try await execute(query: query)
@@ -47,7 +49,31 @@ extension PostgreSQLPluginDriver {
         return allColumns
     }
 
-    private func columnProjections() -> (identity: String, generated: String, attributeJoin: String) {
+    func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
+        let query = PostgreSQLSchemaQueries.checkConstraintsQuery(
+            schemaLiteral: escapeStringLiteral(schema ?? core.currentSchema),
+            tableLiteral: escapeStringLiteral(table)
+        )
+        let result = try await execute(query: query)
+        return result.rows.compactMap { row in
+            guard let name = row[safe: 0]?.asText,
+                  let definition = row[safe: 1]?.asText else { return nil }
+            // JSON rather than a comma-joined string: a quoted PostgreSQL identifier may itself
+            // contain a comma, which splitting would turn into two column names.
+            let columns = (row[safe: 3]?.asText?.nilIfEmpty)
+                .flatMap { $0.data(using: .utf8) }
+                .flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? []
+            return PluginCheckConstraintInfo(
+                name: name,
+                expression: PostgreSQLCheckConstraintDefinition.expression(fromConstraintDef: definition),
+                columns: columns,
+                isValidated: row[safe: 2]?.asText?.lowercased() != "f"
+            )
+        }
+    }
+
+    private func columnProjections()
+        -> (identity: String, generated: String, generationExpression: String, attributeJoin: String) {
         let caps = versionedCapabilities
         let identity = caps.hasIdentityColumns ? "a.attidentity" : "NULL::text"
         let generated = caps.hasGeneratedColumns ? "a.attgenerated" : "NULL::text"
@@ -57,7 +83,8 @@ extension PostgreSQLPluginDriver {
                 AND a.attname = c.column_name
                 AND NOT a.attisdropped
             """ : ""
-        return (identity, generated, attributeJoin)
+        let generationExpression = caps.hasGeneratedColumns ? "c.generation_expression" : "NULL::text"
+        return (identity, generated, generationExpression, attributeJoin)
     }
 
     fileprivate func fetchEnumLabelMap() async throws -> [String: [String]] {
@@ -109,6 +136,7 @@ extension PostgreSQLPluginDriver {
         let identityIdx = tableNameOffset + 8
         let generatedIdx = tableNameOffset + 9
         let udtSchemaIdx = tableNameOffset + 10
+        let generationExpressionIdx = tableNameOffset + 11
 
         guard row.count > typeIdx,
               let name = row[nameIdx].asText,
@@ -150,9 +178,22 @@ extension PostgreSQLPluginDriver {
             collation: collation,
             comment: comment?.isEmpty == false ? comment : nil,
             identityKind: pgIdentityKind(attidentity),
-            isGenerated: attgenerated == "s",
-            allowedValues: allowedValues
+            isGenerated: attgenerated == "s" || attgenerated == "v",
+            allowedValues: allowedValues,
+            generationExpression: row.count > generationExpressionIdx
+                ? row[generationExpressionIdx].asText.flatMap { $0.nilIfEmpty } : nil,
+            generationKind: pgGenerationKind(attgenerated)
         )
+    }
+
+    /// PostgreSQL 18 added virtual generated columns ('v'). Treating only 's' as generated left
+    /// every virtual one looking writable, so it was included in INSERT and UPDATE.
+    fileprivate func pgGenerationKind(_ attgenerated: String?) -> GenerationKind? {
+        switch attgenerated {
+        case "s": return .stored
+        case "v": return .virtual
+        default: return nil
+        }
     }
 
     fileprivate func pgIdentityKind(_ attidentity: String?) -> IdentityKind? {

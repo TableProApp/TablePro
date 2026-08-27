@@ -209,6 +209,18 @@ extension DatabaseType {
         PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsTriggerEditing ?? false
     }
 
+    var supportsCheckConstraints: Bool {
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsCheckConstraints ?? false
+    }
+
+    var supportsCheckConstraintEditing: Bool {
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsCheckConstraintEditing ?? false
+    }
+
+    var supportsGeneratedColumns: Bool {
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsGeneratedColumns ?? false
+    }
+
     var supportsRoutines: Bool {
         PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsRoutines ?? false
     }
