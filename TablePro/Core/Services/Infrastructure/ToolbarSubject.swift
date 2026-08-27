@@ -25,6 +25,11 @@ import Observation
 internal final class ToolbarSubject {
     internal weak var coordinator: MainContentCoordinator?
 
+    /// The window behind the toolbar, which every connection it points at comes and goes under.
+    /// Switch Connection is the window's command, so it cannot be reached through the connection
+    /// that just went away.
+    internal weak var windowController: MainSplitViewController?
+
     internal init(coordinator: MainContentCoordinator? = nil) {
         self.coordinator = coordinator
     }

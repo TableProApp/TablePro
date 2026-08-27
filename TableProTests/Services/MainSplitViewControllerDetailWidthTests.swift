@@ -132,21 +132,4 @@ struct MainSplitViewControllerDetailWidthTests {
         )
         #expect(collapsed == MainSplitViewController.baseWindowMinWidth)
     }
-
-    @Test("The rail stays hidden while only one workspace is open")
-    func railHiddenForSingleWorkspace() {
-        #expect(!MainSplitViewController.shouldShowWorkspaceRail(settingEnabled: true, workspaceCount: 1))
-        #expect(!MainSplitViewController.shouldShowWorkspaceRail(settingEnabled: true, workspaceCount: 0))
-    }
-
-    @Test("The rail appears once a second workspace is open")
-    func railShownForSecondWorkspace() {
-        #expect(MainSplitViewController.shouldShowWorkspaceRail(settingEnabled: true, workspaceCount: 2))
-        #expect(MainSplitViewController.shouldShowWorkspaceRail(settingEnabled: true, workspaceCount: 5))
-    }
-
-    @Test("Turning the setting off hides the rail however many workspaces are open")
-    func settingOffAlwaysHidesRail() {
-        #expect(!MainSplitViewController.shouldShowWorkspaceRail(settingEnabled: false, workspaceCount: 5))
-    }
 }

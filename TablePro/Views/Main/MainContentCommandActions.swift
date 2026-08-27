@@ -1270,7 +1270,7 @@ final class MainContentCommandActions {
         let type = coordinator.connection.type
         guard PluginManager.shared.switchableContainers(for: type).contains(target) else { return }
         coordinator.contentWindow?.makeFirstResponder(nil)
-        coordinator.switcherPresenter.dismiss()
+        coordinator.switcherPresenter?.dismiss()
         coordinator.presentedScopeSwitcher = target
     }
 
@@ -1278,24 +1278,23 @@ final class MainContentCommandActions {
         coordinator?.showQuickSwitcher()
     }
 
+    /// The window presents this one. It is a window command wherever it is invoked from, and
+    /// keeping a copy of the presentation here would give one window two owners for one popover.
     func openConnectionSwitcher() {
-        guard let coordinator else { return }
-        coordinator.contentWindow?.makeFirstResponder(nil)
-        coordinator.presentedScopeSwitcher = nil
-        coordinator.switcherPresenter.present(
-            from: coordinator.contentWindow,
-            anchoredTo: MainWindowToolbar.connectionGroup,
-            contentSize: ConnectionSwitcherPopover.contentSize
-        ) { dismiss in
-            ConnectionSwitcherPopover(dismiss: dismiss)
-        }
+        coordinator?.splitViewController?.openConnectionSwitcher()
+    }
+
+    /// The chip's chooser belongs to the coordinator, so the window asks for it to go rather than
+    /// writing the state itself.
+    func dismissScopeSwitcher() {
+        coordinator?.presentedScopeSwitcher = nil
     }
 
     /// Anchored to the connection group rather than to the Database button inside it, because the
     /// group is the only item AppKit draws a frame for: its subitems exist to populate the overflow
     /// menu and carry no frame of their own.
     private func presentDatabaseSwitcher(on coordinator: MainContentCoordinator, target: ContainerSwitchTarget?) {
-        coordinator.switcherPresenter.present(
+        coordinator.switcherPresenter?.present(
             from: coordinator.contentWindow,
             anchoredTo: MainWindowToolbar.connectionGroup,
             contentSize: DatabaseSwitcherPopover.contentSize

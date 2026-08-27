@@ -15,6 +15,18 @@ import Testing
 struct ConnectionWindowPaneResolverTests {
     private static let failure = ConnectionFailureInfo(message: "Could not connect to the server.")
 
+    private static let everyUnavailableReason: [ConnectionUnavailableReason] = [
+        .notConnected,
+        .cancelled,
+        .disconnected(nil),
+        .disconnectedByUser,
+        .failed(failure),
+        .pluginMissing(failure)
+    ]
+
+    private static let everyPane: [ConnectionWindowPane] =
+        [.content, .connecting, .empty] + everyUnavailableReason.map { .unavailable($0) }
+
     @Test("A failed connection shows its own pane, never a spinner and never a blank window")
     func failureResolvesToUnavailablePane() {
         let pane = ConnectionWindowPaneResolver.pane(
@@ -68,6 +80,86 @@ struct ConnectionWindowPaneResolverTests {
     func contentAlwaysRevealsTheSidebar() {
         #expect(ConnectionWindowPaneResolver.sidebarChromeMode(for: .content, hasRail: true) == .revealed)
         #expect(ConnectionWindowPaneResolver.sidebarChromeMode(for: .content, hasRail: false) == .revealed)
+    }
+
+    @Test("A lone workspace never earns a strip, whatever its pane is doing")
+    func stripNeedsSomewhereToGo() {
+        for count in [0, 1] {
+            for pane in Self.everyPane {
+                #expect(!ConnectionWindowPaneResolver.showsWorkspaceRail(
+                    preferenceEnabled: true,
+                    workspaceCount: count,
+                    pane: pane,
+                    isClosing: false
+                ))
+            }
+        }
+    }
+
+    @Test("The preference governs the strip while the window still has content behind it")
+    func preferenceGovernsTheStripOverContent() {
+        #expect(ConnectionWindowPaneResolver.showsWorkspaceRail(
+            preferenceEnabled: true,
+            workspaceCount: 2,
+            pane: .content,
+            isClosing: false
+        ))
+        #expect(!ConnectionWindowPaneResolver.showsWorkspaceRail(
+            preferenceEnabled: false,
+            workspaceCount: 2,
+            pane: .content,
+            isClosing: false
+        ))
+    }
+
+    /// The pane that hides the object browser, the tab strip and the connection-scoped toolbar
+    /// items leaves the strip as the only thing on screen naming the window's other connections,
+    /// so a preference cannot take it too.
+    @Test("A connection with nothing to show brings the strip back over the preference")
+    func stripOutlivesThePreferenceWhenItIsTheOnlyRouteOut() {
+        let stranding: [ConnectionWindowPane] = [.connecting] + Self.everyUnavailableReason.map { .unavailable($0) }
+
+        for pane in stranding {
+            #expect(ConnectionWindowPaneResolver.showsWorkspaceRail(
+                preferenceEnabled: false,
+                workspaceCount: 2,
+                pane: pane,
+                isClosing: false
+            ))
+            #expect(ConnectionWindowPaneResolver.showsWorkspaceRail(
+                preferenceEnabled: true,
+                workspaceCount: 2,
+                pane: pane,
+                isClosing: false
+            ))
+        }
+    }
+
+    /// Every pane that takes the window's chrome away is one the strip has to outlive, 
+    /// included: a workspace whose connection never resolved lands there without closing anything.
+    @Test("A chrome-hiding empty pane brings the strip back like any other")
+    func emptyPaneIsNotAnException() {
+        #expect(ConnectionWindowPaneResolver.showsWorkspaceRail(
+            preferenceEnabled: false,
+            workspaceCount: 2,
+            pane: .empty,
+            isClosing: false
+        ))
+    }
+
+    /// Closing cannot be read off the pane, because a closing window and a workspace with no
+    /// connection resolve to the same one. Laying a switcher over a window that is going away is
+    /// the mistake at that end.
+    @Test("A closing window is given no strip, whatever its pane resolved to")
+    func closingWindowNeverGainsAStrip() {
+        for pane in Self.everyPane {
+            #expect(!ConnectionWindowPaneResolver.showsWorkspaceRail(
+                preferenceEnabled: true,
+                workspaceCount: 2,
+                pane: pane,
+                isClosing: true
+            ))
+        }
     }
 
     @Test("Only the revealed sidebar carries an object browser")

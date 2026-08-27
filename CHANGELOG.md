@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Connections strip absent from a window whose selected connection has nothing to show, when Show Connections is off.
+- Switch Connection disabled, in the Database menu and the toolbar, while the selected connection is disconnected.
+- One floating switcher panel per connection in a window, each centred on the same point.
 - Selection highlight missing from part of a long selection after scrolling back up to it.
 - Editor not scrolling to follow a selection extended past the edge of the viewport.
 - Find highlight and the run band covering only the first line of a match that spans several lines.

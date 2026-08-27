@@ -9,11 +9,11 @@ import SwiftUI
 import TableProPluginKit
 
 struct ConnectionToolbarButton: View {
-    @Bindable var coordinator: MainContentCoordinator
+    let subject: ToolbarSubject
 
     var body: some View {
         Button {
-            coordinator.commandActions?.openConnectionSwitcher()
+            subject.windowController?.openConnectionSwitcher()
         } label: {
             Label("Connection", systemImage: "network")
         }
@@ -88,14 +88,14 @@ struct SessionContextToolbarButton: View {
 /// and the `id` is what makes the connection's identity the view's identity. The `if let` alone
 /// keeps one branch across a repoint, so SwiftUI carried the outgoing connection's `@State` over
 /// and left its `task(id:)` running instead of restarting it for the connection that arrived.
+/// The one control here that is not about the connection the toolbar is pointing at. It stays
+/// rendered with no subject at all, because a window whose connection has gone is exactly when a
+/// user reaches for it, and it carries no per-connection state for a repoint to reset.
 internal struct ConnectionToolbarSubjectButton: View {
     internal let subject: ToolbarSubject
 
     internal var body: some View {
-        if let coordinator = subject.coordinator {
-            ConnectionToolbarButton(coordinator: coordinator)
-                .id(coordinator.connectionId)
-        }
+        ConnectionToolbarButton(subject: subject)
     }
 }
 

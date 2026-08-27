@@ -11,7 +11,7 @@ struct ConnectionWindowChromeTests {
         let harness = try Harness()
         defer { harness.tearDown() }
 
-        harness.setRailVisible(true)
+        harness.setHostedWorkspaceCount(2)
         harness.controller.transition(
             to: .unavailable(.failed(ConnectionFailureInfo(message: "refused"))),
             for: harness.selected.connectionId
@@ -21,31 +21,31 @@ struct ConnectionWindowChromeTests {
         #expect(harness.controller.isSidebarCollapsed)
     }
 
-    @Test("A window with no rail still hides its sidebar outright")
+    @Test("A window hosting nothing else still hides its sidebar outright")
     func loneConnectionStillHidesTheSidebar() throws {
         let harness = try Harness()
         defer { harness.tearDown() }
 
-        harness.setRailVisible(false)
+        harness.setHostedWorkspaceCount(1)
         harness.controller.transition(to: .unavailable(.notConnected), for: harness.selected.connectionId)
 
         #expect(harness.controller.sidebarChromeMode == .hidden)
         #expect(harness.controller.isSidebarCollapsed)
     }
 
-    @Test("The rail arriving while the connection is down opens the sidebar for it")
+    @Test("A sibling opening while the connection is down opens the sidebar for the strip")
     func railArrivingWhileHiddenReopensTheSidebar() throws {
         let harness = try Harness()
         defer { harness.tearDown() }
 
-        harness.setRailVisible(false)
+        harness.setHostedWorkspaceCount(1)
         harness.controller.transition(to: .unavailable(.notConnected), for: harness.selected.connectionId)
         #expect(harness.controller.sidebarChromeMode == .hidden)
 
-        harness.setRailVisible(true)
+        harness.setHostedWorkspaceCount(2)
         #expect(harness.controller.sidebarChromeMode == .railOnly)
 
-        harness.setRailVisible(false)
+        harness.setHostedWorkspaceCount(1)
         #expect(harness.controller.sidebarChromeMode == .hidden)
     }
 
@@ -57,7 +57,7 @@ struct ConnectionWindowChromeTests {
         let harness = try Harness()
         defer { harness.tearDown() }
 
-        harness.setRailVisible(true)
+        harness.setHostedWorkspaceCount(2)
         harness.controller.transition(to: .connecting, for: harness.selected.connectionId)
         #expect(harness.controller.sidebarChromeMode == .railOnly)
 
@@ -66,19 +66,97 @@ struct ConnectionWindowChromeTests {
         #expect(harness.controller.sidebarChromeMode == .railOnly)
     }
 
+    /// The preference governs a strip the user can do without while the object browser, the tab
+    /// strip and the toolbar are all there to navigate by. A pane with no content takes all three,
+    /// and then the strip is the only thing left naming the window's other connections, so the
+    /// preference stops applying to it. Turning it off used to leave such a window with no route
+    /// on screen to any connection at all.
+    @Test("Hiding the connections strip cannot strand a window that has somewhere else to go")
+    func stripOutlivesThePreferenceWhileItIsTheOnlyRouteOut() throws {
+        let harness = try Harness()
+        let previous = AppSettingsManager.shared.general.showWorkspaceRail
+        defer {
+            AppSettingsManager.shared.general.showWorkspaceRail = previous
+            harness.tearDown()
+        }
+
+        harness.setRailPreference(false)
+        harness.controller.transition(
+            to: .unavailable(.disconnectedByUser),
+            for: harness.selected.connectionId
+        )
+
+        harness.setHostedWorkspaceCount(1)
+        #expect(harness.controller.sidebarChromeMode == .hidden)
+
+        harness.setHostedWorkspaceCount(2)
+        #expect(harness.controller.sidebarChromeMode == .railOnly)
+    }
+
+    /// The preference still means what it says wherever the window can be navigated without it.
+    @Test("Hiding the connections strip holds while the connection has content behind it")
+    func preferenceHoldsWhileTheWindowHasContent() throws {
+        let harness = try Harness()
+        let previous = AppSettingsManager.shared.general.showWorkspaceRail
+        defer {
+            AppSettingsManager.shared.general.showWorkspaceRail = previous
+            harness.tearDown()
+        }
+
+        harness.setRailPreference(false)
+        harness.setHostedWorkspaceCount(2)
+        harness.attachRenderableSession()
+        harness.controller.transition(to: .connected, for: harness.selected.connectionId)
+
+        #expect(harness.controller.currentPane == .content)
+        #expect(harness.controller.sidebarChromeMode == .revealed)
+    }
+
+    /// Every other Database menu command needs the connection in front of the user. This one is
+    /// how they leave it, and it reads nothing from the session.
+    @Test("Switch Connection survives the connection it switches away from")
+    func switchConnectionOutlivesItsConnection() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+
+        harness.controller.transition(
+            to: .unavailable(.disconnectedByUser),
+            for: harness.selected.connectionId
+        )
+        #expect(harness.controller.commandActions == nil)
+
+        let context = harness.controller.menuValidationContext
+        #expect(!context.isConnected)
+        #expect(MainSplitViewController.isEnabled(
+            #selector(MainSplitViewController.switchConnection(_:)),
+            context: context
+        ))
+    }
+
+    /// One window, one floating panel. Two of them anchor on the same window frame and centre on
+    /// the same point, with neither able to see or dismiss the other.
+    @Test("Every connection in a window shares the window's one switcher")
+    func oneSwitcherPerWindowNotPerConnection() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+
+        #expect(harness.controller.switcherPresenter === harness.controller.switcherPresenter)
+        #expect(harness.controller.quickSwitcherPanel === harness.controller.quickSwitcherPanel)
+    }
+
     @Test("Switching a connection off and back on restores the sidebar the user had")
     func revealRestoresTheSidebarAcrossBothHiddenModes() throws {
         let harness = try Harness()
         defer { harness.tearDown() }
 
-        harness.setRailVisible(true)
+        harness.setHostedWorkspaceCount(2)
         harness.controller.transition(to: .connecting, for: harness.selected.connectionId)
         #expect(harness.controller.sidebarChromeMode == .railOnly)
 
-        harness.setRailVisible(false)
+        harness.setHostedWorkspaceCount(1)
         #expect(harness.controller.sidebarChromeMode == .hidden)
 
-        harness.setRailVisible(true)
+        harness.setHostedWorkspaceCount(2)
         harness.controller.transition(to: .idle, for: harness.selected.connectionId)
         harness.attachRenderableSession()
         harness.controller.transition(to: .connected, for: harness.selected.connectionId)
@@ -106,7 +184,7 @@ struct ConnectionWindowChromeTests {
         let harness = try Harness()
         defer { harness.tearDown() }
 
-        harness.setRailVisible(true)
+        harness.setHostedWorkspaceCount(2)
         harness.controller.transition(to: .connecting, for: harness.selected.connectionId)
 
         #expect(harness.controller.sidebarChromeMode == .railOnly)
@@ -118,7 +196,7 @@ struct ConnectionWindowChromeTests {
         let harness = try Harness()
         defer { harness.tearDown() }
 
-        harness.setRailVisible(true)
+        harness.setHostedWorkspaceCount(2)
         harness.controller.transition(to: .connecting, for: harness.selected.connectionId)
         #expect(harness.controller.sidebarChromeMode == .railOnly)
 
@@ -155,10 +233,16 @@ struct ConnectionWindowChromeTests {
             window.orderFront(nil)
         }
 
-        /// The rail's own visibility is an app-wide question the harness's unregistered window
-        /// cannot answer, so it is driven directly here rather than through the setting.
-        func setRailVisible(_ visible: Bool) {
-            controller.setWorkspaceRailVisible(visible)
+        /// How many workspaces the strip has to offer is an app-wide question the harness's
+        /// unregistered window cannot answer, so the count is handed to the controller directly.
+        /// Everything downstream of it is the shipping rule.
+        func setHostedWorkspaceCount(_ count: Int) {
+            controller.applyRailVisibility(workspaceCount: count)
+        }
+
+        /// The Show Connections preference, which the rule reads globally.
+        func setRailPreference(_ enabled: Bool) {
+            AppSettingsManager.shared.general.showWorkspaceRail = enabled
         }
 
         func attachRenderableSession() {

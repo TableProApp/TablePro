@@ -87,7 +87,6 @@ extension MainSplitViewController: NSMenuItemValidation {
              #selector(exportTables(_:)),
              #selector(refreshDatabase(_:)),
              #selector(openQuickSwitcher(_:)),
-             #selector(switchConnection(_:)),
              #selector(toggleQueryHistory(_:)),
              #selector(toggleResults(_:)),
              #selector(showPreviousResult(_:)),
@@ -117,6 +116,11 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(newEditorTab(_:)):
             return context.isConnected
         case #selector(closeConnection(_:)):
+            return context.hasSelectedWorkspace
+        /// Not `isConnected`, unlike the rest of the Database menu. The switcher lists the app's
+        /// open connections and the user's saved ones, needs nothing from the session, and is the
+        /// command that leaves a connection that has stopped working.
+        case #selector(switchConnection(_:)):
             return context.hasSelectedWorkspace
         case #selector(selectNextEditorTab(_:)), #selector(selectPreviousEditorTab(_:)):
             return context.isConnected
