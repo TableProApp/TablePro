@@ -19,10 +19,9 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     nonisolated(unsafe) private(set) var currentSchema: String? = "public"
     nonisolated(unsafe) private(set) var serverVersion: String?
 
-    /// Nil until the first column fetch answers it. Redshift shares this driver and its
-    /// `information_schema` predates `is_identity`, so the answer is remembered rather than
-    /// re-probed for every table.
     nonisolated(unsafe) private var reportsIdentityColumns: Bool?
+
+    private var effectiveSchema: String { currentSchema ?? "public" }
 
     init(host: String, port: Int, user: String, password: String, database: String, ssl: DriverSSLConfiguration = .disabled) {
         self.host = host
@@ -40,6 +39,13 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
         try await actor.connect(host: host, port: port, user: user, password: password, database: database, ssl: ssl)
         _ = try? await actor.execute("SET standard_conforming_strings = on")
         serverVersion = await actor.serverVersion()
+        await adoptServerSchema()
+    }
+
+    private func adoptServerSchema() async {
+        guard let schema = try? await actor.execute("SELECT current_schema()").rows.first?.first ?? nil,
+              !schema.isEmpty else { return }
+        currentSchema = schema
     }
 
     func disconnect() async throws {
@@ -132,7 +138,7 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     // MARK: - Schema
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {
-        let schemaName = schema ?? "public"
+        let schemaName = schema ?? effectiveSchema
         let safe = schemaName.replacingOccurrences(of: "'", with: "''")
         let raw = try await actor.execute("""
             SELECT table_name, table_type
@@ -155,7 +161,7 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
-        let schemaName = schema ?? "public"
+        let schemaName = schema ?? effectiveSchema
         let safeTbl = table.replacingOccurrences(of: "'", with: "''")
         let safeSchema = schemaName.replacingOccurrences(of: "'", with: "''")
 
@@ -196,8 +202,6 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
         }
     }
 
-    /// The plain form drops `is_identity` (PostgreSQL 10) and `is_generated` (PostgreSQL 12) for a
-    /// server that has neither. A serial default still reports auto-increment through `nextval`.
     private func columnsQuery(schema: String, table: String, identity: Bool) -> String {
         let identityColumns = identity ? ",\n                c.is_identity,\n                c.is_generated" : ""
         return """
@@ -225,7 +229,7 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] {
-        let schemaName = schema ?? "public"
+        let schemaName = schema ?? effectiveSchema
         let safeTbl = table.replacingOccurrences(of: "'", with: "''")
         let safeSchema = schemaName.replacingOccurrences(of: "'", with: "''")
 
@@ -273,7 +277,7 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
-        let schemaName = schema ?? "public"
+        let schemaName = schema ?? effectiveSchema
         let safeTbl = table.replacingOccurrences(of: "'", with: "''")
         let safeSchema = schemaName.replacingOccurrences(of: "'", with: "''")
 
