@@ -23,11 +23,8 @@ final class EditorTabReorderUITests: UITestCase {
 
         drag(tab(named: before[0], in: window), onto: tab(named: before[2], in: window))
 
-        let after = tabLabels(in: window)
-
-        XCTAssertNotEqual(
-            before,
-            after,
+        XCTAssertTrue(
+            waitForTabOrder(toChangeFrom: before, in: window),
             "Dragging the first tab across the strip must change the tab order, was \(before)"
         )
     }
@@ -53,9 +50,8 @@ final class EditorTabReorderUITests: UITestCase {
 
         drag(tab(named: unselected, in: window), onto: tab(named: before[before.count - 1], in: window))
 
-        XCTAssertNotEqual(
-            before,
-            tabLabels(in: window),
+        XCTAssertTrue(
+            waitForTabOrder(toChangeFrom: before, in: window),
             "Dragging an unselected tab must change the tab order, was \(before)"
         )
     }
@@ -81,9 +77,8 @@ final class EditorTabReorderUITests: UITestCase {
 
         drag(tab(named: selected, in: window), onto: tab(named: target, in: window))
 
-        XCTAssertNotEqual(
-            before,
-            tabLabels(in: window),
+        XCTAssertTrue(
+            waitForTabOrder(toChangeFrom: before, in: window),
             "Dragging the selected tab must change the tab order, was \(before)"
         )
     }
@@ -107,11 +102,22 @@ final class EditorTabReorderUITests: UITestCase {
 
         let before = tabLabels(in: window)
 
-        drag(tab(named: before[0], in: window), onto: tab(named: before[2], in: window))
+        // Not `before[0]`: once the track scrolls, the leading tabs stay in the accessibility tree
+        // at frames outside the viewport, and the pointer cannot land on one.
+        let reachable = onScreenTabs(in: window).map { $0.label }
+        XCTAssertGreaterThanOrEqual(
+            reachable.count,
+            4,
+            "The viewport must hold four tabs to drag between, showed \(reachable) of \(before)"
+        )
 
-        XCTAssertNotEqual(
-            before,
-            tabLabels(in: window),
+        // Interior tabs only. A tab at either edge of a scrolled track is half outside the
+        // viewport, and a click at its centre lands on the chrome beside the track rather than on
+        // the tab, so the drag never reaches the strip at all.
+        drag(tab(named: reachable[1], in: window), onto: tab(named: reachable[reachable.count - 2], in: window))
+
+        XCTAssertTrue(
+            waitForTabOrder(toChangeFrom: before, in: window),
             "Dragging a tab in an overflowing strip must change the tab order, was \(before)"
         )
     }
@@ -171,6 +177,23 @@ final class EditorTabReorderUITests: UITestCase {
                 forDuration: 0.6,
                 thenDragTo: destination.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             )
-        Thread.sleep(forTimeInterval: 1.0)
+    }
+
+    /// The strip animates the move and commits it on release, so the new order arrives some time
+    /// after the gesture returns. Waiting for it rather than sleeping a fixed amount is what keeps
+    /// this readable on a loaded machine: a sleep long enough for CI is dead time on every local
+    /// run, and one short enough for a local run reads the pre-drag order on CI and reports the
+    /// reorder as broken.
+    private func waitForTabOrder(toChangeFrom before: [String], in window: XCUIElement) -> Bool {
+        waitForPredicate(timeout: 15) { self.tabLabels(in: window) != before }
+    }
+
+    /// The tabs the pointer can actually reach.
+    ///
+    /// Once the strip overflows, the track scrolls and the tabs outside the viewport stay in the
+    /// accessibility tree with frames the pointer cannot land on. Dragging one of those is not a
+    /// weaker version of the gesture, it is no gesture at all.
+    private func onScreenTabs(in window: XCUIElement) -> [XCUIElement] {
+        tabElements(in: window).filter { $0.exists && $0.isHittable }
     }
 }

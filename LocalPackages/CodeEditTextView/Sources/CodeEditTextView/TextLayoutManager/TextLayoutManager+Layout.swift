@@ -85,9 +85,12 @@ extension TextLayoutManager {
         var yContentAdjustment: CGFloat = 0
         var maxFoundLineWidth = maxLineWidth
 
-        // The layout view draws its own decorations into a backing store nothing else invalidates when the
-        // viewport moves, so a band drawn before its lines were laid out would stay blank forever.
-        var relaidOutRect: CGRect = .null
+        // The vertical span this pass laid out. The layout view draws its own decorations into a backing store
+        // nothing else invalidates when the viewport moves, so a band drawn before its lines were laid out would
+        // stay blank forever. Tracked as a span rather than a rect because a rect union silently drops an operand
+        // of zero width, which is what an unparented layout view reports.
+        var relaidOutMinY: CGFloat = .greatestFiniteMagnitude
+        var relaidOutMaxY: CGFloat = -.greatestFiniteMagnitude
 
 #if DEBUG
         var laidOutLines: Set<TextLine.ID> = []
@@ -111,13 +114,10 @@ extension TextLayoutManager {
                     maxFoundLineWidth: &maxFoundLineWidth
                 )
                 yContentAdjustment += yAdjustment
-                relaidOutRect = relaidOutRect.union(
-                    CGRect(
-                        x: 0,
-                        y: linePosition.yPos,
-                        width: layoutView?.frame.width ?? 0,
-                        height: max(linePosition.height, linePosition.data.lineFragments.height)
-                    )
+                relaidOutMinY = min(relaidOutMinY, linePosition.yPos)
+                relaidOutMaxY = max(
+                    relaidOutMaxY,
+                    linePosition.yPos + max(linePosition.height, linePosition.data.lineFragments.height)
                 )
 #if DEBUG
                 laidOutLines.insert(linePosition.data.id)
@@ -175,17 +175,18 @@ extension TextLayoutManager {
             delegate?.layoutManagerHeightDidUpdate(newHeight: lineStorage.height)
         }
 
-        if !relaidOutRect.isNull {
+        if let layoutView, relaidOutMinY <= relaidOutMaxY {
+            // A height change or a y adjustment moves every line below the first one this pass touched.
             let movedEverythingBelow = didLayoutChange || yContentAdjustment != 0
-            let invalidRect = movedEverythingBelow
-                ? CGRect(
-                    x: relaidOutRect.minX,
-                    y: relaidOutRect.minY,
-                    width: relaidOutRect.width,
-                    height: max(maxY - relaidOutRect.minY, relaidOutRect.height)
+            let bottom = movedEverythingBelow ? max(maxY, relaidOutMaxY) : relaidOutMaxY
+            layoutView.setNeedsDisplay(
+                CGRect(
+                    x: 0,
+                    y: relaidOutMinY,
+                    width: layoutView.frame.width,
+                    height: bottom - relaidOutMinY
                 )
-                : relaidOutRect
-            layoutView?.setNeedsDisplay(invalidRect)
+            )
         }
 
 #if DEBUG
