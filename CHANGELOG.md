@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Leaked socket on every SSH Test Connection against a server reached without jump hosts.
+- Leaked listening port, socket and session each time an SSH tunnel died from sleep or a dropped network.
 - Selection highlight missing from part of a long selection after scrolling back up to it.
 - Editor not scrolling to follow a selection extended past the edge of the viewport.
 - Find highlight and the run band covering only the first line of a match that spans several lines.

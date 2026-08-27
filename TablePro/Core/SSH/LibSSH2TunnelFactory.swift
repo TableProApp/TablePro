@@ -117,7 +117,6 @@ internal enum LibSSH2TunnelFactory {
     private struct AuthenticatedChain {
         let session: OpaquePointer
         let socketFD: Int32
-        let initialSocketFD: Int32
         let jumpHops: [HopInfo]
 
         struct HopInfo {
@@ -269,7 +268,6 @@ internal enum LibSSH2TunnelFactory {
                 return AuthenticatedChain(
                     session: currentSession,
                     socketFD: currentSocketFD,
-                    initialSocketFD: socketFD,
                     jumpHops: jumpHops
                 )
             } catch {
@@ -309,9 +307,7 @@ internal enum LibSSH2TunnelFactory {
     private static func cleanupChain(_ chain: AuthenticatedChain, reason: String) {
         tablepro_libssh2_session_disconnect(chain.session, reason)
         libssh2_session_free(chain.session)
-        if chain.socketFD != chain.initialSocketFD {
-            Darwin.close(chain.socketFD)
-        }
+        Darwin.close(chain.socketFD)
 
         // Clean up jump hops in reverse order:
         // First pass: cancel relays and shutdown sockets to break relay loops
