@@ -31,27 +31,40 @@ Dropping is irreversible. On MySQL and MariaDB, truncate also resets the auto-in
 
 ## Rename
 
-Right-click a table and choose **Rename**. The row's label turns into a field: type the new name and press Return, or press Escape to leave it alone. Clicking anywhere else commits, the way Finder does.
+Renaming happens in the row itself. Choose **Rename** from a table's right-click menu and the label becomes a field: Return commits, Escape leaves the name alone, and clicking elsewhere commits. The item is absent where the engine cannot rename that kind of object.
 
-The rename runs immediately, not on save. Open tabs on that table follow it and keep their filters, sort and column widths; a favourite stays a favourite, and the Recent entry keeps its place. A queued drop or truncate on the same table is cancelled, because the confirmation named an object that no longer answers to that name.
+The statement runs at once instead of joining the drop and truncate queue, so **Preview SQL** never shows it. Everything bound to the table follows the new name: open tabs keep their rows, filters, sort and column widths, a favourite stays a favourite, and the Recent entry holds its place. A drop or truncate already queued against that table comes back out of the queue.
+
+<Frame caption="The row's label becomes the rename field">
+  <img className="block dark:hidden" src="/images/rename-table.png" alt="A sidebar table row with its label replaced by an editable text field" />
+  <img className="hidden dark:block" src="/images/rename-table-dark.png" alt="A sidebar table row with its label replaced by an editable text field" />
+</Frame>
 
 | Database | Rename table | Rename database | Rename schema |
 |----------|--------------|-----------------|---------------|
-| MySQL / MariaDB | Yes | No, the statement was removed in 5.1.23 | No schemas |
-| PostgreSQL, Redshift, CockroachDB | Yes | Yes | Yes |
-| SQLite, LibSQL, Cloudflare D1 | Tables only, not views | No | No schemas |
-| ClickHouse | Yes | Yes, on the Atomic engine | No |
-| SQL Server | Yes, through `sp_rename` | No | No |
-| Oracle, Dameng | Yes | No | No |
-| DuckDB, BigQuery | Yes | No | No |
+| MySQL | Yes | No | No schemas |
+| MariaDB | Yes | No | No schemas |
+| PostgreSQL | Yes | Yes | Yes |
+| Redshift | Yes | Yes | Yes |
+| CockroachDB | Yes | Yes | Yes |
+| PGlite | Yes | No | Yes |
+| SQLite | Tables, not views | No | No schemas |
+| LibSQL | Tables, not views | No | No schemas |
+| Cloudflare D1 | Tables, not views | No | No schemas |
+| ClickHouse | Yes | Yes | No |
+| SQL Server | Yes | No | No |
+| Oracle | Yes | No | No |
+| Dameng | Yes | No | No |
+| DuckDB | Yes | No | No |
+| BigQuery | Yes | No | No |
 | Snowflake | Yes | Yes | Yes |
-| Trino | Depends on the connector | No, a catalog is configuration | Yes |
+| Trino | Depends on the connector | No | Yes |
 | Teradata | Yes | No | No |
-| MongoDB | Yes, within one database | No | No |
+| MongoDB | Yes | No | No |
 
-Where a row cannot be renamed the item is absent rather than dimmed. Redis, Cassandra, DynamoDB, Elasticsearch, Kafka, etcd, SurrealDB and Beancount have no rename at all, and what looks like one in those engines is a copy followed by a delete.
+No other engine has a rename, so the item never appears on Cassandra, DynamoDB, Elasticsearch, etcd, Kafka, Redis, SurrealDB or Beancount. What resembles one there is a copy followed by a delete, and it changes record identity.
 
-Rename a database or schema from its own row in the tree, not from the one the connection is on: switch elsewhere first. PostgreSQL refuses outright with "the current database cannot be renamed", and the engines that allow it leave the session pointing at a name that has gone.
+**Rename Database** and **Rename Schema** are absent on the container the connection is browsing. Switch to another one first, then rename the one you left.
 
 ## Maintenance
 
