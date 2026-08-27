@@ -35,10 +35,10 @@ final class MainContentCommandActions {
     // MARK: - Bindings
 
     @ObservationIgnored private let selectionState: GridSelectionState
-    @ObservationIgnored private let selectedTables: Binding<Set<TableInfo>>
-    @ObservationIgnored private let pendingTruncates: Binding<Set<String>>
-    @ObservationIgnored private let pendingDeletes: Binding<Set<String>>
-    @ObservationIgnored private let tableOperationOptions: Binding<[String: TableOperationOptions]>
+    @ObservationIgnored private let selectedTables: Binding<Set<DatabaseTreeTableRef>>
+    @ObservationIgnored private let pendingTruncates: Binding<Set<DatabaseTreeTableRef>>
+    @ObservationIgnored private let pendingDeletes: Binding<Set<DatabaseTreeTableRef>>
+    @ObservationIgnored private let tableOperationOptions: Binding<[DatabaseTreeTableRef: TableOperationOptions]>
     @ObservationIgnored private let rightPanelState: RightPanelState
 
     /// The window this instance belongs to — used for key-window guards.
@@ -72,10 +72,10 @@ final class MainContentCommandActions {
         coordinator: MainContentCoordinator,
         connection: DatabaseConnection,
         selectionState: GridSelectionState,
-        selectedTables: Binding<Set<TableInfo>>,
-        pendingTruncates: Binding<Set<String>>,
-        pendingDeletes: Binding<Set<String>>,
-        tableOperationOptions: Binding<[String: TableOperationOptions]>,
+        selectedTables: Binding<Set<DatabaseTreeTableRef>>,
+        pendingTruncates: Binding<Set<DatabaseTreeTableRef>>,
+        pendingDeletes: Binding<Set<DatabaseTreeTableRef>>,
+        tableOperationOptions: Binding<[DatabaseTreeTableRef: TableOperationOptions]>,
         rightPanelState: RightPanelState
     ) {
         self.coordinator = coordinator
@@ -239,12 +239,12 @@ final class MainContentCommandActions {
             var updatedDeletes = pendingDeletes.wrappedValue
             var updatedTruncates = pendingTruncates.wrappedValue
 
-            for table in selectedTables.wrappedValue {
-                updatedTruncates.remove(table.name)
-                if updatedDeletes.contains(table.name) {
-                    updatedDeletes.remove(table.name)
+            for ref in selectedTables.wrappedValue {
+                updatedTruncates.remove(ref)
+                if updatedDeletes.contains(ref) {
+                    updatedDeletes.remove(ref)
                 } else {
-                    updatedDeletes.insert(table.name)
+                    updatedDeletes.insert(ref)
                 }
             }
 
@@ -483,7 +483,7 @@ final class MainContentCommandActions {
     var selectedObject: TableInfo? {
         let selection = selectedTables.wrappedValue
         guard selection.count == 1 else { return nil }
-        return selection.first
+        return selection.first?.table
     }
 
     var hasQueryText: Bool {

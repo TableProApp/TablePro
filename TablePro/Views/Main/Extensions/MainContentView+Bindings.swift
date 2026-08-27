@@ -215,8 +215,8 @@ enum InspectorValueDisplayFormatResolver {
 /// for consolidated toolbar badge onChange observation.
 struct PendingChangeTrigger: Equatable {
     let hasDataChanges: Bool
-    let pendingTruncates: Set<String>
-    let pendingDeletes: Set<String>
+    let pendingTruncates: Set<DatabaseTreeTableRef>
+    let pendingDeletes: Set<DatabaseTreeTableRef>
     let hasStructureChanges: Bool
     let isFileDirty: Bool
     let hasCreateTablePending: Bool

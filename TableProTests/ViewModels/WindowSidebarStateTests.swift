@@ -21,7 +21,7 @@ struct WindowSidebarStateTests {
         let windowA = WindowSidebarState()
         let windowB = WindowSidebarState()
 
-        let users = TestFixtures.makeTableInfo(name: "users")
+        let users = TestFixtures.makeTableRef(name: "users")
         windowA.selectedTables = [users]
 
         #expect(windowA.selectedTables == [users])
@@ -36,7 +36,7 @@ struct WindowSidebarStateTests {
     @Test("A table the user picked without opening it survives a background reload")
     func refusesTheMarkOverASingleUserPick() {
         let state = WindowSidebarState()
-        state.select(tables: [TestFixtures.makeTableInfo(name: "orders")], rowCount: 1)
+        state.select(tables: [TestFixtures.makeTableRef(name: "orders")], rowCount: 1)
 
         #expect(!state.acceptsObjectMarkRefresh)
     }
@@ -46,8 +46,8 @@ struct WindowSidebarStateTests {
         let state = WindowSidebarState()
         state.select(
             tables: [
-                TestFixtures.makeTableInfo(name: "orders"),
-                TestFixtures.makeTableInfo(name: "users"),
+                TestFixtures.makeTableRef(name: "orders"),
+                TestFixtures.makeTableRef(name: "users"),
             ],
             rowCount: 2
         )

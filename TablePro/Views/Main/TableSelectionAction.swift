@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// Describes what should happen when the sidebar selection set changes.
 ///
@@ -17,23 +18,23 @@ import Foundation
 /// selection is still exactly one addition.
 enum TableSelectionAction: Equatable {
     case noNavigation
-    case navigate(table: TableInfo)
+    case navigate(ref: DatabaseTreeTableRef)
 
     /// `selectedRowCount` is how many rows the sidebar has selected, which the table set alone
     /// cannot tell: a table Cmd-clicked alongside a schema yields one table and is still an
     /// extension. Callers that can only ever select tables pass the table count.
     static func resolve(
-        oldTables: Set<TableInfo>,
-        newTables: Set<TableInfo>,
+        oldTables: Set<DatabaseTreeTableRef>,
+        newTables: Set<DatabaseTreeTableRef>,
         selectedRowCount: Int
     ) -> TableSelectionAction {
         guard selectedRowCount == 1,
               newTables.count == 1,
-              let table = SelectionDelta.singleAddition(old: oldTables, new: newTables)
+              let ref = SelectionDelta.singleAddition(old: oldTables, new: newTables)
         else {
             return .noNavigation
         }
-        return .navigate(table: table)
+        return .navigate(ref: ref)
     }
 }
 
@@ -69,7 +70,7 @@ enum SidebarObjectSelection: Equatable {
     /// Clearing the mark here would blank it every time a container starts loading.
     case leaveUnchanged
     /// The rows the open document occupies, empty when it occupies none in the database on screen.
-    case mark(Set<TableInfo>)
+    case mark(Set<DatabaseTreeTableRef>)
 
     /// - Parameters:
     ///   - tabScope: the selected tab's own scope, which it owns for life.
@@ -88,7 +89,15 @@ enum SidebarObjectSelection: Equatable {
         else {
             return .mark([])
         }
-        return .mark([match])
+        /// Spelled the way the tree spells its own rows, or the mark names a row the tree does not
+        /// have. A tree hangs a table off a schema node and the row's own schema may be empty
+        /// there, so the tab's schema stands in; the database is the browsed one, which is the
+        /// only database whose rows are on screen.
+        return .mark([DatabaseTreeTableRef(
+            database: browseScope.database.nilIfEmpty,
+            schema: match.schema?.nilIfEmpty ?? tabScope.schema,
+            table: match
+        )])
     }
 
     /// A schema decides between two rows only when both sides name one. An engine without schemas

@@ -19,10 +19,10 @@ struct CommandActionsFocusGateTests {
         let state = SessionStateFactory.create(connection: connection, payload: nil)
         let coordinator = state.coordinator
 
-        var selectedTables: Set<TableInfo> = []
-        var pendingTruncates: Set<String> = []
-        var pendingDeletes: Set<String> = []
-        var tableOperationOptions: [String: TableOperationOptions] = [:]
+        var selectedTables: Set<DatabaseTreeTableRef> = []
+        var pendingTruncates: Set<DatabaseTreeTableRef> = []
+        var pendingDeletes: Set<DatabaseTreeTableRef> = []
+        var tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions] = [:]
 
         return MainContentCommandActions(
             coordinator: coordinator,

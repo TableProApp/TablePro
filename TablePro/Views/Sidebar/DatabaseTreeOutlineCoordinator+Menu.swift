@@ -36,7 +36,7 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
         let settings = AppSettingsManager.shared.general
         return DatabaseTreeMenuContext(
             clicked: clicked?.kind,
-            selectedTables: Set(selectedRefs().map(\.table)),
+            selectedTables: Set(selectedRefs()),
             selectedContainers: selectedContainerRefs(),
             activeDatabase: activeDatabase,
             activeSchema: activeSchema,

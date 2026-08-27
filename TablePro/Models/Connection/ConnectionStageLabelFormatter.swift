@@ -65,6 +65,9 @@ internal enum ConnectionStageLabelFormatter {
             return "Cloud SQL Auth Proxy"
         case .socksProxy:
             return String(localized: "the SOCKS proxy")
+        case .remoteFile:
+            let host = connection.resolvedSSHConfig.host.trimmingCharacters(in: .whitespaces)
+            return host.isEmpty ? nil : host
         case .none:
             return nil
         }

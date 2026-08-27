@@ -19,6 +19,9 @@ extension DatabaseConnection {
     }
 
     var endpointDescription: String {
+        if let remote = remoteFileOrigin {
+            return remote
+        }
         if let socketPath = sshForwardUnixSocketPath, resolvedSSHConfig.enabled {
             return (socketPath as NSString).abbreviatingWithTildeInPath
         }
@@ -74,6 +77,19 @@ extension DatabaseConnection {
     private var sshViaDescriptor: String? {
         let ssh = resolvedSSHConfig
         guard ssh.enabled, !ssh.host.isEmpty else { return nil }
+        guard !ssh.forwardsRemoteFile else { return nil }
         return String(format: String(localized: "via %@"), ssh.host)
+    }
+
+    /// `user@host:/path` for a connection whose database file lives on an SSH server.
+    ///
+    /// It replaces the endpoint rather than sitting beside it, because the alternative is a row
+    /// that reads exactly like a local file. Someone who cannot tell the two apart at a glance can
+    /// edit production believing they are editing a copy on their own disk.
+    var remoteFileOrigin: String? {
+        let ssh = resolvedSSHConfig
+        guard ssh.forwardsRemoteFile else { return nil }
+        let account = ssh.username.isEmpty ? ssh.host : "\(ssh.username)@\(ssh.host)"
+        return "\(account):\(ssh.remoteFilePath)"
     }
 }

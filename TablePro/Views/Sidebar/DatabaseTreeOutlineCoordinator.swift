@@ -27,8 +27,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     private var isConnected = false
     internal var activeDatabase: String?
     internal var activeSchema: String?
-    private var pendingTruncates: Set<String> = []
-    private var pendingDeletes: Set<String> = []
+    private var pendingTruncates: Set<DatabaseTreeTableRef> = []
+    private var pendingDeletes: Set<DatabaseTreeTableRef> = []
     internal var showRecentTables = true
     private var rowSize: SidebarRowSize = .medium
 
@@ -42,7 +42,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     private var cachedRowActions: DatabaseTreeRowActions?
     private var lastSelection: Set<DatabaseTreeTableRef> = []
     private var lastSelectedNodeIds: [String] = []
-    private var publishedTables: Set<TableInfo> = []
+    private var publishedTables: Set<DatabaseTreeTableRef> = []
     private var publishedSelectionDatabase: String?
     private var isModelSelectionAdoptionPending = false
     private var openSelectionDepth = 0
@@ -370,7 +370,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
 
         var nodes: [DatabaseTreeNode] = []
         for node in nodeCache.values {
-            guard case .table(let ref) = node.kind, selectedTables.contains(ref.table) else { continue }
+            guard case .table(let ref) = node.kind, selectedTables.contains(ref) else { continue }
             guard selectionDatabase == nil || ref.database == selectionDatabase else { continue }
             nodes.append(node)
         }
@@ -378,7 +378,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         lastSelection = Set(DatabaseTreeSelection.tableRefs(of: nodes))
         /// Still pending while a selected table has no row in the database being browsed: the row is
         /// usually one that has not been built yet, and the next sync adopts it.
-        isModelSelectionAdoptionPending = Set(lastSelection.map(\.table)) != selectedTables
+        isModelSelectionAdoptionPending = Set(lastSelection) != selectedTables
     }
 
     private var modelSelectionDatabase: String? {
@@ -423,7 +423,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     private func publishSelection() {
         guard let windowState else { return }
         let nodes = selectedNodes()
-        let tables = DatabaseTreeSelection.tableInfos(of: nodes)
+        let tables = Set(DatabaseTreeSelection.tableRefs(of: nodes))
         publishedTables = tables
         publishedSelectionDatabase = modelSelectionDatabase
         isModelSelectionAdoptionPending = false

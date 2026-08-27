@@ -29,8 +29,10 @@ internal enum SidebarMenuCommand: Equatable {
     case exportTables(names: Set<String>, ref: DatabaseTreeTableRef)
     case importTables(formatId: String, ref: DatabaseTreeTableRef)
     case maintenance(operation: String, tableName: String, ref: DatabaseTreeTableRef)
-    case truncateTables(names: [String], ref: DatabaseTreeTableRef)
-    case dropTables(names: [String], ref: DatabaseTreeTableRef)
+    /// Queued rather than run, so these carry every target in full: a queue keyed by name is
+    /// resolved against whatever the tab in front points at by the time Save runs.
+    case truncateTables(targets: [DatabaseTreeTableRef], ref: DatabaseTreeTableRef)
+    case dropTables(targets: [DatabaseTreeTableRef], ref: DatabaseTreeTableRef)
     case toggleFavorite(DatabaseTreeTableRef)
     case removeRecent(DatabaseTreeTableRef)
     case clearRecents

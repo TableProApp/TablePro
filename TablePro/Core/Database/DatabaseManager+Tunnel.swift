@@ -99,6 +99,7 @@ extension DatabaseManager {
         case .cloudflare: return CloudflareTunnelManager.shared
         case .cloudSQLProxy: return CloudSQLProxyManager.shared
         case .socksProxy: return SOCKSProxyManager.shared
+        case .remoteFile: return RemoteFileTransportManager.shared
         case .none: return nil
         }
     }

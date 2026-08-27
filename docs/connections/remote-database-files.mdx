@@ -1,0 +1,66 @@
+---
+title: Remote Database Files
+description: Open a SQLite database that lives on an SSH server, working from a read-only copy fetched over SFTP
+---
+
+Nothing is tunnelled here, and nothing is written. The database is fetched over SFTP, opened from the copy on this Mac, and the original on the server is never touched.
+
+That constraint is the feature, not a gap in it. SQLite's own documentation says its file locking cannot be relied on across a network, so a client that wrote to the file in place would eventually corrupt it.
+
+## Set one up
+
+<Steps>
+  <Step title="Open the pane">
+    Create or edit a SQLite connection and select **Remote File**. Switch on **Open a database file on an SSH server**.
+  </Step>
+  <Step title="Name the server">
+    Fill in **SSH Host**, **SSH Port**, and **SSH User**, then pick an authentication method. Password, private key, SSH agent, keyboard-interactive, jump hosts, and one-time codes all work the way they do for a tunnel, and a saved [SSH profile](/connections/ssh-profiles) supplies all of it at once.
+  </Step>
+  <Step title="Name the file">
+    Put the database's path on the server in **Path**. An absolute path is taken as written. A relative path, or one starting `~`, resolves against the SSH account's home directory, and a symlink resolves to the file it names.
+  </Step>
+</Steps>
+
+<Check>
+The connection list shows the origin as `deploy@prod-1:/srv/app.db` instead of a local path, so a remote database never reads like one of your own.
+</Check>
+
+## What arrives
+
+Where the server carries `sqlite3` 3.27 or newer, it is asked for a `VACUUM INTO` snapshot and that is what comes down. This is the case worth having: the snapshot is taken while other programs keep writing and is still internally consistent. Measured against a database taking 22,518 committed transactions during the copy, the snapshot passed `PRAGMA integrity_check`.
+
+Otherwise the file is copied directly, along with any `-wal` or `-journal` beside it. Those are not optional. A database in WAL mode keeps committed rows in `-wal` until a checkpoint moves them, so the main file alone is short of the most recent work with nothing to say so.
+
+<Warning>
+A direct copy of a database another program is writing at that moment can hold a mix of old and new pages. Take one when nothing else is writing, or install `sqlite3` on the server so the snapshot path is available.
+</Warning>
+
+What arrives is checked before anything opens it: the byte count has to match what the server reported, the file has to start like a SQLite database, and it has to pass `integrity_check`. A transfer cut short by a dropped session leaves an intact header and a plausible prefix, and `sqlite3_open` on that reports success and shows an empty database.
+
+## Read-only, and what that means
+
+The connection opens in read-only mode, the same mode the **Safe Mode** setting offers. Editing a cell, running an `INSERT`, and altering a table are all refused, by the grid and by the SQL editor alike.
+
+That is deliberate rather than unfinished. An edit would land in the copy on this Mac, change nothing on the server, and disappear the next time the file was fetched.
+
+## Reconnecting
+
+Closing a connection leaves its copy on disk. Opening it again compares the file on the server against what was fetched: if neither its size, its modification time, nor its write-ahead log has moved, the copy is reused and nothing is transferred. This matters more than it sounds, because the health monitor reconnects on a failed thirty-second ping, and a large database would otherwise come down again on every network blip.
+
+## Limitations
+
+No remote file browser. Type the path.
+
+No writing back. A change made locally is refused before it can be made, so there is nothing to send.
+
+SQLite only. DuckDB and libSQL open local files too, but their recovery-log naming and their local-versus-remote modes need handling this does not yet have.
+
+Two connections naming one remote file share a single local copy and take turns fetching it. Two copies of TablePro on two Macs cannot see each other at all.
+
+Cancelling a fetch stops it between chunks rather than mid-request, so a transfer already inside a read finishes that read first.
+
+## Related
+
+- [SSH Tunneling](/connections/ssh-tunneling) for reaching a database server rather than a file
+- [SSH Profiles](/connections/ssh-profiles) for reusing one bastion across connections
+- [SQLite](/databases/sqlite)

@@ -721,7 +721,8 @@ extension PluginMetadataRegistry {
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
                     supportsRenameColumn: true,
-                    supportsConnectionPooling: false
+                    supportsConnectionPooling: false,
+                    localFilePathField: .additionalField("duckdbFilePath")
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "main",
@@ -777,7 +778,8 @@ extension PluginMetadataRegistry {
                     supportsRenameColumn: false,
                     supportsAddIndex: false,
                     supportsDropIndex: false,
-                    supportsModifyPrimaryKey: false
+                    supportsModifyPrimaryKey: false,
+                    localFilePathField: .database
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -1138,7 +1140,8 @@ extension PluginMetadataRegistry {
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
                     supportsModifyColumn: false,
-                    supportsRenameColumn: true
+                    supportsRenameColumn: true,
+                    localFilePathField: .additionalField("libsqlFilePath")
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "main",

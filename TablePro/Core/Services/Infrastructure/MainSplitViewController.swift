@@ -200,14 +200,19 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             }
         }
 
-        let phase: ConnectionWindowPhase
-        if resolvedSession?.driver != nil {
-            phase = .connected
-        } else if resolvedSession != nil {
-            phase = .connecting
-        } else {
-            phase = .idle
-        }
+        /// Resolved through the same machine every later status event uses. Reading the driver
+        /// directly adopted a connection as connected over a handle a reconnect had already given up
+        /// on, and a monitor that has given up sends no further event to correct it.
+        let phase = ConnectionWindowPhaseMachine.onSessionChanged(
+            phase: resolvedSession == nil ? .idle : .connecting,
+            session: ConnectionSessionSnapshot(
+                exists: resolvedSession != nil,
+                hasDriver: resolvedSession?.driver != nil,
+                disconnectInfo: DatabaseManager.shared.disconnectReason(for: connectionId),
+                liveness: resolvedSession?.liveness ?? .live
+            ),
+            ownsAttempt: false
+        )
 
         let workspace = ConnectionWorkspace(
             connectionId: connectionId,
@@ -444,7 +449,8 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             exists: session != nil,
             hasDriver: session?.driver != nil,
             disconnectInfo: DatabaseManager.shared.disconnectReason(for: sid),
-            wasDisconnectedByUser: DatabaseManager.shared.wasDisconnectedByUser(sid)
+            wasDisconnectedByUser: DatabaseManager.shared.wasDisconnectedByUser(sid),
+            liveness: session?.liveness ?? .live
         )
         let nextPhase = ConnectionWindowPhaseMachine.onSessionChanged(
             phase: workspace.phase,

@@ -127,6 +127,7 @@
               "connections/urls",
               "connections/ssh-tunneling",
               "connections/ssh-profiles",
+              "connections/remote-database-files",
               "connections/cloudflare-tunnel",
               "connections/cloud-sql-proxy",
               "connections/socks-proxy",

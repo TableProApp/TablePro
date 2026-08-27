@@ -8,6 +8,7 @@ import Foundation
 enum ConnectionFormPane: String, CaseIterable, Identifiable, Hashable {
     case general
     case ssh
+    case remoteFile
     case cloudflareTunnel
     case cloudSQLProxy
     case socksProxy
@@ -22,6 +23,7 @@ enum ConnectionFormPane: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .general: return String(localized: "General")
         case .ssh: return String(localized: "SSH Tunnel")
+        case .remoteFile: return String(localized: "Remote File")
         case .cloudflareTunnel: return String(localized: "Cloudflare Tunnel")
         case .cloudSQLProxy: return String(localized: "Cloud SQL Auth Proxy")
         case .socksProxy: return String(localized: "SOCKS Proxy")
@@ -36,6 +38,7 @@ enum ConnectionFormPane: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .general: return "network"
         case .ssh: return "lock.shield"
+        case .remoteFile: return "externaldrive.connected.to.line.below"
         case .cloudflareTunnel: return "cloud"
         case .cloudSQLProxy: return "cloud.fill"
         case .socksProxy: return "arrow.triangle.swap"
@@ -54,6 +57,8 @@ enum ConnectionFormPane: String, CaseIterable, Identifiable, Hashable {
             issues = coordinator.network.validationIssues + coordinator.auth.validationIssues
         case .ssh:
             issues = coordinator.ssh.validationIssues
+        case .remoteFile:
+            issues = coordinator.remoteFile.validationIssues
         case .cloudflareTunnel:
             issues = coordinator.cloudflareTunnel.validationIssues
         case .cloudSQLProxy:
