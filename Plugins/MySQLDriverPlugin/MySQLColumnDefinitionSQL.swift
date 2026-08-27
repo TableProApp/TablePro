@@ -81,5 +81,18 @@ internal func mysqlColumnAttributesSQL(_ column: PluginColumnDefinition) -> Stri
 }
 
 internal func mysqlColumnDefinitionSQL(_ column: PluginColumnDefinition) -> String {
-    "\(mysqlQuoteIdentifier(column.name)) \(column.dataType)" + mysqlColumnAttributesSQL(column)
+    let name = mysqlQuoteIdentifier(column.name)
+    guard let expression = column.generationExpression?.nilIfEmpty else {
+        return "\(name) \(column.dataType)" + mysqlColumnAttributesSQL(column)
+    }
+    // A generated column takes the expression in place of the ordinary default and auto-increment
+    // attributes, and MySQL rejects most of them alongside it. The keyword is spelled out because
+    // both MySQL and MariaDB default to VIRTUAL.
+    let kind = (column.generationKind ?? .virtual).rawValue
+    var definition = "\(name) \(column.dataType) GENERATED ALWAYS AS (\(expression)) \(kind)"
+    if !column.isNullable { definition += " NOT NULL" }
+    if let comment = column.comment, !comment.isEmpty {
+        definition += " COMMENT '\(mysqlEscapeStringLiteral(comment))'"
+    }
+    return definition
 }

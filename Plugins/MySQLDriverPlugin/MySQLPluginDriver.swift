@@ -282,6 +282,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func fetchGenerationExpressions(table: String) async throws -> [String: String] {
+        guard MySQLServerVersion.hasGenerationExpression(banner: _serverVersion, isMariaDB: isMariaDB) else {
+            return [:]
+        }
         let query = """
             SELECT COLUMN_NAME, GENERATION_EXPRESSION
             FROM INFORMATION_SCHEMA.COLUMNS
@@ -304,6 +307,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// directly. Neither exposes the columns a check touches, so `columns` stays empty rather than
     /// being guessed from the expression.
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
+        guard MySQLServerVersion.hasCheckConstraints(banner: _serverVersion, isMariaDB: isMariaDB) else {
+            return []
+        }
         let database = mysqlEscapeStringLiteral(_activeDatabase)
         let safeTable = mysqlEscapeStringLiteral(table)
         let query: String

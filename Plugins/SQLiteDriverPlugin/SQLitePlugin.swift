@@ -1123,10 +1123,8 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func sqliteColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
         var def = "\(quoteIdentifier(col.name)) \(col.dataType)"
         if let expression = col.generationExpression?.nilIfEmpty {
-            // ALTER TABLE ADD COLUMN refuses a STORED generated column once the table has rows,
-            // so an added column is always VIRTUAL; STORED is reachable only at CREATE TABLE.
-            let kind = inlinePK ? (col.generationKind ?? .virtual) : .virtual
-            def += " GENERATED ALWAYS AS (\(expression)) \(kind.rawValue)"
+            def += " GENERATED ALWAYS AS (\(expression)) \((col.generationKind ?? .virtual).rawValue)"
+            if !col.isNullable { def += " NOT NULL" }
             return def
         }
         if inlinePK && col.isPrimaryKey {
@@ -1169,8 +1167,30 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - ALTER TABLE DDL
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
-        let colDef = sqliteColumnDefinition(column, inlinePK: false)
+        let colDef = sqliteColumnDefinition(addableColumn(column), inlinePK: false)
         return "ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(colDef)"
+    }
+
+    /// ALTER TABLE ADD COLUMN refuses a STORED generated column outright once the table holds rows
+    /// ("cannot add a STORED column"), so the ALTER path downgrades to VIRTUAL. CREATE TABLE has no
+    /// such limit and keeps whichever kind was chosen.
+    private func addableColumn(_ column: PluginColumnDefinition) -> PluginColumnDefinition {
+        guard column.generationKind == .stored else { return column }
+        return PluginColumnDefinition(
+            name: column.name,
+            dataType: column.dataType,
+            isNullable: column.isNullable,
+            defaultValue: column.defaultValue,
+            isPrimaryKey: column.isPrimaryKey,
+            autoIncrement: column.autoIncrement,
+            comment: column.comment,
+            unsigned: column.unsigned,
+            onUpdate: column.onUpdate,
+            charset: column.charset,
+            collation: column.collation,
+            generationExpression: column.generationExpression,
+            generationKind: .virtual
+        )
     }
 
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {

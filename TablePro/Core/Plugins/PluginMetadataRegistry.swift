@@ -566,8 +566,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     fileExtensions: [],
                     databaseGroupingStrategy: .byDatabase,
                     structureColumnFields: [
-                        .name, .type, .nullable, .defaultValue, .onUpdate, .autoIncrement,
-                        .comment, .charset, .collation
+                        .name, .type, .nullable, .defaultValue, .generated, .generationExpression,
+                        .onUpdate, .autoIncrement, .comment, .charset, .collation
                     ]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
@@ -626,8 +626,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     fileExtensions: [],
                     databaseGroupingStrategy: .byDatabase,
                     structureColumnFields: [
-                        .name, .type, .nullable, .defaultValue, .onUpdate, .autoIncrement,
-                        .comment, .charset, .collation
+                        .name, .type, .nullable, .defaultValue, .generated, .generationExpression,
+                        .onUpdate, .autoIncrement, .comment, .charset, .collation
                     ]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
@@ -687,7 +687,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                    structureColumnFields: [
+                        .name, .type, .nullable, .defaultValue, .generated, .generationExpression, .comment
+                    ]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: postgresqlDialect,
@@ -794,6 +796,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsAddIndex: false,
                     supportsDropIndex: false,
                     supportsModifyPrimaryKey: false,
+                    supportsCheckConstraints: true,
+                    supportsCheckConstraintEditing: true,
+                    supportsGeneratedColumns: true,
                     defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -807,7 +812,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                    structureColumnFields: [
+                        .name, .type, .nullable, .defaultValue, .generated, .generationExpression, .comment
+                    ]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: postgresqlDialect,
@@ -847,6 +854,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
+                    supportsCheckConstraints: true,
+                    supportsCheckConstraintEditing: true,
+                    supportsGeneratedColumns: true,
                     defaultSSLMode: .disabled,
                     supportsCloudflareTunnel: false,
                     supportsConnectionPooling: false
@@ -862,7 +872,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                    structureColumnFields: [
+                        .name, .type, .nullable, .defaultValue, .generated, .generationExpression, .comment
+                    ]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: postgresqlDialect,
@@ -905,7 +917,6 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
                     supportsCheckConstraints: true,
-                    supportsCheckConstraintEditing: true,
                     supportsGeneratedColumns: true,
                     supportsDatabaseTriggerBrowse: true,
                     supportsCloudflareTunnel: false
@@ -921,7 +932,10 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     systemSchemaNames: [],
                     fileExtensions: ["db", "db3", "s3db", "sl3", "sqlite", "sqlite3", "sqlitedb"],
                     databaseGroupingStrategy: .flat,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                    structureColumnFields: [
+                        .name, .type, .nullable, .defaultValue, .generated, .generationExpression,
+                        .autoIncrement, .comment
+                    ]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: sqliteDialect,

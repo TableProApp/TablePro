@@ -42,8 +42,12 @@ enum SchemaChange: Hashable, Equatable {
     var isDestructive: Bool {
         switch self {
         case .deleteColumn, .modifyColumn, .deleteIndex, .deleteForeignKey, .modifyPrimaryKey,
-             .deleteCheckConstraint, .modifyCheckConstraint:
+             .deleteCheckConstraint:
             return true
+        case .modifyCheckConstraint(let old, let new):
+            // Renaming is one statement that touches no rows. Only a changed expression drops and
+            // re-adds the constraint, which re-checks the whole table.
+            return old.expression != new.expression
         default:
             return false
         }
@@ -57,8 +61,10 @@ enum SchemaChange: Hashable, Equatable {
             return old.dataType != new.dataType || (old.isNullable && !new.isNullable)
         case .deleteColumn, .modifyPrimaryKey:
             return true
-        case .addCheckConstraint, .modifyCheckConstraint:
+        case .addCheckConstraint:
             return true
+        case .modifyCheckConstraint(let old, let new):
+            return old.expression != new.expression
         default:
             return false
         }

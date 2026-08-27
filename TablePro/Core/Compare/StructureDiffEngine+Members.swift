@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 internal extension StructureDiffEngine {
     struct MemberOutcome {
@@ -118,7 +119,9 @@ private extension StructureDiffEngine {
             String(column.unsigned),
             options.normalizedText(column.defaultValue) ?? "",
             options.normalizedText(column.onUpdate) ?? "",
-            options.normalizedText(strippedExtra(column.extra)) ?? ""
+            options.normalizedText(strippedExtra(column.extra)) ?? "",
+            options.normalizedText(column.generationExpression) ?? "",
+            column.generationKind?.rawValue ?? ""
         ]
         if !options.ignoreCollationAndCharset {
             parts.append(options.matchKey(column.charset ?? ""))

@@ -1091,6 +1091,9 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         if let expression = col.generationExpression?.nilIfEmpty {
             def += " GENERATED ALWAYS AS (\(expression)) \(pgGenerationKeyword(col.generationKind))"
             if !col.isNullable { def += " NOT NULL" }
+            // PostgreSQL allows a primary key on a generated column, and the caller relies on the
+            // inline key being emitted here: returning early without it created no key at all.
+            if inlinePK && col.isPrimaryKey { def += " PRIMARY KEY" }
             return def
         }
         if !col.autoIncrement {
@@ -1107,6 +1110,24 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             def += " PRIMARY KEY"
         }
         return def
+    }
+
+    /// PostgreSQL 17 added ALTER COLUMN ... SET EXPRESSION AS, which rewrites the column in place.
+    /// Nothing else is expressible: making a plain column generated, or a generated one plain, needs
+    /// the column dropped and re-added, so those return nil and the operation is refused rather than
+    /// silently applying the rest of the edit.
+    private func pgGenerationChangeSQL(
+        qt: String,
+        colName: String,
+        old: PluginColumnDefinition,
+        new: PluginColumnDefinition
+    ) -> String? {
+        let oldExpression = old.generationExpression?.nilIfEmpty
+        let newExpression = new.generationExpression?.nilIfEmpty
+        guard oldExpression != newExpression || old.generationKind != new.generationKind else { return nil }
+        guard let newExpression, oldExpression != nil else { return nil }
+        guard versionedCapabilities.hasSetGeneratedExpression else { return nil }
+        return "ALTER TABLE \(qt) ALTER COLUMN \(colName) SET EXPRESSION AS (\(newExpression))"
     }
 
     /// Never emitted bare: PostgreSQL 17 and earlier reject VIRTUAL outright and require STORED,
@@ -1213,6 +1234,10 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             } else {
                 stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) DROP DEFAULT")
             }
+        }
+
+        if let generationStatement = pgGenerationChangeSQL(qt: qt, colName: colName, old: oldColumn, new: newColumn) {
+            stmts.append(generationStatement)
         }
 
         if let newComment = newColumn.comment, !newComment.isEmpty, newColumn.comment != oldColumn.comment {

@@ -58,8 +58,11 @@ extension PostgreSQLPluginDriver {
         return result.rows.compactMap { row in
             guard let name = row[safe: 0]?.asText,
                   let definition = row[safe: 1]?.asText else { return nil }
+            // JSON rather than a comma-joined string: a quoted PostgreSQL identifier may itself
+            // contain a comma, which splitting would turn into two column names.
             let columns = (row[safe: 3]?.asText?.nilIfEmpty)
-                .map { $0.components(separatedBy: ",") } ?? []
+                .flatMap { $0.data(using: .utf8) }
+                .flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? []
             return PluginCheckConstraintInfo(
                 name: name,
                 expression: PostgreSQLCheckConstraintDefinition.expression(fromConstraintDef: definition),

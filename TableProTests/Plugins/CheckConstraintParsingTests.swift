@@ -116,3 +116,52 @@ struct SQLiteCheckConstraintParserTests {
         #expect(expressions["b"] == nil)
     }
 }
+
+@Suite("MySQL server version floors")
+struct MySQLServerVersionTests {
+    @Test("MySQL gains CHECK_CONSTRAINTS at 8.0.16, not before")
+    func mysqlCheckFloor() {
+        #expect(!MySQLServerVersion.hasCheckConstraints(banner: "5.7.44", isMariaDB: false))
+        #expect(!MySQLServerVersion.hasCheckConstraints(banner: "8.0.15", isMariaDB: false))
+        #expect(MySQLServerVersion.hasCheckConstraints(banner: "8.0.16", isMariaDB: false))
+        #expect(MySQLServerVersion.hasCheckConstraints(banner: "8.4.0", isMariaDB: false))
+    }
+
+    @Test("MariaDB gains them at 10.2.1 and reports its own banner")
+    func mariadbCheckFloor() {
+        #expect(!MySQLServerVersion.hasCheckConstraints(banner: "10.1.48-MariaDB", isMariaDB: true))
+        #expect(MySQLServerVersion.hasCheckConstraints(banner: "10.2.1-MariaDB", isMariaDB: true))
+        #expect(MySQLServerVersion.hasCheckConstraints(banner: "12.3.2-MariaDB", isMariaDB: true))
+    }
+
+    @Test("MariaDB 10.1 has generated columns but no GENERATION_EXPRESSION column")
+    func generationExpressionFloor() {
+        #expect(!MySQLServerVersion.hasGenerationExpression(banner: "10.1.48-MariaDB", isMariaDB: true))
+        #expect(MySQLServerVersion.hasGenerationExpression(banner: "10.2.0-MariaDB", isMariaDB: true))
+        #expect(!MySQLServerVersion.hasGenerationExpression(banner: "5.7.5", isMariaDB: false))
+        #expect(MySQLServerVersion.hasGenerationExpression(banner: "5.7.6", isMariaDB: false))
+    }
+
+    @Test("an unreadable banner is treated as unsupported rather than assumed modern")
+    func unknownBannerIsUnsupported() {
+        #expect(!MySQLServerVersion.hasCheckConstraints(banner: nil, isMariaDB: false))
+        #expect(!MySQLServerVersion.hasCheckConstraints(banner: "unknown", isMariaDB: false))
+    }
+}
+
+@Suite("MSSQL check constraint definitions")
+struct MSSQLCheckConstraintDefinitionTests {
+    @Test("the wrapping parentheses SQL Server adds are removed")
+    func stripsWrapper() {
+        #expect(MSSQLCheckConstraintDefinition.expression(fromDefinition: "([a]>(0))") == "[a]>(0)")
+    }
+
+    @Test("an expression whose parentheses do not wrap the whole thing is left alone")
+    func leavesNonEnclosingAlone() {
+        let definition = "([a]>(0) AND len([b])<(10))"
+        #expect(
+            MSSQLCheckConstraintDefinition.expression(fromDefinition: definition)
+                == "[a]>(0) AND len([b])<(10)"
+        )
+    }
+}

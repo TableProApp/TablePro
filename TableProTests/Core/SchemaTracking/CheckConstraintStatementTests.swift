@@ -147,12 +147,27 @@ struct CheckConstraintStatementTests {
         #expect(change.requiresDataMigration)
     }
 
-    @Test("dropping and modifying a check are destructive, adding one is not")
+    @Test("dropping is destructive, and so is an expression change, because it re-adds")
     func destructiveClassification() {
         let target = constraint(name: "ck", expression: "a > 0")
+        var changedExpression = target
+        changedExpression.expression = "a > 1"
+
         #expect(SchemaChange.deleteCheckConstraint(target).isDestructive)
-        #expect(SchemaChange.modifyCheckConstraint(old: target, new: target).isDestructive)
+        #expect(SchemaChange.modifyCheckConstraint(old: target, new: changedExpression).isDestructive)
         #expect(!SchemaChange.addCheckConstraint(target).isDestructive)
         #expect(SchemaChange.deleteCheckConstraint(target).isDelete)
+    }
+
+    /// A rename is one native statement that touches no rows, so warning about data loss would be
+    /// a false alarm on every rename.
+    @Test("a pure rename is neither destructive nor a data migration")
+    func renameIsNotDestructive() {
+        let old = constraint(name: "ck_old", expression: "a > 0")
+        var renamed = old
+        renamed.name = "ck_new"
+
+        #expect(!SchemaChange.modifyCheckConstraint(old: old, new: renamed).isDestructive)
+        #expect(!SchemaChange.modifyCheckConstraint(old: old, new: renamed).requiresDataMigration)
     }
 }

@@ -18,7 +18,7 @@ struct StructureSortDescriptor {
 @MainActor
 final class StructureRowProvider {
     private static let canonicalFieldOrder: [StructureColumnField] = [
-        .name, .type, .nullable, .defaultValue, .generated, .generationExpression, .onUpdate,
+        .name, .type, .nullable, .defaultValue, .onUpdate, .generated, .generationExpression,
         .primaryKey, .autoIncrement, .comment, .charset, .collation
     ]
 

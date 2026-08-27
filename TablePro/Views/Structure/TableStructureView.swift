@@ -182,6 +182,7 @@ struct TableStructureView: View {
         .onChange(of: columns) { onColumnsChanged() }
         .onChange(of: indexes) { onIndexesChanged() }
         .onChange(of: foreignKeys) { onForeignKeysChanged() }
+        .onChange(of: checkConstraints) { onCheckConstraintsChanged() }
         .onChange(of: searchText) { displayVersion += 1 }
         .onChange(of: displayVersion) { updateGridDelegate() }
         .onAppear {

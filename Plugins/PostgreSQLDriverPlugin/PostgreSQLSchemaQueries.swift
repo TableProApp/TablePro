@@ -227,11 +227,11 @@ enum PostgreSQLSchemaQueries {
             pg_get_constraintdef(con.oid),
             con.convalidated,
             COALESCE((
-                SELECT array_to_string(array_agg(att.attname ORDER BY att.attnum), \',\')
+                SELECT to_json(array_agg(att.attname ORDER BY att.attnum))::text
                 FROM unnest(con.conkey) AS k(attnum)
                 JOIN pg_catalog.pg_attribute att
                     ON att.attrelid = con.conrelid AND att.attnum = k.attnum
-            ), \'\')
+            ), \'[]\')
         FROM pg_catalog.pg_constraint con
         JOIN pg_catalog.pg_class cls ON cls.oid = con.conrelid
         JOIN pg_catalog.pg_namespace ns ON ns.oid = cls.relnamespace

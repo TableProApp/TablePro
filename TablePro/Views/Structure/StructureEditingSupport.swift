@@ -45,6 +45,14 @@ enum StructureEditingSupport {
             if column.generationKind == nil { column.generationExpression = nil }
         case .generationExpression:
             column.generationExpression = value.isEmpty ? nil : value
+            // The pair describes one setting. An expression with no kind would be created using
+            // the driver's default while the grid still reads "Not generated", and a kind with no
+            // expression would create an ordinary column while the grid claims it is generated.
+            if column.generationExpression == nil {
+                column.generationKind = nil
+            } else if column.generationKind == nil {
+                column.generationKind = .virtual
+            }
         @unknown default: break
         }
     }

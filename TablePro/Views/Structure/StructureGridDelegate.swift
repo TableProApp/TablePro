@@ -95,7 +95,8 @@ final class StructureGridDelegate: DataGridViewDelegate {
             structureChangeManager.updateForeignKey(id: fk.id, with: fk)
 
         case .checkConstraints:
-            guard sourceRowIndex < structureChangeManager.workingCheckConstraints.count else { return }
+            guard connection.type.supportsCheckConstraintEditing,
+                  sourceRowIndex < structureChangeManager.workingCheckConstraints.count else { return }
             var constraint = structureChangeManager.workingCheckConstraints[sourceRowIndex]
             StructureEditingSupport.updateCheckConstraint(&constraint, at: column, with: newValue ?? "")
             structureChangeManager.updateCheckConstraint(id: constraint.id, with: constraint)
@@ -237,6 +238,9 @@ final class StructureGridDelegate: DataGridViewDelegate {
         } else if let fks = copiedItems as? [EditableForeignKeyDefinition],
                   let encoded = try? JSONEncoder().encode(fks) {
             jsonString = String(data: encoded, encoding: .utf8)
+        } else if let constraints = copiedItems as? [EditableCheckConstraintDefinition],
+                  let encoded = try? JSONEncoder().encode(constraints) {
+            jsonString = String(data: encoded, encoding: .utf8)
         }
 
         let displayProvider = currentProvider ?? StructureRowProvider(
@@ -301,9 +305,10 @@ final class StructureGridDelegate: DataGridViewDelegate {
             }
 
         case .checkConstraints:
-            guard let constraints = try? decoder.decode(
-                [EditableCheckConstraintDefinition].self, from: Data(jsonString.utf8)
-            ) else {
+            guard connection.type.supportsCheckConstraintEditing,
+                  let constraints = try? decoder.decode(
+                      [EditableCheckConstraintDefinition].self, from: Data(jsonString.utf8)
+                  ) else {
                 return
             }
             for item in constraints {
@@ -544,7 +549,8 @@ final class StructureGridDelegate: DataGridViewDelegate {
             case .checkConstraints:
                 guard row < structureChangeManager.workingCheckConstraints.count else { continue }
                 let constraint = structureChangeManager.workingCheckConstraints[row]
-                definitions.append("CONSTRAINT \(constraint.name) CHECK (\(constraint.expression))")
+                let quoted = driver.quoteIdentifier(constraint.name)
+                definitions.append("CONSTRAINT \(quoted) CHECK (\(constraint.expression))")
             case .ddl, .parts, .triggers:
                 break
             }
@@ -616,12 +622,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
             case .columns:
                 guard row < structureChangeManager.workingColumns.count else { continue }
                 let copy = structureChangeManager.workingColumns[row]
-                structureChangeManager.addColumn(EditableColumnDefinition(
-                    id: UUID(), name: copy.name, dataType: copy.dataType, isNullable: copy.isNullable,
-                    defaultValue: copy.defaultValue, autoIncrement: copy.autoIncrement, unsigned: copy.unsigned,
-                    comment: copy.comment, collation: copy.collation, onUpdate: copy.onUpdate,
-                    charset: copy.charset, extra: copy.extra, isPrimaryKey: copy.isPrimaryKey
-                ))
+                structureChangeManager.addColumn(copy.withNewIdentity())
             case .indexes:
                 guard row < structureChangeManager.workingIndexes.count else { continue }
                 let copy = structureChangeManager.workingIndexes[row]
@@ -635,7 +636,8 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 let copy = structureChangeManager.workingForeignKeys[row]
                 structureChangeManager.addForeignKey(copy.withNewIdentity())
             case .checkConstraints:
-                guard row < structureChangeManager.workingCheckConstraints.count else { continue }
+                guard connection.type.supportsCheckConstraintEditing,
+                      row < structureChangeManager.workingCheckConstraints.count else { continue }
                 let copy = structureChangeManager.workingCheckConstraints[row]
                 structureChangeManager.addCheckConstraint(copy.withNewIdentity())
             case .ddl, .parts, .triggers:

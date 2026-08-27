@@ -77,6 +77,7 @@ struct SchemaStatementGenerator {
         // 7. Add foreign keys
 
         var constraintDeletes: [SchemaChange] = []
+        var constraintModifies: [SchemaChange] = []
         var fkDeletes: [SchemaChange] = []
         var indexDeletes: [SchemaChange] = []
         var columnDeletes: [SchemaChange] = []
@@ -89,8 +90,19 @@ struct SchemaStatementGenerator {
 
         for change in changes {
             switch change {
-            case .deleteCheckConstraint, .modifyCheckConstraint:
+            case .deleteCheckConstraint:
                 constraintDeletes.append(change)
+            case .modifyCheckConstraint(let old, let new):
+                // An expression change is a drop and a re-add, and the two halves belong on
+                // opposite sides of the column work: the replacement may reference a column this
+                // same save adds, and the old one may reference a column it drops. Keeping them
+                // contiguous fails whenever either is true. A rename is one statement and stays put.
+                if old.expression == new.expression {
+                    constraintModifies.append(change)
+                } else {
+                    constraintDeletes.append(.deleteCheckConstraint(old))
+                    constraintAdds.append(.addCheckConstraint(new))
+                }
             case .addCheckConstraint:
                 constraintAdds.append(change)
             case .deleteForeignKey, .modifyForeignKey:
@@ -112,8 +124,8 @@ struct SchemaStatementGenerator {
             }
         }
 
-        return constraintDeletes + fkDeletes + indexDeletes + columnDeletes + columnModifies + columnAdds
-            + pkChanges + indexAdds + fkAdds + constraintAdds
+        return constraintDeletes + constraintModifies + fkDeletes + indexDeletes + columnDeletes
+            + columnModifies + columnAdds + pkChanges + indexAdds + fkAdds + constraintAdds
     }
 
     // MARK: - Statement Generation
