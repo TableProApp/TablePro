@@ -29,6 +29,19 @@
 		<string>com.TablePro.viewConnection</string>
 		<string>com.TablePro.viewTable</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.TablePro.deeplink</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>tablepro</string>
+			</array>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+		</dict>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
