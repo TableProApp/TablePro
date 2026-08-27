@@ -85,30 +85,75 @@ final class RecentTablesStore {
         return updated
     }
 
+    /// A renamed table keeps its position rather than being dropped and re-added, which would look
+    /// like the user had just opened it. Any stale entry already sitting on the new name is removed
+    /// first: two entries with one id map to a single cached node and the outline draws neither.
     func rename(connectionId: UUID, entry: RecentTableEntry, to newName: String) -> [RecentTableEntry] {
+        mutate(connectionId: connectionId) { entries in
+            guard let index = entries.firstIndex(where: { $0.id == entry.id }) else { return false }
+            let existing = entries[index]
+            let renamed = RecentTableEntry(
+                database: existing.database, schema: existing.schema, name: newName,
+                isView: existing.isView, openedAt: existing.openedAt
+            )
+            entries.removeAll { $0.id == renamed.id }
+            guard let insertion = entries.firstIndex(where: { $0.id == existing.id }) else { return false }
+            entries[insertion] = renamed
+            return true
+        }
+    }
+
+    func renameDatabase(connectionId: UUID, from oldName: String, to newName: String) -> [RecentTableEntry] {
+        mutate(connectionId: connectionId) { entries in
+            guard entries.contains(where: { $0.database == oldName }) else { return false }
+            entries = entries.map { entry in
+                guard entry.database == oldName else { return entry }
+                return RecentTableEntry(
+                    database: newName, schema: entry.schema, name: entry.name,
+                    isView: entry.isView, openedAt: entry.openedAt
+                )
+            }
+            return Self.deduplicate(&entries)
+        }
+    }
+
+    func renameSchema(
+        connectionId: UUID,
+        database: String?,
+        from oldName: String,
+        to newName: String
+    ) -> [RecentTableEntry] {
+        mutate(connectionId: connectionId) { entries in
+            guard entries.contains(where: { $0.database == database && $0.schema == oldName }) else { return false }
+            entries = entries.map { entry in
+                guard entry.database == database, entry.schema == oldName else { return entry }
+                return RecentTableEntry(
+                    database: entry.database, schema: newName, name: entry.name,
+                    isView: entry.isView, openedAt: entry.openedAt
+                )
+            }
+            return Self.deduplicate(&entries)
+        }
+    }
+
+    /// Reads, mutates and persists in one place, so a rename lands on disk whether or not the
+    /// Recent section is on screen. The live list is empty while Show Recent Tables is off, and
+    /// renaming only that left a dead entry to reappear under the old name when it came back on.
+    private func mutate(
+        connectionId: UUID,
+        _ body: (inout [RecentTableEntry]) -> Bool
+    ) -> [RecentTableEntry] {
         var entries = self.entries(connectionId: connectionId)
-        guard let index = entries.firstIndex(where: { $0.id == entry.id }) else { return entries }
-        let existing = entries[index]
-        entries[index] = RecentTableEntry(
-            database: existing.database, schema: existing.schema, name: newName,
-            isView: existing.isView, openedAt: existing.openedAt
-        )
+        guard body(&entries) else { return entries }
         persist(entries, connectionId: connectionId)
         return entries
     }
 
-    func renameDatabase(connectionId: UUID, from oldName: String, to newName: String) -> [RecentTableEntry] {
-        var entries = self.entries(connectionId: connectionId)
-        guard entries.contains(where: { $0.database == oldName }) else { return entries }
-        entries = entries.map { entry in
-            guard entry.database == oldName else { return entry }
-            return RecentTableEntry(
-                database: newName, schema: entry.schema, name: entry.name,
-                isView: entry.isView, openedAt: entry.openedAt
-            )
-        }
-        persist(entries, connectionId: connectionId)
-        return entries
+    @discardableResult
+    private static func deduplicate(_ entries: inout [RecentTableEntry]) -> Bool {
+        var seen = Set<String>()
+        entries = entries.filter { seen.insert($0.id).inserted }
+        return true
     }
 
     func removeEntries(for connectionId: UUID) {

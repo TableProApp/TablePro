@@ -643,19 +643,12 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw MongoDBPluginError.notConnected
         }
         let database = schema ?? currentDb
-        let from = Self.jsonString("\(database).\(name)")
-        let to = Self.jsonString("\(database).\(newName)")
+        let from = "\"\(escapeJsonString("\(database).\(name)"))\""
+        let to = "\"\(escapeJsonString("\(database).\(newName)"))\""
         _ = try await conn.runCommand(
             "{\"renameCollection\": \(from), \"to\": \(to)}",
             database: "admin"
         )
-    }
-
-    private static func jsonString(_ value: String) -> String {
-        let escaped = value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        return "\"\(escaped)\""
     }
 
     func dropDatabase(name: String) async throws {

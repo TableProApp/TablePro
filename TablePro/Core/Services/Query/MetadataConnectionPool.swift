@@ -76,6 +76,21 @@ final class MetadataConnectionPool {
         return try await entry.runSerially(body)
     }
 
+    /// Closes only the leases attached to one database, which is what a rename of that database
+    /// needs: PostgreSQL refuses `ALTER DATABASE ... RENAME` while any backend is connected to it,
+    /// and an expanded row or a tab that ran a query there leaves one here.
+    func closeAll(connectionId: UUID, database: String) {
+        for key in pending.keys
+        where key.scope.connectionId == connectionId && key.scope.database == database {
+            pending[key]?.cancel()
+            pending.removeValue(forKey: key)
+        }
+        for key in entries.keys
+        where key.scope.connectionId == connectionId && key.scope.database == database {
+            closeOrDeferEntry(forKey: key)
+        }
+    }
+
     func closeAll(connectionId: UUID) {
         for key in pending.keys where key.scope.connectionId == connectionId {
             pending[key]?.cancel()

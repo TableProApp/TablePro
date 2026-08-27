@@ -57,6 +57,7 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
                 activeDatabase: activeDatabase,
                 activeSchema: activeSchema,
                 supportsRenameTable: PluginManager.shared.supportsRenameTable(for: databaseType),
+                supportsRenameView: PluginManager.shared.supportsRenameView(for: databaseType),
                 supportsRenameDatabase: PluginManager.shared.supportsRenameDatabase(for: databaseType),
                 supportsRenameSchema: PluginManager.shared.supportsRenameSchema(for: databaseType),
                 isReadOnly: mainCoordinator?.safeModeLevel.blocksAllWrites ?? false

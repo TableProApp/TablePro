@@ -64,6 +64,7 @@ public protocol DriverPlugin: TableProPlugin {
     static var supportsDropDatabase: Bool { get }
     static var supportsDropSchema: Bool { get }
     static var supportsRenameTable: Bool { get }
+    static var supportsRenameView: Bool { get }
     static var supportsRenameDatabase: Bool { get }
     static var supportsRenameSchema: Bool { get }
 
@@ -150,6 +151,9 @@ public extension DriverPlugin {
     static var supportsDropDatabase: Bool { false }
     static var supportsDropSchema: Bool { false }
     static var supportsRenameTable: Bool { false }
+    /// SQLite's `ALTER TABLE ... RENAME` refuses a view, and the engines built on it inherit that.
+    /// Everywhere else a view renames the way a table does.
+    static var supportsRenameView: Bool { supportsRenameTable }
     static var supportsRenameDatabase: Bool { false }
     static var supportsRenameSchema: Bool { false }
 

@@ -38,6 +38,7 @@ final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let brandColorHex = "#003B57"
     static let supportsDatabaseSwitching = false
     static let supportsRenameTable = true
+    static let supportsRenameView = false
     static let supportsTriggers = true
     static let supportsDatabaseTriggerBrowse = true
     static let supportsTriggerEditing = true

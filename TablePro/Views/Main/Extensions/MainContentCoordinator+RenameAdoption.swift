@@ -27,19 +27,39 @@ extension MainContentCoordinator {
         unstagePendingOperations(for: ref)
     }
 
+    /// A container's new name has to reach everything keyed by its old one, or the next page, save
+    /// or reconnect targets something that is gone. A schema is not exempt: its tabs, its queued
+    /// operations and its per-table settings are all keyed by it too.
     func adoptContainerRename(_ ref: DatabaseContainerRef, to newName: String) {
-        guard ref.kind == .database, let oldDatabase = ref.database else { return }
-        SharedSidebarState.forConnection(connectionId)
-            .renameRecentDatabase(from: oldDatabase, to: newName)
-        FavoriteDatabasesStorage.shared.rename(
-            database: oldDatabase, to: newName, connectionId: connectionId
-        )
+        switch ref.kind {
+        case .database:
+            guard let oldDatabase = ref.database else { return }
+            retargetContainer(database: oldDatabase, schema: nil, toDatabase: newName, toSchema: nil)
+            SharedSidebarState.forConnection(connectionId)
+                .renameRecentDatabase(from: oldDatabase, to: newName)
+            FavoriteDatabasesStorage.shared.rename(
+                database: oldDatabase, to: newName, connectionId: connectionId
+            )
+            retargetDatabaseFilter(from: oldDatabase, to: newName)
+            retargetSavedConnectionDatabase(from: oldDatabase, to: newName)
+            retargetBrowseCursor(from: oldDatabase, to: newName)
+        case .schema:
+            guard let oldSchema = ref.schema else { return }
+            let database = ref.database ?? browseDatabaseName
+            retargetContainer(
+                database: database, schema: oldSchema, toDatabase: database, toSchema: newName
+            )
+            SharedSidebarState.forConnection(connectionId)
+                .renameRecentSchema(database: database, from: oldSchema, to: newName)
+        }
     }
 
     private func retitleTabs(matching identity: TableTabIdentity, to newName: String) {
         let browseDatabase = browseDatabaseName
+        var renamedSelectedTab = false
         for index in tabManager.tabs.indices
         where tabManager.tabs[index].tableIdentity(browsing: browseDatabase) == identity {
+            if tabManager.tabs[index].id == tabManager.selectedTabId { renamedSelectedTab = true }
             tabManager.mutate(at: index) { tab in
                 tab.tableContext.tableName = newName
                 tab.title = newName
@@ -49,11 +69,12 @@ extension MainContentCoordinator {
             /// run against a name the server no longer has.
             rebuildTableQuery(at: index)
         }
-        /// The change manager serves the whole window and holds the name its statements target,
-        /// so a save started after the rename would still write to the old one.
-        if changeManager.tableName == identity.table {
-            changeManager.tableName = newName
-        }
+        /// One change manager serves the whole window and holds the name its statements target, so
+        /// a save started after the rename would still write to the old one. It moves only when the
+        /// tab it is serving is one of the tabs that was renamed: comparing its bare name would
+        /// point `public.orders`'s pending edits at whatever `billing.orders` just became.
+        guard renamedSelectedTab else { return }
+        changeManager.tableName = newName
     }
 
     private func movePerTableSettings(
@@ -96,6 +117,116 @@ extension MainContentCoordinator {
         SharedSidebarState.forConnection(connectionId).renameRecentTable(
             database: ref.database, schema: ref.schema, from: ref.table.name, to: newName
         )
+    }
+
+    // MARK: - Containers
+
+    private func retargetContainer(
+        database: String,
+        schema: String?,
+        toDatabase: String,
+        toSchema: String?
+    ) {
+        retargetTabs(database: database, schema: schema, toDatabase: toDatabase, toSchema: toSchema)
+        retargetPendingOperations(
+            database: database, schema: schema, toDatabase: toDatabase, toSchema: toSchema
+        )
+        FilterSettingsStorage.shared.renameScope(
+            connectionId: connectionId, fromDatabase: database, fromSchema: schema,
+            toDatabase: toDatabase, toSchema: toSchema
+        )
+        FileColumnLayoutPersister.shared.renameScope(
+            connectionId: connectionId, fromDatabase: database, fromSchema: schema,
+            toDatabase: toDatabase, toSchema: toSchema
+        )
+        retargetFavoriteTables(
+            database: database, schema: schema, toDatabase: toDatabase, toSchema: toSchema
+        )
+    }
+
+    private func retargetTabs(database: String, schema: String?, toDatabase: String, toSchema: String?) {
+        let browseDatabase = browseDatabaseName
+        for index in tabManager.tabs.indices {
+            let context = tabManager.tabs[index].tableContext
+            guard context.resolvedDatabaseName(browsing: browseDatabase) == database else { continue }
+            if let schema, context.schemaName != schema { continue }
+            tabManager.mutate(at: index) { tab in
+                tab.tableContext.databaseName = toDatabase
+                if schema != nil { tab.tableContext.schemaName = toSchema }
+            }
+            rebuildTableQuery(at: index)
+        }
+    }
+
+    /// A queued Truncate or Drop names the container it was raised in, so one left behind either
+    /// misses at Save or, once something takes the old name, reaches the wrong object.
+    private func retargetPendingOperations(
+        database: String,
+        schema: String?,
+        toDatabase: String,
+        toSchema: String?
+    ) {
+        guard let viewModel = sidebarViewModel else { return }
+        func moved(_ ref: DatabaseTreeTableRef) -> DatabaseTreeTableRef {
+            guard ref.database == database else { return ref }
+            if let schema, ref.qualifyingSchema != schema { return ref }
+            return DatabaseTreeTableRef(
+                database: toDatabase,
+                schema: schema == nil ? ref.schema : toSchema,
+                table: ref.table
+            )
+        }
+        let options = viewModel.tableOperationOptions
+        var movedOptions: [DatabaseTreeTableRef: TableOperationOptions] = [:]
+        for (ref, value) in options { movedOptions[moved(ref)] = value }
+        viewModel.pendingTruncates = Set(viewModel.pendingTruncates.map(moved))
+        viewModel.pendingDeletes = Set(viewModel.pendingDeletes.map(moved))
+        viewModel.tableOperationOptions = movedOptions
+    }
+
+    private func retargetFavoriteTables(
+        database: String,
+        schema: String?,
+        toDatabase: String,
+        toSchema: String?
+    ) {
+        let storage = FavoriteTablesStorage.shared
+        for entry in storage.favorites(for: connectionId) where entry.database == database {
+            if let schema, entry.schema != schema { continue }
+            storage.removeFavorite(
+                name: entry.name, schema: entry.schema, database: entry.database, connectionId: connectionId
+            )
+            storage.addFavorite(
+                name: entry.name,
+                schema: schema == nil ? entry.schema : toSchema,
+                database: toDatabase,
+                connectionId: connectionId
+            )
+        }
+    }
+
+    private func retargetDatabaseFilter(from oldName: String, to newName: String) {
+        let state = SharedSidebarState.forConnection(connectionId)
+        var selected = state.databaseFilterSelected
+        guard selected.remove(oldName) != nil else { return }
+        selected.insert(newName)
+        state.databaseFilterSelected = selected
+    }
+
+    /// The connection's saved default is what a reconnect and Reopen Last Session both use, so a
+    /// database renamed out from under it leaves the connection opening onto nothing.
+    private func retargetSavedConnectionDatabase(from oldName: String, to newName: String) {
+        guard connection.database == oldName else { return }
+        var updated = connection
+        updated.database = newName
+        ConnectionStorage.shared.updateConnection(updated)
+    }
+
+    /// Only reachable when another window is browsing the renamed database, because the menu keeps
+    /// Rename off the container this window is on.
+    private func retargetBrowseCursor(from oldName: String, to newName: String) {
+        guard browseDatabaseName == oldName else { return }
+        Task { await switchContainers(database: newName, schema: nil) }
     }
 
     /// A queued Truncate or Drop against the old name would either miss or, once a new table takes

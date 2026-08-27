@@ -13,6 +13,7 @@ struct ObjectRenameEligibilityTests {
         activeDatabase: String? = "app",
         activeSchema: String? = "public",
         table: Bool = true,
+        view: Bool = true,
         database: Bool = true,
         schema: Bool = true,
         isReadOnly: Bool = false
@@ -21,6 +22,7 @@ struct ObjectRenameEligibilityTests {
             activeDatabase: activeDatabase,
             activeSchema: activeSchema,
             supportsRenameTable: table,
+            supportsRenameView: view,
             supportsRenameDatabase: database,
             supportsRenameSchema: schema,
             isReadOnly: isReadOnly
@@ -54,9 +56,19 @@ struct ObjectRenameEligibilityTests {
         #expect(!ObjectRenameEligibility.canRename(table: table("pg_stats", type: .systemTable), context: context()))
     }
 
-    @Test("A view is renameable where a table is")
+    @Test("A view is renameable where the engine renames one")
     func viewIsRenameable() {
         #expect(ObjectRenameEligibility.canRename(table: table("active_users", type: .view), context: context()))
+    }
+
+    /// SQLite's one rename statement refuses a view, and the engines built on it inherit that.
+    /// Offering the item there guarantees a failure alert for something the menu promised.
+    @Test("An engine that renames tables but not views omits it on a view")
+    func viewIsNotRenameableWhereTheEngineRefusesOne() {
+        #expect(!ObjectRenameEligibility.canRename(
+            table: table("active_users", type: .view), context: context(view: false)
+        ))
+        #expect(ObjectRenameEligibility.canRename(table: table("orders"), context: context(view: false)))
     }
 
     // MARK: - Containers

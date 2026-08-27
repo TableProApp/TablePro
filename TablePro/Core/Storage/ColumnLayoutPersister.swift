@@ -141,6 +141,39 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
         syncTracker.markDeleted(.settings, id: Self.syncCategory(for: oldKey.storageKey))
     }
 
+    /// Moves every table's saved layout from one container to another. Same prefix rewrite as the
+    /// filter store, and for the same reason: the tables that have a layout are whatever the user
+    /// has opened over the life of the connection, not what is loaded now.
+    func renameScope(
+        connectionId: UUID,
+        fromDatabase: String,
+        fromSchema: String?,
+        toDatabase: String,
+        toSchema: String?
+    ) {
+        let oldPrefix = TableScope.storagePrefix(
+            connectionId: connectionId, database: fromDatabase, schema: fromSchema
+        )
+        let newPrefix = TableScope.storagePrefix(
+            connectionId: connectionId, database: toDatabase, schema: toSchema
+        )
+        guard oldPrefix != newPrefix else { return }
+
+        var entries = loadEntries(for: connectionId)
+        let moving = entries.keys.filter { $0.hasPrefix(oldPrefix) }
+        guard !moving.isEmpty else { return }
+        for key in moving {
+            let moved = newPrefix + key.dropFirst(oldPrefix.count)
+            entries[moved] = entries.removeValue(forKey: key)
+        }
+        cache[connectionId] = entries
+        writeEntries(entries, for: connectionId)
+        for key in moving {
+            syncTracker.markDirty(.settings, id: Self.syncCategory(for: newPrefix + key.dropFirst(oldPrefix.count)))
+            syncTracker.markDeleted(.settings, id: Self.syncCategory(for: key))
+        }
+    }
+
     func clear(for key: ColumnLayoutTableKey) {
         removeLegacyHidden(for: key)
 

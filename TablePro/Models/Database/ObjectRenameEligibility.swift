@@ -16,14 +16,25 @@ enum ObjectRenameEligibility {
         let activeDatabase: String?
         let activeSchema: String?
         let supportsRenameTable: Bool
+        let supportsRenameView: Bool
         let supportsRenameDatabase: Bool
         let supportsRenameSchema: Bool
         let isReadOnly: Bool
     }
 
+    /// Asked per object kind, not per engine. SQLite's one rename statement refuses a view and
+    /// the engines built on it inherit that, so offering the item on a view there guarantees a
+    /// failure alert for something the menu promised.
     static func canRename(table: TableInfo, context: Context) -> Bool {
-        guard !context.isReadOnly, context.supportsRenameTable else { return false }
-        return table.type != .systemTable
+        guard !context.isReadOnly else { return false }
+        switch table.type {
+        case .systemTable:
+            return false
+        case .view, .materializedView:
+            return context.supportsRenameView
+        case .table, .foreignTable, .partitionedTable, .externalTable:
+            return context.supportsRenameTable
+        }
     }
 
     static func renameable(_ targets: [DatabaseContainerRef], context: Context) -> DatabaseContainerRef? {

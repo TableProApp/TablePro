@@ -21,7 +21,10 @@ final class SnowflakePlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static let supportsRenameTable = true
 
-    static let supportsRenameDatabase = true
+    /// Off, and not because Snowflake refuses: `ALTER DATABASE ... RENAME TO` works and the driver
+    /// implements it. This tree hangs tables off schemas and draws no database rows at all, so
+    /// there is nowhere to raise the command from. Turn it back on with the row that reaches it.
+    static let supportsRenameDatabase = false
 
     static let supportsRenameSchema = true
     static let databaseDisplayName = "Snowflake"

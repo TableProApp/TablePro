@@ -10,7 +10,10 @@ import AppKit
 /// The `NSTextFieldDelegate` conformance itself lives on the main declaration, because the
 /// callbacks are `@objc` and reach the coordinator rather than this extension.
 extension DatabaseTreeOutlineCoordinator {
-    internal func beginRename(_ target: DatabaseTreeRenameSession.Target) {
+    /// `isRecentRow` is the clicked row, not the object. A table is drawn twice when it is also in
+    /// Recent, and editing the section row instead would put the field on a row the user did not
+    /// click, or on no row at all while that section is collapsed.
+    internal func beginRename(_ target: DatabaseTreeRenameSession.Target, isRecentRow: Bool = false) {
         guard let outlineView else { return }
         endRename(commit: false)
 
@@ -18,7 +21,7 @@ extension DatabaseTreeOutlineCoordinator {
         let name: String
         switch target {
         case .table(let ref):
-            nodeId = DatabaseTreeNode.tableId(ref)
+            nodeId = isRecentRow ? DatabaseTreeNode.recentTableId(ref) : DatabaseTreeNode.tableId(ref)
             name = ref.table.name
         case .container(let ref):
             nodeId = ref.kind == .schema

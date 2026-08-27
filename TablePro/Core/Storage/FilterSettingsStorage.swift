@@ -285,6 +285,44 @@ final class FilterSettingsStorage {
         }
     }
 
+    /// Moves every table's saved filters from one container to another, by rewriting the part of
+    /// each key that names the container. Keyed by prefix rather than by walking the table list,
+    /// because that list is loaded lazily and a table nobody opened this session still has a file.
+    func renameScope(
+        connectionId: UUID,
+        fromDatabase: String,
+        fromSchema: String?,
+        toDatabase: String,
+        toSchema: String?
+    ) {
+        let oldPrefix = TableScope.storagePrefix(
+            connectionId: connectionId, database: fromDatabase, schema: fromSchema
+        )
+        let newPrefix = TableScope.storagePrefix(
+            connectionId: connectionId, database: toDatabase, schema: toSchema
+        )
+        guard oldPrefix != newPrefix else { return }
+
+        for key in lastFiltersCache.keys where key.hasPrefix(oldPrefix) {
+            let moved = newPrefix + key.dropFirst(oldPrefix.count)
+            lastFiltersCache[moved] = lastFiltersCache.removeValue(forKey: key)
+        }
+
+        let directory = filterStateDirectory
+        ioQueue.async {
+            let fm = FileManager.default
+            guard let files = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+            else { return }
+            for file in files where file.pathExtension == "json" {
+                let key = file.deletingPathExtension().lastPathComponent
+                guard key.hasPrefix(oldPrefix) else { continue }
+                let moved = directory.appendingPathComponent("\(newPrefix + key.dropFirst(oldPrefix.count)).json")
+                try? fm.removeItem(at: moved)
+                try? fm.moveItem(at: file, to: moved)
+            }
+        }
+    }
+
     func waitForPendingDiskWrites() {
         ioQueue.sync {}
     }

@@ -56,6 +56,7 @@ struct DatabaseTreeMenuSpecTests {
                 activeDatabase: activeDatabase,
                 activeSchema: activeSchema,
                 supportsRenameTable: supportsRename,
+                supportsRenameView: supportsRename,
                 supportsRenameDatabase: supportsRename,
                 supportsRenameSchema: supportsRename,
                 isReadOnly: isReadOnly
@@ -277,7 +278,7 @@ struct DatabaseTreeMenuSpecTests {
         let clicked = tableRef("orders")
         let issued = commands(DatabaseTreeMenuSpec.items(for: context(clicked: .table(clicked))))
 
-        #expect(issued.contains(.beginRenameTable(clicked)))
+        #expect(issued.contains(.beginRenameTable(ref: clicked, isRecentRow: false)))
     }
 
     /// No ellipsis, because it opens the row's own field rather than a sheet. Finder spells its
@@ -299,7 +300,7 @@ struct DatabaseTreeMenuSpecTests {
             for: context(clicked: .table(clicked), supportsRename: false)
         ))
 
-        #expect(!issued.contains(.beginRenameTable(clicked)))
+        #expect(!issued.contains(.beginRenameTable(ref: clicked, isRecentRow: false)))
     }
 
     @Test("Read-only safe mode hides Rename with the other writes")
@@ -309,7 +310,41 @@ struct DatabaseTreeMenuSpecTests {
             for: context(clicked: .table(clicked), isReadOnly: true)
         ))
 
-        #expect(!issued.contains(.beginRenameTable(clicked)))
+        #expect(!issued.contains(.beginRenameTable(ref: clicked, isRecentRow: false)))
+    }
+
+    /// A table drawn twice, once in its section and once under Recent, is one object with two
+    /// rows. The rename editor belongs on the row that was clicked; opening it on the section row
+    /// puts the field somewhere the user did not click, or nowhere while that section is collapsed.
+    @Test("Rename from a Recent row says so, so the editor lands on the clicked row")
+    func renameFromARecentRowCarriesThatRow() {
+        let clicked = tableRef("orders")
+        let issued = commands(DatabaseTreeMenuSpec.items(for: context(clicked: .recentTable(clicked))))
+
+        #expect(issued.contains(.beginRenameTable(ref: clicked, isRecentRow: true)))
+        #expect(!issued.contains(.beginRenameTable(ref: clicked, isRecentRow: false)))
+    }
+
+    /// Snowflake and Trino hang tables off schemas and draw no database rows, so their schemas
+    /// arrive as a hierarchical section. Both declare and implement a schema rename, and without
+    /// this the command has no row to be raised from.
+    @Test("A hierarchical schema row offers Rename")
+    func hierarchicalSchemaOffersRename() {
+        let issued = commands(DatabaseTreeMenuSpec.items(
+            for: context(clicked: .hierarchicalSchemaSection(schema: "reporting"))
+        ))
+        let expected = DatabaseContainerRef.schema(database: "app", schema: "reporting", isSystem: false)
+
+        #expect(issued.contains(.renameContainer(expected)))
+    }
+
+    @Test("A hierarchical schema row omits Rename where the engine has none")
+    func hierarchicalSchemaWithoutRenameOmitsIt() {
+        let issued = commands(DatabaseTreeMenuSpec.items(
+            for: context(clicked: .hierarchicalSchemaSection(schema: "reporting"), supportsRename: false)
+        ))
+
+        #expect(!issued.contains { if case .renameContainer = $0 { return true } else { return false } })
     }
 
     @Test("The favourite item names the action it will take")

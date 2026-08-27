@@ -16,6 +16,7 @@ final class CloudflareD1Plugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseTypeId = "Cloudflare D1"
 
     static let supportsRenameTable = true
+    static let supportsRenameView = false
     static let databaseDisplayName = "Cloudflare D1"
     static let iconName = "cloudflare-d1-icon"
     static let defaultPort = 0

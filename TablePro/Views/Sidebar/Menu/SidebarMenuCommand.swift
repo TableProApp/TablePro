@@ -36,7 +36,7 @@ internal enum SidebarMenuCommand: Equatable {
     /// Renaming runs at once rather than joining the queue, because the row's label is what the
     /// user edits: a queued rename would leave the tree showing a name the server does not have,
     /// and every later command on that row would name an object that does not exist.
-    case beginRenameTable(DatabaseTreeTableRef)
+    case beginRenameTable(ref: DatabaseTreeTableRef, isRecentRow: Bool)
     case renameContainer(DatabaseContainerRef)
     case toggleFavorite(DatabaseTreeTableRef)
     case removeRecent(DatabaseTreeTableRef)

@@ -18,27 +18,38 @@ private let renameLogger = Logger(subsystem: "com.TablePro", category: "Rename")
 extension MainContentCoordinator {
     func renameTable(_ ref: DatabaseTreeTableRef, to newName: String) {
         let objectType = TableObjectKeyword.forDDL(ref.table.type)
+        let oldName = ref.table.name
+        let schema = ref.qualifyingSchema
+
         Task { [weak self] in
             guard let self else { return }
+            /// The scope comes from the row, not from whichever database the session is on.
+            /// `activateThen` switches the browse cursor first but reports no success, so a switch
+            /// that failed would otherwise leave this running an unqualified statement against the
+            /// database still in front, renaming a same-named object there.
+            guard let scope = DatabaseManager.shared.resolvedScope(
+                database: ref.database, schema: schema, for: connectionId
+            ) else {
+                presentRenameFailure(DatabaseError.notConnected)
+                return
+            }
+            guard await authorizeRename(
+                describing: String(
+                    format: String(localized: "Rename %1$@ to %2$@"), qualifiedLabel(ref), newName
+                )
+            ) else { return }
+
             do {
-                guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
-                    throw DatabaseError.notConnected
+                let route = DatabaseManager.shared.executionRoute(for: scope)
+                try await DatabaseManager.shared.withScopedDriver(
+                    scope: scope, route: route, cancellation: .protectedWrite
+                ) { driver in
+                    try await driver.renameTable(
+                        name: oldName, schema: schema, to: newName, objectType: objectType
+                    )
                 }
-                try await driver.renameTable(
-                    name: ref.table.name,
-                    schema: ref.qualifyingSchema,
-                    to: newName,
-                    objectType: objectType
-                )
             } catch {
-                renameLogger.error(
-                    "Rename failed for \(ref.id, privacy: .public): \(error.localizedDescription, privacy: .public)"
-                )
-                AlertHelper.showErrorSheet(
-                    title: String(localized: "Rename Failed"),
-                    message: error.localizedDescription,
-                    window: contentWindow
-                )
+                presentRenameFailure(error, object: ref.id)
                 return
             }
             adoptTableRename(ref, to: newName)
@@ -49,17 +60,14 @@ extension MainContentCoordinator {
     func renameContainer(_ ref: DatabaseContainerRef, to newName: String) {
         Task { [weak self] in
             guard let self else { return }
+            guard await authorizeRename(
+                describing: String(format: String(localized: "Rename %1$@ to %2$@"), ref.name, newName)
+            ) else { return }
+
             do {
                 try await performContainerRename(ref, to: newName)
             } catch {
-                renameLogger.error(
-                    "Rename failed for \(ref.id, privacy: .public): \(error.localizedDescription, privacy: .public)"
-                )
-                AlertHelper.showErrorSheet(
-                    title: String(localized: "Rename Failed"),
-                    message: error.localizedDescription,
-                    window: contentWindow
-                )
+                presentRenameFailure(error, object: ref.id)
                 return
             }
             adoptContainerRename(ref, to: newName)
@@ -79,10 +87,21 @@ extension MainContentCoordinator {
     private func performContainerRename(_ ref: DatabaseContainerRef, to newName: String) async throws {
         switch ref.kind {
         case .database:
-            guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
-                throw DatabaseError.notConnected
+            /// Renaming a database runs from a connection that is not on it, which the menu already
+            /// guarantees by keeping the item off the browsed row. The metadata pool is the other
+            /// way a backend stays attached to it, and PostgreSQL refuses the statement while one
+            /// is, so its leases on that database are closed first.
+            if let database = ref.database {
+                MetadataConnectionPool.shared.closeAll(connectionId: connectionId, database: database)
             }
-            try await driver.renameDatabase(name: ref.name, to: newName)
+            guard let scope = browseScope else { throw DatabaseError.notConnected }
+            let route = DatabaseManager.shared.executionRoute(for: scope)
+            let name = ref.name
+            try await DatabaseManager.shared.withScopedDriver(
+                scope: scope, route: route, cancellation: .protectedWrite
+            ) { driver in
+                try await driver.renameDatabase(name: name, to: newName)
+            }
         case .schema:
             guard let scope = DatabaseManager.shared.resolvedScope(
                 database: ref.database, schema: nil, for: connectionId
@@ -94,6 +113,54 @@ extension MainContentCoordinator {
                 try await driver.renameSchema(name: name, to: newName)
             }
         }
+    }
+
+    /// A rename is a schema mutation, so it goes through the same gate as every other one. The
+    /// menu only hides the item under read-only safe mode; the Alert and Touch ID levels are the
+    /// gate's to enforce, and the audit record is written from here too.
+    ///
+    /// No SQL travels with the request because the driver runs the rename rather than generating a
+    /// statement, and for MongoDB and SQL Server there is no statement to show. The two names are
+    /// what the user is being asked to approve, and the description carries both.
+    private func authorizeRename(describing description: String) async -> Bool {
+        let decision = await ExecutionGateProvider.shared.authorize(
+            OperationRequest(
+                connectionId: connectionId,
+                databaseType: connection.type,
+                sql: nil,
+                kind: .schemaMutation,
+                caller: .userInterface,
+                capabilities: .interactiveUser,
+                operationDescription: description
+            )
+        )
+        guard case .authorized = decision else {
+            if let reason = decision.deniedReason {
+                AlertHelper.showErrorSheet(
+                    title: String(localized: "Rename Failed"),
+                    message: reason,
+                    window: contentWindow
+                )
+            }
+            return false
+        }
+        return true
+    }
+
+    private func presentRenameFailure(_ error: Error, object: String = "") {
+        renameLogger.error(
+            "Rename failed for \(object, privacy: .public): \(error.localizedDescription, privacy: .public)"
+        )
+        AlertHelper.showErrorSheet(
+            title: String(localized: "Rename Failed"),
+            message: error.localizedDescription,
+            window: contentWindow
+        )
+    }
+
+    private func qualifiedLabel(_ ref: DatabaseTreeTableRef) -> String {
+        guard let schema = ref.qualifyingSchema else { return ref.table.name }
+        return "\(schema).\(ref.table.name)"
     }
 }
 

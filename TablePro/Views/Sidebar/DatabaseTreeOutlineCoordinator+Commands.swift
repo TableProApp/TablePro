@@ -68,9 +68,9 @@ extension DatabaseTreeOutlineCoordinator {
             activateThen(ref) { [weak self] in
                 self?.viewModel?.batchToggleDelete(refs: targets)
             }
-        case .beginRenameTable(let ref):
+        case .beginRenameTable(let ref, let isRecentRow):
             activateThen(ref) { [weak self] in
-                self?.beginRename(.table(ref))
+                self?.beginRename(.table(ref), isRecentRow: isRecentRow)
             }
         case .renameContainer(let ref):
             beginRename(.container(ref))

@@ -551,6 +551,11 @@ extension PluginManager {
             .capabilities.supportsRenameTable ?? false
     }
 
+    func supportsRenameView(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsRenameView ?? false
+    }
+
     func supportsRenameDatabase(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsRenameDatabase ?? false

@@ -68,27 +68,35 @@ final class SharedSidebarState {
         recentTables = RecentTablesStore.shared.remove(connectionId: connectionId, entry: entry)
     }
 
-    /// A renamed table keeps its place in Recent. Dropping it instead would look like the entry
-    /// aged out, and re-adding it under the new name would move it to the top of a list the user
-    /// did not open anything from.
+    /// A renamed table keeps its place in Recent. The store is asked directly rather than the live
+    /// list, because that list is empty while Show Recent Tables is off and the entry is still on
+    /// disk: renaming only what is on screen left a dead entry to reappear under the old name.
     func renameRecentTable(database: String?, schema: String?, from oldName: String, to newName: String) {
         let scope = normalizedDatabase(database)
-        guard let index = recentTables.firstIndex(where: {
+        let existing = RecentTablesStore.shared.entries(connectionId: connectionId).first {
             $0.database == scope && $0.schema == schema && $0.name == oldName
-        }) else { return }
-        recentTables = RecentTablesStore.shared.rename(
-            connectionId: connectionId,
-            entry: recentTables[index],
-            to: newName
-        )
+        }
+        guard let existing else { return }
+        publish(RecentTablesStore.shared.rename(connectionId: connectionId, entry: existing, to: newName))
     }
 
-    /// Every Recent entry in a renamed database follows it, because the entries are keyed by the
-    /// database's name and would otherwise all point at one that has gone.
+    /// Every Recent entry in a renamed container follows it, because the entries are keyed by the
+    /// container's name and would otherwise all point at one that has gone.
     func renameRecentDatabase(from oldName: String, to newName: String) {
-        recentTables = RecentTablesStore.shared.renameDatabase(
+        publish(RecentTablesStore.shared.renameDatabase(
             connectionId: connectionId, from: oldName, to: newName
-        )
+        ))
+    }
+
+    func renameRecentSchema(database: String?, from oldName: String, to newName: String) {
+        publish(RecentTablesStore.shared.renameSchema(
+            connectionId: connectionId, database: normalizedDatabase(database), from: oldName, to: newName
+        ))
+    }
+
+    private func publish(_ entries: [RecentTableEntry]) {
+        guard AppSettingsManager.shared.general.showRecentTables else { return }
+        recentTables = entries
     }
 
     func clearRecentTables(inDatabase database: String?) {
