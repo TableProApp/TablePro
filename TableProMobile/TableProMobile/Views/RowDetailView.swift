@@ -20,6 +20,7 @@ struct RowDetailView: View {
         session: ConnectionSession? = nil,
         columnDetails: [ColumnInfo] = [],
         databaseType: DatabaseType = .sqlite,
+        schema: String? = nil,
         safeModeLevel: SafeModeLevel = .off,
         foreignKeys: [ForeignKeyInfo] = [],
         onSaved: (() -> Void)? = nil,
@@ -33,6 +34,7 @@ struct RowDetailView: View {
             session: session,
             columnDetails: columnDetails,
             databaseType: databaseType,
+            schema: schema,
             safeModeLevel: safeModeLevel,
             foreignKeys: foreignKeys,
             onSaved: onSaved,
@@ -175,7 +177,8 @@ struct RowDetailView: View {
                 Button {
                     shareText = ClipboardExporter.exportRow(
                         columns: viewModel.columns, row: viewModel.currentRow,
-                        format: format, tableName: viewModel.table?.name
+                        format: format, tableName: viewModel.table?.name,
+                        databaseType: viewModel.databaseType, driver: viewModel.session?.driver
                     )
                     showShareSheet = true
                 } label: {
@@ -188,7 +191,8 @@ struct RowDetailView: View {
                 Button {
                     let text = ClipboardExporter.exportRow(
                         columns: viewModel.columns, row: viewModel.currentRow,
-                        format: format, tableName: viewModel.table?.name
+                        format: format, tableName: viewModel.table?.name,
+                        databaseType: viewModel.databaseType, driver: viewModel.session?.driver
                     )
                     ClipboardExporter.copyToClipboard(text)
                 } label: {
