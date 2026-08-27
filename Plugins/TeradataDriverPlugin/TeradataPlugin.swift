@@ -35,6 +35,8 @@ final class TeradataPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "Teradata"
+
+    static let supportsRenameTable = true
     static let databaseDisplayName = "Teradata"
     static let iconName = "teradata-icon"
     static let defaultPort = 1_025

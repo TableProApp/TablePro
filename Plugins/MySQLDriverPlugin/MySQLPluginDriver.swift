@@ -642,6 +642,15 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         _ = try await execute(query: "DROP DATABASE `\(escapedName)`")
     }
 
+    /// `RENAME TABLE` rather than `ALTER TABLE ... RENAME TO`, because it is the only form that
+    /// takes a view, and both sides are qualified with the same schema so the statement cannot
+    /// move the object anywhere.
+    func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws {
+        let old = MySQLObjectQueries.qualifiedIdentifier(schema: schema, name: name)
+        let new = MySQLObjectQueries.qualifiedIdentifier(schema: schema, name: newName)
+        _ = try await execute(query: "RENAME TABLE \(old) TO \(new)")
+    }
+
     // MARK: - Database Switching
 
     func switchDatabase(to database: String) async throws {

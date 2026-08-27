@@ -56,6 +56,8 @@ final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable, .defaultValue, .comment]
     static let supportsQueryProgress = true
     static let supportsDropDatabase = true
+    static let supportsRenameTable = true
+    static let supportsRenameDatabase = true
 
     static let sqlDialect: SQLDialectDescriptor? = SQLDialectDescriptor(
         identifierQuote: "`",

@@ -16,6 +16,8 @@ final class BigQueryPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "BigQuery"
+
+    static let supportsRenameTable = true
     static let databaseDisplayName = "Google BigQuery"
     static let iconName = "bigquery-icon"
     static let defaultPort = 0

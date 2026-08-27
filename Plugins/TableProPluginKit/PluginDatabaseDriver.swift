@@ -143,6 +143,15 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func createDatabase(_ request: PluginCreateDatabaseRequest) async throws
     func dropDatabase(name: String) async throws
     func dropSchema(name: String) async throws
+
+    /// Renaming runs rather than generating a statement, because for several engines it is not a
+    /// statement: MongoDB renames a collection through an admin command, SQL Server calls
+    /// `sp_rename`. The driver also owns the quoting, which differs even between two SQLite
+    /// builds here, and the rules for the new name: PostgreSQL and Oracle reject a qualified one,
+    /// Snowflake accepts one and treats it as a move.
+    func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws
+    func renameDatabase(name: String, to newName: String) async throws
+    func renameSchema(name: String, to newName: String) async throws
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult
 
     // Session contexts (optional, switchable session dimensions such as a warehouse or role)
@@ -417,6 +426,18 @@ public extension PluginDatabaseDriver {
             code: -1,
             userInfo: [NSLocalizedDescriptionKey: "Create database is not supported by this driver"]
         )
+    }
+
+    func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws {
+        throw PluginDriverUnsupportedOperation.renameTable
+    }
+
+    func renameDatabase(name: String, to newName: String) async throws {
+        throw PluginDriverUnsupportedOperation.renameDatabase
+    }
+
+    func renameSchema(name: String, to newName: String) async throws {
+        throw PluginDriverUnsupportedOperation.renameSchema
     }
 
     func dropDatabase(name: String) async throws {

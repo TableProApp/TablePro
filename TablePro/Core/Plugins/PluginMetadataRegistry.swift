@@ -47,6 +47,9 @@ struct PluginMetadataSnapshot: Sendable {
         let supportsQueryProgress: Bool
         let requiresReconnectForDatabaseSwitch: Bool
         let supportsDropDatabase: Bool
+        var supportsRenameTable: Bool = false
+        var supportsRenameDatabase: Bool = false
+        var supportsRenameSchema: Bool = false
         // `var` with defaults so existing call sites compile without passing these fields
         var supportsDropSchema: Bool = false
         var supportsAddColumn: Bool = true
@@ -541,6 +544,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: true,
+                    supportsRenameTable: true,
+                    supportsRenameDatabase: false,
+                    supportsRenameSchema: false,
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
@@ -598,6 +604,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: true,
+                    supportsRenameTable: true,
+                    supportsRenameDatabase: false,
+                    supportsRenameSchema: false,
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
@@ -656,6 +665,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: true,
                     supportsDropDatabase: true,
+                    supportsRenameTable: true,
+                    supportsRenameDatabase: true,
+                    supportsRenameSchema: true,
                     supportsDropSchema: true,
                     supportsRenameColumn: true,
                     supportsTriggers: true,
@@ -712,6 +724,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: true,
                     supportsDropDatabase: true,
+                    supportsRenameTable: true,
+                    supportsRenameDatabase: true,
+                    supportsRenameSchema: true,
                     supportsDropSchema: true,
                     defaultSSLMode: .preferred
                 ),
@@ -774,6 +789,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: true,
                     supportsDropDatabase: true,
+                    supportsRenameTable: true,
+                    supportsRenameDatabase: true,
+                    supportsRenameSchema: true,
                     supportsDropSchema: true,
                     supportsAddColumn: false,
                     supportsModifyColumn: false,
@@ -831,6 +849,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: true,
                     supportsDropDatabase: true,
+                    supportsRenameTable: true,
+                    supportsRenameDatabase: false,
+                    supportsRenameSchema: true,
                     supportsDropSchema: true,
                     supportsRenameColumn: true,
                     supportsTriggers: true,
@@ -887,6 +908,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
+                    supportsRenameTable: true,
+                    supportsRenameDatabase: false,
+                    supportsRenameSchema: false,
                     supportsModifyColumn: false,
                     supportsRenameColumn: true,
                     supportsModifyPrimaryKey: false,
@@ -1150,6 +1174,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsQueryProgress: driverType.supportsQueryProgress,
                 requiresReconnectForDatabaseSwitch: driverType.requiresReconnectForDatabaseSwitch,
                 supportsDropDatabase: driverType.supportsDropDatabase,
+                supportsRenameTable: driverType.supportsRenameTable,
+                supportsRenameDatabase: driverType.supportsRenameDatabase,
+                supportsRenameSchema: driverType.supportsRenameSchema,
                 supportsDropSchema: driverType.supportsDropSchema,
                 supportsAddColumn: driverType.supportsAddColumn,
                 supportsModifyColumn: driverType.supportsModifyColumn,

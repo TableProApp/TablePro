@@ -67,6 +67,15 @@ internal final class FavoriteDatabasesStorage {
         notify(after: mutate { Self.upsert(entry, into: &$0) }, skipSync: true)
     }
 
+    /// A favourite follows its database's new name rather than being dropped, because the tag the
+    /// user put on it is about the database, not about what it is called. It is synced, so the
+    /// entry is written before the removal is announced.
+    internal func rename(database oldName: String, to newName: String, connectionId: UUID) {
+        guard let existing = favorites(for: connectionId).first(where: { $0.database == oldName }) else { return }
+        setFavorite(database: newName, environment: existing.environment, connectionId: connectionId)
+        removeFavorite(database: oldName, connectionId: connectionId)
+    }
+
     internal func removeFavorite(database: String, connectionId: UUID) {
         notify(after: mutate { favorites in
             guard let existing = favorites.first(where: {

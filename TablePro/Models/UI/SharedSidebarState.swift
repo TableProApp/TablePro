@@ -68,6 +68,29 @@ final class SharedSidebarState {
         recentTables = RecentTablesStore.shared.remove(connectionId: connectionId, entry: entry)
     }
 
+    /// A renamed table keeps its place in Recent. Dropping it instead would look like the entry
+    /// aged out, and re-adding it under the new name would move it to the top of a list the user
+    /// did not open anything from.
+    func renameRecentTable(database: String?, schema: String?, from oldName: String, to newName: String) {
+        let scope = normalizedDatabase(database)
+        guard let index = recentTables.firstIndex(where: {
+            $0.database == scope && $0.schema == schema && $0.name == oldName
+        }) else { return }
+        recentTables = RecentTablesStore.shared.rename(
+            connectionId: connectionId,
+            entry: recentTables[index],
+            to: newName
+        )
+    }
+
+    /// Every Recent entry in a renamed database follows it, because the entries are keyed by the
+    /// database's name and would otherwise all point at one that has gone.
+    func renameRecentDatabase(from oldName: String, to newName: String) {
+        recentTables = RecentTablesStore.shared.renameDatabase(
+            connectionId: connectionId, from: oldName, to: newName
+        )
+    }
+
     func clearRecentTables(inDatabase database: String?) {
         recentTables = RecentTablesStore.shared.clear(
             connectionId: connectionId, database: normalizedDatabase(database)

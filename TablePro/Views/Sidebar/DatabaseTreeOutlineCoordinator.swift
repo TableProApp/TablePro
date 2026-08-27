@@ -10,7 +10,7 @@ import SwiftUI
 import TableProPluginKit
 
 @MainActor
-final class DatabaseTreeOutlineCoordinator: NSObject {
+final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     internal weak var outlineView: NSOutlineView?
     internal let service = DatabaseTreeMetadataService.shared
     private static let cellIdentifier = NSUserInterfaceItemIdentifier("DatabaseTreeCell")
@@ -38,6 +38,9 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
     /// Whether a routine row shows its signature depends on the other rows in its own section, so
     /// the label is decided where the section is built and looked up here when the row draws.
     internal var routineDisplayLabels: [String: String] = [:]
+
+    /// A rename in progress, held as identity only. See `DatabaseTreeOutlineCoordinator+Rename`.
+    internal var renameSession: DatabaseTreeRenameSession?
     private var cachedRowContext: DatabaseTreeRowContext?
     private var cachedRowActions: DatabaseTreeRowActions?
     private var lastSelection: Set<DatabaseTreeTableRef> = []
@@ -239,6 +242,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject {
         outlineView.reloadData()
         applyDesiredExpansion()
         syncSelectionToModel()
+        restoreRenameAfterReload()
         isReloading = false
         beginObserving()
     }
@@ -638,6 +642,42 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDataSource {
 
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
         (item as? DatabaseTreeNode)?.isExpandable ?? false
+    }
+}
+
+extension DatabaseTreeOutlineCoordinator {
+    // MARK: - NSTextFieldDelegate
+
+    /// The rename editor's callbacks. They live here rather than in the rename extension because
+    /// they are `@objc` and an extension cannot supply them for the conformance.
+    internal func controlTextDidChange(_ obj: Notification) {
+        guard let field = obj.object as? NSTextField else { return }
+        renameSession?.pendingName = field.stringValue
+    }
+
+    /// The click-away path, which commits the way Finder and the Xcode navigator do.
+    internal func controlTextDidEndEditing(_ obj: Notification) {
+        guard renameSession != nil else { return }
+        endRename(commit: true)
+    }
+
+    internal func control(
+        _ control: NSControl,
+        textView: NSTextView,
+        doCommandBy selector: Selector
+    ) -> Bool {
+        if selector == #selector(NSResponder.insertNewline(_:)) {
+            endRename(commit: true)
+            return true
+        }
+        if selector == #selector(NSResponder.cancelOperation(_:)) {
+            /// `abortEditing` discards the edit without posting `controlTextDidEndEditing`, so the
+            /// cancel does not immediately arrive back as a commit.
+            (control as? NSTextField)?.abortEditing()
+            endRename(commit: false)
+            return true
+        }
+        return false
     }
 }
 

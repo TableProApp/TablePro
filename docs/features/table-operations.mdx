@@ -29,6 +29,30 @@ Confirming with **Drop** or **Truncate** stages the operation. The row picks up 
 Dropping is irreversible. On MySQL and MariaDB, truncate also resets the auto-increment counter. Back up important data first.
 </Danger>
 
+## Rename
+
+Right-click a table and choose **Rename**. The row's label turns into a field: type the new name and press Return, or press Escape to leave it alone. Clicking anywhere else commits, the way Finder does.
+
+The rename runs immediately, not on save. Open tabs on that table follow it and keep their filters, sort and column widths; a favourite stays a favourite, and the Recent entry keeps its place. A queued drop or truncate on the same table is cancelled, because the confirmation named an object that no longer answers to that name.
+
+| Database | Rename table | Rename database | Rename schema |
+|----------|--------------|-----------------|---------------|
+| MySQL / MariaDB | Yes | No, the statement was removed in 5.1.23 | No schemas |
+| PostgreSQL, Redshift, CockroachDB | Yes | Yes | Yes |
+| SQLite, LibSQL, Cloudflare D1 | Tables only, not views | No | No schemas |
+| ClickHouse | Yes | Yes, on the Atomic engine | No |
+| SQL Server | Yes, through `sp_rename` | No | No |
+| Oracle, Dameng | Yes | No | No |
+| DuckDB, BigQuery | Yes | No | No |
+| Snowflake | Yes | Yes | Yes |
+| Trino | Depends on the connector | No, a catalog is configuration | Yes |
+| Teradata | Yes | No | No |
+| MongoDB | Yes, within one database | No | No |
+
+Where a row cannot be renamed the item is absent rather than dimmed. Redis, Cassandra, DynamoDB, Elasticsearch, Kafka, etcd, SurrealDB and Beancount have no rename at all, and what looks like one in those engines is a copy followed by a delete.
+
+Rename a database or schema from its own row in the tree, not from the one the connection is on: switch elsewhere first. PostgreSQL refuses outright with "the current database cannot be renamed", and the engines that allow it leave the session pointing at a name that has gone.
+
 ## Maintenance
 
 Right-click a table, choose **Maintenance**, and pick an operation. A sheet shows the operation's options and the exact SQL before it runs.

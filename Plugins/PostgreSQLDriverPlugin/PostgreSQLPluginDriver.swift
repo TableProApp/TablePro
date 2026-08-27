@@ -953,6 +953,27 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         _ = try await execute(query: "DROP SCHEMA \(quoteIdentifier(name)) CASCADE")
     }
 
+    /// The new name must be bare. PostgreSQL rejects a qualified one, because this statement
+    /// renames in place and never moves the object; `SET SCHEMA` is the separate verb for that.
+    func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws {
+        let target = qualifiedTable(name, schema: schema)
+        _ = try await execute(query: "ALTER \(objectType) \(target) RENAME TO \(quoteIdentifier(newName))")
+    }
+
+    /// Not the database the connection is on: PostgreSQL answers that with "the current database
+    /// cannot be renamed", so the app keeps the item off a row it is browsing.
+    func renameDatabase(name: String, to newName: String) async throws {
+        _ = try await execute(
+            query: "ALTER DATABASE \(quoteIdentifier(name)) RENAME TO \(quoteIdentifier(newName))"
+        )
+    }
+
+    func renameSchema(name: String, to newName: String) async throws {
+        _ = try await execute(
+            query: "ALTER SCHEMA \(quoteIdentifier(name)) RENAME TO \(quoteIdentifier(newName))"
+        )
+    }
+
     private struct Template1Defaults {
         let collate: String
         let ctype: String

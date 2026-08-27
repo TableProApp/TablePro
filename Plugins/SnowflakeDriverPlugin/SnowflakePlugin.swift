@@ -18,6 +18,12 @@ final class SnowflakePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "Snowflake"
+
+    static let supportsRenameTable = true
+
+    static let supportsRenameDatabase = true
+
+    static let supportsRenameSchema = true
     static let databaseDisplayName = "Snowflake"
     static let iconName = "snowflake-icon"
     static let defaultPort = 443

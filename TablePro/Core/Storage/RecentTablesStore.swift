@@ -85,6 +85,32 @@ final class RecentTablesStore {
         return updated
     }
 
+    func rename(connectionId: UUID, entry: RecentTableEntry, to newName: String) -> [RecentTableEntry] {
+        var entries = self.entries(connectionId: connectionId)
+        guard let index = entries.firstIndex(where: { $0.id == entry.id }) else { return entries }
+        let existing = entries[index]
+        entries[index] = RecentTableEntry(
+            database: existing.database, schema: existing.schema, name: newName,
+            isView: existing.isView, openedAt: existing.openedAt
+        )
+        persist(entries, connectionId: connectionId)
+        return entries
+    }
+
+    func renameDatabase(connectionId: UUID, from oldName: String, to newName: String) -> [RecentTableEntry] {
+        var entries = self.entries(connectionId: connectionId)
+        guard entries.contains(where: { $0.database == oldName }) else { return entries }
+        entries = entries.map { entry in
+            guard entry.database == oldName else { return entry }
+            return RecentTableEntry(
+                database: newName, schema: entry.schema, name: entry.name,
+                isView: entry.isView, openedAt: entry.openedAt
+            )
+        }
+        persist(entries, connectionId: connectionId)
+        return entries
+    }
+
     func removeEntries(for connectionId: UUID) {
         defaults.removeObject(forKey: PreferenceKeys.recentTables(connectionId: connectionId).name)
         defaults.removeObject(forKey: legacyKeyPrefix + connectionId.uuidString)

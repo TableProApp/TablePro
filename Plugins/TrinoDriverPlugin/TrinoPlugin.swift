@@ -8,6 +8,10 @@ final class TrinoPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "Trino"
+
+    static let supportsRenameTable = true
+
+    static let supportsRenameSchema = true
     static let databaseDisplayName = "Trino"
     static let iconName = "trino-icon"
     static let defaultPort = 8_080

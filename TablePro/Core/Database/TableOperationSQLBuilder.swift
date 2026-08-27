@@ -81,22 +81,9 @@ struct TableOperationSQLBuilder {
         guard let adapter = adapterProvider() else { return "" }
         return adapter.dropObjectStatement(
             name: ref.table.name,
-            objectType: Self.dropKeyword(for: ref.table.type),
+            objectType: TableObjectKeyword.forDDL(ref.table.type),
             schema: ref.qualifyingSchema,
             cascade: options.cascade
         )
-    }
-
-    private static func dropKeyword(for type: TableInfo.TableType) -> String {
-        switch type {
-        case .view:
-            return "VIEW"
-        case .materializedView:
-            return "MATERIALIZED VIEW"
-        case .foreignTable:
-            return "FOREIGN TABLE"
-        case .table, .systemTable, .partitionedTable, .externalTable:
-            return "TABLE"
-        }
     }
 }

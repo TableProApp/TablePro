@@ -33,6 +33,11 @@ internal enum SidebarMenuCommand: Equatable {
     /// resolved against whatever the tab in front points at by the time Save runs.
     case truncateTables(targets: [DatabaseTreeTableRef], ref: DatabaseTreeTableRef)
     case dropTables(targets: [DatabaseTreeTableRef], ref: DatabaseTreeTableRef)
+    /// Renaming runs at once rather than joining the queue, because the row's label is what the
+    /// user edits: a queued rename would leave the tree showing a name the server does not have,
+    /// and every later command on that row would name an object that does not exist.
+    case beginRenameTable(DatabaseTreeTableRef)
+    case renameContainer(DatabaseContainerRef)
     case toggleFavorite(DatabaseTreeTableRef)
     case removeRecent(DatabaseTreeTableRef)
     case clearRecents

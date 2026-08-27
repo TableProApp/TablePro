@@ -322,6 +322,28 @@ extension ClickHousePluginDriver {
         _ = try await execute(query: "DROP DATABASE `\(escapedName)`")
     }
 
+    /// Both sides are qualified with the same database, so this renames in place. Qualifying them
+    /// differently is how ClickHouse moves a table, which is a different verb to the user.
+    func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws {
+        let database = schema ?? lock.withLock { _currentDatabase }
+        let old = qualified(database: database, name: name)
+        let new = qualified(database: database, name: newName)
+        _ = try await execute(query: "RENAME TABLE \(old) TO \(new)")
+    }
+
+    /// Needs the Atomic database engine, the default since 20.10. An Ordinary database refuses,
+    /// and the server's own message says so.
+    func renameDatabase(name: String, to newName: String) async throws {
+        _ = try await execute(
+            query: "RENAME DATABASE \(quoteIdentifier(name)) TO \(quoteIdentifier(newName))"
+        )
+    }
+
+    private func qualified(database: String?, name: String) -> String {
+        guard let database, !database.isEmpty else { return quoteIdentifier(name) }
+        return "\(quoteIdentifier(database)).\(quoteIdentifier(name))"
+    }
+
     // MARK: - All Tables Metadata
 
     func allTablesMetadataSQL(schema: String?) -> String? {

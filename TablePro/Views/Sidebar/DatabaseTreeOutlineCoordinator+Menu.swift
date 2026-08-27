@@ -53,6 +53,14 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
                 supportsDropSchema: PluginManager.shared.supportsDropSchema(for: databaseType),
                 isReadOnly: mainCoordinator?.safeModeLevel.blocksAllWrites ?? false
             ),
+            renameEligibility: ObjectRenameEligibility.Context(
+                activeDatabase: activeDatabase,
+                activeSchema: activeSchema,
+                supportsRenameTable: PluginManager.shared.supportsRenameTable(for: databaseType),
+                supportsRenameDatabase: PluginManager.shared.supportsRenameDatabase(for: databaseType),
+                supportsRenameSchema: PluginManager.shared.supportsRenameSchema(for: databaseType),
+                isReadOnly: mainCoordinator?.safeModeLevel.blocksAllWrites ?? false
+            ),
             containerEntityName: PluginManager.shared.containerEntityName(for: databaseType),
             containerEntityNamePlural: PluginManager.shared.containerEntityNamePlural(for: databaseType),
             schemaEntityName: PluginManager.shared.schemaEntityName(for: databaseType),

@@ -8,6 +8,8 @@ final class DamengPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "Dameng"
+
+    static let supportsRenameTable = true
     static let databaseDisplayName = "Dameng DM8"
     static let iconName = "cylinder"
     static let defaultPort = 5_236

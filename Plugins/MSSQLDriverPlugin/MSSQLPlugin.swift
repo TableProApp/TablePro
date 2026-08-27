@@ -74,6 +74,8 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "SQL Server"
+
+    static let supportsRenameTable = true
     static let databaseDisplayName = "SQL Server"
     static let iconName = "mssql-icon"
     static let defaultPort = 1433

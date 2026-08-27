@@ -255,6 +255,36 @@ final class FilterSettingsStorage {
         }
     }
 
+    /// Moves a table's saved filters onto its new name. A rename keeps the columns the filters
+    /// name, so the working set is still valid; leaving it behind would silently drop it.
+    func renameLastFilters(
+        from oldTableName: String,
+        to newTableName: String,
+        connectionId: UUID,
+        databaseName: String,
+        schemaName: String?
+    ) {
+        let oldKey = compositeKey(
+            tableName: oldTableName, connectionId: connectionId,
+            databaseName: databaseName, schemaName: schemaName
+        )
+        let newKey = compositeKey(
+            tableName: newTableName, connectionId: connectionId,
+            databaseName: databaseName, schemaName: schemaName
+        )
+        guard oldKey != newKey else { return }
+        if let cached = lastFiltersCache.removeValue(forKey: oldKey) {
+            lastFiltersCache[newKey] = cached
+        }
+        let source = fileURL(forKey: oldKey)
+        let destination = fileURL(forKey: newKey)
+        ioQueue.async {
+            guard FileManager.default.fileExists(atPath: source.path) else { return }
+            try? FileManager.default.removeItem(at: destination)
+            try? FileManager.default.moveItem(at: source, to: destination)
+        }
+    }
+
     func waitForPendingDiskWrites() {
         ioQueue.sync {}
     }

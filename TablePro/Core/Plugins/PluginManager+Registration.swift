@@ -533,6 +533,21 @@ extension PluginManager {
             .capabilities.supportsDropSchema ?? false
     }
 
+    func supportsRenameTable(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsRenameTable ?? false
+    }
+
+    func supportsRenameDatabase(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsRenameDatabase ?? false
+    }
+
+    func supportsRenameSchema(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsRenameSchema ?? false
+    }
+
     func autoLimitStyle(for databaseType: DatabaseType) -> AutoLimitStyle {
         guard let snapshot = PluginMetadataRegistry.shared.snapshot(for: databaseType) else {
             return .limit

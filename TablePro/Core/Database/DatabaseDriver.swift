@@ -199,6 +199,12 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     func dropSchema(name: String) async throws
 
+    func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws
+
+    func renameDatabase(name: String, to newName: String) async throws
+
+    func renameSchema(name: String, to newName: String) async throws
+
     func fetchSessionContexts() async throws -> [PluginSessionContext]?
 
     func switchSessionContext(id: String, to value: String) async throws
@@ -360,6 +366,18 @@ extension DatabaseDriver {
     func dropSchema(name: String) async throws {
         throw NSError(domain: "DatabaseDriver", code: -1,
                       userInfo: [NSLocalizedDescriptionKey: "Drop schema is not supported by this driver"])
+    }
+
+    func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws {
+        throw PluginDriverUnsupportedOperation.renameTable
+    }
+
+    func renameDatabase(name: String, to newName: String) async throws {
+        throw PluginDriverUnsupportedOperation.renameDatabase
+    }
+
+    func renameSchema(name: String, to newName: String) async throws {
+        throw PluginDriverUnsupportedOperation.renameSchema
     }
 
     func createDatabaseFormSpec() async throws -> CreateDatabaseFormSpec? { nil }

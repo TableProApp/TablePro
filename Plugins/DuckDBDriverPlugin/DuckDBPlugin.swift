@@ -15,6 +15,8 @@ final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "DuckDB"
+
+    static let supportsRenameTable = true
     static let databaseDisplayName = "DuckDB"
     static let iconName = "duckdb-icon"
     static let defaultPort = 9_494

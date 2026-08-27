@@ -13,6 +13,8 @@ final class MongoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "MongoDB"
+
+    static let supportsRenameTable = true
     static let databaseDisplayName = "MongoDB"
     static let iconName = "mongodb-icon"
     static let defaultPort = 27017

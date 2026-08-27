@@ -25,6 +25,7 @@ internal struct DatabaseTreeMenuContext {
     internal let importFormats: [ImportFormatOption]
     internal let maintenanceOperations: [String]
     internal let dropEligibility: ContainerDropEligibility.Context
+    internal let renameEligibility: ObjectRenameEligibility.Context
     internal let containerEntityName: String
     internal let containerEntityNamePlural: String
     internal let schemaEntityName: String
@@ -144,6 +145,9 @@ internal enum DatabaseTreeMenuSpec {
 
         guard !context.isReadOnly else { return items }
         items.append(.separator)
+        if ObjectRenameEligibility.canRename(table: ref.table, context: context.renameEligibility) {
+            items.append(.command(String(localized: "Rename"), .beginRenameTable(ref)))
+        }
         items.append(.command(String(localized: "Create New View…"), .createView))
         if SidebarContextMenuLogic.truncateVisible(clickedTable: ref.table) {
             items.append(.command(String(localized: "Truncate"), .truncateTables(targets: targets, ref: ref)))
@@ -262,9 +266,15 @@ internal enum DatabaseTreeMenuSpec {
             items.append(.separator)
             items.append(.command(String(localized: "Export…"), .exportContainers(targets)))
         }
-        guard !droppable.isEmpty else { return items }
+        let renameable = ObjectRenameEligibility.renameable(targets, context: context.renameEligibility)
+        guard renameable != nil || !droppable.isEmpty else { return items }
         items.append(.separator)
-        items.append(.command(dropTitle(for: droppable, context: context), .dropContainers(droppable)))
+        if let renameable {
+            items.append(.command(renameTitle(for: renameable, context: context), .renameContainer(renameable)))
+        }
+        if !droppable.isEmpty {
+            items.append(.command(dropTitle(for: droppable, context: context), .dropContainers(droppable)))
+        }
         return items
     }
 
@@ -320,6 +330,16 @@ internal enum DatabaseTreeMenuSpec {
             entityNamePlural: isSchema ? context.schemaEntityNamePlural : context.containerEntityNamePlural,
             dropsDependentObjects: isSchema
         ).menuTitle
+    }
+
+    /// The engine's own word for the container, so the item reads "Rename Keyspace" on Cassandra
+    /// and "Rename Dataset" on BigQuery. No ellipsis: it opens the row's own field, not a sheet.
+    private static func renameTitle(
+        for target: DatabaseContainerRef,
+        context: DatabaseTreeMenuContext
+    ) -> String {
+        let entity = target.kind == .schema ? context.schemaEntityName : context.containerEntityName
+        return String(format: String(localized: "Rename %@"), entity)
     }
 
     private static func copyNamesTitle(count: Int) -> String {

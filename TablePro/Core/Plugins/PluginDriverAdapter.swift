@@ -457,6 +457,18 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try await pluginDriver.dropSchema(name: name)
     }
 
+    func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws {
+        try await pluginDriver.renameTable(name: name, schema: schema, to: newName, objectType: objectType)
+    }
+
+    func renameDatabase(name: String, to newName: String) async throws {
+        try await pluginDriver.renameDatabase(name: name, to: newName)
+    }
+
+    func renameSchema(name: String, to newName: String) async throws {
+        try await pluginDriver.renameSchema(name: name, to: newName)
+    }
+
     func fetchSessionContexts() async throws -> [PluginSessionContext]? {
         try await pluginDriver.fetchSessionContexts()
     }

@@ -15,6 +15,8 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "Oracle"
+
+    static let supportsRenameTable = true
     static let databaseDisplayName = "Oracle"
     static let iconName = "oracle-icon"
     static let defaultPort = 1_521

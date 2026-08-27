@@ -30,7 +30,8 @@ struct DatabaseTreeMenuSpecTests {
         activeSchema: String? = "public",
         canReachOtherDatabases: Bool = true,
         canFilterDatabases: Bool = false,
-        hasDatabaseFilter: Bool = false
+        hasDatabaseFilter: Bool = false,
+        supportsRename: Bool = true
     ) -> DatabaseTreeMenuContext {
         DatabaseTreeMenuContext(
             clicked: clicked,
@@ -49,6 +50,14 @@ struct DatabaseTreeMenuSpecTests {
                 activeSchema: activeSchema,
                 supportsDropDatabase: true,
                 supportsDropSchema: true,
+                isReadOnly: isReadOnly
+            ),
+            renameEligibility: ObjectRenameEligibility.Context(
+                activeDatabase: activeDatabase,
+                activeSchema: activeSchema,
+                supportsRenameTable: supportsRename,
+                supportsRenameDatabase: supportsRename,
+                supportsRenameSchema: supportsRename,
                 isReadOnly: isReadOnly
             ),
             containerEntityName: "Database",
@@ -261,6 +270,46 @@ struct DatabaseTreeMenuSpecTests {
 
         #expect(issued.contains(.dropTables(targets: [clicked], ref: clicked)))
         #expect(!issued.contains(.dropTables(targets: [clicked, elsewhere], ref: clicked)))
+    }
+
+    @Test("A table row offers Rename where the engine can do it")
+    func tableOffersRename() {
+        let clicked = tableRef("orders")
+        let issued = commands(DatabaseTreeMenuSpec.items(for: context(clicked: .table(clicked))))
+
+        #expect(issued.contains(.beginRenameTable(clicked)))
+    }
+
+    /// No ellipsis, because it opens the row's own field rather than a sheet. Finder spells its
+    /// own inline rename the same way.
+    @Test("Rename carries no ellipsis")
+    func renameHasNoEllipsis() {
+        let clicked = tableRef("orders")
+        let items = DatabaseTreeMenuSpec.items(for: context(clicked: .table(clicked)))
+
+        #expect(titles(items).contains(String(localized: "Rename")))
+    }
+
+    /// Omitted rather than dimmed, which is what this menu already does for a Drop the engine
+    /// cannot perform.
+    @Test("An engine that cannot rename a table omits the item")
+    func engineWithoutRenameOmitsTheItem() {
+        let clicked = tableRef("orders")
+        let issued = commands(DatabaseTreeMenuSpec.items(
+            for: context(clicked: .table(clicked), supportsRename: false)
+        ))
+
+        #expect(!issued.contains(.beginRenameTable(clicked)))
+    }
+
+    @Test("Read-only safe mode hides Rename with the other writes")
+    func readOnlyOmitsRename() {
+        let clicked = tableRef("orders")
+        let issued = commands(DatabaseTreeMenuSpec.items(
+            for: context(clicked: .table(clicked), isReadOnly: true)
+        ))
+
+        #expect(!issued.contains(.beginRenameTable(clicked)))
     }
 
     @Test("The favourite item names the action it will take")

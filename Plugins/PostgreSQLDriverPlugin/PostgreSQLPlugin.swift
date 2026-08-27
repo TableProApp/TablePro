@@ -83,6 +83,9 @@ final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let requiresReconnectForDatabaseSwitch = true
     static let parameterStyle: ParameterStyle = .dollar
     static let supportsDropDatabase = true
+    static let supportsRenameTable = true
+    static let supportsRenameDatabase = true
+    static let supportsRenameSchema = true
     static let supportsDropSchema = true
     static let supportsTriggers = true
     static let supportsRoutines = true

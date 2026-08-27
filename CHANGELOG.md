@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Data Rewind settings in Settings > Data & Results, with an off switch and Clear Saved Changes.
 - Restore Previous Values in the toolbar's Table Actions group.
 - Rebindable Find shortcut in Settings > Keyboard, for giving `Cmd+F` to the filter bar instead.
+- Rename on a table's right-click menu, editing the row's label in place. (#2482)
+- Rename Database and Rename Schema on the sidebar's container rows, where the engine has them. (#2482)
 
 ### Changed
 

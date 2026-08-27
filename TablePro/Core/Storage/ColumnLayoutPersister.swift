@@ -126,6 +126,21 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
         syncTracker.markDirty(.settings, id: Self.syncCategory(for: key.storageKey))
     }
 
+    /// Moves a table's saved widths, order and hidden columns onto its new name.
+    ///
+    /// Persisted before either sync marker is written, because `markDeleted` posts a change
+    /// notification that can start a sync, and a sync reading the old file would put the entry
+    /// back under the name that has gone.
+    func rename(from oldKey: ColumnLayoutTableKey, to newKey: ColumnLayoutTableKey) {
+        var entries = loadEntries(for: oldKey.connectionId)
+        guard let entry = entries.removeValue(forKey: oldKey.storageKey) else { return }
+        entries[newKey.storageKey] = entry
+        cache[oldKey.connectionId] = entries
+        writeEntries(entries, for: oldKey.connectionId)
+        syncTracker.markDirty(.settings, id: Self.syncCategory(for: newKey.storageKey))
+        syncTracker.markDeleted(.settings, id: Self.syncCategory(for: oldKey.storageKey))
+    }
+
     func clear(for key: ColumnLayoutTableKey) {
         removeLegacyHidden(for: key)
 

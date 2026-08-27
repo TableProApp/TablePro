@@ -37,6 +37,7 @@ final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let fileExtensions: [String] = ["db", "db3", "s3db", "sl3", "sqlite", "sqlite3", "sqlitedb"]
     static let brandColorHex = "#003B57"
     static let supportsDatabaseSwitching = false
+    static let supportsRenameTable = true
     static let supportsTriggers = true
     static let supportsDatabaseTriggerBrowse = true
     static let supportsTriggerEditing = true
@@ -1122,6 +1123,19 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     // MARK: - ALTER TABLE DDL
+
+    /// `ALTER TABLE` is the only rename SQLite has and it refuses a view, so a view is turned
+    /// away here rather than by a message from the engine. From 3.25 the statement rewrites the
+    /// references to the table in every trigger and view, and from 3.26 in every foreign key,
+    /// unless `PRAGMA legacy_alter_table` is on.
+    func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws {
+        guard objectType.uppercased() == "TABLE" else {
+            throw PluginDriverUnsupportedOperation.renameTable
+        }
+        _ = try await execute(
+            query: "ALTER TABLE \(quoteIdentifier(name)) RENAME TO \(quoteIdentifier(newName))"
+        )
+    }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
         let colDef = sqliteColumnDefinition(column, inlinePK: false)

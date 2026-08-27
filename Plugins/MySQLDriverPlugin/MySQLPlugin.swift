@@ -102,6 +102,7 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     )
 
     static let supportsDropDatabase = true
+    static let supportsRenameTable = true
     static let supportsTriggers = true
     static let supportsRoutines = true
     static let supportsDatabaseTriggerBrowse = true

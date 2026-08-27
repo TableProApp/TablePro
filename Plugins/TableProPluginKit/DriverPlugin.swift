@@ -63,6 +63,9 @@ public protocol DriverPlugin: TableProPlugin {
     static var parameterStyle: ParameterStyle { get }
     static var supportsDropDatabase: Bool { get }
     static var supportsDropSchema: Bool { get }
+    static var supportsRenameTable: Bool { get }
+    static var supportsRenameDatabase: Bool { get }
+    static var supportsRenameSchema: Bool { get }
 
     static var supportsAddColumn: Bool { get }
     static var supportsModifyColumn: Bool { get }
@@ -146,6 +149,9 @@ public extension DriverPlugin {
     static var postConnectActions: [PostConnectAction] { [] }
     static var supportsDropDatabase: Bool { false }
     static var supportsDropSchema: Bool { false }
+    static var supportsRenameTable: Bool { false }
+    static var supportsRenameDatabase: Bool { false }
+    static var supportsRenameSchema: Bool { false }
 
     static var supportsAddColumn: Bool { true }
     static var supportsModifyColumn: Bool { true }
