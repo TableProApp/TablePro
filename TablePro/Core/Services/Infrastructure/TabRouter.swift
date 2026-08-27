@@ -105,13 +105,25 @@ internal final class TabRouter {
         }
         if let existing = WindowLifecycleMonitor.shared.mostRecentWindow(for: id)
             ?? WindowManager.shared.window(for: id) {
+            /// A window that is a background member of a tab group is one AppKit will make key
+            /// without bringing to the front of its group, so the tab has to be selected first or
+            /// the user is left looking at a different one.
+            if let group = existing.tabGroup, group.selectedWindow !== existing {
+                group.selectedWindow = existing
+            }
             existing.makeKeyAndOrderFront(nil)
             AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             WindowOpener.shared.closeWelcome()
+            let host = existing.contentViewController as? MainSplitViewController
+            /// Raising the window is not the same as showing the connection the user picked, and a
+            /// window hosts several. Without this, choosing a connected one from the connection list
+            /// re-fronted a window still showing a different connection and stopped there.
+            if let host, host.workspaces.contains(id) {
+                host.selectHostedConnection(id)
+            }
             guard DatabaseManager.shared.activeSessions[id]?.driver == nil else { return }
-            if let splitVC = existing.contentViewController as? MainSplitViewController,
-               splitVC.workspaces.contains(id) {
-                splitVC.reconnectWorkspace(id)
+            if let host, host.workspaces.contains(id) {
+                host.reconnectWorkspace(id)
             } else {
                 try await runPreConnectScriptIfNeeded(connection)
                 try await DatabaseManager.shared.ensureConnected(connection)

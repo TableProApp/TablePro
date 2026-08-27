@@ -229,9 +229,15 @@ extension MainSplitViewController: NSMenuItemValidation {
         }
     }
 
+    /// The workspace-rail facts come from the window in both branches. They are true of the window,
+    /// not of the connection it happens to be showing, and reading them off a connection that has
+    /// no coordinator left disabled the only menu route to the window's other connections.
     var menuValidationContext: MenuValidationContext {
         guard let actions = commandActions else {
-            return MenuValidationContext(hasSelectedWorkspace: workspaces.selectedConnectionId != nil)
+            return MenuValidationContext(
+                hasSelectedWorkspace: workspaces.selectedConnectionId != nil,
+                canToggleWorkspaceRail: canToggleWorkspaceRail
+            )
         }
         return MenuValidationContext(
             hasSelectedWorkspace: workspaces.selectedConnectionId != nil,
@@ -259,7 +265,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             canNavigateForward: actions.canNavigateForward,
             canSaveAsFavorite: actions.canSaveAsFavorite,
             canSwitchSidebarLayout: actions.canSwitchSidebarLayout,
-            canToggleWorkspaceRail: actions.canToggleWorkspaceRail,
+            canToggleWorkspaceRail: canToggleWorkspaceRail,
             canShowTableStructure: actions.canShowTableStructure,
             canEditViewDefinition: actions.canEditViewDefinition,
             canCreateDatabase: actions.canCreateDatabase,

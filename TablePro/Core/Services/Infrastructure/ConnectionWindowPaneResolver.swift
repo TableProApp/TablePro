@@ -12,6 +12,16 @@ internal enum ConnectionWindowPane: Equatable {
     case empty
 }
 
+/// What the window's one sidebar item holds. `railOnly` is the state that exists because the
+/// workspace rail and the object browser share that item and answer to different owners.
+internal enum SidebarChromeMode: Equatable {
+    case revealed
+    case railOnly
+    case hidden
+
+    internal var showsObjectBrowser: Bool { self == .revealed }
+}
+
 internal enum ConnectionWindowPaneResolver {
     internal static func pane(
         phase: ConnectionWindowPhase,
@@ -33,8 +43,8 @@ internal enum ConnectionWindowPaneResolver {
         }
     }
 
-    /// A sidebar and an inspector with nothing to put in them are not chrome, they are two empty
-    /// columns that promise a session the window does not have yet.
+    /// An object browser and an inspector with nothing to put in them are not chrome, they are two
+    /// empty columns that promise a session the window does not have yet.
     internal static func hidesChrome(for pane: ConnectionWindowPane) -> Bool {
         switch pane {
         case .content:
@@ -42,6 +52,21 @@ internal enum ConnectionWindowPaneResolver {
         case .connecting, .unavailable, .empty:
             return true
         }
+    }
+
+    /// How much of the window's sidebar survives the pane it is standing next to.
+    ///
+    /// The rule above is right about the object browser and wrong about the workspace rail, which
+    /// lists every connection the window hosts and belongs to the window rather than to any one of
+    /// them. They share a split item because AppKit grants full-height sidebar layout to exactly one
+    /// leading sidebar, so collapsing for an empty object browser took the switcher with it and left
+    /// the window's other connections with no way in.
+    internal static func sidebarChromeMode(
+        for pane: ConnectionWindowPane,
+        hasRail: Bool
+    ) -> SidebarChromeMode {
+        guard hidesChrome(for: pane) else { return .revealed }
+        return hasRail ? .railOnly : .hidden
     }
 
     /// The tab strip's band is a list of tabs, so it appears only when there is a list worth

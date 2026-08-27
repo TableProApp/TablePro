@@ -46,6 +46,37 @@ struct ConnectionWindowPaneResolverTests {
         }
     }
 
+    @Test("A window hosting a rail keeps it when its own connection has nothing to show")
+    func railSurvivesEveryNonContentPane() {
+        let reasons: [ConnectionUnavailableReason] = [
+            .notConnected,
+            .cancelled,
+            .disconnected(nil),
+            .disconnectedByUser,
+            .failed(Self.failure),
+            .pluginMissing(Self.failure)
+        ]
+        let panes: [ConnectionWindowPane] = [.connecting, .empty] + reasons.map { .unavailable($0) }
+
+        for pane in panes {
+            #expect(ConnectionWindowPaneResolver.sidebarChromeMode(for: pane, hasRail: true) == .railOnly)
+            #expect(ConnectionWindowPaneResolver.sidebarChromeMode(for: pane, hasRail: false) == .hidden)
+        }
+    }
+
+    @Test("Content reveals the whole sidebar whether or not a rail is in it")
+    func contentAlwaysRevealsTheSidebar() {
+        #expect(ConnectionWindowPaneResolver.sidebarChromeMode(for: .content, hasRail: true) == .revealed)
+        #expect(ConnectionWindowPaneResolver.sidebarChromeMode(for: .content, hasRail: false) == .revealed)
+    }
+
+    @Test("Only the revealed sidebar carries an object browser")
+    func objectBrowserBelongsToTheRevealedModeAlone() {
+        #expect(SidebarChromeMode.revealed.showsObjectBrowser)
+        #expect(!SidebarChromeMode.railOnly.showsObjectBrowser)
+        #expect(!SidebarChromeMode.hidden.showsObjectBrowser)
+    }
+
     @Test("Every unavailable reason reaches its pane")
     func everyUnavailableReasonResolves() {
         let reasons: [ConnectionUnavailableReason] = [

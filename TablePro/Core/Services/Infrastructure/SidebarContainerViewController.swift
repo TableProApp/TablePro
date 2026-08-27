@@ -49,10 +49,17 @@ internal final class SidebarContainerViewController: NSViewController {
         view.addSubview(hostingView)
         searchField.nextKeyView = hostingView
 
+        /// The insets are a margin, not an invariant, so they yield rather than break when the
+        /// window narrows the sidebar to the workspace rail and leaves this view no width at all.
+        let searchLeading = searchField.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10)
+        let searchTrailing = searchField.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10)
+        searchLeading.priority = .defaultHigh
+        searchTrailing.priority = .defaultHigh
+
         NSLayoutConstraint.activate([
             searchField.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 5),
-            searchField.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10),
-            searchField.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10),
+            searchLeading,
+            searchTrailing,
 
             hostingView.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 5),
             hostingView.leadingAnchor.constraint(equalTo: view.leadingAnchor),

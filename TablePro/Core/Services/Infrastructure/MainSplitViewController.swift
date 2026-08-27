@@ -104,8 +104,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     var tabStripObservationIsArmed = false
     var tabStripObservedManager: ObjectIdentifier?
 
-    private var chromeState: ChromeState = .unapplied
-
     // MARK: - Panel Layout State
 
     /// One name for the window's split view, because one `NSSplitView` can only carry one.
@@ -253,6 +251,10 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         navigationSidebar.railController.host = self
         navigationSidebar.railController.onLayoutChange = { [weak self] _ in
             self?.navigationSidebar.applyRailWidth(animated: false)
+            /// The row size is a setting, so the rail's own width changes under a sidebar already
+            /// narrowed to it. Reapplying the clamp is what moves both thicknesses onto the new
+            /// allowance rather than clipping the rail against the old one.
+            self?.reapplySidebarClampIfNarrowed()
             self?.recomputeWindowMinSize()
         }
         sidebarSplitItem = NSSplitViewItem(sidebarWithViewController: navigationSidebar)
@@ -935,6 +937,11 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         navigationSidebar.setRailVisible(visible, animated: view.window != nil) { [weak self] in
             self?.recomputeWindowMinSize()
         }
+        /// The rail appearing or going is a chrome change of its own, and it happens without the
+        /// selected connection's phase moving: a sibling opening or closing is enough. Without this
+        /// a window whose connection is down keeps a fully collapsed sidebar when the rail arrives,
+        /// or an empty clamped column after it leaves.
+        applyPaneChrome()
     }
 
     func activateWorkspace(offsetBy offset: Int) {
@@ -943,8 +950,25 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     // MARK: - Sidebar
 
+    /// Whether the object browser is off screen, which is the question every caller is really
+    /// asking: the toolbar's segment, the Show/Hide Sidebar title and the reveal actions. A sidebar
+    /// narrowed to the workspace rail is an open split item with no object browser in it, so the
+    /// item's own flag is not the answer on its own.
     var isSidebarCollapsed: Bool {
-        sidebarSplitItem?.isCollapsed ?? true
+        guard sidebarChromeMode.showsObjectBrowser else { return true }
+        return sidebarSplitItem?.isCollapsed ?? true
+    }
+
+    var isSidebarUserCollapsible: Bool {
+        sidebarSplitItem?.canCollapse ?? false
+    }
+
+    var sidebarThicknessRange: (min: CGFloat, max: CGFloat) {
+        (sidebarSplitItem?.minimumThickness ?? 0, sidebarSplitItem?.maximumThickness ?? 0)
+    }
+
+    var railAllowance: CGFloat {
+        navigationSidebar?.railAllowance ?? 0
     }
 
     /// Every collapse route reaches AppKit's own `toggleSidebar(_:)`: the View menu sends the
@@ -957,6 +981,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     }
 
     func focusSidebarSearch() {
+        guard sidebarChromeMode.showsObjectBrowser else { return }
         if sidebarSplitItem?.isCollapsed == true {
             sidebarSplitItem?.animator().isCollapsed = false
         }
@@ -964,6 +989,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     }
 
     func presentDatabaseFilter() {
+        guard sidebarChromeMode.showsObjectBrowser else { return }
         guard let connectionId = currentSession?.connection.id else { return }
         if sidebarSplitItem?.isCollapsed == true {
             sidebarSplitItem?.isCollapsed = false
@@ -981,7 +1007,11 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         state.databaseFilterSelected = []
     }
 
+    /// Refused while the sidebar is narrowed to the workspace rail. The item is open, so the
+    /// collapse branch below would read it as showing and collapse it, taking the rail and every
+    /// route to the window's other connections with it.
     func setSidebarTab(_ tab: SidebarTab) {
+        guard sidebarChromeMode.showsObjectBrowser else { return }
         guard let connectionId = currentSession?.connection.id else { return }
         let sidebarState = SharedSidebarState.forConnection(connectionId)
 
@@ -1062,8 +1092,12 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         )
     }
 
+    /// Inert while the sidebar is clamped to the rail. Seven other call sites reach
+    /// `recomputeWindowMinSize`, and any of them writing the object browser's minimum back over the
+    /// clamp would leave a minimum above the maximum.
     private func applySidebarMinimumThickness() {
         guard let sidebarSplitItem else { return }
+        guard appliedSidebarMode ?? .revealed == .revealed else { return }
         let resolved = Self.resolveSidebarMinimumThickness(
             railAllowance: navigationSidebar?.railAllowance ?? 0
         )
@@ -1108,52 +1142,99 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     // MARK: - Pane Chrome
 
-    private enum ChromeState {
-        case unapplied
-        case hidden
-        case revealed
-    }
-
     private var userPaneLayout: ChromePaneLayout?
+
+    /// What this window's sidebar is currently showing, and `nil` before the first application.
+    /// The resolver decides the mode; this records which one has been put on screen.
+    private var appliedSidebarMode: SidebarChromeMode?
+
+    internal var sidebarChromeMode: SidebarChromeMode {
+        ConnectionWindowPaneResolver.sidebarChromeMode(
+            for: currentPane,
+            hasRail: navigationSidebar?.isRailVisible ?? false
+        )
+    }
 
     /// A split item's collapse state is written into the autosave record, which is how the
     /// inspector remembers being hidden. Collapsing the sidebar for a phase the user did not
     /// choose would persist that as their layout and lose the width they set, so autosaving is
-    /// switched off for the whole span the chrome is hidden and switched back on to restore it.
+    /// switched off for the whole span the chrome is not revealed and switched back on to restore
+    /// it. The same is true of a clamp, which writes its narrow width into the record the way a
+    /// collapse writes the collapsed flag.
     func applyPaneChrome() {
-        if ConnectionWindowPaneResolver.hidesChrome(for: currentPane) {
-            hideWindowChrome()
-        } else {
-            revealWindowChrome()
-        }
+        applySidebarChromeMode(sidebarChromeMode)
         applyTabStripVisibility()
         toolbarOwner?.managedToolbar.validateVisibleItems()
         recomputeWindowMinSize()
     }
 
-    private func hideWindowChrome() {
-        guard chromeState != .hidden else { return }
-        chromeState = .hidden
+    private func applySidebarChromeMode(_ mode: SidebarChromeMode) {
+        guard appliedSidebarMode != mode else { return }
+        let previous = appliedSidebarMode
+        appliedSidebarMode = mode
 
-        resignFirstResponderInsideChrome()
-        splitView.autosaveName = nil
-        userPaneLayout = ChromePaneLayout(
-            isSidebarCollapsed: sidebarSplitItem.isCollapsed,
-            isInspectorCollapsed: inspectorSplitItem.isCollapsed
-        )
-        sidebarSplitItem.isCollapsed = true
+        guard mode != .revealed else {
+            revealWindowChrome()
+            return
+        }
+
+        /// Captured on the way out of `revealed` and never again, because the geometry a
+        /// `railOnly` to `hidden` step would see is the clamp, not the width the user chose.
+        if previous == nil || previous == .revealed {
+            resignFirstResponderInsideChrome()
+            splitView.autosaveName = nil
+            userPaneLayout = ChromePaneLayout(
+                isSidebarCollapsed: sidebarSplitItem.isCollapsed,
+                isInspectorCollapsed: inspectorSplitItem.isCollapsed
+            )
+        }
+
         inspectorSplitItem.isCollapsed = true
+        switch mode {
+        case .railOnly:
+            sidebarSplitItem.isCollapsed = false
+            clampSidebarToRail()
+        case .hidden:
+            releaseSidebarClamp()
+            sidebarSplitItem.isCollapsed = true
+        case .revealed:
+            break
+        }
         view.window?.recalculateKeyViewLoop()
     }
 
-    /// Autosaving is off while the chrome is hidden, so the record still holds what the user had.
-    /// AppKit will not re-apply it though: assigning an autosave name to a split view that has
+    /// Narrowed rather than collapsed, so the rail stays on screen while the object browser it
+    /// shares a split item with goes. Measured: clamping and later releasing returns the item to
+    /// the width the user set, but a `setPosition` while the clamp holds discards it, which is why
+    /// nothing else may write the sidebar's thickness for the span.
+    private func clampSidebarToRail() {
+        let allowance = navigationSidebar?.railAllowance ?? 0
+        sidebarSplitItem.minimumThickness = allowance
+        sidebarSplitItem.maximumThickness = allowance
+        /// A clamp is not a lock. AppKit still collapses a collapsible item on a divider
+        /// double-click or a drag to the edge, which no menu or toolbar validation sees, and the
+        /// mode is already applied so nothing would open it again.
+        sidebarSplitItem.canCollapse = false
+    }
+
+    internal func reapplySidebarClampIfNarrowed() {
+        guard appliedSidebarMode == .railOnly else { return }
+        clampSidebarToRail()
+    }
+
+    private func releaseSidebarClamp() {
+        sidebarSplitItem.canCollapse = true
+        sidebarSplitItem.maximumThickness = Self.sidebarMaxThickness
+        applySidebarMinimumThickness()
+    }
+
+    /// Autosaving is off while the chrome is not revealed, so the record still holds what the user
+    /// had. AppKit will not re-apply it though: assigning an autosave name to a split view that has
     /// already laid out restores nothing. The state captured on the way in is therefore what gives
     /// the panes back. Forcing the sidebar open here instead reopened a sidebar the user had
     /// deliberately hidden, every time a connection dropped and came back.
     private func revealWindowChrome() {
-        guard chromeState != .revealed else { return }
-        chromeState = .revealed
+        releaseSidebarClamp()
 
         /// Only a reveal that follows a hide has something to put back. A first reveal is a window
         /// opening on a live connection, where the panes are already where the user's autosaved

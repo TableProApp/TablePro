@@ -1178,26 +1178,6 @@ final class MainContentCommandActions {
         coordinator?.inspectorProxy?.toggleInspector()
     }
 
-    var isWorkspaceRailEnabled: Bool {
-        coordinator?.splitViewController?.isWorkspaceRailEnabled ?? false
-    }
-
-    var canToggleWorkspaceRail: Bool {
-        coordinator?.splitViewController?.canToggleWorkspaceRail ?? false
-    }
-
-    func toggleWorkspaceRail() {
-        coordinator?.splitViewController?.toggleWorkspaceRail()
-    }
-
-    func showPreviousWorkspace() {
-        coordinator?.splitViewController?.activateWorkspace(offsetBy: -1)
-    }
-
-    func showNextWorkspace() {
-        coordinator?.splitViewController?.activateWorkspace(offsetBy: 1)
-    }
-
     func goToPreviousPage() {
         coordinator?.goToPreviousPage()
     }
