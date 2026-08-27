@@ -129,17 +129,10 @@ enum StructureColumnReorderHandler {
         return sql
     }
 
+    /// Delegates to the single converter every other write path uses. Re-listing the fields here
+    /// silently dropped `charset` and `collation`, so a MySQL drag re-derived them from the table
+    /// default and transcoded the column's data.
     private static func buildPluginColumn(from col: EditableColumnDefinition) -> PluginColumnDefinition {
-        PluginColumnDefinition(
-            name: col.name,
-            dataType: col.dataType,
-            isNullable: col.isNullable,
-            defaultValue: col.defaultValue,
-            isPrimaryKey: col.isPrimaryKey,
-            autoIncrement: col.autoIncrement,
-            comment: col.comment,
-            unsigned: col.unsigned,
-            onUpdate: col.onUpdate
-        )
+        col.toPlugin()
     }
 }

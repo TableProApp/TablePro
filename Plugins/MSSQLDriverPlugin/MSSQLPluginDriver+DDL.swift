@@ -166,6 +166,48 @@ extension MSSQLPluginDriver {
         "ALTER TABLE \(mssqlQualifiedTable(table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
     }
 
+    func generateAddCheckConstraintSQL(table: String, constraint: PluginCheckConstraintDefinition) -> String? {
+        let expression = constraint.expression.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !expression.isEmpty, !constraint.name.isEmpty else { return nil }
+        return "ALTER TABLE \(mssqlQualifiedTable(table)) ADD CONSTRAINT "
+            + "\(quoteIdentifier(constraint.name)) CHECK (\(expression))"
+    }
+
+    func generateDropCheckConstraintSQL(table: String, constraintName: String) -> String? {
+        guard !constraintName.isEmpty else { return nil }
+        return "ALTER TABLE \(mssqlQualifiedTable(table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
+    }
+
+    /// `sys.check_constraints.parent_column_id` is 0 for a multi-column check, so the columns come
+    /// from `sys.sql_expression_dependencies`, which lists them for both shapes.
+    func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
+        let target = mssqlQualifiedTable(table)
+        let query = """
+            SELECT cc.name, cc.definition, cc.is_not_trusted,
+                   STUFF((
+                       SELECT \',\' + COL_NAME(d.referenced_id, d.referenced_minor_id)
+                       FROM sys.sql_expression_dependencies d
+                       WHERE d.referencing_id = cc.object_id AND d.referenced_minor_id > 0
+                       FOR XML PATH(\'\')
+                   ), 1, 1, \'\')
+            FROM sys.check_constraints cc
+            WHERE cc.parent_object_id = OBJECT_ID(\'\(target)\')
+            ORDER BY cc.name
+            """
+        let result = try await execute(query: query)
+        return result.rows.compactMap { row in
+            guard let name = row[safe: 0]?.asText,
+                  let definition = row[safe: 1]?.asText else { return nil }
+            let columns = row[safe: 3]?.asText?.nilIfEmpty.map { $0.components(separatedBy: ",") } ?? []
+            return PluginCheckConstraintInfo(
+                name: name,
+                expression: MSSQLCheckConstraintDefinition.expression(fromDefinition: definition),
+                columns: columns,
+                isValidated: row[safe: 2]?.asText != "1"
+            )
+        }
+    }
+
     func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? {
         let qt = mssqlQualifiedTable(table)
         var stmts: [String] = []

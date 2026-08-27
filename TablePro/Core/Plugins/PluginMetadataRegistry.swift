@@ -58,6 +58,9 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsModifyPrimaryKey: Bool = true
         var supportsTriggers: Bool = false
         var supportsTriggerEditing: Bool = false
+        var supportsCheckConstraints: Bool = false
+        var supportsCheckConstraintEditing: Bool = false
+        var supportsGeneratedColumns: Bool = false
         var supportsRoutines: Bool = false
         var supportsDatabaseTriggerBrowse: Bool = false
         var defaultSSLMode: SSLMode = .disabled
@@ -544,6 +547,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
+                    supportsCheckConstraints: true,
+                    supportsCheckConstraintEditing: true,
+                    supportsGeneratedColumns: true,
                     supportsRoutines: true,
                     supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred
@@ -601,6 +607,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
+                    supportsCheckConstraints: true,
+                    supportsCheckConstraintEditing: true,
+                    supportsGeneratedColumns: true,
                     supportsRoutines: true,
                     supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred
@@ -660,6 +669,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
+                    supportsCheckConstraints: true,
+                    supportsCheckConstraintEditing: true,
+                    supportsGeneratedColumns: true,
                     supportsRoutines: true,
                     supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred
@@ -892,6 +904,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsModifyPrimaryKey: false,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
+                    supportsCheckConstraints: true,
+                    supportsCheckConstraintEditing: true,
+                    supportsGeneratedColumns: true,
                     supportsDatabaseTriggerBrowse: true,
                     supportsCloudflareTunnel: false
                 ),
@@ -1160,6 +1175,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsModifyPrimaryKey: driverType.supportsModifyPrimaryKey,
                 supportsTriggers: driverType.supportsTriggers,
                 supportsTriggerEditing: driverType.supportsTriggerEditing,
+                supportsCheckConstraints: driverType.supportsCheckConstraints,
+                supportsCheckConstraintEditing: driverType.supportsCheckConstraintEditing,
+                supportsGeneratedColumns: driverType.supportsGeneratedColumns,
                 supportsRoutines: driverType.supportsRoutines,
                 supportsDatabaseTriggerBrowse: driverType.supportsDatabaseTriggerBrowse,
                 defaultSSLMode: existingSnapshot?.capabilities.defaultSSLMode ?? .disabled,

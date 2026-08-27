@@ -25,6 +25,9 @@ public protocol DriverPlugin: TableProPlugin {
     static var supportsForeignKeys: Bool { get }
     static var supportsTriggers: Bool { get }
     static var supportsTriggerEditing: Bool { get }
+    static var supportsCheckConstraints: Bool { get }
+    static var supportsCheckConstraintEditing: Bool { get }
+    static var supportsGeneratedColumns: Bool { get }
     static var supportsRoutines: Bool { get }
     static var supportsDatabaseTriggerBrowse: Bool { get }
     static var supportsSchemaEditing: Bool { get }
@@ -90,6 +93,9 @@ public extension DriverPlugin {
     static var supportsForeignKeys: Bool { true }
     static var supportsTriggers: Bool { false }
     static var supportsTriggerEditing: Bool { false }
+    static var supportsCheckConstraints: Bool { false }
+    static var supportsCheckConstraintEditing: Bool { false }
+    static var supportsGeneratedColumns: Bool { false }
 
     /// These say what the ENGINE has, so the app knows not to run a query that can only fail on
     /// Redis or DynamoDB. They never gate whether returned objects are shown: a driver that

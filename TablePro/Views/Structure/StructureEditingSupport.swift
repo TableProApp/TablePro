@@ -40,6 +40,11 @@ enum StructureEditingSupport {
         case .comment: column.comment = value.isEmpty ? nil : value
         case .charset: column.charset = value.isEmpty ? nil : value
         case .collation: column.collation = value.isEmpty ? nil : value
+        case .generated:
+            column.generationKind = GenerationKind(rawValue: value.uppercased())
+            if column.generationKind == nil { column.generationExpression = nil }
+        case .generationExpression:
+            column.generationExpression = value.isEmpty ? nil : value
         @unknown default: break
         }
     }
@@ -150,6 +155,30 @@ enum StructureEditingSupport {
         return indices
     }
 
+    /// Grid columns: 0 Name, 1 Expression. `columns` is derived from the catalog and read-only,
+    /// so it has no editable arm and never tints.
+    static func updateCheckConstraint(
+        _ constraint: inout EditableCheckConstraintDefinition,
+        at index: Int,
+        with value: String
+    ) {
+        switch index {
+        case 0: constraint.name = value
+        case 1: constraint.expression = value
+        default: break
+        }
+    }
+
+    static func checkConstraintModifiedIndices(
+        old: EditableCheckConstraintDefinition,
+        new: EditableCheckConstraintDefinition
+    ) -> Set<Int> {
+        var indices: Set<Int> = []
+        if old.name != new.name { indices.insert(0) }
+        if old.expression != new.expression { indices.insert(1) }
+        return indices
+    }
+
     private static func columnFieldDiffers(
         _ field: StructureColumnField,
         old: EditableColumnDefinition,
@@ -166,6 +195,8 @@ enum StructureEditingSupport {
         case .comment: return old.comment != new.comment
         case .charset: return old.charset != new.charset
         case .collation: return old.collation != new.collation
+        case .generated: return old.generationKind != new.generationKind
+        case .generationExpression: return old.generationExpression != new.generationExpression
         @unknown default: return false
         }
     }

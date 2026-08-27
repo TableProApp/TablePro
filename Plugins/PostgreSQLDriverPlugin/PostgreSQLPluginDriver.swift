@@ -1088,6 +1088,11 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         }
 
         var def = "\(quoteIdentifier(col.name)) \(dataType)"
+        if let expression = col.generationExpression?.nilIfEmpty {
+            def += " GENERATED ALWAYS AS (\(expression)) \(pgGenerationKeyword(col.generationKind))"
+            if !col.isNullable { def += " NOT NULL" }
+            return def
+        }
         if !col.autoIncrement {
             if col.isNullable {
                 def += " NULL"
@@ -1102,6 +1107,13 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             def += " PRIMARY KEY"
         }
         return def
+    }
+
+    /// Never emitted bare: PostgreSQL 17 and earlier reject VIRTUAL outright and require STORED,
+    /// while 18 made VIRTUAL the default, so the keyword has to be explicit either way.
+    private func pgGenerationKeyword(_ kind: GenerationKind?) -> String {
+        guard versionedCapabilities.hasVirtualGeneratedColumns else { return "STORED" }
+        return (kind ?? .virtual).rawValue
     }
 
     private func pgDefaultValue(_ value: String) -> String {
@@ -1230,6 +1242,24 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {
         "ALTER TABLE \(qualifiedTableName(table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
+    }
+
+    func generateAddCheckConstraintSQL(table: String, constraint: PluginCheckConstraintDefinition) -> String? {
+        let expression = constraint.expression.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !expression.isEmpty, !constraint.name.isEmpty else { return nil }
+        return "ALTER TABLE \(qualifiedTableName(table)) ADD CONSTRAINT "
+            + "\(quoteIdentifier(constraint.name)) CHECK (\(expression))"
+    }
+
+    func generateDropCheckConstraintSQL(table: String, constraintName: String) -> String? {
+        guard !constraintName.isEmpty else { return nil }
+        return "ALTER TABLE \(qualifiedTableName(table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
+    }
+
+    func generateRenameCheckConstraintSQL(table: String, from oldName: String, to newName: String) -> String? {
+        guard !oldName.isEmpty, !newName.isEmpty else { return nil }
+        return "ALTER TABLE \(qualifiedTableName(table)) RENAME CONSTRAINT "
+            + "\(quoteIdentifier(oldName)) TO \(quoteIdentifier(newName))"
     }
 
     func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? {

@@ -88,6 +88,12 @@ final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsRoutines = true
     static let supportsDatabaseTriggerBrowse = true
     static let supportsTriggerEditing = true
+    static let structureColumnFields: [StructureColumnField] =
+        [.name, .type, .nullable, .defaultValue, .generated, .generationExpression, .comment]
+
+    static let supportsCheckConstraints = true
+    static let supportsCheckConstraintEditing = true
+    static let supportsGeneratedColumns = true
 
     static let sqlDialect: SQLDialectDescriptor? = PostgreSQLDialect.descriptor
 

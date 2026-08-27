@@ -53,7 +53,8 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     ]
 
     static let structureColumnFields: [StructureColumnField] = [
-        .name, .type, .nullable, .defaultValue, .onUpdate, .autoIncrement, .comment, .charset, .collation
+        .name, .type, .nullable, .defaultValue, .generated, .generationExpression, .onUpdate,
+        .autoIncrement, .comment, .charset, .collation
     ]
 
     static let sqlDialect: SQLDialectDescriptor? = SQLDialectDescriptor(
@@ -106,6 +107,9 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsRoutines = true
     static let supportsDatabaseTriggerBrowse = true
     static let supportsTriggerEditing = true
+    static let supportsCheckConstraints = true
+    static let supportsCheckConstraintEditing = true
+    static let supportsGeneratedColumns = true
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         MySQLPluginDriver(config: config)

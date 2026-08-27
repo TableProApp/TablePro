@@ -17,6 +17,11 @@ struct PostgreSQLCapabilities: Sendable, Equatable {
 
     var hasIdentityColumns: Bool { serverVersion >= 100_000 }
     var hasGeneratedColumns: Bool { serverVersion >= 120_000 }
+    /// ALTER TABLE ... ALTER COLUMN ... SET EXPRESSION AS landed in 17; before it, changing a
+    /// generation expression means dropping and re-adding the column.
+    var hasSetGeneratedExpression: Bool { serverVersion >= 170_000 }
+    /// Virtual generated columns landed in 18; VIRTUAL is a syntax error on every earlier server.
+    var hasVirtualGeneratedColumns: Bool { serverVersion >= 180_000 }
     var hasDeclarativePartitioning: Bool { serverVersion >= 100_000 }
 
     var hasArrayPosition: Bool { serverVersion >= 90_500 }

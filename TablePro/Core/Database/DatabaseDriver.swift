@@ -110,6 +110,7 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     /// Fetch triggers for a specific table
     func fetchTriggers(table: String) async throws -> [TriggerInfo]
+    func fetchCheckConstraints(table: String) async throws -> [CheckConstraintInfo]
 
     /// Trigger editing hooks (optional — nil when unsupported)
     func createTriggerTemplate(table: String) -> String?
@@ -335,6 +336,8 @@ extension DatabaseDriver {
     func fetchPartitions(table: String, schema: String?) async throws -> [TableInfo] { [] }
 
     func fetchTriggers(table: String) async throws -> [TriggerInfo] { [] }
+
+    func fetchCheckConstraints(table: String) async throws -> [CheckConstraintInfo] { [] }
 
     func createTriggerTemplate(table: String) -> String? { nil }
     func fetchTriggerDefinition(name: String, table: String) async throws -> String? { nil }

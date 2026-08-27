@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Data Rewind settings in Settings > Data & Results, with an off switch and Clear Saved Changes.
 - Restore Previous Values in the toolbar's Table Actions group.
 - Rebindable Find shortcut in Settings > Keyboard, for giving `Cmd+F` to the filter bar instead.
+- Constraints tab in the structure editor, listing check constraints with their expression. (#2478)
+- Generated and Expression fields on the column row, with a stored or virtual choice. (#2478)
+- `check_constraints` and `generation_expression` in the MCP `describe_table` response.
 
 ### Changed
 
@@ -21,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Column charset and collation lost when reordering a MySQL column by dragging its row.
+- Free-text cells for foreign key actions and index types in Create Table, where Structure shows a menu.
+- A generated column comparing equal to a plain one in Compare & Sync.
+- Empty Indexes, Foreign Keys or DDL tab, with no error, when the structure read fails.
 - Selection highlight missing from part of a long selection after scrolling back up to it.
 - Editor not scrolling to follow a selection extended past the edge of the viewport.
 - Find highlight and the run band covering only the first line of a match that spans several lines.

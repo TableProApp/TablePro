@@ -98,6 +98,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo]
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo]
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo]
+    func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo]
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo]
     func fetchTriggerDDL(_ trigger: PluginTriggerInfo) async throws -> String
     func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo]
@@ -192,6 +193,9 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func generateDropIndexSQL(table: String, indexName: String) -> String?
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String?
     func generateDropForeignKeySQL(table: String, constraintName: String) -> String?
+    func generateAddCheckConstraintSQL(table: String, constraint: PluginCheckConstraintDefinition) -> String?
+    func generateDropCheckConstraintSQL(table: String, constraintName: String) -> String?
+    func generateRenameCheckConstraintSQL(table: String, from oldName: String, to newName: String) -> String?
     func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]?
     func generateMoveColumnSQL(table: String, column: PluginColumnDefinition, afterColumn: String?) -> String?
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String?
@@ -252,6 +256,8 @@ public extension PluginDatabaseDriver {
     }
 
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] { [] }
+
+    func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] { [] }
 
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo] { [] }
 
@@ -479,6 +485,9 @@ public extension PluginDatabaseDriver {
     func generateDropIndexSQL(table: String, indexName: String) -> String? { nil }
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? { nil }
     func generateDropForeignKeySQL(table: String, constraintName: String) -> String? { nil }
+    func generateAddCheckConstraintSQL(table: String, constraint: PluginCheckConstraintDefinition) -> String? { nil }
+    func generateDropCheckConstraintSQL(table: String, constraintName: String) -> String? { nil }
+    func generateRenameCheckConstraintSQL(table: String, from oldName: String, to newName: String) -> String? { nil }
     func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? { nil }
     func generateMoveColumnSQL(table: String, column: PluginColumnDefinition, afterColumn: String?) -> String? { nil }
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? { nil }

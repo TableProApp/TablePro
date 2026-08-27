@@ -53,6 +53,7 @@ extension MCPConnectionBridge {
             let columns = try await driver.fetchColumns(table: table, schema: schema)
             let indexes = try await driver.fetchIndexes(table: table)
             let foreignKeys = try await driver.fetchForeignKeys(table: table)
+            let checkConstraints = (try? await driver.fetchCheckConstraints(table: table)) ?? []
             let approximateRowCount = (try? await driver.fetchApproximateRowCount(table: table)) ?? nil
             let ddl = try? await driver.fetchTableDDL(table: table)
 
@@ -62,7 +63,8 @@ extension MCPConnectionBridge {
                 "schema": schema.map { .string($0) } ?? .null,
                 "columns": .array(columns.map(MCPConnectionBridge.encode(column:))),
                 "indexes": .array(indexes.map(MCPConnectionBridge.encode(index:))),
-                "foreign_keys": .array(foreignKeys.map(MCPConnectionBridge.encode(foreignKey:)))
+                "foreign_keys": .array(foreignKeys.map(MCPConnectionBridge.encode(foreignKey:))),
+                "check_constraints": .array(checkConstraints.map(MCPConnectionBridge.encode(checkConstraint:)))
             ]
             if let ddl {
                 result["ddl"] = .string(ddl)
@@ -354,6 +356,24 @@ extension MCPConnectionBridge {
         if let value = column.comment, !value.isEmpty { fields["comment"] = .string(value) }
         if let values = column.allowedValues, !values.isEmpty {
             fields["allowed_values"] = .array(values.map { .string($0) })
+        }
+        if let expression = column.generationExpression, !expression.isEmpty {
+            fields["generation_expression"] = .string(expression)
+        }
+        if let kind = column.generationKind {
+            fields["generation_kind"] = .string(kind.rawValue)
+        }
+        return .object(fields)
+    }
+
+    static func encode(checkConstraint: CheckConstraintInfo) -> JsonValue {
+        var fields: [String: JsonValue] = [
+            "name": .string(checkConstraint.name),
+            "expression": .string(checkConstraint.expression),
+            "is_validated": .bool(checkConstraint.isValidated)
+        ]
+        if !checkConstraint.columns.isEmpty {
+            fields["columns"] = .array(checkConstraint.columns.map { .string($0) })
         }
         return .object(fields)
     }

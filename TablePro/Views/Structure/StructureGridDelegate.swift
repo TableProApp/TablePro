@@ -94,6 +94,12 @@ final class StructureGridDelegate: DataGridViewDelegate {
             StructureEditingSupport.updateForeignKey(&fk, at: column, with: newValue ?? "")
             structureChangeManager.updateForeignKey(id: fk.id, with: fk)
 
+        case .checkConstraints:
+            guard sourceRowIndex < structureChangeManager.workingCheckConstraints.count else { return }
+            var constraint = structureChangeManager.workingCheckConstraints[sourceRowIndex]
+            StructureEditingSupport.updateCheckConstraint(&constraint, at: column, with: newValue ?? "")
+            structureChangeManager.updateCheckConstraint(id: constraint.id, with: constraint)
+
         case .ddl, .parts, .triggers:
             break
         }
@@ -154,6 +160,15 @@ final class StructureGridDelegate: DataGridViewDelegate {
                     structureChangeManager.deleteForeignKey(id: fk.id)
                 }
             }
+        case .checkConstraints:
+            guard connection.type.supportsCheckConstraintEditing else { return }
+            structureChangeManager.performAsOneUndoStep {
+                for row in translated.sorted(by: >) {
+                    guard row < structureChangeManager.workingCheckConstraints.count else { continue }
+                    let constraint = structureChangeManager.workingCheckConstraints[row]
+                    structureChangeManager.deleteCheckConstraint(id: constraint.id)
+                }
+            }
         case .parts, .ddl, .triggers:
             onSelectedRowsChanged?([])
             return
@@ -200,6 +215,11 @@ final class StructureGridDelegate: DataGridViewDelegate {
             for row in translated.sorted() {
                 guard row < structureChangeManager.workingForeignKeys.count else { continue }
                 copiedItems.append(structureChangeManager.workingForeignKeys[row])
+            }
+        case .checkConstraints:
+            for row in translated.sorted() {
+                guard row < structureChangeManager.workingCheckConstraints.count else { continue }
+                copiedItems.append(structureChangeManager.workingCheckConstraints[row])
             }
         case .ddl, .parts, .triggers:
             break
@@ -261,22 +281,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 return
             }
             for item in columns {
-                let newColumn = EditableColumnDefinition(
-                    id: UUID(),
-                    name: item.name,
-                    dataType: item.dataType,
-                    isNullable: item.isNullable,
-                    defaultValue: item.defaultValue,
-                    autoIncrement: item.autoIncrement,
-                    unsigned: item.unsigned,
-                    comment: item.comment,
-                    collation: item.collation,
-                    onUpdate: item.onUpdate,
-                    charset: item.charset,
-                    extra: item.extra,
-                    isPrimaryKey: item.isPrimaryKey
-                )
-                structureChangeManager.addColumn(newColumn)
+                structureChangeManager.addColumn(item.withNewIdentity())
             }
 
         case .indexes:
@@ -284,18 +289,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 return
             }
             for item in indexes {
-                let newIndex = EditableIndexDefinition(
-                    id: UUID(),
-                    name: item.name,
-                    columns: item.columns,
-                    type: item.type,
-                    isUnique: item.isUnique,
-                    isPrimary: item.isPrimary,
-                    comment: item.comment,
-                    columnPrefixes: item.columnPrefixes,
-                    whereClause: item.whereClause
-                )
-                structureChangeManager.addIndex(newIndex)
+                structureChangeManager.addIndex(item.withNewIdentity())
             }
 
         case .foreignKeys:
@@ -303,17 +297,17 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 return
             }
             for item in fks {
-                let newFK = EditableForeignKeyDefinition(
-                    id: UUID(),
-                    name: item.name,
-                    columns: item.columns,
-                    referencedTable: item.referencedTable,
-                    referencedColumns: item.referencedColumns,
-                    referencedSchema: item.referencedSchema,
-                    onDelete: item.onDelete,
-                    onUpdate: item.onUpdate
-                )
-                structureChangeManager.addForeignKey(newFK)
+                structureChangeManager.addForeignKey(item.withNewIdentity())
+            }
+
+        case .checkConstraints:
+            guard let constraints = try? decoder.decode(
+                [EditableCheckConstraintDefinition].self, from: Data(jsonString.utf8)
+            ) else {
+                return
+            }
+            for item in constraints {
+                structureChangeManager.addCheckConstraint(item.withNewIdentity())
             }
 
         case .ddl, .parts, .triggers:
@@ -348,6 +342,9 @@ final class StructureGridDelegate: DataGridViewDelegate {
         case .foreignKeys:
             guard connection.type.supportsForeignKeys else { return }
             structureChangeManager.addNewForeignKey()
+        case .checkConstraints:
+            guard connection.type.supportsCheckConstraintEditing else { return }
+            structureChangeManager.addNewCheckConstraint()
         case .ddl, .parts, .triggers:
             break
         }
@@ -396,6 +393,12 @@ final class StructureGridDelegate: DataGridViewDelegate {
             let working = structureChangeManager.workingForeignKeys[sourceRow]
             guard let original = structureChangeManager.currentForeignKeys.first(where: { $0.id == working.id }) else { return [] }
             return StructureEditingSupport.foreignKeyModifiedIndices(old: original, new: working)
+        case .checkConstraints:
+            guard sourceRow < structureChangeManager.workingCheckConstraints.count else { return [] }
+            let working = structureChangeManager.workingCheckConstraints[sourceRow]
+            guard let original = structureChangeManager.currentCheckConstraints
+                .first(where: { $0.id == working.id }) else { return [] }
+            return StructureEditingSupport.checkConstraintModifiedIndices(old: original, new: working)
         case .ddl, .parts, .triggers:
             return []
         }
@@ -487,6 +490,9 @@ final class StructureGridDelegate: DataGridViewDelegate {
         case .foreignKeys:
             guard connection.type.supportsForeignKeys else { return nil }
             label = String(localized: "Add Foreign Key")
+        case .checkConstraints:
+            guard connection.type.supportsCheckConstraintEditing else { return nil }
+            label = String(localized: "Add Check Constraint")
         case .ddl, .parts, .triggers:
             return nil
         }
@@ -535,6 +541,10 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 if let sql = driver.generateForeignKeyDefinitionSQL(fk: fk.toPlugin()) {
                     definitions.append(sql)
                 }
+            case .checkConstraints:
+                guard row < structureChangeManager.workingCheckConstraints.count else { continue }
+                let constraint = structureChangeManager.workingCheckConstraints[row]
+                definitions.append("CONSTRAINT \(constraint.name) CHECK (\(constraint.expression))")
             case .ddl, .parts, .triggers:
                 break
             }
@@ -623,12 +633,11 @@ final class StructureGridDelegate: DataGridViewDelegate {
             case .foreignKeys:
                 guard row < structureChangeManager.workingForeignKeys.count else { continue }
                 let copy = structureChangeManager.workingForeignKeys[row]
-                structureChangeManager.addForeignKey(EditableForeignKeyDefinition(
-                    id: UUID(), name: copy.name, columns: copy.columns,
-                    referencedTable: copy.referencedTable, referencedColumns: copy.referencedColumns,
-                    referencedSchema: copy.referencedSchema,
-                    onDelete: copy.onDelete, onUpdate: copy.onUpdate
-                ))
+                structureChangeManager.addForeignKey(copy.withNewIdentity())
+            case .checkConstraints:
+                guard row < structureChangeManager.workingCheckConstraints.count else { continue }
+                let copy = structureChangeManager.workingCheckConstraints[row]
+                structureChangeManager.addCheckConstraint(copy.withNewIdentity())
             case .ddl, .parts, .triggers:
                 break
             }

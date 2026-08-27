@@ -109,7 +109,10 @@ private extension PluginColumnInfo {
             charset: charset,
             collation: collation,
             comment: comment,
-            allowedValues: allowedValues
+            isGenerated: isGenerated,
+            allowedValues: allowedValues,
+            generationExpression: generationExpression,
+            generationKind: generationKind
         )
     }
 }

@@ -195,6 +195,9 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsRoutines = true
     static let supportsDatabaseTriggerBrowse = true
     static let supportsTriggerEditing = true
+    static let supportsCheckConstraints = true
+    static let supportsCheckConstraintEditing = true
+    static let supportsGeneratedColumns = false
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         MSSQLPluginDriver(config: config)
