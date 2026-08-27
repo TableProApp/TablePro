@@ -22,8 +22,18 @@ internal final class ConnectionWorkspace {
     /// lands on has to be recorded like any other: it is the entry the user leaves behind when they
     /// switch, and an entry nobody recorded is one that disappears the moment they do.
     internal var session: ConnectionSession? {
-        didSet { recordBrowsedContainer() }
+        didSet {
+            sessionRevision &+= 1
+            recordBrowsedContainer()
+        }
     }
+
+    /// Bumped whenever the adopted session is replaced. `ConnectionSession` is a value, so a
+    /// database switch or a status change produces a different one under an unchanged phase, and
+    /// the panes have to be rebuilt for it. This is how the render key says so without holding the
+    /// session, and through it the driver, itself.
+    internal private(set) var sessionRevision = 0
+
     internal var sessionState: SessionStateFactory.SessionState?
     internal var rightPanelState: RightPanelState?
     internal var attemptToken: UUID?
@@ -187,6 +197,26 @@ internal final class ConnectionWorkspace {
 
     internal var connection: DatabaseConnection? {
         payloadConnection ?? session?.connection
+    }
+
+    /// The pane this workspace resolves to right now. `ConnectionWindowPaneResolver` decides it and
+    /// `MainSplitViewController` renders it; the workspace only supplies the state both read.
+    internal var resolvedPane: ConnectionWindowPane {
+        ConnectionWindowPaneResolver.pane(
+            phase: phase,
+            hasConnection: connection != nil,
+            hasRenderableSession: session != nil && rightPanelState != nil && sessionState != nil
+        )
+    }
+
+    /// Everything the panes are built from, compared against `panes.renderedKey` to decide whether
+    /// they have to be built at all.
+    internal var paneRenderKey: WorkspacePaneRenderKey {
+        WorkspacePaneRenderKey(
+            pane: resolvedPane,
+            connection: connection,
+            sessionRevision: sessionRevision
+        )
     }
 
     /// Opens what the payload names. Held until the session exists if the connection is still

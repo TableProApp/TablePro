@@ -57,9 +57,8 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     var phase: ConnectionWindowPhase {
         get { workspaces.selected?.phase ?? .idle }
         set {
-            guard let selected = workspaces.selected, selected.phase != newValue else { return }
-            selected.phase = newValue
-            applyPhase()
+            guard let connectionId = workspaces.selectedConnectionId else { return }
+            transition(to: newValue, for: connectionId)
         }
     }
 
@@ -153,6 +152,10 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         super.init(nibName: nil, bundle: nil)
 
         if let workspace {
+            /// It arrives with its panes already built, by the controller it is leaving. Every
+            /// closure in them calls back into that one, so they have to be produced again here
+            /// even though nothing about the connection has changed.
+            workspace.panes.invalidate()
             workspaces.insert(workspace)
         } else {
             adoptWorkspace(payload: payload, autoConnect: autoConnect)
@@ -294,7 +297,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         }
 
         restoreUserPaneLayout()
-        refreshSelectedPanes()
+        syncSelectedPanes()
         showSelectedPanes()
         applyPaneChrome()
     }
@@ -382,6 +385,11 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 ?? DatabaseManager.shared.activeSessions[connectionId]?.connection else { continue }
             workspace.payloadConnection = record
             workspace.sessionState?.toolbarState.update(from: record)
+            /// The one repaint the render key cannot decide, so the only one that skips it. Deleting
+            /// a connection whose session is still open purges the per-connection registries the
+            /// panes hold without changing the record they were built from, and a pane left holding
+            /// the purged `SharedSidebarState` stops seeing what the rest of the window does to the
+            /// newly registered one.
             refreshPanes(of: workspace)
             if workspaces.selectedConnectionId == connectionId { repaint = true }
         }
@@ -441,17 +449,22 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             session: snapshot,
             ownsAttempt: workspace.attemptToken != nil
         )
+        /// Nothing here paints. The panes are built from the phase, so they can only be built once
+        /// the phase is final, and `transition(to:for:)` is where that happens. Adopting a session
+        /// bumps the workspace's session revision, which is what tells the sync that a session
+        /// whose phase did not move still has to be redrawn.
+        ///
+        /// `isContentViewEquivalent` answers whether the views would draw the same, not whether it
+        /// is the same session: it excludes the driver, the effective connection and the cached
+        /// password on purpose. A connection arriving back at `.connected` therefore adopts whatever
+        /// the manager now holds even when the two would draw alike, or a tunnel recovery would
+        /// leave the workspace holding the driver it just disconnected, and that driver's cached
+        /// credentials, until something else replaced the session.
         if nextPhase == .connected, let session {
-            let alreadyRendered = workspace.session?.isContentViewEquivalent(to: session) ?? false
-            if alreadyRendered, workspace.phase == nextPhase { return }
-            adoptSession(session, into: workspace)
-            /// Repainted whether or not this workspace is the one on screen, and whether or not it
-            /// already had this phase. The equality guard can never hold on the first `.connecting`
-            /// to `.connected` step, and `transition(to:for:)` repaints only the selected workspace,
-            /// so a connection that finished connecting while the user was looking at another one
-            /// kept whatever placeholder it last rendered: its `MainContentView` never mounted, its
-            /// `commandActions` stayed nil, and every command aimed at it did nothing.
-            refreshPanes(of: workspace)
+            let drawsTheSame = workspace.session?.isContentViewEquivalent(to: session) ?? false
+            if !drawsTheSame || workspace.phase != nextPhase {
+                adoptSession(session, into: workspace)
+            }
         } else if workspace.phase == .connected, nextPhase != .connected, !snapshot.exists {
             releaseSession(workspace)
         }
@@ -502,8 +515,9 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         }
         /// The panes are rebuilt rather than dropped: the workspace stays in the registry so it can
         /// render its own phase, and its content view is now the not-connected pane. Leaving the
-        /// old tree mounted would keep the torn-down coordinator alive through it.
-        refreshPanes(of: workspace)
+        /// old tree mounted would keep the torn-down coordinator alive through it. Clearing the
+        /// session above bumped the revision, so the sync at the end of the transition this is part
+        /// of is what does it, after the phase has stopped saying `.connected`.
         if isShowing(workspace) {
             navigationSidebar.objectBrowser.updateSidebarState(nil)
         }
@@ -539,6 +553,11 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             toolbarOwner?.repoint(to: nil)
         }
 
+        /// A workspace can reach the window already built and never repainted: `adoptWorkspace`
+        /// hands one over with a live session and no phase change to follow, so its panes still
+        /// held the empty view they were constructed with and the connection opened blank. This
+        /// costs a key comparison when nothing has moved, which is what the record is for.
+        syncSelectedPanes()
         showSelectedPanes()
         applyDetailMinimumThicknessForSelection()
         applyPaneChrome()
@@ -550,7 +569,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     }
 
     private func applyPhase() {
-        refreshSelectedPanes()
+        syncSelectedPanes()
         applyPaneChrome()
         applyWindowTitle()
         SessionRecoveryTracker.sync()
@@ -575,19 +594,24 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         phase = next
     }
 
-    /// A window now hosts several connections, so a phase change has to name the one it belongs
-    /// to. A background workspace still owns persistent panes, which have to follow its phase before
-    /// the user switches back to them.
+    /// A window now hosts several connections, so a phase change has to name the one it belongs to,
+    /// and this is the only place a phase is written outside a window close.
+    ///
+    /// The sync runs whether or not this workspace is the one on screen, because a background one
+    /// owns persistent panes that would otherwise keep the phase they last rendered (#2545), and
+    /// whether or not the phase moved, because a session can be replaced under an unchanged one as
+    /// a database switch does. Only the window's own chrome is gated on the phase moving.
     internal func transition(to next: ConnectionWindowPhase, for connectionId: UUID) {
         guard let workspace = workspaces.workspace(for: connectionId) else { return }
-        guard workspace.phase != next else { return }
+        let phaseChanged = workspace.phase != next
         workspace.phase = next
+        syncPanes(of: workspace)
+        guard phaseChanged else { return }
         if workspaces.selectedConnectionId == connectionId {
-            applyPhase()
-        } else {
-            refreshPanes(of: workspace)
-            SessionRecoveryTracker.sync()
+            applyPaneChrome()
+            applyWindowTitle()
         }
+        SessionRecoveryTracker.sync()
     }
 
     internal func refreshFromActiveSessions() {
@@ -615,19 +639,37 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     // MARK: - Pane Construction
 
     /// Rebuilds one connection's panes into its own hosting controllers, whether or not it is the
-    /// one on screen. This is the only place a pane's content is produced.
+    /// one on screen, and records what they were built from. This is the only place all four panes
+    /// are produced, and the only writer of the record; `rebuildInspectorPane()` refines the
+    /// inspector alone once `commandActions` exists, which is a redraw of the same key rather than
+    /// a different one.
+    ///
+    /// Reaching a pane that is not on screen is safe and deliberate: a `rootView` write on an
+    /// unparented hosting controller is deferred rather than lost, and the last value written is
+    /// what mounts when the pane is put back. Do not force it with `layoutSubtreeIfNeeded()`, which
+    /// `teardown()` needs only because its panes are never parented again: here it would mount every
+    /// intermediate value instead of letting one run-loop turn settle on the final one.
     private func refreshPanes(of workspace: ConnectionWorkspace) {
         workspace.panes.sidebar.rootView = AnyView(buildSidebarView(for: workspace))
         workspace.panes.detail.rootView = AnyView(buildDetailView(for: workspace))
         workspace.panes.inspector.rootView = AnyView(buildInspectorView(for: workspace))
         refreshTabStripPane(of: workspace)
+        workspace.panes.markRendered(workspace.paneRenderKey)
         guard isShowing(workspace) else { return }
         bindSidebarChrome(to: workspace)
     }
 
-    private func refreshSelectedPanes() {
+    /// The single entry point for a repaint, so a caller never has to know whether one is due. The
+    /// record is what makes it free when nothing has moved, which is what lets a workspace switch
+    /// ask for one without paying for the rebuild the panes exist to avoid.
+    private func syncPanes(of workspace: ConnectionWorkspace) {
+        guard workspace.paneRenderKey != workspace.panes.renderedKey else { return }
+        refreshPanes(of: workspace)
+    }
+
+    private func syncSelectedPanes() {
         guard let selected = workspaces.selected else { return }
-        refreshPanes(of: selected)
+        syncPanes(of: selected)
     }
 
     /// Puts the selected connection's already-built panes on screen. This is the whole cost of a
@@ -659,20 +701,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     }
 
     var currentPane: ConnectionWindowPane {
-        workspaces.selected.map(Self.pane) ?? .unavailable(.notConnected)
-    }
-
-    /// The pane a given workspace shows, which is not always the one on screen. Each workspace owns
-    /// its panes now, so a background connection that fails or reconnects repaints itself instead of
-    /// waiting for the user to switch to it and the switch to rebuild everything.
-    private static func pane(of workspace: ConnectionWorkspace) -> ConnectionWindowPane {
-        ConnectionWindowPaneResolver.pane(
-            phase: workspace.phase,
-            hasConnection: workspace.connection != nil,
-            hasRenderableSession: workspace.session != nil
-                && workspace.rightPanelState != nil
-                && workspace.sessionState != nil
-        )
+        workspaces.selected?.resolvedPane ?? .unavailable(.notConnected)
     }
 
     /// The one answer to "does this window have a database to talk to". `releaseSession` keeps the
@@ -703,7 +732,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     /// so the tree is per-connection by construction and an identity would only throw it away.
     @ViewBuilder
     private func buildSidebarView(for workspace: ConnectionWorkspace) -> some View {
-        if Self.pane(of: workspace) == .content,
+        if workspace.resolvedPane == .content,
            let session = workspace.session,
            let sessionState = workspace.sessionState {
             SidebarView(
@@ -724,7 +753,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     @ViewBuilder
     private func buildDetailView(for workspace: ConnectionWorkspace) -> some View {
-        let pane = Self.pane(of: workspace)
+        let pane = workspace.resolvedPane
         if pane == .connecting, let pendingConnection = workspace.connection {
             ConnectingStateView(connection: pendingConnection) { [weak self] in
                 self?.cancelConnectionAttempt(for: workspace.connectionId)

@@ -70,6 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Icon cut off the entry at the top of a scrolled connections strip. (#2452)
 - Connections strip not scrolling to the entry you switch to.
 - Background connections stuck on the session preparation screen after connecting. (#2545)
+- Blank sidebar, grid and inspector on a connection opened into a window that was already on screen.
 - Grid cells left at the old column positions until the next click, after a resize, an auto-fit, a reorder, hiding a column, or a row-number width change. (#2449, #2446)
 - The row-number column draggable out of first place, which walked it to the far right on the next refresh.
 - A time entered into a date cell discarded when the stored value carried no time.
