@@ -10,6 +10,7 @@ import Foundation
 
 extension MainContentCoordinator {
     func showQuickSwitcher() {
+        guard let quickSwitcherPanel else { return }
         guard !quickSwitcherPanel.isPresented else {
             quickSwitcherPanel.dismiss()
             return
@@ -36,7 +37,7 @@ extension MainContentCoordinator {
             openTables: openTables,
             browseSchema: browseSchema,
             onSelect: { [weak self] item, intent in self?.handleQuickSwitcherSelection(item, intent: intent) },
-            onDismiss: { [weak self] in self?.quickSwitcherPanel.dismiss() }
+            onDismiss: { [weak self] in self?.quickSwitcherPanel?.dismiss() }
         )
         quickSwitcherPanel.present(panelView, over: contentWindow)
     }

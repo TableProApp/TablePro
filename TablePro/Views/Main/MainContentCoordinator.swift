@@ -218,7 +218,11 @@ final class MainContentCoordinator {
     @ObservationIgnored weak var commandActions: MainContentCommandActions?
 
     /// Presents the quick switcher as a floating panel anchored over this coordinator's window.
-    @ObservationIgnored let quickSwitcherPanel = QuickSwitcherPanelController()
+    /// The window owns it, because the panel anchors on the window and every connection the window
+    /// hosts would otherwise bring one of its own to the same point.
+    var quickSwitcherPanel: QuickSwitcherPanelController? {
+        splitViewController?.quickSwitcherPanel
+    }
 
     // MARK: - Published State
 
@@ -231,8 +235,11 @@ final class MainContentCoordinator {
     var presentedScopeSwitcher: ContainerSwitchTarget?
     /// Owns the connection and database switcher surfaces. The commands present through this
     /// rather than flipping a flag a toolbar-hosted view has to observe, because that view is
-    /// absent whenever its item is clipped into the overflow menu or removed by the user.
-    @ObservationIgnored lazy var switcherPresenter = ToolbarSwitcherPresenter(panelController: quickSwitcherPanel)
+    /// absent whenever its item is clipped into the overflow menu or removed by the user. It
+    /// belongs to the window for the same reason the panel it drives does.
+    var switcherPresenter: ToolbarSwitcherPresenter? {
+        splitViewController?.switcherPresenter
+    }
     var sessionContexts: [PluginSessionContext] = []
     var containerDropRequest: DatabaseDropRequest?
     var importFileURL: URL?

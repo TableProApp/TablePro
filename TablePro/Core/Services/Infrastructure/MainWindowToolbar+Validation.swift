@@ -98,12 +98,16 @@ extension MainWindowToolbar: NSToolbarItemValidation {
         )
     }
 
-    /// No subject disables the whole toolbar, Switch Connection included. Every item here needs the
-    /// coordinator that presents it, so enabling one without a subject would leave a live-looking
-    /// button that does nothing. The routes to a window's other connections that survive a
-    /// connection going down are the connections strip and the View menu, neither of which asks a
-    /// coordinator anything.
+    /// Switch Connection is the window's, so it answers before a subject is required. Every other
+    /// item here needs the coordinator that presents it, and enabling one of those without a
+    /// subject would leave a live-looking button that does nothing, so no subject still disables
+    /// the rest of the toolbar.
+    static func isWindowScoped(_ itemIdentifier: NSToolbarItem.Identifier) -> Bool {
+        itemIdentifier == Self.connection
+    }
+
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
+        if Self.isWindowScoped(item.itemIdentifier) { return true }
         guard let context = validationContext() else { return false }
         return Self.isEnabled(itemIdentifier: item.itemIdentifier, context: context)
     }
@@ -118,6 +122,7 @@ extension MainWindowToolbar: NSToolbarItemValidation {
 extension MainWindowToolbar: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         guard let itemIdentifier = itemIdentifier(forMenuFormAction: menuItem.action) else { return true }
+        if Self.isWindowScoped(itemIdentifier) { return true }
         guard let context = validationContext() else { return false }
         return Self.isEnabled(itemIdentifier: itemIdentifier, context: context)
     }

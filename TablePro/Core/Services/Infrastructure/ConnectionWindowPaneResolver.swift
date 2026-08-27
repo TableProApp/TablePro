@@ -75,4 +75,29 @@ internal enum ConnectionWindowPaneResolver {
     internal static func showsTabStrip(for pane: ConnectionWindowPane, tabCount: Int) -> Bool {
         pane == .content && tabCount > 1
     }
+
+    /// Whether the connections strip stands, given the preference that normally governs it.
+    ///
+    /// The preference hides a switcher the user reaches other ways: the object browser sits beside
+    /// it, the tab strip runs under the toolbar, and Switch Connection is in the Database menu. A
+    /// pane with no content takes every one of those with it, and the strip is then the only thing
+    /// on screen pointing at the connections the window still has, so the preference stops applying
+    /// for as long as that lasts. `railOnly` preserves a strip that is already up; without this
+    /// nothing brings one back, and a user who had hidden it was left with a window whose every
+    /// route out was a menu command or a keystroke.
+    ///
+    /// Closing is passed in rather than read off the pane. A window that is tearing down resolves
+    /// to `empty`, but so does a workspace whose connection never resolved, and a `connected` one
+    /// with no renderable session behind it, so `empty` cannot be asked which of those it is.
+    /// Laying a switcher over a window that is going away and stranding a window that is not are
+    /// the same mistake read from the same value.
+    internal static func showsWorkspaceRail(
+        preferenceEnabled: Bool,
+        workspaceCount: Int,
+        pane: ConnectionWindowPane,
+        isClosing: Bool
+    ) -> Bool {
+        guard workspaceCount > 1, !isClosing else { return false }
+        return preferenceEnabled || hidesChrome(for: pane)
+    }
 }

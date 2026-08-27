@@ -122,6 +122,20 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         "com.TablePro.mainSplit"
     }
 
+    // MARK: - Switcher Surfaces
+
+    /// The window's one floating panel and the presenter that drives it, owned here rather than by
+    /// a connection's coordinator.
+    ///
+    /// `QuickSwitcherPanelController` positions itself from its parent window's frame alone, so
+    /// two of them over one window centre on the same point with neither able to see or dismiss
+    /// the other. One per coordinator meant exactly that, once a window began hosting several
+    /// connections. It also put Switch Connection, which lists every saved connection and needs
+    /// nothing from the session, behind the session that had just gone away.
+    let quickSwitcherPanel = QuickSwitcherPanelController()
+
+    lazy var switcherPresenter = ToolbarSwitcherPresenter(panelController: quickSwitcherPanel)
+
     // MARK: - Toolbar
 
     private var toolbarOwner: MainWindowToolbar?
@@ -414,6 +428,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         guard let window = view.window else { return }
         let owner = toolbarOwner ?? MainWindowToolbar()
         toolbarOwner = owner
+        owner.subject.windowController = self
         /// Pointed at the connection before the toolbar reaches the window, so the delegate builds
         /// its items with a subject already in place and nothing has to be rebuilt afterwards.
         owner.repoint(to: coordinator)
@@ -630,6 +645,12 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     /// `.closing` on its own. Leaving a background one behind would let it keep a restore
     /// intent for a window that no longer exists.
     internal func markWindowClosing() {
+        /// The panel is an independent floating `NSPanel` with no parent-child relationship to the
+        /// window, so nothing takes it down with the window that opened it. The toolbar used to do
+        /// this on the way past, through the connection whose coordinator owned the presenter; the
+        /// window owns it now and can present it with no coordinator at all, which is exactly the
+        /// case that left a chooser on screen over a window that had gone.
+        switcherPresenter.dismiss()
         for workspace in workspaces.workspaces {
             workspace.phase = ConnectionWindowPhaseMachine.onWindowClosing(phase: workspace.phase)
         }
@@ -920,34 +941,36 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         AppSettingsManager.shared.general.showWorkspaceRail.toggle()
     }
 
-    /// A rail listing one workspace is a switcher with nothing to switch to, so it earns
-    /// its width only once a second connection or database is open.
-    static func shouldShowWorkspaceRail(settingEnabled: Bool, workspaceCount: Int) -> Bool {
-        settingEnabled && workspaceCount > 1
-    }
+    /// How many workspaces the strip has to offer, which is an app-wide count: every window's
+    /// strip lists every workspace, and picking one raises the window that hosts it. Held rather
+    /// than re-read, so the pane changing can re-decide the strip without `applyPaneChrome`
+    /// reaching for a global of its own.
+    private var hostedWorkspaceCount = 0
 
+    /// The strip's own visibility, and then everything standing on it. Called directly whenever
+    /// the app-wide count moves, which happens without this window's phase moving at all: a
+    /// sibling connection opening or closing is enough.
     func applyRailVisibility(workspaceCount: Int) {
+        hostedWorkspaceCount = workspaceCount
         setWorkspaceRailVisible(
-            Self.shouldShowWorkspaceRail(
-                settingEnabled: AppSettingsManager.shared.general.showWorkspaceRail,
-                workspaceCount: workspaceCount
+            ConnectionWindowPaneResolver.showsWorkspaceRail(
+                preferenceEnabled: AppSettingsManager.shared.general.showWorkspaceRail,
+                workspaceCount: workspaceCount,
+                pane: currentPane,
+                isClosing: phase == .closing
             )
         )
+        applyChromeStandingOnRail()
     }
 
     /// The sidebar item's minimum is a required constraint, so it lands on the very next layout
     /// pass. Applying it outside the rail's own animation snapped the pane its full width wide in
     /// one frame while the rail slid in behind it, so the object browser lurched and settled back.
-    func setWorkspaceRailVisible(_ visible: Bool) {
+    private func setWorkspaceRailVisible(_ visible: Bool) {
         guard let navigationSidebar, navigationSidebar.isRailVisible != visible else { return }
         navigationSidebar.setRailVisible(visible, animated: view.window != nil) { [weak self] in
             self?.recomputeWindowMinSize()
         }
-        /// The rail appearing or going is a chrome change of its own, and it happens without the
-        /// selected connection's phase moving: a sibling opening or closing is enough. Without this
-        /// a window whose connection is down keeps a fully collapsed sidebar when the rail arrives,
-        /// or an empty clamped column after it leaves.
-        applyPaneChrome()
     }
 
     func activateWorkspace(offsetBy offset: Int) {
@@ -1167,7 +1190,16 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     /// switched off for the whole span the chrome is not revealed and switched back on to restore
     /// it. The same is true of a clamp, which writes its narrow width into the record the way a
     /// collapse writes the collapsed flag.
+    ///
+    /// The strip is settled first, because everything after it reads whether one is on screen: the
+    /// sidebar clamps to a width the strip's own constraints report, and that width is zero until
+    /// the strip is laid out. Running the pane through it is also what brings a hidden strip back
+    /// when a connection goes down, which is the window's last route to the ones it still hosts.
     func applyPaneChrome() {
+        applyRailVisibility(workspaceCount: hostedWorkspaceCount)
+    }
+
+    private func applyChromeStandingOnRail() {
         applySidebarChromeMode(sidebarChromeMode)
         applyTabStripVisibility()
         toolbarOwner?.managedToolbar.validateVisibleItems()
