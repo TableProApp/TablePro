@@ -392,7 +392,8 @@ extension PluginMetadataRegistry {
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
                     structureColumnFields: [
-                        .name, .type, .nullable, .defaultValue, .generated, .generationExpression, .comment
+                        .name, .type, .nullable, .defaultValue, .generated, .generationExpression,
+                        .autoIncrement, .comment
                     ]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
@@ -525,7 +526,8 @@ extension PluginMetadataRegistry {
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
                     structureColumnFields: [
-                        .name, .type, .nullable, .defaultValue, .generated, .generationExpression, .comment
+                        .name, .type, .nullable, .defaultValue, .generated, .generationExpression,
+                        .autoIncrement, .comment
                     ]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
@@ -589,7 +591,8 @@ extension PluginMetadataRegistry {
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
                     structureColumnFields: [
-                        .name, .type, .nullable, .defaultValue, .generated, .generationExpression, .comment
+                        .name, .type, .nullable, .defaultValue, .generated, .generationExpression,
+                        .autoIncrement, .comment
                     ]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
