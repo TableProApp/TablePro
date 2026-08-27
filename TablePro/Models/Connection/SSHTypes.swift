@@ -126,6 +126,18 @@ struct SSHConfiguration: Codable, Hashable {
     var totpDigits: Int = 6
     var totpPeriod: Int = 30
 
+    /// The database file on the SSH server, for a connection whose driver opens a file rather than
+    /// reaching a port. Empty means this configuration forwards TCP, which is what every
+    /// server-backed connection does.
+    ///
+    /// A leading `~` and a relative path are both left as the user typed them and resolved against
+    /// the account's home at connect time. SFTP performs no expansion of its own and rejects a
+    /// literal `~/x` outright, so resolving early would only move the failure somewhere less
+    /// explainable.
+    var remoteFilePath: String = ""
+
+    var forwardsRemoteFile: Bool { enabled && !remoteFilePath.isEmpty }
+
     /// Username may be empty: the runtime resolver supplies `User` from
     /// `~/.ssh/config` when the host is an alias.
     var isValid: Bool {
@@ -139,6 +151,7 @@ extension SSHConfiguration {
     enum CodingKeys: String, CodingKey {
         case enabled, host, port, username, authMethod, privateKeyPath, agentSocketPath, jumpHosts
         case totpMode, totpAlgorithm, totpDigits, totpPeriod
+        case remoteFilePath
     }
 
     /// Every property here declares a default, so every key decodes as optional. A required decode
@@ -160,6 +173,7 @@ extension SSHConfiguration {
         totpAlgorithm = try container.decodeIfPresent(TOTPAlgorithm.self, forKey: .totpAlgorithm) ?? .sha1
         totpDigits = try container.decodeIfPresent(Int.self, forKey: .totpDigits) ?? 6
         totpPeriod = try container.decodeIfPresent(Int.self, forKey: .totpPeriod) ?? 30
+        remoteFilePath = try container.decodeIfPresent(String.self, forKey: .remoteFilePath) ?? ""
     }
 }
 

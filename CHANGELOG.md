@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Data Rewind settings in Settings > Data & Results, with an off switch and Clear Saved Changes.
 - Restore Previous Values in the toolbar's Table Actions group.
 - Rebindable Find shortcut in Settings > Keyboard, for giving `Cmd+F` to the filter bar instead.
+- Remote File pane for SQLite, opening a read-only copy of a database that lives on an SSH server. (#2474)
 
 ### Changed
 
