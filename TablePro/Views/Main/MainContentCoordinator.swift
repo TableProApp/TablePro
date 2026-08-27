@@ -816,22 +816,22 @@ final class MainContentCoordinator {
         let tables = services.schemaService.allLoadedTables(for: connectionId)
         guard let vm = sidebarViewModel else { return }
         let validNames = Set(tables.map(\.name))
-        let staleSelections = vm.selectedTables.filter { !validNames.contains($0.name) }
+        let staleSelections = vm.selectedTables.filter { !validNames.contains($0.table.name) }
         if !staleSelections.isEmpty {
             vm.selectedTables.subtract(staleSelections)
         }
-        let stalePendingDeletes = vm.pendingDeletes.subtracting(validNames)
+        let stalePendingDeletes = vm.pendingDeletes.filter { !validNames.contains($0.table.name) }
         if !stalePendingDeletes.isEmpty {
             vm.pendingDeletes.subtract(stalePendingDeletes)
-            for name in stalePendingDeletes {
-                vm.tableOperationOptions.removeValue(forKey: name)
+            for ref in stalePendingDeletes {
+                vm.tableOperationOptions.removeValue(forKey: ref)
             }
         }
-        let stalePendingTruncates = vm.pendingTruncates.subtracting(validNames)
+        let stalePendingTruncates = vm.pendingTruncates.filter { !validNames.contains($0.table.name) }
         if !stalePendingTruncates.isEmpty {
             vm.pendingTruncates.subtract(stalePendingTruncates)
-            for name in stalePendingTruncates {
-                vm.tableOperationOptions.removeValue(forKey: name)
+            for ref in stalePendingTruncates {
+                vm.tableOperationOptions.removeValue(forKey: ref)
             }
         }
     }

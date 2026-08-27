@@ -99,7 +99,7 @@ extension MainContentView {
     }
 
     func handleTableSelectionChange(
-        from oldTables: Set<TableInfo>, to newTables: Set<TableInfo>
+        from oldTables: Set<DatabaseTreeTableRef>, to newTables: Set<DatabaseTreeTableRef>
     ) {
         let action = TableSelectionAction.resolve(
             oldTables: oldTables,
@@ -107,9 +107,10 @@ extension MainContentView {
             selectedRowCount: coordinator.windowSidebarState.selectedRowCount
         )
 
-        guard case .navigate(let table) = action else {
+        guard case .navigate(let ref) = action else {
             return
         }
+        let table = ref.table
 
         guard coordinator.isKeyWindow else {
             return
@@ -136,9 +137,9 @@ extension MainContentView {
             return
         case .reuseActiveTab:
             coordinator.selectionState.indices = []
-            coordinator.openTableTab(table)
+            coordinator.openTableTab(table, schema: ref.qualifyingSchema)
         case .openNewTab:
-            coordinator.openTableTab(table)
+            coordinator.openTableTab(table, schema: ref.qualifyingSchema)
         }
     }
 

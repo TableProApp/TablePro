@@ -11,13 +11,14 @@ import TableProPluginKit
 private let saveChangesLogger = Logger(subsystem: "com.TablePro", category: "RowEditingCoordinator")
 
 extension RowEditingCoordinator {
-    /// The scope is read once, before the destructive-delete sheet and the authorization
-    /// prompt, so moving the selection to another database while either is open cannot
-    /// retarget the statements that were generated for the edited tab.
+    /// The plan carries the scope it was built for, so it runs where its statements were
+    /// generated however long the destructive-delete sheet and the authorization prompt stay
+    /// open. Reading the selected tab's scope again at execution time is what let a queued drop
+    /// land in whichever database the tab in front had moved to.
     func saveChanges(
-        pendingTruncates: inout Set<String>,
-        pendingDeletes: inout Set<String>,
-        tableOperationOptions: inout [String: TableOperationOptions]
+        pendingTruncates: inout Set<DatabaseTreeTableRef>,
+        pendingDeletes: inout Set<DatabaseTreeTableRef>,
+        tableOperationOptions: inout [DatabaseTreeTableRef: TableOperationOptions]
     ) {
         let hasEditedCells = parent.changeManager.hasChanges
         let hasPendingTableOps = !pendingTruncates.isEmpty || !pendingDeletes.isEmpty
@@ -43,7 +44,7 @@ extension RowEditingCoordinator {
             return
         }
 
-        guard let scope = parent.selectedTabScope else {
+        guard parent.selectedTabScope != nil else {
             failSave(message: String(localized: "Not connected to database"))
             return
         }
@@ -125,7 +126,7 @@ extension RowEditingCoordinator {
                 var opts = snapshotOptions
                 executeCommitPlan(
                     plan,
-                    scope: scope,
+                    scope: plan.scope,
                     clearTableOps: hasPendingTableOps,
                     pendingTruncates: &truncs,
                     pendingDeletes: &dels,
@@ -153,9 +154,9 @@ extension RowEditingCoordinator {
         _ plan: DataWritePlan,
         scope: DatabaseScope,
         clearTableOps: Bool,
-        pendingTruncates: inout Set<String>,
-        pendingDeletes: inout Set<String>,
-        tableOperationOptions: inout [String: TableOperationOptions]
+        pendingTruncates: inout Set<DatabaseTreeTableRef>,
+        pendingDeletes: inout Set<DatabaseTreeTableRef>,
+        tableOperationOptions: inout [DatabaseTreeTableRef: TableOperationOptions]
     ) {
         let validSteps = plan.steps.filter { !$0.statement.sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         guard !validSteps.isEmpty else {
@@ -169,7 +170,7 @@ extension RowEditingCoordinator {
         let truncatedTables = Set(pendingTruncates)
         let conn = parent.connection
 
-        var capturedOptions: [String: TableOperationOptions] = [:]
+        var capturedOptions: [DatabaseTreeTableRef: TableOperationOptions] = [:]
         for table in deletedTables.union(truncatedTables) {
             capturedOptions[table] = tableOperationOptions[table]
         }
@@ -291,7 +292,7 @@ extension RowEditingCoordinator {
         plan: DataWritePlan,
         savingTabId: UUID?,
         clearTableOps: Bool,
-        deletedTables: Set<String>
+        deletedTables: Set<DatabaseTreeTableRef>
     ) {
         let savingTabIsSelected = savingTabId != nil && parent.tabManager.selectedTabId == savingTabId
         if savingTabIsSelected {
@@ -324,10 +325,24 @@ extension RowEditingCoordinator {
         parent.runQuery()
     }
 
-    private func closeTabsForDroppedTables(_ deletedTables: Set<String>) {
+    /// A tab is closed only when the object it is showing is one of the objects that went.
+    ///
+    /// It used to compare bare names, so dropping `analytics.users` also closed the tab on
+    /// `public.users` and threw away its row buffer, with nothing to undo it.
+    private func closeTabsForDroppedTables(_ deletedTables: Set<DatabaseTreeTableRef>) {
+        let browseDatabase = parent.browseDatabaseName
+        let dropped = Set(deletedTables.map { ref in
+            TableTabIdentity(
+                ref: ref,
+                browsing: browseDatabase,
+                resolvedSchema: DatabaseManager.shared.resolvedSchemaName(
+                    ref.qualifyingSchema, for: parent.connectionId
+                )
+            )
+        })
         let tabIdsToRemove = Set(
             parent.tabManager.tabs
-                .filter { $0.tabType == .table && deletedTables.contains($0.tableContext.tableName ?? "") }
+                .filter { tab in tab.tableIdentity(browsing: browseDatabase).map(dropped.contains) ?? false }
                 .map(\.id)
         )
         guard !tabIdsToRemove.isEmpty else { return }
@@ -493,9 +508,9 @@ extension RowEditingCoordinator {
 
     private func restorePendingTableOperations(
         connectionId: UUID,
-        truncates: Set<String>,
-        deletes: Set<String>,
-        options: [String: TableOperationOptions]
+        truncates: Set<DatabaseTreeTableRef>,
+        deletes: Set<DatabaseTreeTableRef>,
+        options: [DatabaseTreeTableRef: TableOperationOptions]
     ) {
         DatabaseManager.shared.updateSession(connectionId) { session in
             session.pendingTruncates = truncates

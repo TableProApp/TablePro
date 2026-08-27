@@ -14,10 +14,10 @@ final class SidebarViewModel {
     static func shared(
         connectionId: UUID,
         databaseType: DatabaseType,
-        selectedTables: Binding<Set<TableInfo>>,
-        pendingTruncates: Binding<Set<String>>,
-        pendingDeletes: Binding<Set<String>>,
-        tableOperationOptions: Binding<[String: TableOperationOptions]>
+        selectedTables: Binding<Set<DatabaseTreeTableRef>>,
+        pendingTruncates: Binding<Set<DatabaseTreeTableRef>>,
+        pendingDeletes: Binding<Set<DatabaseTreeTableRef>>,
+        tableOperationOptions: Binding<[DatabaseTreeTableRef: TableOperationOptions]>
     ) -> SidebarViewModel {
         if let existing = registry[connectionId] {
             existing.updateBindings(
@@ -45,10 +45,10 @@ final class SidebarViewModel {
     }
 
     func updateBindings(
-        selectedTables: Binding<Set<TableInfo>>,
-        pendingTruncates: Binding<Set<String>>,
-        pendingDeletes: Binding<Set<String>>,
-        tableOperationOptions: Binding<[String: TableOperationOptions]>
+        selectedTables: Binding<Set<DatabaseTreeTableRef>>,
+        pendingTruncates: Binding<Set<DatabaseTreeTableRef>>,
+        pendingDeletes: Binding<Set<DatabaseTreeTableRef>>,
+        tableOperationOptions: Binding<[DatabaseTreeTableRef: TableOperationOptions]>
     ) {
         selectedTablesBinding = selectedTables
         pendingTruncatesBinding = pendingTruncates
@@ -135,14 +135,14 @@ final class SidebarViewModel {
     }
     var showOperationDialog = false
     var pendingOperationType: TableOperationType?
-    var pendingOperationTables: [String] = []
+    var pendingOperationTables: [DatabaseTreeTableRef] = []
 
     // MARK: - Binding Storage
 
-    private var selectedTablesBinding: Binding<Set<TableInfo>>
-    private var pendingTruncatesBinding: Binding<Set<String>>
-    private var pendingDeletesBinding: Binding<Set<String>>
-    private var tableOperationOptionsBinding: Binding<[String: TableOperationOptions]>
+    private var selectedTablesBinding: Binding<Set<DatabaseTreeTableRef>>
+    private var pendingTruncatesBinding: Binding<Set<DatabaseTreeTableRef>>
+    private var pendingDeletesBinding: Binding<Set<DatabaseTreeTableRef>>
+    private var tableOperationOptionsBinding: Binding<[DatabaseTreeTableRef: TableOperationOptions]>
     let databaseType: DatabaseType
 
     // MARK: - Dependencies
@@ -155,22 +155,22 @@ final class SidebarViewModel {
 
     // MARK: - Convenience Accessors
 
-    var selectedTables: Set<TableInfo> {
+    var selectedTables: Set<DatabaseTreeTableRef> {
         get { selectedTablesBinding.wrappedValue }
         set { selectedTablesBinding.wrappedValue = newValue }
     }
 
-    var pendingTruncates: Set<String> {
+    var pendingTruncates: Set<DatabaseTreeTableRef> {
         get { pendingTruncatesBinding.wrappedValue }
         set { pendingTruncatesBinding.wrappedValue = newValue }
     }
 
-    var pendingDeletes: Set<String> {
+    var pendingDeletes: Set<DatabaseTreeTableRef> {
         get { pendingDeletesBinding.wrappedValue }
         set { pendingDeletesBinding.wrappedValue = newValue }
     }
 
-    var tableOperationOptions: [String: TableOperationOptions] {
+    var tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions] {
         get { tableOperationOptionsBinding.wrappedValue }
         set { tableOperationOptionsBinding.wrappedValue = newValue }
     }
@@ -183,10 +183,10 @@ final class SidebarViewModel {
     // MARK: - Initialization
 
     init(
-        selectedTables: Binding<Set<TableInfo>>,
-        pendingTruncates: Binding<Set<String>>,
-        pendingDeletes: Binding<Set<String>>,
-        tableOperationOptions: Binding<[String: TableOperationOptions]>,
+        selectedTables: Binding<Set<DatabaseTreeTableRef>>,
+        pendingTruncates: Binding<Set<DatabaseTreeTableRef>>,
+        pendingDeletes: Binding<Set<DatabaseTreeTableRef>>,
+        tableOperationOptions: Binding<[DatabaseTreeTableRef: TableOperationOptions]>,
         databaseType: DatabaseType,
         connectionId: UUID
     ) {
@@ -272,42 +272,42 @@ final class SidebarViewModel {
 
     // MARK: - Batch Operations
 
-    func batchToggleTruncate(tableNames: [String]? = nil) {
-        let tablesToToggle = tableNames ?? (selectedTables.isEmpty ? [] : Array(selectedTables.map { $0.name }))
-        guard !tablesToToggle.isEmpty else { return }
+    /// A queued Truncate or Drop carries the row it was raised from, not that row's name.
+    /// The queue lives on the connection and outlives a database switch, so a name-keyed entry
+    /// was resolved at Save time against whatever the tab in front pointed at by then.
+    func batchToggleTruncate(refs: [DatabaseTreeTableRef]? = nil) {
+        let targets = refs ?? Array(selectedTables)
+        guard !targets.isEmpty else { return }
 
-        let allAlreadyPending = tablesToToggle.allSatisfy { pendingTruncates.contains($0) }
-        if allAlreadyPending {
-            var updated = pendingTruncates
-            for name in tablesToToggle {
-                updated.remove(name)
-                tableOperationOptions.removeValue(forKey: name)
-            }
-            pendingTruncates = updated
-        } else {
-            pendingOperationType = .truncate
-            pendingOperationTables = tablesToToggle
-            showOperationDialog = true
+        guard !targets.allSatisfy({ pendingTruncates.contains($0) }) else {
+            unstage(targets, from: &pendingTruncatesBinding.wrappedValue)
+            return
         }
+        pendingOperationType = .truncate
+        pendingOperationTables = targets
+        showOperationDialog = true
     }
 
-    func batchToggleDelete(tableNames: [String]? = nil) {
-        let tablesToToggle = tableNames ?? (selectedTables.isEmpty ? [] : Array(selectedTables.map { $0.name }))
-        guard !tablesToToggle.isEmpty else { return }
+    func batchToggleDelete(refs: [DatabaseTreeTableRef]? = nil) {
+        let targets = refs ?? Array(selectedTables)
+        guard !targets.isEmpty else { return }
 
-        let allAlreadyPending = tablesToToggle.allSatisfy { pendingDeletes.contains($0) }
-        if allAlreadyPending {
-            var updated = pendingDeletes
-            for name in tablesToToggle {
-                updated.remove(name)
-                tableOperationOptions.removeValue(forKey: name)
-            }
-            pendingDeletes = updated
-        } else {
-            pendingOperationType = .drop
-            pendingOperationTables = tablesToToggle
-            showOperationDialog = true
+        guard !targets.allSatisfy({ pendingDeletes.contains($0) }) else {
+            unstage(targets, from: &pendingDeletesBinding.wrappedValue)
+            return
         }
+        pendingOperationType = .drop
+        pendingOperationTables = targets
+        showOperationDialog = true
+    }
+
+    private func unstage(_ targets: [DatabaseTreeTableRef], from queue: inout Set<DatabaseTreeTableRef>) {
+        var options = tableOperationOptions
+        for ref in targets {
+            queue.remove(ref)
+            options.removeValue(forKey: ref)
+        }
+        tableOperationOptions = options
     }
 
     func cancelPendingOperation() {
@@ -322,15 +322,15 @@ final class SidebarViewModel {
         var updatedDeletes = pendingDeletes
         var updatedOptions = tableOperationOptions
 
-        for tableName in pendingOperationTables {
+        for ref in pendingOperationTables {
             if operationType == .truncate {
-                updatedDeletes.remove(tableName)
-                updatedTruncates.insert(tableName)
+                updatedDeletes.remove(ref)
+                updatedTruncates.insert(ref)
             } else {
-                updatedTruncates.remove(tableName)
-                updatedDeletes.insert(tableName)
+                updatedTruncates.remove(ref)
+                updatedDeletes.insert(ref)
             }
-            updatedOptions[tableName] = options
+            updatedOptions[ref] = options
         }
 
         pendingTruncates = updatedTruncates
@@ -345,7 +345,7 @@ final class SidebarViewModel {
 
     func copySelectedTableNames() {
         guard !selectedTables.isEmpty else { return }
-        let names = selectedTables.map { $0.name }.sorted()
+        let names = selectedTables.map { $0.table.name }.sorted()
         ClipboardService.shared.writeText(names.joined(separator: ","))
     }
 

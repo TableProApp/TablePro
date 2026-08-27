@@ -26,6 +26,10 @@ struct SidebarObjectSelectionTests {
         TableInfo(name: name, type: .table, rowCount: nil, schema: schema)
     }
 
+    private func marked(_ table: TableInfo, database: String, schema: String? = nil) -> DatabaseTreeTableRef {
+        DatabaseTreeTableRef(database: database, schema: table.schema ?? schema, table: table)
+    }
+
     @Test("The tab's table is marked when the tab is in the container being browsed")
     func marksTabInBrowsedContainer() {
         let selection = SidebarObjectSelection.resolve(
@@ -34,7 +38,7 @@ struct SidebarObjectSelectionTests {
             browseScope: scope("banshi_online"),
             tables: tables
         )
-        #expect(selection == .mark([TestFixtures.makeTableInfo(name: "orders")]))
+        #expect(selection == .mark([marked(TestFixtures.makeTableInfo(name: "orders"), database: "banshi_online")]))
     }
 
     @Test("A tab in another database marks nothing, so the same-named row stays clickable")
@@ -57,7 +61,7 @@ struct SidebarObjectSelectionTests {
             browseScope: scope("app", schema: "reporting"),
             tables: [publicOrders, table("orders", schema: "reporting")]
         )
-        #expect(selection == .mark([publicOrders]))
+        #expect(selection == .mark([marked(publicOrders, database: "app")]))
     }
 
     @Test("Two rows sharing a name in one database are told apart by the tab's schema")
@@ -69,7 +73,7 @@ struct SidebarObjectSelectionTests {
             browseScope: scope("app", schema: "reporting"),
             tables: [table("orders", schema: "public"), reportingOrders]
         )
-        #expect(selection == .mark([reportingOrders]))
+        #expect(selection == .mark([marked(reportingOrders, database: "app")]))
     }
 
     @Test("A tab naming no schema takes the first row with that name, as before")
@@ -81,7 +85,7 @@ struct SidebarObjectSelectionTests {
             browseScope: scope("app"),
             tables: [first, table("orders", schema: "reporting")]
         )
-        #expect(selection == .mark([first]))
+        #expect(selection == .mark([marked(first, database: "app")]))
     }
 
     @Test("A tab that names no table marks nothing")

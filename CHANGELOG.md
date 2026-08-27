@@ -104,6 +104,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Insert Row offered on Redis connections on iPhone and iPad, where it can only fail.
 - Missing search field in a connection's Tables tab on iPhone and iPad. (#2544)
 - A search from one connection or table still filtering another's list on iPhone and iPad.
+- A staged drop or truncate running against the database in front at Save time rather than the one it was staged in.
+- Unqualified `DROP TABLE` for every object on Oracle, Dameng, Trino, Snowflake and BigQuery, whatever its kind.
+- Dropping a table closing the tab on a same-named table in another schema or database.
 
 ### Security
 

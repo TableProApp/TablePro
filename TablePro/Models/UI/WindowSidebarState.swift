@@ -25,7 +25,7 @@ internal final class WindowSidebarState {
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var isLoaded = false
 
-    var selectedTables: Set<TableInfo> = []
+    var selectedTables: Set<DatabaseTreeTableRef> = []
 
     /// How many rows are selected, which is not the same as how many tables. A table selected
     /// alongside a schema is an extension of a selection, not a pick, and the set of tables alone
@@ -35,11 +35,11 @@ internal final class WindowSidebarState {
     /// through `selectTables(_:)` and the two stay consistent by construction.
     private(set) var selectedRowCount = 0
 
-    func selectTables(_ tables: Set<TableInfo>) {
+    func selectTables(_ tables: Set<DatabaseTreeTableRef>) {
         select(tables: tables, rowCount: tables.count)
     }
 
-    func select(tables: Set<TableInfo>, rowCount: Int) {
+    func select(tables: Set<DatabaseTreeTableRef>, rowCount: Int) {
         selectedRowCount = rowCount
         guard selectedTables != tables else { return }
         selectedTables = tables

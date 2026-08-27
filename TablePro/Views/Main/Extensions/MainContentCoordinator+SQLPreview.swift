@@ -6,15 +6,16 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 extension MainContentCoordinator {
     // MARK: - SQL Preview
 
     /// Routes SQL preview request to the appropriate handler based on current tab mode
     func handlePreviewSQL(
-        pendingTruncates: Set<String>,
-        pendingDeletes: Set<String>,
-        tableOperationOptions: [String: TableOperationOptions]
+        pendingTruncates: Set<DatabaseTreeTableRef>,
+        pendingDeletes: Set<DatabaseTreeTableRef>,
+        tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions]
     ) {
         if tabManager.selectedTab?.display.resultsViewMode == .structure {
             // Structure view handles its own preview via direct call
@@ -30,9 +31,9 @@ extension MainContentCoordinator {
 
     /// Generate SQL preview of all pending changes with inlined parameters
     func generatePreviewSQL(
-        pendingTruncates: Set<String>,
-        pendingDeletes: Set<String>,
-        tableOperationOptions: [String: TableOperationOptions]
+        pendingTruncates: Set<DatabaseTreeTableRef>,
+        pendingDeletes: Set<DatabaseTreeTableRef>,
+        tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions]
     ) {
         do {
             let plan = try buildDataWritePlan(
@@ -53,9 +54,9 @@ extension MainContentCoordinator {
     /// carries the rows it should touch, which is what lets the executor hold the server to that
     /// number, and the row operations carry the before and after images a later rewind needs.
     func buildDataWritePlan(
-        pendingTruncates: Set<String>,
-        pendingDeletes: Set<String>,
-        tableOperationOptions: [String: TableOperationOptions]
+        pendingTruncates: Set<DatabaseTreeTableRef>,
+        pendingDeletes: Set<DatabaseTreeTableRef>,
+        tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions]
     ) throws -> DataWritePlan {
         let dbType = connection.type
         let hasPendingTableOps = !pendingTruncates.isEmpty || !pendingDeletes.isEmpty
@@ -65,13 +66,16 @@ extension MainContentCoordinator {
         /// `PRAGMA foreign_keys` is a no-op there on every SQLite-derived engine, so the option
         /// would silently do nothing. They travel as the plan's prologue and epilogue instead.
         let needsDisableFK = PluginManager.shared.supportsForeignKeyDisable(for: dbType)
-            && pendingTruncates.union(pendingDeletes).contains { tableName in
-                tableOperationOptions[tableName]?.ignoreForeignKeys == true
+            && pendingTruncates.union(pendingDeletes).contains { ref in
+                tableOperationOptions[ref]?.ignoreForeignKeys == true
             }
         let prologue = needsDisableFK ? fkDisableStatements(for: dbType) : []
         let epilogue = needsDisableFK ? fkEnableStatements(for: dbType) : []
 
-        let scope = selectedTabScope ?? DatabaseScope(connectionId: connection.id, database: "", schema: nil)
+        let scope = try writeScope(
+            stagedTables: pendingTruncates.union(pendingDeletes),
+            includesRowEdits: changeManager.hasChanges
+        )
 
         var rowOperations: [RowWriteOperation] = []
         if changeManager.hasChanges {
@@ -108,11 +112,23 @@ extension MainContentCoordinator {
         )
     }
 
+    private func writeScope(
+        stagedTables: Set<DatabaseTreeTableRef>,
+        includesRowEdits: Bool
+    ) throws -> DatabaseScope {
+        try StagedWriteScope.resolve(
+            tabScope: selectedTabScope ?? DatabaseScope(connectionId: connection.id, database: "", schema: nil),
+            browseDatabase: browseDatabaseName,
+            stagedDatabases: Set(stagedTables.compactMap(\.database)),
+            includesRowEdits: includesRowEdits
+        )
+    }
+
     /// Assembles all pending SQL statements (cell edits + table operations) in execution order.
     func assemblePendingStatements(
-        pendingTruncates: Set<String>,
-        pendingDeletes: Set<String>,
-        tableOperationOptions: [String: TableOperationOptions]
+        pendingTruncates: Set<DatabaseTreeTableRef>,
+        pendingDeletes: Set<DatabaseTreeTableRef>,
+        tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions]
     ) throws -> [ParameterizedStatement] {
         try buildDataWritePlan(
             pendingTruncates: pendingTruncates,

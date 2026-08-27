@@ -8,12 +8,6 @@ import Foundation
 extension MainContentCoordinator {
     private var tableOperationBuilder: TableOperationSQLBuilder {
         TableOperationSQLBuilder(
-            connectionId: connectionId,
-            databaseType: connection.type,
-            tableInfoProvider: {
-                guard let session = DatabaseManager.shared.session(for: self.connectionId) else { return [:] }
-                return Dictionary(session.tables.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
-            },
             adapterProvider: {
                 DatabaseManager.shared.driver(for: self.connectionId) as? PluginDriverAdapter
             }
@@ -21,9 +15,9 @@ extension MainContentCoordinator {
     }
 
     func generateTableOperationSQL(
-        truncates: Set<String>,
-        deletes: Set<String>,
-        options: [String: TableOperationOptions],
+        truncates: Set<DatabaseTreeTableRef>,
+        deletes: Set<DatabaseTreeTableRef>,
+        options: [DatabaseTreeTableRef: TableOperationOptions],
         includeFKHandling: Bool = true
     ) -> [String] {
         tableOperationBuilder.generate(

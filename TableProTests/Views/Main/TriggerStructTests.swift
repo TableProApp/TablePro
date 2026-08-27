@@ -88,8 +88,8 @@ struct InspectorTriggerTests {
 struct PendingChangeTriggerTests {
     private func makeTrigger(
         hasDataChanges: Bool = false,
-        pendingTruncates: Set<String> = [],
-        pendingDeletes: Set<String> = [],
+        pendingTruncates: Set<DatabaseTreeTableRef> = [],
+        pendingDeletes: Set<DatabaseTreeTableRef> = [],
         hasStructureChanges: Bool = false,
         isFileDirty: Bool = false,
         hasCreateTablePending: Bool = false
@@ -106,8 +106,10 @@ struct PendingChangeTriggerTests {
 
     @Test("Same values are equal")
     func sameValuesAreEqual() {
-        let a = makeTrigger(hasDataChanges: true, pendingTruncates: ["t1"], pendingDeletes: ["t2"])
-        let b = makeTrigger(hasDataChanges: true, pendingTruncates: ["t1"], pendingDeletes: ["t2"])
+        let truncate = TestFixtures.makeTableRef(name: "t1")
+        let delete = TestFixtures.makeTableRef(name: "t2")
+        let a = makeTrigger(hasDataChanges: true, pendingTruncates: [truncate], pendingDeletes: [delete])
+        let b = makeTrigger(hasDataChanges: true, pendingTruncates: [truncate], pendingDeletes: [delete])
         #expect(a == b)
     }
 
@@ -127,15 +129,15 @@ struct PendingChangeTriggerTests {
 
     @Test("Different pendingTruncates produces unequal triggers")
     func differentPendingTruncates() {
-        let a = makeTrigger(pendingTruncates: ["t1"])
-        let b = makeTrigger(pendingTruncates: ["t2"])
+        let a = makeTrigger(pendingTruncates: [TestFixtures.makeTableRef(name: "t1")])
+        let b = makeTrigger(pendingTruncates: [TestFixtures.makeTableRef(name: "t2")])
         #expect(a != b)
     }
 
     @Test("Different pendingDeletes produces unequal triggers")
     func differentPendingDeletes() {
-        let a = makeTrigger(pendingDeletes: ["d1"])
-        let b = makeTrigger(pendingDeletes: ["d2"])
+        let a = makeTrigger(pendingDeletes: [TestFixtures.makeTableRef(name: "d1")])
+        let b = makeTrigger(pendingDeletes: [TestFixtures.makeTableRef(name: "d2")])
         #expect(a != b)
     }
 

@@ -22,10 +22,13 @@ struct ConnectionSession: Identifiable {
     var safeModeLevel: SafeModeLevel
 
     // Per-connection state
-    var selectedTables: Set<TableInfo> = []
-    var pendingTruncates: Set<String> = []
-    var pendingDeletes: Set<String> = []
-    var tableOperationOptions: [String: TableOperationOptions] = [:]
+    var selectedTables: Set<DatabaseTreeTableRef> = []
+    /// Queued Truncate and Drop, keyed by the object each one is aimed at rather than by its name.
+    /// The queue outlives a database switch, so a name-keyed entry was resolved at Save time
+    /// against whatever the selected tab pointed at by then.
+    var pendingTruncates: Set<DatabaseTreeTableRef> = []
+    var pendingDeletes: Set<DatabaseTreeTableRef> = []
+    var tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions] = [:]
     /// Where the user is browsing: what the sidebar lists and where a new tab opens.
     /// It is not where an open tab queries. A tab carries its own database and schema,
     /// and resolving an operation through these instead is how a tab ends up running
