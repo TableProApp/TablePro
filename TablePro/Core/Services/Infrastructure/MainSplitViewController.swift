@@ -576,8 +576,8 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     }
 
     /// A window now hosts several connections, so a phase change has to name the one it belongs
-    /// to. Repainting is skipped for a workspace the user is not looking at: its state is still
-    /// correct, it simply is not the thing on screen.
+    /// to. A background workspace still owns persistent panes, which have to follow its phase before
+    /// the user switches back to them.
     internal func transition(to next: ConnectionWindowPhase, for connectionId: UUID) {
         guard let workspace = workspaces.workspace(for: connectionId) else { return }
         guard workspace.phase != next else { return }
@@ -585,6 +585,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         if workspaces.selectedConnectionId == connectionId {
             applyPhase()
         } else {
+            refreshPanes(of: workspace)
             SessionRecoveryTracker.sync()
         }
     }
