@@ -4,10 +4,30 @@
 //
 
 import AppKit
+import SwiftUI
 
 extension MainSplitViewController {
     @objc func switchConnection(_ sender: Any?) {
-        commandActions?.openConnectionSwitcher()
+        openConnectionSwitcher()
+    }
+
+    /// Presented by the window, not by the selected connection's actions like everything else in
+    /// this file. The switcher lists every connection the app has open and every one the user has
+    /// saved, and it reads none of that from a session, so nothing about it belongs to the
+    /// connection on screen. That connection going away is exactly when a user reaches for it, and
+    /// routing it through `commandActions` made it do nothing at that moment: `releaseSession`
+    /// nils the actions, so Switch Connection and Control-Command-C were dead over the very pane
+    /// telling the user to reconnect or pick another connection.
+    func openConnectionSwitcher() {
+        view.window?.makeFirstResponder(nil)
+        commandActions?.dismissScopeSwitcher()
+        switcherPresenter.present(
+            from: view.window,
+            anchoredTo: MainWindowToolbar.connectionGroup,
+            contentSize: ConnectionSwitcherPopover.contentSize
+        ) { dismiss in
+            ConnectionSwitcherPopover(dismiss: dismiss)
+        }
     }
 
     @objc func openContainerSwitcher(_ sender: Any?) {

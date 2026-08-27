@@ -115,7 +115,7 @@ public actor MCPConnectionBridge {
         let snapshot = await MainActor.run { () -> ConnectionStatusSnapshot? in
             guard let session = DatabaseManager.shared.activeSessions[connectionId] else { return nil }
             return ConnectionStatusSnapshot(
-                status: session.status,
+                status: session.reportedStatus,
                 database: session.resolvedBrowseDatabase,
                 schema: session.browseSchema,
                 serverVersion: session.driver?.serverVersion,

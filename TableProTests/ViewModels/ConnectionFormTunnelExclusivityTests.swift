@@ -24,14 +24,14 @@ struct ConnectionFormTunnelExclusivityTests {
     func emptyWhenAllDisabled() {
         let coordinator = coordinator(enabled: [])
         #expect(coordinator.enabledTunnels.isEmpty)
-        for kind in ConnectionTunnelKind.allCases {
+        for kind in ConnectionTunnelKind.formToggleable {
             #expect(coordinator.otherEnabledTunnels(excluding: kind).isEmpty)
         }
     }
 
     @Test("every pair of enabled tunnels warns in both directions")
     func pairwiseConflicts() {
-        let kinds = ConnectionTunnelKind.allCases
+        let kinds = ConnectionTunnelKind.formToggleable
         for first in kinds {
             for second in kinds where second != first {
                 let coordinator = coordinator(enabled: [first, second])
@@ -43,9 +43,9 @@ struct ConnectionFormTunnelExclusivityTests {
 
     @Test("all four enabled reports the three others per kind")
     func allEnabled() {
-        let coordinator = coordinator(enabled: Set(ConnectionTunnelKind.allCases))
+        let coordinator = coordinator(enabled: Set(ConnectionTunnelKind.formToggleable))
         #expect(coordinator.enabledTunnels.count == 4)
-        for kind in ConnectionTunnelKind.allCases {
+        for kind in ConnectionTunnelKind.formToggleable {
             let others = coordinator.otherEnabledTunnels(excluding: kind)
             #expect(others.count == 3)
             #expect(!others.map(\.kind).contains(kind))

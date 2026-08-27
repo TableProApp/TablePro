@@ -503,6 +503,19 @@ extension PluginManager {
             .capabilities.supportsSSH ?? true
     }
 
+    /// Which connection field carries the local database file this type opens, or nil when it
+    /// reaches its database over the network.
+    func localFilePathField(for databaseType: DatabaseType) -> LocalFilePathField? {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.localFilePathField
+    }
+
+    /// Whether this type can point at a database file on an SSH server instead of a local one.
+    func supportsRemoteDatabaseFile(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsRemoteDatabaseFile ?? false
+    }
+
     func supportsSSL(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsSSL ?? true

@@ -52,6 +52,8 @@ extension DatabaseManager {
                 await handleCloudSQLProxyTunnelDied(connectionId: connectionId)
             case .socksProxy:
                 await handleSOCKSProxyTunnelDied(connectionId: connectionId)
+            case .remoteFile:
+                break
             }
         }
     }

@@ -114,10 +114,9 @@ internal enum LibSSH2TunnelFactory {
     // MARK: - Shared Chain Builder
 
     /// Result of building an authenticated SSH chain (possibly through jump hosts).
-    private struct AuthenticatedChain {
+    internal struct AuthenticatedChain {
         let session: OpaquePointer
         let socketFD: Int32
-        let initialSocketFD: Int32
         let jumpHops: [HopInfo]
 
         struct HopInfo {
@@ -128,11 +127,13 @@ internal enum LibSSH2TunnelFactory {
         }
     }
 
-    private static func buildAuthenticatedChain(
+    internal static func buildAuthenticatedChain(
         config: SSHConfiguration,
         credentials: SSHTunnelCredentials,
         queueLabel: String
     ) async throws -> AuthenticatedChain {
+        _ = initialized
+
         let document = await SSHConfigCache.shared.current()
         let resolvedPrimary = SSHConfigResolver.resolve(config, document: document)
 
@@ -269,7 +270,6 @@ internal enum LibSSH2TunnelFactory {
                 return AuthenticatedChain(
                     session: currentSession,
                     socketFD: currentSocketFD,
-                    initialSocketFD: socketFD,
                     jumpHops: jumpHops
                 )
             } catch {
@@ -306,12 +306,10 @@ internal enum LibSSH2TunnelFactory {
     }
 
     /// Clean up all resources in an authenticated chain.
-    private static func cleanupChain(_ chain: AuthenticatedChain, reason: String) {
+    internal static func cleanupChain(_ chain: AuthenticatedChain, reason: String) {
         tablepro_libssh2_session_disconnect(chain.session, reason)
         libssh2_session_free(chain.session)
-        if chain.socketFD != chain.initialSocketFD {
-            Darwin.close(chain.socketFD)
-        }
+        Darwin.close(chain.socketFD)
 
         // Clean up jump hops in reverse order:
         // First pass: cancel relays and shutdown sockets to break relay loops

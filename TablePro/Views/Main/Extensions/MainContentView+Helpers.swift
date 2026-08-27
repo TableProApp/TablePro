@@ -37,7 +37,7 @@ extension MainContentView {
                 coordinator.lazyLoadCurrentTabIfNeeded()
             }
         }
-        toolbarState.updateConnectionState(from: session.status)
+        toolbarState.updateConnectionState(from: session.reportedStatus)
         toolbarState.syncFromSession(for: connection)
     }
 

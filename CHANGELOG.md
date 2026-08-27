@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Data Rewind settings in Settings > Data & Results, with an off switch and Clear Saved Changes.
 - Restore Previous Values in the toolbar's Table Actions group.
 - Rebindable Find shortcut in Settings > Keyboard, for giving `Cmd+F` to the filter bar instead.
+- Remote File pane for SQLite, opening a read-only copy of a database that lives on an SSH server. (#2474)
 - Rename on a table's right-click menu, editing the row's label in place. (#2482)
 - Rename Database and Rename Schema on the sidebar's container rows, where the engine has them. (#2482)
 
@@ -23,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Connections strip absent from a window whose selected connection has nothing to show, when Show Connections is off.
+- Switch Connection disabled, in the Database menu and the toolbar, while the selected connection is disconnected.
+- One floating switcher panel per connection in a window, each centred on the same point.
+- Leaked socket on every SSH Test Connection against a server reached without jump hosts.
+- Leaked listening port, socket and session each time an SSH tunnel died from sleep or a dropped network.
 - Selection highlight missing from part of a long selection after scrolling back up to it.
 - Editor not scrolling to follow a selection extended past the edge of the viewport.
 - Find highlight and the run band covering only the first line of a match that spans several lines.
@@ -75,6 +81,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Background connections stuck on the session preparation screen after connecting. (#2545)
 - Blank sidebar, grid and inspector on a connection opened into a window that was already on screen.
 - Connections strip hidden, with Switch Connection and the Show Next and Previous Connection items disabled, whenever the connection on screen was not connected.
+- Rows, tabs and an enabled toolbar left on screen over a connection that had stopped responding, while the connections strip showed it as failed.
+- Reconnect doing nothing on a connection whose automatic reconnect had already given up.
+- Health monitor waking every 30 seconds for the life of the app after it stopped trying to reconnect.
 - Choosing a connection from the connection list re-fronting its window without switching to it.
 - Grid cells left at the old column positions until the next click, after a resize, an auto-fit, a reorder, hiding a column, or a row-number width change. (#2449, #2446)
 - The row-number column draggable out of first place, which walked it to the far right on the next refresh.
