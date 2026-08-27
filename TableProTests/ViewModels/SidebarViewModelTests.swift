@@ -28,18 +28,18 @@ private final class SidebarMockClipboard: ClipboardProvider {
 @MainActor
 private func makeSUT(
     tables: [TableInfo] = [],
-    selectedTables: Set<TableInfo> = [],
-    pendingTruncates: Set<String> = [],
-    pendingDeletes: Set<String> = [],
-    tableOperationOptions: [String: TableOperationOptions] = [:],
+    selectedTables: Set<DatabaseTreeTableRef> = [],
+    pendingTruncates: Set<DatabaseTreeTableRef> = [],
+    pendingDeletes: Set<DatabaseTreeTableRef> = [],
+    tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions] = [:],
     databaseType: DatabaseType = .mysql
 ) -> (
     vm: SidebarViewModel,
     tables: Binding<[TableInfo]>,
-    selectedTables: Binding<Set<TableInfo>>,
-    pendingTruncates: Binding<Set<String>>,
-    pendingDeletes: Binding<Set<String>>,
-    tableOperationOptions: Binding<[String: TableOperationOptions]>
+    selectedTables: Binding<Set<DatabaseTreeTableRef>>,
+    pendingTruncates: Binding<Set<DatabaseTreeTableRef>>,
+    pendingDeletes: Binding<Set<DatabaseTreeTableRef>>,
+    tableOperationOptions: Binding<[DatabaseTreeTableRef: TableOperationOptions]>
 ) {
     var tablesState = tables
     var selectedState = selectedTables
@@ -65,6 +65,15 @@ private func makeSUT(
     return (vm, tablesBinding, selectedBinding, truncatesBinding, deletesBinding, optionsBinding)
 }
 
+@MainActor
+private func makeRef(_ name: String, database: String? = nil, schema: String? = nil) -> DatabaseTreeTableRef {
+    DatabaseTreeTableRef(
+        database: database,
+        schema: schema,
+        table: TestFixtures.makeTableInfo(name: name)
+    )
+}
+
 // MARK: - Tests
 
 @Suite("SidebarViewModel")
@@ -75,31 +84,31 @@ struct SidebarViewModelTests {
     @Test("batchToggleTruncate shows dialog for new tables")
     @MainActor
     func batchToggleTruncateShowsDialog() {
-        let table = TestFixtures.makeTableInfo(name: "users")
+        let table = makeRef("users")
         let (vm, _, _, _, _, _) = makeSUT(selectedTables: [table])
 
         vm.batchToggleTruncate()
 
         #expect(vm.showOperationDialog)
         #expect(vm.pendingOperationType == .truncate)
-        #expect(vm.pendingOperationTables == ["users"])
+        #expect(vm.pendingOperationTables == [table])
     }
 
     @Test("batchToggleTruncate cancels when all already pending")
     @MainActor
     func batchToggleTruncateCancels() {
-        let table = TestFixtures.makeTableInfo(name: "users")
+        let table = makeRef("users")
         let (vm, _, _, truncatesBinding, _, optionsBinding) = makeSUT(
             selectedTables: [table],
-            pendingTruncates: ["users"],
-            tableOperationOptions: ["users": TableOperationOptions()]
+            pendingTruncates: [table],
+            tableOperationOptions: [table: TableOperationOptions()]
         )
 
         vm.batchToggleTruncate()
 
         #expect(!vm.showOperationDialog)
-        #expect(!truncatesBinding.wrappedValue.contains("users"))
-        #expect(optionsBinding.wrappedValue["users"] == nil)
+        #expect(!truncatesBinding.wrappedValue.contains(table))
+        #expect(optionsBinding.wrappedValue[table] == nil)
     }
 
     @Test("batchToggleTruncate does nothing when no selection")
@@ -117,31 +126,31 @@ struct SidebarViewModelTests {
     @Test("batchToggleDelete shows dialog for new tables")
     @MainActor
     func batchToggleDeleteShowsDialog() {
-        let table = TestFixtures.makeTableInfo(name: "orders")
+        let table = makeRef("orders")
         let (vm, _, _, _, _, _) = makeSUT(selectedTables: [table])
 
         vm.batchToggleDelete()
 
         #expect(vm.showOperationDialog)
         #expect(vm.pendingOperationType == .drop)
-        #expect(vm.pendingOperationTables == ["orders"])
+        #expect(vm.pendingOperationTables == [table])
     }
 
     @Test("batchToggleDelete cancels when all already pending")
     @MainActor
     func batchToggleDeleteCancels() {
-        let table = TestFixtures.makeTableInfo(name: "orders")
+        let table = makeRef("orders")
         let (vm, _, _, _, deletesBinding, optionsBinding) = makeSUT(
             selectedTables: [table],
-            pendingDeletes: ["orders"],
-            tableOperationOptions: ["orders": TableOperationOptions()]
+            pendingDeletes: [table],
+            tableOperationOptions: [table: TableOperationOptions()]
         )
 
         vm.batchToggleDelete()
 
         #expect(!vm.showOperationDialog)
-        #expect(!deletesBinding.wrappedValue.contains("orders"))
-        #expect(optionsBinding.wrappedValue["orders"] == nil)
+        #expect(!deletesBinding.wrappedValue.contains(table))
+        #expect(optionsBinding.wrappedValue[table] == nil)
     }
 
     // MARK: - Confirm Operation
@@ -149,68 +158,68 @@ struct SidebarViewModelTests {
     @Test("confirmOperation truncate moves tables from pendingDeletes to pendingTruncates")
     @MainActor
     func confirmTruncateMovesFromDeletes() {
-        let table = TestFixtures.makeTableInfo(name: "users")
+        let table = makeRef("users")
         let (vm, _, _, truncatesBinding, deletesBinding, optionsBinding) = makeSUT(
             selectedTables: [table],
-            pendingDeletes: ["users"]
+            pendingDeletes: [table]
         )
 
         vm.pendingOperationType = .truncate
-        vm.pendingOperationTables = ["users"]
+        vm.pendingOperationTables = [table]
 
         let options = TableOperationOptions(ignoreForeignKeys: true)
         vm.confirmOperation(options: options)
 
-        #expect(truncatesBinding.wrappedValue.contains("users"))
-        #expect(!deletesBinding.wrappedValue.contains("users"))
-        #expect(optionsBinding.wrappedValue["users"]?.ignoreForeignKeys == true)
+        #expect(truncatesBinding.wrappedValue.contains(table))
+        #expect(!deletesBinding.wrappedValue.contains(table))
+        #expect(optionsBinding.wrappedValue[table]?.ignoreForeignKeys == true)
     }
 
     @Test("confirmOperation drop moves tables from pendingTruncates to pendingDeletes")
     @MainActor
     func confirmDropMovesFromTruncates() {
-        let table = TestFixtures.makeTableInfo(name: "users")
+        let table = makeRef("users")
         let (vm, _, _, truncatesBinding, deletesBinding, optionsBinding) = makeSUT(
             selectedTables: [table],
-            pendingTruncates: ["users"]
+            pendingTruncates: [table]
         )
 
         vm.pendingOperationType = .drop
-        vm.pendingOperationTables = ["users"]
+        vm.pendingOperationTables = [table]
 
         let options = TableOperationOptions(cascade: true)
         vm.confirmOperation(options: options)
 
-        #expect(!truncatesBinding.wrappedValue.contains("users"))
-        #expect(deletesBinding.wrappedValue.contains("users"))
-        #expect(optionsBinding.wrappedValue["users"]?.cascade == true)
+        #expect(!truncatesBinding.wrappedValue.contains(table))
+        #expect(deletesBinding.wrappedValue.contains(table))
+        #expect(optionsBinding.wrappedValue[table]?.cascade == true)
     }
 
     @Test("confirmOperation stores options per table")
     @MainActor
     func confirmOperationStoresOptions() {
-        let t1 = TestFixtures.makeTableInfo(name: "t1")
-        let t2 = TestFixtures.makeTableInfo(name: "t2")
+        let t1 = makeRef("t1")
+        let t2 = makeRef("t2")
         let (vm, _, _, _, _, optionsBinding) = makeSUT(selectedTables: [t1, t2])
 
         vm.pendingOperationType = .truncate
-        vm.pendingOperationTables = ["t1", "t2"]
+        vm.pendingOperationTables = [t1, t2]
 
         let options = TableOperationOptions(ignoreForeignKeys: true, cascade: true)
         vm.confirmOperation(options: options)
 
-        #expect(optionsBinding.wrappedValue["t1"] == options)
-        #expect(optionsBinding.wrappedValue["t2"] == options)
+        #expect(optionsBinding.wrappedValue[t1] == options)
+        #expect(optionsBinding.wrappedValue[t2] == options)
     }
 
     @Test("confirmOperation resets dialog state after confirm")
     @MainActor
     func confirmOperationResetsDialogState() {
-        let table = TestFixtures.makeTableInfo(name: "users")
+        let table = makeRef("users")
         let (vm, _, _, _, _, _) = makeSUT(selectedTables: [table])
 
         vm.pendingOperationType = .truncate
-        vm.pendingOperationTables = ["users"]
+        vm.pendingOperationTables = [table]
         vm.showOperationDialog = true
 
         vm.confirmOperation(options: TableOperationOptions())
@@ -229,8 +238,8 @@ struct SidebarViewModelTests {
         let clipboard = SidebarMockClipboard()
         ClipboardService.shared = clipboard
 
-        let t1 = TestFixtures.makeTableInfo(name: "zebra")
-        let t2 = TestFixtures.makeTableInfo(name: "alpha")
+        let t1 = makeRef("zebra")
+        let t2 = makeRef("alpha")
         let (vm, _, _, _, _, _) = makeSUT(selectedTables: [t1, t2])
 
         vm.copySelectedTableNames()
@@ -261,10 +270,10 @@ private func makeViewModel(
     connectionId: UUID = UUID(),
     databaseType: DatabaseType = .postgresql
 ) -> SidebarViewModel {
-    var selectedState: Set<TableInfo> = []
-    var truncates: Set<String> = []
-    var deletes: Set<String> = []
-    var options: [String: TableOperationOptions] = [:]
+    var selectedState: Set<DatabaseTreeTableRef> = []
+    var truncates: Set<DatabaseTreeTableRef> = []
+    var deletes: Set<DatabaseTreeTableRef> = []
+    var options: [DatabaseTreeTableRef: TableOperationOptions] = [:]
     let selectedBinding = Binding(get: { selectedState }, set: { selectedState = $0 })
     let truncatesBinding = Binding(get: { truncates }, set: { truncates = $0 })
     let deletesBinding = Binding(get: { deletes }, set: { deletes = $0 })

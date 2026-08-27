@@ -35,13 +35,13 @@ struct DatabaseTreeSelectionProjectionTests {
 
     @Test("An empty selection publishes nothing")
     func emptySelection() {
-        #expect(DatabaseTreeSelection.tableInfos(of: []).isEmpty)
+        #expect(DatabaseTreeSelection.tableRefs(of: []).isEmpty)
     }
 
     @Test("Every selected table is published")
     func tablesArePublished() {
         let nodes = [node(.table(ref("users"))), node(.table(ref("orders")))]
-        #expect(DatabaseTreeSelection.tableInfos(of: nodes) == [table("users"), table("orders")])
+        #expect(DatabaseTreeSelection.tableRefs(of: nodes) == [ref("users"), ref("orders")])
     }
 
     /// The commands act on tables. A routine caught in a mixed selection must never reach a
@@ -55,7 +55,7 @@ struct DatabaseTreeSelectionProjectionTests {
             node(.status(.loading)),
             node(.recentSection),
         ]
-        #expect(DatabaseTreeSelection.tableInfos(of: nodes) == [table("users")])
+        #expect(DatabaseTreeSelection.tableRefs(of: nodes) == [ref("users")])
     }
 
     /// A Recent row and the table's own row are two rows for one table, so selecting both must not
@@ -63,7 +63,7 @@ struct DatabaseTreeSelectionProjectionTests {
     @Test("A table reachable from two rows collapses to one entry")
     func duplicateRowsCollapse() {
         let nodes = [node(.table(ref("orders"))), node(.recentTable(ref("orders")))]
-        #expect(DatabaseTreeSelection.tableInfos(of: nodes).count == 1)
+        #expect(Set(DatabaseTreeSelection.tableRefs(of: nodes)).count == 1)
     }
 
     @Test("Tables of the same name in different schemas stay distinct")
@@ -72,6 +72,6 @@ struct DatabaseTreeSelectionProjectionTests {
             node(.table(ref("users", schema: "public"))),
             node(.table(ref("users", schema: "audit"))),
         ]
-        #expect(DatabaseTreeSelection.tableInfos(of: nodes).count == 2)
+        #expect(Set(DatabaseTreeSelection.tableRefs(of: nodes)).count == 2)
     }
 }

@@ -21,7 +21,7 @@ struct DatabaseTreeMenuSpecTests {
 
     private func context(
         clicked: DatabaseTreeNode.Kind?,
-        selectedTables: Set<TableInfo> = [],
+        selectedTables: Set<DatabaseTreeTableRef> = [],
         selectedContainers: [DatabaseContainerRef] = [],
         isReadOnly: Bool = false,
         isFavorite: Bool = false,
@@ -196,7 +196,7 @@ struct DatabaseTreeMenuSpecTests {
     func clickedTableOutsideSelectionActsOnItself() {
         let clicked = tableRef("orders")
         let items = DatabaseTreeMenuSpec.items(
-            for: context(clicked: .table(clicked), selectedTables: [tableRef("users").table])
+            for: context(clicked: .table(clicked), selectedTables: [tableRef("users")])
         )
 
         #expect(commands(items).contains(.copyTableNames(["orders"])))
@@ -208,7 +208,7 @@ struct DatabaseTreeMenuSpecTests {
         let items = DatabaseTreeMenuSpec.items(
             for: context(
                 clicked: .table(clicked),
-                selectedTables: [clicked.table, tableRef("users").table]
+                selectedTables: [clicked, tableRef("users")]
             )
         )
 
@@ -221,8 +221,8 @@ struct DatabaseTreeMenuSpecTests {
         let items = DatabaseTreeMenuSpec.items(for: context(clicked: .table(clicked), isReadOnly: true))
         let issued = commands(items)
 
-        #expect(!issued.contains(.truncateTables(names: ["orders"], ref: clicked)))
-        #expect(!issued.contains(.dropTables(names: ["orders"], ref: clicked)))
+        #expect(!issued.contains(.truncateTables(targets: [clicked], ref: clicked)))
+        #expect(!issued.contains(.dropTables(targets: [clicked], ref: clicked)))
         #expect(!issued.contains(.createView))
         #expect(issued.contains(.copyTableNames(["orders"])))
     }
@@ -239,9 +239,28 @@ struct DatabaseTreeMenuSpecTests {
         )
         let issued = commands(DatabaseTreeMenuSpec.items(for: context(clicked: .table(elsewhere))))
 
-        #expect(issued.contains(.truncateTables(names: ["orders"], ref: elsewhere)))
-        #expect(issued.contains(.dropTables(names: ["orders"], ref: elsewhere)))
+        #expect(issued.contains(.truncateTables(targets: [elsewhere], ref: elsewhere)))
+        #expect(issued.contains(.dropTables(targets: [elsewhere], ref: elsewhere)))
         #expect(issued.contains(.exportTables(names: ["orders"], ref: elsewhere)))
+    }
+
+    /// One save runs against one database, so a queue must not gather rows from two of them. A
+    /// tree selection can span databases, and a right-click inside it used to stage the lot under
+    /// bare names, which the save then resolved against whatever the tab in front pointed at.
+    @Test("A table menu narrows a cross-database selection to the clicked row's own database")
+    func crossDatabaseSelectionNarrowsToTheClickedDatabase() {
+        let clicked = tableRef("orders")
+        let elsewhere = DatabaseTreeTableRef(
+            database: "reporting",
+            schema: "public",
+            table: TableInfo(name: "orders", type: .table, rowCount: nil, schema: "public")
+        )
+        let issued = commands(DatabaseTreeMenuSpec.items(
+            for: context(clicked: .table(clicked), selectedTables: [clicked, elsewhere])
+        ))
+
+        #expect(issued.contains(.dropTables(targets: [clicked], ref: clicked)))
+        #expect(!issued.contains(.dropTables(targets: [clicked, elsewhere], ref: clicked)))
     }
 
     @Test("The favourite item names the action it will take")

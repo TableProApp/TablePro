@@ -33,9 +33,9 @@ struct MainContentView: View {
     @Binding var windowSubtitle: String
     @Bindable var schemaService = SchemaService.shared
     var sidebarState: SharedSidebarState
-    @Binding var pendingTruncates: Set<String>
-    @Binding var pendingDeletes: Set<String>
-    @Binding var tableOperationOptions: [String: TableOperationOptions]
+    @Binding var pendingTruncates: Set<DatabaseTreeTableRef>
+    @Binding var pendingDeletes: Set<DatabaseTreeTableRef>
+    @Binding var tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions]
     var rightPanelState: RightPanelState
 
     private var tables: [TableInfo] {
@@ -71,9 +71,9 @@ struct MainContentView: View {
         windowTitle: Binding<String>,
         windowSubtitle: Binding<String>,
         sidebarState: SharedSidebarState,
-        pendingTruncates: Binding<Set<String>>,
-        pendingDeletes: Binding<Set<String>>,
-        tableOperationOptions: Binding<[String: TableOperationOptions]>,
+        pendingTruncates: Binding<Set<DatabaseTreeTableRef>>,
+        pendingDeletes: Binding<Set<DatabaseTreeTableRef>>,
+        tableOperationOptions: Binding<[DatabaseTreeTableRef: TableOperationOptions]>,
         rightPanelState: RightPanelState,
         tabManager: QueryTabManager,
         changeManager: DataChangeManager,
@@ -192,7 +192,7 @@ struct MainContentView: View {
                 mode: .tables(
                     connection: exportConnection,
                     preselection: coordinator.exportPreselection
-                        ?? .tables(Set(coordinator.windowSidebarState.selectedTables.map(\.name)))
+                        ?? .tables(Set(coordinator.windowSidebarState.selectedTables.map(\.table.name)))
                 ),
                 sidebarTables: tables
             )

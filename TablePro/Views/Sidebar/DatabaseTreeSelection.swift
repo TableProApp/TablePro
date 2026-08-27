@@ -29,18 +29,14 @@ internal enum DatabaseTreeSelection {
         node.tableRef ?? node.recentTableRef
     }
 
+    /// What the Table menu acts on, and what a queued Truncate or Drop is keyed by. The tree
+    /// never published its selection at all, so those commands read an always-empty set and did
+    /// nothing in tree layout while the sidebar plainly showed rows selected.
+    ///
+    /// A table reachable from two rows, its own and its Recent entry, is one table, so a set built
+    /// from these collapses them.
     internal static func tableRefs(of nodes: [DatabaseTreeNode]) -> [DatabaseTreeTableRef] {
         nodes.compactMap(tableRef)
-    }
-
-    /// What the Table menu acts on. The tree never published its selection, so Truncate, Copy Name
-    /// and Delete read an always-empty set and did nothing at all in tree layout while the sidebar
-    /// plainly showed rows selected.
-    ///
-    /// A table reachable from two rows, its own and its Recent entry, is one table, so the set
-    /// collapses them.
-    internal static func tableInfos(of nodes: [DatabaseTreeNode]) -> Set<TableInfo> {
-        Set(tableRefs(of: nodes).map(\.table))
     }
 
     /// The one table a selection change should open, if any.

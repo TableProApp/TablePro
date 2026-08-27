@@ -72,7 +72,7 @@ enum SessionStateFactory {
         let toolbarSt = ConnectionToolbarState(connection: connection)
 
         if let session = DatabaseManager.shared.session(for: connection.id) {
-            toolbarSt.updateConnectionState(from: session.status)
+            toolbarSt.updateConnectionState(from: session.reportedStatus)
             if let driver = session.driver {
                 toolbarSt.databaseVersion = driver.serverVersion
             }

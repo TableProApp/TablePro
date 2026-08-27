@@ -16,8 +16,8 @@ struct SidebarView: View {
 
     var sidebarState: SharedSidebarState
     var windowState: WindowSidebarState
-    @Binding var pendingTruncates: Set<String>
-    @Binding var pendingDeletes: Set<String>
+    @Binding var pendingTruncates: Set<DatabaseTreeTableRef>
+    @Binding var pendingDeletes: Set<DatabaseTreeTableRef>
 
     var connectionId: UUID
     private weak var coordinator: MainContentCoordinator?
@@ -65,9 +65,9 @@ struct SidebarView: View {
     init(
         sidebarState: SharedSidebarState,
         windowState: WindowSidebarState,
-        pendingTruncates: Binding<Set<String>>,
-        pendingDeletes: Binding<Set<String>>,
-        tableOperationOptions: Binding<[String: TableOperationOptions]>,
+        pendingTruncates: Binding<Set<DatabaseTreeTableRef>>,
+        pendingDeletes: Binding<Set<DatabaseTreeTableRef>>,
+        tableOperationOptions: Binding<[DatabaseTreeTableRef: TableOperationOptions]>,
         databaseType: DatabaseType,
         connectionId: UUID,
         coordinator: MainContentCoordinator? = nil
@@ -143,7 +143,7 @@ struct SidebarView: View {
         }
         let prompt = TableOperationPrompt(
             operationType: operationType,
-            tableName: firstTable,
+            tableName: firstTable.table.name,
             tableCount: viewModel.pendingOperationTables.count,
             cascadeSupported: PluginManager.shared.supportsCascadeDrop(for: viewModel.databaseType),
             foreignKeyDisableSupported: PluginManager.shared.supportsForeignKeyDisable(for: viewModel.databaseType)

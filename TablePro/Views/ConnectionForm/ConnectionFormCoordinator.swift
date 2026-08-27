@@ -30,6 +30,7 @@ final class ConnectionFormCoordinator {
     var network: NetworkPaneViewModel
     var auth: AuthPaneViewModel
     var ssh: SSHPaneViewModel
+    var remoteFile: RemoteFilePaneViewModel
     var cloudflareTunnel: CloudflareTunnelPaneViewModel
     var cloudSQLProxy: CloudSQLProxyPaneViewModel
     var socksProxy: SOCKSProxyPaneViewModel
@@ -69,6 +70,9 @@ final class ConnectionFormCoordinator {
         if services.pluginManager.supportsSSH(for: network.type) {
             panes.append(.ssh)
         }
+        if services.pluginManager.supportsRemoteDatabaseFile(for: network.type) {
+            panes.append(.remoteFile)
+        }
         if services.pluginManager.supportsCloudflareTunnel(for: network.type) {
             panes.append(.cloudflareTunnel)
         }
@@ -91,6 +95,7 @@ final class ConnectionFormCoordinator {
         network.validationIssues.isEmpty
             && auth.validationIssues.isEmpty
             && ssh.validationIssues.isEmpty
+            && remoteFile.validationIssues.isEmpty
             && cloudflareTunnel.validationIssues.isEmpty
             && cloudSQLProxy.validationIssues.isEmpty
             && socksProxy.validationIssues.isEmpty
@@ -115,6 +120,7 @@ final class ConnectionFormCoordinator {
         self.network = NetworkPaneViewModel()
         self.auth = AuthPaneViewModel()
         self.ssh = SSHPaneViewModel()
+        self.remoteFile = RemoteFilePaneViewModel()
         self.cloudflareTunnel = CloudflareTunnelPaneViewModel()
         self.cloudSQLProxy = CloudSQLProxyPaneViewModel()
         self.socksProxy = SOCKSProxyPaneViewModel()
@@ -127,6 +133,7 @@ final class ConnectionFormCoordinator {
         network.coordinator = ref
         auth.coordinator = ref
         ssh.coordinator = ref
+        remoteFile.coordinator = ref
         cloudflareTunnel.coordinator = ref
         cloudSQLProxy.coordinator = ref
         socksProxy.coordinator = ref

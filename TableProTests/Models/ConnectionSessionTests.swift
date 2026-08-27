@@ -107,7 +107,7 @@ struct ConnectionSessionEquivalenceTests {
         var a = makeSession(id: id)
         var b = makeSession(id: id)
 
-        a.pendingTruncates = ["users"]
+        a.pendingTruncates = [TestFixtures.makeTableRef(name: "users")]
         b.pendingTruncates = []
 
         #expect(!a.isContentViewEquivalent(to: b))
@@ -119,7 +119,7 @@ struct ConnectionSessionEquivalenceTests {
         var a = makeSession(id: id)
         var b = makeSession(id: id)
 
-        a.selectedTables = [TestFixtures.makeTableInfo(name: "users")]
+        a.selectedTables = [TestFixtures.makeTableRef(name: "users")]
         b.selectedTables = []
 
         #expect(a.isContentViewEquivalent(to: b))
@@ -163,7 +163,7 @@ struct ConnectionSessionStateTests {
     @Test("clearCachedData clears selectedTables")
     func clearCachedDataClearsSelectedTables() {
         var session = makeSession()
-        session.selectedTables = [TestFixtures.makeTableInfo(name: "users")]
+        session.selectedTables = [TestFixtures.makeTableRef(name: "users")]
         session.clearCachedData()
         #expect(session.selectedTables.isEmpty)
     }
@@ -171,7 +171,7 @@ struct ConnectionSessionStateTests {
     @Test("clearCachedData clears pendingTruncates")
     func clearCachedDataClearsPendingTruncates() {
         var session = makeSession()
-        session.pendingTruncates = ["users", "orders"]
+        session.pendingTruncates = [TestFixtures.makeTableRef(name: "users"), TestFixtures.makeTableRef(name: "orders")]
         session.clearCachedData()
         #expect(session.pendingTruncates.isEmpty)
     }
@@ -179,7 +179,7 @@ struct ConnectionSessionStateTests {
     @Test("clearCachedData clears pendingDeletes")
     func clearCachedDataClearsPendingDeletes() {
         var session = makeSession()
-        session.pendingDeletes = ["users", "orders"]
+        session.pendingDeletes = [TestFixtures.makeTableRef(name: "users"), TestFixtures.makeTableRef(name: "orders")]
         session.clearCachedData()
         #expect(session.pendingDeletes.isEmpty)
     }
@@ -187,7 +187,7 @@ struct ConnectionSessionStateTests {
     @Test("clearCachedData clears tableOperationOptions")
     func clearCachedDataClearsTableOperationOptions() {
         var session = makeSession()
-        session.tableOperationOptions = ["users": TableOperationOptions()]
+        session.tableOperationOptions = [TestFixtures.makeTableRef(name: "users"): TableOperationOptions()]
         session.clearCachedData()
         #expect(session.tableOperationOptions.isEmpty)
     }
@@ -197,7 +197,7 @@ struct ConnectionSessionStateTests {
         let connection = TestFixtures.makeConnection(name: "Production")
         var session = ConnectionSession(connection: connection)
         session.status = .connected
-        session.selectedTables = [TestFixtures.makeTableInfo(name: "users")]
+        session.selectedTables = [TestFixtures.makeTableRef(name: "users")]
         session.clearCachedData()
         #expect(session.status == .connected)
         #expect(session.connection.id == connection.id)

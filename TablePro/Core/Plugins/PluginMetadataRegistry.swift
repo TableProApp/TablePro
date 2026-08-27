@@ -67,7 +67,19 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsConnectionPooling: Bool = true
         var authenticationIsDatabaseScoped: Bool = false
 
+        /// Which connection field carries the path of the local database file this driver opens,
+        /// for the types that open one. Nil for every driver that reaches its database over the
+        /// network, which is what makes it the test for "can this connection name a remote file".
+        var localFilePathField: LocalFilePathField?
+
         var supportsSOCKSProxy: Bool { supportsSSH }
+
+        /// Whether this type may point at a file on an SSH server instead of a local one.
+        ///
+        /// Deliberately not derived from `localFilePathField`. Beancount opens a local file and must
+        /// still be excluded: a ledger is a graph of files reached through `include`, so one file
+        /// out of it either fails to load or presents incomplete accounts, which is worse.
+        var supportsRemoteDatabaseFile: Bool = false
 
         static let defaults = CapabilityFlags(
             supportsSchemaSwitching: false,
@@ -893,7 +905,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
                     supportsDatabaseTriggerBrowse: true,
-                    supportsCloudflareTunnel: false
+                    supportsCloudflareTunnel: false,
+                    localFilePathField: .database,
+                    supportsRemoteDatabaseFile: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -1168,7 +1182,10 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsClientKeyPassphrase: existingSnapshot?.capabilities.supportsClientKeyPassphrase ?? false,
                 supportsConnectionPooling: existingSnapshot?.capabilities.supportsConnectionPooling ?? true,
                 authenticationIsDatabaseScoped: existingSnapshot?.capabilities
-                    .authenticationIsDatabaseScoped ?? false
+                    .authenticationIsDatabaseScoped ?? false,
+                localFilePathField: existingSnapshot?.capabilities.localFilePathField,
+                supportsRemoteDatabaseFile: existingSnapshot?.capabilities
+                    .supportsRemoteDatabaseFile ?? false
             ),
             schema: PluginMetadataSnapshot.SchemaInfo(
                 defaultSchemaName: driverType.defaultSchemaName,

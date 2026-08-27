@@ -191,7 +191,7 @@ struct DatabaseTreeObjectGroupHierarchyTests {
         )
         coordinator.activeDatabase = "shop"
         coordinator.nodeCache = [database.id: database, schema.id: schema, group.id: group]
-        windowState.selectTables([parentRef.table])
+        windowState.selectTables([parentRef])
         coordinator.syncSelectionToModel()
         coordinator.nodeCache[parent.id] = parent
 
@@ -241,19 +241,19 @@ struct DatabaseTreeObjectGroupHierarchyTests {
         coordinator.attach(outlineView: outlineView)
         outlineView.reloadData()
 
-        windowState.selectTables([tableRef.table])
+        windowState.selectTables([tableRef])
         coordinator.syncSelectionToModel()
         #expect(outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode === table)
 
-        windowState.selectTables([viewRef.table])
+        windowState.selectTables([viewRef])
         coordinator.syncSelectionToModel()
         #expect(outlineView.selectedRow == -1)
 
-        windowState.selectTables([tableRef.table])
+        windowState.selectTables([tableRef])
         coordinator.syncSelectionToModel()
         #expect(outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode === table)
 
-        windowState.selectTables([viewRef.table])
+        windowState.selectTables([viewRef])
         coordinator.syncSelectionToModel()
         coordinator.nodeCache[view.id] = view
         outlineView.expandItem(group)
@@ -295,7 +295,7 @@ struct DatabaseTreeObjectGroupHierarchyTests {
         coordinator.attach(outlineView: outlineView)
         outlineView.reloadData()
 
-        windowState.selectTables([table])
+        windowState.selectTables([oldRef])
         coordinator.syncSelectionToModel()
         #expect(outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode === oldView)
 
@@ -319,10 +319,8 @@ struct DatabaseTreeObjectGroupHierarchyTests {
         let windowState = WindowSidebarState(connectionId: connectionId, defaults: defaults)
         let orders = TableInfo(name: "orders", type: .table, rowCount: nil, schema: "public")
         let report = TableInfo(name: "report", type: .table, rowCount: nil, schema: "public")
-        let shopOrders = DatabaseTreeNode(
-            id: "shop-orders",
-            kind: .table(DatabaseTreeTableRef(database: "shop", schema: "public", table: orders))
-        )
+        let shopOrdersRef = DatabaseTreeTableRef(database: "shop", schema: "public", table: orders)
+        let shopOrders = DatabaseTreeNode(id: "shop-orders", kind: .table(shopOrdersRef))
         let shopReport = DatabaseTreeNode(
             id: "shop-report",
             kind: .table(DatabaseTreeTableRef(database: "shop", schema: "public", table: report))
@@ -331,10 +329,8 @@ struct DatabaseTreeObjectGroupHierarchyTests {
             id: "archive-orders",
             kind: .table(DatabaseTreeTableRef(database: "archive", schema: "public", table: orders))
         )
-        let archiveReport = DatabaseTreeNode(
-            id: "archive-report",
-            kind: .table(DatabaseTreeTableRef(database: "archive", schema: "public", table: report))
-        )
+        let archiveReportRef = DatabaseTreeTableRef(database: "archive", schema: "public", table: report)
+        let archiveReport = DatabaseTreeNode(id: "archive-report", kind: .table(archiveReportRef))
         let scrollView = SidebarOutlineScaffold.makeScrollView(
             outlineView: NSOutlineView(),
             configuration: SidebarOutlineScaffold.Configuration(
@@ -360,7 +356,7 @@ struct DatabaseTreeObjectGroupHierarchyTests {
         coordinator.attach(outlineView: outlineView)
         outlineView.reloadData()
 
-        windowState.selectTables([orders, report])
+        windowState.selectTables([shopOrdersRef, archiveReportRef])
         coordinator.syncSelectionToModel()
 
         let selected = outlineView.selectedRowIndexes.compactMap {
@@ -383,10 +379,8 @@ struct DatabaseTreeObjectGroupHierarchyTests {
         let schema = DatabaseTreeNode(id: "schema", kind: .schema(database: "shop", schema: "public"))
         let groupRef = DatabaseTreeObjectGroup(database: "shop", schema: "public", kind: .table)
         let group = DatabaseTreeNode(id: "group", kind: .containerObjectKindSection(groupRef))
-        let table = DatabaseTreeNode(
-            id: "table",
-            kind: .table(DatabaseTreeTableRef(database: "shop", schema: "public", table: orders))
-        )
+        let ordersRef = DatabaseTreeTableRef(database: "shop", schema: "public", table: orders)
+        let table = DatabaseTreeNode(id: "table", kind: .table(ordersRef))
         let scrollView = SidebarOutlineScaffold.makeScrollView(
             outlineView: NSOutlineView(),
             configuration: SidebarOutlineScaffold.Configuration(
@@ -409,13 +403,13 @@ struct DatabaseTreeObjectGroupHierarchyTests {
         outlineView.expandItem(schema)
         outlineView.expandItem(group)
 
-        windowState.selectTables([orders])
+        windowState.selectTables([ordersRef])
         coordinator.syncSelectionToModel()
         #expect(outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode === table)
 
         outlineView.collapseItem(group)
 
-        #expect(windowState.selectedTables == [orders])
+        #expect(windowState.selectedTables == [ordersRef])
 
         outlineView.expandItem(group)
 
@@ -425,7 +419,7 @@ struct DatabaseTreeObjectGroupHierarchyTests {
         /// is pinned too rather than left to work by accident.
         outlineView.collapseItem(schema)
 
-        #expect(windowState.selectedTables == [orders])
+        #expect(windowState.selectedTables == [ordersRef])
 
         outlineView.expandItem(schema)
 
@@ -442,14 +436,10 @@ struct DatabaseTreeObjectGroupHierarchyTests {
         let windowState = WindowSidebarState(connectionId: connectionId, defaults: defaults)
         let orders = TableInfo(name: "orders", type: .table, rowCount: nil, schema: "public")
         let report = TableInfo(name: "report", type: .table, rowCount: nil, schema: "public")
-        let shopOrders = DatabaseTreeNode(
-            id: "shop-orders",
-            kind: .table(DatabaseTreeTableRef(database: "shop", schema: "public", table: orders))
-        )
-        let archiveReport = DatabaseTreeNode(
-            id: "archive-report",
-            kind: .table(DatabaseTreeTableRef(database: "archive", schema: "public", table: report))
-        )
+        let shopOrdersRef = DatabaseTreeTableRef(database: "shop", schema: "public", table: orders)
+        let shopOrders = DatabaseTreeNode(id: "shop-orders", kind: .table(shopOrdersRef))
+        let archiveReportRef = DatabaseTreeTableRef(database: "archive", schema: "public", table: report)
+        let archiveReport = DatabaseTreeNode(id: "archive-report", kind: .table(archiveReportRef))
         let scrollView = SidebarOutlineScaffold.makeScrollView(
             outlineView: NSOutlineView(),
             configuration: SidebarOutlineScaffold.Configuration(
@@ -470,7 +460,7 @@ struct DatabaseTreeObjectGroupHierarchyTests {
         coordinator.attach(outlineView: outlineView)
         outlineView.reloadData()
 
-        windowState.selectTables([orders])
+        windowState.selectTables([shopOrdersRef])
         coordinator.syncSelectionToModel()
         #expect(outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode === shopOrders)
 
