@@ -231,6 +231,31 @@ protocol LibPQBackedDriver: PluginDatabaseDriver {
 }
 
 extension LibPQBackedDriver {
+    /// The new name must be bare. Every libpq engine here rejects a qualified one, because this
+    /// statement renames in place and never moves the object; `SET SCHEMA` is the separate verb.
+    ///
+    /// It lives on the protocol rather than on `PostgreSQLPluginDriver`, because Redshift and
+    /// CockroachDB are siblings of that class rather than subclasses: an implementation there
+    /// leaves both of them declaring the capability with nothing behind it.
+    func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws {
+        let target = "\(quoteIdentifier(schema ?? core.currentSchema)).\(quoteIdentifier(name))"
+        _ = try await execute(query: "ALTER \(objectType) \(target) RENAME TO \(quoteIdentifier(newName))")
+    }
+
+    /// Not the database the connection is on: PostgreSQL, Redshift and CockroachDB all answer that
+    /// with a refusal, so the app keeps the item off a row it is browsing.
+    func renameDatabase(name: String, to newName: String) async throws {
+        _ = try await execute(
+            query: "ALTER DATABASE \(quoteIdentifier(name)) RENAME TO \(quoteIdentifier(newName))"
+        )
+    }
+
+    func renameSchema(name: String, to newName: String) async throws {
+        _ = try await execute(
+            query: "ALTER SCHEMA \(quoteIdentifier(name)) RENAME TO \(quoteIdentifier(newName))"
+        )
+    }
+
     func connect() async throws {
         try await core.connect()
     }
