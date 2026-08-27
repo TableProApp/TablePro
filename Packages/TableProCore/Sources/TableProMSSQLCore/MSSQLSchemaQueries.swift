@@ -92,7 +92,8 @@ public enum MSSQLSchemaQueries {
                 c.IS_NULLABLE,
                 c.COLUMN_DEFAULT,
                 COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsIdentity') AS IS_IDENTITY,
-                CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS IS_PK
+                CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS IS_PK,
+                COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsComputed') AS IS_COMPUTED
             FROM INFORMATION_SCHEMA.COLUMNS c
             LEFT JOIN (
                 SELECT kcu.COLUMN_NAME
@@ -171,6 +172,7 @@ public struct MSSQLColumnRow: Sendable, Equatable {
     public let defaultValue: String?
     public let isIdentity: Bool
     public let isPrimaryKey: Bool
+    public let isComputed: Bool
 
     public init(
         name: String,
@@ -181,7 +183,8 @@ public struct MSSQLColumnRow: Sendable, Equatable {
         isNullable: Bool,
         defaultValue: String?,
         isIdentity: Bool,
-        isPrimaryKey: Bool
+        isPrimaryKey: Bool,
+        isComputed: Bool = false
     ) {
         self.name = name
         self.dataType = dataType
@@ -192,6 +195,7 @@ public struct MSSQLColumnRow: Sendable, Equatable {
         self.defaultValue = defaultValue
         self.isIdentity = isIdentity
         self.isPrimaryKey = isPrimaryKey
+        self.isComputed = isComputed
     }
 
     public var displayType: String {
@@ -270,7 +274,8 @@ public extension MSSQLSchemaQueries {
             isNullable: (row[safe: 5] ?? nil) == "YES",
             defaultValue: row[safe: 6] ?? nil,
             isIdentity: (row[safe: 7] ?? nil) == "1",
-            isPrimaryKey: (row[safe: 8] ?? nil) == "1"
+            isPrimaryKey: (row[safe: 8] ?? nil) == "1",
+            isComputed: (row[safe: 9] ?? nil) == "1"
         )
     }
 

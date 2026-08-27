@@ -43,7 +43,8 @@ extension MSSQLPluginDriver {
                 c.IS_NULLABLE,
                 c.COLUMN_DEFAULT,
                 COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsIdentity') AS IS_IDENTITY,
-                CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS IS_PK
+                CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS IS_PK,
+                COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsComputed') AS IS_COMPUTED
             FROM INFORMATION_SCHEMA.COLUMNS c
             LEFT JOIN (
                 SELECT kcu.COLUMN_NAME
@@ -61,6 +62,7 @@ extension MSSQLPluginDriver {
             """
         let result = try await execute(query: sql)
         var identityColumns: Set<String> = []
+        var computedColumns: Set<String> = []
         let columns: [PluginColumnInfo] = result.rows.compactMap { row -> PluginColumnInfo? in
             guard let name = row[safe: 0]?.asText else { return nil }
             let dataType = row[safe: 1]?.asText
@@ -70,10 +72,14 @@ extension MSSQLPluginDriver {
             let isNullable = (row[safe: 5]?.asText) == "YES"
             let defaultValue = row[safe: 6]?.asText
             let isIdentity = (row[safe: 7]?.asText) == "1"
+            let isComputed = (row[safe: 9]?.asText) == "1"
             let isPk = (row[safe: 8]?.asText) == "1"
 
             if isIdentity {
                 identityColumns.insert(name)
+            }
+            if isComputed {
+                computedColumns.insert(name)
             }
 
             let baseType = (dataType ?? "nvarchar").lowercased()
@@ -102,10 +108,14 @@ extension MSSQLPluginDriver {
                 isNullable: isNullable,
                 isPrimaryKey: isPk,
                 defaultValue: defaultValue,
-                extra: isIdentity ? "IDENTITY" : nil
+                extra: isIdentity ? "IDENTITY" : nil,
+                isGenerated: isComputed
             )
         }
-        identityCacheLock.withLock { identityColumnsByTable[table] = identityColumns }
+        identityCacheLock.withLock {
+            identityColumnsByTable[table] = identityColumns
+            computedColumnsByTable[table] = computedColumns
+        }
         return columns
     }
 
@@ -118,11 +128,24 @@ extension MSSQLPluginDriver {
         return identityColumnsByTable[table] ?? []
     }
 
+    /// Snapshot of computed columns observed by the most recent column fetch for the table.
+    internal func cachedComputedColumns(for table: String) -> Set<String> {
+        identityCacheLock.lock()
+        defer { identityCacheLock.unlock() }
+        return computedColumnsByTable[table] ?? []
+    }
+
     /// Test seam: pre-populate the cache so generateMssqlInsert can be exercised
     /// without going through a live `fetchColumns` round-trip.
     internal func setIdentityColumnsForTesting(_ columns: Set<String>, table: String) {
         identityCacheLock.lock()
         identityColumnsByTable[table] = columns
+        identityCacheLock.unlock()
+    }
+
+    internal func setComputedColumnsForTesting(_ columns: Set<String>, table: String) {
+        identityCacheLock.lock()
+        computedColumnsByTable[table] = columns
         identityCacheLock.unlock()
     }
 
@@ -230,7 +253,8 @@ extension MSSQLPluginDriver {
                 c.IS_NULLABLE,
                 c.COLUMN_DEFAULT,
                 COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsIdentity') AS IS_IDENTITY,
-                CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS IS_PK
+                CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS IS_PK,
+                COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsComputed') AS IS_COMPUTED
             FROM INFORMATION_SCHEMA.COLUMNS c
             LEFT JOIN (
                 SELECT kcu.TABLE_NAME, kcu.COLUMN_NAME
@@ -246,6 +270,8 @@ extension MSSQLPluginDriver {
             """
         let result = try await execute(query: sql)
         var columnsByTable: [String: [PluginColumnInfo]] = [:]
+        var identityByTable: [String: Set<String>] = [:]
+        var computedByTable: [String: Set<String>] = [:]
         for row in result.rows {
             guard let tableName = row[safe: 0]?.asText,
                   let name = row[safe: 1]?.asText else { continue }
@@ -256,6 +282,7 @@ extension MSSQLPluginDriver {
             let isNullable = (row[safe: 6]?.asText) == "YES"
             let defaultValue = row[safe: 7]?.asText
             let isIdentity = (row[safe: 8]?.asText) == "1"
+            let isComputed = (row[safe: 10]?.asText) == "1"
             let isPk = (row[safe: 9]?.asText) == "1"
 
             let baseType = (dataType ?? "nvarchar").lowercased()
@@ -284,9 +311,18 @@ extension MSSQLPluginDriver {
                 isNullable: isNullable,
                 isPrimaryKey: isPk,
                 defaultValue: defaultValue,
-                extra: isIdentity ? "IDENTITY" : nil
+                extra: isIdentity ? "IDENTITY" : nil,
+                isGenerated: isComputed
             )
             columnsByTable[tableName, default: []].append(col)
+            if isIdentity { identityByTable[tableName, default: []].insert(name) }
+            if isComputed { computedByTable[tableName, default: []].insert(name) }
+        }
+        identityCacheLock.withLock {
+            for table in columnsByTable.keys {
+                identityColumnsByTable[table] = identityByTable[table] ?? []
+                computedColumnsByTable[table] = computedByTable[table] ?? []
+            }
         }
         return columnsByTable
     }
