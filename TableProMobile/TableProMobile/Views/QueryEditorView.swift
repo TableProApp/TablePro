@@ -3,6 +3,7 @@ import os
 import SwiftUI
 import TableProDatabase
 import TableProModels
+import TableProQuery
 
 struct QueryEditorView: View {
     @Environment(ConnectionCoordinator.self) private var coordinator
@@ -315,7 +316,8 @@ struct QueryEditorView: View {
                 Button(format.rawValue) {
                     let text = ClipboardExporter.exportRow(
                         columns: columns, row: row,
-                        format: format
+                        format: format,
+                        databaseType: databaseType, driver: coordinator.session?.driver
                     )
                     ClipboardExporter.copyToClipboard(text)
                 }
@@ -352,7 +354,8 @@ struct QueryEditorView: View {
                         Button {
                             shareText = ClipboardExporter.exportRows(
                                 columns: viewModel.columns, rows: viewModel.legacyRows,
-                                format: format
+                                format: format,
+                                databaseType: databaseType, driver: coordinator.session?.driver
                             )
                             showShareSheet = true
                         } label: {
@@ -365,7 +368,8 @@ struct QueryEditorView: View {
                         Button {
                             let text = ClipboardExporter.exportRows(
                                 columns: viewModel.columns, rows: viewModel.legacyRows,
-                                format: format
+                                format: format,
+                                databaseType: databaseType, driver: coordinator.session?.driver
                             )
                             ClipboardExporter.copyToClipboard(text)
                         } label: {
@@ -391,17 +395,11 @@ struct QueryEditorView: View {
 
     // MARK: - Execution
 
-    private func isWriteQuery(_ sql: String) -> Bool {
-        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        let writeKeywords = ["INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "TRUNCATE", "REPLACE"]
-        return writeKeywords.contains(where: { trimmed.hasPrefix($0) })
-    }
-
     private func executeQuery() async {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        if isWriteQuery(trimmed) {
+        if SQLWriteClassifier.isWriteQuery(trimmed, databaseType: databaseType) {
             switch safeModeLevel.writePermission {
             case .blocked:
                 showWriteBlockedAlert = true
