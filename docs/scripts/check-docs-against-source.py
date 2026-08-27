@@ -15,6 +15,7 @@ import collections
 import re
 import sys
 from pathlib import Path
+from typing import Optional
 
 MENU_FILES = {
     "TablePro": "AppMenuBuilder.swift",
@@ -297,7 +298,6 @@ DOC_NAMES = {
     "Oracle": "Oracle Database",
     "Dameng": "Dameng DM8",
     "Redshift": "Amazon Redshift",
-    "libSQL": "libSQL / Turso",
 }
 
 
@@ -344,10 +344,106 @@ def check_database_table(root: Path, docs: Path) -> list[str]:
                 f"databases/index.mdx gives {type_id} port {row}, the registry says {port}"
             )
 
-    counted = re.search(r"\b(\d+|Twenty-seven)\b engines", page.read_text())
-    if counted and counted.group(1) not in (str(len(registered)), "Twenty-seven"):
-        failures.append(f"databases/index.mdx says {counted.group(1)} engines, the registry has {len(registered)}")
     return failures
+
+
+NUMBER_WORDS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+    "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+    "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
+}
+for _tens_word, _tens in (("twenty", 20), ("thirty", 30), ("forty", 40)):
+    NUMBER_WORDS[_tens_word] = _tens
+    for _unit_word, _unit in list(NUMBER_WORDS.items())[:9]:
+        NUMBER_WORDS[f"{_tens_word}-{_unit_word}"] = _tens + _unit
+
+ENGINE_COUNT = re.compile(
+    r"\b(\d+|" + "|".join(sorted(NUMBER_WORDS, key=len, reverse=True)) + r")\s+engines\b",
+    re.IGNORECASE,
+)
+
+
+def spelled(text: str) -> Optional[int]:
+    return int(text) if text.isdigit() else NUMBER_WORDS.get(text.lower())
+
+
+def unwrapped(page: Path) -> str:
+    """A page as one line, so a sentence wrapped at 100 columns still matches."""
+    return " ".join(page.read_text().split())
+
+
+def check_engine_counts(root: Path, docs: Path) -> list[str]:
+    """Every engine count printed in docs/, against the registry that defines it.
+
+    The count lived on three pages and the marketing site with nothing reconciling them, so
+    they drifted to 27, 27 and 25 while the app offered 28. STYLE.md 9 gives the count one
+    owner, `snippets/driver-counts.mdx`; this is what makes that hold.
+
+    `changelog.mdx` is exempt. Its entries state what a past release shipped.
+    """
+    total = len(registered_databases(root))
+    if total < 20:
+        return ["could not read the database types out of PluginMetadataRegistry"]
+
+    failures = []
+    for page in sorted(docs.rglob("*.mdx")):
+        if page.name == "changelog.mdx":
+            continue
+        name = page.relative_to(docs)
+        for match in ENGINE_COUNT.finditer(unwrapped(page)):
+            counted = spelled(match.group(1))
+            if counted is not None and counted != total:
+                failures.append(f"{name} says {match.group(1)} engines, the registry has {total}")
+
+    failures += check_driver_split(docs, total)
+    failures += check_introduction_description(docs, total)
+    return failures
+
+
+def check_driver_split(docs: Path, total: int) -> list[str]:
+    """The bundled and registry halves in the shared snippet have to add up to the whole.
+
+    They did not: nine bundled databases plus eighteen registry *plugins* reads as 27 engines,
+    because the two numbers count different things.
+    """
+    text = unwrapped(docs / "snippets/driver-counts.mdx")
+    bundled = re.search(r"cover (\w+) databases", text)
+    registry = re.search(r"the other ([\w-]+)", text)
+    if not bundled or not registry:
+        return ["snippets/driver-counts.mdx no longer states a bundled and a registry count"]
+
+    halves = [spelled(bundled.group(1)), spelled(registry.group(1))]
+    if None in halves:
+        return ["snippets/driver-counts.mdx states a count this script cannot read"]
+    if sum(halves) != total:
+        return [
+            f"snippets/driver-counts.mdx splits the engines {halves[0]} + {halves[1]}, "
+            f"the registry has {total}"
+        ]
+    return []
+
+
+def check_introduction_description(docs: Path, total: int) -> list[str]:
+    """`index.mdx` names five engines in its frontmatter and counts the rest.
+
+    Mintlify prints the description as page metadata, where no snippet can reach, so this is
+    the one count that has to be typed twice and the one that needs checking directly.
+    """
+    text = (docs / "index.mdx").read_text()
+    description = re.search(r"^description:\s*(.+)$", text, re.M)
+    if not description:
+        return ["index.mdx has no frontmatter description"]
+
+    more = re.search(r"^(.*?) for (.+?),? and (\d+) more\b", description.group(1))
+    if not more:
+        return []
+
+    named = len([part for part in more.group(2).split(",") if part.strip()])
+    if named + int(more.group(3)) != total:
+        return [
+            f"index.mdx names {named} engines and {more.group(3)} more, the registry has {total}"
+        ]
+    return []
 
 
 def main() -> int:
@@ -362,6 +458,7 @@ def main() -> int:
         ("changelog anchors", check_changelog_anchors),
         ("heading case", check_heading_case),
         ("database table", check_database_table),
+        ("engine counts", check_engine_counts),
     )
 
     total = 0

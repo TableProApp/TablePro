@@ -1,11 +1,11 @@
 ---
 title: Supported Databases
-description: All 28 engines TablePro connects to, their default ports, and which ones need a plugin
+description: All 29 engines TablePro connects to, their default ports, and which ones need a plugin
 ---
 
 import DriverCounts from "/snippets/driver-counts.mdx";
 
-Twenty-eight engines, and every one of them is free to use. What differs between them is where the
+Twenty-nine engines, and every one of them is free to use. What differs between them is where the
 driver comes from, not what the license covers.
 
 <DriverCounts />
@@ -26,7 +26,7 @@ driver comes from, not what the license covers.
 | [DynamoDB](/databases/dynamodb) | API-based | Plugin |
 | [Elasticsearch](/databases/elasticsearch) | 9200 | Plugin |
 | [etcd](/databases/etcd) | 2379 | Plugin |
-| [libSQL / Turso](/databases/libsql) | API-based | Plugin |
+| [libSQL](/databases/libsql) | API-based | Plugin |
 | [Kafka](/databases/kafka) | 9092 | Plugin |
 | [MariaDB](/databases/mariadb) | 3306 | Built-in |
 | [Microsoft SQL Server](/databases/mssql) | 1433 | Plugin |
@@ -42,9 +42,10 @@ driver comes from, not what the license covers.
 | [SurrealDB](/databases/surrealdb) | 8000 | Plugin |
 | [Teradata](/databases/teradata) | 1025 | Plugin |
 | [Trino](/databases/trino) | 8080 | Plugin |
+| [Turso](/databases/libsql) | API-based | Plugin |
 
-Rows sharing a page share a driver. MariaDB reads as MySQL, ScyllaDB as Cassandra, and Redshift,
-CockroachDB and PGlite all speak the PostgreSQL wire protocol.
+Rows sharing a page share a driver. MariaDB reads as MySQL, ScyllaDB as Cassandra, Turso as libSQL,
+and Redshift, CockroachDB and PGlite all speak the PostgreSQL wire protocol.
 
 ## Built-in against plugin
 

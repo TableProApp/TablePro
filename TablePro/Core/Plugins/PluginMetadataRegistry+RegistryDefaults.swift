@@ -1201,7 +1201,8 @@ extension PluginMetadataRegistry {
                     tagline: String(localized: "Distributed SQLite by Turso")
                 )
             )),
-        ] + cloudPluginDefaults() + elasticsearchPluginDefaults() + surrealDBPluginDefaults()
+        ] + tursoPluginDefaults(dialect: d1Dialect, columnTypes: d1ColumnTypes)
+            + cloudPluginDefaults() + elasticsearchPluginDefaults() + surrealDBPluginDefaults()
             + kafkaPluginDefaults()
     }
     // swiftlint:enable function_body_length
