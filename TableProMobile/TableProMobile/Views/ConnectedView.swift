@@ -15,25 +15,29 @@ struct ConnectedView: View {
     @State private var hapticError = false
     @State private var showDeletedAlert = false
 
+    private var displayTitle: String {
+        connection.name.isEmpty ? connection.host : connection.name
+    }
+
     var body: some View {
         Group {
             if let coordinator {
                 switch coordinator.phase {
                 case .connecting:
-                    connectingView
+                    statusScreen { connectingView }
                 case .error(let error):
-                    ErrorView(error: error) {
-                        await coordinator.connect()
+                    statusScreen {
+                        ErrorView(error: error) {
+                            await coordinator.connect()
+                        }
                     }
                 case .connected:
                     connectedContent(coordinator)
                 }
             } else {
-                connectingView
+                statusScreen { connectingView }
             }
         }
-        .navigationTitle(connection.name.isEmpty ? connection.host : connection.name)
-        .navigationBarTitleDisplayMode(.inline)
         .onChange(of: appState.connections) { _, newConnections in
             if !newConnections.contains(where: { $0.id == connection.id }) {
                 showDeletedAlert = true
@@ -74,6 +78,29 @@ struct ConnectedView: View {
         .sensoryFeedback(.error, trigger: hapticError)
     }
 
+    // MARK: - Chrome
+
+    private func statusScreen(@ViewBuilder _ content: () -> some View) -> some View {
+        NavigationStack {
+            content()
+                .navigationTitle(displayTitle)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { closeToolbar }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var closeToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                dismiss()
+            } label: {
+                Label("Connections", systemImage: "chevron.backward")
+            }
+            .accessibilityLabel(Text("Connections"))
+        }
+    }
+
     // MARK: - Connecting
 
     private var connectingView: some View {
@@ -94,32 +121,35 @@ struct ConnectedView: View {
 
     private func connectedContent(_ coordinator: ConnectionCoordinator) -> some View {
         @Bindable var coordinator = coordinator
-        return NavigationStack(path: $coordinator.tablesPath) {
-            TabView(selection: $coordinator.selectedTab) {
-                Tab("Tables", systemImage: "tablecells", value: .tables) {
-                    TableListView()
-                        .environment(coordinator)
-                }
-                Tab("Query", systemImage: "terminal", value: .query) {
-                    QueryEditorView()
-                        .environment(coordinator)
-                }
-                Tab("History", systemImage: "clock", value: .history) {
-                    QueryHistoryView()
-                        .environment(coordinator)
-                }
-                Tab("Info", systemImage: "info.circle", value: .info) {
-                    ConnectionInfoView()
-                        .environment(coordinator)
+        return TabView(selection: $coordinator.selectedTab) {
+            Tab("Tables", systemImage: "tablecells", value: .tables) {
+                NavigationStack(path: $coordinator.tablesPath) {
+                    tabChrome(coordinator) {
+                        TableListView(connectionId: connection.id)
+                    }
+                    .navigationDestination(for: TableInfo.self) { table in
+                        DataBrowserView(table: table)
+                            .environment(coordinator)
+                    }
                 }
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { connectionToolbar(coordinator) }
-            .navigationDestination(for: TableInfo.self) { table in
-                DataBrowserView(table: table)
-                    .environment(coordinator)
+            Tab("Query", systemImage: "terminal", value: .query) {
+                NavigationStack {
+                    tabChrome(coordinator) { QueryEditorView() }
+                }
+            }
+            Tab("History", systemImage: "clock", value: .history) {
+                NavigationStack {
+                    tabChrome(coordinator) { QueryHistoryView() }
+                }
+            }
+            Tab("Info", systemImage: "info.circle", value: .info) {
+                NavigationStack {
+                    tabChrome(coordinator) { ConnectionInfoView() }
+                }
             }
         }
+        .tabViewStyle(.sidebarAdaptable)
         .background {
             Button("") { coordinator.selectedTab = .tables }
                 .keyboardShortcut("1", modifiers: .command)
@@ -178,6 +208,18 @@ struct ConnectedView: View {
             activity.isEligibleForHandoff = true
             activity.userInfo = ["connectionId": connection.id.uuidString]
         }
+    }
+
+    private func tabChrome(
+        _ coordinator: ConnectionCoordinator,
+        @ViewBuilder _ content: () -> some View
+    ) -> some View {
+        content()
+            .environment(coordinator)
+            .navigationTitle(displayTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { closeToolbar }
+            .toolbar { connectionToolbar(coordinator) }
     }
 
     // MARK: - Connection Toolbar

@@ -110,6 +110,12 @@ final class RowDetailViewModel {
         return columnDetail(for: column.name)?.isPrimaryKey ?? column.isPrimaryKey
     }
 
+    func isNullable(at index: Int) -> Bool {
+        guard index >= 0, index < columns.count else { return true }
+        let column = columns[index]
+        return columnDetail(for: column.name)?.isNullable ?? column.isNullable
+    }
+
     // MARK: - Edit Lifecycle
 
     func startEditing() {

@@ -50,15 +50,17 @@ Picking a SQLite file copies it into the app, and edits go to that copy, so the 
 
 ## What works
 
-An open connection has four tabs: **Tables**, **Query**, **History**, **Info**. `Cmd+1` through `Cmd+4` switch between them on a keyboard, and a toolbar menu switches database and schema when the engine has more than one.
+An open connection fills the screen and carries four sections: **Tables**, **Query**, **History**, **Info**. They sit in a tab bar on iPhone and in a sidebar on iPad. `Cmd+1` through `Cmd+4` switch between them on a keyboard, a toolbar menu switches database and schema when the engine has more than one, and **Connections** returns to the list.
 
 ### Browsing
 
-Page a table at 50, 100, 200, or 500 rows, jump to a page number, sort by a column, search text columns, and stack filters with AND or OR. A foreign key value previews the row it points at. **Table Structure** lists columns, indexes, and foreign keys, read only.
+Search the table list by name. Page a table at 50, 100, 200, or 500 rows, jump to a page number, sort by a column, search text columns, and stack filters with AND or OR. A foreign key value previews the row it points at. **Table Structure** lists columns, indexes, and foreign keys, read only.
 
 ### Editing
 
 Tap a row to open it full screen, page between rows, edit values, toggle one to `NULL`, and save. Inserting and deleting rows, and truncating or dropping a table, are here too. Editing needs a primary key.
+
+A new row starts with every column on **DEFAULT**, which leaves that column out of the `INSERT` so the database fills it in. The badge beside a field switches it between **DEFAULT**, **NULL** and a typed value, and **NULL** is offered on nullable columns only. Generated columns are never written, and an auto-increment key stays on **DEFAULT** until you type one.
 
 ### Querying
 
@@ -67,6 +69,7 @@ The editor highlights SQL, runs a statement, and stops one mid-flight. Results c
 ## What is missing
 
 - **Schema changes.** Truncating and dropping a table is the whole list; creating or altering tables, columns, indexes, triggers, and views is Mac only.
+- **Inserting a row on Redis.** Editing and deleting a key still work.
 - **AI.** No chat, no inline suggestions, no MCP server.
 
 ## Security

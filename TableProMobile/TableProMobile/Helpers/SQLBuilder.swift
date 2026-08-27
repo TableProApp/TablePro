@@ -82,14 +82,35 @@ nonisolated enum SQLBuilder {
         driver: any DatabaseDriver,
         columns: [String],
         values: [String?]
-    ) -> String {
+    ) -> String? {
         let qualifiedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
+        guard !columns.isEmpty else {
+            return buildAllDefaultsInsert(qualifiedTable: qualifiedTable, for: type)
+        }
         let cols = columns.map { quoteIdentifier($0, for: type) }.joined(separator: ", ")
         let vals = values.map { val in
             if let val { return "'\(driver.escapeStringLiteral(val))'" }
             return "NULL"
         }.joined(separator: ", ")
         return "INSERT INTO \(qualifiedTable) (\(cols)) VALUES (\(vals))"
+    }
+
+    /// Every column left on its database default. MySQL and MariaDB take an empty column list;
+    /// the PostgreSQL family, SQLite and SQL Server take `DEFAULT VALUES`. Oracle accepts
+    /// neither, so it gets no statement.
+    static func buildAllDefaultsInsert(qualifiedTable: String, for type: DatabaseType) -> String? {
+        switch type {
+        case .mysql, .mariadb:
+            return "INSERT INTO \(qualifiedTable) () VALUES ()"
+        case .postgresql, .redshift, .sqlite, .mssql, .duckdb:
+            return "INSERT INTO \(qualifiedTable) DEFAULT VALUES"
+        default:
+            return nil
+        }
+    }
+
+    static func supportsAllDefaultsInsert(_ type: DatabaseType) -> Bool {
+        buildAllDefaultsInsert(qualifiedTable: "t", for: type) != nil
     }
 
     static func qualifiedIdentifier(table: String, schema: String?, for type: DatabaseType) -> String {

@@ -142,6 +142,7 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
             guard row.count >= 9, let name = row[0], let dataType = row[1] else { return nil }
             let isPK = row[4]?.uppercased().contains("PRI") == true
             let isNullable = row[3]?.uppercased() == "YES"
+            let extra = row[6]
             return ColumnInfo(
                 name: name,
                 typeName: dataType,
@@ -150,7 +151,9 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
                 defaultValue: row[5],
                 comment: row[8],
                 characterMaxLength: nil,
-                ordinalPosition: index
+                ordinalPosition: index,
+                isAutoIncrement: ColumnMetadataRules.mySQLIsAutoIncrement(extra: extra),
+                isGenerated: ColumnMetadataRules.mySQLIsGenerated(extra: extra)
             )
         }
     }

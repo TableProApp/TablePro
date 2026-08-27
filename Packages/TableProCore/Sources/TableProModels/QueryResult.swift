@@ -38,6 +38,8 @@ public struct ColumnInfo: Sendable, Identifiable {
     public let comment: String?
     public let characterMaxLength: Int?
     public let ordinalPosition: Int
+    public let isAutoIncrement: Bool
+    public let isGenerated: Bool
 
     public init(
         name: String,
@@ -47,7 +49,9 @@ public struct ColumnInfo: Sendable, Identifiable {
         defaultValue: String? = nil,
         comment: String? = nil,
         characterMaxLength: Int? = nil,
-        ordinalPosition: Int = 0
+        ordinalPosition: Int = 0,
+        isAutoIncrement: Bool = false,
+        isGenerated: Bool = false
     ) {
         self.name = name
         self.typeName = typeName
@@ -57,6 +61,8 @@ public struct ColumnInfo: Sendable, Identifiable {
         self.comment = comment
         self.characterMaxLength = characterMaxLength
         self.ordinalPosition = ordinalPosition
+        self.isAutoIncrement = isAutoIncrement
+        self.isGenerated = isGenerated
     }
 }
 
@@ -227,7 +233,9 @@ public extension ColumnInfo {
             isNullable: plugin.isNullable,
             defaultValue: plugin.defaultValue,
             comment: plugin.comment,
-            ordinalPosition: ordinalPosition
+            ordinalPosition: ordinalPosition,
+            isAutoIncrement: plugin.isIdentity,
+            isGenerated: plugin.isGenerated
         )
     }
 }

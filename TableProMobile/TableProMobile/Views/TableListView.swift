@@ -9,7 +9,14 @@ struct TableListView: View {
     private var tables: [TableInfo] { coordinator.tables }
     private var session: ConnectionSession? { coordinator.session }
 
-    @SceneStorage("tableList.searchText") private var searchText = ""
+    /// Scoped to the connection: one shared key leaves a filter from another connection applied
+    /// to a list that never shows it.
+    @SceneStorage private var searchText: String
+
+    init(connectionId: UUID) {
+        _searchText = SceneStorage(wrappedValue: "", "tableList.searchText.\(connectionId.uuidString)")
+    }
+
     @FocusState private var searchFocused: Bool
     @State private var tableToTruncate: TableInfo?
     @State private var tableToDrop: TableInfo?

@@ -250,7 +250,8 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
                     isNullable: parsed.isNullable,
                     defaultValue: parsed.defaultValue,
                     characterMaxLength: parsed.characterMaxLength,
-                    ordinalPosition: idx
+                    ordinalPosition: idx,
+                    isAutoIncrement: parsed.isIdentity
                 )
             }
         }

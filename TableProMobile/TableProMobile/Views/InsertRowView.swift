@@ -1,4 +1,3 @@
-import os
 import SwiftUI
 import TableProDatabase
 import TableProModels
@@ -12,28 +11,11 @@ struct InsertRowView: View {
     var onInserted: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
-    @State private var values: [String]
-    @State private var isNullFlags: [Bool]
 
-    init(
-        table: TableInfo,
-        columnDetails: [ColumnInfo],
-        session: ConnectionSession?,
-        databaseType: DatabaseType,
-        safeModeLevel: SafeModeLevel = .off,
-        onInserted: (() -> Void)? = nil
-    ) {
-        self.table = table
-        self.columnDetails = columnDetails
-        self.session = session
-        self.databaseType = databaseType
-        self.safeModeLevel = safeModeLevel
-        self.onInserted = onInserted
-        _values = State(initialValue: Array(repeating: "", count: columnDetails.count))
-        _isNullFlags = State(initialValue: columnDetails.map { col in
-            col.isPrimaryKey && col.typeName.uppercased().contains("INT")
-        })
-    }
+    /// A column absent from this dictionary is left out of the `INSERT` so the database applies
+    /// its own default. Keying by name rather than by position is what keeps the state from
+    /// drifting when `columnDetails` arrives or changes while the sheet is open.
+    @State private var fields: [String: PayloadValue] = [:]
     @State private var isSaving = false
     @State private var operationError: AppError?
     @State private var showOperationError = false
@@ -42,76 +24,31 @@ struct InsertRowView: View {
     @State private var hapticSuccess = false
     @State private var hapticError = false
 
+    private var columnNames: [String] { columnDetails.map(\.name) }
+
+    private var canSave: Bool {
+        guard let driver = session?.driver else { return false }
+        return buildInsertSQL(driver: driver) != nil
+    }
+
     var body: some View {
         NavigationStack {
             Form {
-                ForEach(Array(columnDetails.enumerated()), id: \.offset) { index, column in
+                ForEach(columnDetails, id: \.name) { column in
                     Section {
-                        HStack {
-                            if isNullFlags[safe: index] == true {
-                                Text("NULL")
-                                    .font(.body)
-                                    .foregroundStyle(.secondary)
-                                    .italic()
-                            } else {
-                                TextField(text: binding(for: index), prompt: placeholder(for: column)) {
-                                    Text(verbatim: column.name)
-                                }
-                                    .font(.body)
-                                    .keyboardType(keyboardType(for: column))
-                                    .autocorrectionDisabled()
-                                    .textInputAutocapitalization(.never)
-                            }
-
-                            Spacer()
-
-                            Button {
-                                guard index < isNullFlags.count else { return }
-                                isNullFlags[index].toggle()
-                                if isNullFlags[index], index < values.count {
-                                    values[index] = ""
-                                }
-                            } label: {
-                                Text("NULL")
-                                    .font(.caption2)
-                                    .foregroundStyle(isNullFlags[safe: index] == true ? .white : .secondary)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(isNullFlags[safe: index] == true ? Color.accentColor : Color(.systemFill))
-                                    .clipShape(Capsule())
-                            }
-                            .buttonStyle(.plain)
-                        }
+                        columnRow(column)
                     } header: {
-                        HStack(spacing: 6) {
-                            if column.isPrimaryKey {
-                                Image(systemName: "key.fill")
-                                    .font(.caption2)
-                                    .foregroundStyle(.orange)
-                            }
-                            Text(column.name)
-
-                            if column.isPrimaryKey {
-                                Group {
-                                    if isAutoIncrement(column) {
-                                        Text("auto-increment")
-                                    } else {
-                                        Text("primary key")
-                                    }
-                                }
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Spacer()
-
-                            MetadataBadge(column.typeName)
-                        }
+                        header(for: column)
                     } footer: {
-                        if let defaultValue = column.defaultValue {
-                            Text("Default: \(defaultValue)")
-                                .font(.caption2)
-                        }
+                        footer(for: column)
+                    }
+                }
+
+                if !canSave {
+                    Section {
+                        Text("Fill in at least one column. This database cannot insert a row made only of defaults.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -128,8 +65,12 @@ struct InsertRowView: View {
                     ConfirmButton(title: "Save", isInProgress: isSaving) {
                         Task { await insertRow() }
                     }
-                    .disabled(isSaving)
+                    .disabled(isSaving || !canSave)
                 }
+            }
+            .onChange(of: columnNames) { _, newNames in
+                let known = Set(newNames)
+                fields = fields.filter { known.contains($0.key) }
             }
             .sensoryFeedback(.success, trigger: hapticSuccess)
             .sensoryFeedback(.error, trigger: hapticError)
@@ -153,24 +94,142 @@ struct InsertRowView: View {
         }
     }
 
-    private func binding(for index: Int) -> Binding<String> {
+    // MARK: - Rows
+
+    @ViewBuilder
+    private func columnRow(_ column: ColumnInfo) -> some View {
+        HStack {
+            if column.isGenerated {
+                Text("Computed by the database")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .italic()
+            } else {
+                if fields[column.name] == .null {
+                    Text("NULL")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .italic()
+                } else {
+                    TextField(text: literalBinding(for: column), prompt: placeholder(for: column)) {
+                        Text(verbatim: column.name)
+                    }
+                    .font(.body)
+                    .keyboardType(keyboardType(for: column))
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                }
+
+                Spacer()
+
+                stateMenu(for: column)
+            }
+        }
+    }
+
+    private func stateMenu(for column: ColumnInfo) -> some View {
+        Menu {
+            Button {
+                fields[column.name] = nil
+            } label: {
+                stateLabel(String(localized: "Use Default"), isActive: fields[column.name] == nil)
+            }
+            if column.isNullable {
+                Button {
+                    fields[column.name] = .null
+                } label: {
+                    stateLabel(String(localized: "NULL"), isActive: fields[column.name] == .null)
+                }
+            }
+            Button {
+                fields[column.name] = .text("")
+            } label: {
+                stateLabel(String(localized: "Empty String"), isActive: fields[column.name] == .text(""))
+            }
+        } label: {
+            Text(stateBadge(for: column))
+                .font(.caption2)
+                .foregroundStyle(fields[column.name] == .null ? .white : .secondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(fields[column.name] == .null ? Color.accentColor : Color(.systemFill))
+                .clipShape(Capsule())
+        }
+        .accessibilityLabel(Text(String(format: String(localized: "Value for %@"), column.name)))
+    }
+
+    @ViewBuilder
+    private func stateLabel(_ title: String, isActive: Bool) -> some View {
+        if isActive {
+            Label(title, systemImage: "checkmark")
+        } else {
+            Text(title)
+        }
+    }
+
+    private func stateBadge(for column: ColumnInfo) -> String {
+        switch fields[column.name] {
+        case .none: return String(localized: "DEFAULT")
+        case .some(.null): return String(localized: "NULL")
+        case .some(.text): return String(localized: "VALUE")
+        }
+    }
+
+    @ViewBuilder
+    private func header(for column: ColumnInfo) -> some View {
+        HStack(spacing: 6) {
+            if column.isPrimaryKey {
+                Image(systemName: "key.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+            }
+            Text(column.name)
+
+            Group {
+                if column.isAutoIncrement {
+                    Text("auto-increment")
+                } else if column.isPrimaryKey {
+                    Text("primary key")
+                }
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+
+            Spacer()
+
+            MetadataBadge(column.typeName)
+        }
+    }
+
+    @ViewBuilder
+    private func footer(for column: ColumnInfo) -> some View {
+        if column.isGenerated {
+            Text("This column is generated, so it is never written.")
+                .font(.caption2)
+        } else if let defaultValue = column.defaultValue {
+            Text("Default: \(defaultValue)")
+                .font(.caption2)
+        }
+    }
+
+    // MARK: - Field State
+
+    private func literalBinding(for column: ColumnInfo) -> Binding<String> {
         Binding<String>(
-            get: { values[safe: index] ?? "" },
+            get: {
+                if case .text(let value) = fields[column.name] { return value }
+                return ""
+            },
             set: { newValue in
-                guard index < values.count else { return }
-                values[index] = newValue
+                fields[column.name] = newValue.isEmpty ? nil : .text(newValue)
             }
         )
     }
 
     private func placeholder(for column: ColumnInfo) -> Text {
-        if column.isPrimaryKey { return Text("Auto") }
+        if column.isAutoIncrement { return Text("Auto") }
         if let defaultValue = column.defaultValue { return Text("Default: \(defaultValue)") }
-        return Text(verbatim: column.typeName)
-    }
-
-    private func isAutoIncrement(_ column: ColumnInfo) -> Bool {
-        column.isPrimaryKey && column.typeName.uppercased().contains("INT")
+        return Text("Default")
     }
 
     private func keyboardType(for column: ColumnInfo) -> UIKeyboardType {
@@ -183,10 +242,12 @@ struct InsertRowView: View {
         return .default
     }
 
+    // MARK: - Insert
+
     private func insertRow() async {
         guard let session else { return }
 
-        let sql = buildInsertSQL(driver: session.driver)
+        guard let sql = buildInsertSQL(driver: session.driver) else { return }
 
         switch safeModeLevel.writePermission {
         case .blocked:
@@ -205,34 +266,17 @@ struct InsertRowView: View {
         await executeInsert(sql: sql, session: session)
     }
 
-    private func buildInsertSQL(driver: any DatabaseDriver) -> String {
-        var insertColumns: [String] = []
-        var insertValues: [String?] = []
-
-        for (index, column) in columnDetails.enumerated() {
-            let isNull = isNullFlags[safe: index] == true
-            let text = values[safe: index] ?? ""
-
-            if column.isPrimaryKey && (isNull || text.isEmpty) {
-                continue
-            }
-
-            insertColumns.append(column.name)
-            if isNull {
-                insertValues.append(nil)
-            } else {
-                insertValues.append(text)
-            }
-        }
-
-        return SQLBuilder.buildInsert(
+    private func buildInsertSQL(driver: any DatabaseDriver) -> String? {
+        try? RowInsertPlanner.statements(
             table: table.name,
             schema: nil,
             type: databaseType,
             driver: driver,
-            columns: insertColumns,
-            values: insertValues
-        )
+            columns: columnDetails,
+            rows: [PayloadRow(values: fields)],
+            allowAllDefaults: true,
+            dropsEmptyPrimaryKey: false
+        ).first
     }
 
     private func executeInsert(sql: String, session: ConnectionSession) async {
@@ -250,11 +294,5 @@ struct InsertRowView: View {
             showOperationError = true
             hapticError.toggle()
         }
-    }
-}
-
-private extension Array {
-    subscript(safe index: Int) -> Element? {
-        indices.contains(index) ? self[index] : nil
     }
 }

@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Editor tabs drawn as a segmented tab picker rather than in Liquid Glass, on every macOS version. (#2439)
+- A connection opens full screen on iPhone and iPad, with its four sections in a sidebar on iPad. (#2544)
 
 ### Fixed
 
@@ -84,6 +85,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Snowflake reporting no rows changed for an `UPDATE` or `MERGE`, and a `SELECT`'s own result for a column named `number of rows`.
 - Two saved Snowflake connections to one account sharing a session, so switching database in one window moved the other.
 - Stop on a Snowflake query cancelling every other query on the same connection, including a sidebar refresh or a save.
+- Insert Row on iPhone and iPad writing every column, so a `NOT NULL` column with a default could not be inserted. (#2543)
+- NULL offered on a `NOT NULL` column in Insert Row and the row editor on iPhone and iPad.
+- Insert Row on iPhone and iPad writing a generated column, which every engine refuses.
+- Both halves of a composite integer primary key left out of the insert on iPhone and iPad.
+- Typed values discarded when Insert Row opened before the column list had loaded on iPhone and iPad.
+- Insert Row offered on Redis connections on iPhone and iPad, where it can only fail.
+- Missing search field in a connection's Tables tab on iPhone and iPad. (#2544)
+- A search from one connection or table still filtering another's list on iPhone and iPad.
 
 ### Security
 

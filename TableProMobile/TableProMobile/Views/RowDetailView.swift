@@ -305,6 +305,7 @@ struct RowDetailView: View {
         )
 
         let isNull = index < viewModel.editedValues.count ? viewModel.editedValues[index] == nil : true
+        let offersNull = viewModel.isNullable(at: index) || isNull
 
         return HStack {
             if isNull {
@@ -317,18 +318,20 @@ struct RowDetailView: View {
                     .font(.body)
             }
 
-            Button {
-                viewModel.toggleNull(at: index)
-            } label: {
-                Text("NULL")
-                    .font(.caption2)
-                    .foregroundStyle(isNull ? .white : .secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(isNull ? Color.accentColor : Color(.systemFill))
-                    .clipShape(Capsule())
+            if offersNull {
+                Button {
+                    viewModel.toggleNull(at: index)
+                } label: {
+                    Text("NULL")
+                        .font(.caption2)
+                        .foregroundStyle(isNull ? .white : .secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(isNull ? Color.accentColor : Color(.systemFill))
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
     }
 

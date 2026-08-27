@@ -11,7 +11,9 @@ struct DataBrowserView: View {
     private var session: ConnectionSession? { coordinator.session }
 
     @State private var viewModel = DataBrowserViewModel()
-    @SceneStorage("dataBrowser.searchText") private var searchText = ""
+    /// Not persisted. This search runs on the server and is applied on submit, so a value restored
+    /// into the field would name a filter the rows on screen were never fetched under.
+    @State private var searchText = ""
     @FocusState private var searchFocused: Bool
     @State private var showInsertSheet = false
     @State private var showFilterSheet = false
@@ -28,6 +30,13 @@ struct DataBrowserView: View {
 
     private var isView: Bool { table.type == .view || table.type == .materializedView }
     private var isRedis: Bool { connection.type == .redis }
+
+    /// Both entry points ask this. Redis takes no `INSERT`, and the form cannot be filled in before
+    /// the column list has arrived.
+    private var canInsertRow: Bool {
+        !isView && !isRedis && !connection.safeModeLevel.blocksWrites && !viewModel.columnDetails.isEmpty
+    }
+
     private var columns: [ColumnInfo] { viewModel.columns }
     private var rows: [[String?]] { viewModel.legacyRows }
 
@@ -211,7 +220,7 @@ struct DataBrowserView: View {
             } description: {
                 Text("This table is empty.")
             } actions: {
-                if !isView && !connection.safeModeLevel.blocksWrites {
+                if canInsertRow {
                     Button("Insert Row") { showInsertSheet = true }
                         .buttonStyle(.borderedProminent)
                 }
@@ -383,7 +392,7 @@ struct DataBrowserView: View {
                 Image(systemName: "ellipsis.circle")
             }
         }
-        if !isView && !connection.safeModeLevel.blocksWrites {
+        if canInsertRow {
             ToolbarItem(placement: .primaryAction) {
                 Button { showInsertSheet = true } label: {
                     Image(systemName: "plus")

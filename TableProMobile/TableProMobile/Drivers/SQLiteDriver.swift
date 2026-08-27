@@ -135,20 +135,39 @@ nonisolated final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
         let safe = table.replacingOccurrences(of: "'", with: "''")
         let raw = try await actor.execute("PRAGMA table_info('\(safe)')")
+        let createStatement = try await fetchCreateStatement(table: safe)
+
+        let primaryKeyCount = raw.rows.filter { row in
+            row.count >= 6 && ColumnMetadataRules.sqliteIsPrimaryKey(pk: row[5])
+        }.count
 
         return raw.rows.enumerated().compactMap { index, row in
             guard row.count >= 6, let name = row[1], let dataType = row[2] else { return nil }
+            let isPrimaryKey = ColumnMetadataRules.sqliteIsPrimaryKey(pk: row[5])
             return ColumnInfo(
                 name: name,
                 typeName: dataType,
-                isPrimaryKey: row[5] == "1",
+                isPrimaryKey: isPrimaryKey,
                 isNullable: row[3] == "0",
                 defaultValue: row[4],
                 comment: nil,
                 characterMaxLength: nil,
-                ordinalPosition: index
+                ordinalPosition: index,
+                isAutoIncrement: ColumnMetadataRules.sqliteIsRowIdAlias(
+                    typeName: dataType,
+                    isPrimaryKey: isPrimaryKey,
+                    primaryKeyCount: primaryKeyCount,
+                    createStatement: createStatement
+                )
             )
         }
+    }
+
+    private func fetchCreateStatement(table safeTable: String) async throws -> String? {
+        let raw = try await actor.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = '\(safeTable)'"
+        )
+        return raw.rows.first?.first ?? nil
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] {
