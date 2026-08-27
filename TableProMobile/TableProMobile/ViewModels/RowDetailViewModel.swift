@@ -14,6 +14,7 @@ final class RowDetailViewModel {
     let table: TableInfo?
     let session: ConnectionSession?
     let databaseType: DatabaseType
+    let schema: String?
     let safeModeLevel: SafeModeLevel
 
     private(set) var rows: [Row]
@@ -41,6 +42,7 @@ final class RowDetailViewModel {
         session: ConnectionSession? = nil,
         columnDetails: [ColumnInfo] = [],
         databaseType: DatabaseType = .sqlite,
+        schema: String? = nil,
         safeModeLevel: SafeModeLevel = .off,
         foreignKeys: [ForeignKeyInfo] = [],
         onSaved: (() -> Void)? = nil,
@@ -53,6 +55,7 @@ final class RowDetailViewModel {
         self.session = session
         self.columnDetails = columnDetails
         self.databaseType = databaseType
+        self.schema = schema
         self.safeModeLevel = safeModeLevel
         self.foreignKeys = foreignKeys
         self.onSaved = onSaved
@@ -189,6 +192,7 @@ final class RowDetailViewModel {
 
         let sql = SQLBuilder.buildUpdate(
             table: table.name,
+            schema: schema,
             type: databaseType,
             driver: session.driver,
             changes: changes,

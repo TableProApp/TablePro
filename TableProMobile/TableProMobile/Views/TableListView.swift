@@ -9,6 +9,10 @@ struct TableListView: View {
     private var tables: [TableInfo] { coordinator.tables }
     private var session: ConnectionSession? { coordinator.session }
 
+    private var activeSchema: String? {
+        coordinator.supportsSchemas ? coordinator.activeSchema : nil
+    }
+
     /// Scoped to the connection: one shared key leaves a filter from another connection applied
     /// to a list that never shows it.
     @SceneStorage private var searchText: String
@@ -139,7 +143,9 @@ struct TableListView: View {
                 if let table = tableToTruncate {
                     Task {
                         do {
-                            let quoted = SQLBuilder.quoteIdentifier(table.name, for: connection.type)
+                            let quoted = SQLBuilder.qualifiedIdentifier(
+                                table: table.name, schema: activeSchema, for: connection.type
+                            )
                             _ = try await session?.driver.execute(query: "TRUNCATE TABLE \(quoted)")
                             await coordinator.refreshTables()
                         } catch {
@@ -163,7 +169,9 @@ struct TableListView: View {
                 if let table = tableToDrop {
                     Task {
                         do {
-                            let quoted = SQLBuilder.quoteIdentifier(table.name, for: connection.type)
+                            let quoted = SQLBuilder.qualifiedIdentifier(
+                                table: table.name, schema: activeSchema, for: connection.type
+                            )
                             _ = try await session?.driver.execute(query: "DROP TABLE \(quoted)")
                             await coordinator.refreshTables()
                         } catch {

@@ -28,6 +28,10 @@ struct DataBrowserView: View {
     @State private var hapticSuccess = false
     @State private var hapticError = false
 
+    private var activeSchema: String? {
+        coordinator.supportsSchemas ? coordinator.activeSchema : nil
+    }
+
     private var isView: Bool { table.type == .view || table.type == .materializedView }
     private var isRedis: Bool { connection.type == .redis }
 
@@ -81,8 +85,18 @@ struct DataBrowserView: View {
             .toolbar(rows.isEmpty && !viewModel.hasActiveSearch && !viewModel.hasActiveFilters && !viewModel.isPageLoading ? .hidden : .visible, for: .bottomBar)
             .toolbar { paginationToolbar }
             .task {
-                viewModel.attach(session: session, table: table, databaseType: connection.type, host: connection.host)
+                viewModel.attach(
+                    session: session, table: table, databaseType: connection.type,
+                    host: connection.host, schema: activeSchema
+                )
                 await viewModel.load(isInitial: true)
+            }
+            .onChange(of: activeSchema) { _, newSchema in
+                viewModel.attach(
+                    session: session, table: table, databaseType: connection.type,
+                    host: connection.host, schema: newSchema
+                )
+                Task { await viewModel.load(isInitial: true) }
             }
             .onDisappear { viewModel.cancel() }
             .sheet(isPresented: $showInsertSheet) { insertSheet }
@@ -256,6 +270,7 @@ struct DataBrowserView: View {
                 session: session,
                 columnDetails: viewModel.columnDetails,
                 databaseType: connection.type,
+                schema: viewModel.schema,
                 safeModeLevel: connection.safeModeLevel,
                 foreignKeys: viewModel.foreignKeys,
                 onSaved: { Task { await viewModel.load() } },
@@ -294,7 +309,8 @@ struct DataBrowserView: View {
                 Button(format.rawValue) {
                     shareText = ClipboardExporter.exportRow(
                         columns: columns, row: row,
-                        format: format, tableName: table.name
+                        format: format, tableName: table.name,
+                        databaseType: connection.type, driver: session?.driver
                     )
                     showShareSheet = true
                 }
@@ -305,7 +321,8 @@ struct DataBrowserView: View {
                 Button(format.rawValue) {
                     let text = ClipboardExporter.exportRow(
                         columns: columns, row: row,
-                        format: format, tableName: table.name
+                        format: format, tableName: table.name,
+                        databaseType: connection.type, driver: session?.driver
                     )
                     ClipboardExporter.copyToClipboard(text)
                 }
@@ -380,7 +397,8 @@ struct DataBrowserView: View {
                         Button {
                             let text = ClipboardExporter.exportRows(
                                 columns: columns, rows: rows,
-                                format: format, tableName: table.name
+                                format: format, tableName: table.name,
+                                databaseType: connection.type, driver: session?.driver
                             )
                             ClipboardExporter.copyToClipboard(text)
                         } label: {
@@ -458,6 +476,7 @@ struct DataBrowserView: View {
             columnDetails: viewModel.columnDetails,
             session: session,
             databaseType: connection.type,
+            schema: viewModel.schema,
             safeModeLevel: connection.safeModeLevel,
             onInserted: { Task { await viewModel.load() } }
         )

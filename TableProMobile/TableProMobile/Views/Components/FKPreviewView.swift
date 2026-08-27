@@ -74,7 +74,9 @@ struct FKPreviewView: View {
         }
 
         do {
-            let quoted = SQLBuilder.quoteIdentifier(fk.referencedTable, for: databaseType)
+            let quoted = SQLBuilder.qualifiedIdentifier(
+                table: fk.referencedTable, schema: fk.referencedSchema, for: databaseType
+            )
             let quotedCol = SQLBuilder.quoteIdentifier(fk.referencedColumn, for: databaseType)
             let escapedValue = value.replacingOccurrences(of: "'", with: "''")
             /// SQL Server and Oracle reject `LIMIT`, so the clause comes from the shared builder

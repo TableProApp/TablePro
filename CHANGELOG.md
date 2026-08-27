@@ -87,6 +87,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Snowflake reporting no rows changed for an `UPDATE` or `MERGE`, and a `SELECT`'s own result for a column named `number of rows`.
 - Two saved Snowflake connections to one account sharing a session, so switching database in one window moved the other.
 - Stop on a Snowflake query cancelling every other query on the same connection, including a sidebar refresh or a save.
+- `tablepro://` deep links ignored on iPhone and iPad, from the widget, a Live Activity and the Open Connection shortcut.
+- iOS PostgreSQL and Redshift reading another schema's table of the same name in the columns, indexes and foreign keys it showed.
+- iOS SQL Server reading and writing the login's default schema rather than the one the toolbar showed, Truncate Table and Drop Table included.
+- Computed SQL Server columns offered as editable and written into the `INSERT`, on both Mac and iOS.
+- A CSV export writing a real NULL and the text `NULL` identically.
+- A JSON export emitting a leading-zero string such as `01234` as an unquoted number, which no JSON parser accepts.
+- A SQL `INSERT` export quoting identifiers for ANSI on every engine, which MySQL and MariaDB reject outright.
 - Insert Row on iPhone and iPad writing every column, so a `NOT NULL` column with a default could not be inserted. (#2543)
 - NULL offered on a `NOT NULL` column in Insert Row and the row editor on iPhone and iPad.
 - Insert Row on iPhone and iPad writing a generated column, which every engine refuses.
@@ -99,6 +106,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - SQL injection through a Snowflake schema or routine name containing a backslash.
+- Safe Mode on iPhone and iPad no longer lets a write run when it follows a comment or a CTE; an unrecognized statement is treated as a write.
 
 ## [0.68.1] - 2026-08-26
 

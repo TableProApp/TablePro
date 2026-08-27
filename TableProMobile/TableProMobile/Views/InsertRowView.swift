@@ -7,6 +7,7 @@ struct InsertRowView: View {
     let columnDetails: [ColumnInfo]
     let session: ConnectionSession?
     let databaseType: DatabaseType
+    let schema: String?
     let safeModeLevel: SafeModeLevel
     var onInserted: (() -> Void)?
 
@@ -269,7 +270,7 @@ struct InsertRowView: View {
     private func buildInsertSQL(driver: any DatabaseDriver) -> String? {
         try? RowInsertPlanner.statements(
             table: table.name,
-            schema: nil,
+            schema: schema,
             type: databaseType,
             driver: driver,
             columns: columnDetails,

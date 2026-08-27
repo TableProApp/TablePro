@@ -32,24 +32,25 @@ nonisolated enum SQLBuilder {
         }
     }
 
-    static func buildCount(table: String, type: DatabaseType) -> String {
-        let quoted = quoteIdentifier(table, for: type)
+    static func buildCount(table: String, schema: String?, type: DatabaseType) -> String {
+        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         return "SELECT COUNT(*) FROM \(quoted)"
     }
 
-    static func buildSelect(table: String, type: DatabaseType, limit: Int, offset: Int) -> String {
-        let quoted = quoteIdentifier(table, for: type)
+    static func buildSelect(table: String, schema: String?, type: DatabaseType, limit: Int, offset: Int) -> String {
+        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         let pagination = paginationClause(orderBy: "", limit: limit, offset: offset, for: type)
         return "SELECT * FROM \(quoted) \(pagination)"
     }
 
     static func buildDelete(
         table: String,
+        schema: String?,
         type: DatabaseType,
         driver: any DatabaseDriver,
         primaryKeys: [(column: String, value: String)]
     ) -> String {
-        let quotedTable = quoteIdentifier(table, for: type)
+        let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
         let predicate = primaryKeys.map {
             "\(quoteIdentifier($0.column, for: type)) = '\(driver.escapeStringLiteral($0.value))'"
         }.joined(separator: " AND ")
@@ -58,12 +59,13 @@ nonisolated enum SQLBuilder {
 
     static func buildUpdate(
         table: String,
+        schema: String?,
         type: DatabaseType,
         driver: any DatabaseDriver,
         changes: [(column: String, value: String?)],
         primaryKeys: [(column: String, value: String)]
     ) -> String {
-        let quotedTable = quoteIdentifier(table, for: type)
+        let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
         let assignments = changes.map { col, val in
             let qcol = quoteIdentifier(col, for: type)
             if let val { return "\(qcol) = '\(driver.escapeStringLiteral(val))'" }
@@ -120,25 +122,25 @@ nonisolated enum SQLBuilder {
     }
 
     static func buildSelect(
-        table: String, type: DatabaseType,
+        table: String, schema: String?, type: DatabaseType,
         sortState: SortState,
         limit: Int, offset: Int
     ) -> String {
-        let quoted = quoteIdentifier(table, for: type)
+        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         let orderBy = buildOrderByClause(sortState, for: type)
         let pagination = paginationClause(orderBy: orderBy, limit: limit, offset: offset, for: type)
         return "SELECT * FROM \(quoted) \(pagination)"
     }
 
     static func buildFilteredSelect(
-        table: String, type: DatabaseType,
+        table: String, schema: String?, type: DatabaseType,
         filters: [TableFilter], logicMode: FilterLogicMode,
         limit: Int, offset: Int
     ) -> String {
         let dialect = dialectDescriptor(for: type)
         let generator = FilterSQLGenerator(dialect: dialect)
         let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode)
-        let quoted = quoteIdentifier(table, for: type)
+        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         let pagination = paginationClause(orderBy: "", limit: limit, offset: offset, for: type)
         var sql = "SELECT * FROM \(quoted)"
         if !whereClause.isEmpty { sql += " \(whereClause)" }
@@ -147,7 +149,7 @@ nonisolated enum SQLBuilder {
     }
 
     static func buildFilteredSelect(
-        table: String, type: DatabaseType,
+        table: String, schema: String?, type: DatabaseType,
         filters: [TableFilter], logicMode: FilterLogicMode,
         sortState: SortState,
         limit: Int, offset: Int
@@ -156,7 +158,7 @@ nonisolated enum SQLBuilder {
         let generator = FilterSQLGenerator(dialect: dialect)
         let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode)
         let orderBy = buildOrderByClause(sortState, for: type)
-        let quoted = quoteIdentifier(table, for: type)
+        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         let pagination = paginationClause(orderBy: orderBy, limit: limit, offset: offset, for: type)
         var sql = "SELECT * FROM \(quoted)"
         if !whereClause.isEmpty { sql += " \(whereClause)" }
@@ -165,13 +167,13 @@ nonisolated enum SQLBuilder {
     }
 
     static func buildFilteredCount(
-        table: String, type: DatabaseType,
+        table: String, schema: String?, type: DatabaseType,
         filters: [TableFilter], logicMode: FilterLogicMode
     ) -> String {
         let dialect = dialectDescriptor(for: type)
         let generator = FilterSQLGenerator(dialect: dialect)
         let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode)
-        let quoted = quoteIdentifier(table, for: type)
+        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         if whereClause.isEmpty {
             return "SELECT COUNT(*) FROM \(quoted)"
         }
@@ -181,13 +183,13 @@ nonisolated enum SQLBuilder {
     // MARK: - Search
 
     static func buildSearchSelect(
-        table: String, type: DatabaseType,
+        table: String, schema: String?, type: DatabaseType,
         searchText: String, searchColumns: [ColumnInfo],
         filters: [TableFilter] = [], logicMode: FilterLogicMode = .and,
         sortState: SortState = SortState(),
         limit: Int, offset: Int
     ) -> String {
-        let quoted = quoteIdentifier(table, for: type)
+        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         let whereClause = buildSearchWhereClause(
             searchText: searchText, searchColumns: searchColumns,
             filters: filters, logicMode: logicMode, type: type
@@ -201,11 +203,11 @@ nonisolated enum SQLBuilder {
     }
 
     static func buildSearchCount(
-        table: String, type: DatabaseType,
+        table: String, schema: String?, type: DatabaseType,
         searchText: String, searchColumns: [ColumnInfo],
         filters: [TableFilter] = [], logicMode: FilterLogicMode = .and
     ) -> String {
-        let quoted = quoteIdentifier(table, for: type)
+        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         let whereClause = buildSearchWhereClause(
             searchText: searchText, searchColumns: searchColumns,
             filters: filters, logicMode: logicMode, type: type
