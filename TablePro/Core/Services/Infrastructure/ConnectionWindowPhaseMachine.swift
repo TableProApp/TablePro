@@ -16,17 +16,23 @@ internal struct ConnectionSessionSnapshot: Equatable, Sendable {
     /// The user asked for this. A session that goes away on its own is something to report and
     /// recover from; one the user ended is neither, and it must not be replayed on the next launch.
     internal let wasDisconnectedByUser: Bool
+    /// Whether the driver `hasDriver` reports can be believed. Without it the machine can only ask
+    /// whether a handle is installed, which stays true across an outage and after a reconnect has
+    /// given up.
+    internal let liveness: ConnectionLiveness
 
     internal init(
         exists: Bool,
         hasDriver: Bool,
         disconnectInfo: ConnectionFailureInfo? = nil,
-        wasDisconnectedByUser: Bool = false
+        wasDisconnectedByUser: Bool = false,
+        liveness: ConnectionLiveness = .live
     ) {
         self.exists = exists
         self.hasDriver = hasDriver
         self.disconnectInfo = disconnectInfo
         self.wasDisconnectedByUser = wasDisconnectedByUser
+        self.liveness = liveness
     }
 
     internal static let absent = ConnectionSessionSnapshot(exists: false, hasDriver: false)
@@ -46,12 +52,25 @@ internal enum ConnectionWindowPhaseMachine {
         return .connecting
     }
 
+    /// A session whose driver has stopped answering is reported before the driver itself is, because
+    /// the handle outlives the connection: a reconnect disconnects it and leaves it installed, so
+    /// `hasDriver` stays true for the whole of an outage and for good once the monitor gives up.
+    ///
+    /// `ownsAttempt` still wins. A workspace that has just asked to reconnect is dialing, not
+    /// unreachable, and a stale report from the attempt it replaced must not drag it back.
     internal static func onSessionChanged(
         phase: ConnectionWindowPhase,
         session: ConnectionSessionSnapshot,
         ownsAttempt: Bool
     ) -> ConnectionWindowPhase {
         guard phase != .closing else { return .closing }
+        if session.exists, case .unreachable(let info) = session.liveness {
+            /// A workspace that asked to reconnect is dialing. Reading the still-installed driver as
+            /// connected would put its rows back on screen for the length of its own reconnect, over
+            /// the very handle that stopped answering.
+            guard !ownsAttempt else { return .connecting }
+            return .unavailable(.disconnected(info ?? session.disconnectInfo))
+        }
         if session.hasDriver { return .connected }
 
         if session.exists {

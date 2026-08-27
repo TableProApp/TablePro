@@ -951,7 +951,7 @@ final class MainContentCoordinator {
         toolbarState.update(from: connection)
 
         if let session = services.databaseManager.session(for: connectionId) {
-            toolbarState.updateConnectionState(from: session.status)
+            toolbarState.updateConnectionState(from: session.reportedStatus)
             if let driver = session.driver {
                 toolbarState.databaseVersion = driver.serverVersion
             }

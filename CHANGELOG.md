@@ -73,6 +73,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Background connections stuck on the session preparation screen after connecting. (#2545)
 - Blank sidebar, grid and inspector on a connection opened into a window that was already on screen.
 - Connections strip hidden, with Switch Connection and the Show Next and Previous Connection items disabled, whenever the connection on screen was not connected.
+- Rows, tabs and an enabled toolbar left on screen over a connection that had stopped responding, while the connections strip showed it as failed.
+- Reconnect doing nothing on a connection whose automatic reconnect had already given up.
+- Health monitor waking every 30 seconds for the life of the app after it stopped trying to reconnect.
 - Choosing a connection from the connection list re-fronting its window without switching to it.
 - Grid cells left at the old column positions until the next click, after a resize, an auto-fit, a reorder, hiding a column, or a row-number width change. (#2449, #2446)
 - The row-number column draggable out of first place, which walked it to the far right on the next refresh.
