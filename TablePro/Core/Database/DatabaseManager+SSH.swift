@@ -33,6 +33,11 @@ extension DatabaseManager {
             return try await buildCloudSQLProxyEffectiveConnection(for: connection)
         case .socksProxy:
             return try await buildSOCKSProxyEffectiveConnection(for: connection)
+        case .remoteFile:
+            return try await buildRemoteFileEffectiveConnection(
+                for: connection,
+                sshPasswordOverride: sshPasswordOverride
+            )
         case .ssh, .none:
             break
         }

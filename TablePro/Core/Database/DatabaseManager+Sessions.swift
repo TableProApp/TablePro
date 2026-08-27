@@ -21,7 +21,10 @@ extension DatabaseManager {
     ) async throws {
         let connection = resolvedConnectionDefinition(for: requestedConnection)
 
-        if let existing = activeSessions[connection.id], existing.driver != nil {
+        /// Reusing the installed driver is right only while it still answers. A reconnect that gave
+        /// up leaves one behind, and switching to it here reported success without replacing
+        /// anything, which is how Reconnect came to be a button that returned to the same pane.
+        if let existing = activeSessions[connection.id], existing.driver != nil, existing.liveness == .live {
             switchToSession(connection.id)
             return
         }
@@ -151,6 +154,10 @@ extension DatabaseManager {
                 session.driver = driver
                 session.status = driver.status
                 session.effectiveConnection = effectiveConnection
+                /// A connect is the answer to whatever went wrong before it, including a reconnect
+                /// that gave up on this same entry, so the mark and the reason it carried go here.
+                session.liveness = .live
+                disconnectReasons.removeValue(forKey: connection.id)
                 if let passwordOverride, !connection.usesAWSIAM {
                     session.cachedPassword = passwordOverride
                 }
@@ -602,6 +609,44 @@ extension DatabaseManager {
 
     internal func recordDisconnectReason(_ info: ConnectionFailureInfo, for connectionId: UUID) {
         disconnectReasons[connectionId] = info
+    }
+
+    /// Says that a session's driver has stopped answering, so the window stops presenting rows over
+    /// it. The driver is left installed: it is the handle every metadata read, every query route and
+    /// every reconnect still goes through, and taking it away would make an ordinary database switch
+    /// on the engines that reconnect to perform one look like a dropped connection.
+    ///
+    /// `startedWith` is the generation check. A reconnect cannot be cancelled once the driver is
+    /// inside a blocking connect, so a losing attempt completes late; without this it would mark a
+    /// connection unreachable that a later attempt had already restored.
+    internal func markSessionUnreachable(
+        _ sessionId: UUID,
+        startedWith driver: DatabaseDriver?,
+        info: ConnectionFailureInfo?
+    ) {
+        guard let current = activeSessions[sessionId] else { return }
+        guard current.driver === driver else { return }
+        if let info { recordDisconnectReason(info, for: sessionId) }
+        updateSession(sessionId) { session in
+            session.liveness = .unreachable(info)
+        }
+    }
+
+    /// The one way back. Every path that installs a working driver clears the mark with it, so a
+    /// connection that recovers stops carrying the reason it once failed.
+    internal func markSessionLive(_ sessionId: UUID) {
+        guard activeSessions[sessionId] != nil else { return }
+        disconnectReasons.removeValue(forKey: sessionId)
+        updateSession(sessionId) { session in
+            session.liveness = .live
+        }
+    }
+
+    internal func markSessionRecovering(_ sessionId: UUID) {
+        guard let current = activeSessions[sessionId], current.liveness == .live else { return }
+        updateSession(sessionId) { session in
+            session.liveness = .recovering
+        }
     }
 
     internal func disconnectReason(for connectionId: UUID) -> ConnectionFailureInfo? {

@@ -193,6 +193,33 @@ struct MainWindowToolbarValidationTests {
         #expect(MainWindowToolbar.isEnabled(itemIdentifier: MainWindowToolbar.history, context: disconnected) == true)
     }
 
+    ///  said Switch Connection stays enabled and the runtime disagreed: validation
+    /// returned false before reaching that case whenever the connection had gone, which is the one
+    /// state the command exists for. It answers off the window now, ahead of any session context.
+    @Test("Switch Connection answers without a connection behind the toolbar")
+    func connectionItemIsWindowScoped() {
+        #expect(MainWindowToolbar.isWindowScoped(MainWindowToolbar.connection))
+    }
+
+    /// Everything else here acts on the connection that is showing, so no subject still disables
+    /// it rather than leaving a live-looking button that does nothing.
+    @Test("Every other toolbar item still needs the connection it acts on")
+    func otherItemsAreNotWindowScoped() {
+        let connectionScoped = [
+            MainWindowToolbar.database,
+            MainWindowToolbar.refresh,
+            MainWindowToolbar.newTab,
+            MainWindowToolbar.exportTables,
+            MainWindowToolbar.sidebarToggle,
+            MainWindowToolbar.addRow,
+            MainWindowToolbar.saveChanges,
+            MainWindowToolbar.dashboard
+        ]
+        for identifier in connectionScoped {
+            #expect(!MainWindowToolbar.isWindowScoped(identifier))
+        }
+    }
+
     @Test("Unknown identifier defaults to enabled")
     func unknownIdentifierEnabled() {
         let context = makeContext(connected: false)

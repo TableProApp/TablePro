@@ -73,9 +73,9 @@ struct SaveCompletionTests {
         let (coordinator, tabManager, _) = makeCoordinator()
         tabManager.addTab(databaseName: "testdb")
 
-        var truncates: Set<String> = []
-        var deletes: Set<String> = []
-        var options: [String: TableOperationOptions] = [:]
+        var truncates: Set<DatabaseTreeTableRef> = []
+        var deletes: Set<DatabaseTreeTableRef> = []
+        var options: [DatabaseTreeTableRef: TableOperationOptions] = [:]
 
         coordinator.saveChanges(
             pendingTruncates: &truncates,
@@ -94,9 +94,9 @@ struct SaveCompletionTests {
 
         changeManager.hasChanges = true
 
-        var truncates: Set<String> = []
-        var deletes: Set<String> = []
-        var options: [String: TableOperationOptions] = [:]
+        var truncates: Set<DatabaseTreeTableRef> = []
+        var deletes: Set<DatabaseTreeTableRef> = []
+        var options: [DatabaseTreeTableRef: TableOperationOptions] = [:]
 
         coordinator.saveChanges(
             pendingTruncates: &truncates,
@@ -116,9 +116,9 @@ struct SaveCompletionTests {
 
         changeManager.hasChanges = true
 
-        var truncates: Set<String> = []
-        var deletes: Set<String> = []
-        var options: [String: TableOperationOptions] = [:]
+        var truncates: Set<DatabaseTreeTableRef> = []
+        var deletes: Set<DatabaseTreeTableRef> = []
+        var options: [DatabaseTreeTableRef: TableOperationOptions] = [:]
 
         coordinator.saveChanges(
             pendingTruncates: &truncates,
@@ -137,9 +137,9 @@ struct SaveCompletionTests {
         let (coordinator, _, changeManager) = makeCoordinator(safeModeLevel: .readOnly)
         changeManager.hasChanges = true
 
-        var truncates: Set<String> = []
-        var deletes: Set<String> = []
-        var options: [String: TableOperationOptions] = [:]
+        var truncates: Set<DatabaseTreeTableRef> = []
+        var deletes: Set<DatabaseTreeTableRef> = []
+        var options: [DatabaseTreeTableRef: TableOperationOptions] = [:]
 
         coordinator.saveChanges(
             pendingTruncates: &truncates,
@@ -155,9 +155,9 @@ struct SaveCompletionTests {
         let (coordinator, tabManager, _) = makeCoordinator()
         tabManager.addTab(databaseName: "testdb")
 
-        var truncates: Set<String> = []
-        var deletes: Set<String> = []
-        var options: [String: TableOperationOptions] = [:]
+        var truncates: Set<DatabaseTreeTableRef> = []
+        var deletes: Set<DatabaseTreeTableRef> = []
+        var options: [DatabaseTreeTableRef: TableOperationOptions] = [:]
 
         coordinator.saveChanges(
             pendingTruncates: &truncates,
@@ -177,9 +177,9 @@ struct SaveCompletionTests {
         let (coordinator, tabManager, _) = makeCoordinator(safeModeLevel: .alert)
         tabManager.addTab(databaseName: "testdb")
 
-        var truncates: Set<String> = ["users"]
-        var deletes: Set<String> = []
-        var options: [String: TableOperationOptions] = [:]
+        var truncates: Set<DatabaseTreeTableRef> = [TestFixtures.makeTableRef(name: "users")]
+        var deletes: Set<DatabaseTreeTableRef> = []
+        var options: [DatabaseTreeTableRef: TableOperationOptions] = [:]
 
         coordinator.saveChanges(
             pendingTruncates: &truncates,
@@ -196,9 +196,9 @@ struct SaveCompletionTests {
         let (coordinator, tabManager, _) = makeCoordinator(safeModeLevel: .safeMode)
         tabManager.addTab(databaseName: "testdb")
 
-        var truncates: Set<String> = []
-        var deletes: Set<String> = ["orders"]
-        var options: [String: TableOperationOptions] = [:]
+        var truncates: Set<DatabaseTreeTableRef> = []
+        var deletes: Set<DatabaseTreeTableRef> = [TestFixtures.makeTableRef(name: "orders")]
+        var options: [DatabaseTreeTableRef: TableOperationOptions] = [:]
 
         coordinator.saveChanges(
             pendingTruncates: &truncates,
@@ -214,9 +214,9 @@ struct SaveCompletionTests {
         let (coordinator, tabManager, _) = makeCoordinator(safeModeLevel: .alert)
         tabManager.addTab(databaseName: "testdb")
 
-        var truncates: Set<String> = []
-        var deletes: Set<String> = []
-        var options: [String: TableOperationOptions] = [:]
+        var truncates: Set<DatabaseTreeTableRef> = []
+        var deletes: Set<DatabaseTreeTableRef> = []
+        var options: [DatabaseTreeTableRef: TableOperationOptions] = [:]
 
         coordinator.saveChanges(
             pendingTruncates: &truncates,
@@ -234,9 +234,9 @@ struct SaveCompletionTests {
         let (coordinator, tabManager, _) = makeCoordinator(safeModeLevel: .silent)
         tabManager.addTab(databaseName: "testdb")
 
-        var truncates: Set<String> = ["users"]
-        var deletes: Set<String> = []
-        var options: [String: TableOperationOptions] = [:]
+        var truncates: Set<DatabaseTreeTableRef> = [TestFixtures.makeTableRef(name: "users")]
+        var deletes: Set<DatabaseTreeTableRef> = []
+        var options: [DatabaseTreeTableRef: TableOperationOptions] = [:]
 
         coordinator.saveChanges(
             pendingTruncates: &truncates,

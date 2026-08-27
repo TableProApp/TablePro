@@ -18,36 +18,36 @@ struct TableSelectionChangeTests {
 
     @Test("Single click adds one table — navigate to it")
     func singleClickNavigates() {
-        let old: Set<TableInfo> = []
-        let new: Set<TableInfo> = [TestFixtures.makeTableInfo(name: "orders")]
+        let old: Set<DatabaseTreeTableRef> = []
+        let new: Set<DatabaseTreeTableRef> = [TestFixtures.makeTableRef(name: "orders")]
         let action = TableSelectionAction.resolve(oldTables: old, newTables: new, selectedRowCount: new.count)
-        #expect(action == .navigate(table: TableInfo(name: "orders", type: .table, rowCount: nil)))
+        #expect(action == .navigate(ref: TestFixtures.makeTableRef(name: "orders", type: .table)))
     }
 
     @Test("Single click on a view — navigate with isView true")
     func singleClickOnView() {
-        let old: Set<TableInfo> = []
-        let view = TableInfo(name: "my_view", type: .view, rowCount: nil)
-        let new: Set<TableInfo> = [view]
+        let old: Set<DatabaseTreeTableRef> = []
+        let view = TestFixtures.makeTableRef(name: "my_view", type: .view)
+        let new: Set<DatabaseTreeTableRef> = [view]
         let action = TableSelectionAction.resolve(oldTables: old, newTables: new, selectedRowCount: new.count)
-        #expect(action == .navigate(table: TableInfo(name: "my_view", type: .view, rowCount: nil)))
+        #expect(action == .navigate(ref: TestFixtures.makeTableRef(name: "my_view", type: .view)))
     }
 
     @Test("Cmd+click extends the selection without opening the table it added")
     func cmdClickAddsOneMore() {
-        let existing = TestFixtures.makeTableInfo(name: "users")
-        let added = TestFixtures.makeTableInfo(name: "orders")
-        let old: Set<TableInfo> = [existing]
-        let new: Set<TableInfo> = [existing, added]
+        let existing = TestFixtures.makeTableRef(name: "users")
+        let added = TestFixtures.makeTableRef(name: "orders")
+        let old: Set<DatabaseTreeTableRef> = [existing]
+        let new: Set<DatabaseTreeTableRef> = [existing, added]
         let action = TableSelectionAction.resolve(oldTables: old, newTables: new, selectedRowCount: new.count)
         #expect(action == .noNavigation)
     }
 
     @Test("Narrowing a multi-selection back to one table does not reopen it")
     func narrowingToAPreviouslySelectedTableDoesNotNavigate() {
-        let kept = TestFixtures.makeTableInfo(name: "users")
-        let old: Set<TableInfo> = [kept, TestFixtures.makeTableInfo(name: "orders")]
-        let new: Set<TableInfo> = [kept]
+        let kept = TestFixtures.makeTableRef(name: "users")
+        let old: Set<DatabaseTreeTableRef> = [kept, TestFixtures.makeTableRef(name: "orders")]
+        let new: Set<DatabaseTreeTableRef> = [kept]
         let action = TableSelectionAction.resolve(oldTables: old, newTables: new, selectedRowCount: new.count)
         #expect(action == .noNavigation)
     }
@@ -56,11 +56,11 @@ struct TableSelectionChangeTests {
 
     @Test("Cmd+A adds many tables — no navigation")
     func cmdANoNavigation() {
-        let old: Set<TableInfo> = []
-        let new: Set<TableInfo> = [
-            TestFixtures.makeTableInfo(name: "users"),
-            TestFixtures.makeTableInfo(name: "orders"),
-            TestFixtures.makeTableInfo(name: "products")
+        let old: Set<DatabaseTreeTableRef> = []
+        let new: Set<DatabaseTreeTableRef> = [
+            TestFixtures.makeTableRef(name: "users"),
+            TestFixtures.makeTableRef(name: "orders"),
+            TestFixtures.makeTableRef(name: "products")
         ]
         let action = TableSelectionAction.resolve(oldTables: old, newTables: new, selectedRowCount: new.count)
         #expect(action == .noNavigation)
@@ -68,12 +68,12 @@ struct TableSelectionChangeTests {
 
     @Test("Shift+click adds multiple tables — no navigation")
     func shiftClickNoNavigation() {
-        let existing = TestFixtures.makeTableInfo(name: "users")
-        let old: Set<TableInfo> = [existing]
-        let new: Set<TableInfo> = [
+        let existing = TestFixtures.makeTableRef(name: "users")
+        let old: Set<DatabaseTreeTableRef> = [existing]
+        let new: Set<DatabaseTreeTableRef> = [
             existing,
-            TestFixtures.makeTableInfo(name: "orders"),
-            TestFixtures.makeTableInfo(name: "products")
+            TestFixtures.makeTableRef(name: "orders"),
+            TestFixtures.makeTableRef(name: "products")
         ]
         let action = TableSelectionAction.resolve(oldTables: old, newTables: new, selectedRowCount: new.count)
         #expect(action == .noNavigation)
@@ -83,19 +83,19 @@ struct TableSelectionChangeTests {
 
     @Test("Deselect tables (none added) — no navigation")
     func deselectNoNavigation() {
-        let old: Set<TableInfo> = [
-            TestFixtures.makeTableInfo(name: "users"),
-            TestFixtures.makeTableInfo(name: "orders")
+        let old: Set<DatabaseTreeTableRef> = [
+            TestFixtures.makeTableRef(name: "users"),
+            TestFixtures.makeTableRef(name: "orders")
         ]
-        let new: Set<TableInfo> = [TestFixtures.makeTableInfo(name: "users")]
+        let new: Set<DatabaseTreeTableRef> = [TestFixtures.makeTableRef(name: "users")]
         let action = TableSelectionAction.resolve(oldTables: old, newTables: new, selectedRowCount: new.count)
         #expect(action == .noNavigation)
     }
 
     @Test("Deselect all — no navigation")
     func deselectAllNoNavigation() {
-        let old: Set<TableInfo> = [TestFixtures.makeTableInfo(name: "users")]
-        let new: Set<TableInfo> = []
+        let old: Set<DatabaseTreeTableRef> = [TestFixtures.makeTableRef(name: "users")]
+        let new: Set<DatabaseTreeTableRef> = []
         let action = TableSelectionAction.resolve(oldTables: old, newTables: new, selectedRowCount: new.count)
         #expect(action == .noNavigation)
     }
@@ -104,7 +104,7 @@ struct TableSelectionChangeTests {
 
     @Test("No change (same set) — no navigation")
     func noChangeNoNavigation() {
-        let tables: Set<TableInfo> = [TestFixtures.makeTableInfo(name: "users")]
+        let tables: Set<DatabaseTreeTableRef> = [TestFixtures.makeTableRef(name: "users")]
         let action = TableSelectionAction.resolve(oldTables: tables, newTables: tables, selectedRowCount: tables.count)
         #expect(action == .noNavigation)
     }
@@ -120,7 +120,7 @@ struct TableSelectionChangeTests {
     /// what tells the two apart.
     @Test("A table selected alongside a non-table row is an extension, not a pick")
     func aTableBesideAnotherRowDoesNotNavigate() {
-        let new: Set<TableInfo> = [TestFixtures.makeTableInfo(name: "orders")]
+        let new: Set<DatabaseTreeTableRef> = [TestFixtures.makeTableRef(name: "orders")]
         let action = TableSelectionAction.resolve(oldTables: [], newTables: new, selectedRowCount: 2)
         #expect(action == .noNavigation)
     }

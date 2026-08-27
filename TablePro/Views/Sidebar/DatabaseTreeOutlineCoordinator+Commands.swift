@@ -60,13 +60,13 @@ extension DatabaseTreeOutlineCoordinator {
                     schema: ref.schema
                 )
             }
-        case .truncateTables(let names, let ref):
+        case .truncateTables(let targets, let ref):
             activateThen(ref) { [weak self] in
-                self?.viewModel?.batchToggleTruncate(tableNames: names)
+                self?.viewModel?.batchToggleTruncate(refs: targets)
             }
-        case .dropTables(let names, let ref):
+        case .dropTables(let targets, let ref):
             activateThen(ref) { [weak self] in
-                self?.viewModel?.batchToggleDelete(tableNames: names)
+                self?.viewModel?.batchToggleDelete(refs: targets)
             }
         case .toggleFavorite(let ref):
             toggleFavorite(ref)

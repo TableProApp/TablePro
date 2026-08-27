@@ -49,6 +49,12 @@ Change the file outside TablePro and the object list reloads on its own. Rows al
 
 One connection is one file, with no database to switch between, and the object list reads the main database only: a file you `ATTACH` in the editor is queryable as `alias.table` but never appears in the sidebar.
 
+## A database on another machine
+
+The **Remote File** pane points the connection at a database on an SSH server. It is fetched over SFTP and opened read-only from a copy on this Mac, and the original is never written to.
+
+Where the server has `sqlite3` 3.27 or newer, the copy is a `VACUUM INTO` snapshot, which stays consistent even while other programs write to the database. See [Remote Database Files](/connections/remote-database-files).
+
 ## Limitations
 
 - Encrypted databases do not open. The driver uses the system SQLite, which takes no key, and the form has nowhere to put one. Decrypt a SQLCipher file with the `sqlcipher` tool first.

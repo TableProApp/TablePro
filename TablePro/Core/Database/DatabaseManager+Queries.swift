@@ -39,6 +39,11 @@ extension DatabaseManager {
         sshPassword: String? = nil,
         passwordOverride: String? = nil
     ) async throws -> Bool {
+        // A remote file answers the only question this button asks without moving the file.
+        if connection.activeTunnelKind == .remoteFile {
+            return try await testRemoteDatabaseFile(connection, sshPassword: sshPassword)
+        }
+
         // Build effective connection (creates SSH tunnel if needed)
         let testConnection = try await buildEffectiveConnection(
             for: connection,

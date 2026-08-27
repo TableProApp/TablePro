@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Constraints tab in the structure editor, listing check constraints with their expression. (#2478)
 - Generated and Expression fields on the column row, with a stored or virtual choice. (#2478)
 - `check_constraints` and `generation_expression` in the MCP `describe_table` response.
+- Remote File pane for SQLite, opening a read-only copy of a database that lives on an SSH server. (#2474)
 
 ### Changed
 
@@ -28,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Free-text cells for foreign key actions and index types in Create Table, where Structure shows a menu.
 - A generated column comparing equal to a plain one in Compare & Sync.
 - Empty Indexes, Foreign Keys or DDL tab, with no error, when the structure read fails.
+- Connections strip absent from a window whose selected connection has nothing to show, when Show Connections is off.
+- Switch Connection disabled, in the Database menu and the toolbar, while the selected connection is disconnected.
+- One floating switcher panel per connection in a window, each centred on the same point.
+- Leaked socket on every SSH Test Connection against a server reached without jump hosts.
+- Leaked listening port, socket and session each time an SSH tunnel died from sleep or a dropped network.
 - Selection highlight missing from part of a long selection after scrolling back up to it.
 - Editor not scrolling to follow a selection extended past the edge of the viewport.
 - Find highlight and the run band covering only the first line of a match that spans several lines.
@@ -80,6 +86,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Background connections stuck on the session preparation screen after connecting. (#2545)
 - Blank sidebar, grid and inspector on a connection opened into a window that was already on screen.
 - Connections strip hidden, with Switch Connection and the Show Next and Previous Connection items disabled, whenever the connection on screen was not connected.
+- Rows, tabs and an enabled toolbar left on screen over a connection that had stopped responding, while the connections strip showed it as failed.
+- Reconnect doing nothing on a connection whose automatic reconnect had already given up.
+- Health monitor waking every 30 seconds for the life of the app after it stopped trying to reconnect.
 - Choosing a connection from the connection list re-fronting its window without switching to it.
 - Grid cells left at the old column positions until the next click, after a resize, an auto-fit, a reorder, hiding a column, or a row-number width change. (#2449, #2446)
 - The row-number column draggable out of first place, which walked it to the far right on the next refresh.
@@ -111,6 +120,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Insert Row offered on Redis connections on iPhone and iPad, where it can only fail.
 - Missing search field in a connection's Tables tab on iPhone and iPad. (#2544)
 - A search from one connection or table still filtering another's list on iPhone and iPad.
+- A staged drop or truncate running against the database in front at Save time rather than the one it was staged in.
+- Unqualified `DROP TABLE` for every object on Oracle, Dameng, Trino, Snowflake and BigQuery, whatever its kind.
+- Dropping a table closing the tab on a same-named table in another schema or database.
 
 ### Security
 

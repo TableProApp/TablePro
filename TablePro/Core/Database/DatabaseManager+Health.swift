@@ -69,6 +69,7 @@ extension DatabaseManager {
                                 session.status = .connected
                             }
                         }
+                        self.markSessionLive(id)
                     case .reconnecting(let attempt):
                         Self.logger.info("Reconnecting session \(id) (attempt \(attempt))")
                         if case .connecting = self.activeSessions[id]?.status {
@@ -78,8 +79,11 @@ extension DatabaseManager {
                                 session.status = .connecting
                             }
                         }
+                        self.applyReconnectAttempt(attempt, to: id)
                     case .checking:
                         break  // No UI update needed
+                    case .aborted:
+                        break  // The give-up site that produced it already said why
                     }
                 }
             }
@@ -97,6 +101,10 @@ extension DatabaseManager {
     /// listeners that reload after a first connect or a manual reconnect run here too.
     internal func performHealthMonitorReconnect(connectionId: UUID) async -> ConnectionHealthMonitor.ReconnectOutcome {
         guard let session = activeSessions[connectionId] else { return .abort }
+        /// The driver this attempt is replacing. Every give-up below is fenced on it, because a
+        /// reconnect blocked inside a C call cannot be cancelled and completes late: without the
+        /// fence, a losing attempt would report a connection unreachable that a later one restored.
+        let attemptedDriver = session.driver
         await SchemaService.shared.prepareForReload(connectionId: connectionId)
         await DatabaseTreeMetadataService.shared.handleReconnect(connectionId: connectionId)
 
@@ -107,6 +115,7 @@ extension DatabaseManager {
                 updateSession(connectionId) { session in
                     session.status = .disconnected
                 }
+                markSessionUnreachable(connectionId, startedWith: attemptedDriver, info: Self.declinedReconnectInfo)
                 return .abort
             }
             updateSession(connectionId) { session in
@@ -122,20 +131,55 @@ extension DatabaseManager {
                     session.cachedPassword = cachedPassword
                 }
             }
+            markSessionLive(connectionId)
             AppEvents.shared.databaseDidConnect.send(DatabaseDidConnect(connectionId: connectionId))
             return .success
         } catch {
             Self.logger.debug("Reconnect failed: \(error.localizedDescription)")
             if isAuthenticationFailure(error) {
+                let message = String(format: String(localized: "Reconnect failed: %@"), error.localizedDescription)
                 updateSession(connectionId) { session in
-                    session.status = .error(
-                        String(format: String(localized: "Reconnect failed: %@"), error.localizedDescription)
-                    )
+                    session.status = .error(message)
                 }
+                markSessionUnreachable(
+                    connectionId,
+                    startedWith: attemptedDriver,
+                    info: ConnectionFailureInfo(message: message)
+                )
                 return .abort
             }
             return .retry
         }
+    }
+
+    internal static let declinedReconnectInfo = ConnectionFailureInfo(
+        message: String(localized: "The connection was closed and reconnecting was cancelled.")
+    )
+
+    /// The attempt at which a reconnect stops being something to wait through.
+    ///
+    /// The backoff is 2, 4, 8, 16 seconds and each attempt is announced before its own wait, so
+    /// attempt 5 is the first one announced a full 30 seconds after the ping that failed. Thirty
+    /// seconds is also the ping interval, so the threshold is one whole cycle of not answering:
+    /// under it a blip repairs itself with the rows, the tabs and the toolbar untouched, and over it
+    /// the window stops claiming to show a live connection.
+    internal static let unreachableAfterAttempt = 5
+
+    internal static let unreachableWhileRetryingInfo = ConnectionFailureInfo(
+        message: String(localized: "The connection stopped responding."),
+        recoverySuggestion: String(localized: "TablePro is still trying to reconnect.")
+    )
+
+    internal func applyReconnectAttempt(_ attempt: Int, to connectionId: UUID) {
+        guard attempt >= Self.unreachableAfterAttempt else {
+            markSessionRecovering(connectionId)
+            return
+        }
+        markSessionUnreachable(
+            connectionId,
+            startedWith: activeSessions[connectionId]?.driver,
+            info: Self.unreachableWhileRetryingInfo
+        )
     }
 
     /// Result of a driver reconnect, containing the new driver and its effective connection.
@@ -253,6 +297,8 @@ extension DatabaseManager {
 
         Self.logger.info("Manual reconnect requested for: \(session.connection.name)")
 
+        let attemptedDriver = session.driver
+
         updateSession(sessionId) { session in
             session.status = .connecting
         }
@@ -282,6 +328,7 @@ extension DatabaseManager {
                     window: NSApp.keyWindow
                 ) else {
                     updateSession(sessionId) { $0.status = .disconnected }
+                    markSessionUnreachable(sessionId, startedWith: attemptedDriver, info: Self.declinedReconnectInfo)
                     throw CancellationError()
                 }
                 passwordOverride = prompted
@@ -295,6 +342,7 @@ extension DatabaseManager {
                 passwordOverride: passwordOverride
             ) else {
                 updateSession(sessionId) { $0.status = .disconnected }
+                markSessionUnreachable(sessionId, startedWith: attemptedDriver, info: Self.declinedReconnectInfo)
                 throw CancellationError()
             }
             let driver = connectResult.driver
@@ -323,6 +371,7 @@ extension DatabaseManager {
                     session.cachedPassword = cachedPassword
                 }
             }
+            markSessionLive(sessionId)
 
             // Restart health monitoring if the plugin supports it
             let supportsHealthReconnect = PluginMetadataRegistry.shared.snapshot(
@@ -344,14 +393,20 @@ extension DatabaseManager {
             /// spinner with no exit.
             guard !DatabaseCancellationDiagnosis.isCancellation(error) else {
                 updateSession(sessionId) { $0.status = .disconnected }
+                markSessionUnreachable(sessionId, startedWith: attemptedDriver, info: Self.declinedReconnectInfo)
                 throw error
             }
             Self.logger.error("Manual reconnect failed: \(error.localizedDescription)")
+            let message = String(format: String(localized: "Reconnect failed: %@"), error.localizedDescription)
             updateSession(sessionId) { session in
-                session.status = .error(
-                    String(format: String(localized: "Reconnect failed: %@"), error.localizedDescription))
+                session.status = .error(message)
                 session.clearCachedData()
             }
+            markSessionUnreachable(
+                sessionId,
+                startedWith: attemptedDriver,
+                info: ConnectionFailureInfo(message: message)
+            )
             throw error
         }
     }

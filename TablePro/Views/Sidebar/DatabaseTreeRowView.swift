@@ -27,8 +27,8 @@ struct DatabaseTreeRowContext {
     let activeDatabase: String?
     let activeSchema: String?
     let systemSchemas: Set<String>
-    let pendingTruncates: Set<String>
-    let pendingDeletes: Set<String>
+    let pendingTruncates: Set<DatabaseTreeTableRef>
+    let pendingDeletes: Set<DatabaseTreeTableRef>
     /// AppKit sizes the row, but it lays out `NSTableCellView.textField` and `imageView` to do it,
     /// and this cell hosts SwiftUI instead. The size has to reach the content or the text stays one
     /// size inside three different row heights.
@@ -145,8 +145,8 @@ struct DatabaseTreeRowView: View {
     private func tableRow(_ ref: DatabaseTreeTableRef) -> some View {
         TableRow(
             table: ref.table,
-            isPendingTruncate: context.pendingTruncates.contains(ref.table.name),
-            isPendingDelete: context.pendingDeletes.contains(ref.table.name),
+            isPendingTruncate: context.pendingTruncates.contains(ref),
+            isPendingDelete: context.pendingDeletes.contains(ref),
             isFavorite: isFavorite,
             onToggleFavorite: { actions.toggleFavorite(ref) }
         )

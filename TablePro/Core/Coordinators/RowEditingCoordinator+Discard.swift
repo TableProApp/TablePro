@@ -48,8 +48,8 @@ extension RowEditingCoordinator {
     // MARK: - Discard
 
     func handleDiscard(
-        pendingTruncates: inout Set<String>,
-        pendingDeletes: inout Set<String>
+        pendingTruncates: inout Set<DatabaseTreeTableRef>,
+        pendingDeletes: inout Set<DatabaseTreeTableRef>
     ) {
         let originalValues = parent.changeManager.getOriginalValues()
         var deltas: [Delta] = []

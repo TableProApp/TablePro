@@ -19,15 +19,15 @@ struct DatabaseTreeOutlineView: NSViewRepresentable {
     let windowState: WindowSidebarState
     let sidebarState: SharedSidebarState
     let viewModel: SidebarViewModel
-    let pendingTruncates: Set<String>
-    let pendingDeletes: Set<String>
+    let pendingTruncates: Set<DatabaseTreeTableRef>
+    let pendingDeletes: Set<DatabaseTreeTableRef>
     let searchText: String
     /// Rebuilds the tree when the session comes back, which is the one thing outside the metadata
     /// services that invalidates every node at once.
     let isConnected: Bool
     let activeDatabase: String?
     let activeSchema: String?
-    let selectedTables: Set<TableInfo>
+    let selectedTables: Set<DatabaseTreeTableRef>
     let showRecentTables: Bool
     let rowSizePreference: SidebarRowSizePreference
 

@@ -8,8 +8,8 @@ struct SidebarTreeView: View {
     let viewModel: SidebarViewModel
     let windowState: WindowSidebarState
     var sidebarState: SharedSidebarState
-    @Binding var pendingTruncates: Set<String>
-    @Binding var pendingDeletes: Set<String>
+    @Binding var pendingTruncates: Set<DatabaseTreeTableRef>
+    @Binding var pendingDeletes: Set<DatabaseTreeTableRef>
     weak var coordinator: MainContentCoordinator?
 
     @State private var settingsManager = AppSettingsManager.shared

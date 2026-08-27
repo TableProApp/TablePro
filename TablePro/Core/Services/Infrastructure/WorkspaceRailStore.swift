@@ -194,7 +194,11 @@ internal enum WorkspaceRailStore {
         storedConnections: [UUID: DatabaseConnection]
     ) -> ResolvedConnection? {
         if let session = sessions[connectionId] {
-            return ResolvedConnection(connection: session.connection, status: session.status, session: session)
+            return ResolvedConnection(
+                connection: session.connection,
+                status: session.reportedStatus,
+                session: session
+            )
         }
         guard let record = hostedConnections[connectionId] ?? storedConnections[connectionId] else { return nil }
         return ResolvedConnection(connection: record, status: .disconnected, session: nil)

@@ -4,61 +4,48 @@
 //
 
 import Foundation
-import os
 
 @MainActor
 struct TableOperationSQLBuilder {
-    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "TableOperationSQLBuilder")
-
-    let connectionId: UUID
-    let databaseType: DatabaseType
-    let tableInfoProvider: () -> [String: TableInfo]
     let adapterProvider: () -> PluginDriverAdapter?
 
-    init(
-        connectionId: UUID,
-        databaseType: DatabaseType,
-        tableInfoProvider: @escaping () -> [String: TableInfo],
-        adapterProvider: @escaping () -> PluginDriverAdapter?
-    ) {
-        self.connectionId = connectionId
-        self.databaseType = databaseType
-        self.tableInfoProvider = tableInfoProvider
+    init(adapterProvider: @escaping () -> PluginDriverAdapter?) {
         self.adapterProvider = adapterProvider
     }
 
+    /// Every statement is built from the queued reference alone.
+    ///
+    /// The schema and the object's keyword used to be looked up in the connection's flat table
+    /// cache, which publishes nothing at all on an engine whose tree is per-schema: on Oracle,
+    /// Dameng, Trino, Snowflake and BigQuery every drop came out unqualified and typed `TABLE`,
+    /// so dropping a view raised ORA-00942 and dropping a table reached whatever object of that
+    /// name the login schema happened to hold.
     func generate(
-        truncates: Set<String>,
-        deletes: Set<String>,
-        options: [String: TableOperationOptions],
+        truncates: Set<DatabaseTreeTableRef>,
+        deletes: Set<DatabaseTreeTableRef>,
+        options: [DatabaseTreeTableRef: TableOperationOptions],
         includeFKHandling: Bool = true
     ) -> [String] {
         var statements: [String] = []
-        let sortedTruncates = truncates.sorted()
-        let sortedDeletes = deletes.sorted()
+        let sortedTruncates = truncates.sorted { $0.id < $1.id }
+        let sortedDeletes = deletes.sorted { $0.id < $1.id }
 
-        let needsDisableFK = includeFKHandling && truncates.union(deletes).contains { tableName in
-            options[tableName]?.ignoreForeignKeys == true
+        let needsDisableFK = includeFKHandling && truncates.union(deletes).contains { ref in
+            options[ref]?.ignoreForeignKeys == true
         }
 
         if needsDisableFK {
             statements.append(contentsOf: foreignKeyDisableStatements())
         }
 
-        let tableLookup = tableInfoProvider()
-
-        for tableName in sortedTruncates {
-            let tableOptions = options[tableName] ?? TableOperationOptions()
+        for ref in sortedTruncates {
             statements.append(contentsOf: truncateStatements(
-                tableName: tableName, schema: tableLookup[tableName]?.schema, options: tableOptions
+                ref, options: options[ref] ?? TableOperationOptions()
             ))
         }
 
-        for tableName in sortedDeletes {
-            let tableOptions = options[tableName] ?? TableOperationOptions()
-            let stmt = dropObjectStatement(
-                tableName: tableName, tableInfo: tableLookup[tableName], options: tableOptions
-            )
+        for ref in sortedDeletes {
+            let stmt = dropObjectStatement(ref, options: options[ref] ?? TableOperationOptions())
             if !stmt.isEmpty {
                 statements.append(stmt)
             }
@@ -80,30 +67,27 @@ struct TableOperationSQLBuilder {
     }
 
     private func truncateStatements(
-        tableName: String, schema: String?, options: TableOperationOptions
+        _ ref: DatabaseTreeTableRef, options: TableOperationOptions
     ) -> [String] {
         guard let adapter = adapterProvider() else { return [] }
         return adapter.truncateTableStatements(
-            table: tableName, schema: schema, cascade: options.cascade
+            table: ref.table.name, schema: ref.qualifyingSchema, cascade: options.cascade
         )
     }
 
     private func dropObjectStatement(
-        tableName: String, tableInfo: TableInfo?, options: TableOperationOptions
+        _ ref: DatabaseTreeTableRef, options: TableOperationOptions
     ) -> String {
         guard let adapter = adapterProvider() else { return "" }
-        if tableInfo == nil {
-            Self.logger.warning("No cached TableInfo for \(tableName, privacy: .public); dropping as TABLE")
-        }
         return adapter.dropObjectStatement(
-            name: tableName,
-            objectType: Self.dropKeyword(for: tableInfo?.type),
-            schema: tableInfo?.schema,
+            name: ref.table.name,
+            objectType: Self.dropKeyword(for: ref.table.type),
+            schema: ref.qualifyingSchema,
             cascade: options.cascade
         )
     }
 
-    private static func dropKeyword(for type: TableInfo.TableType?) -> String {
+    private static func dropKeyword(for type: TableInfo.TableType) -> String {
         switch type {
         case .view:
             return "VIEW"
@@ -111,7 +95,7 @@ struct TableOperationSQLBuilder {
             return "MATERIALIZED VIEW"
         case .foreignTable:
             return "FOREIGN TABLE"
-        case .table, .systemTable, .partitionedTable, .externalTable, .none:
+        case .table, .systemTable, .partitionedTable, .externalTable:
             return "TABLE"
         }
     }

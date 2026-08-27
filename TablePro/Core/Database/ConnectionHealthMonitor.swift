@@ -17,6 +17,10 @@ extension ConnectionHealthMonitor {
         case healthy
         case checking
         case reconnecting(attempt: Int) // 1-based attempt number
+        /// The reconnect handler gave up. A separate case rather than a flag beside `state`, so the
+        /// health check's own `state == .healthy` guard and every future switch see it without a
+        /// second variable to keep in step.
+        case aborted
     }
 
     enum ReconnectOutcome: Sendable, Equatable {
@@ -86,6 +90,10 @@ actor ConnectionHealthMonitor {
         state
     }
 
+    var hasAborted: Bool {
+        state == .aborted
+    }
+
     /// Starts periodic health monitoring.
     ///
     /// Creates a long-running task that pings the connection every 30 seconds.
@@ -109,6 +117,10 @@ actor ConnectionHealthMonitor {
                 try? await Task.sleep(for: .seconds(Self.pingInterval))
                 guard !Task.isCancelled else { break }
                 await self.performHealthCheck()
+                /// A monitor that has given up has nothing left to ask. Without this it woke every
+                /// 30 seconds for the life of the app to fail its own healthy-state guard and
+                /// return, and only a fresh connect ever replaced it.
+                guard await !self.hasAborted else { break }
             }
 
             Self.logger.trace("Monitoring loop exited for connection \(self.connectionId)")
@@ -133,7 +145,7 @@ actor ConnectionHealthMonitor {
     ///
     /// Skips the check if the monitor is already in a non-healthy state
     /// (e.g., mid-reconnect). On ping failure, triggers the reconnect sequence.
-    private func performHealthCheck() async {
+    internal func performHealthCheck() async {
         guard state == .healthy else {
             Self.logger.debug("Skipping health check — state is \(String(describing: self.state)) for connection \(self.connectionId)")
             return
@@ -201,6 +213,7 @@ actor ConnectionHealthMonitor {
                 return
             case .abort:
                 Self.logger.info("Reconnect aborted for connection \(self.connectionId)")
+                await transitionTo(.aborted)
                 return
             case .retry:
                 Self.logger.warning("Reconnect attempt \(attempt) failed for connection \(self.connectionId)")
@@ -247,6 +260,8 @@ actor ConnectionHealthMonitor {
             return .debug
         case .reconnecting:
             return .default
+        case .aborted:
+            return .error
         }
     }
 }

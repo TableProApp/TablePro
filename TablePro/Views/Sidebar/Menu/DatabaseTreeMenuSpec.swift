@@ -12,7 +12,7 @@ import TableProPluginKit
 /// reports as `clickedRow == -1`. That case used to produce no menu at all.
 internal struct DatabaseTreeMenuContext {
     internal let clicked: DatabaseTreeNode.Kind?
-    internal let selectedTables: Set<TableInfo>
+    internal let selectedTables: Set<DatabaseTreeTableRef>
     internal let selectedContainers: [DatabaseContainerRef]
     internal let activeDatabase: String?
     internal let activeSchema: String?
@@ -97,8 +97,14 @@ internal enum DatabaseTreeMenuSpec {
         _ ref: DatabaseTreeTableRef,
         context: DatabaseTreeMenuContext
     ) -> [DatabaseTreeMenuItem] {
-        let targets = SidebarMenuTarget.resolve(clicked: ref.table, selection: Array(context.selectedTables))
-        let names = targets.map(\.name).sorted()
+        /// Narrowed to the clicked row's own database, because a queued Truncate or Drop is
+        /// applied by one save against one database. A tree selection can span two of them, and
+        /// the second database's tables would then either run in the first or refuse the whole
+        /// save; asking for them separately is the honest shape.
+        let targets = SidebarMenuTarget
+            .resolve(clicked: ref, selection: Array(context.selectedTables))
+            .filter { $0.database == ref.database }
+        let names = targets.map(\.table.name).sorted()
         var items: [DatabaseTreeMenuItem] = [
             .command(String(localized: "Open in New Tab"), .openInNewTab(ref)),
             .command(String(localized: "Show Structure"), .showStructure(ref))
@@ -140,11 +146,11 @@ internal enum DatabaseTreeMenuSpec {
         items.append(.separator)
         items.append(.command(String(localized: "Create New View…"), .createView))
         if SidebarContextMenuLogic.truncateVisible(clickedTable: ref.table) {
-            items.append(.command(String(localized: "Truncate"), .truncateTables(names: names, ref: ref)))
+            items.append(.command(String(localized: "Truncate"), .truncateTables(targets: targets, ref: ref)))
         }
         items.append(.command(
             SidebarContextMenuLogic.deleteLabel(for: ref.table.type),
-            .dropTables(names: names, ref: ref)
+            .dropTables(targets: targets, ref: ref)
         ))
         return items
     }
