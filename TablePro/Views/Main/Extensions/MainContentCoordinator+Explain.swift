@@ -75,17 +75,18 @@ extension MainContentCoordinator {
             sql = nsQuery.substring(with: clampedRange)
             sourceOffset = clampedRange.location
         } else {
-            let statement = SQLStatementScanner.locatedStatementAtCursor(
+            let statement = QueryStatementScanner.locatedStatementAtCursor(
                 in: fullQuery,
                 cursorPosition: cursorPositions.first?.range.location ?? 0,
+                model: statementModel,
                 dialect: sqlDialect
             )
             sql = statement.sql
             sourceOffset = statement.offset
         }
 
-        return SQLStatementScanner
-            .executableStatements(in: sql, dialect: sqlDialect)
+        return QueryStatementScanner
+            .executableStatements(in: sql, model: statementModel, dialect: sqlDialect)
             .first?
             .offset(by: sourceOffset)
     }

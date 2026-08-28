@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- JavaScript shell for MongoDB queries, with mongosh's `db` API, cursors, variables, functions and `print`.
+- Per-connection MongoDB shell state, so a variable or function survives from one statement to the next.
+- Cursor method autocomplete after `find()` and `aggregate()`.
+
+### Changed
+
+- MongoDB statements split as JavaScript rather than at every semicolon.
+- MongoDB editor diagnostics report JavaScript syntax errors rather than unsupported method names.
+
+### Fixed
+
+- Parse error on any MongoDB filter written in shell syntax, such as `db.orders.find({status: 1})`.
+- MongoDB `.sort()` and `.projection()` silently ignored when written with unquoted keys.
+
 ## [0.69.0] - 2026-08-27
 
 ### Added

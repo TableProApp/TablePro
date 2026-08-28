@@ -4,6 +4,7 @@ enum MongoCompletionPosition: Equatable {
     case statementStart
     case databaseMember
     case collectionMethod(collection: String)
+    case cursorMethod
     case filterDocument(collection: String?)
     case projectionDocument(collection: String?)
     case updateDocument
@@ -269,6 +270,13 @@ enum MongoContextAnalyzer {
     private static func topLevelPosition(text: NSString, tokenStart: Int) -> MongoCompletionPosition {
         guard tokenStart > 0, text.character(at: tokenStart - 1) == dot else {
             return .statementStart
+        }
+
+        // `db.orders.find({}).` continues a cursor, not a collection: what comes next is a cursor
+        // modifier or an iterator, and offering `insertOne` there is offering something that does
+        // not exist on the value in hand.
+        if tokenStart >= 2, text.character(at: tokenStart - 2) == closeParen {
+            return .cursorMethod
         }
 
         var end = tokenStart - 1

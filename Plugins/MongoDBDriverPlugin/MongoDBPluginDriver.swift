@@ -11,6 +11,7 @@ import TableProPluginKit
 final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
     private var mongoConnection: MongoDBConnection?
+    private var scriptRuntime: MongoScriptRuntime?
     private var currentDb: String
     private let columnKindLock = NSLock()
     private var columnKindsByCollection: [String: [String: BsonValueKind]] = [:]
@@ -101,9 +102,12 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         mongoConnection = conn
+        scriptRuntime = MongoScriptRuntime(connection: conn)
     }
 
     func disconnect() {
+        scriptRuntime?.reset()
+        scriptRuntime = nil
         mongoConnection?.disconnect()
         mongoConnection = nil
     }
@@ -135,8 +139,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             )
         }
 
-        let operation = try MongoShellParser.parse(trimmed)
-        return try await executeOperation(operation, connection: conn, startTime: startTime)
+        return try await runScript(trimmed, rowCap: nil, startTime: startTime)
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
@@ -150,25 +153,46 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     ) async throws -> PluginQueryResult {
         let startTime = Date()
 
-        guard let conn = mongoConnection else {
+        guard mongoConnection != nil else {
             throw MongoDBPluginError.notConnected
         }
 
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.lowercased() != "select 1",
-              case .find(let collection, let filter, var options) = try MongoShellParser.parse(trimmed) else {
-            return try await capToRowCap(execute(query: query), rowCap: rowCap)
+        guard trimmed.lowercased() != "select 1" else {
+            return try await execute(query: query)
         }
+        return try await runScript(trimmed, rowCap: rowCap, startTime: startTime)
+    }
 
-        options.limit = MongoDBFindLimitPolicy.fetchLimit(parsedLimit: options.limit, rowCap: rowCap)
+    /// Runs one statement of the connection's shell and turns what it evaluated to into a result.
+    private func runScript(
+        _ statement: String,
+        rowCap: Int?,
+        startTime: Date
+    ) async throws -> PluginQueryResult {
+        guard let runtime = scriptRuntime else { throw MongoDBPluginError.notConnected }
 
+        let ceiling = MongoDBFindLimitPolicy.fetchLimit(parsedLimit: nil, rowCap: rowCap)
         do {
-            let result = try await executeOperation(
-                .find(collection: collection, filter: filter, options: options),
-                connection: conn,
-                startTime: startTime
+            let outcome = try await runtime.evaluate(
+                statement: MongoShellCommandLine.rewrite(statement),
+                database: currentDb,
+                valueCeiling: ceiling
             )
-            return capToRowCap(result, rowCap: rowCap)
+            if let switched = outcome.databaseSwitch { currentDb = switched }
+            return capToRowCap(
+                MongoScriptResultBuilder.result(
+                    for: outcome,
+                    startTime: startTime,
+                    documents: { documents, collection, isTruncated in
+                        self.buildPluginResult(
+                            from: documents, startTime: startTime,
+                            isTruncated: isTruncated, collection: collection
+                        )
+                    }
+                ),
+                rowCap: rowCap
+            )
         } catch {
             throw mapExecutionError(error)
         }
@@ -204,7 +228,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Query Cancellation
 
     func cancelQuery() throws {
-        mongoConnection?.cancelCurrentQuery()
+        scriptRuntime?.cancel()
     }
 
     // MARK: - Schema Operations
@@ -219,47 +243,6 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .map { PluginTableInfo(name: $0, type: "table", rowCount: nil) }
     }
 
-    private func executeWrite(
-        kind: MongoWriteKind,
-        collection: String,
-        filter: String,
-        document: String,
-        options: MongoWriteOptions,
-        conn: MongoDBConnection,
-        db: String,
-        startTime: Date
-    ) async throws -> PluginQueryResult {
-        var fields: [String] = []
-        if options.upsert { fields.append("\"upsert\": true") }
-        if let arrayFilters = options.arrayFilters { fields.append("\"arrayFilters\": \(arrayFilters)") }
-        if let hint = options.hint { fields.append("\"hint\": \(hint)") }
-        let extras = fields.isEmpty ? "" : ", " + fields.joined(separator: ", ")
-
-        if kind == .findOneAndUpdate {
-            let command = """
-                {"findAndModify": "\(escapeJsonString(collection))", "query": \(filter), \
-                "update": \(document), "new": true\(extras)}
-                """
-            let docs = try await conn.runCommand(command, database: db)
-            return buildPluginResult(from: docs.isEmpty ? [] : [docs[0]], startTime: startTime)
-        }
-
-        let command = """
-            {"update": "\(escapeJsonString(collection))", \
-            "updates": [{"q": \(filter), "u": \(document), "multi": \(kind == .updateMany)\(extras)}]}
-            """
-        let result = try await conn.runCommand(command, database: db)
-        let modified = (result.first?["nModified"] as? Int64)
-            ?? (result.first?["nModified"] as? Int).map(Int64.init) ?? 0
-        let upserted = (result.first?["upserted"] as? [Any])?.count ?? 0
-        let affected = Int(modified) + upserted
-
-        return PluginQueryResult(
-            columns: ["modifiedCount", "upsertedCount"], columnTypeNames: ["Int64", "Int64"],
-            rows: [[.text(String(modified)), .text(String(upserted))]], rowsAffected: affected,
-            executionTime: Date().timeIntervalSince(startTime)
-        )
-    }
 
     func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath] {
         guard let conn = mongoConnection else {
@@ -662,78 +645,14 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Database Switching
 
     func switchDatabase(to database: String) async throws {
+        // Every scoped execution re-pins the driver to its tab's database, so this is called with
+        // the same name over and over. Only a real change moves the shell, or a `use` inside a
+        // script would be undone before the next statement ran.
+        guard database != currentDb else { return }
         currentDb = database
+        scriptRuntime?.rebindDatabase(database)
     }
 
-    // MARK: - EXPLAIN
-
-    func buildExplainQuery(_ sql: String) -> String? {
-        guard let operation = try? MongoShellParser.parse(sql) else {
-            return "db.runCommand({\"explain\": \"\(escapeJsonString(sql))\", \"verbosity\": \"executionStats\"})"
-        }
-
-        switch operation {
-        case .find(let collection, let filter, let options):
-            var findDoc = "\"find\": \"\(escapeJsonString(collection))\", \"filter\": \(filter)"
-            if let sort = options.sort {
-                findDoc += ", \"sort\": \(sort)"
-            }
-            if let skip = options.skip {
-                findDoc += ", \"skip\": \(skip)"
-            }
-            if let limit = options.limit {
-                findDoc += ", \"limit\": \(limit)"
-            }
-            if let projection = options.projection {
-                findDoc += ", \"projection\": \(projection)"
-            }
-            return "db.runCommand({\"explain\": {\(findDoc)}, \"verbosity\": \"executionStats\"})"
-
-        case .findOne(let collection, let filter):
-            return "db.runCommand({\"explain\": {\"find\": \"\(escapeJsonString(collection))\", \"filter\": \(filter), \"limit\": 1}, \"verbosity\": \"executionStats\"})"
-
-        case .aggregate(let collection, let pipeline):
-            return "db.runCommand({\"explain\": {\"aggregate\": \"\(escapeJsonString(collection))\", \"pipeline\": \(pipeline), \"cursor\": {}}, \"verbosity\": \"executionStats\"})"
-
-        case .countDocuments(let collection, let filter):
-            return "db.runCommand({\"explain\": {\"count\": \"\(escapeJsonString(collection))\", \"query\": \(filter)}, \"verbosity\": \"executionStats\"})"
-
-        case .deleteOne(let collection, let filter):
-            return "db.runCommand({\"explain\": {\"delete\": \"\(escapeJsonString(collection))\", \"deletes\": [{\"q\": \(filter), \"limit\": 1}]}, \"verbosity\": \"executionStats\"})"
-
-        case .deleteMany(let collection, let filter):
-            return "db.runCommand({\"explain\": {\"delete\": \"\(escapeJsonString(collection))\", \"deletes\": [{\"q\": \(filter), \"limit\": 0}]}, \"verbosity\": \"executionStats\"})"
-
-        case .updateOne(let collection, let filter, let update):
-            return "db.runCommand({\"explain\": {\"update\": \"\(escapeJsonString(collection))\", \"updates\": [{\"q\": \(filter), \"u\": \(update), \"multi\": false}]}, \"verbosity\": \"executionStats\"})"
-
-        case .updateMany(let collection, let filter, let update):
-            return "db.runCommand({\"explain\": {\"update\": \"\(escapeJsonString(collection))\", \"updates\": [{\"q\": \(filter), \"u\": \(update), \"multi\": true}]}, \"verbosity\": \"executionStats\"})"
-
-        case .findOneAndUpdate(let collection, let filter, let update):
-            let cmd = "\"findAndModify\": \"\(escapeJsonString(collection))\", \"query\": \(filter), \"update\": \(update)"
-            return "db.runCommand({\"explain\": {\(cmd)}, \"verbosity\": \"executionStats\"})"
-
-        case .write(let kind, let collection, let filter, let document, _):
-            let multi = kind == .updateMany
-            if kind == .findOneAndUpdate {
-                let cmd = "\"findAndModify\": \"\(escapeJsonString(collection))\", \"query\": \(filter), \"update\": \(document)"
-                return "db.runCommand({\"explain\": {\(cmd)}, \"verbosity\": \"executionStats\"})"
-            }
-            return "db.runCommand({\"explain\": {\"update\": \"\(escapeJsonString(collection))\", \"updates\": [{\"q\": \(filter), \"u\": \(document), \"multi\": \(multi)}]}, \"verbosity\": \"executionStats\"})"
-
-        case .findOneAndReplace(let collection, let filter, let replacement):
-            let cmd = "\"findAndModify\": \"\(escapeJsonString(collection))\", \"query\": \(filter), \"update\": \(replacement)"
-            return "db.runCommand({\"explain\": {\(cmd)}, \"verbosity\": \"executionStats\"})"
-
-        case .findOneAndDelete(let collection, let filter):
-            let cmd = "\"findAndModify\": \"\(escapeJsonString(collection))\", \"query\": \(filter), \"remove\": true"
-            return "db.runCommand({\"explain\": {\(cmd)}, \"verbosity\": \"executionStats\"})"
-
-        default:
-            return "db.runCommand({\"explain\": \"\(escapeJsonString(sql))\", \"verbosity\": \"executionStats\"})"
-        }
-    }
 
     // MARK: - View Templates
 
@@ -818,266 +737,76 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return AsyncThrowingStream { $0.finish(throwing: MongoDBPluginError.notConnected) }
         }
 
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = MongoShellCommandLine.rewrite(
+            query.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
         let db = currentDb
 
-        let operation: MongoOperation
-        do {
-            operation = try MongoShellParser.parse(trimmed)
-        } catch {
-            return AsyncThrowingStream { $0.finish(throwing: error) }
+        guard let runtime = scriptRuntime else {
+            return AsyncThrowingStream { $0.finish(throwing: MongoDBPluginError.notConnected) }
         }
+        let timeout = conn.queryTimeoutMS
 
-        switch operation {
-        case .find(let collection, let filter, let options):
-            return conn.streamFind(
-                database: db, collection: collection, filter: filter,
-                sort: options.sort, projection: options.projection,
-                skip: options.skip ?? 0, limit: options.limit
-            )
-        case .aggregate(let collection, let pipeline):
-            return conn.streamAggregate(
-                database: db, collection: collection, pipeline: pipeline
-            )
-        default:
-            return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
-                Task {
-                    do {
-                        let result = try await self.execute(query: query)
-                        if !result.columns.isEmpty {
-                            continuation.yield(.header(PluginStreamHeader(
-                                columns: result.columns,
-                                columnTypeNames: result.columnTypeNames
-                            )))
+        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+            let work = Task {
+                do {
+                    switch try await runtime.exportPlan(for: trimmed, database: db) {
+                    case .cursor(let plan):
+                        let inner = plan.isFind
+                            ? conn.streamFind(
+                                database: plan.database, collection: plan.collection,
+                                filter: plan.filter,
+                                optionsJson: plan.options.findOptionsJson(
+                                    limit: PluginRowLimits.emergencyMax, timeoutMS: timeout
+                                )
+                            )
+                            : conn.streamAggregate(
+                                database: plan.database, collection: plan.collection,
+                                pipeline: plan.pipeline,
+                                optionsJson: plan.options.aggregateOptionsJson(timeoutMS: timeout)
+                            )
+                        for try await element in inner {
+                            try Task.checkCancellation()
+                            continuation.yield(element)
                         }
-                        if !result.rows.isEmpty {
-                            continuation.yield(.rows(result.rows))
-                        }
-                        continuation.finish()
-                    } catch {
-                        continuation.finish(throwing: error)
+                    case .result(let outcome):
+                        self.yieldMaterialised(outcome, into: continuation)
                     }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
                 }
             }
+            // A consumer that stops reading has to stop the cursor too, or it keeps draining the
+            // whole query and holds the leased driver busy.
+            continuation.onTermination = { @Sendable _ in work.cancel() }
         }
     }
 
-    // MARK: - Operation Dispatch
-
-    private func executeOperation(
-        _ operation: MongoOperation,
-        connection conn: MongoDBConnection,
-        startTime: Date
-    ) async throws -> PluginQueryResult {
-        let db = currentDb
-
-        switch operation {
-        case .find(let collection, let filter, let options):
-            let result = try await conn.find(
-                database: db, collection: collection, filter: filter,
-                sort: options.sort, projection: options.projection,
-                skip: options.skip ?? 0, limit: options.limit ?? PluginRowLimits.emergencyMax
-            )
-            if result.docs.isEmpty {
-                return PluginQueryResult(
-                    columns: ["_id"], columnTypeNames: ["ObjectId"],
-                    rows: [], rowsAffected: 0, executionTime: Date().timeIntervalSince(startTime)
+    /// Hands over a statement that had already run by the time the export asked, rather than
+    /// running it a second time.
+    private func yieldMaterialised(
+        _ outcome: MongoScriptStatementResult,
+        into continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) {
+        let result = MongoScriptResultBuilder.result(
+            for: outcome,
+            startTime: Date(),
+            documents: { documents, collection, isTruncated in
+                self.buildPluginResult(
+                    from: documents, startTime: Date(),
+                    isTruncated: isTruncated, collection: collection
                 )
             }
-            return buildPluginResult(
-                from: result.docs, startTime: startTime, isTruncated: result.isTruncated, collection: collection
-            )
-
-        case .findOne(let collection, let filter):
-            let result = try await conn.find(
-                database: db, collection: collection, filter: filter,
-                sort: nil, projection: nil, skip: 0, limit: 1
-            )
-            return buildPluginResult(from: result.docs, startTime: startTime, collection: collection)
-
-        case .aggregate(let collection, let pipeline):
-            let result = try await conn.aggregate(database: db, collection: collection, pipeline: pipeline)
-            return buildPluginResult(
-                from: result.docs, startTime: startTime, isTruncated: result.isTruncated, collection: collection
-            )
-
-        case .countDocuments(let collection, let filter):
-            let count = try await conn.countDocuments(
-                database: db, collection: collection, filter: filter, background: false
-            )
-            return PluginQueryResult(
-                columns: ["count"], columnTypeNames: ["Int64"],
-                rows: [[.text(String(count))]], rowsAffected: 0,
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-
-        case .insertOne(let collection, let document):
-            let insertedId = try await conn.insertOne(database: db, collection: collection, document: document)
-            return PluginQueryResult(
-                columns: ["insertedId"], columnTypeNames: ["ObjectId"],
-                rows: [[.text(insertedId ?? "null")]], rowsAffected: 1,
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-
-        case .insertMany(let collection, let documents):
-            let cmd = "{\"insert\": \"\(escapeJsonString(collection))\", \"documents\": \(documents)}"
-            let result = try await conn.runCommand(cmd, database: db)
-            let inserted = (result.first?["n"] as? Int) ?? 0
-            return PluginQueryResult(
-                columns: ["insertedCount"], columnTypeNames: ["Int32"],
-                rows: [[.text(String(inserted))]], rowsAffected: inserted,
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-
-        case .updateOne(let collection, let filter, let update):
-            let modified = try await conn.updateOne(database: db, collection: collection, filter: filter, update: update)
-            return PluginQueryResult(
-                columns: ["modifiedCount"], columnTypeNames: ["Int64"],
-                rows: [[.text(String(modified))]], rowsAffected: Int(modified),
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-
-        case .updateMany(let collection, let filter, let update):
-            let cmd = """
-                {"update": "\(escapeJsonString(collection))", \
-                "updates": [{"q": \(filter), "u": \(update), "multi": true}]}
-                """
-            let result = try await conn.runCommand(cmd, database: db)
-            let modified = (result.first?["nModified"] as? Int64)
-                ?? (result.first?["nModified"] as? Int).map(Int64.init) ?? 0
-            return PluginQueryResult(
-                columns: ["modifiedCount"], columnTypeNames: ["Int64"],
-                rows: [[.text(String(modified))]], rowsAffected: Int(modified),
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-
-        case .replaceOne(let collection, let filter, let replacement):
-            let cmd = """
-                {"update": "\(escapeJsonString(collection))", \
-                "updates": [{"q": \(filter), "u": \(replacement), "multi": false}]}
-                """
-            let result = try await conn.runCommand(cmd, database: db)
-            let modified = (result.first?["nModified"] as? Int64)
-                ?? (result.first?["nModified"] as? Int).map(Int64.init) ?? 0
-            return PluginQueryResult(
-                columns: ["modifiedCount"], columnTypeNames: ["Int64"],
-                rows: [[.text(String(modified))]], rowsAffected: Int(modified),
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-
-        case .deleteOne(let collection, let filter):
-            let deleted = try await conn.deleteOne(database: db, collection: collection, filter: filter)
-            return PluginQueryResult(
-                columns: ["deletedCount"], columnTypeNames: ["Int64"],
-                rows: [[.text(String(deleted))]], rowsAffected: Int(deleted),
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-
-        case .deleteMany(let collection, let filter):
-            let cmd = """
-                {"delete": "\(escapeJsonString(collection))", \
-                "deletes": [{"q": \(filter), "limit": 0}]}
-                """
-            let result = try await conn.runCommand(cmd, database: db)
-            let deleted = (result.first?["n"] as? Int64)
-                ?? (result.first?["n"] as? Int).map(Int64.init) ?? 0
-            return PluginQueryResult(
-                columns: ["deletedCount"], columnTypeNames: ["Int64"],
-                rows: [[.text(String(deleted))]], rowsAffected: Int(deleted),
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-
-        default:
-            return try await executeCommandOperation(operation, connection: conn, startTime: startTime)
+        )
+        if !result.columns.isEmpty {
+            continuation.yield(.header(PluginStreamHeader(
+                columns: result.columns,
+                columnTypeNames: result.columnTypeNames
+            )))
         }
-    }
-
-    private func executeCommandOperation(
-        _ operation: MongoOperation,
-        connection conn: MongoDBConnection,
-        startTime: Date
-    ) async throws -> PluginQueryResult {
-        let db = currentDb
-
-        switch operation {
-        case .createIndex(let collection, let keys, let options):
-            var indexDoc = "{\"key\": \(keys)"
-            if let opts = options {
-                indexDoc += ", " + String(opts.dropFirst())
-            } else {
-                indexDoc += "}"
-            }
-            let cmd = """
-                {"createIndexes": "\(escapeJsonString(collection))", \
-                "indexes": [\(indexDoc)]}
-                """
-            let result = try await conn.runCommand(cmd, database: db)
-            return buildPluginResult(from: result, startTime: startTime)
-
-        case .dropIndex(let collection, let indexName):
-            let cmd = """
-                {"dropIndexes": "\(escapeJsonString(collection))", \
-                "index": "\(escapeJsonString(indexName))"}
-                """
-            let result = try await conn.runCommand(cmd, database: db)
-            return buildPluginResult(from: result, startTime: startTime)
-
-        case .findOneAndUpdate(let collection, let filter, let update):
-            let cmd = "{\"findAndModify\": \"\(escapeJsonString(collection))\", \"query\": \(filter), \"update\": \(update), \"new\": true}"
-            let docs = try await conn.runCommand(cmd, database: db)
-            return buildPluginResult(from: docs.isEmpty ? [] : [docs[0]], startTime: startTime)
-
-        case .write(let kind, let collection, let filter, let document, let options):
-            return try await executeWrite(
-                kind: kind, collection: collection, filter: filter, document: document,
-                options: options, conn: conn, db: db, startTime: startTime
-            )
-
-        case .findOneAndReplace(let collection, let filter, let replacement):
-            let cmd = "{\"findAndModify\": \"\(escapeJsonString(collection))\", \"query\": \(filter), \"update\": \(replacement), \"new\": true}"
-            let docs = try await conn.runCommand(cmd, database: db)
-            return buildPluginResult(from: docs.isEmpty ? [] : [docs[0]], startTime: startTime)
-
-        case .findOneAndDelete(let collection, let filter):
-            let cmd = "{\"findAndModify\": \"\(escapeJsonString(collection))\", \"query\": \(filter), \"remove\": true}"
-            let docs = try await conn.runCommand(cmd, database: db)
-            return buildPluginResult(from: docs.isEmpty ? [] : [docs[0]], startTime: startTime)
-
-        case .drop(let collection):
-            let cmd = "{\"drop\": \"\(escapeJsonString(collection))\"}"
-            let result = try await conn.runCommand(cmd, database: db)
-            return buildPluginResult(from: result, startTime: startTime)
-
-        case .runCommand(let command):
-            let result = try await conn.runCommand(command, database: db)
-            return buildPluginResult(from: result, startTime: startTime)
-
-        case .listCollections:
-            let collections = try await conn.listCollections(database: db)
-            return PluginQueryResult(
-                columns: ["collection"], columnTypeNames: ["String"],
-                rows: collections.map { [.text($0)] }, rowsAffected: 0,
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-
-        case .listDatabases:
-            let databases = try await conn.listDatabases()
-            return PluginQueryResult(
-                columns: ["database"], columnTypeNames: ["String"],
-                rows: databases.map { [.text($0)] }, rowsAffected: 0,
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-
-        case .ping:
-            _ = try await conn.ping()
-            return PluginQueryResult(
-                columns: ["ok"], columnTypeNames: ["Int32"],
-                rows: [["1"]], rowsAffected: 0,
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-
-        default:
-            throw MongoDBPluginError.unsupportedOperation
+        if !result.rows.isEmpty {
+            continuation.yield(.rows(result.rows))
         }
     }
 

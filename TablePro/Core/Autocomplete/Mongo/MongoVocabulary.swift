@@ -65,9 +65,34 @@ enum MongoVocabulary {
         ("totalSize", "Storage size plus total index size"),
         ("isCapped", "True if the collection is capped"),
         ("validate", "Validate collection and index integrity"),
+        ("explain", "Return the query plan instead of results")
+    ]
+
+    /// What a cursor answers to, which is what `find()` and `aggregate()` return.
+    static let cursorMethods: [(name: String, detail: String)] = [
+        ("sort", "Order the results by one or more fields"),
+        ("limit", "Return at most this many documents"),
+        ("skip", "Skip this many documents first"),
+        ("projection", "Choose which fields come back"),
+        ("hint", "Name the index to use"),
+        ("collation", "Language rules for string comparison"),
+        ("maxTimeMS", "Give up after this many milliseconds"),
+        ("batchSize", "Documents per round trip"),
+        ("allowDiskUse", "Let a large sort spill to disk"),
+        ("forEach", "Call a function for every document"),
+        ("map", "Build an array from every document"),
+        ("toArray", "Read every document into an array"),
+        ("hasNext", "True while documents remain"),
+        ("next", "Read the next document"),
+        ("tryNext", "Read the next document, or null"),
+        ("count", "Number of documents matching the query"),
+        ("itcount", "Count by reading the cursor to its end"),
+        ("size", "Documents remaining, after skip and limit"),
         ("explain", "Return the query plan instead of results"),
-        ("watch", "Open a change stream on the collection"),
-        ("getShardDistribution", "Chunk and data distribution for a sharded collection")
+        ("pretty", "Format the documents for reading"),
+        ("close", "Release the cursor"),
+        ("isExhausted", "True once nothing remains"),
+        ("objsLeftInBatch", "Documents left in the current batch")
     ]
 
     static let deprecatedCollectionMethods: Set<String> = [

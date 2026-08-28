@@ -47,6 +47,28 @@ struct MongoShellFormatter: QueryFormatting {
                 continue
             }
 
+            // A comment and a regular expression are single tokens. Letting the switch below see
+            // inside one turns `/a{2,3}/` into `/a{2, 3}/`, which is a different pattern, and
+            // breaks a `//` line across the reflow.
+            if scalar == "/", index + 1 < source.length {
+                let next = Character(UnicodeScalar(source.character(at: index + 1)) ?? " ")
+                if next == "/" || next == "*" {
+                    flushPending()
+                    let comment = readComment(source, from: index, isBlock: next == "*")
+                    tokens.append(.string(comment.value))
+                    index = comment.end
+                    continue
+                }
+            }
+
+            if scalar == "/", startsRegularExpression(before: tokens, pending: pending) {
+                flushPending()
+                let literal = readRegularExpression(source, from: index)
+                tokens.append(.string(literal.value))
+                index = literal.end
+                continue
+            }
+
             switch scalar {
             case "{", "[":
                 flushPending()
@@ -69,6 +91,62 @@ struct MongoShellFormatter: QueryFormatting {
 
         flushPending()
         return tokens
+    }
+
+    /// Whether a `/` here opens a regular expression rather than dividing.
+    ///
+    /// Division follows something that can end an expression, so a slash after an identifier, a
+    /// number or a closing bracket is an operator.
+    private func startsRegularExpression(before tokens: [Token], pending: String) -> Bool {
+        if let last = pending.last(where: { !$0.isWhitespace }) {
+            return !(last.isLetter || last.isNumber || last == "_" || last == ")" || last == "]")
+        }
+        guard let token = tokens.last else { return true }
+        switch token {
+        case .open, .comma, .colon: return true
+        case .text, .string, .close: return false
+        }
+    }
+
+    private func readRegularExpression(_ source: NSString, from start: Int) -> (value: String, end: Int) {
+        var index = start + 1
+        var inClass = false
+        while index < source.length {
+            let scalar = Character(UnicodeScalar(source.character(at: index)) ?? " ")
+            if scalar == "\\" {
+                index += 2
+                continue
+            }
+            if scalar.isNewline { break }
+            if scalar == "[" { inClass = true }
+            if scalar == "]" { inClass = false }
+            if scalar == "/", !inClass {
+                index += 1
+                while index < source.length {
+                    let flag = Character(UnicodeScalar(source.character(at: index)) ?? " ")
+                    guard flag.isLetter else { break }
+                    index += 1
+                }
+                return (source.substring(with: NSRange(location: start, length: index - start)), index)
+            }
+            index += 1
+        }
+        return (source.substring(with: NSRange(location: start, length: index - start)), index)
+    }
+
+    private func readComment(_ source: NSString, from start: Int, isBlock: Bool) -> (value: String, end: Int) {
+        var index = start + 2
+        while index < source.length {
+            let scalar = Character(UnicodeScalar(source.character(at: index)) ?? " ")
+            if isBlock, scalar == "*", index + 1 < source.length,
+               Character(UnicodeScalar(source.character(at: index + 1)) ?? " ") == "/" {
+                index += 2
+                break
+            }
+            if !isBlock, scalar.isNewline { break }
+            index += 1
+        }
+        return (source.substring(with: NSRange(location: start, length: index - start)), index)
     }
 
     private func readStringLiteral(

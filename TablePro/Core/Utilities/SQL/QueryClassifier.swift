@@ -70,8 +70,9 @@ enum QueryClassifier {
     }
 
     static func isMultiStatement(_ sql: String, databaseType: DatabaseType) -> Bool {
-        SQLStatementScanner.allStatements(
+        QueryStatementScanner.executableStatements(
             in: sql,
+            model: QueryStatementModel.forDatabaseType(databaseType),
             dialect: SqlDialect.from(databaseTypeId: databaseType.rawValue)
         ).count > 1
     }
@@ -546,7 +547,17 @@ private extension QueryClassifier {
         return QueryClassification(tier: .safe, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
     }
 
+    /// Every method a MongoDB statement invokes, by either spelling.
+    ///
+    /// The query language is JavaScript, so `db.users.deleteMany({})` and
+    /// `db.users["deleteMany"]({})` are the same call. Reading only the dotted form let the bracket
+    /// form past the destructive gate, which is what decides whether an external or assistant
+    /// client has to confirm before it runs.
     static func invokedMethodNames(in lowered: String) -> [String] {
+        dottedMethodNames(in: lowered) + bracketedMethodNames(in: lowered)
+    }
+
+    private static func dottedMethodNames(in lowered: String) -> [String] {
         var names: [String] = []
         var current = ""
         var sawDot = false
@@ -567,6 +578,36 @@ private extension QueryClassifier {
                 sawDot = false
             }
             current = ""
+        }
+        return names
+    }
+
+    /// Names taken through bracket access, whether or not they are called on the spot.
+    ///
+    /// A name is counted even without a following `(`, because `var drop = db.c["drop"]; drop()`
+    /// reaches the same command and no scan of the text can follow the binding.
+    private static func bracketedMethodNames(in lowered: String) -> [String] {
+        var names: [String] = []
+        var index = lowered.startIndex
+
+        while let open = lowered[index...].firstIndex(of: "[") {
+            var cursor = lowered.index(after: open)
+            while cursor < lowered.endIndex, lowered[cursor].isWhitespace {
+                cursor = lowered.index(after: cursor)
+            }
+            guard cursor < lowered.endIndex, lowered[cursor] == "\"" || lowered[cursor] == "'" else {
+                index = lowered.index(after: open)
+                continue
+            }
+            let quote = lowered[cursor]
+            var name = ""
+            cursor = lowered.index(after: cursor)
+            while cursor < lowered.endIndex, lowered[cursor] != quote {
+                name.append(lowered[cursor])
+                cursor = lowered.index(after: cursor)
+            }
+            if !name.isEmpty { names.append(name) }
+            index = cursor < lowered.endIndex ? lowered.index(after: cursor) : lowered.endIndex
         }
         return names
     }
