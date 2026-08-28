@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Connection-first labels with the database or schema on a second line in the connections strip. (#2550)
+
 ## [0.69.0] - 2026-08-27
 
 ### Added

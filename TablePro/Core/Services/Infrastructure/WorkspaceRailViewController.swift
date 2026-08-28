@@ -42,6 +42,41 @@ internal final class WorkspaceRailTableView: NSTableView {
 }
 
 @MainActor
+internal enum WorkspaceRailTypeSelect {
+    internal static func nextMatch(
+        in entries: [WorkspaceRailEntry],
+        from startRow: Int,
+        to endRow: Int,
+        search: String
+    ) -> Int {
+        guard !search.isEmpty,
+              entries.indices.contains(startRow),
+              entries.indices.contains(endRow) else { return -1 }
+
+        var row = startRow
+        repeat {
+            if matches(entries[row], search: search) { return row }
+            row = (row + 1) % entries.count
+        } while row != endRow
+        return -1
+    }
+
+    private static func matches(_ entry: WorkspaceRailEntry, search: String) -> Bool {
+        matchesPrefix(entry.connection.name, search: search)
+            || matchesPrefix(entry.container, search: search)
+    }
+
+    private static func matchesPrefix(_ value: String, search: String) -> Bool {
+        guard !value.isEmpty else { return false }
+        return value.range(
+            of: search,
+            options: [.anchored, .caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+            locale: .current
+        ) != nil
+    }
+}
+
+@MainActor
 internal final class WorkspaceRailViewController: NSViewController {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "WorkspaceRail")
     private static let reorderType = NSPasteboard.PasteboardType("com.TablePro.workspaceRailEntry")
@@ -819,6 +854,20 @@ extension WorkspaceRailViewController: NSTableViewDelegate {
 
         cell.configure(entry: entries[row], layout: layout)
         return cell
+    }
+
+    internal func tableView(
+        _ tableView: NSTableView,
+        nextTypeSelectMatchFromRow startRow: Int,
+        toRow endRow: Int,
+        for searchString: String
+    ) -> Int {
+        WorkspaceRailTypeSelect.nextMatch(
+            in: entries,
+            from: startRow,
+            to: endRow,
+            search: searchString
+        )
     }
 
     /// Selection is the highlight, not the commit.
