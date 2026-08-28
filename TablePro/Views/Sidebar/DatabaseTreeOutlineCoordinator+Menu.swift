@@ -74,7 +74,17 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
             rowSize: settings.sidebarRowSize,
             canFilterDatabases: PluginManager.shared.supportsDatabaseTree(for: databaseType)
                 && sidebarState?.sidebarLayout == .tree,
-            hasDatabaseFilter: !(sidebarState?.databaseFilterSelected.isEmpty ?? true)
+            hasDatabaseFilter: !(sidebarState?.databaseFilterSelected.isEmpty ?? true),
+            /// Not gated on this connection's safe mode: a read-only connection is a valid source,
+            /// and the target picker is where a read-only target is refused.
+            canCopyObjects: ObjectCopyEligibility.supportsCopying(
+                editorLanguage: PluginManager.shared.editorLanguage(for: databaseType)
+            ),
+            canDuplicateDatabase: ObjectCopyEligibility.mayOfferDuplicateDatabase(
+                editorLanguage: PluginManager.shared.editorLanguage(for: databaseType),
+                supportsDatabaseSwitching: PluginManager.shared.supportsDatabaseSwitching(for: databaseType),
+                isReadOnly: mainCoordinator?.safeModeLevel.blocksAllWrites ?? false
+            )
         )
     }
 

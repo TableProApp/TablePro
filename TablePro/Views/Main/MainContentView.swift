@@ -185,6 +185,8 @@ struct MainContentView: View {
                     Task { await coordinator.switchContainer(to: newDatabaseName) }
                 }
             )
+        case .copyObjects(let launch):
+            CopyObjectsSheet(launch: launch, connection: connection)
         case .exportDialog:
             let exportConnection = exportConnection
             ExportDialog(

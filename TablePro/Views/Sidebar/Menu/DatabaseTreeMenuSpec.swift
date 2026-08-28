@@ -40,6 +40,11 @@ internal struct DatabaseTreeMenuContext {
     internal let rowSize: SidebarRowSizePreference
     internal var canFilterDatabases: Bool = false
     internal var hasDatabaseFilter: Bool = false
+    /// Copying reads the source and writes somewhere else, so it needs a driver that reports
+    /// structure and a target that is not this connection's read-only self.
+    internal var canCopyObjects: Bool = false
+    /// Duplicating means creating a database, which is the same test the New Database command uses.
+    internal var canDuplicateDatabase: Bool = false
 }
 
 internal enum DatabaseTreeMenuSpec {
@@ -124,6 +129,16 @@ internal enum DatabaseTreeMenuSpec {
         items.append(.separator)
         items.append(.command(copyNamesTitle(count: names.count), .copyTableNames(names)))
         items.append(.command(String(localized: "Export…"), .exportTables(names: Set(names), ref: ref)))
+        if context.canCopyObjects {
+            /// Narrowed to the clicked row's own schema as well as its database. A copy names one
+            /// source scope, so a selection spanning two schemas would read one of them and either
+            /// drop the other's tables from the plan or map a same-named one to the wrong table.
+            let sameScope = targets.filter { $0.qualifyingSchema == ref.qualifyingSchema }
+            items.append(.command(
+                String(localized: "Copy To…"),
+                .copyObjectsTo(objects: copySelections(for: sameScope), ref: ref)
+            ))
+        }
         items.append(.command(String(localized: "View ER Diagram"), .showERDiagram))
 
         if !context.isReadOnly,
@@ -289,6 +304,11 @@ internal enum DatabaseTreeMenuSpec {
             items.append(.separator)
             items.append(.command(String(localized: "Export…"), .exportContainers(targets)))
         }
+        /// Both act on one container: a copy names one source and one target, and a duplicate
+        /// names one new database. A multi-selection would need a target per container.
+        if targets.count == 1 {
+            items += copyItems(clicked, context: context)
+        }
         let renameable = ObjectRenameEligibility.renameable(targets, context: context.renameEligibility)
         guard renameable != nil || !droppable.isEmpty else { return items }
         items.append(.separator)
@@ -321,6 +341,36 @@ internal enum DatabaseTreeMenuSpec {
             items.append(.destructive(FavoriteDatabaseMenu.removeTitle, .removeFavoriteDatabases(databases)))
         }
         return items
+    }
+
+    /// Duplicate is offered on a database row alone: a schema is duplicated by copying it into a
+    /// schema that exists, which is what Copy To already does, and no engine creates one from a
+    /// `CREATE DATABASE`.
+    private static func copyItems(
+        _ clicked: DatabaseContainerRef,
+        context: DatabaseTreeMenuContext
+    ) -> [DatabaseTreeMenuItem] {
+        var items: [DatabaseTreeMenuItem] = []
+        if context.canCopyObjects {
+            items.append(.command(String(localized: "Copy To…"), .copyContainerTo(clicked)))
+        }
+        if clicked.kind == .database, context.canDuplicateDatabase, !clicked.isSystem {
+            items.append(.command(String(localized: "Duplicate Database…"), .duplicateDatabase(clicked)))
+        }
+        guard !items.isEmpty else { return [] }
+        return [.separator] + items
+    }
+
+    /// A table row's copy carries the whole selection the menu resolved, so right-clicking inside a
+    /// multi-selection copies every table in it rather than only the one under the pointer.
+    private static func copySelections(for targets: [DatabaseTreeTableRef]) -> [ObjectCopySelection] {
+        targets.map { target in
+            ObjectCopySelection(
+                kind: SidebarContextMenuLogic.isView(clickedTable: target.table) ? .view : .table,
+                name: target.table.name,
+                schema: target.qualifyingSchema
+            )
+        }
     }
 
     private static func isActive(_ container: DatabaseContainerRef, context: DatabaseTreeMenuContext) -> Bool {

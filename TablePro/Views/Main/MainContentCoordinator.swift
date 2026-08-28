@@ -59,6 +59,10 @@ enum ActiveSheet: Identifiable {
     /// This is the rule the sidebar's other destructive commands already keep by carrying their ref.
     case maintenance(operation: String, tableName: String, database: String?, schema: String?)
     case createDatabase
+    /// Copying carries the whole launch request, because the source database, the source schema
+    /// and the objects the user right-clicked are all part of what the sheet opens onto, and the
+    /// object browser may be pointed somewhere else by the time the sheet appears.
+    case copyObjects(ObjectCopyLaunchRequest)
     case rewind
 
     var id: String {
@@ -73,6 +77,7 @@ enum ActiveSheet: Identifiable {
         case .maintenance(let operation, let tableName, let database, let schema):
             "maintenance-\(operation)-\(database ?? "")-\(schema ?? "")-\(tableName)"
         case .createDatabase: "createDatabase"
+        case .copyObjects(let launch): "copyObjects-\(launch.id)"
         case .rewind: "rewind"
         }
     }

@@ -99,18 +99,26 @@ internal struct CompareMetadataService {
     /// One object's failure is that object's, not the comparison's. A single unreadable table used
     /// to abort the whole run, which is why `TableDiffResult.comparisonError` was read by the UI and
     /// written by nothing.
+    ///
+    /// `names` narrows the read to the objects the caller already knows it wants, matched without
+    /// regard to case because engines disagree on identifier folding. A comparison passes nil and
+    /// reads the whole scope; a copy of one table would otherwise pay four round trips for every
+    /// other table in the database.
     internal func tableReads(
         for endpoint: DatabaseEndpoint,
         connection: DatabaseConnection,
-        includeViews: Bool
+        includeViews: Bool,
+        names: Set<String>? = nil
     ) async throws -> [TableStructureRead] {
         try await manager.ensureConnected(connection)
         let schema = endpoint.schema
         let concurrency = Self.metadataConcurrency(for: endpoint.databaseType)
+        let wanted = names.map { Set($0.map { $0.lowercased() }) }
 
         return try await manager.withMetadataDriver(scope: endpoint.scope) { driver in
             guard let plugin = Self.pluginDriver(from: driver) else { return [] }
             let tables = try await plugin.fetchTables(schema: schema).filter { table in
+                guard wanted?.contains(table.name.lowercased()) ?? true else { return false }
                 let kind = CompareTableKindClassifier.kind(of: table)
                 return kind == .table || includeViews
             }
