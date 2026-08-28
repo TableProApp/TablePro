@@ -180,6 +180,66 @@ final class ObjectCopyPlannerOrderingTests: XCTestCase {
         )
     }
 
+    // MARK: - Namespace scopes
+
+    private func request(
+        _ objects: [ObjectCopySelection],
+        duplicates: Bool = false
+    ) -> ObjectCopyRequest {
+        let source = DatabaseEndpoint(
+            scope: DatabaseScope(connectionId: UUID(), database: "shop", schema: nil),
+            connectionName: "server",
+            databaseType: .postgresql,
+            safeModeLevel: .silent,
+            color: .blue
+        )
+        return ObjectCopyRequest(
+            source: source,
+            destination: duplicates
+                ? .newDatabase(base: source, name: "shop_copy", values: [:])
+                : .existing(source.withDatabase("other").withSchema("archive")),
+            objects: objects,
+            content: .structureAndData,
+            existingPolicy: .skip
+        )
+    }
+
+    /// A database-level copy on PostgreSQL spans every schema, and each has to be read and written
+    /// in its own scope: one read against a nil schema answers only whatever the connection is on.
+    func testObjectsAreGroupedByTheSchemaTheyWereFoundIn() {
+        let scopes = ObjectCopyPlanner.scopes(of: request([
+            selection("orders", schema: "sales"),
+            selection("audit", schema: "logging"),
+            selection("customers", schema: "sales")
+        ]))
+
+        XCTAssertEqual(scopes.map(\.namespace), ["sales", "logging"])
+        XCTAssertEqual(scopes.first?.objects.map(\.name), ["orders", "customers"])
+    }
+
+    /// A duplicate keeps every schema name, so each schema's objects land in a schema of the same
+    /// name in the new database. A copy to a chosen target puts them all in the schema chosen.
+    func testADuplicateKeepsEachSchemaNameAndACopyDoesNot() {
+        let objects = [selection("orders", schema: "sales")]
+        let duplicate = ObjectCopyPlanner.scopes(of: request(objects, duplicates: true))
+        let copy = ObjectCopyPlanner.scopes(of: request(objects))
+
+        XCTAssertEqual(
+            duplicate.first?.targetNamespace(for: request(objects, duplicates: true)), "sales"
+        )
+        XCTAssertEqual(copy.first?.targetNamespace(for: request(objects)), "archive")
+    }
+
+    func testAnEngineWithoutSchemasIsOneScope() {
+        let scopes = ObjectCopyPlanner.scopes(of: request([
+            selection("orders", schema: nil),
+            selection("customers", schema: nil)
+        ]))
+
+        XCTAssertEqual(scopes.count, 1)
+        XCTAssertNil(scopes.first?.namespace)
+    }
+
     // MARK: - Retargeting foreign keys
 
     private func snapshot(referencedSchema: String?) -> TableStructureSnapshot {
@@ -204,7 +264,7 @@ final class ObjectCopyPlannerOrderingTests: XCTestCase {
     /// stayed wired to `prod.customers` and the duplicate was never independent of its original.
     func testAForeignKeyIntoTheSourceIsMovedToTheTarget() {
         let moved = ObjectCopyPlanner.retargeted(
-            snapshot(referencedSchema: "sales"), from: "sales", to: "archive"
+            snapshot(referencedSchema: "sales"), from: "sales", to: "archive", schema: "archive"
         )
 
         XCTAssertEqual(moved.schema, "archive")
@@ -214,7 +274,7 @@ final class ObjectCopyPlannerOrderingTests: XCTestCase {
     /// A reference that names neither side's schema points at something the copy never touched.
     func testAForeignKeyIntoAThirdSchemaIsLeftAlone() {
         let moved = ObjectCopyPlanner.retargeted(
-            snapshot(referencedSchema: "reference"), from: "sales", to: "archive"
+            snapshot(referencedSchema: "reference"), from: "sales", to: "archive", schema: "archive"
         )
 
         XCTAssertEqual(moved.foreignKeys.first?.referencedSchema, "reference")
@@ -223,7 +283,7 @@ final class ObjectCopyPlannerOrderingTests: XCTestCase {
     /// An unqualified reference means "my own schema", so it follows the table into the target.
     func testAnUnqualifiedForeignKeyFollowsTheTable() {
         let moved = ObjectCopyPlanner.retargeted(
-            snapshot(referencedSchema: nil), from: "sales", to: "archive"
+            snapshot(referencedSchema: nil), from: "sales", to: "archive", schema: "archive"
         )
 
         XCTAssertEqual(moved.foreignKeys.first?.referencedSchema, "archive")
@@ -231,7 +291,7 @@ final class ObjectCopyPlannerOrderingTests: XCTestCase {
 
     func testASchemaThatDoesNotChangeLeavesTheSnapshotAlone() {
         let moved = ObjectCopyPlanner.retargeted(
-            snapshot(referencedSchema: "sales"), from: "sales", to: "sales"
+            snapshot(referencedSchema: "sales"), from: "sales", to: "sales", schema: "sales"
         )
 
         XCTAssertEqual(moved.foreignKeys.first?.referencedSchema, "sales")

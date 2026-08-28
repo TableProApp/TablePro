@@ -257,6 +257,10 @@ internal enum DatabaseTreeMenuSpec {
             schema: schema,
             isSystem: context.systemSchemas.contains(schema)
         )
+        /// Oracle, Snowflake, Trino, Dameng and BigQuery draw their schemas here rather than as
+        /// container rows, and several of them need a schema-scoped source, so leaving Copy To on
+        /// the container path alone put it out of reach on exactly the engines that require it.
+        items += copyItems(ref, context: context)
         guard let renameable = ObjectRenameEligibility.renameable([ref], context: context.renameEligibility)
         else { return items }
         items.append(.separator)
@@ -363,13 +367,23 @@ internal enum DatabaseTreeMenuSpec {
 
     /// A table row's copy carries the whole selection the menu resolved, so right-clicking inside a
     /// multi-selection copies every table in it rather than only the one under the pointer.
+    /// Switched over the row's own type rather than asked whether it is a view. A materialized view
+    /// answered no and was encoded as a table, which the catalog lists as `.materializedView`, so
+    /// the preselection matched nothing and the sheet opened empty. A foreign table is a proxy for
+    /// rows on another server and the catalog drops it, so it is not offered.
     private static func copySelections(for targets: [DatabaseTreeTableRef]) -> [ObjectCopySelection] {
-        targets.map { target in
-            ObjectCopySelection(
-                kind: SidebarContextMenuLogic.isView(clickedTable: target.table) ? .view : .table,
-                name: target.table.name,
-                schema: target.qualifyingSchema
-            )
+        targets.compactMap { target in
+            guard let kind = copyKind(for: target.table.type) else { return nil }
+            return ObjectCopySelection(kind: kind, name: target.table.name, schema: target.qualifyingSchema)
+        }
+    }
+
+    private static func copyKind(for type: TableInfo.TableType) -> CompareObjectKind? {
+        switch type {
+        case .table, .partitionedTable: return .table
+        case .view: return .view
+        case .materializedView: return .materializedView
+        case .foreignTable, .systemTable, .externalTable: return nil
         }
     }
 

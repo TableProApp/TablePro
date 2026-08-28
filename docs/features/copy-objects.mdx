@@ -62,25 +62,31 @@ the target does not have is not written; one the source does not have keeps its 
 Pick **Skip it** unless you are refreshing a copy you made earlier. It is the only one of the three
 that cannot lose anything already in the target.
 
-## One engine, one schema
+## One engine, and the namespace rule
 
 A copy stays inside one engine. Column data types are the driver's own strings and the row writer
 emits that driver's own SQL, so neither structure nor data crosses from MySQL to PostgreSQL. The
 sheet refuses before it reads anything. MySQL and MariaDB count as one engine.
 
-On PostgreSQL, SQL Server and the other engines that keep objects in schemas, copy one schema at a
-time. A whole-database copy taken without a schema reads only the connection's current one, so the
-sheet asks for a schema instead of carrying part of the database and calling it the whole.
+A database-level copy covers every schema. Each schema's objects are read and written in their own
+scope, and a duplicate recreates each of them under the same name in the new database.
 
-Views, routines and triggers copy only into a schema of the same name. Their definition is the
-source's own SQL text and nothing rewrites the tables it names, so into a differently named schema
-it would point back at the source. They are left out with the reason shown.
+Views, routines and triggers copy only where both sides share a namespace, which is the schema on
+PostgreSQL and SQL Server and the database on MySQL and MariaDB. Their definition is the source's
+own SQL text and nothing rewrites the objects it names, so anywhere else it would point back at the
+source. They are left out with the reason shown, which is why duplicating a MySQL database carries
+its tables and not its views.
+
+A driver that answers with a view's `SELECT` rather than its `CREATE`, which ClickHouse, Oracle,
+Dameng and BigQuery do, has that view left out for the same reason.
 
 ## Ordering and foreign keys
 
 Everything is torn down children first, so a foreign key is gone before the table it points at, then
-built parents first. Rows are copied after that, and triggers go in last: a trigger installed before
-the rows fires on the copy itself.
+built parents first, both in one pass so a stop between them cannot leave objects dropped with
+nothing put back. Rows are copied after that. Triggers and materialized views go in last: a trigger
+installed before the rows fires on the copy itself, and a materialized view is filled at the moment
+it is created.
 
 A copied foreign key is repointed at the copy. A key that referenced the source's own schema
 references the target's afterwards, so the duplicate stands on its own; one that referenced a third

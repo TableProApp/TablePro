@@ -82,35 +82,68 @@ final class ObjectCopyEligibilityTests: XCTestCase {
         ))
     }
 
-    // MARK: - Schemas
+    // MARK: - Namespaces
 
-    /// `fetchTables(schema: nil)` resolves to the connection's current schema, so a whole-database
-    /// copy taken without one carried one schema and reported success over the rest.
-    func testASchemaAwareEngineMustNameASchema() {
-        XCTAssertNotNil(ObjectCopyEligibility.unscopedSchemaRefusal(
-            endpoint: endpoint("app", type: .postgresql), supportsSchemas: true
-        ))
-        XCTAssertNil(ObjectCopyEligibility.unscopedSchemaRefusal(
-            endpoint: endpoint("app", type: .postgresql, schema: "public"), supportsSchemas: true
-        ))
+    /// The name an engine qualifies its objects with, which is not always the selected schema.
+    /// MySQL has no schemas and reports the database in the schema column, so its foreign keys and
+    /// routines come back qualified by the database name.
+    func testTheNamespaceIsTheSchemaWhereSchemasExist() {
+        XCTAssertEqual(
+            ObjectCopyNamespace.name(
+                for: endpoint("app", type: .postgresql, schema: "sales"),
+                supportsSchemas: true,
+                supportsDatabases: true
+            ),
+            "sales"
+        )
     }
 
-    func testAnEngineWithoutSchemasNeedsNone() {
-        XCTAssertNil(ObjectCopyEligibility.unscopedSchemaRefusal(
-            endpoint: endpoint("app"), supportsSchemas: false
+    func testTheNamespaceIsTheDatabaseWhereSchemasDoNot() {
+        XCTAssertEqual(
+            ObjectCopyNamespace.name(
+                for: endpoint("shop"), supportsSchemas: false, supportsDatabases: true
+            ),
+            "shop"
+        )
+    }
+
+    /// SQLite has one unnamed container, so nothing is qualified and two files compare equal.
+    func testAnEngineWithNeitherHasNoNamespace() {
+        XCTAssertNil(ObjectCopyNamespace.name(
+            for: endpoint("chinook.sqlite", type: .sqlite),
+            supportsSchemas: false,
+            supportsDatabases: false
         ))
     }
 
     // MARK: - Definitions
 
-    /// Nothing parses the definition, so every table it names keeps the source's qualification.
-    /// Into another schema it would point back at the source, and a replacement's DROP would land
-    /// on the source's own object.
-    func testADefinitionOnlyCopiesIntoASchemaOfTheSameName() {
-        XCTAssertTrue(ObjectCopyEligibility.canCopyDefinition(sourceSchema: "public", targetSchema: "public"))
-        XCTAssertTrue(ObjectCopyEligibility.canCopyDefinition(sourceSchema: "Public", targetSchema: "public"))
-        XCTAssertTrue(ObjectCopyEligibility.canCopyDefinition(sourceSchema: nil, targetSchema: nil))
-        XCTAssertFalse(ObjectCopyEligibility.canCopyDefinition(sourceSchema: "sales", targetSchema: "archive"))
-        XCTAssertFalse(ObjectCopyEligibility.canCopyDefinition(sourceSchema: "sales", targetSchema: nil))
+    /// Nothing parses the definition, so every object it names keeps the source's qualification.
+    /// A duplicate keeps the schema name, which is why one is copyable; two MySQL databases are
+    /// two namespaces, which is why one is not.
+    func testADefinitionOnlyCopiesWithinOneNamespace() {
+        XCTAssertTrue(ObjectCopyEligibility.canCopyDefinition(
+            sourceNamespace: "public", targetNamespace: "public"
+        ))
+        XCTAssertTrue(ObjectCopyEligibility.canCopyDefinition(
+            sourceNamespace: "Public", targetNamespace: "public"
+        ))
+        XCTAssertTrue(ObjectCopyEligibility.canCopyDefinition(sourceNamespace: nil, targetNamespace: nil))
+        XCTAssertFalse(ObjectCopyEligibility.canCopyDefinition(
+            sourceNamespace: "shop", targetNamespace: "shop_copy"
+        ))
+        XCTAssertFalse(ObjectCopyEligibility.canCopyDefinition(
+            sourceNamespace: "sales", targetNamespace: nil
+        ))
+    }
+
+    /// ClickHouse, Oracle, Dameng and BigQuery answer with the view's SELECT rather than its
+    /// CREATE. Running that is a read the runner would report as the view copied, after Replace
+    /// had already dropped the target's.
+    func testABareBodyIsNotAnExecutableDefinition() {
+        XCTAssertTrue(ObjectCopyEligibility.isExecutableDefinition("CREATE VIEW v AS SELECT 1"))
+        XCTAssertTrue(ObjectCopyEligibility.isExecutableDefinition("\n  create or replace view v AS SELECT 1"))
+        XCTAssertFalse(ObjectCopyEligibility.isExecutableDefinition("SELECT id, name FROM orders"))
+        XCTAssertFalse(ObjectCopyEligibility.isExecutableDefinition("   "))
     }
 }

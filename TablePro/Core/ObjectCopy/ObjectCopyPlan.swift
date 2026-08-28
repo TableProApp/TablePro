@@ -69,7 +69,9 @@ internal struct ObjectCopyDefinitionStep: Identifiable, Sendable {
     /// A trigger fires on the rows the copy is about to write, so installing one before the data
     /// phase makes the copy trip it: an audit trigger writes a second row for every row copied,
     /// and a validating one rejects rows the source already holds.
-    internal var runsAfterData: Bool { selection.kind == .trigger }
+    internal var runsAfterData: Bool {
+        selection.kind == .trigger || selection.kind == .materializedView
+    }
 }
 
 /// One object's statements for one phase, so a failure is attributed to the object that caused it.
@@ -149,7 +151,16 @@ internal struct ObjectCopyPlan: Sendable {
                 .map { ObjectCopyStatementGroup($0.selection, $0.createStatements) }
     }
 
-    /// The definitions held back until the rows are in.
+    /// Emptying the tables a data-only replace appends to, children first so a foreign key holds.
+    internal var clearGroups: [ObjectCopyStatementGroup] {
+        tableSteps.reversed()
+            .filter { !$0.truncateStatements.isEmpty }
+            .map { ObjectCopyStatementGroup($0.selection, $0.truncateStatements) }
+    }
+
+    /// The definitions held back until the rows are in: a trigger fires on the copy itself, and a
+    /// materialized view is filled at the moment it is created, so one built over an empty table
+    /// stays empty.
     internal var afterDataGroups: [ObjectCopyStatementGroup] {
         definitionSteps.filter(\.runsAfterData)
             .map { ObjectCopyStatementGroup($0.selection, $0.createStatements) }

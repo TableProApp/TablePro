@@ -74,37 +74,37 @@ internal enum ObjectCopyEligibility {
         return String(localized: "The source and the target are the same database. Choose a different target.")
     }
 
-    /// A database-wide copy on an engine that has schemas has to name one.
-    ///
-    /// `fetchTables(schema: nil)` resolves to the connection's current schema on PostgreSQL and
-    /// SQL Server, so a whole-database copy taken without a schema silently carried one schema's
-    /// objects and left every other schema behind while reporting success.
-    internal static func unscopedSchemaRefusal(
-        endpoint: DatabaseEndpoint,
-        supportsSchemas: Bool
-    ) -> String? {
-        guard supportsSchemas, (endpoint.schema ?? "").isEmpty else { return nil }
-        return String(
-            format: String(localized: "%@ keeps its objects in schemas. Copy one schema at a time."),
-            endpoint.databaseType.rawValue
-        )
-    }
-
     /// Whether a view, routine or trigger can be copied as it stands.
     ///
-    /// Its definition is the source's own SQL text, and nothing here parses it, so every table it
-    /// names stays spelled the way the source spelled it. Running that against a different schema
+    /// Its definition is the source's own SQL text, and nothing here parses it, so every object it
+    /// names stays qualified the way the source qualified it. Run against a different namespace it
     /// either recreates the object pointing back at the source or, for a replacement, drops the
-    /// source's own object. Copying one is therefore only sound into the same schema name.
-    internal static func canCopyDefinition(sourceSchema: String?, targetSchema: String?) -> Bool {
-        let source = (sourceSchema ?? "").lowercased()
-        let target = (targetSchema ?? "").lowercased()
-        return source == target
+    /// source's own. Copying one is sound only where both sides share a namespace: the same schema
+    /// name on PostgreSQL, which a duplicate keeps, and never across two MySQL databases, whose
+    /// DDL carries the database name.
+    internal static func canCopyDefinition(sourceNamespace: String?, targetNamespace: String?) -> Bool {
+        ObjectCopyNamespace.isSame(sourceNamespace, targetNamespace)
     }
 
-    internal static var definitionSchemaRefusal: String {
+    internal static var definitionNamespaceRefusal: String {
         String(
-            localized: "Its definition names the source's own schema, so it is only copied into a schema of the same name."
+            localized: "Its definition names the source's own database or schema, so it is only copied where that name is the same."
         )
+    }
+
+    /// A definition the driver reports as a bare body rather than as a statement.
+    ///
+    /// ClickHouse, Oracle, Dameng and BigQuery answer `fetchViewDefinition` with the view's SELECT,
+    /// not its `CREATE`. Executing that runs a read, which the runner would then report as the view
+    /// copied, after Replace had already dropped the target's.
+    internal static func isExecutableDefinition(_ definition: String) -> Bool {
+        definition
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+            .hasPrefix("CREATE")
+    }
+
+    internal static var definitionNotExecutableRefusal: String {
+        String(localized: "This driver reports its body rather than a statement that recreates it.")
     }
 }

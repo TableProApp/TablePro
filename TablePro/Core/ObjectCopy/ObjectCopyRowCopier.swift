@@ -46,6 +46,9 @@ internal struct ObjectCopyRowCopier: Sendable {
     internal struct Outcome: Sendable {
         internal let inserted: Int
         internal let cancelled: Bool
+        /// What is in the target whatever happens next. Zero where the caller holds a transaction
+        /// it can roll back, and every flushed batch where it does not.
+        internal var committed: Int = 0
     }
 
     internal let step: ObjectCopyTableStep
@@ -75,11 +78,16 @@ internal struct ObjectCopyRowCopier: Sendable {
             }
         }
 
+        /// Checked again here. Cancellation can reach an `AsyncThrowingStream` as an ordinary end
+        /// of stream, or land after its last element, and the loop then falls out with rows still
+        /// pending: writing them committed a batch the user had already stopped and reported the
+        /// table as copied.
+        if Task.isCancelled { return Outcome(inserted: inserted, cancelled: true) }
         if !pending.isEmpty {
             inserted += try await flush(&pending, generator: generator, driver: targetDriver)
             onProgress(inserted)
         }
-        return Outcome(inserted: inserted, cancelled: false)
+        return Outcome(inserted: inserted, cancelled: Task.isCancelled)
     }
 
     // MARK: - Statements

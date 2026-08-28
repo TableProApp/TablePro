@@ -28,16 +28,42 @@ internal struct ObjectCopyCatalog {
         self.manager = manager
     }
 
+    /// Every object in the endpoint's scope, and on a schema-aware engine that names no schema,
+    /// every object in every schema of the database.
+    ///
+    /// `fetchTables(schema: nil)` resolves to the connection's current schema on PostgreSQL and
+    /// SQL Server, so a whole-database copy taken that way carried one schema and reported success
+    /// over the rest. Each selection keeps the schema it was found in, which is what lets the
+    /// planner read and write them one namespace at a time.
     internal func objects(
         in endpoint: DatabaseEndpoint,
         connection: DatabaseConnection
     ) async throws -> [ObjectCopySelection] {
         try await manager.ensureConnected(connection)
-        let schema = endpoint.schema
-        return try await manager.withMetadataDriver(scope: endpoint.scope, workload: .bulk) { driver in
-            guard let plugin = CompareMetadataService.pluginDriver(from: driver) else { return [] }
-            return try await Self.read(from: plugin, schema: schema)
+        let scopes = try await namespaces(of: endpoint, connection: connection)
+        var found: [ObjectCopySelection] = []
+        for scope in scopes {
+            found += try await manager.withMetadataDriver(
+                scope: endpoint.withSchema(scope).scope, workload: .bulk
+            ) { driver in
+                guard let plugin = CompareMetadataService.pluginDriver(from: driver) else { return [] }
+                return try await Self.read(from: plugin, schema: scope)
+            }
         }
+        return found
+    }
+
+    /// The schemas one read has to cover. A single nil is "whatever the connection is on", which is
+    /// the right answer for every engine without schemas and for a scope that already names one.
+    internal func namespaces(
+        of endpoint: DatabaseEndpoint,
+        connection: DatabaseConnection
+    ) async throws -> [String?] {
+        guard PluginManager.shared.supportsSchemaSwitching(for: endpoint.databaseType),
+              (endpoint.schema ?? "").isEmpty
+        else { return [endpoint.schema?.nilIfEmpty] }
+        let found = try await schemas(in: endpoint, connection: connection)
+        return found.isEmpty ? [nil] : found.map { $0 }
     }
 
     nonisolated private static func read(

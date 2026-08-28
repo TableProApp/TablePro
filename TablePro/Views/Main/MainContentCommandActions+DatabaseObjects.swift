@@ -65,7 +65,9 @@ extension MainContentCommandActions {
         guard let coordinator else { return false }
         return isConnected && ObjectCopyEligibility.mayOfferDuplicateDatabase(
             editorLanguage: PluginManager.shared.editorLanguage(for: coordinator.connection.type),
-            supportsDatabaseSwitching: supportsContainerSwitching,
+            supportsDatabaseSwitching: PluginManager.shared.supportsDatabaseSwitching(
+                for: coordinator.connection.type
+            ),
             isReadOnly: isReadOnly
         )
     }

@@ -169,12 +169,6 @@ internal final class ObjectCopySession {
                 break
             }
         }
-        if let reason = ObjectCopyEligibility.unscopedSchemaRefusal(
-            endpoint: source,
-            supportsSchemas: PluginManager.shared.supportsSchemaSwitching(for: source.databaseType)
-        ) {
-            return reason
-        }
         return nil
     }
 
@@ -287,8 +281,11 @@ internal final class ObjectCopySession {
         }
     }
 
+    /// Adds what is on screen rather than replacing the whole selection, so a search that is hiding
+    /// already-ticked objects cannot silently untick them. None subtracts only the visible ones for
+    /// the same reason.
     internal func selectAll() {
-        selectedObjectIds = Set(filteredObjects.map(\.id))
+        selectedObjectIds.formUnion(Set(filteredObjects.map(\.id)))
     }
 
     internal func selectNone() {

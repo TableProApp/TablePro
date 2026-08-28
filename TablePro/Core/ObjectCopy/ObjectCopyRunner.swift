@@ -104,9 +104,25 @@ internal struct ObjectCopyRunner {
         /// Torn down before anything is built, and children first, so a foreign key is gone before
         /// the table it points at and a trigger before the table that owns it. One parent-first
         /// pass had every DROP rejected by the constraint below it.
-        for phase in [plan.cleanupGroups, plan.creationGroups] where !phase.isEmpty {
-            let result = try await runDDL(phase, request: request, progress: progress)
+        ///
+        /// Both phases run under one `withMetadataDriver` call and, where the engine has them,
+        /// with foreign key checks off and a transaction around them. Split across two calls, a
+        /// Stop between them or a failing first CREATE left every later object dropped with
+        /// nothing put back.
+        if !plan.cleanupGroups.isEmpty || !plan.creationGroups.isEmpty {
+            let result = try await runStructure(plan, request: request, progress: progress)
             outcomes += result.outcomes
+            cancelled = cancelled || result.cancelled
+            if result.stopped { return finished() }
+        }
+
+        /// Every table the copy will append to is emptied before any of them is filled, children
+        /// first. Clearing each one immediately before its own rows meant the first parent DELETE
+        /// met child rows that were still there, and a cascading key took rows out of tables the
+        /// user had not selected.
+        if !cancelled, !plan.clearGroups.isEmpty {
+            let result = try await runDDL(plan.clearGroups, request: request, progress: progress)
+            outcomes += result.outcomes.filter { $0.error != nil }
             cancelled = cancelled || result.cancelled
             if result.stopped { return finished() }
         }
@@ -147,6 +163,92 @@ internal struct ObjectCopyRunner {
         var stopped = false
     }
 
+    /// Every drop and every create, in one scoped call, wrapped where the engine allows it.
+    ///
+    /// A replacement is destructive only in the moment between its DROP and its CREATE, so the two
+    /// have to be one unit as far as the engine can make them: a transaction where DDL is
+    /// transactional, and otherwise at least one connection lease with foreign key checks off so
+    /// the ordering cannot fail half way.
+    private func runStructure(
+        _ plan: ObjectCopyPlan,
+        request: ObjectCopyRequest,
+        progress: ObjectCopyProgress
+    ) async throws -> DDLResult {
+        let groups = plan.cleanupGroups + plan.creationGroups
+        let errorHandling = request.errorHandling
+        let scope = request.target.scope
+        let hasCleanup = !plan.cleanupGroups.isEmpty
+
+        return try await manager.withMetadataDriver(scope: scope) { driver in
+            guard let plugin = CompareMetadataService.pluginDriver(from: driver) else {
+                throw ObjectCopyError.refused(Self.noTargetDriver)
+            }
+            let usesTransaction = hasCleanup && plugin.supportsTransactionalDDL
+            let relaxesForeignKeys = hasCleanup && !usesTransaction
+            if usesTransaction { try await plugin.beginTransaction(mode: .readWrite) }
+            if relaxesForeignKeys {
+                for statement in plugin.foreignKeyDisableStatements() ?? [] {
+                    _ = try? await plugin.execute(query: statement)
+                }
+            }
+
+            let result = await Self.execute(
+                groups, on: plugin, errorHandling: errorHandling, progress: progress
+            )
+
+            if relaxesForeignKeys {
+                for statement in plugin.foreignKeyEnableStatements() ?? [] {
+                    _ = try? await plugin.execute(query: statement)
+                }
+            }
+            if usesTransaction {
+                if result.stopped {
+                    try? await plugin.rollbackTransaction()
+                } else {
+                    try await plugin.commitTransaction()
+                }
+            }
+            return result
+        }
+    }
+
+    nonisolated private static func execute(
+        _ groups: [ObjectCopyStatementGroup],
+        on driver: any PluginDatabaseDriver,
+        errorHandling: ImportErrorHandling,
+        progress: ObjectCopyProgress
+    ) async -> DDLResult {
+        var result = DDLResult()
+        for group in groups where !group.statements.isEmpty {
+            if progress.isCancelled || Task.isCancelled {
+                result.cancelled = true
+                result.stopped = true
+                break
+            }
+            progress.startObject(group.selection.qualifiedName)
+            do {
+                for statement in group.statements {
+                    _ = try await driver.execute(query: statement.sql)
+                }
+                result.outcomes.append(ObjectCopyObjectOutcome(
+                    selection: group.selection, rowsCopied: 0, error: nil
+                ))
+            } catch {
+                logger.error(
+                    "Copy DDL failed for \(group.selection.qualifiedName, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                )
+                result.outcomes.append(ObjectCopyObjectOutcome(
+                    selection: group.selection, rowsCopied: 0, error: error.localizedDescription
+                ))
+                guard errorHandling == .skipAndContinue else {
+                    result.stopped = true
+                    break
+                }
+            }
+        }
+        return result
+    }
+
     private func runDDL(
         _ groups: [ObjectCopyStatementGroup],
         request: ObjectCopyRequest,
@@ -156,40 +258,13 @@ internal struct ObjectCopyRunner {
         guard !runnable.isEmpty else { return DDLResult() }
 
         let errorHandling = request.errorHandling
-        let scope = request.target.scope
-        return try await manager.withMetadataDriver(scope: scope) { driver in
-            var result = DDLResult()
-            for group in runnable {
-                if progress.isCancelled || Task.isCancelled {
-                    result.cancelled = true
-                    result.stopped = true
-                    break
-                }
-                progress.startObject(group.selection.qualifiedName)
-                do {
-                    /// Every statement runs, hazards included: a DROP is here because the user
-                    /// chose Replace and then read it in the script, which is the consent Compare &
-                    /// Sync collects per statement instead.
-                    for statement in group.statements {
-                        _ = try await driver.execute(query: statement.sql)
-                    }
-                    result.outcomes.append(ObjectCopyObjectOutcome(
-                        selection: group.selection, rowsCopied: 0, error: nil
-                    ))
-                } catch {
-                    Self.logger.error(
-                        "Copy DDL failed for \(group.selection.qualifiedName, privacy: .public): \(error.localizedDescription, privacy: .public)"
-                    )
-                    result.outcomes.append(ObjectCopyObjectOutcome(
-                        selection: group.selection, rowsCopied: 0, error: error.localizedDescription
-                    ))
-                    guard errorHandling == .skipAndContinue else {
-                        result.stopped = true
-                        break
-                    }
-                }
+        return try await manager.withMetadataDriver(scope: request.target.scope) { driver in
+            guard let plugin = CompareMetadataService.pluginDriver(from: driver) else {
+                throw ObjectCopyError.refused(Self.noTargetDriver)
             }
-            return result
+            return await Self.execute(
+                runnable, on: plugin, errorHandling: errorHandling, progress: progress
+            )
         }
     }
 
@@ -234,11 +309,19 @@ internal struct ObjectCopyRunner {
                     completedBefore: result.rowsCopied,
                     progress: progress
                 )
-                /// A cancelled table rolled its rows back, so it neither counts as copied nor
-                /// reads as an object that succeeded.
+                /// A cancelled table that rolled back neither counts as copied nor reads as an
+                /// object that succeeded. On a target without transactions nothing rolled back, so
+                /// the batches already flushed are in the target and saying otherwise hides them
+                /// from a user about to retry and double the rows.
                 guard !outcome.cancelled else {
                     result.cancelled = true
                     result.stopped = true
+                    if outcome.committed > 0 {
+                        result.rowsCopied += outcome.committed
+                        result.outcomes.append(ObjectCopyObjectOutcome(
+                            selection: step.selection, rowsCopied: outcome.committed, error: nil
+                        ))
+                    }
                     progress.setRowsForCurrentObject(0, completedBefore: result.rowsCopied)
                     break
                 }
@@ -300,24 +383,25 @@ internal struct ObjectCopyRunner {
                     try await targetPlugin.beginTransaction(mode: .readWrite)
                 }
                 do {
-                    /// Inside the transaction, never before it. Emptying the table in the DDL phase
-                    /// meant a copy that failed or was stopped rolled the new rows back and left
-                    /// the target's own rows deleted for good.
-                    for statement in step.truncateStatements {
-                        _ = try await targetPlugin.execute(query: statement.sql)
-                    }
                     let outcome = try await copier.copy(
                         from: sourcePlugin,
                         to: targetPlugin
                     ) { rows in
                         progress.setRowsForCurrentObject(rows, completedBefore: completedBefore)
                     }
-                    if usesTransaction {
-                        if outcome.cancelled {
-                            try? await targetPlugin.rollbackTransaction()
-                        } else {
-                            try await targetPlugin.commitTransaction()
-                        }
+                    guard usesTransaction else {
+                        /// Nothing to roll back, so every batch already flushed is in the target
+                        /// whether the user stopped or not.
+                        return ObjectCopyRowCopier.Outcome(
+                            inserted: outcome.inserted,
+                            cancelled: outcome.cancelled,
+                            committed: outcome.inserted
+                        )
+                    }
+                    if outcome.cancelled {
+                        try? await targetPlugin.rollbackTransaction()
+                    } else {
+                        try await targetPlugin.commitTransaction()
                     }
                     return outcome
                 } catch {
