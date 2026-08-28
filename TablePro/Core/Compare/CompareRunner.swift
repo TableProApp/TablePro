@@ -151,8 +151,8 @@ internal struct CompareRunner {
     // MARK: - Context
 
     internal struct Context {
-        internal let source: CompareSyncEndpoint
-        internal let target: CompareSyncEndpoint
+        internal let source: DatabaseEndpoint
+        internal let target: DatabaseEndpoint
         internal let sourceConnection: DatabaseConnection
         internal let targetConnection: DatabaseConnection
     }
@@ -174,7 +174,7 @@ internal struct CompareRunner {
         )
     }
 
-    private func missingConnection(_ endpoint: CompareSyncEndpoint) -> String {
+    private func missingConnection(_ endpoint: DatabaseEndpoint) -> String {
         String(
             format: String(localized: "%@ is no longer a saved connection."),
             endpoint.connectionName

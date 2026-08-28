@@ -104,7 +104,7 @@ internal final class CompareSyncWindowController: NSWindowController,
         guard let connectionId else { return }
         let connections = ConnectionStorage.shared.loadConnections()
         guard let match = connections.first(where: { $0.id == connectionId }) else { return }
-        session.source = CompareSyncEndpoint.from(connection: match)
+        session.source = DatabaseEndpoint.from(connection: match)
     }
 
     /// The strip belongs to the window frame, not to the content: it reports what the window is

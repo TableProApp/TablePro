@@ -1,5 +1,5 @@
 //
-//  CompareEndpointPickerModelTests.swift
+//  DatabaseEndpointPickerModelTests.swift
 //  TableProTests
 //
 //  The chooser's loading rules. Each of these was a defect in the NSMenu this
@@ -11,7 +11,7 @@
 import XCTest
 
 @MainActor
-final class CompareEndpointPickerModelTests: XCTestCase {
+final class DatabaseEndpointPickerModelTests: XCTestCase {
     private struct Unreachable: LocalizedError {
         var errorDescription: String? { "Connection refused" }
     }
@@ -22,9 +22,9 @@ final class CompareEndpointPickerModelTests: XCTestCase {
 
     private func model(
         databases: @escaping (DatabaseConnection) async throws -> [String] = { _ in [] },
-        schemas: @escaping (CompareSyncEndpoint, DatabaseConnection) async throws -> [String] = { _, _ in [] }
-    ) -> CompareEndpointPickerModel {
-        CompareEndpointPickerModel(databaseLoader: databases, schemaLoader: schemas)
+        schemas: @escaping (DatabaseEndpoint, DatabaseConnection) async throws -> [String] = { _, _ in [] }
+    ) -> DatabaseEndpointPickerModel {
+        DatabaseEndpointPickerModel(databaseLoader: databases, schemaLoader: schemas)
     }
 
     func testAnUnopenedConnectionReportsLoadingRatherThanAnEmptyList() {
@@ -98,8 +98,8 @@ final class CompareEndpointPickerModelTests: XCTestCase {
     func testSchemasAreKeyedPerDatabaseRatherThanPerConnection() async {
         let subject = model(schemas: { endpoint, _ in [endpoint.database + "_schema"] })
         let connection = connection()
-        let orders = CompareSyncEndpoint.from(connection: connection, database: "orders")
-        let audit = CompareSyncEndpoint.from(connection: connection, database: "audit")
+        let orders = DatabaseEndpoint.from(connection: connection, database: "orders")
+        let audit = DatabaseEndpoint.from(connection: connection, database: "audit")
 
         await subject.loadSchemas(for: orders, connection: connection)
         await subject.loadSchemas(for: audit, connection: connection)

@@ -67,7 +67,7 @@ internal struct CompareMetadataService {
         }
     }
 
-    internal func schemas(for endpoint: CompareSyncEndpoint, connection: DatabaseConnection) async throws -> [String] {
+    internal func schemas(for endpoint: DatabaseEndpoint, connection: DatabaseConnection) async throws -> [String] {
         try await manager.ensureConnected(connection)
         return try await manager.withMetadataDriver(scope: endpoint.scope) { driver in
             try await driver.fetchSchemas()
@@ -77,7 +77,7 @@ internal struct CompareMetadataService {
     // MARK: - Capability
 
     internal func refusalReason(
-        for endpoint: CompareSyncEndpoint,
+        for endpoint: DatabaseEndpoint,
         connection: DatabaseConnection,
         mode: CompareSyncMode
     ) async throws -> String? {
@@ -100,7 +100,7 @@ internal struct CompareMetadataService {
     /// to abort the whole run, which is why `TableDiffResult.comparisonError` was read by the UI and
     /// written by nothing.
     internal func tableReads(
-        for endpoint: CompareSyncEndpoint,
+        for endpoint: DatabaseEndpoint,
         connection: DatabaseConnection,
         includeViews: Bool
     ) async throws -> [TableStructureRead] {
@@ -126,7 +126,7 @@ internal struct CompareMetadataService {
     /// be read is still listed, with an empty definition, so it shows as present rather than
     /// vanishing from the comparison.
     internal func routineReads(
-        for endpoint: CompareSyncEndpoint,
+        for endpoint: DatabaseEndpoint,
         connection: DatabaseConnection
     ) async throws -> [RoutineSourceRead] {
         try await manager.ensureConnected(connection)
@@ -157,7 +157,7 @@ internal struct CompareMetadataService {
     /// read already listed are the ones asked. A trigger on a table that is not in scope is not in
     /// scope either.
     internal func triggerReads(
-        for endpoint: CompareSyncEndpoint,
+        for endpoint: DatabaseEndpoint,
         connection: DatabaseConnection,
         tables: [String]
     ) async throws -> [RoutineSourceRead] {
@@ -184,7 +184,7 @@ internal struct CompareMetadataService {
     }
 
     internal func viewDefinitions(
-        for endpoint: CompareSyncEndpoint,
+        for endpoint: DatabaseEndpoint,
         connection: DatabaseConnection,
         views: [PluginTableInfo]
     ) async throws -> [RoutineSourceRead] {

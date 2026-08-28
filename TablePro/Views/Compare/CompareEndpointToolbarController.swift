@@ -18,7 +18,7 @@ internal final class CompareEndpointToolbarController: NSObject {
     private let onChange: () -> Void
     private let windowProvider: () -> NSWindow?
 
-    private var identifiers: [CompareEndpointSide: NSToolbarItem.Identifier] = [:]
+    private var identifiers: [DatabaseEndpointSide: NSToolbarItem.Identifier] = [:]
     private var popover: NSPopover?
     private var closeObserver: (any NSObjectProtocol)?
 
@@ -33,7 +33,7 @@ internal final class CompareEndpointToolbarController: NSObject {
         super.init()
     }
 
-    internal func item(for side: CompareEndpointSide, identifier: NSToolbarItem.Identifier) -> NSToolbarItem {
+    internal func item(for side: DatabaseEndpointSide, identifier: NSToolbarItem.Identifier) -> NSToolbarItem {
         identifiers[side] = identifier
         let item = NSToolbarItem(itemIdentifier: identifier)
         item.label = side.title
@@ -59,13 +59,13 @@ internal final class CompareEndpointToolbarController: NSObject {
         }
     }
 
-    private func apply(_ side: CompareEndpointSide, to item: NSToolbarItem) {
+    private func apply(_ side: DatabaseEndpointSide, to item: NSToolbarItem) {
         let endpoint = endpoint(for: side)
         item.title = endpoint?.qualifiedDescription ?? side.placeholderTitle
         item.toolTip = endpoint?.fullDescription ?? side.caption
     }
 
-    private func endpoint(for side: CompareEndpointSide) -> CompareSyncEndpoint? {
+    private func endpoint(for side: DatabaseEndpointSide) -> DatabaseEndpoint? {
         side == .source ? session.source : session.target
     }
 
@@ -81,7 +81,7 @@ internal final class CompareEndpointToolbarController: NSObject {
 
     /// Pressing the button again closes the chooser, which is what a pull-down control does and
     /// what the popover's own `.transient` dismissal would otherwise fight.
-    private func present(_ side: CompareEndpointSide) {
+    private func present(_ side: DatabaseEndpointSide) {
         guard popover?.isShown != true else {
             dismiss()
             return
@@ -91,10 +91,10 @@ internal final class CompareEndpointToolbarController: NSObject {
 
         let shown = PopoverPresenter.show(
             relativeTo: anchor,
-            contentSize: CompareEndpointPicker.contentSize,
+            contentSize: DatabaseEndpointPicker.contentSize,
             behavior: .transient
         ) { dismiss in
-            CompareEndpointPicker(
+            DatabaseEndpointPicker(
                 side: side,
                 current: self.endpoint(for: side),
                 onPick: { [weak self] endpoint in self?.pick(endpoint, for: side) },
@@ -129,7 +129,7 @@ internal final class CompareEndpointToolbarController: NSObject {
 
     /// Re-picking the endpoint that is already chosen must not reach `onChange`, which resets the
     /// comparison: the report, both snapshots, every data plan and the user's per-object choices.
-    private func pick(_ endpoint: CompareSyncEndpoint, for side: CompareEndpointSide) {
+    private func pick(_ endpoint: DatabaseEndpoint, for side: DatabaseEndpointSide) {
         guard self.endpoint(for: side)?.id != endpoint.id else { return }
         switch side {
         case .source: session.source = endpoint

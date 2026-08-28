@@ -8,7 +8,7 @@ import XCTest
 /// "Choose a connection" and on a Compare button, none of which exist: the window never opens
 /// without a license, and the rebuilt toolbar spells its placeholder "Choose Source". It could not
 /// pass on any machine. The window's own contract now lives in `CompareSyncSessionTests` and
-/// `CompareEndpointSideTests`, which reach it without a license.
+/// `DatabaseEndpointTests`, which reach it without a license.
 final class CompareSyncUITests: UITestCase {
     private let licenseAlertMessage = "Compare & Sync requires a license"
 

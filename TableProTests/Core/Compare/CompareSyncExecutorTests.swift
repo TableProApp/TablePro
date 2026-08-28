@@ -71,8 +71,8 @@ private struct AlwaysDenyGate: ExecutionGate {
 }
 
 final class CompareSyncExecutorTests: XCTestCase {
-    private func endpoint() -> CompareSyncEndpoint {
-        CompareSyncEndpoint(
+    private func endpoint() -> DatabaseEndpoint {
+        DatabaseEndpoint(
             scope: DatabaseScope(connectionId: UUID(), database: "app", schema: nil),
             connectionName: "staging",
             databaseType: .mysql,
@@ -339,9 +339,9 @@ final class CompareSyncEligibilityTests: XCTestCase {
     }
 }
 
-final class CompareSyncEndpointTests: XCTestCase {
-    private func endpoint(_ level: SafeModeLevel) -> CompareSyncEndpoint {
-        CompareSyncEndpoint(
+final class DatabaseEndpointSafeModeTests: XCTestCase {
+    private func endpoint(_ level: SafeModeLevel) -> DatabaseEndpoint {
+        DatabaseEndpoint(
             scope: DatabaseScope(connectionId: UUID(), database: "prod", schema: nil),
             connectionName: "prod",
             databaseType: .postgresql,
