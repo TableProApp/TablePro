@@ -140,6 +140,36 @@ extension MainContentCoordinator {
         return entry.tableName == tableName && entry.lastExecutedAt == tab.execution.lastExecutedAt
     }
 
+    /// Replaces what the Table Info panel holds for a table whose metadata changed without a query.
+    ///
+    /// `hasCurrentTableMetadata` stamps its cache with the tab's last execution, which is the right
+    /// test while only a query can move the numbers. Editing a table's comment moves one of them
+    /// without executing anything, so the panel would go on showing the comment the save replaced.
+    /// The fresh value is written in rather than the stale one dropped, because dropping it leaves
+    /// the panel empty until the tab is executed again.
+    ///
+    /// Matched on the whole scope, never on the bare name. The cache is keyed by tab and two tabs
+    /// can hold an `orders` in different schemas or different databases, so saving one would
+    /// otherwise write its owner, sizes, row count and comment over the other, under a stamp that
+    /// still reads as current.
+    func adoptTableMetadata(_ metadata: TableMetadata, in scope: DatabaseScope) {
+        for tab in tabManager.tabs {
+            guard tab.tableContext.tableName == metadata.tableName,
+                  self.scope(for: tab) == scope,
+                  let entry = tableMetadataCache[tab.id],
+                  entry.tableName == metadata.tableName
+            else { continue }
+            tableMetadataCache[tab.id] = TableMetadataCacheEntry(
+                tableName: entry.tableName,
+                lastExecutedAt: entry.lastExecutedAt,
+                metadata: metadata
+            )
+            if tabManager.selectedTabId == tab.id {
+                tableMetadata = metadata
+            }
+        }
+    }
+
     func loadTableMetadata(tableName: String, for tab: QueryTab) async {
         if let entry = tableMetadataCache[tab.id],
            entry.tableName == tableName,

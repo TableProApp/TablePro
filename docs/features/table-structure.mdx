@@ -14,7 +14,22 @@ This is a DDL editor with a grid in front of it. Rename a column, add an index, 
 
 Open a table and switch the result view to **Structure**, or right-click it in the sidebar and choose **Show Structure**.
 
-The tabs are **Columns**, **Indexes**, **Foreign Keys**, **Constraints**, **Triggers**, **DDL**, and **Parts** (ClickHouse only); the first five carry item counts. A tab the engine has no concept of is hidden: ClickHouse has no Foreign Keys, Redshift no Triggers, Redis no Constraints. Every grid has a filter field, and clicking a header sorts.
+The tabs are **Properties**, **Columns**, **Indexes**, **Foreign Keys**, **Constraints**, **Triggers**, **DDL**, and **Parts** (ClickHouse only); Columns through Triggers carry item counts. A tab the engine has no concept of is hidden: ClickHouse has no Foreign Keys, Redshift no Triggers, Redis no Constraints. Every grid has a filter field, and clicking a header sorts.
+
+## Properties tab
+
+The table's own row in the catalog: name, schema, size on disk, row count, and the comment. What sits between them is the driver's choice, so PostgreSQL names an owner, a tablespace and a persistence where MySQL names a row format and the next auto-increment value.
+
+<Frame caption="Properties tab on a PostgreSQL table">
+  <img className="block dark:hidden" src="/images/structure-properties.png" alt="A grouped form listing name, schema, owner and tablespace above a comment field holding several lines of JSON" />
+  <img className="hidden dark:block" src="/images/structure-properties-dark.png" alt="A grouped form listing name, schema, owner and tablespace above a comment field holding several lines of JSON" />
+</Frame>
+
+**Comment** is the only editable field. It scrolls rather than clipping, so a long one reads and edits in place. An edit queues with the rest of the structure changes and reaches the server on **Save Changes**.
+
+<Info>
+Comment editing is available for MySQL, MariaDB, PostgreSQL and PGlite, and on those engines for an ordinary or partitioned table. Everywhere else, and on a view, a materialized view or a foreign table, the comment is read-only.
+</Info>
 
 ## Columns tab
 
@@ -141,6 +156,8 @@ MongoDB structure is read-only, and inferred from the collection's first 200 doc
 
 - **Changing a primary key on an existing table** works on MySQL, MariaDB, PostgreSQL, PGlite, SQL Server, DuckDB, Snowflake, and Dameng. Elsewhere the dropdown accepts the edit and the save produces nothing for it: rebuild the table by hand.
 - **Check constraints and generated columns** have no field in the grid. Both show in the DDL tab; change them by running DDL yourself.
+- **A view, a materialized view or a foreign table** keeps a read-only comment on the Properties tab. Each takes its own `COMMENT ON` keyword: run it in the editor.
+- **Renaming a table** is not on the Properties tab. It happens in the sidebar row: see [Table Operations](/features/table-operations).
 - **SQLite**: a column can be added, dropped, and renamed. No other column change generates SQL.
 - **Cassandra / ScyllaDB**: add and drop column only, no index editing, no visual table creation.
 - **Redshift, CockroachDB, BigQuery, Elasticsearch, SurrealDB, Beancount**: structure is read-only.

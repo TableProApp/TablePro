@@ -664,7 +664,8 @@ struct MainEditorContentView: View {
                             connection: connection,
                             databaseName: scope?.database ?? "",
                             schemaName: scope?.schema,
-                            tableName: tableName
+                            tableName: tableName,
+                            isView: tab.tableContext.isView
                         )
                     }
             }

@@ -59,6 +59,11 @@ struct TableStructureLoader {
         return try await perform { try await $0.fetchTriggers(table: table) }
     }
 
+    func metadata() async throws -> TableMetadata {
+        let table = tableName
+        return try await perform { try await $0.fetchTableMetadata(tableName: table) }
+    }
+
     func coreTabs(includingForeignKeys: Bool) async throws -> CoreTabs {
         let table = tableName
         return try await perform { driver in

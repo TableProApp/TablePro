@@ -209,6 +209,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func generateMoveColumnSQL(table: String, column: PluginColumnDefinition, afterColumn: String?) -> String?
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String?
 
+    /// A nil `comment` clears the table's comment. Returning nil means the engine has none, which
+    /// is what keeps the Properties tab's comment field read-only there.
+    func generateSetTableCommentSQL(table: String, comment: String?) -> String?
+
     // Definition SQL for clipboard copy (optional — return nil if not supported)
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String?
     func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String?
@@ -534,6 +538,7 @@ public extension PluginDatabaseDriver {
     func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? { nil }
     func generateMoveColumnSQL(table: String, column: PluginColumnDefinition, afterColumn: String?) -> String? { nil }
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? { nil }
+    func generateSetTableCommentSQL(table: String, comment: String?) -> String? { nil }
 
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? { nil }
     func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String? { nil }

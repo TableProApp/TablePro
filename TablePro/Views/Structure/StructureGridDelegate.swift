@@ -101,7 +101,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
             StructureEditingSupport.updateCheckConstraint(&constraint, at: column, with: newValue ?? "")
             structureChangeManager.updateCheckConstraint(id: constraint.id, with: constraint)
 
-        case .ddl, .parts, .triggers:
+        case .properties, .ddl, .parts, .triggers:
             break
         }
 
@@ -170,7 +170,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
                     structureChangeManager.deleteCheckConstraint(id: constraint.id)
                 }
             }
-        case .parts, .ddl, .triggers:
+        case .properties, .parts, .ddl, .triggers:
             onSelectedRowsChanged?([])
             return
         }
@@ -222,7 +222,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 guard row < structureChangeManager.workingCheckConstraints.count else { continue }
                 copiedItems.append(structureChangeManager.workingCheckConstraints[row])
             }
-        case .ddl, .parts, .triggers:
+        case .properties, .ddl, .parts, .triggers:
             break
         }
 
@@ -315,7 +315,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 structureChangeManager.addCheckConstraint(item.withNewIdentity())
             }
 
-        case .ddl, .parts, .triggers:
+        case .properties, .ddl, .parts, .triggers:
             break
         }
     }
@@ -350,7 +350,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
         case .checkConstraints:
             guard connection.type.supportsCheckConstraintEditing else { return }
             structureChangeManager.addNewCheckConstraint()
-        case .ddl, .parts, .triggers:
+        case .properties, .ddl, .parts, .triggers:
             break
         }
     }
@@ -404,7 +404,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
             guard let original = structureChangeManager.currentCheckConstraints
                 .first(where: { $0.id == working.id }) else { return [] }
             return StructureEditingSupport.checkConstraintModifiedIndices(old: original, new: working)
-        case .ddl, .parts, .triggers:
+        case .properties, .ddl, .parts, .triggers:
             return []
         }
     }
@@ -498,7 +498,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
         case .checkConstraints:
             guard connection.type.supportsCheckConstraintEditing else { return nil }
             label = String(localized: "Add Check Constraint")
-        case .ddl, .parts, .triggers:
+        case .properties, .ddl, .parts, .triggers:
             return nil
         }
 
@@ -551,7 +551,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 let constraint = structureChangeManager.workingCheckConstraints[row]
                 let quoted = driver.quoteIdentifier(constraint.name)
                 definitions.append("CONSTRAINT \(quoted) CHECK (\(constraint.expression))")
-            case .ddl, .parts, .triggers:
+            case .properties, .ddl, .parts, .triggers:
                 break
             }
         }
@@ -640,7 +640,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
                       row < structureChangeManager.workingCheckConstraints.count else { continue }
                 let copy = structureChangeManager.workingCheckConstraints[row]
                 structureChangeManager.addCheckConstraint(copy.withNewIdentity())
-            case .ddl, .parts, .triggers:
+            case .properties, .ddl, .parts, .triggers:
                 break
             }
         }

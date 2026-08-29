@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tab rows in Settings > General > Tabs, wrapping the strip instead of scrolling it. (#2438)
 - Autoscrolling while dragging a tab, so a tab can be moved past the run currently on screen. (#2438)
 - Move Tab to New Window on a tab's right-click menu, and by dragging a tab out of the strip. (#2438)
+- Properties tab in the structure editor, with the table's owner, tablespace, storage and timestamps. (#2555)
+- Editable table comment on the Properties tab for MySQL, MariaDB, PostgreSQL and PGlite. (#2555)
 
 ### Changed
 

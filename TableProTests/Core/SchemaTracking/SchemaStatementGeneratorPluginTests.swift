@@ -21,6 +21,7 @@ private final class MockPluginDriver: PluginDatabaseDriver, @unchecked Sendable 
     var addForeignKeyHandler: ((String, PluginForeignKeyDefinition) -> String?)?
     var dropForeignKeyHandler: ((String, String) -> String?)?
     var modifyPrimaryKeyHandler: ((String, [String], [String]) -> [String]?)?
+    var setTableCommentHandler: ((String, String?) -> String?)?
 
     // MARK: - DDL Schema Generation
 
@@ -54,6 +55,10 @@ private final class MockPluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
     func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? {
         modifyPrimaryKeyHandler?(table, oldColumns, newColumns)
+    }
+
+    func generateSetTableCommentSQL(table: String, comment: String?) -> String? {
+        setTableCommentHandler?(table, comment)
     }
 
     // MARK: - Required Protocol Stubs
@@ -491,5 +496,65 @@ struct SchemaStatementGeneratorPluginTests {
         let stmts = try generator.generate(changes: [])
 
         #expect(stmts.isEmpty)
+    }
+
+    // MARK: - Table Comment
+
+    @Test("Table comment throws when the engine has none")
+    func tableCommentThrowsWhenNil() throws {
+        let mock = MockPluginDriver()
+        let generator = SchemaStatementGenerator(tableName: "users", pluginDriver: mock)
+
+        #expect(throws: (any Error).self) {
+            _ = try generator.generate(changes: [.modifyTableComment(old: nil, new: "hello")])
+        }
+    }
+
+    @Test("Table comment uses plugin SQL and is not destructive")
+    func tableCommentPluginOverride() throws {
+        let mock = MockPluginDriver()
+        mock.setTableCommentHandler = { table, comment in
+            "COMMENT ON TABLE \(table) IS '\(comment ?? "")'"
+        }
+
+        let generator = SchemaStatementGenerator(tableName: "users", pluginDriver: mock)
+        let stmts = try generator.generate(changes: [.modifyTableComment(old: nil, new: "hello")])
+
+        #expect(stmts.count == 1)
+        #expect(stmts[0].sql == "COMMENT ON TABLE users IS 'hello';")
+        #expect(stmts[0].isDestructive == false)
+    }
+
+    @Test("Clearing a table comment passes nil to the plugin")
+    func tableCommentClearPassesNil() throws {
+        let mock = MockPluginDriver()
+        var received: String??
+        mock.setTableCommentHandler = { _, comment in
+            received = .some(comment)
+            return "COMMENT ON TABLE users IS NULL"
+        }
+
+        let generator = SchemaStatementGenerator(tableName: "users", pluginDriver: mock)
+        _ = try generator.generate(changes: [.modifyTableComment(old: "old", new: nil)])
+
+        #expect(received == .some(nil))
+    }
+
+    /// A comment cannot reference a column, so it is safe last and only last: run before a column
+    /// drop it would still succeed, but the ordering that matters is that nothing waits on it.
+    @Test("Table comment is ordered after every structural change")
+    func tableCommentOrderedLast() throws {
+        let mock = MockPluginDriver()
+        mock.setTableCommentHandler = { _, _ in "SET COMMENT" }
+        mock.addColumnHandler = { table, col in "ALTER TABLE \(table) ADD \(col.name)" }
+
+        let generator = SchemaStatementGenerator(tableName: "users", pluginDriver: mock)
+        let stmts = try generator.generate(changes: [
+            .modifyTableComment(old: nil, new: "hello"),
+            .addColumn(makeColumn())
+        ])
+
+        #expect(stmts.count == 2)
+        #expect(stmts[1].sql == "SET COMMENT;")
     }
 }

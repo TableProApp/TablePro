@@ -257,6 +257,19 @@ struct TableStructureView: View {
 
     // MARK: - Toolbar
 
+    /// A view's comment is `COMMENT ON VIEW` on the engines that have one, and a structure tab knows
+    /// only that its object is a view, not whether it is a materialized one, so views stay read-only
+    /// rather than being offered an edit that would run the wrong statement.
+    private var isTableCommentEditable: Bool {
+        guard connection.type.supportsSchemaEditing, connection.type.supportsTableComment else { return false }
+        /// Properties can be selected while the opening fetch is still working through the other
+        /// sub-tabs, and `loadSchemaForEditing` at the end of it re-baselines the change manager,
+        /// which drops every staged edit including a comment typed in the meantime.
+        guard !isInitialLoading, !isReloadingAfterSave else { return false }
+        guard let metadata = session.tableMetadata else { return false }
+        return !session.isView && !metadata.commentIsReadOnly
+    }
+
     private var availableTabs: [StructureTab] {
         var tabs = StructureTab.allCases
         if !connection.type.supportsForeignKeys {
@@ -318,7 +331,7 @@ struct TableStructureView: View {
         case .indexes: return connection.type.supportsAddIndex
         case .foreignKeys: return connection.type.supportsForeignKeys
         case .checkConstraints: return connection.type.supportsCheckConstraintEditing
-        case .ddl, .parts, .triggers: return false
+        case .properties, .ddl, .parts, .triggers: return false
         }
     }
 
@@ -329,7 +342,7 @@ struct TableStructureView: View {
         case .indexes: return connection.type.supportsDropIndex
         case .foreignKeys: return connection.type.supportsForeignKeys
         case .checkConstraints: return connection.type.supportsCheckConstraintEditing
-        case .ddl, .parts, .triggers: return false
+        case .properties, .ddl, .parts, .triggers: return false
         }
     }
 
@@ -343,7 +356,7 @@ struct TableStructureView: View {
             return (String(localized: "Add Foreign Key"), String(localized: "Remove Foreign Key"))
         case .checkConstraints:
             return (String(localized: "Add Check Constraint"), String(localized: "Remove Check Constraint"))
-        case .ddl, .parts, .triggers:
+        case .properties, .ddl, .parts, .triggers:
             return nil
         }
     }
@@ -362,7 +375,7 @@ struct TableStructureView: View {
         case .foreignKeys: return foreignKeys.count
         case .triggers: return triggers.count
         case .checkConstraints: return checkConstraints.count
-        case .ddl, .parts: return nil
+        case .properties, .ddl, .parts: return nil
         }
     }
 
@@ -380,6 +393,19 @@ struct TableStructureView: View {
     @ViewBuilder
     private var tabContent: some View {
         switch selectedTab {
+        case .properties:
+            TablePropertiesView(
+                tableName: tableName,
+                schemaName: schemaName,
+                databaseName: databaseName,
+                metadata: session.tableMetadata,
+                loadError: session.tableMetadataError,
+                isLoading: !tabData.hasData(.properties),
+                isView: session.isView,
+                isCommentEditable: isTableCommentEditable,
+                comment: structureChangeManager.workingTableComment,
+                onCommentChange: { structureChangeManager.setTableComment($0) }
+            )
         case .columns:
             structureGrid
         case .indexes:

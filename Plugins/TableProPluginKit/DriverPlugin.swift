@@ -78,6 +78,11 @@ public protocol DriverPlugin: TableProPlugin {
     static var supportsAddIndex: Bool { get }
     static var supportsDropIndex: Bool { get }
     static var supportsModifyPrimaryKey: Bool { get }
+
+    /// Whether the engine stores a comment on a table that can be written back. False by default so
+    /// a driver that has not implemented `generateSetTableCommentSQL` presents its comment read-only
+    /// instead of staging an edit no statement can carry.
+    static var supportsTableComment: Bool { get }
 }
 
 public extension DriverPlugin {
@@ -170,4 +175,5 @@ public extension DriverPlugin {
     static var supportsAddIndex: Bool { true }
     static var supportsDropIndex: Bool { true }
     static var supportsModifyPrimaryKey: Bool { true }
+    static var supportsTableComment: Bool { false }
 }

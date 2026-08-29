@@ -87,6 +87,7 @@ struct SchemaStatementGenerator {
         var indexAdds: [SchemaChange] = []
         var fkAdds: [SchemaChange] = []
         var constraintAdds: [SchemaChange] = []
+        var commentChanges: [SchemaChange] = []
 
         for change in changes {
             switch change {
@@ -121,11 +122,14 @@ struct SchemaStatementGenerator {
                 indexAdds.append(change)
             case .addForeignKey:
                 fkAdds.append(change)
+            case .modifyTableComment:
+                commentChanges.append(change)
             }
         }
 
         return constraintDeletes + constraintModifies + fkDeletes + indexDeletes + columnDeletes
             + columnModifies + columnAdds + pkChanges + indexAdds + fkAdds + constraintAdds
+            + commentChanges
     }
 
     // MARK: - Statement Generation
@@ -158,7 +162,18 @@ struct SchemaStatementGenerator {
             return generateModifyCheckConstraint(old: old, new: new)
         case .deleteCheckConstraint(let constraint):
             return generateDeleteCheckConstraint(constraint).map { [$0] } ?? []
+        case .modifyTableComment(_, let new):
+            return generateModifyTableComment(new).map { [$0] } ?? []
         }
+    }
+
+    // MARK: - Table Comment
+
+    private func generateModifyTableComment(_ comment: String?) -> SchemaStatement? {
+        guard let sql = pluginDriver.generateSetTableCommentSQL(table: tableName, comment: comment) else {
+            return nil
+        }
+        return SchemaStatement(sql: sql, description: "Change table comment", isDestructive: false)
     }
 
     // MARK: - Column Operations

@@ -410,7 +410,9 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             engine: pluginMeta.engine,
             collation: pluginMeta.collation,
             createTime: pluginMeta.createTime,
-            updateTime: pluginMeta.updateTime
+            updateTime: pluginMeta.updateTime,
+            attributes: pluginMeta.attributes.map(ObjectAttribute.init),
+            commentIsReadOnly: pluginMeta.commentIsReadOnly
         )
     }
 

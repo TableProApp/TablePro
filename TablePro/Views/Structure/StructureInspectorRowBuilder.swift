@@ -20,7 +20,7 @@ internal enum StructureInspectorRowBuilder {
         switch tab {
         case .columns, .indexes, .foreignKeys, .checkConstraints:
             break
-        case .ddl, .parts, .triggers:
+        case .properties, .ddl, .parts, .triggers:
             return nil
         }
 

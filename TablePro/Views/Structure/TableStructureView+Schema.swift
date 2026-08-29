@@ -56,6 +56,19 @@ extension TableStructureView {
     func refreshAfterApply() async {
         isReloadingAfterSave = true
         await reloadCoreTabs()
+        /// Ahead of `loadSchemaForEditing`, and unconditional: a comment change can be saved from
+        /// any sub-tab, and the baseline it was staged against is stale the moment it lands. Leaving
+        /// it to the next visit would show the old comment back in the field until then.
+        /// Only where Properties was opened, which is the only way a comment can have been staged.
+        /// The refetched value is handed to the inspector too: a comment moves without a query, and
+        /// the Table Info panel's cache is stamped with the tab's last execution, so nothing else
+        /// would ever tell it what the save changed.
+        if tabData.hasData(.properties) {
+            await fetchTabData(.properties)
+            if let metadata = session.tableMetadata {
+                coordinator?.adoptTableMetadata(metadata, in: scope)
+            }
+        }
         loadSchemaForEditing()
         await loadTabDataIfNeeded(selectedTab)
 

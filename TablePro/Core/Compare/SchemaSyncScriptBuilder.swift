@@ -151,7 +151,7 @@ internal struct SchemaSyncScriptBuilder {
 
 internal enum SchemaChangeOrdering {
     internal static func sorted(_ changes: [SchemaChange]) -> [SchemaChange] {
-        var buckets: [[SchemaChange]] = Array(repeating: [], count: 10)
+        var buckets: [[SchemaChange]] = Array(repeating: [], count: 11)
         for change in changes {
             buckets[bucket(for: change)].append(change)
         }
@@ -170,6 +170,7 @@ internal enum SchemaChangeOrdering {
         case .addIndex: return 7
         case .addForeignKey: return 8
         case .addCheckConstraint: return 9
+        case .modifyTableComment: return 10
         }
     }
 }

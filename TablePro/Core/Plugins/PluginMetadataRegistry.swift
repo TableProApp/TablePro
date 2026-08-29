@@ -60,6 +60,7 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsAddIndex: Bool = true
         var supportsDropIndex: Bool = true
         var supportsModifyPrimaryKey: Bool = true
+        var supportsTableComment: Bool = false
         var supportsTriggers: Bool = false
         var supportsTriggerEditing: Bool = false
         var supportsCheckConstraints: Bool = false
@@ -581,6 +582,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsAddIndex: driverType.supportsAddIndex,
                 supportsDropIndex: driverType.supportsDropIndex,
                 supportsModifyPrimaryKey: driverType.supportsModifyPrimaryKey,
+                supportsTableComment: driverType.supportsTableComment,
                 supportsTriggers: driverType.supportsTriggers,
                 supportsTriggerEditing: driverType.supportsTriggerEditing,
                 supportsCheckConstraints: driverType.supportsCheckConstraints,

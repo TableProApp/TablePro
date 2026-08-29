@@ -28,6 +28,8 @@ enum SchemaChange: Hashable, Equatable {
 
     case modifyPrimaryKey(old: [String], new: [String])
 
+    case modifyTableComment(old: String?, new: String?)
+
     /// Whether this change is a deletion
     var isDelete: Bool {
         switch self {
@@ -99,6 +101,8 @@ enum SchemaChange: Hashable, Equatable {
             return "Delete check constraint '\(constraint.name)'"
         case .modifyPrimaryKey(let old, let new):
             return "Change primary key from [\(old.joined(separator: ", "))] to [\(new.joined(separator: ", "))]"
+        case .modifyTableComment:
+            return "Change table comment"
         }
     }
 }
@@ -110,4 +114,5 @@ enum SchemaChangeIdentifier: Hashable {
     case foreignKey(UUID)
     case checkConstraint(UUID)
     case primaryKey
+    case tableComment
 }

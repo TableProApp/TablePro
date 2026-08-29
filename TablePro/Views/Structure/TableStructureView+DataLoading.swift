@@ -59,6 +59,25 @@ extension TableStructureView {
     func fetchTabData(_ tab: StructureTab) async {
         do {
             switch tab {
+            /// Kept off `errorMessage`, which replaces the whole structure editor: a catalog this
+            /// one query cannot read must not take Columns, Indexes and DDL down with it.
+            ///
+            /// A failure keeps the last good snapshot and returns without marking the tab fetched,
+            /// so the next visit tries again instead of leaving a table that was reading correctly
+            /// stuck on an error, which is the rule the rest of the app's caches already follow.
+            case .properties:
+                do {
+                    let metadata = try await structureLoader.metadata()
+                    session.tableMetadata = metadata
+                    session.tableMetadataError = nil
+                    structureChangeManager.setTableCommentBaseline(metadata.comment)
+                } catch {
+                    Self.logger.error(
+                        "Failed to load table properties: \(error.localizedDescription, privacy: .public)"
+                    )
+                    session.tableMetadataError = error.localizedDescription
+                    return
+                }
             case .columns:
                 columns = try await structureLoader.columns()
             case .indexes:
@@ -189,6 +208,12 @@ extension TableStructureView {
         tabData.markAllStale()
         partsReloadToken += 1
         await reloadCoreTabs()
+        /// Only for a tab that has already paid for it. Several drivers answer `fetchTableMetadata`
+        /// with a full scan, so refreshing Properties for a table nobody opened it on would put that
+        /// scan on every Cmd+R.
+        if tabData.hasData(.properties) {
+            await fetchTabData(.properties)
+        }
         if selectedTab == .ddl {
             await fetchTabData(.ddl)
         }

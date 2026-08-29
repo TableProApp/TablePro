@@ -9,6 +9,7 @@ import Foundation
 
 /// Tab selection for structure view
 enum StructureTab: String, CaseIterable, Hashable {
+    case properties
     case columns
     case indexes
     case foreignKeys
@@ -19,6 +20,7 @@ enum StructureTab: String, CaseIterable, Hashable {
 
     var displayName: String {
         switch self {
+        case .properties: String(localized: "Properties")
         case .columns: String(localized: "Columns")
         case .indexes: String(localized: "Indexes")
         case .foreignKeys: String(localized: "Foreign Keys")

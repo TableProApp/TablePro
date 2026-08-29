@@ -8,7 +8,7 @@
 import Foundation
 
 /// Represents table-level metadata fetched from database
-struct TableMetadata {
+struct TableMetadata: Sendable {
     let tableName: String
     let dataSize: Int64?
     let indexSize: Int64?
@@ -20,6 +20,14 @@ struct TableMetadata {
     let collation: String?       // MySQL/MariaDB only
     let createTime: Date?
     let updateTime: Date?
+
+    /// Whatever else the driver wants to name: owner, tablespace, persistence, row format. The app
+    /// models none of it, so a new engine adds a property without a change here.
+    var attributes: [ObjectAttribute] = []
+
+    /// The driver's answer for this relation, not for the engine, and true unless a driver lowers
+    /// it: a driver that cannot establish the relation kind offers no edit at all.
+    var commentIsReadOnly: Bool = true
 
     /// Format a size in bytes to human readable format
     static func formatSize(_ bytes: Int64?) -> String {

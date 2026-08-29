@@ -626,9 +626,16 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
                 pg_table_size(c.oid) AS data_size,
                 pg_indexes_size(c.oid) AS index_size,
                 c.reltuples::bigint AS row_count,
-                obj_description(c.oid, 'pg_class') AS comment
+                obj_description(c.oid, 'pg_class') AS comment,
+                pg_get_userbyid(c.relowner) AS owner,
+                COALESCE(t.spcname, dt.spcname) AS tablespace,
+                c.relpersistence,
+                c.relkind
             FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
+            LEFT JOIN pg_tablespace t ON t.oid = c.reltablespace
+            LEFT JOIN pg_database d ON d.datname = current_database()
+            LEFT JOIN pg_tablespace dt ON dt.oid = d.dattablespace
             WHERE c.relname = '\(escapeLiteral(table))'
               AND n.nspname = '\(schemaLiteral)'
             """
@@ -642,6 +649,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let indexSize = row.count > 2 ? Int64(row[2].asText ?? "0") : nil
         let rowCount = row.count > 3 ? Int64(row[3].asText ?? "0") : nil
         let comment = row.count > 4 ? row[4].asText : nil
+        let relkind = row.count > 8 ? row[8].asText : nil
 
         return PluginTableMetadata(
             tableName: table,
@@ -650,7 +658,14 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             totalSize: totalSize,
             rowCount: rowCount,
             comment: comment?.isEmpty == true ? nil : comment,
-            engine: "PostgreSQL"
+            engine: "PostgreSQL",
+            attributes: PostgreSQLTableAttributes.build(
+                owner: row.count > 5 ? row[5].asText : nil,
+                tablespace: row.count > 6 ? row[6].asText : nil,
+                persistence: row.count > 7 ? row[7].asText : nil,
+                relkind: relkind
+            ),
+            commentIsReadOnly: PostgreSQLTableAttributes.commentIsReadOnly(relkind: relkind)
         )
     }
 
@@ -1274,6 +1289,15 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func generateDropColumnSQL(table: String, columnName: String) -> String? {
         "ALTER TABLE \(qualifiedTableName(table)) DROP COLUMN \(quoteIdentifier(columnName))"
+    }
+
+    /// Dollar-quoted rather than `'...'`: a comment is arbitrary user text, and an ordinary literal
+    /// changes meaning with `standard_conforming_strings`.
+    func generateSetTableCommentSQL(table: String, comment: String?) -> String? {
+        guard let comment, !comment.isEmpty else {
+            return "COMMENT ON TABLE \(qualifiedTableName(table)) IS NULL"
+        }
+        return "COMMENT ON TABLE \(qualifiedTableName(table)) IS \(PostgreSQLObjectQueries.dollarQuoted(comment))"
     }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {

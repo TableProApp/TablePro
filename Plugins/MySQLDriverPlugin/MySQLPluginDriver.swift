@@ -607,25 +607,27 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return PluginTableMetadata(tableName: table)
         }
 
-        let engine = row[safe: 1]?.asText
-        let rowCount = (row[safe: 4]?.asText).flatMap { Int64($0) }
-        let dataSize = (row[safe: 6]?.asText).flatMap { Int64($0) }
-        let indexSize = (row[safe: 8]?.asText).flatMap { Int64($0) }
-        let comment = row[safe: 17]?.asText
+        let status = MySQLTableStatus(row: row)
 
         let totalSize: Int64? = {
-            guard let data = dataSize, let index = indexSize else { return nil }
+            guard let data = status.dataSize, let index = status.indexSize else { return nil }
             return data + index
         }()
 
         return PluginTableMetadata(
             tableName: table,
-            dataSize: dataSize,
-            indexSize: indexSize,
+            dataSize: status.dataSize,
+            indexSize: status.indexSize,
             totalSize: totalSize,
-            rowCount: rowCount,
-            comment: comment?.isEmpty == true ? nil : comment,
-            engine: engine
+            avgRowLength: status.avgRowLength,
+            rowCount: status.rowCount,
+            comment: status.comment,
+            engine: status.engine,
+            collation: status.collation,
+            createTime: status.createTime,
+            updateTime: status.updateTime,
+            attributes: status.attributes,
+            commentIsReadOnly: status.commentIsReadOnly
         )
     }
 
@@ -897,6 +899,12 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func generateDropColumnSQL(table: String, columnName: String) -> String? {
         "ALTER TABLE \(quoteIdentifier(table)) DROP COLUMN \(quoteIdentifier(columnName))"
+    }
+
+    /// MySQL has no way to unset a table comment, so clearing one writes the empty string, which is
+    /// what `information_schema` reports for a table that never had one.
+    func generateSetTableCommentSQL(table: String, comment: String?) -> String? {
+        "ALTER TABLE \(quoteIdentifier(table)) COMMENT = '\(escapeStringLiteral(comment ?? ""))'"
     }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {

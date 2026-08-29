@@ -43,6 +43,11 @@ internal final class StructureEditingSession {
     internal let schemaName: String?
     internal let tableName: String
 
+    /// Whether this tab was opened on a view rather than a table. The Properties tab reads it to
+    /// keep the comment read-only: clearing or setting one on a view is `COMMENT ON VIEW`, and the
+    /// tab carries no object type finer than this flag to tell a view from a materialized one.
+    internal let isView: Bool
+
     internal let changeManager = StructureChangeManager()
 
     /// Built here, not seeded into the view's `@State`. `State(wrappedValue:)` runs only the first
@@ -63,6 +68,11 @@ internal final class StructureEditingSession {
     internal var checkConstraints: [CheckConstraintInfo] = []
     internal var triggers: [TriggerInfo] = []
     internal var ddlStatement: String = ""
+    internal var tableMetadata: TableMetadata?
+
+    /// Held apart from the view's `errorMessage`, which replaces every sub-tab. A catalog the
+    /// properties query cannot read stops that one tab, not the whole structure editor.
+    internal var tableMetadataError: String?
     internal var tabData = StructureTabDataState()
 
     /// Where the user was. Held here rather than in the view because two tabs on one table are two
@@ -104,13 +114,15 @@ internal final class StructureEditingSession {
         connection: DatabaseConnection,
         databaseName: String,
         schemaName: String?,
-        tableName: String
+        tableName: String,
+        isView: Bool = false
     ) {
         self.identity = identity
         self.connection = connection
         self.databaseName = databaseName
         self.schemaName = schemaName
         self.tableName = tableName
+        self.isView = isView
         gridDelegate = StructureGridDelegate(
             structureChangeManager: changeManager,
             selectedTab: .columns,

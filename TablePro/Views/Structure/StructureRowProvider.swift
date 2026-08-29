@@ -72,7 +72,7 @@ final class StructureRowProvider {
                 String(localized: "Expression"),
                 String(localized: "Columns")
             ]
-        case .ddl, .parts, .triggers:
+        case .properties, .ddl, .parts, .triggers:
             return []
         }
     }
@@ -94,7 +94,7 @@ final class StructureRowProvider {
             return [3]
         case .foreignKeys, .checkConstraints:
             return []
-        case .ddl, .parts, .triggers:
+        case .properties, .ddl, .parts, .triggers:
             return []
         }
     }
@@ -120,7 +120,7 @@ final class StructureRowProvider {
                 result[index] = Self.generationOptions
             }
             return result
-        case .checkConstraints, .ddl, .parts, .triggers:
+        case .properties, .checkConstraints, .ddl, .parts, .triggers:
             return [:]
         }
     }
@@ -138,7 +138,7 @@ final class StructureRowProvider {
         case .columns:
             if let i = orderedColumnFields.firstIndex(of: .type) { return [i] }
             return []
-        case .indexes, .foreignKeys, .checkConstraints, .ddl, .parts, .triggers:
+        case .properties, .indexes, .foreignKeys, .checkConstraints, .ddl, .parts, .triggers:
             return []
         }
     }
@@ -234,7 +234,7 @@ final class StructureRowProvider {
                 return nil
             }
             return Self.row(for: original)
-        case .ddl, .parts, .triggers:
+        case .properties, .ddl, .parts, .triggers:
             return nil
         }
     }
@@ -268,7 +268,7 @@ final class StructureRowProvider {
             return changeManager.workingCheckConstraints.enumerated().map { index, constraint in
                 IndexedRow(sourceIndex: index, row: row(for: constraint))
             }
-        case .ddl, .parts, .triggers:
+        case .properties, .ddl, .parts, .triggers:
             return []
         }
     }

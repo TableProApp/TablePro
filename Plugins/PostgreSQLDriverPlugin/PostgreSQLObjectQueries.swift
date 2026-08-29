@@ -12,6 +12,23 @@ public enum PostgreSQLObjectQueries {
         value.replacingOccurrences(of: "'", with: "''")
     }
 
+    /// A literal that means the same thing whatever `standard_conforming_strings` is set to.
+    ///
+    /// An ordinary `'...'` literal only needs its apostrophes doubled while that setting is on.
+    /// With it off, PostgreSQL reads backslash escapes inside one, so a backslash placed in front
+    /// of a doubled apostrophe consumes the first half and the second half closes the literal, and
+    /// whatever follows is parsed as SQL. A dollar-quoted body is not scanned for escapes at all,
+    /// so the setting cannot change what it means. The tag grows until it does not occur in the
+    /// value, which is the only way the body can end early.
+    public static func dollarQuoted(_ value: String) -> String {
+        let body = value.replacingOccurrences(of: "\0", with: "")
+        var tag = "tablepro"
+        while body.contains("$\(tag)$") {
+            tag += "_"
+        }
+        return "$\(tag)$\(body)$\(tag)$"
+    }
+
     /// `prokind` arrived in PostgreSQL 11, which is also the first release with procedures.
     public static let prokindMinimumServerVersion: Int32 = 110_000
 

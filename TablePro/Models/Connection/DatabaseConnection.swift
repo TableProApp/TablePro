@@ -275,6 +275,10 @@ extension DatabaseType {
     var supportsModifyPrimaryKey: Bool {
         PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsModifyPrimaryKey ?? true
     }
+
+    var supportsTableComment: Bool {
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.supportsTableComment ?? false
+    }
 }
 
 // MARK: - External Access

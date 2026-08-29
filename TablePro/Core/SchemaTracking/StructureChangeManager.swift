@@ -26,12 +26,18 @@ final class StructureChangeManager: ChangeManaging {
     private(set) var currentCheckConstraints: [EditableCheckConstraintDefinition] = []
     private(set) var currentPrimaryKey: [String] = []
 
+    /// Normalised to the empty string, never nil. A table with no comment and a table whose comment
+    /// is empty are the same table on every engine that has one, and keeping both spellings would
+    /// stage a change the moment the field is focused and left alone.
+    private(set) var currentTableComment: String = ""
+
     // Working state (includes uncommitted changes + placeholders)
     var workingColumns: [EditableColumnDefinition] = []
     var workingIndexes: [EditableIndexDefinition] = []
     var workingForeignKeys: [EditableForeignKeyDefinition] = []
     var workingCheckConstraints: [EditableCheckConstraintDefinition] = []
     var workingPrimaryKey: [String] = []
+    private(set) var workingTableComment: String = ""
 
     var tableName: String?
 
@@ -141,6 +147,59 @@ final class StructureChangeManager: ChangeManaging {
         workingForeignKeys = currentForeignKeys
         workingCheckConstraints = currentCheckConstraints
         workingPrimaryKey = currentPrimaryKey
+        workingTableComment = currentTableComment
+    }
+
+    /// Adopted separately from `loadSchema` because the table's comment arrives from a different
+    /// query than its columns. Folding it into `loadSchema` would mean re-baselining the whole
+    /// editor when the metadata lands, which discards every staged ALTER.
+    ///
+    /// What the user typed is left alone: they are mid-edit, and a refresh that means to replace it
+    /// goes through `discardChanges` first. The staged change is re-cut against the new baseline
+    /// even so, because it carries the value the server is being asked to move away from, and a
+    /// baseline that has caught up with the edit means there is nothing left to write.
+    func setTableCommentBaseline(_ comment: String?) {
+        currentTableComment = comment ?? ""
+        guard pendingChanges[.tableComment] != nil else {
+            workingTableComment = currentTableComment
+            return
+        }
+        restageTableComment()
+    }
+
+    /// One undo step per editing episode, not per keystroke. The comment field writes on every
+    /// character, and a per-character entry would fill all 100 levels of undo from one paragraph and
+    /// evict the column edits staged beside it. The text view keeps its own undo while it has focus.
+    ///
+    /// Replaying an undo or a redo always registers, and registers the value being replaced rather
+    /// than the baseline. Coalescing there instead would skip the registration that becomes the
+    /// redo, because a staged change is exactly what an undo is undoing, and Cmd+Shift+Z would do
+    /// nothing after a comment edit.
+    func setTableComment(_ comment: String) {
+        guard comment != workingTableComment else { return }
+        let isReplaying = undoManager.isUndoing || undoManager.isRedoing
+        if isReplaying || pendingChanges[.tableComment] == nil {
+            let inverse = isReplaying ? workingTableComment : currentTableComment
+            registerUndo(String(localized: "Change Table Comment")) { target in
+                target.setTableComment(inverse)
+            }
+        }
+        workingTableComment = comment
+        restageTableComment()
+    }
+
+    private func restageTableComment() {
+        if workingTableComment == currentTableComment {
+            pendingChanges.removeValue(forKey: .tableComment)
+            untrackChangeKey(.tableComment)
+        } else {
+            pendingChanges[.tableComment] = .modifyTableComment(
+                old: currentTableComment.isEmpty ? nil : currentTableComment,
+                new: workingTableComment.isEmpty ? nil : workingTableComment
+            )
+            trackChangeKey(.tableComment)
+        }
+        validate()
     }
 
     private func trackChangeKey(_ key: SchemaChangeIdentifier) {
@@ -397,7 +456,7 @@ final class StructureChangeManager: ChangeManaging {
         case .checkConstraints:
             guard row < workingCheckConstraints.count else { return }
             key = .checkConstraint(workingCheckConstraints[row].id)
-        case .ddl, .parts, .triggers:
+        case .properties, .ddl, .parts, .triggers:
             return
         }
         guard pendingChanges[key]?.isDelete == true else { return }
@@ -663,7 +722,7 @@ final class StructureChangeManager: ChangeManaging {
             return rowState(at: row, using: Self.foreignKeyOperations)
         case .checkConstraints:
             return rowState(at: row, using: Self.checkConstraintOperations)
-        case .ddl, .parts, .triggers:
+        case .properties, .ddl, .parts, .triggers:
             return (false, false)
         }
     }

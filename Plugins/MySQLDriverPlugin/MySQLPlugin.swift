@@ -111,6 +111,7 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsCheckConstraints = true
     static let supportsCheckConstraintEditing = true
     static let supportsGeneratedColumns = true
+    static let supportsTableComment = true
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         MySQLPluginDriver(config: config)

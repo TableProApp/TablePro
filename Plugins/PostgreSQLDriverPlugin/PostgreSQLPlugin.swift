@@ -97,6 +97,7 @@ final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsCheckConstraints = true
     static let supportsCheckConstraintEditing = true
     static let supportsGeneratedColumns = true
+    static let supportsTableComment = true
 
     static let sqlDialect: SQLDialectDescriptor? = PostgreSQLDialect.descriptor
 
