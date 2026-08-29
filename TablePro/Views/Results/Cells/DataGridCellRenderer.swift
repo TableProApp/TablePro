@@ -74,8 +74,9 @@ final class DataGridCellRenderer {
             ? (CTLineCreateTruncatedLine(fullLine, Double(availableWidth), .end, ellipsis) ?? ellipsis)
             : fullLine
 
-        let font = appearance.font
-        let baselineOffset = (rect.height - font.ascender + font.descender - font.leading) / 2 + font.ascender
+        let baselineOffset = DataGridCellTextGeometry.baselineY(
+            rowHeight: rect.height, font: appearance.font
+        )
 
         context.saveGState()
         context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)

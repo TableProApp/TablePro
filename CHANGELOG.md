@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Inline cell editor opening taller than the row and shifting a single-line value instead of overlaying it.
 - Parse error on any MongoDB filter written in shell syntax, such as `db.orders.find({status: 1})`.
 - MongoDB `.sort()` and `.projection()` silently ignored when written with unquoted keys.
 - Compare & Sync unable to drop an overloaded PostgreSQL routine, or any trigger.

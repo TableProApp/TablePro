@@ -8,6 +8,8 @@ import AppKit
 @MainActor
 final class CellOverlayEditor: CellOverlayBase, NSTextViewDelegate {
     private var editorTextView: OverlayTextView?
+    private var editorScrollView: NSScrollView?
+    private var editedCellFrame: NSRect = .zero
     private var initialValue: String = ""
 
     var onCommit: ((_ row: Int, _ columnIndex: Int, _ newValue: String) -> Void)?
@@ -27,19 +29,23 @@ final class CellOverlayEditor: CellOverlayBase, NSTextViewDelegate {
         guard let window = tableView.window else { return }
 
         let frame = Self.overlayFrame(for: cellFrame, value: value)
+        let font = ThemeEngine.shared.valueFont
         let containerView = Self.makeContainer(frame: frame)
-        let scrollView = Self.makeScrollView(in: containerView)
+        let scrollView = Self.makeScrollView(
+            in: containerView, scrollsVertically: frame.height > cellFrame.height
+        )
 
         let textView = OverlayTextView(frame: scrollView.bounds)
         textView.overlayEditor = self
         textView.isEditable = true
         textView.isRichText = false
         textView.allowsUndo = true
-        textView.font = ThemeEngine.shared.valueFont
+        textView.font = font
         textView.textColor = .labelColor
         textView.backgroundColor = .textBackgroundColor
         textView.focusRingType = .none
         Self.applyCellTextLayout(to: textView)
+        Self.configureCellTextGeometry(of: textView, rowHeight: cellFrame.height, font: font)
         textView.delegate = self
         textView.string = value
         textView.selectAll(nil)
@@ -49,6 +55,8 @@ final class CellOverlayEditor: CellOverlayBase, NSTextViewDelegate {
 
         initialValue = value
         editorTextView = textView
+        editorScrollView = scrollView
+        editedCellFrame = cellFrame
 
         install(in: tableView, row: row, column: column, columnIndex: columnIndex, container: containerView)
         window.makeFirstResponder(textView)
@@ -66,12 +74,28 @@ final class CellOverlayEditor: CellOverlayBase, NSTextViewDelegate {
         let dismissColumnIndex = columnIndex
 
         editorTextView = nil
+        editorScrollView = nil
+        editedCellFrame = .zero
         initialValue = ""
         removeOverlay()
 
         if commit, newValue != originalValue {
             onCommit?(dismissRow, dismissColumnIndex, newValue)
         }
+    }
+
+    /// Option+Return and pasted text can turn a single-line edit into a multiline one after
+    /// the overlay opened, and the row-height overlay would clip the new lines with no
+    /// affordance that they exist. The frame follows the text, exactly as it would have been
+    /// framed had the value arrived that way.
+    func textDidChange(_ notification: Notification) {
+        guard let textView = editorTextView, let container = containerView else { return }
+        let frame = Self.overlayFrame(for: editedCellFrame, value: textView.string)
+        guard frame != container.frame else { return }
+        container.frame = frame
+        let grew = frame.height > editedCellFrame.height
+        editorScrollView?.hasVerticalScroller = grew
+        editorScrollView?.verticalScrollElasticity = grew ? .automatic : .none
     }
 
     func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {

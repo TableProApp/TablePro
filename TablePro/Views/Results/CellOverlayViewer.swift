@@ -21,17 +21,21 @@ final class CellOverlayViewer: CellOverlayBase, NSTextViewDelegate {
         guard let window = tableView.window else { return }
 
         let frame = Self.overlayFrame(for: cellFrame, value: value)
+        let font = ThemeEngine.shared.valueFont
         let containerView = Self.makeContainer(frame: frame)
-        let scrollView = Self.makeScrollView(in: containerView)
+        let scrollView = Self.makeScrollView(
+            in: containerView, scrollsVertically: frame.height > cellFrame.height
+        )
 
         let textView = NSTextView(frame: scrollView.bounds)
         textView.isEditable = false
         textView.isSelectable = true
         textView.isRichText = false
-        textView.font = ThemeEngine.shared.valueFont
+        textView.font = font
         textView.textColor = .labelColor
         textView.backgroundColor = .textBackgroundColor
         Self.applyCellTextLayout(to: textView)
+        Self.configureCellTextGeometry(of: textView, rowHeight: cellFrame.height, font: font)
         textView.delegate = self
         textView.string = value
         textView.selectAll(nil)

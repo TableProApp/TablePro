@@ -86,22 +86,56 @@ class CellOverlayBase: NSObject {
         onRemove?()
     }
 
+    static let maximumOverlayHeight: CGFloat = 120
+
+    /// A single-line value gets exactly the cell it is editing, which is what keeps the
+    /// glyphs from moving when the overlay opens. Only a value that actually breaks into
+    /// lines grows, and its height budget comes from the same geometry the text view is
+    /// configured with: `textContainerInset` is symmetric, so the content pays the top
+    /// inset twice.
     static func overlayFrame(for cellFrame: NSRect, value: String) -> NSRect {
-        let lineHeight = ThemeEngine.shared.dataGridFonts.regular.boundingRectForFont.height + 4
-        var newlineCount = 0
-        for scalar in value.unicodeScalars where scalar == "\n" {
-            newlineCount += 1
-        }
-        let lineCount = CGFloat(newlineCount + 1)
-        let contentHeight = max(lineCount * lineHeight + 8, cellFrame.height)
-        let height = min(max(contentHeight, cellFrame.height), 120)
+        let breaks = lineBreakCount(in: value)
+        guard breaks > 0 else { return cellFrame }
+
+        let font = ThemeEngine.shared.valueFont
+        let inset = DataGridCellTextGeometry.textContainerTopInset(
+            rowHeight: cellFrame.height, font: font
+        )
+        let lineCount = CGFloat(breaks + 1)
+        let contentHeight = lineCount * DataGridCellTextGeometry.lineHeight(for: font) + 2 * inset
+        let height = min(max(contentHeight, cellFrame.height), maximumOverlayHeight)
         return NSRect(x: cellFrame.origin.x, y: cellFrame.origin.y, width: cellFrame.width, height: height)
+    }
+
+    /// Counts the breaks TextKit lays out, not just LF: a lone CR, NEL, or a Unicode line or
+    /// paragraph separator each start a new line fragment, and CRLF is one break. Counting
+    /// only "\n" classified a "line1\rline2" value as single-line, which sized the overlay
+    /// to one row and hid the second line behind it.
+    static func lineBreakCount(in value: String) -> Int {
+        var count = 0
+        var previousWasCarriageReturn = false
+        for scalar in value.unicodeScalars {
+            switch scalar.value {
+            case 0x0A:
+                if !previousWasCarriageReturn { count += 1 }
+                previousWasCarriageReturn = false
+            case 0x0D:
+                count += 1
+                previousWasCarriageReturn = true
+            case 0x85, 0x2028, 0x2029:
+                count += 1
+                previousWasCarriageReturn = false
+            default:
+                previousWasCarriageReturn = false
+            }
+        }
+        return count
     }
 
     static func makeContainer(frame: NSRect) -> CellOverlayContainerView {
         let container = CellOverlayContainerView(frame: frame)
         container.wantsLayer = true
-        container.layer?.borderWidth = 2
+        container.layer?.borderWidth = 1
         container.layer?.cornerRadius = 2
         container.layer?.masksToBounds = true
         container.applyLayerColors()
@@ -130,16 +164,30 @@ class CellOverlayBase: NSObject {
         textView.textContainer?.containerSize = unbounded
     }
 
-    static func makeScrollView(in container: NSView) -> NSScrollView {
+    /// A row-height overlay holding a font taller than the row would otherwise show a
+    /// vertical scroller and scroll its own descenders; a single-line value has nothing to
+    /// scroll to, so the vertical axis is shut off entirely.
+    static func makeScrollView(in container: NSView, scrollsVertically: Bool) -> NSScrollView {
         let scrollView = NSScrollView(frame: container.bounds)
         scrollView.autoresizingMask = [.width, .height]
-        scrollView.hasVerticalScroller = true
+        scrollView.hasVerticalScroller = scrollsVertically
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = true
         scrollView.backgroundColor = .textBackgroundColor
+        if !scrollsVertically {
+            scrollView.verticalScrollElasticity = .none
+        }
         return scrollView
+    }
+
+    static func configureCellTextGeometry(of textView: NSTextView, rowHeight: CGFloat, font: NSFont) {
+        textView.textContainer?.lineFragmentPadding = DataGridMetrics.cellHorizontalInset
+        textView.textContainerInset = NSSize(
+            width: 0,
+            height: DataGridCellTextGeometry.textContainerTopInset(rowHeight: rowHeight, font: font)
+        )
     }
 
     private func installDismissObservers() {
