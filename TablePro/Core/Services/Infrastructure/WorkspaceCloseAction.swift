@@ -180,6 +180,16 @@ internal enum WorkspaceCloseAction {
         guard !victims.isEmpty else { return everything }
 
         var closable: Set<UUID> = []
+        /// What each window was showing before it was brought forward to ask. A dirty split
+        /// connection reveals more than one of them, and the caller can only put one back, so an
+        /// abandoned close left the others switched to a connection the user never chose.
+        var revealed: [(host: MainSplitViewController, shown: UUID?)] = []
+        func restoreRevealed() {
+            for entry in revealed {
+                entry.host.workspaces.select(entry.shown)
+            }
+        }
+
         for coordinator in coordinators {
             let owned = victims.filter { victim in
                 coordinator.tabManager.tabs.contains { $0.id == victim.id }
@@ -193,9 +203,13 @@ internal enum WorkspaceCloseAction {
                 closable.formUnion(owned.map(\.id))
                 continue
             }
+            if let host = coordinator.splitViewController {
+                revealed.append((host, host.workspaces.selectedConnectionId))
+            }
             reveal(workspace, in: coordinator)
             switch await actions.resolveUnsavedWork(in: owned) {
             case .cancel:
+                restoreRevealed()
                 return nil
             case .close(let resolved):
                 closable.formUnion(resolved)
