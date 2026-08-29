@@ -136,8 +136,19 @@ internal extension MainSplitViewController {
                 return EditorTabDetachPolicy.canDetach(
                     tabCount: sessionState.tabManager.tabs.count,
                     hasUnsavedWork: sessionState.coordinator.hasUnsavedWork(forTab: id),
-                    isBusy: sessionState.coordinator.tabExecution.isExecuting(id),
-                    isConnected: DatabaseManager.shared.activeSessions[workspace.connectionId]?.driver != nil
+                    /// `isBusy`, never `isExecuting`. Work that cannot claim the tab still runs on
+                    /// it: Fetch All registers unclaimed work, and an exact row count lives in the
+                    /// tab's own pagination state. Moving a tab in either of those leaves the
+                    /// copied `isLoadingMore` or `isCountingExact` raised in the new window with
+                    /// the completion still owned by the old one, so it never comes down.
+                    isBusy: sessionState.coordinator.tabExecution.isBusy(id)
+                        || sessionState.tabManager.tabs.first { $0.id == id }?.pagination.isBusy == true,
+                    /// `reportedStatus`, never the driver handle. An installed driver is a handle,
+                    /// not a live connection: it stays put through a reconnect and after the health
+                    /// monitor gives up, so reading it moved tabs into windows that could not use
+                    /// them.
+                    isConnected: DatabaseManager.shared.activeSessions[workspace.connectionId]?
+                        .reportedStatus.isConnected == true
                 )
             },
             /// The resolver's description, not the drawn title: a table tab carries its database

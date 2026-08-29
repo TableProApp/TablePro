@@ -52,8 +52,48 @@ extension MainSplitViewController {
             WindowManager.shared.closeWindow(for: connectionId)
             return true
         }
+        /// A window that exists only to hold a tab moved out of another one closes with that tab.
+        /// `closeTab` deliberately leaves a window standing when its last tab goes, because the
+        /// connection is still open in it and its object browser is still useful; that is the right
+        /// answer for the window a connection lives in and the wrong one here, where Close would
+        /// empty the window and pressing Close again would take the connection down in both.
+        ///
+        /// It still goes through `closeTabAwaiting`, which is the primitive Cmd+W is required to
+        /// keep. Skipping to `super.performClose` closed the window over a save prompt that was
+        /// never shown and never reached Recently Closed Tabs. The window closes only once the tab
+        /// actually went, so Cancel at the prompt leaves both standing.
+        if isDetachedSingleTabWindow, let selected = workspaces.selected?.sessionState?.tabManager.selectedTab {
+            Task { @MainActor [weak self] in
+                await actions.closeTabAwaiting(id: selected.id)
+                guard let self,
+                      self.workspaces.selected?.sessionState?.tabManager.tabs.isEmpty == true,
+                      let workspace = self.workspaces.selected
+                else { return }
+                /// Asked again after the await. The save sheet can stand for as long as the user
+                /// likes, and the window this tab was moved out of can close underneath it: closing
+                /// then takes the connection's last window with it, which disconnects the session
+                /// and skips the whole-window confirmation that close would otherwise raise.
+                guard WindowManager.shared.workspaces(for: workspace.connectionId).count > 1 else {
+                    return
+                }
+                self.view.window?.close()
+            }
+            return true
+        }
         actions.closeTab()
         return true
+    }
+
+    /// The window built to hold a moved tab, now down to that one tab, with the connection still
+    /// hosted elsewhere. `hostsDetachedTab` is what separates it from the window it came from,
+    /// which can be in the identical state and must keep the ordinary last-tab behaviour.
+    private var isDetachedSingleTabWindow: Bool {
+        guard hostsDetachedTab,
+              workspaces.count == 1,
+              let workspace = workspaces.selected,
+              workspace.sessionState?.tabManager.tabs.count == 1
+        else { return false }
+        return WindowManager.shared.workspaces(for: workspace.connectionId).count > 1
     }
 
     /// The contextual menu on a rail row offers this too, and the HIG requires every context-menu

@@ -101,6 +101,13 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     /// leaves one live arm per call behind until the next change wakes them all. These two say
     /// whether the live arm still watches the right tab manager, so a repeated call is free and
     /// only a workspace switch or a fired arm registers again.
+    /// Set on the window built to hold a tab moved out of another one, and never on the window it
+    /// came from. With exactly two tabs open, tearing one off leaves both windows holding one
+    /// workspace and one tab with the connection hosted twice, so a test on that state alone is
+    /// true of the source as well and Cmd+W there closed the window instead of leaving the
+    /// connection's own window standing.
+    var hostsDetachedTab = false
+
     var tabStripObservationIsArmed = false
     var tabStripObservedManager: ObjectIdentifier?
 

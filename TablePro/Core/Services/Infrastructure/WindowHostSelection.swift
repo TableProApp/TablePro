@@ -17,8 +17,16 @@ internal enum WindowHostSelection {
         hostedConnections: [[UUID]],
         frontmostIndex: Int?
     ) -> Int? {
-        if let owning = hostedConnections.firstIndex(where: { $0.contains(connectionId) }) {
-            return owning
+        let owning = hostedConnections.indices.filter { hostedConnections[$0].contains(connectionId) }
+        if owning.count > 1, let frontmostIndex, owning.contains(frontmostIndex) {
+            /// A tab moved into its own window leaves the connection hosted twice, and the list
+            /// comes from a dictionary, so "the first one that has it" is arbitrary. A Create Table
+            /// or an object source opened from the detached window would then append to, and focus,
+            /// the window it was not invoked from.
+            return frontmostIndex
+        }
+        if let first = owning.first {
+            return first
         }
         guard let frontmostIndex, hostedConnections.indices.contains(frontmostIndex) else {
             return hostedConnections.isEmpty ? nil : hostedConnections.startIndex

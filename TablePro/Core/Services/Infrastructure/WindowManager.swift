@@ -89,7 +89,11 @@ internal final class WindowManager {
     /// Refused for a window's last connection, where it would close the window and open an
     /// identical one. The rail hides the command in that case rather than dimming it.
     internal func canMoveToNewWindow(connectionId: UUID) -> Bool {
-        guard let host = hosts().first(where: { $0.workspaces.contains(connectionId) }) else { return false }
+        let owning = hosts().filter { $0.workspaces.contains(connectionId) }
+        /// Withheld while the connection is split across windows by a detached tab. Both this and
+        /// `moveToNewWindow` resolve the host by connection id alone, so with two of them the
+        /// command is offered in one rail and acts on the other's workspace.
+        guard owning.count == 1, let host = owning.first else { return false }
         return host.workspaces.count > 1
     }
 
@@ -143,9 +147,13 @@ internal final class WindowManager {
             tabTitle: tab.title,
             intent: .openContent
         )
+        /// Enriched, not raw. A query tab's live caret and selection are held by the coordinator
+        /// that has it mounted and are written onto the tab only for persistence, so moving the raw
+        /// value drops the user's position in the editor.
+        let moved = sourceState.coordinator.enrichedForPersistence(tab)
         let state = SessionStateFactory.create(connection: connection, payload: nil)
-        state.tabManager.tabs = [tab]
-        state.tabManager.selectedTabId = tab.id
+        state.tabManager.tabs = [moved]
+        state.tabManager.selectedTabId = moved.id
 
         /// The rows the tab already loaded live in its `TabSession`, which belongs to the
         /// coordinator's registry rather than to the tab. Without handing it over the new window
@@ -154,6 +162,14 @@ internal final class WindowManager {
         if let liveSession = sourceState.coordinator.tabSessionRegistry.session(for: tabId) {
             state.coordinator.tabSessionRegistry.register(liveSession)
         }
+
+        /// The destination has to be told a tab arrived. Its coordinator was built with no payload
+        /// and `selectedTabId` is set before anything observes the manager, so the switch that
+        /// normally prepares an incoming tab never runs: `toolbarState.isTableTab` stayed false and
+        /// `changeManager` kept empty table, column and primary-key metadata, which leaves Find and
+        /// Filter disabled and a later edit unable to name the row it is saving. This is that same
+        /// preparation, with no outgoing tab to put away.
+        state.coordinator.handleTabChange(from: nil, to: moved.id, tabs: [moved])
         SessionStateFactory.registerPending(state, for: payload.id)
 
         guard let window = buildWindow(payload: payload, sessionState: state, autoConnect: false) else {
@@ -169,6 +185,8 @@ internal final class WindowManager {
         /// neither prompts nor clears anything from disk.
         sourceState.coordinator.tabSessionRegistry.unregister(id: tabId)
         sourceState.tabManager.closeTab(id: tabId)
+
+        (window.contentViewController as? MainSplitViewController)?.hostsDetachedTab = true
 
         /// A file's window mapping follows its tab, or reopening the file focuses the window the
         /// tab has left and does nothing there.

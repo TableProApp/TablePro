@@ -74,4 +74,50 @@ struct WindowHostSelectionTests {
         #expect(first == second)
         #expect(first == 1)
     }
+
+    /// A tab moved into its own window leaves the connection hosted twice, and the candidate list
+    /// comes from a dictionary, so "the first window that has it" is arbitrary. A payload opened
+    /// from the detached window would otherwise append to, and focus, the one it was not invoked
+    /// from.
+    @Test("The frontmost owner wins when a connection is hosted by more than one window")
+    func frontmostOwnerWinsWhenSplit() {
+        let hosted = [[Self.alpha], [Self.alpha, Self.beta]]
+
+        #expect(
+            WindowHostSelection.hostIndex(
+                forConnection: Self.alpha, hostedConnections: hosted, frontmostIndex: 1
+            ) == 1
+        )
+        #expect(
+            WindowHostSelection.hostIndex(
+                forConnection: Self.alpha, hostedConnections: hosted, frontmostIndex: 0
+            ) == 0
+        )
+    }
+
+    /// Only when the frontmost window is one of the owners. A connection split across two windows
+    /// while a third is in front still lands in an owner rather than opening somewhere new.
+    @Test("A frontmost window that does not host the connection does not take it")
+    func frontmostNonOwnerIsIgnored() {
+        let hosted = [[Self.alpha], [Self.alpha], [Self.beta]]
+
+        #expect(
+            WindowHostSelection.hostIndex(
+                forConnection: Self.alpha, hostedConnections: hosted, frontmostIndex: 2
+            ) == 0
+        )
+    }
+
+    /// One owner keeps the old answer whatever is in front, which is what every existing case here
+    /// relies on.
+    @Test("A single owner still wins over the frontmost window")
+    func singleOwnerIsUnaffected() {
+        let hosted = [[Self.alpha], [Self.beta]]
+
+        #expect(
+            WindowHostSelection.hostIndex(
+                forConnection: Self.alpha, hostedConnections: hosted, frontmostIndex: 1
+            ) == 0
+        )
+    }
 }

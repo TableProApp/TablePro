@@ -83,7 +83,7 @@ internal enum WorkspaceCloseAction {
         /// nothing has to put all of that back: leaving the user on a connection they did not ask
         /// for, with the entry still listed, is a close that reads as a switch.
         let wasShowing = WindowManager.shared.shownConnection(besides: workspace.connectionId)
-        guard let closable = await confirm(victims, coordinator: coordinator, revealing: workspace) else {
+        guard let closable = await confirm(victims, across: coordinators, revealing: workspace) else {
             WindowManager.shared.show(wasShowing, inWindowHosting: workspace.connectionId)
             Self.logger.info("close cancelled at the save prompt container=\(workspace.container, privacy: .public)")
             return
@@ -162,21 +162,51 @@ internal enum WorkspaceCloseAction {
     /// selection is a side effect no one asked for when the close has nothing to lose.
     /// nil when the user cancelled; otherwise the victims that may now be closed, which is every one
     /// of them unless Save could not reach some.
+    /// Asked of the window that owns each tab.
+    ///
+    /// A tab's live grid and structure edits exist only in its own coordinator: a background
+    /// snapshot of a tab in another window reads as clean whatever is staged in it. Once a
+    /// connection can be hosted twice, a container's tabs span both windows, and putting all of
+    /// them to the coordinator that answered first reported the foreign ones as safe and closed
+    /// over the edits without a prompt.
+    ///
+    /// Cancel anywhere cancels everything, because the entry either closes or it does not.
     private static func confirm(
         _ victims: [QueryTab],
-        coordinator: MainContentCoordinator?,
+        across coordinators: [MainContentCoordinator],
         revealing workspace: WorkspaceID
     ) async -> Set<UUID>? {
         let everything = Set(victims.map(\.id))
-        guard let actions = coordinator?.commandActions, !victims.isEmpty else { return everything }
-        guard actions.hasUnsavedWork(among: victims) else { return everything }
-        reveal(workspace, coordinator: coordinator)
-        switch await actions.resolveUnsavedWork(in: victims) {
-        case .cancel:
-            return nil
-        case .close(let closable):
-            return closable
+        guard !victims.isEmpty else { return everything }
+
+        var closable: Set<UUID> = []
+        for coordinator in coordinators {
+            let owned = victims.filter { victim in
+                coordinator.tabManager.tabs.contains { $0.id == victim.id }
+            }
+            guard !owned.isEmpty else { continue }
+            guard let actions = coordinator.commandActions else {
+                closable.formUnion(owned.map(\.id))
+                continue
+            }
+            guard actions.hasUnsavedWork(among: owned) else {
+                closable.formUnion(owned.map(\.id))
+                continue
+            }
+            reveal(workspace, in: coordinator)
+            switch await actions.resolveUnsavedWork(in: owned) {
+            case .cancel:
+                return nil
+            case .close(let resolved):
+                closable.formUnion(resolved)
+            }
         }
+        /// A victim no window claims is already gone, so nothing is holding work for it.
+        let unclaimed = victims.map(\.id).filter { id in
+            !coordinators.contains { coordinator in coordinator.tabManager.tabs.contains { $0.id == id } }
+        }
+        closable.formUnion(unclaimed)
+        return closable
     }
 
     /// Leaves the container before it stops being listed, and only when it is the one being browsed.
@@ -224,8 +254,29 @@ internal enum WorkspaceCloseAction {
         }
     }
 
+    /// Brings forward the window that owns the tabs about to be asked about.
+    ///
+    /// `resolveUnsavedWork` attaches its sheet to its own coordinator's window, so revealing the
+    /// connection's first host instead would select one window and then wait on a sheet hanging off
+    /// another, behind it or on a different native tab.
+    private static func reveal(_ workspace: WorkspaceID, in coordinator: MainContentCoordinator) {
+        reveal(workspace, window: coordinator.contentWindow, coordinator: coordinator)
+    }
+
     private static func reveal(_ workspace: WorkspaceID, coordinator: MainContentCoordinator?) {
-        if let window = WindowManager.shared.window(for: workspace.connectionId) {
+        reveal(
+            workspace,
+            window: WindowManager.shared.window(for: workspace.connectionId),
+            coordinator: coordinator
+        )
+    }
+
+    private static func reveal(
+        _ workspace: WorkspaceID,
+        window: NSWindow?,
+        coordinator: MainContentCoordinator?
+    ) {
+        if let window {
             if let group = window.tabGroup, group.selectedWindow !== window {
                 group.selectedWindow = window
             }
