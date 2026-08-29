@@ -187,11 +187,14 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         return value
     }
 
+    /// Blank is the test on both halves, not empty on one of them. A container of spaces reads as
+    /// absent and has to be treated as absent, or the row spends its second line drawing nothing and
+    /// pushes the name it exists to show off centre.
     private static func labelLines(for entry: WorkspaceRailEntry) -> [String] {
         let connection = singleLine(entry.connection.name)
         let container = singleLine(entry.container)
-        guard !connection.isBlank else { return container.isEmpty ? [] : [container] }
-        guard !container.isEmpty else { return [connection] }
+        guard !connection.isBlank else { return container.isBlank ? [] : [container] }
+        guard !container.isBlank else { return [connection] }
         return [connection, container]
     }
 

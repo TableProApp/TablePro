@@ -503,6 +503,22 @@ struct WorkspaceRailCellTextTests {
         #expect(!label.stringValue.contains("\n"))
     }
 
+    @Test("A blank container leaves no empty second line")
+    func blankContainerLeavesNoEmptySecondLine() throws {
+        let cell = configuredCell(name: "Production", container: " \u{2028} ")
+        let label = try #require(cell.textField)
+
+        #expect(label.stringValue == "Production")
+        #expect(!label.stringValue.contains("\n"))
+    }
+
+    @Test("Two blank identities leave the label empty rather than blank-lined")
+    func twoBlankIdentitiesLeaveTheLabelEmpty() throws {
+        let cell = configuredCell(name: "  ", container: " ")
+
+        #expect(try #require(cell.textField).stringValue.isEmpty)
+    }
+
     @Test("Long labels keep AppKit's independent middle truncation contract")
     func longLabelsKeepMiddleTruncation() throws {
         let cell = configuredCell(
@@ -695,5 +711,21 @@ struct WorkspaceRailTypeSelectTests {
         #expect(WorkspaceRailTypeSelect.nextMatch(in: entries, from: 0, to: 0, search: "") == -1)
         #expect(WorkspaceRailTypeSelect.nextMatch(in: entries, from: -1, to: 1, search: "pro") == -1)
         #expect(WorkspaceRailTypeSelect.nextMatch(in: [], from: 0, to: 0, search: "pro") == -1)
+    }
+
+    /// An end bound past the last row is the same position on the circle as row 0, so it is a
+    /// search, not a reason to stop answering. Reading it as out of range turned every such call
+    /// into "no match" and left the strip deaf to typing.
+    @Test("An end bound past the last row names the row it wraps to")
+    func endBoundOutsideTheRowsWrapsOntoTheCircle() {
+        let entries = [
+            entry(name: "Production", container: "app"),
+            entry(name: "Staging", container: "analytics"),
+            entry(name: "Development", container: "warehouse"),
+        ]
+
+        #expect(WorkspaceRailTypeSelect.nextMatch(in: entries, from: 0, to: 3, search: "dev") == 2)
+        #expect(WorkspaceRailTypeSelect.nextMatch(in: entries, from: 1, to: 3, search: "pro") == -1)
+        #expect(WorkspaceRailTypeSelect.nextMatch(in: entries, from: 1, to: -1, search: "sta") == 1)
     }
 }

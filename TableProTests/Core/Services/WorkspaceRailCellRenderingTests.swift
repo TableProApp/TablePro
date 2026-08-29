@@ -109,6 +109,10 @@ struct WorkspaceRailCellRenderingTests {
         color.redComponent > 0.75 && color.greenComponent > 0.75 && color.blueComponent > 0.75
     }
 
+    private func isInk(_ color: NSColor) -> Bool {
+        color.brightnessComponent < 0.6
+    }
+
     /// The defect this suite exists for. The band covered the label's whole width; a dot may not
     /// cover more than a small fraction of the cell, whatever colour the user picks.
     @Test("The identity colour never covers more than a fraction of the cell")
@@ -201,6 +205,49 @@ struct WorkspaceRailCellRenderingTests {
 
             #expect(view.bounds.contains(label.frame), "label escaped the \(layout) row")
             #expect(dot.frame.minY >= label.frame.maxY, "identity dot overlapped the label in \(layout)")
+        }
+    }
+
+    /// The lowest row of the cell any text reaches. Read against the same cell carrying one line,
+    /// it is the only evidence that the second line was drawn rather than laid out and clipped.
+    ///
+    /// The alpha floor is deliberately low: the container line is `secondaryLabelColor`, which is
+    /// half-transparent by definition, so the 0.5 gate the colour counters use would read the whole
+    /// second line as empty background.
+    private func lowestInkRow(_ rep: NSBitmapImageRep) -> Int? {
+        for y in stride(from: rep.pixelsHigh - 1, through: 0, by: -1) {
+            for x in 0 ..< rep.pixelsWide {
+                guard let raw = rep.colorAt(x: x, y: y),
+                      let color = raw.usingColorSpace(.sRGB),
+                      color.alphaComponent > 0.1, isInk(color) else { continue }
+                return y
+            }
+        }
+        return nil
+    }
+
+    /// A frame inside the row proves nothing about the text inside the frame. The row height, the
+    /// icon's own offset and the two font sizes are four numbers that have to add up, and the way
+    /// they fail is the second line laying out and never being drawn, which `labelFitsEveryLayout`
+    /// reads as a pass. The one-line cell is the control: the container line has to reach below
+    /// where the connection name on its own stops.
+    @Test("The container line is painted below the connection line at every rail size")
+    func containerLinePaintsBelowConnectionLine() throws {
+        for layout in [WorkspaceRailMetrics.small, WorkspaceRailMetrics.medium, WorkspaceRailMetrics.large] {
+            let oneLine = try #require(render(cell(
+                name: "podo-stage", container: "", color: .none, layout: layout
+            )))
+            let twoLines = try #require(render(cell(
+                name: "podo-stage", container: "gwatop", color: .none, layout: layout
+            )))
+
+            let connectionOnly = try #require(lowestInkRow(oneLine))
+            let withContainer = try #require(lowestInkRow(twoLines))
+
+            #expect(
+                withContainer > connectionOnly,
+                "the container line was clipped away in the \(layout.rowHeight)pt row"
+            )
         }
     }
 }
