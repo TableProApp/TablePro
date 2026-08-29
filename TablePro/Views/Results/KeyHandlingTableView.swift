@@ -521,7 +521,13 @@ final class KeyHandlingTableView: NSTableView {
     ///
     /// A cell is drawn rather than mounted, so the element comes from the row's own accessibility
     /// children rather than from a cell view.
+    ///
+    /// Nothing is posted until a client has asked the grid something. The element does not exist
+    /// before that, so the notification had nowhere to land, and asking for it was itself enough to
+    /// mount a view per visible cell in every grid: the cost `#2381` removed, charged to a session
+    /// that pressed Tab once.
     internal func postCellCursorMoved() {
+        guard DataGridAccessibility.isActive else { return }
         guard selectedRow >= 0, presentsDataColumn(at: focusedColumn) else { return }
         guard let element = accessibilityCellElement(row: selectedRow, tableColumnIndex: focusedColumn) else { return }
         NSAccessibility.post(element: element, notification: .focusedUIElementChanged)
@@ -621,7 +627,9 @@ final class KeyHandlingTableView: NSTableView {
         return true
     }
 
-    private func focusCell(row: Int, column: Int) {
+    /// The one way the cell cursor is moved by a keystroke, used by Tab inside the grid and by the
+    /// inline editor's own Tab and arrow navigation.
+    internal func focusCell(row: Int, column: Int) {
         selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         focusedRow = row
         focusedColumn = column

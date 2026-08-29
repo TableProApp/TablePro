@@ -97,8 +97,8 @@ extension TableViewCoordinator {
         editor.onCommit = { [weak self] row, columnIndex, newValue in
             self?.commitCellEdit(row: row, columnIndex: columnIndex, newValue: newValue)
         }
-        editor.onTabNavigation = { [weak self] row, column, forward in
-            self?.handleOverlayTabNavigation(row: row, column: column, forward: forward)
+        editor.onMovement = { [weak self] row, column, movement in
+            self?.handleOverlayMovement(row: row, column: column, movement: movement)
         }
         overlayViewer?.dismiss()
         editor.show(in: tableView, row: row, column: column, columnIndex: columnIndex, value: value)
@@ -116,30 +116,31 @@ extension TableViewCoordinator {
         viewer.show(in: tableView, row: row, column: column, columnIndex: columnIndex, value: value)
     }
 
-    func handleOverlayTabNavigation(row: Int, column: Int, forward: Bool) {
-        guard let tableView = tableView,
-              let target = tabNavigationTarget(from: (row, column), forward: forward, in: tableView)
+    /// The cell cursor moves with the editor, through the same `focusCell` the grid's own Tab uses.
+    /// Selecting the row alone left the cursor on the column the editor came from, so closing the
+    /// editor put it back where the editing was not, and it never scrolled the target row into
+    /// view, so a wrap onto the row below the last visible one opened the editor off screen.
+    func handleOverlayMovement(row: Int, column: Int, movement: CellEditorMovement) {
+        guard let tableView = tableView as? KeyHandlingTableView,
+              let target = movementTarget(from: (row, column), movement: movement, in: tableView)
         else { return }
 
-        let nextRow = target.row
-        let nextColumn = target.column
-        tableView.selectRowIndexes(IndexSet(integer: nextRow), byExtendingSelection: false)
-        scrollColumnToVisible(tableColumnIndex: nextColumn)
+        tableView.focusCell(row: target.row, column: target.column)
 
-        guard let nextColumnIndex = DataGridView.dataColumnIndex(
-                for: nextColumn,
+        guard let targetColumnIndex = DataGridView.dataColumnIndex(
+                for: target.column,
                 in: tableView,
                 schema: identitySchema
               ),
-              nextColumnIndex >= 0,
-              case .editable(let value) = editEligibility(row: nextRow, columnIndex: nextColumnIndex)
+              targetColumnIndex >= 0,
+              case .editable(let value) = editEligibility(row: target.row, columnIndex: targetColumnIndex)
         else { return }
 
         showOverlayEditor(
             tableView: tableView,
-            row: nextRow,
-            column: nextColumn,
-            columnIndex: nextColumnIndex,
+            row: target.row,
+            column: target.column,
+            columnIndex: targetColumnIndex,
             value: value
         )
     }
@@ -148,22 +149,34 @@ extension TableViewCoordinator {
     /// previous row's last. Both ends are resolved rather than assumed: the window's spacers and
     /// the pool's surplus slots are attached columns too, so neither end of `tableColumns` holds a
     /// data column and a fixed position lands on a spacer that swallows the keystroke.
-    private func tabNavigationTarget(
+    ///
+    /// Up and Down hold the column and step one row, and neither wraps: a column is a column of one
+    /// kind of value, so carrying the editor from the last row round to the first is a jump the
+    /// user did not ask for.
+    func movementTarget(
         from cell: (row: Int, column: Int),
-        forward: Bool,
+        movement: CellEditorMovement,
         in tableView: NSTableView
     ) -> (row: Int, column: Int)? {
-        if forward {
+        switch movement {
+        case .tab:
             if let next = nextPresentedColumnIndex(after: cell.column) {
                 return (cell.row, next)
             }
             guard cell.row + 1 < tableView.numberOfRows, let first = firstPresentedColumnIndex() else { return nil }
             return (cell.row + 1, first)
+        case .backtab:
+            if let previous = previousPresentedColumnIndex(before: cell.column) {
+                return (cell.row, previous)
+            }
+            guard cell.row > 0, let last = lastPresentedColumnIndex() else { return nil }
+            return (cell.row - 1, last)
+        case .up:
+            guard cell.row > 0 else { return nil }
+            return (cell.row - 1, cell.column)
+        case .down:
+            guard cell.row + 1 < tableView.numberOfRows else { return nil }
+            return (cell.row + 1, cell.column)
         }
-        if let previous = previousPresentedColumnIndex(before: cell.column) {
-            return (cell.row, previous)
-        }
-        guard cell.row > 0, let last = lastPresentedColumnIndex() else { return nil }
-        return (cell.row - 1, last)
     }
 }

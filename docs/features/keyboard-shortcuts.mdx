@@ -100,6 +100,8 @@ Every row except Find, Find Next and Find Previous is built into the editor and 
 | Action | Shortcut |
 |--------|----------|
 | Edit cell | `Enter` |
+| Edit the next / previous cell | `Tab` / `Shift+Tab` |
+| Edit the cell above / below | `Up` / `Down` |
 | Insert a line break while editing | `Option+Enter` |
 | Cancel edit | `Escape` |
 | Add row | `Cmd+Shift+N` |
@@ -110,6 +112,8 @@ Every row except Find, Find Next and Find Previous is built into the editor and 
 | Commit changes | `Cmd+S` |
 | Undo change | `Cmd+Z` |
 | Redo change | `Cmd+Shift+Z` |
+
+`Tab`, `Shift+Tab`, `Up` and `Down` save the cell before they move. In a value that holds line breaks, `Up` and `Down` move the insertion point between its lines and leave the cell only from the first or last one.
 
 Truncate table opens a dialog with **Cascade** and **Ignore foreign key checks**, then stages a pending truncate that `Cmd+S` runs.
 

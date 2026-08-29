@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-connection MongoDB shell state, so a variable or function survives from one statement to the next.
 - Cursor method autocomplete after `find()` and `aggregate()`.
 - Copy To and Duplicate Database in the sidebar and the Database menu, carrying structure, data or both to any connection. (#2487)
+- `Up` and `Down` while editing a cell, moving the editor to the same column of the row above or below. (#2569)
 - Tab rows in Settings > General > Tabs, wrapping the strip instead of scrolling it. (#2438)
 - Autoscrolling while dragging a tab, so a tab can be moved past the run currently on screen. (#2438)
 
@@ -31,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tab drag released on a neighbour's exact centre leaving the order unchanged. (#2438)
 - Compare & Sync unable to drop an overloaded PostgreSQL routine, or any trigger.
 - PostgreSQL sequence DDL naming the schema it was read from, in SQL export and the structure editor.
+- Half-composed input method text saved and left behind when `Tab` moved the cell editor.
+- Cell editor opening off screen when `Tab` wrapped onto a row below the visible ones.
+- Cell cursor left on the old column after `Tab` carried the editor to the next one.
+- Every data grid switching to its accessibility layout after one `Tab` press, with no assistive app attached.
 
 ## [0.69.0] - 2026-08-27
 
