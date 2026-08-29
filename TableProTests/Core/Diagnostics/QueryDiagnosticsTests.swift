@@ -69,14 +69,10 @@ struct QueryDiagnosticsTests {
         #expect(results.first?.message == "Unterminated comment")
     }
 
-    @Test("an unsupported MQL method is reported on the method name")
-    func testUnsupportedMethodRange() {
-        let query = "db.users.frobnicate({})"
-        let results = mql.diagnostics(for: query)
-        #expect(results.count == 1)
-
-        guard let range = results.first?.range else { return }
-        #expect((query as NSString).substring(with: range) == "frobnicate")
+    @Test("a method name the app does not know is left alone, because the shell is JavaScript")
+    func testUnknownMethodIsNotASyntaxError() {
+        #expect(mql.diagnostics(for: "db.users.frobnicate({})").isEmpty)
+        #expect(mql.diagnostics(for: "db.users.find({}).forEach(function (d) { print(d); })").isEmpty)
     }
 
     @Test("a query that does not start with db is reported")
@@ -103,8 +99,9 @@ struct QueryDiagnosticsTests {
         #expect(sql.diagnostics(for: "SELECT 1 // )").count == 1)
     }
 
-    @Test("MQL has no comment syntax, so a double slash is not a comment")
-    func testMqlHasNoLineComments() {
-        #expect(!mql.diagnostics(for: "db.users.find({}) // )").isEmpty)
+    @Test("a double slash starts a comment in a MongoDB query")
+    func testMqlHasLineComments() {
+        #expect(mql.diagnostics(for: "db.users.find({}) // )").isEmpty)
+        #expect(mql.diagnostics(for: "db.users.find({}) /* ) */").isEmpty)
     }
 }

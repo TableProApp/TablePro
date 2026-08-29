@@ -89,6 +89,7 @@ extension TrackedOperationKind {
         case .schemaChange: return String(localized: "Structure changes")
         case .dataImport: return String(localized: "Imports")
         case .dataExport: return String(localized: "Exports")
+        case .objectCopy: return String(localized: "Object copies")
         case .backup: return String(localized: "Backups")
         case .fetchAll: return String(localized: "Fetch all rows")
         case .mcpQuery: return String(localized: "AI and MCP queries")

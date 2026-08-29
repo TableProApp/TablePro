@@ -54,6 +54,14 @@ extension MainSplitViewController {
         commandActions?.createDatabase()
     }
 
+    @objc func copyObjectsToDatabase(_ sender: Any?) {
+        commandActions?.copyObjectsToAnotherDatabase()
+    }
+
+    @objc func duplicateCurrentDatabase(_ sender: Any?) {
+        commandActions?.duplicateCurrentDatabase()
+    }
+
     @objc func showTableStructure(_ sender: Any?) {
         commandActions?.showTableStructure()
     }

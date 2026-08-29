@@ -15,6 +15,7 @@ internal enum TrackedOperationKind: String, CaseIterable, Sendable {
     case schemaChange
     case dataImport
     case dataExport
+    case objectCopy
     case backup
     case fetchAll
     case mcpQuery

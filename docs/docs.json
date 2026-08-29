@@ -216,6 +216,7 @@
             "icon": "arrow-right-arrow-left",
             "pages": [
               "features/import-export",
+              "features/copy-objects",
               "features/backup-restore",
               "features/compare-sync"
             ]

@@ -26,7 +26,19 @@ enum QueryBracketScanner {
     private static let doubleQuote = UInt16(UnicodeScalar("\"").value)
     private static let backtick = UInt16(UnicodeScalar("`").value)
 
-    static func scan(_ text: NSString, allowsLineComments: Bool) -> Result {
+    /// Which line-comment spelling the language uses.
+    ///
+    /// The two are mutually exclusive and taking both is wrong in both directions: `--` is the
+    /// decrement operator in JavaScript, so reading it as a comment swallows the rest of the line
+    /// and hides everything the scan was called to check.
+    enum CommentStyle {
+        /// `--` opens a line comment, and `//` does not.
+        case sql
+        /// `//` opens a line comment, and `--` is an operator.
+        case javaScript
+    }
+
+    static func scan(_ text: NSString, comments: CommentStyle) -> Result {
         var stack: [UInt16] = []
         var unmatchedClose: NSRange?
         var commentStart: Int?
@@ -73,14 +85,15 @@ enum QueryBracketScanner {
                     index += 2
                     continue
                 }
-                if next == slash, allowsLineComments {
+                if next == slash, comments == .javaScript {
                     isInLineComment = true
                     index += 2
                     continue
                 }
             }
 
-            if character == dash, index + 1 < text.length, text.character(at: index + 1) == dash {
+            if comments == .sql, character == dash, index + 1 < text.length,
+               text.character(at: index + 1) == dash {
                 isInLineComment = true
                 index += 2
                 continue

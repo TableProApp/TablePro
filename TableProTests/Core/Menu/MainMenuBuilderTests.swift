@@ -577,6 +577,26 @@ struct MainMenuValidationTests {
         #expect(enabled(#selector(MainSplitViewController.runMaintenanceOperation(_:)), context))
     }
 
+    /// Both are sidebar commands first. They are mirrored here so the feature is reachable from
+    /// the keyboard, and they validate on the same facts the sidebar's own menu reads.
+    @Test("Copying is offered only on an engine that can copy")
+    func copyObjectsNeedsASQLEngine() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        #expect(!enabled(#selector(MainSplitViewController.copyObjectsToDatabase(_:)), context))
+        context.canCopyObjects = true
+        #expect(enabled(#selector(MainSplitViewController.copyObjectsToDatabase(_:)), context))
+    }
+
+    @Test("Duplicate Database needs a driver that creates databases")
+    func duplicateDatabaseNeedsContainers() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        #expect(!enabled(#selector(MainSplitViewController.duplicateCurrentDatabase(_:)), context))
+        context.canDuplicateDatabase = true
+        #expect(enabled(#selector(MainSplitViewController.duplicateCurrentDatabase(_:)), context))
+    }
+
     @Test("New Database needs a driver that switches containers")
     func createDatabaseNeedsContainerSupport() {
         var context = MenuValidationContext()

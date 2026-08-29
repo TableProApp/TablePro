@@ -51,4 +51,56 @@ extension MainContentCommandActions {
     func createDatabase() {
         coordinator?.activeSheet = .createDatabase
     }
+
+    /// The menu-bar mirrors of the sidebar's own commands. With no clicked row to carry, both act
+    /// on the database being browsed and preselect everything in it.
+    var canCopyObjects: Bool {
+        guard let coordinator else { return false }
+        return isConnected && ObjectCopyEligibility.supportsCopying(
+            editorLanguage: PluginManager.shared.editorLanguage(for: coordinator.connection.type)
+        )
+    }
+
+    var canDuplicateDatabase: Bool {
+        guard let coordinator else { return false }
+        return isConnected && ObjectCopyEligibility.mayOfferDuplicateDatabase(
+            editorLanguage: PluginManager.shared.editorLanguage(for: coordinator.connection.type),
+            supportsDatabaseSwitching: PluginManager.shared.supportsDatabaseSwitching(
+                for: coordinator.connection.type
+            ),
+            isReadOnly: isReadOnly
+        )
+    }
+
+    func copyObjectsToAnotherDatabase() {
+        coordinator?.openCopyObjects(mode: .copyTo, database: nil, schema: nil, objects: [])
+    }
+
+    func duplicateCurrentDatabase() {
+        coordinator?.openCopyObjects(mode: .duplicateDatabase, database: nil, schema: nil, objects: [])
+    }
+}
+
+@MainActor
+internal extension MainContentCoordinator {
+    /// Opens Copy To or Duplicate Database on the row that was right-clicked.
+    ///
+    /// The database and the schema travel with the request rather than being read from the browsing
+    /// state, for the reason every other sidebar command carries its ref: the tree can show a
+    /// database the session is not currently on, and copying from the wrong one is silent.
+    func openCopyObjects(
+        mode: ObjectCopyMode,
+        database: String?,
+        schema: String?,
+        objects: [ObjectCopySelection]
+    ) {
+        let source = DatabaseEndpoint.from(
+            connection: connection,
+            database: database ?? browseDatabaseName,
+            schema: schema
+        )
+        activeSheet = .copyObjects(ObjectCopyLaunchRequest(
+            mode: mode, source: source, preselected: objects
+        ))
+    }
 }

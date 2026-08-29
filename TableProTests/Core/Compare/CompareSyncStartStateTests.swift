@@ -16,8 +16,8 @@ import XCTest
 
 @MainActor
 final class CompareSyncStartStateTests: XCTestCase {
-    private func endpoint(name: String, safeModeLevel: SafeModeLevel = .silent) -> CompareSyncEndpoint {
-        CompareSyncEndpoint(
+    private func endpoint(name: String, safeModeLevel: SafeModeLevel = .silent) -> DatabaseEndpoint {
+        DatabaseEndpoint(
             scope: DatabaseScope(connectionId: UUID(), database: "app", schema: nil),
             connectionName: name,
             databaseType: .postgresql,
@@ -34,8 +34,8 @@ final class CompareSyncStartStateTests: XCTestCase {
     }
 
     func testBothPickersReadAsUnchosen() {
-        XCTAssertEqual(CompareEndpointSide.source.placeholderTitle, "Choose Source")
-        XCTAssertEqual(CompareEndpointSide.target.placeholderTitle, "Choose Target")
+        XCTAssertEqual(DatabaseEndpointSide.source.placeholderTitle, "Choose Source")
+        XCTAssertEqual(DatabaseEndpointSide.target.placeholderTitle, "Choose Target")
     }
 
     func testCompareRefusesUntilBothEndpointsAreChosen() {

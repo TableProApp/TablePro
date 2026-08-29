@@ -50,6 +50,22 @@ internal struct TableStructureSnapshot: Hashable {
         guard let schema, !schema.isEmpty else { return name }
         return "\(schema).\(name)"
     }
+
+    /// The same table, said to live somewhere else. A copy reads one namespace and writes another,
+    /// and the DDL it generates has to name the one it is writing.
+    internal func placed(in schema: String?) -> TableStructureSnapshot {
+        guard schema != self.schema else { return self }
+        return TableStructureSnapshot(
+            name: name,
+            schema: schema,
+            columns: columns,
+            indexes: indexes,
+            foreignKeys: foreignKeys,
+            engine: engine,
+            charset: charset,
+            collation: collation
+        )
+    }
 }
 
 internal extension TableStructureSnapshot {

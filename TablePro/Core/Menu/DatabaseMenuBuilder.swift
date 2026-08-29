@@ -46,6 +46,18 @@ enum DatabaseMenuBuilder {
                 action: #selector(MainSplitViewController.createNewView(_:))
             ),
             MenuItemFactory.separator,
+            /// The sidebar's own Copy To and Duplicate Database, mirrored so both are reachable
+            /// from the keyboard. The menu acts on the database being browsed, which is what a
+            /// command with no clicked row can mean.
+            MenuItemFactory.item(
+                String(localized: "Copy Objects To…"),
+                action: #selector(MainSplitViewController.copyObjectsToDatabase(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Duplicate Database…"),
+                action: #selector(MainSplitViewController.duplicateCurrentDatabase(_:))
+            ),
+            MenuItemFactory.separator,
             MenuItemFactory.item(
                 String(localized: "Show Table Structure"),
                 action: #selector(MainSplitViewController.showTableStructure(_:))

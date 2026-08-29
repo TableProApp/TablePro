@@ -166,6 +166,31 @@ final class MongoDBConnection: @unchecked Sendable {
         DispatchQueue.getSpecific(key: Self.queueKey) == ObjectIdentifier(self)
     }
 
+    /// Runs a libmongoc call on the connection's own queue and waits for it.
+    ///
+    /// The script runtime evaluates JavaScript on a thread of its own and has to block there while
+    /// a host call reaches the driver, because a `JSContext` cannot suspend. Going through the
+    /// async entry points would mean blocking a cooperative-pool thread on a continuation, so the
+    /// script path takes the queue directly. Re-entry is safe: an on-queue caller runs the body
+    /// inline rather than deadlocking on `dispatch_sync`.
+    #if canImport(CLibMongoc)
+    func withClientSync<T>(_ body: (OpaquePointer) throws -> T) throws -> T {
+        if isOnQueue {
+            guard !isShuttingDown, let client else { throw MongoDBError.notConnected }
+            return try body(client)
+        }
+        return try queue.sync {
+            guard !isShuttingDown, let client else { throw MongoDBError.notConnected }
+            return try body(client)
+        }
+    }
+    #endif
+
+    /// Clears a stale cancellation flag so a new script run starts clean.
+    func beginScriptRun() {
+        resetCancellation()
+    }
+
     deinit {
         #if canImport(CLibMongoc)
         // Capture the handle and queue to clean up asynchronously.
@@ -728,14 +753,16 @@ final class MongoDBConnection: @unchecked Sendable {
     }
     // MARK: - Streaming Queries
 
+    /// Streams a find whose options are given as the document the caller already built.
+    ///
+    /// Taking the text rather than rebuilding it from pieces is what keeps an export reading the
+    /// same rows the grid showed: `hint`, `collation` and `allowDiskUse` change which documents come
+    /// back, and a signature that only carries sort, projection, skip and limit drops them.
     func streamFind(
         database: String,
         collection: String,
         filter: String,
-        sort: String?,
-        projection: String?,
-        skip: Int = 0,
-        limit: Int? = nil
+        optionsJson: String
     ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         #if canImport(CLibMongoc)
         let queue = self.queue
@@ -770,33 +797,7 @@ final class MongoDBConnection: @unchecked Sendable {
                     }
                     defer { bson_destroy(filterBson) }
 
-                    var optsJson: [String: Any] = [:]
-                    if let sort = sort, let data = sort.data(using: .utf8),
-                       let obj = try? JSONSerialization.jsonObject(with: data) {
-                        optsJson["sort"] = obj
-                    }
-                    if let projection = projection, let data = projection.data(using: .utf8),
-                       let obj = try? JSONSerialization.jsonObject(with: data) {
-                        optsJson["projection"] = obj
-                    }
-                    if skip > 0 {
-                        optsJson["skip"] = skip
-                    }
-                    if let limit, limit > 0 {
-                        optsJson["limit"] = limit
-                    }
-                    let timeoutMS = queryTimeoutMS
-                    if timeoutMS > 0 {
-                        optsJson["maxTimeMS"] = timeoutMS
-                    }
-
-                    var optsBson: OpaquePointer?
-                    if !optsJson.isEmpty {
-                        let optsData = try JSONSerialization.data(withJSONObject: optsJson)
-                        if let optsStr = String(data: optsData, encoding: .utf8) {
-                            optsBson = jsonToBson(optsStr)
-                        }
-                    }
+                    let optsBson = jsonToBson(optionsJson)
                     defer { if let opts = optsBson { bson_destroy(opts) } }
 
                     let col = try getCollection(client, database: database, collection: collection)
@@ -824,7 +825,8 @@ final class MongoDBConnection: @unchecked Sendable {
     func streamAggregate(
         database: String,
         collection: String,
-        pipeline: String
+        pipeline: String,
+        optionsJson: String? = nil
     ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         #if canImport(CLibMongoc)
         let queue = self.queue
@@ -861,10 +863,14 @@ final class MongoDBConnection: @unchecked Sendable {
 
                     let col = try getCollection(client, database: database, collection: collection)
 
-                    let timeoutMS = queryTimeoutMS
                     var optsBson: OpaquePointer?
-                    if timeoutMS > 0 {
-                        optsBson = jsonToBson("{\"maxTimeMS\": \(timeoutMS)}")
+                    if let optionsJson {
+                        optsBson = jsonToBson(optionsJson)
+                    } else {
+                        let timeoutMS = queryTimeoutMS
+                        if timeoutMS > 0 {
+                            optsBson = jsonToBson("{\"maxTimeMS\": \(timeoutMS)}")
+                        }
                     }
                     defer { if let opts = optsBson { bson_destroy(opts) } }
 

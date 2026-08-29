@@ -1,19 +1,22 @@
 //
-//  CompareSyncEndpoint.swift
+//  DatabaseEndpoint.swift
 //  TablePro
 //
-//  One side of a comparison. The source never changes; the target is written to.
+//  One database, on one connection, named well enough to act on.
 //
 //  An endpoint is a `DatabaseScope`, not a connection id. A connection reaches
 //  many databases, so identifying a side by connection alone made two databases
 //  on one server impossible to compare and left the schema unset, which is how
 //  the reads went out unqualified while the writes went out qualified.
 //
+//  Compare & Sync named this type first and copying objects needs the same
+//  answer, so it lives here rather than under either of them.
+//
 
 import Foundation
 import TableProPluginKit
 
-internal struct CompareSyncEndpoint: Hashable, Identifiable, Sendable {
+internal struct DatabaseEndpoint: Hashable, Identifiable, Sendable {
     internal let scope: DatabaseScope
     internal let connectionName: String
     internal let databaseType: DatabaseType
@@ -83,8 +86,8 @@ internal struct CompareSyncEndpoint: Hashable, Identifiable, Sendable {
         return "\(databaseLabel).\(schema)"
     }
 
-    internal func withDatabase(_ database: String, label: String? = nil) -> CompareSyncEndpoint {
-        CompareSyncEndpoint(
+    internal func withDatabase(_ database: String, label: String? = nil) -> DatabaseEndpoint {
+        DatabaseEndpoint(
             scope: DatabaseScope(connectionId: scope.connectionId, database: database, schema: nil),
             connectionName: connectionName,
             databaseType: databaseType,
@@ -94,8 +97,8 @@ internal struct CompareSyncEndpoint: Hashable, Identifiable, Sendable {
         )
     }
 
-    internal func withSchema(_ schema: String?) -> CompareSyncEndpoint {
-        CompareSyncEndpoint(
+    internal func withSchema(_ schema: String?) -> DatabaseEndpoint {
+        DatabaseEndpoint(
             scope: DatabaseScope(connectionId: scope.connectionId, database: scope.database, schema: schema),
             connectionName: connectionName,
             databaseType: databaseType,
@@ -107,14 +110,14 @@ internal struct CompareSyncEndpoint: Hashable, Identifiable, Sendable {
 }
 
 @MainActor
-internal extension CompareSyncEndpoint {
+internal extension DatabaseEndpoint {
     static func from(
         connection: DatabaseConnection,
         database: String? = nil,
         schema: String? = nil
-    ) -> CompareSyncEndpoint {
+    ) -> DatabaseEndpoint {
         let resolved = database ?? connection.database ?? ""
-        return CompareSyncEndpoint(
+        return DatabaseEndpoint(
             scope: DatabaseScope(connectionId: connection.id, database: resolved, schema: schema),
             connectionName: connection.name,
             databaseType: connection.type,
@@ -124,7 +127,7 @@ internal extension CompareSyncEndpoint {
         )
     }
 
-    static func candidates(from connections: [DatabaseConnection]) -> [CompareSyncEndpoint] {
+    static func candidates(from connections: [DatabaseConnection]) -> [DatabaseEndpoint] {
         connections.map { from(connection: $0) }
     }
 
@@ -133,28 +136,5 @@ internal extension CompareSyncEndpoint {
     static func label(for database: String, type: DatabaseType) -> String {
         guard PluginManager.shared.connectionMode(for: type) == .fileBased else { return database }
         return (database as NSString).lastPathComponent
-    }
-}
-
-internal enum CompareSyncEligibility {
-    static func refusalReason(
-        for driver: any PluginDatabaseDriver,
-        mode: CompareSyncMode,
-        endpointName: String
-    ) -> String? {
-        let required: PluginCapabilities = mode == .structure ? .schemaCompare : .dataCompare
-        guard !driver.capabilities.contains(required) else { return nil }
-        switch mode {
-        case .structure:
-            return String(
-                format: String(localized: "%@ does not report structure metadata that can be compared."),
-                endpointName
-            )
-        case .data:
-            return String(
-                format: String(localized: "%@ does not support reading rows in key order, which data compare needs."),
-                endpointName
-            )
-        }
     }
 }

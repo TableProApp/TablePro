@@ -59,6 +59,10 @@ enum ActiveSheet: Identifiable {
     /// This is the rule the sidebar's other destructive commands already keep by carrying their ref.
     case maintenance(operation: String, tableName: String, database: String?, schema: String?)
     case createDatabase
+    /// Copying carries the whole launch request, because the source database, the source schema
+    /// and the objects the user right-clicked are all part of what the sheet opens onto, and the
+    /// object browser may be pointed somewhere else by the time the sheet appears.
+    case copyObjects(ObjectCopyLaunchRequest)
     case rewind
 
     var id: String {
@@ -73,6 +77,7 @@ enum ActiveSheet: Identifiable {
         case .maintenance(let operation, let tableName, let database, let schema):
             "maintenance-\(operation)-\(database ?? "")-\(schema ?? "")-\(tableName)"
         case .createDatabase: "createDatabase"
+        case .copyObjects(let launch): "copyObjects-\(launch.id)"
         case .rewind: "rewind"
         }
     }
@@ -97,6 +102,7 @@ final class MainContentCoordinator {
     let connection: DatabaseConnection
     var connectionId: UUID { connection.id }
     var sqlDialect: SqlDialect { SqlDialect.from(databaseTypeId: connection.type.rawValue) }
+    var statementModel: QueryStatementModel { QueryStatementModel.forDatabaseType(connection.type) }
     var browseDatabaseName: String {
         services.databaseManager.browseDatabaseName(for: connection)
     }
@@ -1016,9 +1022,10 @@ final class MainContentCoordinator {
             sql = nsQuery.substring(with: clampedRange)
             sourceOffset = clampedRange.location
         } else {
-            let statement = SQLStatementScanner.locatedStatementAtCursor(
+            let statement = QueryStatementScanner.locatedStatementAtCursor(
                 in: fullQuery,
                 cursorPosition: cursorPositions.first?.range.location ?? 0,
+                model: statementModel,
                 dialect: sqlDialect
             )
             sql = statement.sql
@@ -1070,8 +1077,13 @@ final class MainContentCoordinator {
             return statements.map { $0.offset(by: sourceOffset) }
         }
 
-        if services.appSettings.editor.queryParametersEnabled {
-            let paramStatements = anchored(SQLStatementScanner.executableStatements(in: sql, dialect: sqlDialect))
+        // `:active` is a bind placeholder in SQL and an ordinary object key in JavaScript, so a
+        // script would open the parameter panel and then be rewritten into something the driver
+        // cannot run.
+        if services.appSettings.editor.queryParametersEnabled, statementModel == .sql {
+            let paramStatements = anchored(
+                QueryStatementScanner.executableStatements(in: sql, model: statementModel, dialect: sqlDialect)
+            )
             guard !paramStatements.isEmpty else { return false }
             let combinedSQL = paramStatements.map(\.sql).joined(separator: "; ")
             let detectedNames = SQLParameterExtractor.extractParameters(from: combinedSQL)
@@ -1099,7 +1111,9 @@ final class MainContentCoordinator {
             }
         }
 
-        let statements = anchored(SQLStatementScanner.executableStatements(in: sql, dialect: sqlDialect))
+        let statements = anchored(
+            QueryStatementScanner.executableStatements(in: sql, model: statementModel, dialect: sqlDialect)
+        )
         guard !statements.isEmpty else { return false }
 
         tabManager.tabStructureVersion += 1

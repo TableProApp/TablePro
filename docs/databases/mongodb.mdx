@@ -1,11 +1,11 @@
 ---
 title: MongoDB
-description: Connect to MongoDB with MQL shell queries, collection browsing, and automatic Atlas SRV setup
+description: Connect to MongoDB and run mongosh JavaScript, browse collections, and set up Atlas SRV automatically
 ---
 
 import RegistryPlugin from "/snippets/registry-plugin.mdx";
 
-Filters and pipelines are parsed as JSON and Extended JSON, never as JavaScript, so every key needs quoting, operators included: `{age: {$gte: 18}}` fails with a parse error. Collections appear as tables in the sidebar, with top-level fields as columns and nested objects as formatted JSON.
+The query tab is a JavaScript shell. Write `db.orders.find({status: "new"})` the way mongosh takes it, unquoted keys and all, and keep going into variables, loops and `forEach`. Collections appear as tables in the sidebar, with top-level fields as columns and nested objects as formatted JSON.
 
 <RegistryPlugin name="MongoDB" plugin="MongoDB Driver" />
 
@@ -85,43 +85,90 @@ A binary subtype 4 field renders as `UUID("8cd003eb-4a25-4324-9332-88fce2da0d1a"
 
 Once set, the value renders as `LegacyJavaUUID("…")` and reads that way everywhere, filters and MQL export included. Nothing stored is rewritten, `uuidRepresentation=javaLegacy` in a pasted URL sets the same option, and a change takes effect on the next connect.
 
-## Writing MQL
+## Writing queries
 
-Every key is quoted, and the editor has no comment syntax, so a `//` line becomes part of the statement. Value constructors are translated, so a value copied out of the grid pastes straight into a filter: `ObjectId`, `ISODate`, `Date`, `NumberInt`, `NumberLong`, `NumberDecimal`, `Timestamp`, `BinData`, `HexData`, `MinKey`, `MaxKey`, `UUID`, and the legacy UUID names. Anything else JavaScript, including `new Date()`, arithmetic, and regex literals such as `/abc/i`, is not evaluated.
+Queries run through JavaScriptCore, so a statement is JavaScript and the whole language is
+available: object literals with unquoted keys, single-quoted strings, regex literals such as
+`/abc/i`, `new Date()`, arithmetic, `//` and `/* */` comments.
+
+`Date("2020-01-01")` without `new` gives a date rather than the string plain JavaScript would
+return, so a filter written that way keeps matching. `new Date` and `instanceof Date` are the
+native ones.
 
 ```javascript
-db.orders.find(
-  {"status": "completed"},
-  {"customerId": 1, "total": 1}
-).sort({"date": -1}).limit(20)
+db.orders.find({status: "completed"}, {customerId: 1, total: 1})
+  .sort({date: -1})
+  .limit(20)
 
 db.sales.aggregate([
-  {"$match": {"date": {"$gte": {"$date": "2025-01-01T00:00:00Z"}}}},
-  {"$group": {"_id": "$product", "totalSales": {"$sum": "$amount"}}}
+  {$match: {date: {$gte: ISODate("2025-01-01")}}},
+  {$group: {_id: "$product", totalSales: {$sum: "$amount"}}}
 ])
 ```
 
+### Scripts
+
+The shell is per connection, so a variable or function defined in one statement is there for the
+next, in any tab on that connection, until you disconnect.
+
+```javascript
+var stale = [];
+db.orders.find({status: "pending"}).forEach(function (order) {
+  if (order.updatedAt < ISODate("2025-01-01")) { stale.push(order._id); }
+});
+print("stale orders: " + stale.length);
+```
+
+`print` and `printjson` write to the result grid, one row per line, whenever the statement itself
+returns no documents. A statement that returns documents shows those instead, with the printed
+lines on the status line under the grid.
+
 ### Collection references
 
-`db.users`, `db["users"]`, or `db.getCollection("users")`. The last two take the name exactly as written, so use them for names with dots or spaces, names starting with a digit, and names that collide with a database method such as `stats`.
+`db.users`, `db["users"]`, or `db.getCollection("users")`. Use `getCollection` for names with dots
+or spaces, names starting with a digit, and names that collide with a database method: `db.stats`
+and `db["stats"]` both reach the method, because the shell cannot tell which you meant.
 
-### Chained methods
+### Cursors
 
-`.sort()`, `.limit()` and `.skip()` chain onto `find` and onto `aggregate`, where they become `$sort`, `$skip` and `$limit` stages appended in that order. Chaining onto something that returns no cursor, such as `insertOne`, is an error, as is a method the parser does not know.
+`find()` and `aggregate()` return a cursor and touch nothing until something reads it. Chain
+`sort`, `skip`, `limit`, `projection`, `hint`, `collation`, `maxTimeMS`, `batchSize` and
+`allowDiskUse` onto it, then read it with `forEach`, `map`, `toArray`, `hasNext`/`next`, `itcount`,
+`count` or `explain`. On an aggregation, `sort`, `skip` and `limit` become `$sort`, `$skip` and
+`$limit` stages appended to the pipeline.
+
+A modifier after the cursor has started throws, the same as mongosh. Split it into two statements,
+or set the modifier before the first read.
 
 ### Write options
 
-`updateOne`, `updateMany`, `replaceOne` and `findOneAndUpdate` take a third options document, and `upsert`, `arrayFilters` and `hint` reach the server. The result reports `modifiedCount` and `upsertedCount`.
+`updateOne`, `updateMany`, `replaceOne`, `findOneAndUpdate` and the delete calls take an options
+document, and `upsert`, `arrayFilters`, `hint`, `collation` and `returnDocument` reach the server. A
+write returns the object mongosh returns: `matchedCount`, `modifiedCount`, `upsertedCount` and
+`upsertedId` for an update, `deletedCount` for a delete, `insertedId` for an insert.
 
 ```javascript
-db.users.updateOne({_id: 1}, {"$set": {"active": true}}, {"upsert": true})
+db.users.updateOne({_id: 1}, {$set: {active: true}}, {upsert: true})
 ```
 
-### Supported methods
+### Methods
 
-Collection-level `find`, `findOne`, `aggregate`, `countDocuments`/`count`, `insertOne`/`insertMany`, `updateOne`/`updateMany`, `replaceOne`, `deleteOne`/`deleteMany`, `findOneAndUpdate`/`findOneAndReplace`/`findOneAndDelete`, `createIndex`, `dropIndex`, `drop`; database-level `getCollectionNames`/`listCollections`, `createCollection`, `dropDatabase`, `version`, `stats`. Anything else goes through `db.runCommand({…})` or `db.adminCommand({…})`. An unlisted shell method such as `distinct` or `getUsers` returns an unsupported-method error.
+Collection: `find`, `findOne`, `aggregate`, `countDocuments`/`count`, `estimatedDocumentCount`,
+`distinct`, `insertOne`/`insertMany`/`insert`, `updateOne`/`updateMany`/`update`, `replaceOne`,
+`save`, `deleteOne`/`deleteMany`/`remove`, `findOneAndUpdate`/`findOneAndReplace`/`findOneAndDelete`,
+`bulkWrite`, `createIndex`/`createIndexes`, `dropIndex`/`dropIndexes`, `getIndexes`,
+`hideIndex`/`unhideIndex`, `drop`, `renameCollection`, `stats`, `dataSize`, `storageSize`,
+`totalIndexSize`, `totalSize`, `isCapped`, `validate`, `explain`.
 
-`Cmd+Option+E` explains a statement, converting `find`, `aggregate`, `countDocuments`, update, delete, and `findOneAnd*` calls into `db.runCommand({"explain": …, "verbosity": "executionStats"})`. `Cmd+Shift+F` reformats by nesting depth. Autocomplete offers collections, methods, nested field paths such as `address.city`, and the `$` operators valid at the cursor; see [Autocomplete](/features/autocomplete#mongodb).
+Database: `getCollection`, `getSiblingDB`, `getCollectionNames`, `getCollectionInfos`,
+`createCollection`, `dropDatabase`, `stats`, `version`, `serverStatus`, `hostInfo`, `currentOp`,
+`killOp`, `runCommand`, `adminCommand`. `use <name>`, `show dbs` and `show collections` work as
+typed. Anything with no method of its own goes through `db.runCommand({…})`.
+
+`Cmd+Shift+F` reformats by nesting depth. Autocomplete offers collections, collection methods,
+cursor methods after `find()`, nested field paths such as `address.city`, and the `$` operators
+valid at the cursor; see [Autocomplete](/features/autocomplete#mongodb). For a query plan, chain
+`.explain("executionStats")` onto the cursor.
 
 ## SSL/TLS
 
@@ -135,7 +182,8 @@ New connections default to **Disabled**, and the driver has no TLS fallback: **P
 - Nested paths filter but do not sort. Sorting works on the grid's own columns.
 - **same element** covers a field one array deep. A path through an array inside another array needs nested `$elemMatch`, so those filter with dot notation only.
 - GridFS buckets are not browsable, and change streams are unsupported.
-- `db.getSiblingDB(…)` is not supported. A query runs against the database the connection is on; switch with `Cmd+K`.
+- A script that loops without touching the database cannot be stopped: JavaScriptCore has no public way to interrupt one. `Cmd+.` stops anything that reads, writes or prints, which covers every query. A script silent for 120 seconds is abandoned and the shell restarts.
+- Field names that look like integers (`"0"`, `"12"`) sort ahead of the rest in a document literal, which is what JavaScript does with them.
 
 ## Troubleshooting
 

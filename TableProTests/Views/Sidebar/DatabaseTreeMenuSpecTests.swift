@@ -31,7 +31,9 @@ struct DatabaseTreeMenuSpecTests {
         canReachOtherDatabases: Bool = true,
         canFilterDatabases: Bool = false,
         hasDatabaseFilter: Bool = false,
-        supportsRename: Bool = true
+        supportsRename: Bool = true,
+        canCopyObjects: Bool = true,
+        canDuplicateDatabase: Bool = true
     ) -> DatabaseTreeMenuContext {
         DatabaseTreeMenuContext(
             clicked: clicked,
@@ -72,7 +74,9 @@ struct DatabaseTreeMenuSpecTests {
             showObjectComments: false,
             rowSize: .matchSystem,
             canFilterDatabases: canFilterDatabases,
-            hasDatabaseFilter: hasDatabaseFilter
+            hasDatabaseFilter: hasDatabaseFilter,
+            canCopyObjects: canCopyObjects,
+            canDuplicateDatabase: canDuplicateDatabase
         )
     }
 
@@ -513,5 +517,121 @@ struct DatabaseTreeMenuSpecTests {
         for kind in kinds {
             #expect(!DatabaseTreeMenuSpec.items(for: context(clicked: kind, isReadOnly: true)).isEmpty)
         }
+    }
+
+    // MARK: - Copying
+
+    private func databaseKind(_ name: String, isSystem: Bool = false) -> DatabaseTreeNode.Kind {
+        .database(DatabaseMetadata.minimal(name: name, isSystem: isSystem))
+    }
+
+    @Test("A table row offers Copy To")
+    func tableOffersCopyTo() {
+        let ref = tableRef("orders")
+        let issued = commands(DatabaseTreeMenuSpec.items(
+            for: context(clicked: .table(ref), selectedTables: [ref])
+        ))
+
+        #expect(issued.contains { command in
+            guard case .copyObjectsTo(let objects, _) = command else { return false }
+            return objects.map(\.name) == ["orders"]
+        })
+    }
+
+    /// A right-click inside a multi-selection acts on the whole selection, the same rule Export,
+    /// Truncate and Drop already keep.
+    @Test("Copy To on a multi-selection carries every table in it")
+    func copyToCarriesTheSelection() {
+        let orders = tableRef("orders")
+        let customers = tableRef("customers")
+        let issued = commands(DatabaseTreeMenuSpec.items(
+            for: context(clicked: .table(orders), selectedTables: [orders, customers])
+        ))
+
+        let names = issued.compactMap { command -> [String]? in
+            guard case .copyObjectsTo(let objects, _) = command else { return nil }
+            return objects.map(\.name).sorted()
+        }
+        #expect(names == [["customers", "orders"]])
+    }
+
+    /// A view holds rows a copy can read, so it takes part, but it is copied as its definition
+    /// rather than as columns.
+    @Test("A view row is offered as a view rather than as a table")
+    func viewIsOfferedAsAView() {
+        let ref = tableRef("active_users", type: .view)
+        let issued = commands(DatabaseTreeMenuSpec.items(
+            for: context(clicked: .table(ref), selectedTables: [ref])
+        ))
+
+        #expect(issued.contains { command in
+            guard case .copyObjectsTo(let objects, _) = command else { return false }
+            return objects.first?.kind == .view
+        })
+    }
+
+    @Test("An engine that cannot copy offers neither command")
+    func ineligibleEngineHidesCopying() {
+        let ref = tableRef("orders")
+        let tableCommands = commands(DatabaseTreeMenuSpec.items(for: context(
+            clicked: .table(ref), selectedTables: [ref], canCopyObjects: false
+        )))
+        let databaseCommands = commands(DatabaseTreeMenuSpec.items(for: context(
+            clicked: databaseKind("app"),
+            selectedContainers: [.database("app")],
+            canCopyObjects: false,
+            canDuplicateDatabase: false
+        )))
+
+        #expect(!tableCommands.contains { if case .copyObjectsTo = $0 { return true } else { return false } })
+        #expect(!databaseCommands.contains { if case .copyContainerTo = $0 { return true } else { return false } })
+        #expect(!databaseCommands.contains { if case .duplicateDatabase = $0 { return true } else { return false } })
+    }
+
+    @Test("A database row offers Copy To and Duplicate Database")
+    func databaseOffersCopyAndDuplicate() {
+        let issued = commands(DatabaseTreeMenuSpec.items(for: context(
+            clicked: databaseKind("app"), selectedContainers: [.database("app")]
+        )))
+
+        #expect(issued.contains(.copyContainerTo(.database("app"))))
+        #expect(issued.contains(.duplicateDatabase(.database("app"))))
+    }
+
+    /// `CREATE DATABASE information_schema` is not a thing anyone wants offered.
+    @Test("A system database is not offered for duplication")
+    func systemDatabaseIsNotDuplicated() {
+        let issued = commands(DatabaseTreeMenuSpec.items(for: context(
+            clicked: databaseKind("information_schema", isSystem: true),
+            selectedContainers: [.database("information_schema", isSystem: true)]
+        )))
+
+        #expect(!issued.contains { if case .duplicateDatabase = $0 { return true } else { return false } })
+    }
+
+    /// No engine creates a schema from a `CREATE DATABASE`, so a schema is copied into one that
+    /// already exists rather than duplicated.
+    @Test("A schema row offers Copy To but not Duplicate Database")
+    func schemaOffersCopyOnly() {
+        let schema = DatabaseContainerRef.schema(database: "app", schema: "sales")
+        let issued = commands(DatabaseTreeMenuSpec.items(for: context(
+            clicked: .schema(database: "app", schema: "sales"), selectedContainers: [schema]
+        )))
+
+        #expect(issued.contains(.copyContainerTo(schema)))
+        #expect(!issued.contains { if case .duplicateDatabase = $0 { return true } else { return false } })
+    }
+
+    /// A copy names one source and one target, so two databases selected at once would need a
+    /// target each.
+    @Test("A multi-container selection offers neither copy command")
+    func multipleContainersHideCopying() {
+        let issued = commands(DatabaseTreeMenuSpec.items(for: context(
+            clicked: databaseKind("app"),
+            selectedContainers: [.database("app"), .database("archive")]
+        )))
+
+        #expect(!issued.contains { if case .copyContainerTo = $0 { return true } else { return false } })
+        #expect(!issued.contains { if case .duplicateDatabase = $0 { return true } else { return false } })
     }
 }

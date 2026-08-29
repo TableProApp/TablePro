@@ -26,8 +26,8 @@ internal struct CompareRowService {
     }
 
     internal func concurrentReadRefusal(
-        source: CompareSyncEndpoint,
-        target: CompareSyncEndpoint
+        source: DatabaseEndpoint,
+        target: DatabaseEndpoint
     ) -> String? {
         guard source.connectionId == target.connectionId else { return nil }
         let routes = [manager.metadataRoute(for: source.scope), manager.metadataRoute(for: target.scope)]
@@ -42,9 +42,9 @@ internal struct CompareRowService {
 
     internal func compare(
         plan: DataComparePlan,
-        source: CompareSyncEndpoint,
+        source: DatabaseEndpoint,
         sourceConnection: DatabaseConnection,
-        target: CompareSyncEndpoint,
+        target: DatabaseEndpoint,
         targetConnection: DatabaseConnection,
         options: DataCompareOptions
     ) async throws -> DataDiffSummary {
@@ -62,9 +62,9 @@ internal struct CompareRowService {
     /// 12,000 row difference and reported the run as complete.
     internal func buildStatements(
         plan: DataComparePlan,
-        source: CompareSyncEndpoint,
+        source: DatabaseEndpoint,
         sourceConnection: DatabaseConnection,
-        target: CompareSyncEndpoint,
+        target: DatabaseEndpoint,
         targetConnection: DatabaseConnection,
         options: DataCompareOptions,
         excludedKeys: Set<String>
@@ -94,9 +94,9 @@ internal struct CompareRowService {
     // MARK: - Plumbing
 
     private func withBothSides<T: Sendable>(
-        source: CompareSyncEndpoint,
+        source: DatabaseEndpoint,
         sourceConnection: DatabaseConnection,
-        target: CompareSyncEndpoint,
+        target: DatabaseEndpoint,
         targetConnection: DatabaseConnection,
         plan: DataComparePlan,
         options: DataCompareOptions,
@@ -155,9 +155,9 @@ internal struct CompareRowService {
     }
 
     private func withBothSides<T: Sendable>(
-        source: CompareSyncEndpoint,
+        source: DatabaseEndpoint,
         sourceConnection: DatabaseConnection,
-        target: CompareSyncEndpoint,
+        target: DatabaseEndpoint,
         targetConnection: DatabaseConnection,
         plan: DataComparePlan,
         options: DataCompareOptions,

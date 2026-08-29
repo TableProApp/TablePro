@@ -1,5 +1,5 @@
 //
-//  CompareEndpointPickerModel.swift
+//  DatabaseEndpointPickerModel.swift
 //  TablePro
 //
 //  The databases and schemas the endpoint picker browses, loaded on demand and
@@ -14,7 +14,7 @@
 
 import Foundation
 
-internal enum CompareEndpointListState: Equatable {
+internal enum DatabaseEndpointListState: Equatable {
     case loading
     case loaded([String])
     case failed(String)
@@ -22,12 +22,12 @@ internal enum CompareEndpointListState: Equatable {
 
 @MainActor
 @Observable
-internal final class CompareEndpointPickerModel {
-    private var databaseStates: [UUID: CompareEndpointListState] = [:]
-    private var schemaStates: [String: CompareEndpointListState] = [:]
+internal final class DatabaseEndpointPickerModel {
+    private var databaseStates: [UUID: DatabaseEndpointListState] = [:]
+    private var schemaStates: [String: DatabaseEndpointListState] = [:]
     @ObservationIgnored private var inFlight: Set<String> = []
     @ObservationIgnored private let databaseLoader: (DatabaseConnection) async throws -> [String]
-    @ObservationIgnored private let schemaLoader: (CompareSyncEndpoint, DatabaseConnection) async throws -> [String]
+    @ObservationIgnored private let schemaLoader: (DatabaseEndpoint, DatabaseConnection) async throws -> [String]
 
     internal convenience init() {
         let metadata = CompareMetadataService()
@@ -39,17 +39,17 @@ internal final class CompareEndpointPickerModel {
 
     internal init(
         databaseLoader: @escaping (DatabaseConnection) async throws -> [String],
-        schemaLoader: @escaping (CompareSyncEndpoint, DatabaseConnection) async throws -> [String]
+        schemaLoader: @escaping (DatabaseEndpoint, DatabaseConnection) async throws -> [String]
     ) {
         self.databaseLoader = databaseLoader
         self.schemaLoader = schemaLoader
     }
 
-    internal func databases(for connectionId: UUID) -> CompareEndpointListState {
+    internal func databases(for connectionId: UUID) -> DatabaseEndpointListState {
         databaseStates[connectionId] ?? .loading
     }
 
-    internal func schemas(for endpoint: CompareSyncEndpoint) -> CompareEndpointListState {
+    internal func schemas(for endpoint: DatabaseEndpoint) -> DatabaseEndpointListState {
         schemaStates[Self.schemaKey(endpoint)] ?? .loading
     }
 
@@ -67,7 +67,7 @@ internal final class CompareEndpointPickerModel {
     }
 
     internal func loadSchemas(
-        for endpoint: CompareSyncEndpoint,
+        for endpoint: DatabaseEndpoint,
         connection: DatabaseConnection,
         reload: Bool = false
     ) async {
@@ -83,24 +83,24 @@ internal final class CompareEndpointPickerModel {
         }
     }
 
-    private func shouldLoad(current: CompareEndpointListState?, key: String, reload: Bool) -> Bool {
+    private func shouldLoad(current: DatabaseEndpointListState?, key: String, reload: Bool) -> Bool {
         if !reload, current != nil, !isFailed(current) { return false }
         return inFlight.insert(key).inserted
     }
 
     /// Only a level with nothing to show becomes a spinner. A reload keeps the list it is
     /// replacing on screen, so retrying never blanks a pane that already had an answer.
-    private func beginLoading(_ state: inout CompareEndpointListState?) {
+    private func beginLoading(_ state: inout DatabaseEndpointListState?) {
         guard state == nil || isFailed(state) else { return }
         state = .loading
     }
 
-    private func isFailed(_ state: CompareEndpointListState?) -> Bool {
+    private func isFailed(_ state: DatabaseEndpointListState?) -> Bool {
         guard case .failed = state else { return false }
         return true
     }
 
-    private static func schemaKey(_ endpoint: CompareSyncEndpoint) -> String {
+    private static func schemaKey(_ endpoint: DatabaseEndpoint) -> String {
         "\(endpoint.connectionId.uuidString)\u{1F}\(endpoint.database)"
     }
 }

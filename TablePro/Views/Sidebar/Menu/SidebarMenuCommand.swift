@@ -48,6 +48,11 @@ internal enum SidebarMenuCommand: Equatable {
     case copyContainerNames([DatabaseContainerRef])
     case exportContainers([DatabaseContainerRef])
     case dropContainers([DatabaseContainerRef])
+    /// Copy carries its objects rather than a scope, because the sheet needs to know what the user
+    /// right-clicked: one table preselects that table, a database preselects everything in it.
+    case copyObjectsTo(objects: [ObjectCopySelection], ref: DatabaseTreeTableRef?)
+    case copyContainerTo(DatabaseContainerRef)
+    case duplicateDatabase(DatabaseContainerRef)
     case showAllTablesMetadata
     case refreshObjectKind(SidebarObjectKind)
     case refreshContainerObjectKind(DatabaseTreeObjectGroup)

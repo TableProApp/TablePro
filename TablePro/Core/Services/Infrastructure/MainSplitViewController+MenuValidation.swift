@@ -52,6 +52,8 @@ struct MenuValidationContext: Equatable {
     var canShowTableStructure = false
     var canEditViewDefinition = false
     var canCreateDatabase = false
+    var canCopyObjects = false
+    var canDuplicateDatabase = false
     var hasMaintenanceOperations = false
     var canUndo = false
     var canRedo = false
@@ -190,6 +192,10 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && !context.isReadOnly
         case #selector(createNewDatabase(_:)):
             return context.canCreateDatabase
+        case #selector(copyObjectsToDatabase(_:)):
+            return context.canCopyObjects
+        case #selector(duplicateCurrentDatabase(_:)):
+            return context.canDuplicateDatabase
         case #selector(showTableStructure(_:)):
             return context.isConnected && context.canShowTableStructure
         case #selector(editViewDefinition(_:)):
@@ -273,6 +279,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             canShowTableStructure: actions.canShowTableStructure,
             canEditViewDefinition: actions.canEditViewDefinition,
             canCreateDatabase: actions.canCreateDatabase,
+            canCopyObjects: actions.canCopyObjects,
+            canDuplicateDatabase: actions.canDuplicateDatabase,
             hasMaintenanceOperations: !actions.maintenanceOperations.isEmpty,
             canUndo: actions.canUndo,
             canRedo: actions.canRedo,

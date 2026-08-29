@@ -87,6 +87,7 @@ internal enum OperationCompletionCopy {
         case .backup: return String(localized: "Backup finished")
         case .dataImport: return String(localized: "Import finished")
         case .dataExport: return String(localized: "Export finished")
+        case .objectCopy: return String(localized: "Copy finished")
         case .query, .queryBatch, .fetchAll, .mcpQuery: return String(localized: "Finished")
         }
     }

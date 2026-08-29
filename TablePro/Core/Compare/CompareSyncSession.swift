@@ -50,8 +50,8 @@ internal final class CompareSyncSession {
     // MARK: - Setup
 
     internal var mode: CompareSyncMode = .structure
-    internal var source: CompareSyncEndpoint?
-    internal var target: CompareSyncEndpoint?
+    internal var source: DatabaseEndpoint?
+    internal var target: DatabaseEndpoint?
     internal var structureOptions = StructureCompareOptions.default
     internal var dataOptions = DataCompareOptions.default
     internal var executionSettings = CompareSyncExecutionSettings()

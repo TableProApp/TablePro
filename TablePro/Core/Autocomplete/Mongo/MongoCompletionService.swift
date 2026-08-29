@@ -82,7 +82,7 @@ final class MongoCompletionService: QueryCompletionService {
 
     private func opensBrowsableList(_ position: MongoCompletionPosition) -> Bool {
         switch position {
-        case .databaseMember, .collectionMethod, .pipelineStage, .updatePipelineStage:
+        case .databaseMember, .collectionMethod, .cursorMethod, .pipelineStage, .updatePipelineStage:
             return true
         default:
             return false
@@ -99,6 +99,8 @@ final class MongoCompletionService: QueryCompletionService {
             return await collectionItems() + methodItems(MongoVocabulary.databaseMethods)
         case .collectionMethod:
             return methodItems(MongoVocabulary.collectionMethods)
+        case .cursorMethod:
+            return methodItems(MongoVocabulary.cursorMethods)
         case .filterDocument(let collection):
             return await fieldItems(for: collection) + operatorItems(MongoVocabulary.queryOperators)
         case .projectionDocument(let collection):

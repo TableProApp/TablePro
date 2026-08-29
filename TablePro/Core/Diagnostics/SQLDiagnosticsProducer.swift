@@ -9,7 +9,7 @@ struct SQLDiagnosticsProducer: QueryDiagnosticsProducing {
         let source = text as NSString
         guard source.length > 0, source.length <= Self.maximumLength else { return [] }
 
-        let structure = QueryBracketScanner.scan(source, allowsLineComments: false)
+        let structure = QueryBracketScanner.scan(source, comments: .sql)
         var results: [QueryDiagnostic] = []
 
         if let range = structure.unmatchedClose {

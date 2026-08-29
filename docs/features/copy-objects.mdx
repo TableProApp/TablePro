@@ -1,0 +1,145 @@
+---
+title: Copy and duplicate
+description: Copy tables and databases to another database or another connection, structure, data, or both
+---
+
+Right-click what you want and pick where it goes. Rows stream from one connection to the other in
+batches, so a table larger than memory copies at the same cost as a small one, and nothing is
+written until you have read the script.
+
+## Opening it
+
+<Steps>
+  <Step title="Right-click in the sidebar">
+    A table, a view, or a multiple selection of them offers **Copy To…**. A database row offers
+    **Copy To…** and **Duplicate Database…**. A schema row offers **Copy To…**.
+
+    **Database > Copy Objects To…** and **Database > Duplicate Database…** reach the same sheet
+    from the keyboard, acting on the database being browsed.
+  </Step>
+  <Step title="Choose the destination">
+    **Copy To…** opens a picker that walks connection, then database, then schema, the same picker
+    Compare & Sync uses. **Duplicate Database…** asks for a name instead and creates the database on
+    the connection you right-clicked.
+  </Step>
+  <Step title="Choose what travels">
+    Structure only, data only, or both. Tick the objects taking part.
+  </Step>
+  <Step title="Read the script, then copy">
+    **Continue** reads both databases and shows the DDL that will run, the rows each table expects,
+    and anything left out. **Copy** is the first thing that writes.
+  </Step>
+</Steps>
+
+## What each object carries
+
+| Kind | Structure | Data |
+|---|---|---|
+| Tables | Columns, primary key, indexes, foreign keys, storage engine and collation | Every row, streamed in batches |
+| Views, materialized views | The source's definition | None to carry |
+| Procedures, functions | The source's definition | None to carry |
+| Triggers | The source's definition | None to carry |
+
+A data-only copy leaves views, routines and triggers out and says so in the review step: they hold
+no rows.
+
+Generated and computed columns are dropped from the write. The server recomputes them, and every
+engine that has them rejects an `INSERT` that names one.
+
+## When the target already has the object
+
+Chosen once, before the run, and applied to every object in it.
+
+| Choice | Structure and data | Data only |
+|---|---|---|
+| **Skip it** | The object is left out | The object is left out |
+| **Replace it** | The target's object is dropped and built again | The target's rows are removed first |
+| **Add rows to it** | The target keeps its structure, rows are appended | Rows are appended |
+
+**Add rows to it** writes only the columns both sides have, matched without regard to case. A column
+the target does not have is not written; one the source does not have keeps its default.
+
+Pick **Skip it** unless you are refreshing a copy you made earlier. It is the only one of the three
+that cannot lose anything already in the target.
+
+## One engine, and the namespace rule
+
+A copy stays inside one engine. Column data types are the driver's own strings and the row writer
+emits that driver's own SQL, so neither structure nor data crosses from MySQL to PostgreSQL. The
+sheet refuses before it reads anything. MySQL and MariaDB count as one engine.
+
+A database-level copy covers every schema. Each schema's objects are read and written in their own
+scope, and a duplicate recreates each of them under the same name in the new database.
+
+Views, routines and triggers copy only where both sides share a namespace, which is the schema on
+PostgreSQL and SQL Server and the database on MySQL and MariaDB. Their definition is the source's
+own SQL text and nothing rewrites the objects it names, so anywhere else it would point back at the
+source. They are left out with the reason shown, which is why duplicating a MySQL database carries
+its tables and not its views.
+
+A driver that answers with a view's `SELECT` rather than its `CREATE`, which ClickHouse, Oracle,
+Dameng and BigQuery do, has that view left out for the same reason.
+
+## Ordering and foreign keys
+
+Everything is torn down children first, so a foreign key is gone before the table it points at, then
+built parents first, both in one pass so a stop between them cannot leave objects dropped with
+nothing put back. Rows are copied after that. Triggers and materialized views go in last: a trigger
+installed before the rows fires on the copy itself, and a materialized view is filled at the moment
+it is created.
+
+A copied foreign key is repointed at the copy. A key that referenced the source's own schema
+references the target's afterwards, so the duplicate stands on its own; one that referenced a third
+schema is left as it was.
+
+Two tables that reference each other cannot be ordered. The second `CREATE TABLE` fails, its error
+appears in the result, and the rest of the copy is unaffected.
+
+## Stopping a copy
+
+**Stop** takes effect at the next batch boundary. Each table is its own transaction where the engine
+supports one, so the table being copied rolls back, along with the emptying that Replace does, and
+the tables already finished stay. A driver blocked inside a network call finishes that batch first.
+
+A stopped copy reports only what was committed. The table it was in the middle of counts as neither
+copied nor failed.
+
+## Duplicating a database
+
+**Duplicate Database…** creates the new database with the character set and collation the engine
+offers, then copies every object into it. The name is prefilled with the source name plus `_copy`.
+
+Available on engines that have databases to create. SQLite, DuckDB and the other single-file engines
+have none, so the command does not appear on them.
+
+## Limitations
+
+Copying is SQL only. MongoDB, Redis, DynamoDB, Elasticsearch, Kafka, etcd and SurrealDB have no
+`CREATE TABLE` and no row writer to copy through, so neither command appears on them.
+
+Duplicate Database needs a driver that creates one. Where it does not, the command still appears and
+the sheet names the engine that cannot rather than failing part way in.
+
+Identity and auto-increment values are written as they are. On SQL Server and on PostgreSQL columns
+declared `GENERATED ALWAYS AS IDENTITY`, the server refuses an explicit value and the table's error
+appears in the result. Copy the structure, then the data with the identity column removed from the
+target, or use **Add rows to it** against a table whose key is plain.
+
+PostgreSQL columns declared `SERIAL` carry a default that names a sequence. The sequence is not
+copied, so those tables need theirs created first.
+
+Two databases on one connection can be copied between only where the driver opens a second
+connection of its own. DuckDB and PGlite hold their database inside the driver instance, so the
+sheet refuses and names the reason.
+
+Dameng and Teradata read a table whole before the first batch is written, because their drivers do
+not stream rows. On those two, a table larger than memory is a table this cannot copy, and **Stop**
+waits for the read.
+
+Read-only connections are dimmed in the target picker with the reason shown.
+
+## Related
+
+- [Compare & Sync](/features/compare-sync) for bringing two databases that both already exist into
+  line, statement by statement
+- [Import and export](/features/import-export) for moving data through a file

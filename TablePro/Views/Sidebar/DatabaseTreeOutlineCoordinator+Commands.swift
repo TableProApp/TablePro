@@ -102,6 +102,27 @@ extension DatabaseTreeOutlineCoordinator {
             mainCoordinator?.openExportDialog(containers: targets)
         case .dropContainers(let targets):
             mainCoordinator?.requestContainerDrop(targets)
+        case .copyObjectsTo(let objects, let ref):
+            mainCoordinator?.openCopyObjects(
+                mode: .copyTo,
+                database: ref?.database,
+                schema: ref?.qualifyingSchema,
+                objects: objects
+            )
+        case .copyContainerTo(let container):
+            mainCoordinator?.openCopyObjects(
+                mode: .copyTo,
+                database: container.database,
+                schema: container.kind == .schema ? container.schema : nil,
+                objects: []
+            )
+        case .duplicateDatabase(let container):
+            mainCoordinator?.openCopyObjects(
+                mode: .duplicateDatabase,
+                database: container.database,
+                schema: nil,
+                objects: []
+            )
         case .showAllTablesMetadata:
             mainCoordinator?.showAllTablesMetadata()
         case .refreshObjectKind(let kind):

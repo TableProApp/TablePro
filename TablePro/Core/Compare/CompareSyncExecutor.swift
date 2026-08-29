@@ -105,7 +105,7 @@ internal actor CompareSyncExecutor {
         statements: [SyncStatement],
         mode: CompareSyncMode,
         settings: CompareSyncExecutionSettings,
-        target: CompareSyncEndpoint,
+        target: DatabaseEndpoint,
         driver: any PluginDatabaseDriver,
         progress: Progress
     ) async throws -> CompareSyncRunResult {

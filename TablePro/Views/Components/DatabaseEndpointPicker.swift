@@ -1,8 +1,8 @@
 //
-//  CompareEndpointPicker.swift
+//  DatabaseEndpointPicker.swift
 //  TablePro
 //
-//  Choosing the database a comparison reads or writes.
+//  Choosing the database an operation reads or writes.
 //
 //  This was an NSMenu whose submenus fetched on open, which cannot work:
 //  AppKit runs a tracking session in `NSEventTrackingRunLoopMode`, the main
@@ -17,7 +17,7 @@
 import AppKit
 import SwiftUI
 
-internal enum CompareEndpointSide: Hashable {
+internal enum DatabaseEndpointSide: Hashable {
     case source
     case target
 
@@ -49,23 +49,23 @@ internal enum CompareEndpointSide: Hashable {
     }
 }
 
-internal struct CompareEndpointPicker: View {
-    internal let side: CompareEndpointSide
-    internal let current: CompareSyncEndpoint?
-    internal let onPick: (CompareSyncEndpoint) -> Void
+internal struct DatabaseEndpointPicker: View {
+    internal let side: DatabaseEndpointSide
+    internal let current: DatabaseEndpoint?
+    internal let onPick: (DatabaseEndpoint) -> Void
     internal let dismiss: () -> Void
 
     internal static let contentSize = NSSize(width: 320, height: 400)
 
-    @State private var model = CompareEndpointPickerModel()
-    @State private var path: [CompareEndpointRoute] = []
+    @State private var model = DatabaseEndpointPickerModel()
+    @State private var path: [DatabaseEndpointRoute] = []
     @State private var connections: [DatabaseConnection] = []
 
     internal var body: some View {
         NavigationStack(path: $path) {
             connectionList
                 .navigationTitle(side.title)
-                .navigationDestination(for: CompareEndpointRoute.self) { route in
+                .navigationDestination(for: DatabaseEndpointRoute.self) { route in
                     destination(route)
                 }
         }
@@ -81,7 +81,7 @@ internal struct CompareEndpointPicker: View {
                 ContentUnavailableView {
                     Label("No Saved Connections", systemImage: "externaldrive.badge.questionmark")
                 } description: {
-                    Text("Add a connection before comparing.")
+                    Text("Add a connection first.")
                 }
             } else {
                 List(connections) { connection in
@@ -94,7 +94,7 @@ internal struct CompareEndpointPicker: View {
 
     @ViewBuilder
     private func connectionRow(_ connection: DatabaseConnection) -> some View {
-        let endpoint = CompareSyncEndpoint.from(connection: connection)
+        let endpoint = DatabaseEndpoint.from(connection: connection)
         if side == .target, let reason = endpoint.ineligibleAsTargetReason {
             Label {
                 VStack(alignment: .leading, spacing: 1) {
@@ -108,7 +108,7 @@ internal struct CompareEndpointPicker: View {
             }
             .foregroundStyle(.tertiary)
         } else {
-            NavigationLink(value: CompareEndpointRoute.databases(connection.id)) {
+            NavigationLink(value: DatabaseEndpointRoute.databases(connection.id)) {
                 Label {
                     Text(connection.name)
                 } icon: {
@@ -121,7 +121,7 @@ internal struct CompareEndpointPicker: View {
     // MARK: - Databases and schemas
 
     @ViewBuilder
-    private func destination(_ route: CompareEndpointRoute) -> some View {
+    private func destination(_ route: DatabaseEndpointRoute) -> some View {
         switch route {
         case let .databases(connectionId):
             if let connection = connections.first(where: { $0.id == connectionId }) {
@@ -146,7 +146,7 @@ internal struct CompareEndpointPicker: View {
         case let .failed(message):
             failurePane(message) { await model.loadDatabases(for: connection, reload: true) }
         case let .loaded(names):
-            let base = CompareSyncEndpoint.from(connection: connection)
+            let base = DatabaseEndpoint.from(connection: connection)
             if names.isEmpty {
                 List {
                     endpointRow(base, title: base.databaseLabel.isEmpty ? connection.name : base.databaseLabel)
@@ -162,9 +162,9 @@ internal struct CompareEndpointPicker: View {
     }
 
     @ViewBuilder
-    private func databaseRow(_ endpoint: CompareSyncEndpoint, connection: DatabaseConnection) -> some View {
+    private func databaseRow(_ endpoint: DatabaseEndpoint, connection: DatabaseConnection) -> some View {
         if PluginManager.shared.supportsSchemaSwitching(for: connection.type) {
-            NavigationLink(value: CompareEndpointRoute.schemas(endpoint, connection.id)) {
+            NavigationLink(value: DatabaseEndpointRoute.schemas(endpoint, connection.id)) {
                 Text(endpoint.databaseLabel)
             }
         } else {
@@ -176,7 +176,7 @@ internal struct CompareEndpointPicker: View {
     /// same-named tables as one object, and the generated ALTER carries no schema of its own, so it
     /// would land on whichever schema the connection happens to be on.
     @ViewBuilder
-    private func schemaList(_ endpoint: CompareSyncEndpoint, connection: DatabaseConnection) -> some View {
+    private func schemaList(_ endpoint: DatabaseEndpoint, connection: DatabaseConnection) -> some View {
         switch model.schemas(for: endpoint) {
         case .loading:
             loadingPane
@@ -187,7 +187,7 @@ internal struct CompareEndpointPicker: View {
                 ContentUnavailableView {
                     Label("No Schemas", systemImage: "tray")
                 } description: {
-                    Text("This database reports no schemas to compare.")
+                    Text("This database reports no schemas.")
                 }
             } else {
                 List(names, id: \.self) { name in
@@ -198,7 +198,7 @@ internal struct CompareEndpointPicker: View {
         }
     }
 
-    private func endpointRow(_ endpoint: CompareSyncEndpoint, title: String) -> some View {
+    private func endpointRow(_ endpoint: DatabaseEndpoint, title: String) -> some View {
         Button {
             onPick(endpoint)
             dismiss()
@@ -249,11 +249,11 @@ internal struct CompareEndpointPicker: View {
     }
 
     private func label(_ database: String, _ connection: DatabaseConnection) -> String {
-        CompareSyncEndpoint.label(for: database, type: connection.type)
+        DatabaseEndpoint.label(for: database, type: connection.type)
     }
 }
 
-internal enum CompareEndpointRoute: Hashable {
+internal enum DatabaseEndpointRoute: Hashable {
     case databases(UUID)
-    case schemas(CompareSyncEndpoint, UUID)
+    case schemas(DatabaseEndpoint, UUID)
 }

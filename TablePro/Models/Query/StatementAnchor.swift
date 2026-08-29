@@ -87,8 +87,14 @@ struct StatementAnchor: Equatable {
     /// Resolution is against a fresh scan rather than a search through the raw text: the scan is what decides where
     /// statements begin in the first place, and matching whole statements keeps a fingerprint from landing inside a
     /// string literal or a comment that happens to start the same way.
-    func resolve(in query: String, dialect: SqlDialect = .generic) -> NSRange? {
-        let statements = SQLStatementScanner.executableStatements(in: query, dialect: dialect)
+    func resolve(
+        in query: String,
+        model: QueryStatementModel = .sql,
+        dialect: SqlDialect = .generic
+    ) -> NSRange? {
+        let statements = QueryStatementScanner.executableStatements(
+            in: query, model: model, dialect: dialect
+        )
 
         if let exact = statements.first(where: { $0.range == range && matches($0) }) {
             return exact.range

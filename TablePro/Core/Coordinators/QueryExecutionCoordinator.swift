@@ -23,10 +23,12 @@ final class QueryExecutionCoordinator {
         let fullQuery = tab.content.query
         guard !fullQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
-        let statements = SQLStatementScanner.executableStatements(in: fullQuery, dialect: parent.sqlDialect)
+        let statements = QueryStatementScanner.executableStatements(
+            in: fullQuery, model: parent.statementModel, dialect: parent.sqlDialect
+        )
         guard !statements.isEmpty else { return }
 
-        if AppSettingsManager.shared.editor.queryParametersEnabled {
+        if AppSettingsManager.shared.editor.queryParametersEnabled, parent.statementModel == .sql {
             let combinedSQL = statements.map(\.sql).joined(separator: "; ")
             let detectedNames = SQLParameterExtractor.extractParameters(from: combinedSQL)
 

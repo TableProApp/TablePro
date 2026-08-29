@@ -67,7 +67,7 @@ internal struct CompareMetadataService {
         }
     }
 
-    internal func schemas(for endpoint: CompareSyncEndpoint, connection: DatabaseConnection) async throws -> [String] {
+    internal func schemas(for endpoint: DatabaseEndpoint, connection: DatabaseConnection) async throws -> [String] {
         try await manager.ensureConnected(connection)
         return try await manager.withMetadataDriver(scope: endpoint.scope) { driver in
             try await driver.fetchSchemas()
@@ -77,7 +77,7 @@ internal struct CompareMetadataService {
     // MARK: - Capability
 
     internal func refusalReason(
-        for endpoint: CompareSyncEndpoint,
+        for endpoint: DatabaseEndpoint,
         connection: DatabaseConnection,
         mode: CompareSyncMode
     ) async throws -> String? {
@@ -99,18 +99,26 @@ internal struct CompareMetadataService {
     /// One object's failure is that object's, not the comparison's. A single unreadable table used
     /// to abort the whole run, which is why `TableDiffResult.comparisonError` was read by the UI and
     /// written by nothing.
+    ///
+    /// `names` narrows the read to the objects the caller already knows it wants, matched without
+    /// regard to case because engines disagree on identifier folding. A comparison passes nil and
+    /// reads the whole scope; a copy of one table would otherwise pay four round trips for every
+    /// other table in the database.
     internal func tableReads(
-        for endpoint: CompareSyncEndpoint,
+        for endpoint: DatabaseEndpoint,
         connection: DatabaseConnection,
-        includeViews: Bool
+        includeViews: Bool,
+        names: Set<String>? = nil
     ) async throws -> [TableStructureRead] {
         try await manager.ensureConnected(connection)
         let schema = endpoint.schema
         let concurrency = Self.metadataConcurrency(for: endpoint.databaseType)
+        let wanted = names.map { Set($0.map { $0.lowercased() }) }
 
         return try await manager.withMetadataDriver(scope: endpoint.scope) { driver in
             guard let plugin = Self.pluginDriver(from: driver) else { return [] }
             let tables = try await plugin.fetchTables(schema: schema).filter { table in
+                guard wanted?.contains(table.name.lowercased()) ?? true else { return false }
                 let kind = CompareTableKindClassifier.kind(of: table)
                 return kind == .table || includeViews
             }
@@ -126,7 +134,7 @@ internal struct CompareMetadataService {
     /// be read is still listed, with an empty definition, so it shows as present rather than
     /// vanishing from the comparison.
     internal func routineReads(
-        for endpoint: CompareSyncEndpoint,
+        for endpoint: DatabaseEndpoint,
         connection: DatabaseConnection
     ) async throws -> [RoutineSourceRead] {
         try await manager.ensureConnected(connection)
@@ -157,7 +165,7 @@ internal struct CompareMetadataService {
     /// read already listed are the ones asked. A trigger on a table that is not in scope is not in
     /// scope either.
     internal func triggerReads(
-        for endpoint: CompareSyncEndpoint,
+        for endpoint: DatabaseEndpoint,
         connection: DatabaseConnection,
         tables: [String]
     ) async throws -> [RoutineSourceRead] {
@@ -184,7 +192,7 @@ internal struct CompareMetadataService {
     }
 
     internal func viewDefinitions(
-        for endpoint: CompareSyncEndpoint,
+        for endpoint: DatabaseEndpoint,
         connection: DatabaseConnection,
         views: [PluginTableInfo]
     ) async throws -> [RoutineSourceRead] {

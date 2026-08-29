@@ -314,6 +314,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
     private func installStatementRunControls(controller: TextViewController) {
         statementRunController.dialect = SqlDialect.from(databaseTypeId: (databaseType ?? .mysql).rawValue)
+        statementRunController.statementModel = QueryStatementModel.forDatabaseType(databaseType ?? .mysql)
         statementRunController.isHighlightEnabled = AppSettingsManager.shared.editor.highlightCurrentStatement
         statementRunController.onRun = { [weak self] sql, offset in
             self?.onRunStatement?(sql, offset) ?? false
@@ -349,7 +350,11 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     @discardableResult
     func jumpToStatement(_ anchor: StatementAnchor) -> Bool {
         guard let controller, let textView = controller.textView else { return false }
-        guard let range = anchor.resolve(in: textView.string, dialect: statementRunController.dialect) else {
+        guard let range = anchor.resolve(
+            in: textView.string,
+            model: statementRunController.statementModel,
+            dialect: statementRunController.dialect
+        ) else {
             return false
         }
         controller.moveCursor(to: range.location)
