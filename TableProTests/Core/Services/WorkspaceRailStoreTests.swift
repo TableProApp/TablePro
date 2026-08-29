@@ -432,6 +432,108 @@ struct WorkspaceRailCellTextTests {
         )
     }
 
+    private func configuredCell(
+        name: String = "staging",
+        container: String = "app",
+        containerTarget: ContainerSwitchTarget? = .database
+    ) -> WorkspaceRailCellView {
+        let cell = WorkspaceRailCellView(frame: NSRect(
+            x: 0,
+            y: 0,
+            width: WorkspaceRailMetrics.medium.width,
+            height: WorkspaceRailMetrics.medium.rowHeight
+        ))
+        cell.configure(
+            entry: makeEntry(name: name, container: container, containerTarget: containerTarget),
+            layout: WorkspaceRailMetrics.medium
+        )
+        cell.layoutSubtreeIfNeeded()
+        return cell
+    }
+
+    @Test("Connection and database occupy stable connection-first lines")
+    func connectionAndDatabaseUseSeparateLines() throws {
+        let production = configuredCell(name: "Production", container: "app")
+        let staging = configuredCell(name: "Staging", container: "app")
+
+        #expect(try #require(production.textField).stringValue == "Production\napp")
+        #expect(try #require(staging.textField).stringValue == "Staging\napp")
+        #expect(production.textField?.stringValue != staging.textField?.stringValue)
+    }
+
+    @Test("One connection keeps distinct second lines for its containers")
+    func oneConnectionKeepsDistinctContainers() throws {
+        let app = configuredCell(name: "Production", container: "app")
+        let analytics = configuredCell(name: "Production", container: "analytics")
+
+        #expect(try #require(app.textField).stringValue == "Production\napp")
+        #expect(try #require(analytics.textField).stringValue == "Production\nanalytics")
+    }
+
+    @Test("A schema uses the same connection-first hierarchy")
+    func schemaUsesConnectionFirstHierarchy() throws {
+        let cell = configuredCell(name: "Warehouse", container: "reporting", containerTarget: .schema)
+
+        #expect(try #require(cell.textField).stringValue == "Warehouse\nreporting")
+    }
+
+    @Test("An unnamed container leaves the connection on one line")
+    func emptyContainerUsesConnectionOnly() throws {
+        let cell = configuredCell(name: "Local SQLite", container: "", containerTarget: nil)
+        let label = try #require(cell.textField)
+
+        #expect(label.stringValue == "Local SQLite")
+        #expect(!label.stringValue.contains("\n"))
+    }
+
+    @Test("Embedded line separators cannot add visual rows")
+    func embeddedLineSeparatorsAreFlattened() throws {
+        let cell = configuredCell(name: "Pro\nduction", container: "app\u{2028}archive")
+
+        #expect(try #require(cell.textField).stringValue == "Pro duction\napp archive")
+        #expect(cell.textField?.stringValue.components(separatedBy: "\n").count == 2)
+    }
+
+    @Test("A blank connection name falls back without an empty first line")
+    func blankConnectionFallsBackToContainer() throws {
+        let cell = configuredCell(name: " \n ", container: "app")
+        let label = try #require(cell.textField)
+
+        #expect(label.stringValue == "app")
+        #expect(!label.stringValue.contains("\n"))
+    }
+
+    @Test("A blank container leaves no empty second line")
+    func blankContainerLeavesNoEmptySecondLine() throws {
+        let cell = configuredCell(name: "Production", container: " \u{2028} ")
+        let label = try #require(cell.textField)
+
+        #expect(label.stringValue == "Production")
+        #expect(!label.stringValue.contains("\n"))
+    }
+
+    @Test("Two blank identities leave the label empty rather than blank-lined")
+    func twoBlankIdentitiesLeaveTheLabelEmpty() throws {
+        let cell = configuredCell(name: "  ", container: " ")
+
+        #expect(try #require(cell.textField).stringValue.isEmpty)
+    }
+
+    @Test("Long labels keep AppKit's independent middle truncation contract")
+    func longLabelsKeepMiddleTruncation() throws {
+        let cell = configuredCell(
+            name: "a-very-long-production-connection",
+            container: "a_very_long_database_name"
+        )
+        let label = try #require(cell.textField)
+
+        #expect(label.stringValue == "a-very-long-production-connection\na_very_long_database_name")
+        #expect(label.lineBreakMode == .byTruncatingMiddle)
+        #expect(label.maximumNumberOfLines == 2)
+        #expect(!label.usesSingleLineMode)
+        #expect(label.allowsExpansionToolTips)
+    }
+
     /// The regression this exists to stop: the glyph used to take the engine's brand colour in
     /// every state, so a failed PostgreSQL connection's warning triangle rendered PostgreSQL blue.
     @Test("A failed connection's glyph is not the engine's brand colour")
@@ -525,7 +627,105 @@ struct WorkspaceRailCellTextTests {
         let label = WorkspaceRailCellView.voiceOverLabel(
             for: makeEntry(container: "public", containerTarget: .schema)
         )
-        #expect(label.contains("schema public"))
-        #expect(!label.contains("database"))
+        let schema = String(format: String(localized: "schema %@"), "public")
+        let database = String(format: String(localized: "database %@"), "public")
+
+        #expect(label.contains(schema))
+        #expect(!label.contains(database))
+    }
+}
+
+@Suite("Workspace rail type select")
+@MainActor
+struct WorkspaceRailTypeSelectTests {
+    private func entry(name: String, container: String) -> WorkspaceRailEntry {
+        var connection = TestFixtures.makeConnection(database: container)
+        connection.name = name
+        return WorkspaceRailEntry(
+            workspace: WorkspaceID(connectionId: connection.id, container: container),
+            connection: connection,
+            status: .connected,
+            containerTarget: .database
+        )
+    }
+
+    @Test("Connection and container prefixes both match")
+    func bothIdentityPartsMatch() {
+        let entries = [
+            entry(name: "Production", container: "app"),
+            entry(name: "Staging", container: "app"),
+            entry(name: "Development", container: "analytics"),
+        ]
+
+        #expect(WorkspaceRailTypeSelect.nextMatch(in: entries, from: 1, to: 0, search: "sta") == 1)
+        #expect(WorkspaceRailTypeSelect.nextMatch(in: entries, from: 0, to: 0, search: "app") == 0)
+    }
+
+    @Test("A wrapped search visits the tail before the head")
+    func wrappedSearchKeepsAppKitOrder() {
+        let entries = [
+            entry(name: "Production", container: "app"),
+            entry(name: "Staging", container: "app"),
+            entry(name: "Development", container: "analytics"),
+        ]
+
+        #expect(WorkspaceRailTypeSelect.nextMatch(in: entries, from: 2, to: 1, search: "pro") == 0)
+        #expect(WorkspaceRailTypeSelect.nextMatch(in: entries, from: 1, to: 0, search: "dev") == 2)
+    }
+
+    @Test("The end row is excluded from the search range")
+    func endRowIsExcluded() {
+        let entries = [
+            entry(name: "Production", container: "app"),
+            entry(name: "Staging", container: "analytics"),
+        ]
+
+        #expect(WorkspaceRailTypeSelect.nextMatch(in: entries, from: 0, to: 1, search: "sta") == -1)
+    }
+
+    @Test("Prefix matching ignores case, diacritics, and character width")
+    func prefixComparisonFollowsLocalizedTyping() {
+        let entries = [entry(name: "Résumé", container: "Ａnalytics")]
+
+        #expect(WorkspaceRailTypeSelect.nextMatch(in: entries, from: 0, to: 0, search: "res") == 0)
+        #expect(WorkspaceRailTypeSelect.nextMatch(in: entries, from: 0, to: 0, search: "ana") == 0)
+    }
+
+    @Test("Equal bounds scan every row once")
+    func equalBoundsMeanAFullCircularSearch() {
+        let entries = [
+            entry(name: "Production", container: "app"),
+            entry(name: "Staging", container: "analytics"),
+            entry(name: "Development", container: "warehouse"),
+        ]
+
+        #expect(WorkspaceRailTypeSelect.nextMatch(in: entries, from: 0, to: 0, search: "dev") == 2)
+        #expect(WorkspaceRailTypeSelect.nextMatch(in: entries, from: 1, to: 1, search: "pro") == 0)
+    }
+
+    @Test("Empty, missing, and invalid searches return no match")
+    func invalidSearchReturnsNoMatch() {
+        let entries = [entry(name: "Production", container: "app")]
+
+        #expect(WorkspaceRailTypeSelect.nextMatch(in: entries, from: 0, to: 0, search: "missing") == -1)
+        #expect(WorkspaceRailTypeSelect.nextMatch(in: entries, from: 0, to: 0, search: "") == -1)
+        #expect(WorkspaceRailTypeSelect.nextMatch(in: entries, from: -1, to: 1, search: "pro") == -1)
+        #expect(WorkspaceRailTypeSelect.nextMatch(in: [], from: 0, to: 0, search: "pro") == -1)
+    }
+
+    /// An end bound past the last row is the same position on the circle as row 0, so it is a
+    /// search, not a reason to stop answering. Reading it as out of range turned every such call
+    /// into "no match" and left the strip deaf to typing.
+    @Test("An end bound past the last row names the row it wraps to")
+    func endBoundOutsideTheRowsWrapsOntoTheCircle() {
+        let entries = [
+            entry(name: "Production", container: "app"),
+            entry(name: "Staging", container: "analytics"),
+            entry(name: "Development", container: "warehouse"),
+        ]
+
+        #expect(WorkspaceRailTypeSelect.nextMatch(in: entries, from: 0, to: 3, search: "dev") == 2)
+        #expect(WorkspaceRailTypeSelect.nextMatch(in: entries, from: 1, to: 3, search: "pro") == -1)
+        #expect(WorkspaceRailTypeSelect.nextMatch(in: entries, from: 1, to: -1, search: "sta") == 1)
     }
 }

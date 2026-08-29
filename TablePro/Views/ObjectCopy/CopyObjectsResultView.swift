@@ -85,13 +85,13 @@ internal struct CopyObjectsResultView: View {
 
     @ViewBuilder
     private func outcomes(_ result: ObjectCopyRunResult) -> some View {
-        let failures = result.outcomes.filter { $0.error != nil }
+        let failures = result.failures
         if !failures.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Errors")
                     .font(.subheadline.weight(.medium))
-                ForEach(failures) { outcome in
-                    Text(verbatim: "\(outcome.selection.qualifiedName): \(outcome.error ?? "")")
+                ForEach(failures) { failure in
+                    Text(verbatim: "\(failure.outcome.selection.qualifiedName): \(failure.outcome.error ?? "")")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)

@@ -11,19 +11,29 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// One table's work: its DDL, and the read and write it will stream between.
 internal struct ObjectCopyTableStep: Identifiable, Sendable {
     internal let selection: ObjectCopySelection
     /// Runs first, and only when the user chose to replace a table the target already has.
     internal let dropStatements: [SyncStatement]
+    /// The sequences this table's own defaults name, created before it.
+    ///
+    /// A PostgreSQL `SERIAL` column's default is `nextval('seq'::regclass)`. Copied without its
+    /// sequence, the table either refuses to be created or arrives with a default pointing at
+    /// nothing, and the first insert fails.
+    internal let sequenceStatements: [SyncStatement]
     internal let createStatements: [SyncStatement]
     /// Empties a table the copy is about to append to, for a data-only replace where there is no
     /// DROP and CREATE to clear it.
     ///
-    /// Not part of the DDL phase: it runs inside the same transaction as this table's rows, so a
-    /// copy that fails or is stopped puts the target's own rows back. Run ahead of the transaction
-    /// it deleted them for good while rolling only the new rows back.
+    /// Not part of the DDL phase. Every clear runs before any table is filled, because clearing
+    /// each table immediately before its own rows let the first parent DELETE meet child rows that
+    /// were still there and a cascading key took rows out of tables the user never selected. But
+    /// the clears belong inside the data phase's own transaction, not in a phase of their own:
+    /// run ahead of it they deleted the target's rows for good while a later failure rolled only
+    /// the new rows back. `ObjectCopyPlan.clearsInsideDataTransaction` is where those two meet.
     internal let truncateStatements: [SyncStatement]
     /// The columns written, source order, with generated columns already removed. Empty when this
     /// step copies structure only.
@@ -45,7 +55,7 @@ internal struct ObjectCopyTableStep: Identifiable, Sendable {
 
     /// What the DDL phase runs for this table. The truncate is deliberately absent: it belongs to
     /// the data phase's transaction.
-    internal var ddl: [SyncStatement] { dropStatements + createStatements }
+    internal var ddl: [SyncStatement] { dropStatements + sequenceStatements + createStatements }
 
     internal var qualifiedTargetName: String {
         guard let targetSchema, !targetSchema.isEmpty else { return targetTable }
@@ -98,6 +108,13 @@ internal struct ObjectCopyPlan: Sendable {
     internal let createsDatabase: Bool
     internal let tableSteps: [ObjectCopyTableStep]
     internal let definitionSteps: [ObjectCopyDefinitionStep]
+    /// The schemas a duplicated database needs before its first table, one statement each.
+    ///
+    /// A new database arrives with whatever schema its engine gives it and nothing else, so
+    /// `CREATE TABLE "sales"."invoices"` names a schema that is not there. These run ahead of every
+    /// other statement in the structure phase and belong to no selection: nothing can be created if
+    /// the schema it goes in could not be.
+    internal let schemaStatements: [SyncStatement]
     internal let skipped: [ObjectCopySkip]
 
     internal init(
@@ -105,12 +122,14 @@ internal struct ObjectCopyPlan: Sendable {
         createsDatabase: Bool,
         tableSteps: [ObjectCopyTableStep],
         definitionSteps: [ObjectCopyDefinitionStep],
+        schemaStatements: [SyncStatement] = [],
         skipped: [ObjectCopySkip] = []
     ) {
         self.request = request
         self.createsDatabase = createsDatabase
         self.tableSteps = tableSteps
         self.definitionSteps = definitionSteps
+        self.schemaStatements = schemaStatements
         self.skipped = skipped
     }
 
@@ -134,7 +153,7 @@ internal struct ObjectCopyPlan: Sendable {
 
     /// Everything the run writes that is not a row, in the order it writes it.
     internal var ddlStatements: [SyncStatement] {
-        cleanupStatements + creationStatements + afterDataStatements
+        schemaStatements + cleanupStatements + creationStatements + afterDataStatements
     }
 
     /// Cleanup runs children first, so a foreign key is gone before the table it points at, and a
@@ -146,16 +165,33 @@ internal struct ObjectCopyPlan: Sendable {
     }
 
     internal var creationGroups: [ObjectCopyStatementGroup] {
-        tableSteps.map { ObjectCopyStatementGroup($0.selection, $0.createStatements) }
+        tableSteps.map { ObjectCopyStatementGroup($0.selection, $0.sequenceStatements + $0.createStatements) }
             + definitionSteps.filter { !$0.runsAfterData }
                 .map { ObjectCopyStatementGroup($0.selection, $0.createStatements) }
     }
 
     /// Emptying the tables a data-only replace appends to, children first so a foreign key holds.
+    ///
+    /// Only a table whose rows are going back in. A step that copies no data is not in `dataSteps`,
+    /// so clearing it deletes every row the target had and writes nothing in their place: the
+    /// review said only that the two sides shared no writable column, and the run reported success.
     internal var clearGroups: [ObjectCopyStatementGroup] {
         tableSteps.reversed()
-            .filter { !$0.truncateStatements.isEmpty }
+            .filter { $0.copiesData && !$0.truncateStatements.isEmpty }
             .map { ObjectCopyStatementGroup($0.selection, $0.truncateStatements) }
+    }
+
+    /// Whether the clears run inside the data phase's transaction rather than ahead of it.
+    ///
+    /// Emptying a table is reversible only while the transaction that emptied it is still open, so
+    /// a run that promises a rollback cannot put its DELETEs in a phase of their own: the first
+    /// failure afterwards leaves the target's own rows gone with nothing written in their place.
+    /// A run that promises nothing keeps them in a phase of their own, where one table's failure
+    /// does not reach the tables already copied.
+    internal var clearsInsideDataTransaction: Bool {
+        !clearGroups.isEmpty
+            && request.wrapEachTableInTransaction
+            && request.errorHandling != .skipAndContinue
     }
 
     /// The definitions held back until the rows are in: a trigger fires on the copy itself, and a
@@ -182,17 +218,28 @@ internal struct ObjectCopyPlan: Sendable {
 
     /// What the user reads before pressing Copy. The DDL verbatim, then one line per table naming
     /// what its data step will walk, because the INSERTs themselves do not exist yet.
+    ///
+    /// The clears are one block ahead of every data step, which is the order the runner uses. Shown
+    /// against each table instead, the script said the parent was emptied after the child had been
+    /// filled, and a user reasoning about a cascade from what they were asked to approve reached
+    /// the opposite conclusion from what the run would do.
     internal var scriptText: String {
         var lines: [String] = []
         if case .newDatabase(_, let name, _) = request.destination {
             lines.append(String(format: String(localized: "-- Create database %@"), name))
         }
+        lines += schemaStatements.map(\.sql)
         lines += cleanupStatements.map(\.sql)
         lines += creationStatements.map(\.sql)
+        let clears = clearGroups.flatMap(\.statements)
+        if !clears.isEmpty {
+            lines.append("")
+            lines.append(String(localized: "-- Empty the tables the rows go into"))
+            lines += clears.map(\.sql)
+        }
         for step in dataSteps {
             lines.append("")
             lines.append(String(format: String(localized: "-- Copy rows into %@"), step.qualifiedTargetName))
-            lines += step.truncateStatements.map(\.sql)
             lines.append(step.sourceQuery + ";")
         }
         guard !afterDataStatements.isEmpty else { return lines.joined(separator: "\n") }

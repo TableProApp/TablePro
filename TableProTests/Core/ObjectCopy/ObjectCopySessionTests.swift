@@ -245,6 +245,22 @@ final class ObjectCopySessionTests: XCTestCase {
         XCTAssertTrue(subject.selectedObjectIds.contains(first.id))
     }
 
+    /// What the checkbox writes, and the reason it states a value instead of inverting one. A
+    /// binding that flips whatever it is written turns a re-render, an accessibility `setValue`, or
+    /// a second delivery during list diffing into a change the user never made.
+    func testSettingTheSameValueTwiceChangesNothing() {
+        let subject = session()
+        guard let first = subject.availableObjects.first else { return XCTFail("no objects") }
+
+        subject.setSelected(first, false)
+        subject.setSelected(first, false)
+        XCTAssertFalse(subject.selectedObjectIds.contains(first.id))
+
+        subject.setSelected(first, true)
+        subject.setSelected(first, true)
+        XCTAssertTrue(subject.selectedObjectIds.contains(first.id))
+    }
+
     // MARK: - Content
 
     func testDataOnlyLeavesStructureOut() {

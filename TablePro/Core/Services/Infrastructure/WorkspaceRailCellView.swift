@@ -6,8 +6,8 @@
 import AppKit
 import SwiftUI
 
-/// One workspace: a glyph above the container it browses, with the connection's own colour as a
-/// dot on the glyph's corner.
+/// One workspace: a glyph above its connection and container, with the connection's own colour as
+/// a dot on the glyph's corner.
 ///
 /// Three channels share this cell and each owns a different property of the same glyph. Its SHAPE
 /// is the connection's state, because a colour-only difference between failed and disconnected is
@@ -26,10 +26,9 @@ import SwiftUI
 /// is what keeps it legible against the accent fill, which seven of the eight palette colours
 /// otherwise fail 3:1 against.
 ///
-/// The label keeps its single line and its middle truncation. Wrapping to two was tried and is
-/// worse: underscore is Unicode class AL and offers no break, so `tablepro_license` breaks at the
-/// width limit into `tablepro_licens` and an orphaned `e`. The HIG's reason for middle truncation
-/// in a narrow column stands, and the full name is in the tooltip and the accessibility label.
+/// Connection and container occupy explicit lines rather than wrapping one name. Each semantic
+/// value keeps one line and its own middle truncation, and the full identity stays in the tooltip
+/// and accessibility label.
 @MainActor
 internal final class WorkspaceRailCellView: NSTableCellView {
     internal static let reuseIdentifier = NSUserInterfaceItemIdentifier("WorkspaceRailCell")
@@ -41,6 +40,7 @@ internal final class WorkspaceRailCellView: NSTableCellView {
     private var iconHeightConstraint: NSLayoutConstraint?
     private var dotWidthConstraint: NSLayoutConstraint?
     private var dotHeightConstraint: NSLayoutConstraint?
+    private var labelTopConstraint: NSLayoutConstraint?
     private var appliedTint: NSColor?
     /// Held as the palette entry rather than a resolved colour, because `systemRed` and the rest
     /// differ between light and dark: resolving at configure time would freeze the dot at the
@@ -66,8 +66,9 @@ internal final class WorkspaceRailCellView: NSTableCellView {
 
         label.translatesAutoresizingMaskIntoConstraints = false
         label.alignment = .center
+        label.usesSingleLineMode = false
         label.lineBreakMode = .byTruncatingMiddle
-        label.maximumNumberOfLines = 1
+        label.maximumNumberOfLines = 2
         label.allowsExpansionToolTips = true
         label.cell?.truncatesLastVisibleLine = true
 
@@ -91,15 +92,22 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         dotWidthConstraint = dotWidth
         dotHeightConstraint = dotHeight
 
+        let labelTop = label.topAnchor.constraint(
+            equalTo: icon.bottomAnchor,
+            constant: Self.labelTopSpacing(forIcon: 24)
+        )
+        labelTopConstraint = labelTop
+
         NSLayoutConstraint.activate([
             icon.centerXAnchor.constraint(equalTo: centerXAnchor),
-            icon.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+            icon.topAnchor.constraint(equalTo: topAnchor, constant: 1),
             width,
             height,
 
-            label.topAnchor.constraint(equalTo: icon.bottomAnchor, constant: 3),
+            labelTop,
             label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
             label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
+            label.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
 
             dotWidth,
             dotHeight,
@@ -115,6 +123,14 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         (iconSize * 0.375).rounded()
     }
 
+    internal static func labelTopSpacing(forIcon iconSize: CGFloat) -> CGFloat {
+        ceil(identityDotSize(forIcon: iconSize) / 2) + 1
+    }
+
+    internal static func secondaryFontSize(for primaryFontSize: CGFloat) -> CGFloat {
+        max(10, primaryFontSize - 1)
+    }
+
     private static let identityDotRimWidth: CGFloat = 1.5
 
     internal func configure(entry: WorkspaceRailEntry, layout: WorkspaceRailMetrics.Layout) {
@@ -125,9 +141,9 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         dotWidthConstraint?.constant = dotSize
         dotHeightConstraint?.constant = dotSize
         identityDot.layer?.cornerRadius = dotSize / 2
+        labelTopConstraint?.constant = Self.labelTopSpacing(forIcon: layout.iconSize)
 
-        label.font = .systemFont(ofSize: layout.fontSize)
-        label.stringValue = entry.container.isEmpty ? entry.connection.name : entry.container
+        label.attributedStringValue = Self.labelValue(for: entry, layout: layout)
 
         appliedTint = Self.glyphTint(for: entry)
         identityColor = entry.connection.identityColor
@@ -137,6 +153,53 @@ internal final class WorkspaceRailCellView: NSTableCellView {
 
         toolTip = Self.tooltipText(for: entry)
         setAccessibilityLabel(Self.voiceOverLabel(for: entry))
+    }
+
+    private static func labelValue(
+        for entry: WorkspaceRailEntry,
+        layout: WorkspaceRailMetrics.Layout
+    ) -> NSAttributedString {
+        let lines = labelLines(for: entry)
+        guard let primary = lines.first else { return NSAttributedString() }
+
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        paragraph.lineBreakMode = .byTruncatingMiddle
+
+        let value = NSMutableAttributedString(
+            string: primary,
+            attributes: [
+                .font: NSFont.systemFont(ofSize: layout.fontSize),
+                .foregroundColor: NSColor.labelColor,
+                .paragraphStyle: paragraph,
+            ]
+        )
+        guard lines.count == 2 else { return value }
+
+        value.append(NSAttributedString(
+            string: "\n\(lines[1])",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: secondaryFontSize(for: layout.fontSize)),
+                .foregroundColor: NSColor.secondaryLabelColor,
+                .paragraphStyle: paragraph,
+            ]
+        ))
+        return value
+    }
+
+    /// Blank is the test on both halves, not empty on one of them. A container of spaces reads as
+    /// absent and has to be treated as absent, or the row spends its second line drawing nothing and
+    /// pushes the name it exists to show off centre.
+    private static func labelLines(for entry: WorkspaceRailEntry) -> [String] {
+        let connection = singleLine(entry.connection.name)
+        let container = singleLine(entry.container)
+        guard !connection.isBlank else { return container.isBlank ? [] : [container] }
+        guard !container.isBlank else { return [connection] }
+        return [connection, container]
+    }
+
+    private static func singleLine(_ value: String) -> String {
+        value.components(separatedBy: .newlines).joined(separator: " ")
     }
 
     /// On the selected row `NSTableCellView` already tints the image view for contrast, so the

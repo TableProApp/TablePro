@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MongoDB statements split as JavaScript rather than at every semicolon.
 - MongoDB editor diagnostics report JavaScript syntax errors rather than unsupported method names.
 - Editor tab presses handled by AppKit rather than SwiftUI gestures. (#2438)
+- Connection-first labels with the database or schema on a second line in the connections strip. (#2550)
 
 ### Fixed
 
@@ -28,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MongoDB `.sort()` and `.projection()` silently ignored when written with unquoted keys.
 - Tab drag doing nothing, about one drag in seven. (#2438)
 - Tab drag released on a neighbour's exact centre leaving the order unchanged. (#2438)
+- Compare & Sync unable to drop an overloaded PostgreSQL routine, or any trigger.
+- PostgreSQL sequence DDL naming the schema it was read from, in SQL export and the structure editor.
 
 ## [0.69.0] - 2026-08-27
 

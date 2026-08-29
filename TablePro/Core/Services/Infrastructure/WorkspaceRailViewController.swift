@@ -821,6 +821,20 @@ extension WorkspaceRailViewController: NSTableViewDelegate {
         return cell
     }
 
+    internal func tableView(
+        _ tableView: NSTableView,
+        nextTypeSelectMatchFromRow startRow: Int,
+        toRow endRow: Int,
+        for searchString: String
+    ) -> Int {
+        WorkspaceRailTypeSelect.nextMatch(
+            in: entries,
+            from: startRow,
+            to: endRow,
+            search: searchString
+        )
+    }
+
     /// Selection is the highlight, not the commit.
     ///
     /// `NSTableView` selects on mouse-down, before the drag threshold, so committing here meant

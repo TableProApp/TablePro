@@ -61,6 +61,51 @@ final class ObjectCopyEligibilityTests: XCTestCase {
         ))
     }
 
+    /// Right-clicking a PostgreSQL database gives a source with no schema, and choosing that same
+    /// database's `public` as the target used to pass every refusal because the two endpoint ids
+    /// differ. The planner then resolved both sides to `public` and dropped each table before
+    /// streaming from the table it had just emptied.
+    func testAScopedTargetInsideAnUnscopedSourceIsRefused() {
+        let connectionId = UUID()
+        let wholeDatabase = endpoint("app", type: .postgresql, connectionId: connectionId)
+        let oneSchema = endpoint("app", type: .postgresql, schema: "public", connectionId: connectionId)
+
+        XCTAssertNotNil(ObjectCopyEligibility.sameObjectRefusal(source: wholeDatabase, target: oneSchema))
+        XCTAssertNotNil(ObjectCopyEligibility.sameObjectRefusal(source: oneSchema, target: wholeDatabase))
+    }
+
+    func testTheSameSchemaIsRefusedWhateverItsCase() {
+        let connectionId = UUID()
+        XCTAssertNotNil(ObjectCopyEligibility.sameObjectRefusal(
+            source: endpoint("app", type: .postgresql, schema: "Sales", connectionId: connectionId),
+            target: endpoint("app", type: .postgresql, schema: "sales", connectionId: connectionId)
+        ))
+    }
+
+    /// The case the refusal must not swallow: two schemas of one database are a valid pair, and
+    /// copying between them is the whole point of a schema-scoped endpoint.
+    func testTwoSchemasOfOneDatabaseAreAValidPair() {
+        let connectionId = UUID()
+        XCTAssertNil(ObjectCopyEligibility.sameObjectRefusal(
+            source: endpoint("app", type: .postgresql, schema: "sales", connectionId: connectionId),
+            target: endpoint("app", type: .postgresql, schema: "archive", connectionId: connectionId)
+        ))
+        XCTAssertNil(ObjectCopyEligibility.sameObjectRefusal(
+            source: endpoint("app", type: .postgresql, schema: "public", connectionId: connectionId),
+            target: endpoint("app_copy", type: .postgresql, schema: "public", connectionId: connectionId)
+        ))
+    }
+
+    /// An empty schema is how a scope with none is spelled, so it has to read as absent rather than
+    /// as a schema literally named "".
+    func testAnEmptySchemaCountsAsNoSchema() {
+        let connectionId = UUID()
+        XCTAssertNotNil(ObjectCopyEligibility.sameObjectRefusal(
+            source: endpoint("app", type: .postgresql, schema: "", connectionId: connectionId),
+            target: endpoint("app", type: .postgresql, schema: "public", connectionId: connectionId)
+        ))
+    }
+
     func testOnlySQLEnginesCanCopy() {
         XCTAssertTrue(ObjectCopyEligibility.supportsCopying(editorLanguage: .sql))
         XCTAssertFalse(ObjectCopyEligibility.supportsCopying(editorLanguage: .javascript))

@@ -80,6 +80,7 @@ final class ObjectCopyRowCopierTests: XCTestCase {
         ObjectCopyTableStep(
             selection: ObjectCopySelection(kind: .table, name: "orders", schema: schema),
             dropStatements: [],
+            sequenceStatements: [],
             createStatements: [],
             truncateStatements: [],
             columns: columns,

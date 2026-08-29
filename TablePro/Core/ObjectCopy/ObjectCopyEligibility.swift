@@ -70,8 +70,30 @@ internal enum ObjectCopyEligibility {
         source: DatabaseEndpoint,
         target: DatabaseEndpoint
     ) -> String? {
-        guard source.id == target.id else { return nil }
+        guard sharesObjectSpace(source, target) else { return nil }
         return String(localized: "The source and the target are the same database. Choose a different target.")
+    }
+
+    /// Whether the two sides can resolve to one set of objects.
+    ///
+    /// Not `DatabaseEndpoint.id`, which spells the schema into the identity and so answered "these
+    /// are different" for a database-scoped source and a schema-scoped target that name the same
+    /// objects. Right-clicking a PostgreSQL database gives a source with no schema; choosing that
+    /// same database's `public` as the target then passed every refusal, and the planner went on to
+    /// resolve both sides to `public` and drop each table before streaming from the table it had
+    /// just emptied.
+    ///
+    /// An endpoint that names no schema stands for whichever schema its objects turn out to be in,
+    /// so it overlaps every schema of its database rather than none of them. The database itself is
+    /// compared as spelled, which is what the identity already did: engines disagree about whether
+    /// a database name folds case, and this rule is not the place to decide that.
+    private static func sharesObjectSpace(_ source: DatabaseEndpoint, _ target: DatabaseEndpoint) -> Bool {
+        guard source.connectionId == target.connectionId, source.database == target.database else {
+            return false
+        }
+        guard let sourceSchema = source.schema?.nilIfEmpty,
+              let targetSchema = target.schema?.nilIfEmpty else { return true }
+        return ObjectCopyNamespace.isSame(sourceSchema, targetSchema)
     }
 
     /// Whether a view, routine or trigger can be copied as it stands.
