@@ -415,15 +415,22 @@ final class MainContentCoordinator {
         _didActivate.withLock { $0 }
     }
 
-    /// One window hosts every connection and a connection has one coordinator, so a
-    /// connection's tabs are simply that coordinator's list. Tabs used to be scattered across
-    /// a connection's windows and had to be gathered and renumbered.
+    /// Every tab the connection has open, across every window hosting it. Tearing a tab off into
+    /// its own window splits one connection's tabs over two coordinators, and the saved set is the
+    /// union: saving from one of them alone writes a partial list over the full one, which is how
+    /// tabs that were never closed get erased.
+    ///
+    /// Deduped by tab id, because `activeCoordinators` also holds the throwaway coordinators
+    /// SwiftUI builds and discards while re-evaluating a body, and those report the same tabs as
+    /// the real one until they deallocate.
     static func aggregatedTabs(for connectionId: UUID) -> [QueryTab] {
-        activeCoordinators.values
+        var seen = Set<UUID>()
+        return activeCoordinators.values
             .filter { $0.connectionId == connectionId }
             .flatMap { coordinator in
                 coordinator.tabManager.tabs.map(coordinator.enrichedForPersistence)
             }
+            .filter { seen.insert($0.id).inserted }
     }
 
     /// Resolve transient view state that only the live coordinator knows about
@@ -628,7 +635,7 @@ final class MainContentCoordinator {
             dialect: dialect,
             dialectQuote: dialect.map { quoteIdentifierFromDialect($0) }
         )
-        self.persistence = TabPersistenceCoordinator(connectionId: connection.id)
+        self.persistence = TabPersistenceCoordinator.forConnection(connection.id)
 
         ConnectionDataCache.shared(for: connection.id).ensureLoaded()
         changeManager.undoManagerProvider = { [weak self] in self?.contentWindow?.undoManager }

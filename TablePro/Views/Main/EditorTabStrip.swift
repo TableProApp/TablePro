@@ -247,6 +247,9 @@ private struct EditorTabStripItem: View {
                 .disabled(!canMoveLeft)
             Button(String(localized: "Move Tab Right")) { commands?.moveBy(tab.id, 1) }
                 .disabled(!canMoveRight)
+            Divider()
+            Button(String(localized: "Move Tab to New Window")) { commands?.tearOff(tab.id) }
+                .disabled(!canTearOff)
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
@@ -264,6 +267,7 @@ private struct EditorTabStripItem: View {
         }
         .accessibilityAction(named: Text("Move Tab Left")) { if canMoveLeft { commands?.moveBy(tab.id, -1) } }
         .accessibilityAction(named: Text("Move Tab Right")) { if canMoveRight { commands?.moveBy(tab.id, 1) } }
+        .accessibilityAction(named: Text("Move Tab to New Window")) { if canTearOff { commands?.tearOff(tab.id) } }
     }
 
     /// Everything the tab draws lives inside the glass, never over it. A `GlassEffectContainer`
@@ -338,6 +342,10 @@ private struct EditorTabStripItem: View {
     /// method to convey a change in state.
     private var canKeepOpen: Bool {
         commands?.canKeepOpen(tab.id) ?? false
+    }
+
+    private var canTearOff: Bool {
+        commands?.canTearOff(tab.id) ?? false
     }
 
     private var canMoveLeft: Bool {

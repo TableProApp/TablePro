@@ -109,6 +109,85 @@ internal final class WindowManager {
         }
     }
 
+    /// Moves one tab into a window of its own, the way a window tab is dragged out of its group.
+    ///
+    /// The connection is then hosted by two windows. That is a state the app already had before
+    /// 0.65.0 and kept the machinery for: the session, its driver and its saved tab set are the
+    /// connection's, not the window's, so both windows share one `ConnectionSession` and the close
+    /// path already refuses to disconnect while `hasOpenWindow(for:)` still answers true. What each
+    /// window owns is a `QueryTabManager`, and the tab moves between those.
+    ///
+    /// The new window is given the tab through a pre-built session state rather than through the
+    /// payload, so nothing re-opens or re-restores it, and the intent is `.openContent` because
+    /// `.restoreOrDefault` would fill the new window with the whole saved set.
+    @discardableResult
+    internal func openTabInNewWindow(connectionId: UUID, tabId: UUID) -> Bool {
+        /// Resolved by which workspace actually holds the tab. After one detach the connection is
+        /// hosted twice, and the singular lookup names an arbitrary one of them: asking it for a
+        /// tab that lives in the other window fails a move the user did ask for.
+        guard let origin = workspaces(for: connectionId).first(where: { workspace in
+            workspace.sessionState?.tabManager.tabs.contains { $0.id == tabId } ?? false
+        }),
+            let sourceState = origin.sessionState,
+            let tab = sourceState.tabManager.tabs.first(where: { $0.id == tabId }),
+            let connection = DatabaseManager.shared.activeSessions[connectionId]?.connection
+        else { return false }
+
+        let payload = EditorTabPayload(
+            connectionId: connectionId,
+            tabType: tab.tabType,
+            tableName: tab.tableContext.tableName,
+            databaseName: tab.tableContext.databaseName,
+            schemaName: tab.tableContext.schemaName,
+            sourceFileURL: tab.content.sourceFileURL,
+            tabTitle: tab.title,
+            intent: .openContent
+        )
+        let state = SessionStateFactory.create(connection: connection, payload: nil)
+        state.tabManager.tabs = [tab]
+        state.tabManager.selectedTabId = tab.id
+
+        /// The rows the tab already loaded live in its `TabSession`, which belongs to the
+        /// coordinator's registry rather than to the tab. Without handing it over the new window
+        /// shows an empty grid it will not refill: the tab's `lastExecutedAt` is already set, so
+        /// nothing asks for the page again.
+        if let liveSession = sourceState.coordinator.tabSessionRegistry.session(for: tabId) {
+            state.coordinator.tabSessionRegistry.register(liveSession)
+        }
+        SessionStateFactory.registerPending(state, for: payload.id)
+
+        guard let window = buildWindow(payload: payload, sessionState: state, autoConnect: false) else {
+            /// The pending entry expires on its own, but leaving it for the timeout would let the
+            /// next window opened for this connection adopt a session state holding a tab that
+            /// never left its old window.
+            SessionStateFactory.removePending(for: payload.id)
+            return false
+        }
+
+        /// Removed only once the window exists. `closeTab` is the move-out primitive here: it takes
+        /// the tab out of the array and settles the selection, and unlike the user's own close it
+        /// neither prompts nor clears anything from disk.
+        sourceState.coordinator.tabSessionRegistry.unregister(id: tabId)
+        sourceState.tabManager.closeTab(id: tabId)
+
+        /// A file's window mapping follows its tab, or reopening the file focuses the window the
+        /// tab has left and does nothing there.
+        if let sourceURL = tab.content.sourceFileURL,
+           let windowId = (window.contentViewController as? MainSplitViewController)?
+           .workspaces.workspace(for: connectionId)?.sessionState?.coordinator.windowId {
+            WindowLifecycleMonitor.shared.registerSourceFile(sourceURL, windowId: windowId)
+        }
+
+        /// Ordered front as a window of its own. Left at `.automatic` the system preference can
+        /// merge it straight back into the tab group it was asked to leave, which is the trap
+        /// `openStandaloneWindow` already documents.
+        window.tabbingMode = .disallowed
+        window.makeKeyAndOrderFront(nil)
+        window.tabbingMode = .automatic
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
+        return true
+    }
+
     private func buildWindow(
         payload: EditorTabPayload,
         sessionState: SessionStateFactory.SessionState?,
@@ -273,10 +352,22 @@ internal final class WindowManager {
     }
 
     internal func workspace(for connectionId: UUID) -> ConnectionWorkspace? {
-        hosts()
-            .lazy
-            .compactMap { $0.workspaces.workspace(for: connectionId) }
-            .first
+        workspaces(for: connectionId).first
+    }
+
+    /// Every window hosting this connection, in window order.
+    ///
+    /// A connection is hosted by more than one window as soon as a tab is torn off into its own
+    /// (`openTabInNewWindow`). The single-workspace lookup above then names an arbitrary one of
+    /// them, so anything that has to see all of a connection's tabs, or act on all of them, asks
+    /// this instead. One window still holds at most one workspace per connection, which is why
+    /// the per-window registry stays keyed by connection id.
+    internal func workspaces(for connectionId: UUID) -> [ConnectionWorkspace] {
+        hosts().compactMap { $0.workspaces.workspace(for: connectionId) }
+    }
+
+    internal func coordinators(for connectionId: UUID) -> [MainContentCoordinator] {
+        workspaces(for: connectionId).compactMap { $0.sessionState?.coordinator }
     }
 
     /// The window hosting this connection, whatever state it is in.

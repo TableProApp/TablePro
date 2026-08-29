@@ -26,16 +26,35 @@ internal enum ConnectionCloseAction {
 
     /// Pure so the case that used to fail silently is pinned by a test: a connection with no session
     /// has nothing to lose, and asking about it produced an alert nobody could answer.
+    /// Saves in every window hosting the connection, not only the one that answered first. Each
+    /// coordinator can save just its own selected tab's live work, so a Save that reached one of
+    /// them left the other window's grid edits behind and closed over them.
+    private static func saveEveryWindowsWork(
+        across coordinators: [MainContentCoordinator],
+        fallback: MainContentCoordinator?
+    ) async -> Bool {
+        let targets = coordinators.isEmpty ? [fallback].compactMap { $0 } : coordinators
+        for coordinator in targets {
+            guard await coordinator.commandActions?.saveSelectedTabWork() == true else { return false }
+        }
+        return !targets.isEmpty
+    }
+
     internal static func decision(hasSession: Bool, hasUnsavedWork: Bool) -> Decision {
         guard hasSession, hasUnsavedWork else { return .closeImmediately }
         return .confirmUnsavedWork
     }
 
     internal static func close(connectionId: UUID) async {
-        let coordinator = WindowManager.shared.coordinator(for: connectionId)
+        /// Every window hosting the connection. A tab torn off into its own window keeps its live
+        /// grid and structure edits in that window's coordinator, and asking only the first one
+        /// reported the connection as safe to close over work nobody had been shown.
+        let coordinators = WindowManager.shared.coordinators(for: connectionId)
+        let coordinator = coordinators.first ?? WindowManager.shared.coordinator(for: connectionId)
         let decision = decision(
             hasSession: coordinator != nil,
-            hasUnsavedWork: coordinator?.hasAnyUnsavedWork() ?? false
+            hasUnsavedWork: coordinators.contains { $0.hasAnyUnsavedWork() }
+                || (coordinators.isEmpty && coordinator?.hasAnyUnsavedWork() == true)
         )
         guard decision == .confirmUnsavedWork else {
             WindowManager.shared.closeWindow(for: connectionId)
@@ -55,7 +74,7 @@ internal enum ConnectionCloseAction {
         case .save:
             /// Save closes too, once the save has actually landed. It used to start the save and
             /// stop there, so the connection the user asked to close stayed open.
-            guard await coordinator?.commandActions?.saveSelectedTabWork() == true else {
+            guard await saveEveryWindowsWork(across: coordinators, fallback: coordinator) else {
                 WindowManager.shared.show(wasShowing, inWindowHosting: connectionId)
                 break
             }

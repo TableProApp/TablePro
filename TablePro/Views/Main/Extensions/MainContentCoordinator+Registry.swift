@@ -57,8 +57,13 @@ extension MainContentCoordinator {
     ///
     /// The registry is still the fallback, for the window that has not adopted its session yet.
     static func allTabs(for connectionId: UUID) -> [QueryTab] {
-        if let hosted = WindowManager.shared.workspace(for: connectionId)?.sessionState?.coordinator {
-            return hosted.tabManager.tabs
+        /// Every window hosting the connection, not the first one found. A tab torn off into its
+        /// own window leaves the connection hosted twice, and answering from one of them numbers a
+        /// new query after tabs it cannot see and lists a container as closed while the other
+        /// window still has it open.
+        let hosted = WindowManager.shared.coordinators(for: connectionId)
+        if !hosted.isEmpty {
+            return dedupedById(hosted.flatMap(\.tabManager.tabs))
         }
         let registered = activeCoordinators.values.filter { $0.connectionId == connectionId }
         if registered.count > 1 {
@@ -69,7 +74,14 @@ extension MainContentCoordinator {
                 """
             )
         }
-        return registered.flatMap { $0.tabManager.tabs }
+        return dedupedById(registered.flatMap { $0.tabManager.tabs })
+    }
+
+    /// One tab belongs to one window, but the registry fallback can list a connection's throwaway
+    /// coordinators alongside its real ones, and both would report the same tab.
+    private static func dedupedById(_ tabs: [QueryTab]) -> [QueryTab] {
+        var seen = Set<UUID>()
+        return tabs.filter { seen.insert($0.id).inserted }
     }
 
     static func coordinator(

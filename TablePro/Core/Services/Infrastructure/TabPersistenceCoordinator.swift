@@ -33,6 +33,23 @@ internal final class TabPersistenceCoordinator {
     /// instruction deleted the state the disconnect had just saved.
     private(set) var hasObservedTabs = false
 
+    @ObservationIgnored nonisolated(unsafe) private static var shared: [UUID: TabPersistenceCoordinator] = [:]
+
+    /// One per connection, however many windows host it.
+    ///
+    /// The saved tab set is the connection's, not the window's, so two windows on one connection
+    /// must not each keep their own view of whether a restore has run: `hasObservedTabs` is the
+    /// gate that stops a partial list being written over a full one, and a second instance starts
+    /// with it closed. A detached window's coordinator would then have every save withheld, and
+    /// whichever instance the periodic save happened to elect decided whether anything reached
+    /// disk at all.
+    internal static func forConnection(_ connectionId: UUID) -> TabPersistenceCoordinator {
+        if let existing = shared[connectionId] { return existing }
+        let created = TabPersistenceCoordinator(connectionId: connectionId)
+        shared[connectionId] = created
+        return created
+    }
+
     init(connectionId: UUID) {
         self.connectionId = connectionId
     }
@@ -110,6 +127,15 @@ internal final class TabPersistenceCoordinator {
     /// No automatic save path may call this: an empty in-memory tab list is not consent to
     /// discard what is on disk.
     internal func clearForUserClosedAllTabs() {
+        /// The union across every window hosting the connection, not the manager that just
+        /// emptied. Closing a container can empty a detached window while the original still holds
+        /// tabs, and discarding the saved set there would take those with it.
+        guard MainContentCoordinator.aggregatedTabs(for: connectionId).isEmpty else {
+            Self.logger.debug(
+                "[persist] clear refused, other windows still hold tabs connId=\(self.connectionId, privacy: .public)"
+            )
+            return
+        }
         saveTask?.cancel()
         saveTask = nil
         let connId = connectionId

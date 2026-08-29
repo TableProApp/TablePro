@@ -85,6 +85,14 @@ Right-click a tab for **Move Tab Left** and **Move Tab Right**, which move it on
 Tabs cannot be pinned. Pinning exists for result tabs inside a query tab (`Cmd+Option+P`).
 </Note>
 
+## Moving a tab to its own window
+
+Drag a tab down out of the strip, or right-click it and choose **Move Tab to New Window**, to open it in a window of its own. Both windows work on the same connection and the same session, so closing one leaves the other connected.
+
+The command dims for a window's only tab, for a tab with a query or a table load still running, and while the connection is down. **Move Connection to New Window**, on the connections strip, moves a whole connection instead.
+
+Tabs with unsaved work stay put. A move carries the tab, not the edits pending in the grid or the ALTERs staged in the structure editor, so save those first and the command comes back.
+
 ## Tabs that stop fitting
 
 The strip keeps one row and scrolls it, the way every macOS tab bar does. Scroll over it with two fingers to reach the rest.

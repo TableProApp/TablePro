@@ -22,7 +22,7 @@ internal extension MainSplitViewController {
     /// The strip is built per connection like the other three panes, so a connection the user is
     /// not looking at keeps its own strip rather than rebuilding it on every switch.
     func refreshTabStripPane(of workspace: ConnectionWorkspace) {
-        workspace.panes.tabStrip.rootView = AnyView(buildTabStripView(for: workspace))
+        workspace.panes.tabStrip.rootView = buildTabStripView(for: workspace)
     }
 
     func showSelectedTabStrip() {
@@ -84,11 +84,11 @@ internal extension MainSplitViewController {
     /// The command set is handed to the pane's interaction object rather than to the SwiftUI view,
     /// because the view is no longer what receives a press. AppKit owns the pointer over the
     /// strip and reaches the app through exactly these closures.
-    @ViewBuilder
-    private func buildTabStripView(for workspace: ConnectionWorkspace) -> some View {
-        if let sessionState = workspace.sessionState {
-            let interaction = workspace.panes.tabStrip.interaction
-            let _ = configure(interaction, for: workspace, sessionState: sessionState)
+    private func buildTabStripView(for workspace: ConnectionWorkspace) -> AnyView {
+        guard let sessionState = workspace.sessionState else { return AnyView(Color.clear) }
+        let interaction = workspace.panes.tabStrip.interaction
+        configure(interaction, for: workspace, sessionState: sessionState)
+        return AnyView(
             EditorTabStrip(
                 tabManager: sessionState.tabManager,
                 interaction: interaction,
@@ -99,9 +99,7 @@ internal extension MainSplitViewController {
                     workspace?.sessionState?.coordinator.commandActions?.newTab()
                 }
             )
-        } else {
-            Color.clear
-        }
+        )
     }
 
     private func configure(
@@ -127,8 +125,21 @@ internal extension MainSplitViewController {
             moveTab: { [weak manager] id, destination in manager?.moveTab(id: id, to: destination) },
             canMove: { [weak manager] id, offset in manager?.canMoveTab(id: id, by: offset) ?? false },
             moveBy: { [weak manager] id, offset in manager?.moveTab(id: id, by: offset) },
-            tearOff: { _ in },
-            canTearOff: { _ in false },
+            tearOff: { [weak workspace] id in
+                guard let connectionId = workspace?.connectionId else { return }
+                WindowManager.shared.openTabInNewWindow(connectionId: connectionId, tabId: id)
+            },
+            canTearOff: { [weak workspace] id in
+                guard let workspace,
+                      let sessionState = workspace.sessionState
+                else { return false }
+                return EditorTabDetachPolicy.canDetach(
+                    tabCount: sessionState.tabManager.tabs.count,
+                    hasUnsavedWork: sessionState.coordinator.hasUnsavedWork(forTab: id),
+                    isBusy: sessionState.coordinator.tabExecution.isExecuting(id),
+                    isConnected: DatabaseManager.shared.activeSessions[workspace.connectionId]?.driver != nil
+                )
+            },
             /// The resolver's description, not the drawn title: a table tab carries its database
             /// and schema there even when the short title is unique, and the tooltip is where a
             /// truncated or duplicated name is told apart.

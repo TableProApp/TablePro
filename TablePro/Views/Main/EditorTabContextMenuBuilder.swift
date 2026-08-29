@@ -74,11 +74,11 @@ internal enum EditorTabContextMenuBuilder {
 private final class ClosureMenuTarget: NSObject {
     private let action: () -> Void
 
-    internal init(action: @escaping () -> Void) {
+    init(action: @escaping () -> Void) {
         self.action = action
     }
 
-    @objc internal func fire() {
+    @objc func fire() {
         action()
     }
 }

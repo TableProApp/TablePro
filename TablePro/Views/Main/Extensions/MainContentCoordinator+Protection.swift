@@ -41,6 +41,17 @@ extension MainContentCoordinator {
         return savability(of: tab) != .nothingAtRisk
     }
 
+    /// Whether one tab, named by id, is holding work a move would lose.
+    ///
+    /// Detaching a tab into its own window carries the `QueryTab` and nothing the coordinator holds
+    /// beside it, so this is what the command reads before offering itself. An id that names no tab
+    /// answers true: refusing a move is recoverable, performing one on a tab this window cannot see
+    /// is not.
+    func hasUnsavedWork(forTab id: UUID) -> Bool {
+        guard let tab = tabManager.tabs.first(where: { $0.id == id }) else { return true }
+        return savability(of: tab) != .nothingAtRisk
+    }
+
     /// What a save can actually do for one tab, which is not the same question as whether it holds
     /// work. A batch close asks both: it saves what it can reach and leaves the rest open, so the
     /// two answers have to come from one switch. Reading the categories apart, in a second
