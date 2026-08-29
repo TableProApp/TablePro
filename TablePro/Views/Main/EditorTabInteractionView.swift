@@ -31,6 +31,7 @@ internal final class EditorTabInteractionView: NSView {
     /// the content.
     internal var onRowCountChanged: ((Int) -> Void)?
 
+    private var isResolvingAccessibilityHit = false
     private var hoverTrackingArea: NSTrackingArea?
     private var lastActivatedTabId: UUID?
 
@@ -110,10 +111,25 @@ internal final class EditorTabInteractionView: NSView {
 
     /// Claims the track and nothing else, so a press on a tab is this view's and a press on the
     /// new-tab button, on the band's insets or on the chrome below the track is not.
+    ///
+    /// The claim is for the pointer alone. Accessibility resolves a screen point through this same
+    /// method, so claiming it unconditionally answered "the strip" for every tab and took all of
+    /// them out of reach of VoiceOver, Switch Control, Voice Control and XCUITest at once: this
+    /// view publishes nothing, so there was no element under a tab to speak, press or click. That
+    /// shipped in #2571 and turned the whole UI suite red from the commit that merged it.
     override internal func hitTest(_ point: NSPoint) -> NSView? {
+        guard !isResolvingAccessibilityHit else { return super.hitTest(point) }
         let local = convert(point, from: superview)
         guard trackRect.contains(local) else { return super.hitTest(point) }
         return self
+    }
+
+    /// Answers from the SwiftUI tree, which is where the tabs publish themselves. The pointer's
+    /// claim is lifted for the length of the question.
+    override internal func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        isResolvingAccessibilityHit = true
+        defer { isResolvingAccessibilityHit = false }
+        return super.accessibilityHitTest(point)
     }
 
     private func tabIndex(atViewPoint point: CGPoint) -> Int? {

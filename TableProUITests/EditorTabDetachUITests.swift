@@ -80,7 +80,7 @@ final class EditorTabDetachUITests: UITestCase {
         let target = try XCTUnwrap(tabLabels(in: window).last)
         tab(named: target, in: window).rightClick()
 
-        let item = app.menuItems["Move Tab to New Window"]
+        let item = app.menuItems.matching(identifier: "Move Tab to New Window").firstMatch
         XCTAssertTrue(item.waitToExist(timeout: 5), "The command must be listed")
         XCTAssertTrue(item.isEnabled, "It must be offered on an idle tab among others")
         app.typeKey(XCUIKeyboardKey.escape, modifierFlags: [])
@@ -92,7 +92,7 @@ final class EditorTabDetachUITests: UITestCase {
         let target = tab(named: name, in: window)
         XCTAssertTrue(waitUntilHittable(target, timeout: 20), "The tab must be hittable")
         target.rightClick()
-        let item = app.menuItems["Move Tab to New Window"]
+        let item = app.menuItems.matching(identifier: "Move Tab to New Window").firstMatch
         XCTAssertTrue(item.waitToExist(timeout: 5), "The command must be listed")
         item.click()
     }
