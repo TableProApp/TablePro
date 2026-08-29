@@ -124,11 +124,18 @@ internal final class EditorTabInteractionView: NSView {
         return self
     }
 
-    /// Answers from the SwiftUI tree, which is where the tabs publish themselves. The pointer's
-    /// claim is lifted for the length of the question.
+    /// Answers from the SwiftUI tree, which is where the tabs publish themselves.
+    ///
+    /// The subviews are asked directly rather than through `super`, which will not walk into them
+    /// from a receiver that is not itself an accessibility element: lifting the pointer's claim and
+    /// deferring to `super` left every tab unreachable exactly as before. The point arrives in
+    /// screen coordinates and is passed on unchanged, because that is what the children expect too.
     override internal func accessibilityHitTest(_ point: NSPoint) -> Any? {
         isResolvingAccessibilityHit = true
         defer { isResolvingAccessibilityHit = false }
+        for subview in subviews.reversed() {
+            if let hit = subview.accessibilityHitTest(point) { return hit }
+        }
         return super.accessibilityHitTest(point)
     }
 
