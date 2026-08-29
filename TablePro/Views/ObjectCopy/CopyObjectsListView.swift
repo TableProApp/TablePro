@@ -68,9 +68,13 @@ internal struct CopyObjectsListView: View {
     }
 
     private func row(_ object: ObjectCopySelection) -> some View {
+        /// The value SwiftUI hands the setter, never an unconditional flip. A binding that inverts
+        /// whatever it is written turns any write of the value it already holds into a change, so
+        /// a re-render, an accessibility `setValue`, or a second delivery while the list diffs
+        /// under a search keystroke silently took an object out of the copy or put one in.
         Toggle(isOn: Binding(
             get: { session.selectedObjectIds.contains(object.id) },
-            set: { _ in session.toggle(object) }
+            set: { session.setSelected(object, $0) }
         )) {
             HStack(spacing: 6) {
                 /// The signature or the owning table, not just the name: two overloads and two

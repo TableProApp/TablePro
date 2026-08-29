@@ -46,11 +46,19 @@ internal struct ObjectCopyPlanner {
         var skipped: [ObjectCopySkip] = []
         var tableSteps: [ObjectCopyTableStep] = []
         var definitionSteps: [ObjectCopyDefinitionStep] = []
+        var targetNamespaces: [String] = []
+        /// The target catalog is one read per distinct target endpoint, not one per source scope.
+        /// A copy into a chosen target resolves every scope to the same endpoint, so a database
+        /// with twelve schemas read the same catalog twelve times.
+        var targetObjectsByEndpoint: [String: [String: ObjectCopySelection]] = [:]
 
         for scope in Self.scopes(of: request) {
             let names = Set(scope.objects.map(\.name))
             let sourceEndpoint = request.source.withSchema(scope.namespace)
             let targetEndpoint = request.target.withSchema(scope.targetNamespace(for: request))
+            if let namespace = targetEndpoint.schema?.nilIfEmpty, !targetNamespaces.contains(namespace) {
+                targetNamespaces.append(namespace)
+            }
 
             let sourceReads = try await metadata.tableReads(
                 for: sourceEndpoint, connection: connections.source, includeViews: true, names: names
@@ -58,9 +66,19 @@ internal struct ObjectCopyPlanner {
             let targetReads = try await existingTargetReads(
                 request, endpoint: targetEndpoint, connection: connections.target, names: names
             )
-            let targetObjects = try await existingTargetObjects(
-                request, endpoint: targetEndpoint, connection: connections.target
-            )
+            var targetObjects: [String: ObjectCopySelection] = [:]
+            /// Only the definition steps read it, and only when structure takes part, so a
+            /// data-only copy never pays for a catalog it would discard unread.
+            if request.content.includesStructure {
+                if let cached = targetObjectsByEndpoint[targetEndpoint.id] {
+                    targetObjects = cached
+                } else {
+                    targetObjects = try await existingTargetObjects(
+                        request, endpoint: targetEndpoint, connection: connections.target
+                    )
+                    targetObjectsByEndpoint[targetEndpoint.id] = targetObjects
+                }
+            }
 
             tableSteps += try await buildTableSteps(
                 request,
@@ -88,8 +106,41 @@ internal struct ObjectCopyPlanner {
             createsDatabase: request.destination.createsDatabase,
             tableSteps: tableSteps,
             definitionSteps: definitionSteps,
+            schemaStatements: try await buildSchemaStatements(request, namespaces: targetNamespaces),
             skipped: skipped
         )
+    }
+
+    /// The schemas a duplicated database needs before its first `CREATE TABLE` names one.
+    ///
+    /// `CREATE DATABASE` gives the new database whatever schema its engine gives it, and a
+    /// duplicate keeps every source schema name, so a PostgreSQL database with a `sales` schema
+    /// produced `CREATE TABLE "sales"."invoices"` against a database that had only `public`. The
+    /// structure phase then rolled back with the database already created, leaving a duplicate that
+    /// held nothing and could not be retried without deleting it first.
+    ///
+    /// Only for a run that creates the database: copying into one the user chose means its schemas
+    /// are the user's to make, and creating one silently would put objects somewhere they did not
+    /// ask for. A driver with no single statement for it answers nil and the copy is left as it
+    /// was, rather than being handed DDL the server would reject.
+    private func buildSchemaStatements(
+        _ request: ObjectCopyRequest,
+        namespaces: [String]
+    ) async throws -> [SyncStatement] {
+        guard request.destination.createsDatabase, !namespaces.isEmpty else { return [] }
+        return try await manager.withMetadataDriver(
+            scope: targetScope(request, endpoint: request.target)
+        ) { driver in
+            guard let plugin = CompareMetadataService.pluginDriver(from: driver) else { return [] }
+            return namespaces.compactMap { name in
+                guard let sql = plugin.createSchemaStatement(name: name) else { return nil }
+                return SyncStatement(
+                    sql: sql.hasSuffix(";") ? sql : sql + ";",
+                    objectName: name,
+                    summary: String(format: String(localized: "Create schema %@"), name)
+                )
+            }
+        }
     }
 
     /// The selected objects grouped by the namespace they were found in.
@@ -239,9 +290,13 @@ internal struct ObjectCopyPlanner {
         /// matched no edge and fell through to alphabetical order.
         let sourceNamespace = ObjectCopyNamespace.name(for: sourceEndpoint)
         let targetNamespace = ObjectCopyNamespace.name(for: targetEndpoint)
+        /// Seeded from the user's own order, not from `reads.keys`. Swift seeds Dictionary hashing
+        /// per process, so taking the keys gave the tables with no foreign key between them a
+        /// different tie-break on every launch: the approved script, the progress order and the
+        /// outcome list were all shuffled differently for the same copy.
         var drafts: [ObjectCopyTableDraft] = []
         for selection in Self.orderedByDependency(
-            Array(reads.keys), reads: reads, effectiveSchema: sourceNamespace
+            scope.objects.filter { reads[$0] != nil }, reads: reads, effectiveSchema: sourceNamespace
         ) {
             guard let read = reads[selection], let snapshot = read.snapshot else { continue }
             let targetRead = match(selection, in: targetReads)
@@ -504,8 +559,10 @@ internal struct ObjectCopyPlanner {
     ) -> TableStructureSnapshot {
         let placedSchema = schema ?? targetSchema
         let source = (sourceSchema ?? "").lowercased()
-        let foreignKeys = snapshot.foreignKeys.map { key -> EditableForeignKeyDefinition in
-            guard source != (targetSchema ?? "").lowercased() else { return key }
+        /// Hoisted out of the map: it names neither the key nor the snapshot, so a copy that stays
+        /// in one namespace has nothing to move and can say so once instead of per foreign key.
+        let movesReferences = source != (targetSchema ?? "").lowercased()
+        let foreignKeys = !movesReferences ? snapshot.foreignKeys : snapshot.foreignKeys.map { key in
             let referenced = (key.referencedSchema ?? "").lowercased()
             guard referenced.isEmpty || referenced == source else { return key }
             var moved = key
@@ -576,20 +633,29 @@ internal struct ObjectCopyPlanner {
         let targetSchema = targetEndpoint.schema
         let sourceNamespace = ObjectCopyNamespace.name(for: sourceEndpoint)
         let targetNamespace = ObjectCopyNamespace.name(for: targetEndpoint)
+
+        /// Asked once for the whole scope, and before anything is read. It depends only on the two
+        /// namespaces, so a cross-namespace copy rejected every object anyway: asking per object
+        /// first fetched every view body, routine body and trigger body from the source and then
+        /// discarded all of them, and wrote one identical skip row per object where the scope has
+        /// one reason.
+        guard ObjectCopyEligibility.canCopyDefinition(
+            sourceNamespace: sourceNamespace, targetNamespace: targetNamespace
+        ) else {
+            skipped += selections.map {
+                ObjectCopySkip(selection: $0, reason: ObjectCopyEligibility.definitionNamespaceRefusal)
+            }
+            return []
+        }
+
         let definitions = try await sourceDefinitions(
-            request, scope: scope, sourceEndpoint: sourceEndpoint,
-            sourceReads: sourceReads, connection: connection
+            sourceEndpoint: sourceEndpoint,
+            selections: selections,
+            sourceReads: sourceReads,
+            connection: connection
         )
         var pending: [(selection: ObjectCopySelection, definition: String, target: ObjectCopySelection?)] = []
-        for selection in Self.orderedByKind(scope.objects.filter({ $0.kind.isSourceDefined })) {
-            guard ObjectCopyEligibility.canCopyDefinition(
-                sourceNamespace: sourceNamespace, targetNamespace: targetNamespace
-            ) else {
-                skipped.append(ObjectCopySkip(
-                    selection: selection, reason: ObjectCopyEligibility.definitionNamespaceRefusal
-                ))
-                continue
-            }
+        for selection in Self.orderedByKind(selections) {
             guard let definition = definitions[selection.id],
                   !definition.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 skipped.append(ObjectCopySkip(selection: selection, reason: Self.noDefinition))
@@ -675,23 +741,12 @@ internal struct ObjectCopyPlanner {
     }
 
     private func sourceDefinitions(
-        _ request: ObjectCopyRequest,
-        scope: Scope,
         sourceEndpoint: DatabaseEndpoint,
+        selections: [ObjectCopySelection],
         sourceReads: [TableStructureRead],
         connection: DatabaseConnection
     ) async throws -> [String: String] {
         var definitions: [String: String] = [:]
-        let selections = scope.objects.filter { $0.kind.isSourceDefined }
-        let request = ObjectCopyRequest(
-            source: sourceEndpoint,
-            destination: request.destination,
-            objects: selections,
-            content: request.content,
-            existingPolicy: request.existingPolicy,
-            errorHandling: request.errorHandling,
-            wrapEachTableInTransaction: request.wrapEachTableInTransaction
-        )
 
         let views = selections.filter { $0.kind == .view || $0.kind == .materializedView }
         if !views.isEmpty {
@@ -699,7 +754,7 @@ internal struct ObjectCopyPlanner {
                 views.contains { $0.name.lowercased() == info.name.lowercased() }
             }
             for read in try await metadata.viewDefinitions(
-                for: request.source, connection: connection, views: infos
+                for: sourceEndpoint, connection: connection, views: infos
             ) {
                 guard let selection = views.first(where: { $0.name.lowercased() == read.name.lowercased() })
                 else { continue }
@@ -711,7 +766,7 @@ internal struct ObjectCopyPlanner {
         /// `f(text)` are two routines and copying one must not carry the other's body.
         let routines = selections.filter { $0.kind == .procedure || $0.kind == .function }
         if !routines.isEmpty {
-            for read in try await metadata.routineReads(for: request.source, connection: connection) {
+            for read in try await metadata.routineReads(for: sourceEndpoint, connection: connection) {
                 guard let selection = routines.first(where: {
                     $0.kind == read.kind
                         && $0.name.lowercased() == read.name.lowercased()
@@ -728,7 +783,7 @@ internal struct ObjectCopyPlanner {
         if !triggers.isEmpty {
             let owners = Set(triggers.compactMap(\.owner)).union(sourceReads.map(\.table.name))
             for read in try await metadata.triggerReads(
-                for: request.source, connection: connection, tables: Array(owners)
+                for: sourceEndpoint, connection: connection, tables: Array(owners)
             ) {
                 guard let selection = triggers.first(where: {
                     $0.name.lowercased() == read.name.lowercased()
@@ -772,13 +827,17 @@ internal struct ObjectCopyPlanner {
 
         var emitted: Set<String> = []
         var result: [ObjectCopySelection] = []
+        var placed: Set<ObjectCopySelection> = []
         for node in ForeignKeyTopologicalSort.ordered(
             nodes, foreignKeysByTable: foreignKeysByTable, childrenFirst: false
         ) where emitted.insert(node.identifier).inserted {
             guard let selection = bySortKey[node.identifier] else { continue }
             result.append(selection)
+            placed.insert(selection)
         }
-        for selection in selections where !result.contains(selection) {
+        /// Membership against a set rather than the array being built. A database-wide copy of 500
+        /// tables ran 125,000 equality checks here for a tail that is usually empty.
+        for selection in selections where !placed.contains(selection) {
             result.append(selection)
         }
         return result
@@ -883,8 +942,6 @@ private struct ObjectCopyTableDraft {
         let writesStructure = request.content.includesStructure && !keepsTargetStructure
         self.writesStructure = writesStructure
         self.dropsFirst = writesStructure && existsInTarget
-        /// A data-only replace has no DROP and CREATE to clear the table, so it is emptied instead.
-        self.emptiesFirst = existsInTarget && request.existingPolicy == .replace && !writesStructure
 
         /// The target's own name when it already has the table, because a case-insensitive match
         /// pairs `Orders` with `orders` and the INSERT has to quote the one that exists.
@@ -901,7 +958,18 @@ private struct ObjectCopyTableDraft {
         )
         self.sourceColumns = pairs.map(\.source)
         self.targetColumns = pairs.map(\.target)
-        self.copiesData = request.content.includesData && !pairs.isEmpty && (writesStructure || existsInTarget)
+        let copiesData = request.content.includesData && !pairs.isEmpty && (writesStructure || existsInTarget)
+        self.copiesData = copiesData
+
+        /// A data-only replace has no DROP and CREATE to clear the table, so it is emptied instead,
+        /// and only where rows are going back into it. Emptying without that condition deleted
+        /// every row of a table whose columns the target does not share, and then wrote nothing:
+        /// the step was dropped from the data phase for having no writable column while its DELETE
+        /// stayed in the clear phase, and the review said only that the two sides shared no column.
+        self.emptiesFirst = copiesData
+            && existsInTarget
+            && request.existingPolicy == .replace
+            && !writesStructure
 
         let written = Set(pairs.map { $0.source.lowercased() })
         self.copiesIdentityColumn = request.content.includesData && read.columns.contains {

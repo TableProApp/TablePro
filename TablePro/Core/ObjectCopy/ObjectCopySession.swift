@@ -274,11 +274,17 @@ internal final class ObjectCopySession {
     }
 
     internal func toggle(_ selection: ObjectCopySelection) {
-        if selectedObjectIds.contains(selection.id) {
+        setSelected(selection, !selectedObjectIds.contains(selection.id))
+    }
+
+    /// What a checkbox writes. Stating the value rather than inverting the stored one is what keeps
+    /// a repeated write of the value already held from changing anything.
+    internal func setSelected(_ selection: ObjectCopySelection, _ isSelected: Bool) {
+        guard isSelected else {
             selectedObjectIds.remove(selection.id)
-        } else {
-            selectedObjectIds.insert(selection.id)
+            return
         }
+        selectedObjectIds.insert(selection.id)
     }
 
     /// Adds what is on screen rather than replacing the whole selection, so a search that is hiding

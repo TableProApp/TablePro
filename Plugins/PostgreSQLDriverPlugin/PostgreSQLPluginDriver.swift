@@ -113,6 +113,12 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         ["SET session_replication_role = DEFAULT"]
     }
 
+    /// A duplicated database arrives with `public` alone, so every other schema its tables are
+    /// qualified with has to be made before the first `CREATE TABLE` names one.
+    func createSchemaStatement(name: String) -> String? {
+        "CREATE SCHEMA IF NOT EXISTS \(quoteIdentifier(name))"
+    }
+
     // MARK: - Maintenance
 
     func supportedMaintenanceOperations() -> [String]? {

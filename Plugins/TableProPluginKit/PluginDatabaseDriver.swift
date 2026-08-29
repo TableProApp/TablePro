@@ -220,6 +220,15 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func foreignKeyDisableStatements() -> [String]?
     func foreignKeyEnableStatements() -> [String]?
 
+    /// Creates a schema, for a copy that has just created the database it goes in.
+    ///
+    /// A new database carries only whatever schema its engine gives it, so duplicating one that
+    /// groups its objects into several means creating the rest before any of their tables. Return
+    /// nil where the engine has no schemas, or where a schema is not something a statement can
+    /// make: on Oracle it is a user, and on SQL Server it needs its own batch. Callers leave those
+    /// namespaces out and say so rather than emitting DDL the server will reject.
+    func createSchemaStatement(name: String) -> String?
+
     // Maintenance operations (optional — return nil if not supported)
     func supportedMaintenanceOperations() -> [String]?
     func maintenanceStatements(operation: String, table: String?, schema: String?, options: [String: String]) -> [String]?
@@ -534,6 +543,7 @@ public extension PluginDatabaseDriver {
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? { nil }
     func foreignKeyDisableStatements() -> [String]? { nil }
     func foreignKeyEnableStatements() -> [String]? { nil }
+    func createSchemaStatement(name: String) -> String? { nil }
 
     func supportedMaintenanceOperations() -> [String]? { nil }
     func maintenanceStatements(operation: String, table: String?, schema: String?, options: [String: String]) -> [String]? { nil }

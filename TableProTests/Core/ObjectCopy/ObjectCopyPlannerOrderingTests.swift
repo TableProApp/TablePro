@@ -296,4 +296,66 @@ final class ObjectCopyPlannerOrderingTests: XCTestCase {
 
         XCTAssertEqual(moved.foreignKeys.first?.referencedSchema, "sales")
     }
+
+    /// A table the sort could not place is appended in the caller's own order, which is why the
+    /// caller has to hand one in. Seeded from `reads.keys` the tail came out in whatever order
+    /// Swift's per-process hash seed gave the dictionary that launch, so the same copy produced a
+    /// different approved script, progress order and outcome list from one run to the next.
+    func testTablesTheSortCannotPlaceFollowTheOrderTheyWereGivenIn() {
+        let placed = selection("customers")
+        let names = ["zulu", "alpha", "mike"]
+        let unread = names.map { selection($0) }
+        let reads: [ObjectCopySelection: TableStructureRead] = [placed: read("customers")]
+
+        let ordered = ObjectCopyPlanner.orderedByDependency(
+            [placed] + unread, reads: reads, effectiveSchema: "public"
+        )
+
+        XCTAssertEqual(ordered.map(\.name), ["customers"] + names)
+    }
+
+    /// The same selections in the same order answer the same way every time, whatever order the
+    /// reads were built in.
+    func testTheOrderDoesNotDependOnHowTheReadsWereBuilt() {
+        let names = ["zulu", "alpha", "mike", "bravo", "yankee"]
+        let selections = names.map { selection($0) }
+        var forwards: [ObjectCopySelection: TableStructureRead] = [:]
+        for (selection, name) in zip(selections, names) { forwards[selection] = read(name) }
+        var backwards: [ObjectCopySelection: TableStructureRead] = [:]
+        for (selection, name) in zip(selections, names).reversed() { backwards[selection] = read(name) }
+
+        let first = ObjectCopyPlanner.orderedByDependency(
+            selections, reads: forwards, effectiveSchema: "public"
+        )
+        let second = ObjectCopyPlanner.orderedByDependency(
+            selections, reads: backwards, effectiveSchema: "public"
+        )
+
+        XCTAssertEqual(first.map(\.name), second.map(\.name))
+        XCTAssertEqual(Set(first.map(\.name)), Set(names))
+        XCTAssertEqual(first.count, names.count)
+    }
+
+    /// The tie-break holds while a real dependency still moves the tables it names.
+    func testTheGivenOrderYieldsToAForeignKey() {
+        let orders = selection("orders")
+        let customers = selection("customers")
+        let audit = selection("audit")
+        let reads: [ObjectCopySelection: TableStructureRead] = [
+            orders: read("orders", referencing: ["customers"]),
+            customers: read("customers"),
+            audit: read("audit")
+        ]
+
+        let ordered = ObjectCopyPlanner.orderedByDependency(
+            [orders, audit, customers], reads: reads, effectiveSchema: "public"
+        )
+
+        guard let parent = ordered.firstIndex(of: customers),
+              let child = ordered.firstIndex(of: orders) else {
+            return XCTFail("the sort dropped a table")
+        }
+        XCTAssertLessThan(parent, child)
+        XCTAssertEqual(ordered.count, 3)
+    }
 }

@@ -69,7 +69,10 @@ emits that driver's own SQL, so neither structure nor data crosses from MySQL to
 sheet refuses before it reads anything. MySQL and MariaDB count as one engine.
 
 A database-level copy covers every schema. Each schema's objects are read and written in their own
-scope, and a duplicate recreates each of them under the same name in the new database.
+scope, and a duplicate recreates each of them under the same name in the new database. A new
+database arrives with only the schema its engine gives it, so a duplicate creates the rest before
+its first table. PostgreSQL does this; on an engine where a schema is not something one statement
+can make, such as Oracle, where it is a user, the schemas have to be there first.
 
 Views, routines and triggers copy only where both sides share a namespace, which is the schema on
 PostgreSQL and SQL Server and the database on MySQL and MariaDB. Their definition is the source's
@@ -98,8 +101,13 @@ appears in the result, and the rest of the copy is unaffected.
 ## Stopping a copy
 
 **Stop** takes effect at the next batch boundary. Each table is its own transaction where the engine
-supports one, so the table being copied rolls back, along with the emptying that Replace does, and
-the tables already finished stay. A driver blocked inside a network call finishes that batch first.
+supports one, so the table being copied rolls back and the tables already finished stay. A driver
+blocked inside a network call finishes that batch first.
+
+A Replace that removes the target's rows is the exception: every table is emptied before any of them
+is filled, so that a cascading foreign key cannot reach a table you did not select, and the whole
+data phase is then one transaction. Stopping it, or a failure under **Stop and roll back**, puts
+every row back. **Skip and continue** promises no rollback, so there the clearing stands.
 
 A stopped copy reports only what was committed. The table it was in the middle of counts as neither
 copied nor failed.
