@@ -98,6 +98,7 @@ struct ValueFontTests {
             "TablePro/Views/RightSidebar/FieldEditors/SetPickerView.swift",
             "TablePro/Views/Results/CellOverlayEditor.swift",
             "TablePro/Views/Results/CellOverlayViewer.swift",
+            "TablePro/Views/Results/ColumnValueFilterPopover.swift",
             "TablePro/Views/Results/TextViewerWindowController.swift",
             "TablePro/Views/Results/HexEditorContentView.swift",
             "TablePro/Views/Results/ForeignKeyPreviewView.swift",

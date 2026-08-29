@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MongoDB `.sort()` and `.projection()` silently ignored when written with unquoted keys.
 - Compare & Sync unable to drop an overloaded PostgreSQL routine, or any trigger.
 - PostgreSQL sequence DDL naming the schema it was read from, in SQL export and the structure editor.
+- Value-filter popover listing values in the system font, with rows indented differently than Select All.
 
 ## [0.69.0] - 2026-08-27
 

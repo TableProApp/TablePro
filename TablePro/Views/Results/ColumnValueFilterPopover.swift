@@ -18,6 +18,7 @@ struct ColumnValueFilterPopover: View {
 
     private static let nullLabel = String(localized: "(NULL)")
     private static let emptyLabel = String(localized: "(Empty)")
+    private static let horizontalInset: CGFloat = 14
 
     init(
         columnName: String,
@@ -65,7 +66,7 @@ struct ColumnValueFilterPopover: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 14)
+        .padding(.horizontal, Self.horizontalInset)
         .padding(.top, 12)
         .padding(.bottom, 8)
     }
@@ -89,7 +90,7 @@ struct ColumnValueFilterPopover: View {
                 Spacer()
             }
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, Self.horizontalInset)
         .padding(.vertical, 8)
     }
 
@@ -99,6 +100,7 @@ struct ColumnValueFilterPopover: View {
                 Toggle(isOn: binding(for: value)) {
                     HStack(spacing: 8) {
                         Text(label(for: value))
+                            .font(ThemeEngine.shared.valueFontSwiftUI)
                             .lineLimit(1)
                             .truncationMode(.tail)
                             .foregroundStyle(value.isNull ? Color.secondary : Color.primary)
@@ -109,6 +111,9 @@ struct ColumnValueFilterPopover: View {
                     }
                 }
                 .toggleStyle(.checkbox)
+                .listRowInsets(EdgeInsets(
+                    top: 2, leading: Self.horizontalInset, bottom: 2, trailing: Self.horizontalInset
+                ))
             }
         }
         .listStyle(.plain)
