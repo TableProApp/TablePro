@@ -241,6 +241,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func createTriggerTemplate(table: String, schema: String?) -> String?
     func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String?
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String?
+    func generateDropRoutineSQL(name: String, signature: String?, schema: String?, isFunction: Bool) -> String?
     var triggerEditUsesReplace: Bool { get }
     var supportsTransactionalDDL: Bool { get }
 
@@ -315,6 +316,18 @@ public extension PluginDatabaseDriver {
     func createTriggerTemplate(table: String, schema: String?) -> String? { nil }
     func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String? { nil }
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? { nil }
+
+    /// How this engine drops a routine, given that only some of them accept an argument list.
+    ///
+    /// PostgreSQL requires one to tell `f(integer)` from `f(text)`, and MySQL rejects one outright,
+    /// so a caller cannot spell this itself. Returning nil means the caller's own qualified
+    /// `DROP FUNCTION schema.name` is right for this engine.
+    func generateDropRoutineSQL(
+        name: String,
+        signature: String?,
+        schema: String?,
+        isFunction: Bool
+    ) -> String? { nil }
     var triggerEditUsesReplace: Bool { false }
     var supportsTransactionalDDL: Bool { false }
 

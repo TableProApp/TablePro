@@ -286,6 +286,9 @@ internal struct ObjectCopyPlanner {
             return ObjectCopyTableStep(
                 selection: draft.selection,
                 dropStatements: statements.drop,
+                sequenceStatements: Self.sequenceStatements(
+                    parts?.sequences ?? [], table: draft.targetTable
+                ),
                 createStatements: statements.create,
                 truncateStatements: statements.truncate,
                 columns: draft.targetColumns,
@@ -304,6 +307,7 @@ internal struct ObjectCopyPlanner {
     private struct SourceParts: Sendable {
         let query: String
         let estimatedRows: Int?
+        let sequences: [String]
     }
 
     /// One scoped call for every table, because each `withMetadataDriver` either leases a pooled
@@ -315,29 +319,75 @@ internal struct ObjectCopyPlanner {
         /// The source's own spellings, which are not always the target's: a case-insensitive
         /// match can pair `Orders.UserID` with `orders.userid`, and quoting the source's spelling
         /// into the target's INSERT names a column that engine does not have.
-        /// Only the tables whose rows are actually copied. Teradata implements the row estimate as
-        /// `SELECT COUNT(*)`, so preparing every draft made reviewing a structure-only copy scan
-        /// every table it named.
-        let inputs = drafts.filter(\.copiesData).map {
-            (id: $0.selection.id, table: $0.snapshot.name, schema: $0.sourceSchema, columns: $0.sourceColumns)
+        let inputs = drafts.map {
+            (
+                id: $0.selection.id,
+                table: $0.snapshot.name,
+                schema: $0.sourceSchema,
+                columns: $0.sourceColumns,
+                copiesData: $0.copiesData,
+                writesStructure: $0.writesStructure
+            )
         }
-        guard !inputs.isEmpty else { return [:] }
+        guard inputs.contains(where: { $0.copiesData || $0.writesStructure }) else { return [:] }
         return try await manager.withMetadataDriver(scope: endpoint.scope, workload: .bulk) { driver in
             guard let plugin = CompareMetadataService.pluginDriver(from: driver) else {
                 throw ObjectCopyError.refused(Self.noSourceDriver)
             }
             var parts: [String: SourceParts] = [:]
+            /// A sequence several tables default from is created once, under the first of them,
+            /// which the dependency order has already put ahead of the rest.
+            var claimedSequences: Set<String> = []
             for input in inputs {
                 try Task.checkCancellation()
-                let query = ObjectCopySelectQuery.build(
-                    columns: input.columns, table: input.table, schema: input.schema, driver: plugin
+                var query = ""
+                var estimatedRows: Int?
+                /// Only the tables whose rows are actually copied. Teradata implements the row
+                /// estimate as `SELECT COUNT(*)`, so preparing every draft made reviewing a
+                /// structure-only copy scan every table it named.
+                if input.copiesData {
+                    query = ObjectCopySelectQuery.build(
+                        columns: input.columns, table: input.table, schema: input.schema, driver: plugin
+                    )
+                    estimatedRows = (try? await plugin.fetchApproximateRowCount(
+                        table: input.table, schema: input.schema
+                    )) ?? nil
+                }
+                var sequences: [String] = []
+                if input.writesStructure {
+                    let found = (try? await plugin.fetchDependentSequences(
+                        table: input.table, schema: input.schema
+                    )) ?? []
+                    for sequence in found
+                    where claimedSequences.insert(sequence.name.lowercased()).inserted {
+                        sequences += SQLStatementScanner.allStatements(in: sequence.ddl)
+                    }
+                }
+                parts[input.id] = SourceParts(
+                    query: query, estimatedRows: estimatedRows, sequences: sequences
                 )
-                let estimate = try? await plugin.fetchApproximateRowCount(
-                    table: input.table, schema: input.schema
-                )
-                parts[input.id] = SourceParts(query: query, estimatedRows: estimate ?? nil)
             }
             return parts
+        }
+    }
+
+    /// A copied table's default names its sequence, so the sequence has to be there before the
+    /// `CREATE TABLE` runs.
+    ///
+    /// PostgreSQL renders a `SERIAL` column as `integer ... DEFAULT nextval('orders_id_seq')`, and
+    /// the driver keeps that text verbatim. Copied without the sequence it names, the table either
+    /// fails to be created at all or, where the source's own sequence happens to be reachable, is
+    /// created sharing it, so the copy and the original hand out the same keys.
+    nonisolated internal static func sequenceStatements(
+        _ sql: [String],
+        table: String
+    ) -> [SyncStatement] {
+        sql.map { statement in
+            SyncStatement(
+                sql: statement.hasSuffix(";") ? statement : statement + ";",
+                objectName: table,
+                summary: String(format: String(localized: "Create the sequences %@ defaults from"), table)
+            )
         }
     }
 
@@ -583,7 +633,10 @@ internal struct ObjectCopyPlanner {
                             kind: target.kind,
                             schema: targetSchema ?? target.schema,
                             name: target.name,
-                            signature: target.signature
+                            /// A trigger's owning table travels in the same slot a routine's
+                            /// argument list does, which is the shape `triggerReads` already uses,
+                            /// and is what lets PostgreSQL spell `DROP TRIGGER name ON table`.
+                            signature: target.signature ?? target.owner
                         ),
                         status: .onlyInTarget
                     )

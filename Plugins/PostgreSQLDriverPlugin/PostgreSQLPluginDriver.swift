@@ -396,6 +396,19 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         "DROP TRIGGER IF EXISTS \(quoteIdentifier(name)) ON \(qualifiedTable(table, schema: schema))"
     }
 
+    /// PostgreSQL allows `f(integer)` and `f(text)` in one schema, so a drop that names only `f`
+    /// is ambiguous and the server refuses it.
+    func generateDropRoutineSQL(
+        name: String,
+        signature: String?,
+        schema: String?,
+        isFunction: Bool
+    ) -> String? {
+        let keyword = isFunction ? "FUNCTION" : "PROCEDURE"
+        let arguments = (signature ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return "DROP \(keyword) IF EXISTS \(qualifiedTable(name, schema: schema))\(arguments)"
+    }
+
     var providesBulkForeignKeyFetch: Bool { true }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
@@ -757,13 +770,17 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             let cycle = row[5].asText == "t" ? " CYCLE" : ""
             let lastValue = row.count > 6 ? row[6].asText : nil
             let quotedSeqName = quoteIdentifier(seqName)
-            let escapedSchemaForLiteral = escapeStringLiteral(schemaName)
             let escapedSeqForLiteral = escapeStringLiteral(seqName)
             var ddl = "CREATE SEQUENCE \(quotedSeqName) INCREMENT BY \(incrementBy)"
                 + " MINVALUE \(minVal) MAXVALUE \(maxVal)"
                 + " START WITH \(startVal)\(cycle);"
+            /// Unqualified, so it names the sequence the line above created rather than the one it
+            /// was read from. `setval` takes a `regclass`, which resolves through `search_path`, and
+            /// the `CREATE SEQUENCE` beside it is already schema-relative. Spelling the source's own
+            /// schema here made the pair disagree: run against another schema it repositioned the
+            /// original sequence, and against another database it named one that was not there.
             if let last = lastValue, !last.isEmpty, Int64(last) != nil {
-                ddl += "\nSELECT pg_catalog.setval('\"\(escapedSchemaForLiteral)\".\"\(escapedSeqForLiteral)\"', \(last), true);"
+                ddl += "\nSELECT pg_catalog.setval('\"\(escapedSeqForLiteral)\"', \(last), true);"
             }
             return (name: seqName, ddl: ddl)
         }

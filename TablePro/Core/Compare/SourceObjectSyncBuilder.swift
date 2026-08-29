@@ -52,9 +52,9 @@ internal struct SourceObjectSyncBuilder {
 
     private func dropStatements(for result: CompareObjectResult, isReplacement: Bool) -> [SyncStatement] {
         guard let keyword = dropKeyword(for: result.identity.kind) else { return [] }
-        let name = qualified(result.identity)
+        let sql = dialectDrop(for: result.identity) ?? "DROP \(keyword) \(qualified(result.identity))"
         return [SyncStatement(
-            sql: "DROP \(keyword) \(name);",
+            sql: terminated(sql),
             objectName: result.identity.displayName,
             summary: isReplacement
                 ? String(
@@ -67,6 +67,29 @@ internal struct SourceObjectSyncBuilder {
                 ),
             hazards: classifier.hazards(forDropping: result.identity, isReplacement: isReplacement)
         )]
+    }
+
+    /// A routine and a trigger are not addressed by name alone on every engine. PostgreSQL needs an
+    /// overloaded routine's argument list and spells a trigger drop `DROP TRIGGER name ON table`,
+    /// while MySQL rejects the argument list and takes no `ON`. Only the driver knows which, so the
+    /// bare qualified name is the fallback rather than the rule.
+    private func dialectDrop(for identity: CompareObjectIdentity) -> String? {
+        switch identity.kind {
+        case .procedure, .function:
+            return targetDriver.generateDropRoutineSQL(
+                name: identity.name,
+                signature: identity.signature,
+                schema: identity.schema,
+                isFunction: identity.kind == .function
+            )
+        case .trigger:
+            guard let table = identity.signature, !table.isEmpty else { return nil }
+            return targetDriver.generateDropTriggerSQL(
+                name: identity.name, table: table, schema: identity.schema
+            )
+        case .view, .materializedView, .table, .sequence:
+            return nil
+        }
     }
 
     private func dropKeyword(for kind: CompareObjectKind) -> String? {

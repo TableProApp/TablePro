@@ -17,6 +17,12 @@ internal struct ObjectCopyTableStep: Identifiable, Sendable {
     internal let selection: ObjectCopySelection
     /// Runs first, and only when the user chose to replace a table the target already has.
     internal let dropStatements: [SyncStatement]
+    /// The sequences this table's own defaults name, created before it.
+    ///
+    /// A PostgreSQL `SERIAL` column's default is `nextval('seq'::regclass)`. Copied without its
+    /// sequence, the table either refuses to be created or arrives with a default pointing at
+    /// nothing, and the first insert fails.
+    internal let sequenceStatements: [SyncStatement]
     internal let createStatements: [SyncStatement]
     /// Empties a table the copy is about to append to, for a data-only replace where there is no
     /// DROP and CREATE to clear it.
@@ -45,7 +51,7 @@ internal struct ObjectCopyTableStep: Identifiable, Sendable {
 
     /// What the DDL phase runs for this table. The truncate is deliberately absent: it belongs to
     /// the data phase's transaction.
-    internal var ddl: [SyncStatement] { dropStatements + createStatements }
+    internal var ddl: [SyncStatement] { dropStatements + sequenceStatements + createStatements }
 
     internal var qualifiedTargetName: String {
         guard let targetSchema, !targetSchema.isEmpty else { return targetTable }
@@ -146,7 +152,7 @@ internal struct ObjectCopyPlan: Sendable {
     }
 
     internal var creationGroups: [ObjectCopyStatementGroup] {
-        tableSteps.map { ObjectCopyStatementGroup($0.selection, $0.createStatements) }
+        tableSteps.map { ObjectCopyStatementGroup($0.selection, $0.sequenceStatements + $0.createStatements) }
             + definitionSteps.filter { !$0.runsAfterData }
                 .map { ObjectCopyStatementGroup($0.selection, $0.createStatements) }
     }
