@@ -1,13 +1,12 @@
 import AppKit
 import XCTest
 
-/// Reordering by drag, after it stopped being a drag-and-drop session and became direct
-/// manipulation. These cover the half of the strip that is fixed: a drag reorders, and it reorders
-/// the same whether the tab is selected, unselected, or in a strip long enough to scroll.
+/// Reordering by drag, now that AppKit owns the press rather than arbitrating for it.
 ///
-/// They deliberately do not assert the window's origin. A press inside the leading region of the
-/// titlebar still drags the window rather than the tab, which is the other half of #2438 and is
-/// not fixed here.
+/// The window's origin is asserted here. The strip lives in a titlebar accessory, so AppKit's own
+/// window drag is a claimant on every press that lands on a tab, and `EditorTabInteractionView`
+/// answers `false` to `mouseDownCanMoveWindow` precisely so it can never win. A test that only
+/// checks the order would pass just as happily with the window sliding across the screen.
 final class EditorTabReorderUITests: UITestCase {
     func testDraggingATabReordersTheStrip() throws {
         let app = try launchWithSampleDatabase()
@@ -169,12 +168,12 @@ final class EditorTabReorderUITests: UITestCase {
     /// compiles here and drives nothing: measured at HEAD, it left the tab order unchanged even on
     /// the selected tab, which real events do reorder, so it was reading the harness rather than
     /// the strip.
-    private func drag(_ source: XCUIElement, onto destination: XCUIElement) {
+    private func drag(_ source: XCUIElement, onto destination: XCUIElement, hold: TimeInterval = 0.6) {
         XCTAssertTrue(waitUntilHittable(source, timeout: 20), "The dragged tab must be hittable")
         XCTAssertTrue(waitUntilHittable(destination, timeout: 20), "The drop target tab must be hittable")
         source.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             .click(
-                forDuration: 0.6,
+                forDuration: hold,
                 thenDragTo: destination.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             )
     }
@@ -186,6 +185,58 @@ final class EditorTabReorderUITests: UITestCase {
     /// reorder as broken.
     private func waitForTabOrder(toChangeFrom before: [String], in window: XCUIElement) -> Bool {
         waitForPredicate(timeout: 15) { self.tabLabels(in: window) != before }
+    }
+
+    /// The guard the strip's home makes necessary. A press on a tab inside a titlebar accessory is
+    /// one AppKit would otherwise turn into a window drag, and this is the assertion that says it
+    /// does not: the reported symptom of #2438 was the whole window travelling with the pointer.
+    func testDraggingATabNeverMovesTheWindow() throws {
+        let app = try launchWithSampleDatabase()
+        let window = try readyWindow(of: app)
+
+        openTables(["Album", "Artist", "Customer"], in: window)
+        XCTAssertTrue(
+            waitForPredicate(timeout: 20) { self.tabLabels(in: window).count >= 3 },
+            "The strip must show a tab per open table, got \(tabLabels(in: window))"
+        )
+
+        let before = tabLabels(in: window)
+        let origin = window.frame.origin
+
+        drag(tab(named: before[0], in: window), onto: tab(named: before[2], in: window), hold: 0.02)
+
+        XCTAssertTrue(
+            waitForTabOrder(toChangeFrom: before, in: window),
+            "Dragging a tab must change the tab order, was \(before)"
+        )
+        XCTAssertEqual(
+            window.frame.origin,
+            origin,
+            "Dragging a tab must move the tab, never the window"
+        )
+    }
+
+    /// A user presses and drags in one movement. The suite's other cases hold for 0.6s first,
+    /// which is not a gesture anybody makes, and the arbitration this replaces behaved differently
+    /// under the two.
+    func testAFastDragReordersTheStrip() throws {
+        let app = try launchWithSampleDatabase()
+        let window = try readyWindow(of: app)
+
+        openTables(["Album", "Artist", "Customer"], in: window)
+        XCTAssertTrue(
+            waitForPredicate(timeout: 20) { self.tabLabels(in: window).count >= 3 },
+            "The strip must show a tab per open table, got \(tabLabels(in: window))"
+        )
+
+        let before = tabLabels(in: window)
+
+        drag(tab(named: before[0], in: window), onto: tab(named: before[1], in: window), hold: 0.02)
+
+        XCTAssertTrue(
+            waitForTabOrder(toChangeFrom: before, in: window),
+            "A drag with no hold before it must reorder, was \(before)"
+        )
     }
 
     /// The tabs the pointer can actually reach.

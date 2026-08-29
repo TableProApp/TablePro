@@ -220,3 +220,57 @@ struct EditorTabReorderResolverTests {
         #expect(destination == 12)
     }
 }
+
+/// The boundary the commonest drag of all lands on.
+@Suite("Editor tab reorder crossing tolerance")
+struct EditorTabReorderCrossingToleranceTests {
+    /// Releasing on a neighbour's exact centre is what a one-place drag does, and the location
+    /// arrives from a geometry conversion, so it is a hair under the midpoint as often as it is on
+    /// it. Comparing for equality made the move a coin flip; measured on the shipping strip, two
+    /// of thirteen plain drags did nothing.
+    @Test("A release a hair short of the midpoint still crosses it")
+    func aHairShortOfTheMidpointCrosses() {
+        let width: CGFloat = 244
+        let midpoint = 2.5 * width
+
+        #expect(
+            EditorTabReorderResolver.settledDestination(
+                forLocation: midpoint - 0.0001,
+                tabWidth: width,
+                currentIndex: 3,
+                count: 6
+            ) == 2
+        )
+    }
+
+    @Test("A release a hair past the midpoint crosses it going the other way")
+    func aHairPastTheMidpointCrosses() {
+        let width: CGFloat = 244
+        let midpoint = 3.5 * width
+
+        #expect(
+            EditorTabReorderResolver.settledDestination(
+                forLocation: midpoint + 0.0001,
+                tabWidth: width,
+                currentIndex: 2,
+                count: 6
+            ) == 3
+        )
+    }
+
+    /// The tolerance is half a point, which is below anything a hand or an eye can aim at. A tab
+    /// still has to be genuinely crossed for the order to change.
+    @Test("A release well short of the midpoint does not cross it")
+    func wellShortOfTheMidpointDoesNotCross() {
+        let width: CGFloat = 244
+
+        #expect(
+            EditorTabReorderResolver.settledDestination(
+                forLocation: 2.5 * width + 4,
+                tabWidth: width,
+                currentIndex: 3,
+                count: 6
+            ) == nil
+        )
+    }
+}

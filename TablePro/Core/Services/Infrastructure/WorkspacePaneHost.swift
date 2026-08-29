@@ -26,6 +26,15 @@ internal final class WorkspacePaneHost: NSViewController {
         view = NSView()
     }
 
+    /// A pane can publish a height, which the editor tab strip does when it wraps onto more rows.
+    /// `NSViewController` only tells the immediate parent, so this container passes it on to
+    /// whatever is hosting it.
+    override internal func preferredContentSizeDidChange(for viewController: NSViewController) {
+        super.preferredContentSizeDidChange(for: viewController)
+        guard viewController === shown else { return }
+        preferredContentSize = viewController.preferredContentSize
+    }
+
     internal func show(_ controller: NSViewController?) {
         guard shown !== controller else { return }
 
@@ -35,8 +44,12 @@ internal final class WorkspacePaneHost: NSViewController {
         }
         shown = controller
 
-        guard let controller else { return }
+        guard let controller else {
+            preferredContentSize = .zero
+            return
+        }
         addChild(controller)
+        preferredContentSize = controller.preferredContentSize
         let pane = controller.view
         pane.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(pane)

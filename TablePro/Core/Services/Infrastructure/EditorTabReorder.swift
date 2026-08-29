@@ -90,6 +90,15 @@ internal enum EditorTabReorderResolver {
     /// 2, whose midpoint has not been crossed, while tab 1's midpoint at 150 has been. Answering
     /// for the tab under the pointer alone returns nothing there, and a quick drag then commits a
     /// shorter move than the user made, or none at all.
+    /// How far past a midpoint counts as having crossed it.
+    ///
+    /// Releasing on a neighbour's exact centre is the most ordinary one-place drag there is, and it
+    /// lands the pointer on the midpoint itself. Comparing for equality there made the move a coin
+    /// flip: the location arrives from a view geometry conversion, so it is 609.99998 as often as
+    /// it is 610. Half a point is below anything the eye or the hand can aim at, and it makes the
+    /// commonest drag deterministic.
+    internal static let crossingTolerance: CGFloat = 0.5
+
     internal static func settledDestination(
         forLocation location: CGFloat,
         tabWidth: CGFloat,
@@ -102,7 +111,9 @@ internal enum EditorTabReorderResolver {
 
         func hasCrossed(_ index: Int) -> Bool {
             let centre = (CGFloat(index) + 0.5) * tabWidth
-            return candidate > currentIndex ? location >= centre : location <= centre
+            return candidate > currentIndex
+                ? location >= centre - crossingTolerance
+                : location <= centre + crossingTolerance
         }
 
         let crossable = candidate > currentIndex

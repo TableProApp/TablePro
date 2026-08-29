@@ -49,6 +49,13 @@ struct GeneralSettingsView: View {
             Section("Tabs") {
                 Toggle("Enable preview tabs", isOn: $tabSettings.enablePreviewTabs)
                     .help("Single-clicking a table opens a temporary tab that gets replaced on next click.")
+
+                Picker("When tabs stop fitting:", selection: $tabSettings.overflow) {
+                    ForEach(EditorTabStripOverflow.allCases, id: \.self) { style in
+                        Text(style.displayName).tag(style)
+                    }
+                }
+                .help("Scrolling keeps one row of tabs, the way every macOS tab bar does. Rows wraps them so nothing is off screen.")
             }
 
             Section("Sidebar") {

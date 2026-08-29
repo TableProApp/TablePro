@@ -28,6 +28,15 @@ internal final class EditorTabStripAccessoryController: NSTitlebarAccessoryViewC
     /// same way the split items show its panes, so every other connection's strip stays built.
     private let paneHost = WorkspacePaneHost()
 
+    /// The band's height, which follows the strip. A wrapped strip is taller than a scrolling one,
+    /// and the accessory has to grow with it or the extra rows are drawn behind the content
+    /// instead of the window's `contentLayoutRect` making room for them.
+    ///
+    /// It is the view's own frame height, never a constraint.
+    /// `NSTitlebarAccessoryViewController` places its view itself and observes that height for
+    /// changes, which is what the width comment below already says.
+    private var bandHeight = EditorTabStripLayout.bandHeight
+
     internal init() {
         super.init(nibName: nil, bundle: nil)
         layoutAttribute = .bottom
@@ -60,6 +69,25 @@ internal final class EditorTabStripAccessoryController: NSTitlebarAccessoryViewC
 
     internal func show(_ controller: NSViewController?) {
         paneHost.show(controller)
+        applyBandHeight(paneHost.preferredContentSize.height)
+    }
+
+    /// The strip publishes its height through `preferredContentSize`, the documented way for a
+    /// child to ask its parent for room, and `WorkspacePaneHost` passes it on from the pane it is
+    /// showing. Anything at or below zero means the pane has nothing to say yet, so the band keeps
+    /// the single-row height it was built with.
+    override internal func preferredContentSizeDidChange(for viewController: NSViewController) {
+        super.preferredContentSizeDidChange(for: viewController)
+        guard viewController === paneHost else { return }
+        applyBandHeight(viewController.preferredContentSize.height)
+    }
+
+    private func applyBandHeight(_ height: CGFloat) {
+        let resolved = height > 0 ? height : EditorTabStripLayout.bandHeight
+        guard bandHeight != resolved else { return }
+        bandHeight = resolved
+        fullScreenMinHeight = resolved
+        view.frame.size.height = resolved
     }
 
     /// `hidden` collapses the band to zero height without taking it off the window, which is what

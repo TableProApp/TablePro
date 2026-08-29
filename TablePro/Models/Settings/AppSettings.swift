@@ -350,14 +350,19 @@ struct HistorySettings: Codable, Equatable {
 /// Tab behavior settings
 struct TabSettings: Codable, Equatable {
     var enablePreviewTabs: Bool = true
+    /// What the strip does once the tabs stop fitting. `scroll` is the system's answer and the
+    /// default: every tab bar Apple ships keeps one row and scrolls it.
+    var overflow: EditorTabStripOverflow = .scroll
     static let `default` = TabSettings()
 
-    init(enablePreviewTabs: Bool = true) {
+    init(enablePreviewTabs: Bool = true, overflow: EditorTabStripOverflow = .scroll) {
         self.enablePreviewTabs = enablePreviewTabs
+        self.overflow = overflow
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         enablePreviewTabs = try container.decodeIfPresent(Bool.self, forKey: .enablePreviewTabs) ?? true
+        overflow = try container.decodeIfPresent(EditorTabStripOverflow.self, forKey: .overflow) ?? .scroll
     }
 }

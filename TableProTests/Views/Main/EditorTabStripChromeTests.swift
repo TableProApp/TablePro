@@ -89,12 +89,16 @@ struct EditorTabStripChromeTests {
         manager.tabs = ["Album", "Artist", "Customer"].map { QueryTab(title: $0) }
         manager.selectedTabId = manager.tabs.first?.id
 
+        /// AppKit measures the run in the app, so the harness seeds it: this rasterises the strip
+        /// without the view that owns the pointer, and the tabs have to know where they are.
+        let interaction = EditorTabStripInteraction()
+        interaction.dropClosedTabs(keeping: manager.tabs.map(\.id))
+        interaction.updateRun(trackWidth: Self.trackWidth, count: manager.tabs.count)
+
         let strip = EditorTabStrip(
             tabManager: manager,
+            interaction: interaction,
             containerTarget: nil,
-            onClose: { _ in },
-            onCloseOthers: { _ in },
-            onCloseAll: {},
             onNewTab: {},
             surfaceStyle: .solid
         )

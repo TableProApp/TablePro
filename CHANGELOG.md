@@ -13,16 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-connection MongoDB shell state, so a variable or function survives from one statement to the next.
 - Cursor method autocomplete after `find()` and `aggregate()`.
 - Copy To and Duplicate Database in the sidebar and the Database menu, carrying structure, data or both to any connection. (#2487)
+- Tab rows in Settings > General > Tabs, wrapping the strip instead of scrolling it. (#2438)
+- Autoscrolling while dragging a tab, so a tab can be moved past the run currently on screen. (#2438)
 
 ### Changed
 
 - MongoDB statements split as JavaScript rather than at every semicolon.
 - MongoDB editor diagnostics report JavaScript syntax errors rather than unsupported method names.
+- Editor tab presses handled by AppKit rather than SwiftUI gestures. (#2438)
 
 ### Fixed
 
 - Parse error on any MongoDB filter written in shell syntax, such as `db.orders.find({status: 1})`.
 - MongoDB `.sort()` and `.projection()` silently ignored when written with unquoted keys.
+- Tab drag doing nothing, about one drag in seven. (#2438)
+- Tab drag released on a neighbour's exact centre leaving the order unchanged. (#2438)
 
 ## [0.69.0] - 2026-08-27
 

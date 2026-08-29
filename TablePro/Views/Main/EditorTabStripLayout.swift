@@ -36,6 +36,30 @@ internal enum EditorTabStripLayout {
 
     internal static var bandBottomClearance: CGFloat { bandHeight - trackHeight }
 
+    /// The gap between two wrapped rows, and the pitch that follows from it.
+    internal static let rowSpacing: CGFloat = 2
+    internal static var rowStride: CGFloat { tabHeight + rowSpacing }
+
+    /// A wrapped strip grows the track and the band with it, so the content below is laid out
+    /// around the taller band rather than behind it. One row resolves to the measured numbers.
+    internal static func trackHeight(forRowCount rows: Int) -> CGFloat {
+        trackHeight + CGFloat(max(rows, 1) - 1) * rowStride
+    }
+
+    internal static func bandHeight(forRowCount rows: Int) -> CGFloat {
+        bandHeight + CGFloat(max(rows, 1) - 1) * rowStride
+    }
+
+    /// How close to the viewport's edge the pointer has to come before a reorder starts scrolling
+    /// the track under it. One tab's minimum width would swallow the whole viewport on a narrow
+    /// window, so this is a fixed band, the same shape `NSView.autoscroll(with:)` applies.
+    internal static let autoscrollMargin: CGFloat = 24
+    internal static let autoscrollStep: CGFloat = 12
+
+    /// How far the pointer has to leave the strip before a reorder becomes a tear-off. Measured
+    /// against the band rather than the tab, so a drag that stays in the chrome is still a reorder.
+    internal static let tearOffThreshold: CGFloat = 44
+
     /// Fully rounded, because that is what the system's own tab bar is: the runtime
     /// probe reports `cornerRadius = 12` on each 24pt `NSGlassEffectView` tab, which is exactly
     /// half its height, and a corner fit of the 28pt track lands at 12 to 14pt. An in-content
@@ -43,6 +67,16 @@ internal enum EditorTabStripLayout {
     /// control in a different place; this strip is the titlebar tab bar.
     internal static var trackShape: Capsule { Capsule(style: .continuous) }
     internal static var tabShape: Capsule { Capsule(style: .continuous) }
+
+    /// A capsule is only the system's shape while the track is one row tall. Its radius is half
+    /// the height, so a wrapped track would round away most of the first and last rows rather
+    /// than its ends, and the close button drawn in that corner would disappear under the curve
+    /// while the pointer still hit-tests the full rectangle. Past one row the corner holds at the
+    /// radius a single row would have had.
+    internal static func trackShape(forRowCount rows: Int) -> AnyShape {
+        guard rows > 1 else { return AnyShape(trackShape) }
+        return AnyShape(RoundedRectangle(cornerRadius: trackHeight / 2, style: .continuous))
+    }
 
     /// Tabs share the track equally, and stop shrinking at a width that still fits a name so a
     /// long list scrolls instead of collapsing into slivers. The system staggers widths slightly
@@ -56,6 +90,10 @@ internal enum EditorTabStripLayout {
     /// How far a tab fades while it is the one being dragged. Enough to read as lifted out of the
     /// strip, not so far that its title stops being legible on the way past its neighbours.
     internal static let draggingOpacity: CGFloat = 0.45
+
+    /// A tab being torn off fades further than one being reordered, so the gesture says which of
+    /// the two it is before the pointer comes up.
+    internal static let tearingOffOpacity: CGFloat = 0.2
 
     /// How far the pointer travels before a press on a tab becomes a reorder rather than a click.
     /// The same distance AppKit uses to tell a click from a drag, so a hand that shifts a point or

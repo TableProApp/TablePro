@@ -49,7 +49,11 @@ internal final class WorkspacePanes {
     /// connection, even though the window shows it in the titlebar accessory rather than in a
     /// split item. Holding it here is what gives it the same `sizingOptions` firewall and the
     /// same teardown as everything else the connection owns.
-    internal let tabStrip: NSHostingController<AnyView>
+    ///
+    /// It is the one pane that is not a bare hosting controller. AppKit owns the pointer over the
+    /// strip, so the SwiftUI view is wrapped in the view that owns it; see
+    /// `EditorTabStripPaneController`.
+    internal let tabStrip: EditorTabStripPaneController
 
     /// Written by the one function that produces pane content, and read by the one that decides
     /// whether it has to run. `nil` means the panes hold nothing anybody has vouched for.
@@ -59,14 +63,14 @@ internal final class WorkspacePanes {
         detail = NSHostingController(rootView: AnyView(Color.clear))
         inspector = NSHostingController(rootView: AnyView(Color.clear))
         sidebar = NSHostingController(rootView: AnyView(Color.clear))
-        tabStrip = NSHostingController(rootView: AnyView(Color.clear))
+        tabStrip = EditorTabStripPaneController()
         for pane in panes {
             pane.sizingOptions = []
         }
     }
 
     private var panes: [NSHostingController<AnyView>] {
-        [detail, inspector, sidebar, tabStrip]
+        [detail, inspector, sidebar]
     }
 
     internal func markRendered(_ key: WorkspacePaneRenderKey) {
@@ -101,5 +105,6 @@ internal final class WorkspacePanes {
             pane.view.removeFromSuperview()
             pane.removeFromParent()
         }
+        tabStrip.teardown()
     }
 }
