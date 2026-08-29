@@ -30,9 +30,12 @@ final class EditorTabDetachUITests: UITestCase {
             waitForPredicate(timeout: 20) { app.windows.count >= 2 },
             "Move Tab to New Window must open a second window"
         )
+        /// Asked of every window rather than of `window`, which is a query and re-resolves: once
+        /// the move opens a second window, `app.windows.firstMatch` can be that one, and the
+        /// assertion then reads the tab it was looking for in the window it was moved into.
         XCTAssertTrue(
-            waitForPredicate(timeout: 20) { !self.tabLabels(in: window).contains(moved) },
-            "The tab must leave the window it was moved out of, still shows \(tabLabels(in: window))"
+            waitForPredicate(timeout: 20) { self.someWindow(in: app, holds: before.filter { $0 != moved }) },
+            "A window must hold the tabs that stayed behind, windows show \(self.tabsPerWindow(in: app))"
         )
         XCTAssertTrue(
             waitForPredicate(timeout: 20) {
@@ -49,7 +52,8 @@ final class EditorTabDetachUITests: UITestCase {
         openTables(Self.tables, in: window)
         XCTAssertTrue(waitForPredicate(timeout: 25) { self.tabLabels(in: window).count >= 3 })
 
-        let moved = try XCTUnwrap(tabLabels(in: window).last)
+        let before = tabLabels(in: window)
+        let moved = try XCTUnwrap(before.last)
         detach(tabNamed: moved, in: window, of: app)
         XCTAssertTrue(waitForPredicate(timeout: 20) { app.windows.count >= 2 })
 
@@ -63,9 +67,12 @@ final class EditorTabDetachUITests: UITestCase {
             waitForPredicate(timeout: 20) { app.windows.count == 1 },
             "Closing the detached window must close it rather than empty it"
         )
+        /// Compared against what the strip held before the move rather than against a number: the
+        /// sample database opens a tab of its own, so the total is not the count of tables opened
+        /// here.
         XCTAssertTrue(
-            waitForPredicate(timeout: 20) { self.tabLabels(in: window).count == 2 },
-            "The original window keeps its remaining tabs, shows \(tabLabels(in: window))"
+            waitForPredicate(timeout: 20) { self.someWindow(in: app, holds: before.filter { $0 != moved }) },
+            "The remaining window keeps the other tabs, windows show \(self.tabsPerWindow(in: app)) of \(before)"
         )
     }
 
@@ -122,6 +129,15 @@ final class EditorTabDetachUITests: UITestCase {
             .allElementsBoundByIndex
             .sorted { $0.frame.minX < $1.frame.minX }
             .map { $0.label }
+    }
+
+    /// Whether any window's strip holds exactly these tabs, in this order.
+    private func someWindow(in app: XCUIApplication, holds tabs: [String]) -> Bool {
+        app.windows.allElementsBoundByIndex.contains { tabLabels(in: $0) == tabs }
+    }
+
+    private func tabsPerWindow(in app: XCUIApplication) -> [[String]] {
+        app.windows.allElementsBoundByIndex.map { tabLabels(in: $0) }
     }
 
     private func windowTitles(in app: XCUIApplication) -> [String] {
