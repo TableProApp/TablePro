@@ -312,6 +312,19 @@ struct MongoShellParserTests {
         }
     }
 
+    @Test("SQL DROP TABLE fallback is rejected for MongoDB collections")
+    func testDropTableFallbackIsRejected() {
+        // The sidebar's drop used to fall through to the SQL fallback and emit
+        // `DROP TABLE "<collection>"`, which the Mongo shell parser rejects. Dropping a
+        // collection must go through `db.<collection>.drop()` instead.
+        do {
+            _ = try MongoShellParser.parse("DROP TABLE \"users\"")
+            Issue.record("Expected the SQL DROP TABLE fallback to be rejected")
+        } catch {
+            // Any parse failure is the point: a Mongo connection must never send SQL.
+        }
+    }
+
     @Test("runCommand")
     func testRunCommand() throws {
         let op = try MongoShellParser.parse("db.runCommand({\"ping\": 1})")
