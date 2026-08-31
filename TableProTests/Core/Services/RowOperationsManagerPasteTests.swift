@@ -27,7 +27,8 @@ struct RowOperationsManagerPasteTests {
             tableName: "users",
             columns: Self.columns,
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
         return RowOperationsManager(changeManager: changeManager)
     }

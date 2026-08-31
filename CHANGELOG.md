@@ -44,7 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No "Default" in a cell's Set Value menu for an identity column. (#2588)
 - Duplicate Row copying an identity column that is not the primary key. (#2588)
 - Editing a `GENERATED ALWAYS AS IDENTITY` cell, which the server rejects on save. (#2588)
+- Generated and identity columns editable again after a tab switch or a refresh that reused cached metadata.
+- A new row of nothing but server-assigned columns silently dropped from the save.
 - `OVERRIDING SYSTEM VALUE` and `setval` in a SQL export of a SQL Server database.
+- PGlite treated as a generic SQL dialect, so `$$` bodies split at their inner semicolons.
 
 ## [0.69.0] - 2026-08-27
 

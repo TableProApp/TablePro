@@ -36,7 +36,8 @@ struct UndoRowIndexTests {
             tableName: "users",
             columns: Self.columns,
             primaryKeyColumns: ["id"],
-            databaseType: .sqlite
+            databaseType: .sqlite,
+            generatedColumns: []
         )
         return RowOperationsManager(changeManager: changeManager)
     }

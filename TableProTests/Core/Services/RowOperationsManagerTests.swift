@@ -18,7 +18,8 @@ struct RowOperationsManagerTests {
             tableName: "users",
             columns: Self.testColumns,
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
         let manager = RowOperationsManager(changeManager: changeManager)
         return (manager, changeManager)

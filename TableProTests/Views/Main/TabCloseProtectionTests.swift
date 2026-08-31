@@ -30,7 +30,8 @@ struct TabCloseProtectionTests {
             tableName: table,
             columns: Self.columns,
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
         coordinator.changeManager.recordRowDeletion(rowIndex: 0, originalRow: Self.originalRow)
     }

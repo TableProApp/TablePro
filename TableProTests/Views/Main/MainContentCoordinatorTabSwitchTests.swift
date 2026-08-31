@@ -346,6 +346,7 @@ struct MainContentCoordinatorTabSwitchTests {
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
             databaseType: .mysql,
+            generatedColumns: [],
             triggerReload: false
         )
         coordinator.changeManager.recordCellChange(
@@ -524,6 +525,7 @@ struct MainContentCoordinatorTabSwitchTests {
             columns: ["id", "total"],
             primaryKeyColumns: ["id"],
             databaseType: .mysql,
+            generatedColumns: [],
             triggerReload: false
         )
         coordinator.changeManager.recordCellChange(
@@ -846,6 +848,7 @@ struct MainContentCoordinatorTabSwitchTests {
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
             databaseType: .mysql,
+            generatedColumns: [],
             triggerReload: false
         )
         manager.recordCellChange(
@@ -861,7 +864,7 @@ struct MainContentCoordinatorTabSwitchTests {
         let fresh = DataChangeManager()
         #expect(fresh.hasChanges == false)
 
-        fresh.restoreState(from: snapshot, tableName: "users", databaseType: .postgresql)
+        fresh.restoreState(from: snapshot, tableName: "users", databaseType: .postgresql, generatedColumns: [])
 
         #expect(fresh.hasChanges == true)
         #expect(fresh.tableName == "users")

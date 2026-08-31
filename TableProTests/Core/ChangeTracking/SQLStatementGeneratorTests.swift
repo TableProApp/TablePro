@@ -115,9 +115,19 @@ struct SQLStatementGeneratorTests {
         #expect(stmt.parameters.count == 2)
     }
 
-    @Test("Insert with all __DEFAULT__ returns empty")
-    func testInsertAllDefaultReturnsEmpty() throws {
-        let generator = try makeGenerator()
+    /// This used to expect no statement at all, which dropped the row from the batch while the rest
+    /// of the save committed and reported success. A table of nothing but an identity column and
+    /// defaults is exactly the shape that produces it.
+    @Test(
+        "Insert with all __DEFAULT__ names no column",
+        arguments: [
+            (DatabaseType.mysql, "() VALUES ()"),
+            (DatabaseType.postgresql, "DEFAULT VALUES"),
+            (DatabaseType.sqlite, "DEFAULT VALUES"),
+        ]
+    )
+    func testInsertAllDefaultNamesNoColumn(databaseType: DatabaseType, expected: String) throws {
+        let generator = try makeGenerator(databaseType: databaseType)
         let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["__DEFAULT__", "__DEFAULT__", "__DEFAULT__"]
         ]
@@ -132,7 +142,10 @@ struct SQLStatementGeneratorTests {
             insertedRowIndices: [0]
         )
 
-        #expect(statements.isEmpty)
+        #expect(statements.count == 1)
+        #expect(statements.first?.sql.hasPrefix("INSERT INTO ") == true)
+        #expect(statements.first?.sql.hasSuffix(expected) == true)
+        #expect(statements.first?.parameters.isEmpty == true)
     }
 
     @Test("Insert from cellChanges fallback")

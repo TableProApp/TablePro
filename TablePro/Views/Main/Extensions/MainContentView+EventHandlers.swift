@@ -94,7 +94,8 @@ extension MainContentView {
             schemaName: tab.tableContext.schemaName,
             columns: newColumns,
             primaryKeyColumns: tab.tableContext.primaryKeyColumns,
-            databaseType: connection.type
+            databaseType: connection.type,
+            generatedColumns: coordinator.tabSessionRegistry.tableRows(for: tab.id).generatedColumns
         )
     }
 

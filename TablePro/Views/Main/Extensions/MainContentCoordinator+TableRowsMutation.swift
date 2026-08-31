@@ -122,7 +122,8 @@ extension MainContentCoordinator {
             schemaName: tab.tableContext.schemaName,
             columns: resultSet.resultColumns,
             primaryKeyColumns: tab.tableContext.primaryKeyColumns,
-            databaseType: connection.type
+            databaseType: connection.type,
+            generatedColumns: tabSessionRegistry.tableRows(for: tab.id).generatedColumns
         )
     }
 

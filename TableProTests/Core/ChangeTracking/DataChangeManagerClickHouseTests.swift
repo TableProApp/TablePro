@@ -21,7 +21,8 @@ struct DataChangeManagerClickHouseTests {
             tableName: "events",
             columns: ["id", "status"],
             primaryKeyColumns: ["id"],
-            databaseType: .clickhouse
+            databaseType: .clickhouse,
+            generatedColumns: []
         )
 
         manager.recordCellChange(
@@ -46,7 +47,8 @@ struct DataChangeManagerClickHouseTests {
             tableName: "users",
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
 
         manager.recordCellChange(

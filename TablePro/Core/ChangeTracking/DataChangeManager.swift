@@ -101,6 +101,7 @@ final class DataChangeManager: ChangeManaging {
         columns: [String],
         primaryKeyColumns: [String],
         databaseType: DatabaseType,
+        generatedColumns: Set<String>,
         triggerReload: Bool = true
     ) {
         self.tableName = tableName
@@ -108,7 +109,7 @@ final class DataChangeManager: ChangeManaging {
         self.columns = columns
         self.primaryKeyColumns = primaryKeyColumns
         self.databaseType = databaseType
-        self.generatedColumns = []
+        self.generatedColumns = generatedColumns
 
         pending.clear()
         undoManagerProvider?()?.removeAllActions(withTarget: self)
@@ -491,12 +492,19 @@ final class DataChangeManager: ChangeManaging {
         pending.snapshot(primaryKeyColumns: primaryKeyColumns, columns: columns)
     }
 
-    func restoreState(from state: TabChangeSnapshot, tableName: String, schemaName: String? = nil, databaseType: DatabaseType) {
+    func restoreState(
+        from state: TabChangeSnapshot,
+        tableName: String,
+        schemaName: String? = nil,
+        databaseType: DatabaseType,
+        generatedColumns: Set<String>
+    ) {
         self.tableName = tableName
         self.schemaName = schemaName
         self.columns = state.columns
         self.primaryKeyColumns = state.primaryKeyColumns
         self.databaseType = databaseType
+        self.generatedColumns = generatedColumns
         pending.restore(from: state)
         self.hasChanges = !pending.isEmpty
     }

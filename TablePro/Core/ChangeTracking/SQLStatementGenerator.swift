@@ -196,7 +196,7 @@ struct SQLStatementGenerator {
             }
         }
 
-        guard !nonDefaultColumns.isEmpty else { return nil }
+        guard !nonDefaultColumns.isEmpty else { return allDefaultsInsertStatement() }
 
         let columnList = nonDefaultColumns.joined(separator: ", ")
         let placeholders = placeholderParts.joined(separator: ", ")
@@ -205,6 +205,25 @@ struct SQLStatementGenerator {
             "INSERT INTO \(qualifiedTableName) (\(columnList)) VALUES (\(placeholders))"
 
         return ParameterizedStatement(sql: sql, parameters: bindParameters)
+    }
+
+    /// A row whose every column the server fills in names no column at all, which is legal SQL and
+    /// has its own spelling per engine. Returning nothing instead dropped the row from the batch
+    /// while the rest of the save committed and reported success, so a new row in a table of
+    /// nothing but an identity column and defaults vanished without a word.
+    private func allDefaultsInsertStatement() -> ParameterizedStatement? {
+        switch SqlDialect.from(databaseTypeId: databaseType.rawValue) {
+        case .postgres, .sqlite:
+            return ParameterizedStatement(
+                sql: "INSERT INTO \(qualifiedTableName) DEFAULT VALUES", parameters: []
+            )
+        case .mysql:
+            return ParameterizedStatement(
+                sql: "INSERT INTO \(qualifiedTableName) () VALUES ()", parameters: []
+            )
+        default:
+            return nil
+        }
     }
 
     func insertStatement(columns insertColumns: [String], values: [PluginCellValue])

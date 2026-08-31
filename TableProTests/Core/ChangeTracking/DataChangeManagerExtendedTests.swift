@@ -26,7 +26,8 @@ struct DataChangeManagerExtendedTests {
             tableName: "test_table",
             columns: columns,
             primaryKeyColumns: [pk].compactMap { $0 },
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
         return manager
     }
@@ -257,7 +258,7 @@ struct DataChangeManagerExtendedTests {
         let state = manager.saveState()
         manager.clearChanges()
         #expect(!manager.hasChanges)
-        manager.restoreState(from: state, tableName: "test_table", databaseType: .mysql)
+        manager.restoreState(from: state, tableName: "test_table", databaseType: .mysql, generatedColumns: [])
         #expect(manager.hasChanges)
     }
 
@@ -267,7 +268,7 @@ struct DataChangeManagerExtendedTests {
         manager.recordRowDeletion(rowIndex: 2, originalRow: ["3", "Charlie", "c@test.com"])
         let state = manager.saveState()
         manager.clearChanges()
-        manager.restoreState(from: state, tableName: "test_table", databaseType: .mysql)
+        manager.restoreState(from: state, tableName: "test_table", databaseType: .mysql, generatedColumns: [])
         #expect(manager.isRowDeleted(2))
     }
 
@@ -280,7 +281,7 @@ struct DataChangeManagerExtendedTests {
         )
         let state = manager.saveState()
         manager.clearChanges()
-        manager.restoreState(from: state, tableName: "test_table", databaseType: .mysql)
+        manager.restoreState(from: state, tableName: "test_table", databaseType: .mysql, generatedColumns: [])
         #expect(manager.isCellModified(rowIndex: 0, columnIndex: 1))
     }
 
@@ -293,7 +294,7 @@ struct DataChangeManagerExtendedTests {
         )
         let state = manager.saveState()
         manager.clearChanges()
-        manager.restoreState(from: state, tableName: "test_table", databaseType: .mysql)
+        manager.restoreState(from: state, tableName: "test_table", databaseType: .mysql, generatedColumns: [])
         manager.recordCellChange(
             rowIndex: 0, columnIndex: 2, columnName: "email",
             oldValue: "a@test.com", newValue: "b@test.com"
@@ -306,7 +307,7 @@ struct DataChangeManagerExtendedTests {
     func emptyStateRoundTrip() {
         let manager = makeManager()
         let state = manager.saveState()
-        manager.restoreState(from: state, tableName: "test_table", databaseType: .mysql)
+        manager.restoreState(from: state, tableName: "test_table", databaseType: .mysql, generatedColumns: [])
         #expect(!manager.hasChanges)
         #expect(manager.changes.isEmpty)
     }
@@ -715,6 +716,7 @@ struct DataChangeManagerExtendedTests {
             columns: ["a", "b"],
             primaryKeyColumns: ["a"],
             databaseType: .mysql,
+            generatedColumns: [],
             triggerReload: false
         )
         #expect(manager.reloadVersion == before)

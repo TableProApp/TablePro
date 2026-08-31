@@ -296,9 +296,9 @@ extension QueryExecutionCoordinator {
                 schemaName: parent.tabManager.tabs[idx].tableContext.schemaName,
                 columns: columns,
                 primaryKeyColumns: resolvedPKs,
-                databaseType: conn.type
+                databaseType: conn.type,
+                generatedColumns: generatedColumns
             )
-            parent.changeManager.setGeneratedColumns(generatedColumns)
         }
 
         recordHistory(

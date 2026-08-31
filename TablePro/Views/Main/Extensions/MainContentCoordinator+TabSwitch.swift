@@ -100,7 +100,8 @@ extension MainContentCoordinator {
                     from: pendingState,
                     tableName: newTab.tableContext.tableName ?? "",
                     schemaName: newTab.tableContext.schemaName,
-                    databaseType: connection.type
+                    databaseType: connection.type,
+                    generatedColumns: newRows.generatedColumns
                 )
             } else {
                 changeManager.configureForTable(
@@ -109,6 +110,7 @@ extension MainContentCoordinator {
                     columns: newRows.columns,
                     primaryKeyColumns: newTab.tableContext.primaryKeyColumns,
                     databaseType: connection.type,
+                    generatedColumns: newRows.generatedColumns,
                     triggerReload: false
                 )
             }

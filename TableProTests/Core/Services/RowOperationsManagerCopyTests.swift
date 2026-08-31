@@ -45,7 +45,8 @@ struct RowOperationsManagerCopyTests {
             tableName: "users",
             columns: Self.defaultColumns,
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
         let manager = RowOperationsManager(changeManager: changeManager)
         return (manager, changeManager)
