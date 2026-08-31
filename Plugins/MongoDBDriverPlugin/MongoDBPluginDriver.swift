@@ -634,6 +634,13 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
+    /// A collection drop is a shell statement, not a SQL one: `db.getCollection("<name>").drop()`.
+    /// The app-level fallback would emit `DROP TABLE <name>`, which the Mongo shell parser rejects.
+    /// Mongo has no schemas or cascade, so both are ignored.
+    func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
+        "db.getCollection(\"\(escapeJsonString(name))\").drop()"
+    }
+
     func dropDatabase(name: String) async throws {
         guard let conn = mongoConnection else {
             throw MongoDBPluginError.notConnected

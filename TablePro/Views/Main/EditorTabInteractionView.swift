@@ -31,6 +31,7 @@ internal final class EditorTabInteractionView: NSView {
     /// the content.
     internal var onRowCountChanged: ((Int) -> Void)?
 
+    private var isResolvingAccessibilityHit = false
     private var hoverTrackingArea: NSTrackingArea?
     private var lastActivatedTabId: UUID?
 
@@ -110,10 +111,32 @@ internal final class EditorTabInteractionView: NSView {
 
     /// Claims the track and nothing else, so a press on a tab is this view's and a press on the
     /// new-tab button, on the band's insets or on the chrome below the track is not.
+    ///
+    /// The claim is for the pointer alone. Accessibility resolves a screen point through this same
+    /// method, so claiming it unconditionally answered "the strip" for every tab and took all of
+    /// them out of reach of VoiceOver, Switch Control, Voice Control and XCUITest at once: this
+    /// view publishes nothing, so there was no element under a tab to speak, press or click. That
+    /// shipped in #2571 and turned the whole UI suite red from the commit that merged it.
     override internal func hitTest(_ point: NSPoint) -> NSView? {
+        guard !isResolvingAccessibilityHit else { return super.hitTest(point) }
         let local = convert(point, from: superview)
         guard trackRect.contains(local) else { return super.hitTest(point) }
         return self
+    }
+
+    /// Answers from the SwiftUI tree, which is where the tabs publish themselves.
+    ///
+    /// The subviews are asked directly rather than through `super`, which will not walk into them
+    /// from a receiver that is not itself an accessibility element: lifting the pointer's claim and
+    /// deferring to `super` left every tab unreachable exactly as before. The point arrives in
+    /// screen coordinates and is passed on unchanged, because that is what the children expect too.
+    override internal func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        isResolvingAccessibilityHit = true
+        defer { isResolvingAccessibilityHit = false }
+        for subview in subviews.reversed() {
+            if let hit = subview.accessibilityHitTest(point) { return hit }
+        }
+        return super.accessibilityHitTest(point)
     }
 
     private func tabIndex(atViewPoint point: CGPoint) -> Int? {
