@@ -95,6 +95,66 @@ extension QueryExecutionCoordinator {
         return nil
     }
 
+    struct ResolvedDisplayMetadata {
+        var columnDefaults: [String: String?] = [:]
+        var columnForeignKeys: [String: ForeignKeyInfo] = [:]
+        var columnEnumValues: [String: [String]] = [:]
+        var columnNullable: [String: Bool] = [:]
+        var columnComments: [String: String] = [:]
+        var columnIdentity: [String: IdentityKind] = [:]
+        var generatedColumns: Set<String> = []
+        var foreignKeysFetched = false
+    }
+
+    /// A rerun answered from cache carries no metadata of its own, so it inherits what the tab
+    /// already holds. That includes the non-writable set, which `configureForTable` clears on every
+    /// execution and only a schema fetch refills.
+    private func resolveDisplayMetadata(
+        metadata: ParsedSchemaMetadata?,
+        existingTabId: UUID,
+        columns: [String],
+        columnTypes: [ColumnType],
+        tabIndex: Int,
+        tableName: String?
+    ) -> ResolvedDisplayMetadata {
+        var resolved = ResolvedDisplayMetadata()
+        for (index, colType) in columnTypes.enumerated() {
+            if case .enumType(_, let values) = colType, let vals = values, index < columns.count {
+                resolved.columnEnumValues[columns[index]] = vals
+            }
+        }
+
+        if let metadata {
+            resolved.columnDefaults = metadata.columnDefaults
+            resolved.columnForeignKeys = metadata.columnForeignKeys ?? [:]
+            resolved.columnNullable = metadata.columnNullable
+            resolved.columnComments = metadata.columnComments
+            resolved.columnIdentity = metadata.columnIdentity
+            resolved.generatedColumns = metadata.generatedColumns
+            resolved.foreignKeysFetched = metadata.columnForeignKeys != nil
+            for (col, vals) in metadata.columnEnumValues {
+                resolved.columnEnumValues[col] = vals
+            }
+        } else {
+            let existing = parent.tabSessionRegistry.tableRows(for: existingTabId)
+            resolved.columnDefaults = existing.columnDefaults
+            resolved.columnForeignKeys = existing.columnForeignKeys
+            resolved.columnNullable = existing.columnNullable
+            resolved.columnComments = existing.columnComments
+            resolved.columnIdentity = existing.columnIdentity
+            resolved.generatedColumns = existing.generatedColumns
+            resolved.foreignKeysFetched = existing.foreignKeysFetched
+            for (col, vals) in existing.columnEnumValues where resolved.columnEnumValues[col] == nil {
+                resolved.columnEnumValues[col] = vals
+            }
+        }
+
+        if resolved.columnForeignKeys.isEmpty, !resolved.foreignKeysFetched, let tableName {
+            resolved.columnForeignKeys = prefetchedForeignKeys(tabIndex: tabIndex, tableName: tableName) ?? [:]
+        }
+        return resolved
+    }
+
     func applyPhase1Result( // swiftlint:disable:this function_parameter_count
         tabId: UUID,
         columns: [String],
@@ -138,54 +198,28 @@ extension QueryExecutionCoordinator {
         }
 
         let existingTabId = parent.tabManager.tabs[idx].id
-        var columnEnumValues: [String: [String]] = [:]
-        var columnDefaults: [String: String?] = [:]
-        var columnForeignKeys: [String: ForeignKeyInfo] = [:]
-        var columnNullable: [String: Bool] = [:]
-        var columnComments: [String: String] = [:]
-        for (index, colType) in columnTypes.enumerated() {
-            if case .enumType(_, let values) = colType, let vals = values, index < columns.count {
-                columnEnumValues[columns[index]] = vals
-            }
-        }
-
-        var foreignKeysFetched = false
-
-        if let metadata {
-            columnDefaults = metadata.columnDefaults
-            columnForeignKeys = metadata.columnForeignKeys ?? [:]
-            columnNullable = metadata.columnNullable
-            columnComments = metadata.columnComments
-            foreignKeysFetched = metadata.columnForeignKeys != nil
-            for (col, vals) in metadata.columnEnumValues {
-                columnEnumValues[col] = vals
-            }
-        } else {
-            let existing = parent.tabSessionRegistry.tableRows(for: existingTabId)
-            columnDefaults = existing.columnDefaults
-            columnForeignKeys = existing.columnForeignKeys
-            columnNullable = existing.columnNullable
-            columnComments = existing.columnComments
-            foreignKeysFetched = existing.foreignKeysFetched
-            for (col, vals) in existing.columnEnumValues where columnEnumValues[col] == nil {
-                columnEnumValues[col] = vals
-            }
-        }
-
-        if columnForeignKeys.isEmpty, !foreignKeysFetched, let tableName {
-            columnForeignKeys = prefetchedForeignKeys(tabIndex: idx, tableName: tableName) ?? [:]
-        }
+        let resolved = resolveDisplayMetadata(
+            metadata: metadata,
+            existingTabId: existingTabId,
+            columns: columns,
+            columnTypes: columnTypes,
+            tabIndex: idx,
+            tableName: tableName
+        )
+        let generatedColumns = resolved.generatedColumns
 
         let newTableRows = TableRows.from(
             queryRows: rows,
             columns: columns,
             columnTypes: columnTypes,
-            columnDefaults: columnDefaults,
-            columnForeignKeys: columnForeignKeys,
-            columnEnumValues: columnEnumValues,
-            columnNullable: columnNullable,
-            columnComments: columnComments,
-            foreignKeysFetched: foreignKeysFetched
+            columnDefaults: resolved.columnDefaults,
+            columnForeignKeys: resolved.columnForeignKeys,
+            columnEnumValues: resolved.columnEnumValues,
+            columnNullable: resolved.columnNullable,
+            columnComments: resolved.columnComments,
+            columnIdentity: resolved.columnIdentity,
+            generatedColumns: generatedColumns,
+            foreignKeysFetched: resolved.foreignKeysFetched
         )
         let previousTableName = parent.tabManager.tabs[idx].tableContext.tableName
         parent.flushBufferToActiveResult(tabId: existingTabId, pinnedOnly: true)
@@ -264,6 +298,7 @@ extension QueryExecutionCoordinator {
                 primaryKeyColumns: resolvedPKs,
                 databaseType: conn.type
             )
+            parent.changeManager.setGeneratedColumns(generatedColumns)
         }
 
         recordHistory(
@@ -499,7 +534,9 @@ extension QueryExecutionCoordinator {
                 columnDefaults: parsed.columnDefaults,
                 columnForeignKeys: parsed.columnForeignKeys,
                 columnNullable: parsed.columnNullable,
-                columnComments: parsed.columnComments
+                columnComments: parsed.columnComments,
+                columnIdentity: parsed.columnIdentity,
+                generatedColumns: parsed.generatedColumns
             )
         }
 

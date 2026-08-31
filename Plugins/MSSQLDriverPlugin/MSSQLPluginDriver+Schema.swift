@@ -109,6 +109,7 @@ extension MSSQLPluginDriver {
                 isPrimaryKey: isPk,
                 defaultValue: defaultValue,
                 extra: isIdentity ? "IDENTITY" : nil,
+                identityKind: isIdentity ? .always : nil,
                 isGenerated: isComputed
             )
         }
@@ -312,6 +313,7 @@ extension MSSQLPluginDriver {
                 isPrimaryKey: isPk,
                 defaultValue: defaultValue,
                 extra: isIdentity ? "IDENTITY" : nil,
+                identityKind: isIdentity ? .always : nil,
                 isGenerated: isComputed
             )
             columnsByTable[tableName, default: []].append(col)

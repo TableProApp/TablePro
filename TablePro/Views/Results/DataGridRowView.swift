@@ -459,7 +459,9 @@ class DataGridRowView: NSTableRowView {
             menu.addItem(NSMenuItem.separator())
         }
 
-        if coordinator.isEditable && dataColumnIndex >= 0 {
+        let namesWritableColumn = dataColumnIndex >= 0 && dataColumnIndex < tableRows.columns.count
+            && coordinator.isColumnWritable(tableRows.columns[dataColumnIndex])
+        if coordinator.isEditable && namesWritableColumn {
             let setValueItem = NSMenuItem(title: String(localized: "Set Value"), action: nil, keyEquivalent: "")
             setValueItem.submenu = buildSetValueMenu(dataColumnIndex: dataColumnIndex, tableRows: tableRows)
             menu.addItem(setValueItem)
@@ -533,8 +535,8 @@ class DataGridRowView: NSTableRowView {
             setValueMenu.addItem(nullItem)
         }
 
-        let hasDefault = columnName.flatMap({ tableRows.columnDefaults[$0] ?? nil }) != nil
-        if hasDefault {
+        let serverAssignsValue = columnName.map { tableRows.serverAssignsValue(forColumn: $0) } ?? false
+        if serverAssignsValue {
             let defaultItem = NSMenuItem(
                 title: String(localized: "Default"), action: #selector(setDefaultValue(_:)), keyEquivalent: "")
             defaultItem.representedObject = dataColumnIndex

@@ -371,13 +371,18 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             }
         }
 
-        for table in sortedTables where optionValue(table, at: 2) && table.tableType != "view" {
-            let columns = columnsByTable[node(for: table).identifier] ?? []
-            for column in columns where column.isIdentity {
-                let setval = renderIdentitySetval(
-                    table: table, columnName: column.name, dataSource: dataSource)
-                try fileHandle.write(contentsOf: "\(setval)\n".toUTF8Data())
-                emittedAnything = true
+        /// `setval` and `pg_get_serial_sequence` are PostgreSQL's own, so the sequence is only
+        /// rewound on PostgreSQL. Every other engine reports its identity columns the same way and
+        /// would take the statement as a syntax error.
+        if SqlDialect.from(databaseTypeId: dataSource.databaseTypeId) == .postgres {
+            for table in sortedTables where optionValue(table, at: 2) && table.tableType != "view" {
+                let columns = columnsByTable[node(for: table).identifier] ?? []
+                for column in columns where column.isIdentity {
+                    let setval = renderIdentitySetval(
+                        table: table, columnName: column.name, dataSource: dataSource)
+                    try fileHandle.write(contentsOf: "\(setval)\n".toUTF8Data())
+                    emittedAnything = true
+                }
             }
         }
 
@@ -479,7 +484,8 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         var rowBatch: [[PluginCellValue]] = []
 
         let generatedColumnNames = Set(columnInfo.filter { $0.isGenerated }.map { $0.name })
-        let usesOverridingSystemValue = columnInfo.contains { $0.identityKind == .always }
+        let usesOverridingSystemValue = SqlDialect.from(databaseTypeId: dataSource.databaseTypeId) == .postgres
+            && columnInfo.contains { $0.identityKind == .always }
         let tableRef = qualifiedRef(
             schema: table.databaseName, table: table.name, dataSource: dataSource)
 

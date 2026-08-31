@@ -714,3 +714,70 @@ struct TableRowsForeignKeysFetchedTests {
         #expect(table.foreignKeysFetched)
     }
 }
+
+@Suite("TableRows - server-assigned columns")
+struct TableRowsServerAssignedValueTests {
+    private func table(
+        columnDefaults: [String: String?] = [:],
+        columnIdentity: [String: IdentityKind] = [:]
+    ) -> TableRows {
+        TableRows.from(
+            queryRows: [],
+            columns: ["id", "name"],
+            columnTypes: [],
+            columnDefaults: columnDefaults,
+            columnIdentity: columnIdentity
+        )
+    }
+
+    @Test("A column with a default expression is server-assigned")
+    func defaultExpression() {
+        #expect(table(columnDefaults: ["id": "nextval('t_id_seq'::regclass)"]).serverAssignsValue(forColumn: "id"))
+    }
+
+    /// Measured on PostgreSQL 17: an identity column reports `column_default` as null and
+    /// `atthasdef` as false, so the default alone answers "no" and the new row carries NULL.
+    @Test("An identity column is server-assigned even with no default", arguments: [
+        IdentityKind.always, IdentityKind.byDefault
+    ])
+    func identityWithoutDefault(kind: IdentityKind) {
+        #expect(table(columnIdentity: ["id": kind]).serverAssignsValue(forColumn: "id"))
+    }
+
+    /// PostgreSQL optimises `DEFAULT NULL` away, so the catalog reports it exactly like a column
+    /// that was never given a default, and the app cannot tell the two apart.
+    @Test("A column whose recorded default is null is not server-assigned")
+    func explicitNullDefault() {
+        #expect(!table(columnDefaults: ["id": nil]).serverAssignsValue(forColumn: "id"))
+    }
+
+    @Test("An unknown column is not server-assigned")
+    func unknownColumn() {
+        #expect(!table().serverAssignsValue(forColumn: "missing"))
+    }
+}
+
+@Suite("TableRows - non-writable columns")
+struct TableRowsGeneratedColumnsTests {
+    /// `DataChangeManager.configureForTable` clears its own set on every execution, and only a
+    /// schema fetch refills it. A rerun answered from cache runs no schema fetch, so the rows have
+    /// to carry the set for the change manager to be restored from.
+    @Test("The factory carries the non-writable set")
+    func factoryCarriesGeneratedColumns() {
+        let table = TableRows.from(
+            queryRows: [],
+            columns: ["id", "name"],
+            columnTypes: [],
+            generatedColumns: ["id"]
+        )
+        #expect(table.generatedColumns == ["id"])
+    }
+
+    @Test("Updating the non-writable set reports a change")
+    func updateReportsChange() {
+        var table = TableRows.from(queryRows: [], columns: ["id"], columnTypes: [])
+        #expect(table.updateDisplayMetadata(generatedColumns: ["id"]) == .columnsReplaced)
+        #expect(table.generatedColumns == ["id"])
+        #expect(table.updateDisplayMetadata(generatedColumns: ["id"]) == .none)
+    }
+}

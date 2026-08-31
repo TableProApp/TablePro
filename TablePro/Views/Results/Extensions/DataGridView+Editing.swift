@@ -19,11 +19,7 @@ extension TableViewCoordinator {
         guard row >= 0, columnIndex >= 0, columnIndex < tableRows.columns.count else { return .blocked }
         guard !changeManager.isRowDeleted(row) else { return .blocked }
 
-        let columnName = tableRows.columns[columnIndex]
-        if changeManager.generatedColumns.contains(columnName) { return .blocked }
-
-        let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
-        if immutable.contains(columnName) { return .blocked }
+        guard isColumnWritable(tableRows.columns[columnIndex]) else { return .blocked }
 
         if columnIndex < tableRows.columnTypes.count {
             let ct = tableRows.columnTypes[columnIndex]
@@ -43,6 +39,17 @@ extension TableViewCoordinator {
             value = ""
         }
         return .editable(value: value)
+    }
+
+    /// Whether the app is allowed to send a value for this column at all, which is a narrower
+    /// question than whether the cell takes the inline editor: a BLOB cell refuses the editor and
+    /// still accepts NULL from the Set Value menu. The menu offered its items on a column no
+    /// statement can carry, so Set NULL on a MongoDB `_id`, a generated column or a
+    /// `GENERATED ALWAYS AS IDENTITY` column marked the row edited and then wrote nothing.
+    func isColumnWritable(_ columnName: String) -> Bool {
+        guard !changeManager.generatedColumns.contains(columnName) else { return false }
+        let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
+        return !immutable.contains(columnName)
     }
 
     func canStartInlineEdit(row: Int, columnIndex: Int) -> Bool {

@@ -273,6 +273,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 charset: charset,
                 collation: collation == "NULL" ? nil : collation,
                 comment: comment?.isEmpty == false ? comment : nil,
+                identityKind: mysqlIdentityKind(extra: extra),
                 isGenerated: mysqlColumnIsGenerated(extra: extra),
                 allowedValues: allowedValues,
                 generationExpression: generationExpressions[name],
@@ -387,6 +388,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 charset: charset,
                 collation: collation == "NULL" ? nil : collation,
                 comment: comment?.isEmpty == false ? comment : nil,
+                identityKind: mysqlIdentityKind(extra: extra),
                 isGenerated: mysqlColumnIsGenerated(extra: extra),
                 allowedValues: allowedValues
             )

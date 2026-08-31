@@ -26,7 +26,12 @@ struct ParsedSchemaMetadata {
     let columnForeignKeys: [String: ForeignKeyInfo]?
     let columnNullable: [String: Bool]
     let primaryKeyColumns: [String]
+    /// Columns the app must never write, whether the server computes the value from an expression
+    /// or allocates it from an identity sequence the column cannot override. A `GENERATED ALWAYS
+    /// AS IDENTITY` column belongs here for the same reason a stored generated column does: the
+    /// engine rejects both an explicit INSERT value and an UPDATE of one.
     let generatedColumns: Set<String>
+    let columnIdentity: [String: IdentityKind]
     let approximateRowCount: Int?
     let columnEnumValues: [String: [String]]
     let columnComments: [String: String]
@@ -183,9 +188,11 @@ final class QueryExecutor {
     static func parseSchemaMetadata(_ schema: FetchedTableSchema) -> ParsedSchemaMetadata {
         var defaults: [String: String?] = [:]
         var nullable: [String: Bool] = [:]
+        var identity: [String: IdentityKind] = [:]
         for col in schema.columns {
             defaults[col.name] = col.defaultValue
             nullable[col.name] = col.isNullable
+            identity[col.name] = col.identityKind
         }
         var fks: [String: ForeignKeyInfo]?
         if let foreignKeys = schema.foreignKeys {
@@ -212,7 +219,12 @@ final class QueryExecutor {
             columnForeignKeys: fks,
             columnNullable: nullable,
             primaryKeyColumns: schema.columns.filter { $0.isPrimaryKey }.map(\.name),
-            generatedColumns: Set(schema.columns.filter(\.isGenerated).map(\.name)),
+            generatedColumns: Set(
+                schema.columns
+                    .filter { $0.isGenerated || $0.identityKind == .always }
+                    .map(\.name)
+            ),
+            columnIdentity: identity,
             approximateRowCount: schema.approximateRowCount,
             columnEnumValues: enumValues,
             columnComments: comments
@@ -235,6 +247,7 @@ final class QueryExecutor {
             columnNullable: nullable,
             primaryKeyColumns: primaryKeys,
             generatedColumns: [],
+            columnIdentity: [:],
             approximateRowCount: nil,
             columnEnumValues: [:],
             columnComments: [:]

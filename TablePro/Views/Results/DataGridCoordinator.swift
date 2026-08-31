@@ -1175,6 +1175,17 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         beginCellEdit(row: displayRow, tableColumnIndex: displayCol)
     }
 
+    /// Where the caret goes on a row the user just made. Column 0 is where the row starts, not
+    /// necessarily where it can be typed into: a table whose first column the server owns, such as
+    /// an identity or a stored generated column, refuses the edit and opens nothing at all, which
+    /// reads as Add Row having done nothing. Falls back to column 0 so a row with no editable
+    /// column at all is still selected and scrolled to.
+    func beginEditingFirstEditableColumn(displayRow: Int) {
+        let columnCount = tableRowsProvider().columns.count
+        let column = (0..<columnCount).first { canStartInlineEdit(row: displayRow, columnIndex: $0) } ?? 0
+        beginEditing(displayRow: displayRow, column: column)
+    }
+
     func refreshCellPresentations() {
         guard let tableView else { return }
         guard overlayEditor?.isActive != true, overlayViewer?.isActive != true else {

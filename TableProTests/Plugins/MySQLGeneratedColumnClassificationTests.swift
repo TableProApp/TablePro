@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import TableProPluginKit
 import Testing
 
 @Suite("MySQL Generated Column Classification")
@@ -62,5 +63,25 @@ struct MySQLGeneratedColumnClassificationTests {
         #expect(!mysqlColumnIsGenerated(extra: "auto_increment, INVISIBLE"))
         #expect(!mysqlColumnIsGenerated(extra: "INVISIBLE"))
         #expect(!mysqlColumnIsGenerated(extra: "WITHOUT SYSTEM VERSIONING"))
+    }
+}
+
+@Suite("MySQL Identity Classification")
+struct MySQLIdentityClassificationTests {
+    /// MySQL leaves `COLUMN_DEFAULT` null for an AUTO_INCREMENT column, so `Extra` is the only
+    /// place the allocation is reported and the app read it as a column with no default.
+    @Test("auto_increment reports BY DEFAULT")
+    func autoIncrement() {
+        #expect(mysqlIdentityKind(extra: "auto_increment") == .byDefault)
+        #expect(mysqlIdentityKind(extra: "AUTO_INCREMENT") == .byDefault)
+        #expect(mysqlIdentityKind(extra: "auto_increment, INVISIBLE") == .byDefault)
+    }
+
+    @Test("Everything else reports no identity")
+    func notIdentity() {
+        #expect(mysqlIdentityKind(extra: nil) == nil)
+        #expect(mysqlIdentityKind(extra: "") == nil)
+        #expect(mysqlIdentityKind(extra: "DEFAULT_GENERATED on update CURRENT_TIMESTAMP") == nil)
+        #expect(mysqlIdentityKind(extra: "STORED GENERATED") == nil)
     }
 }

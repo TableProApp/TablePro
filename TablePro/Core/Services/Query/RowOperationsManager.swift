@@ -47,17 +47,10 @@ final class RowOperationsManager {
         self.changeManager = changeManager
     }
 
-    func addNewRow(
-        columns: [String],
-        columnDefaults: [String: String?],
-        tableRows: inout TableRows
-    ) -> AddNewRowResult? {
-        let generated = changeManager.generatedColumns
+    func addNewRow(tableRows: inout TableRows) -> AddNewRowResult? {
         var newRowValues: [PluginCellValue] = []
-        for column in columns {
-            if generated.contains(column) {
-                newRowValues.append(.text("__DEFAULT__"))
-            } else if let defaultValue = columnDefaults[column], defaultValue != nil {
+        for column in tableRows.columns {
+            if tableRows.generatedColumns.contains(column) || tableRows.serverAssignsValue(forColumn: column) {
                 newRowValues.append(.text("__DEFAULT__"))
             } else {
                 newRowValues.append(.null)
@@ -74,15 +67,19 @@ final class RowOperationsManager {
 
     func duplicateRow(
         sourceRowIndex: Int,
-        columns: [String],
         tableRows: inout TableRows
     ) -> AddNewRowResult? {
         guard sourceRowIndex >= 0, sourceRowIndex < tableRows.count else { return nil }
 
         var newValues = Array(tableRows.rows[sourceRowIndex].values)
 
-        for resetColumn in changeManager.primaryKeyColumns + Array(changeManager.generatedColumns) {
-            if let index = columns.firstIndex(of: resetColumn), index < newValues.count {
+        /// An identity column is not always the primary key, and copying its value verbatim is
+        /// what the server rejects.
+        let resetColumns = changeManager.primaryKeyColumns
+            + Array(tableRows.generatedColumns)
+            + Array(tableRows.columnIdentity.keys)
+        for resetColumn in resetColumns {
+            if let index = tableRows.columns.firstIndex(of: resetColumn), index < newValues.count {
                 newValues[index] = .text("__DEFAULT__")
             }
         }

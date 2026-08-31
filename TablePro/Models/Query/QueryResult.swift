@@ -160,6 +160,11 @@ struct ColumnInfo: Identifiable, Hashable {
     let charset: String?
     let collation: String?
     let comment: String?
+    /// Set when the server allocates the value from a sequence it owns, which it reports separately
+    /// from the column default: PostgreSQL leaves `column_default` null for an identity column and
+    /// puts the generation in `pg_attribute.attidentity`. Dropping it here made every identity
+    /// column look like a column with no default.
+    let identityKind: IdentityKind?
     let isGenerated: Bool
     let allowedValues: [String]?
     let generationExpression: String?
@@ -175,6 +180,7 @@ struct ColumnInfo: Identifiable, Hashable {
         charset: String? = nil,
         collation: String? = nil,
         comment: String? = nil,
+        identityKind: IdentityKind? = nil,
         isGenerated: Bool = false,
         allowedValues: [String]? = nil,
         generationExpression: String? = nil,
@@ -189,6 +195,7 @@ struct ColumnInfo: Identifiable, Hashable {
         self.charset = charset
         self.collation = collation
         self.comment = comment
+        self.identityKind = identityKind
         self.isGenerated = isGenerated
         self.allowedValues = allowedValues
         self.generationExpression = generationExpression

@@ -28,6 +28,16 @@ internal func mysqlColumnIsGenerated(extra: String?) -> Bool {
     return trimmed == "VIRTUAL" || trimmed == "PERSISTENT"
 }
 
+/// AUTO_INCREMENT, from the same `Extra` value, because MySQL leaves `COLUMN_DEFAULT` null for such
+/// a column exactly as PostgreSQL does for an identity column.
+///
+/// It is `byDefault` rather than `always`: MySQL accepts an explicit value and only allocates the
+/// next one when the column is omitted or given NULL.
+internal func mysqlIdentityKind(extra: String?) -> IdentityKind? {
+    guard let extra, extra.uppercased().contains("AUTO_INCREMENT") else { return nil }
+    return .byDefault
+}
+
 /// The kind, from the same `Extra` value. MariaDB 10.1 and older spell stored as "PERSISTENT".
 internal func mysqlGenerationKind(extra: String?) -> GenerationKind? {
     guard let extra, mysqlColumnIsGenerated(extra: extra) else { return nil }

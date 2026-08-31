@@ -47,18 +47,12 @@ final class RowEditingCoordinator {
               tab.tableContext.tableName != nil else { return }
 
         let tabId = tab.id
-        let columnDefaults = parent.tabSessionRegistry.tableRows(for: tabId).columnDefaults
-        let columns = parent.tabSessionRegistry.tableRows(for: tabId).columns
 
         parent.dataTabDelegate?.tableViewCoordinator?.commitActiveCellEdit()
 
         var addResult: RowOperationsManager.AddNewRowResult?
         parent.mutateActiveTableRows(for: tabId) { rows in
-            let result = parent.rowOperationsManager.addNewRow(
-                columns: columns,
-                columnDefaults: columnDefaults,
-                tableRows: &rows
-            )
+            let result = parent.rowOperationsManager.addNewRow(tableRows: &rows)
             addResult = result
             return result?.delta ?? .none
         }
@@ -70,7 +64,7 @@ final class RowEditingCoordinator {
         }
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(result.delta)
-        parent.dataTabDelegate?.tableViewCoordinator?.beginEditing(displayRow: result.rowIndex, column: 0)
+        parent.dataTabDelegate?.tableViewCoordinator?.beginEditingFirstEditableColumn(displayRow: result.rowIndex)
     }
 
     func deleteSelectedRows(indices: Set<Int>) {
@@ -182,7 +176,6 @@ final class RowEditingCoordinator {
         }
 
         let tabId = tab.id
-        let columns = parent.tabSessionRegistry.tableRows(for: tabId).columns
         guard index >= 0, index < parent.tabSessionRegistry.tableRows(for: tabId).count else { return }
 
         parent.dataTabDelegate?.tableViewCoordinator?.commitActiveCellEdit()
@@ -191,7 +184,6 @@ final class RowEditingCoordinator {
         parent.mutateActiveTableRows(for: tabId) { rows in
             let result = parent.rowOperationsManager.duplicateRow(
                 sourceRowIndex: index,
-                columns: columns,
                 tableRows: &rows
             )
             dupResult = result
@@ -205,13 +197,12 @@ final class RowEditingCoordinator {
         }
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(result.delta)
-        parent.dataTabDelegate?.tableViewCoordinator?.beginEditing(displayRow: result.rowIndex, column: 0)
+        parent.dataTabDelegate?.tableViewCoordinator?.beginEditingFirstEditableColumn(displayRow: result.rowIndex)
     }
 
     private func duplicateFilteredRow(displayIndex: Int, tab: QueryTab, tabIndex: Int) {
         let tabId = tab.id
         let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
-        let columns = tableRows.columns
         guard let storageIndex = DisplayRowMapping.rowIndex(
             forDisplay: displayIndex, displayIDs: parent.activeGridDisplayIDs, in: tableRows
         ), storageIndex >= 0, storageIndex < tableRows.count else { return }
@@ -222,7 +213,6 @@ final class RowEditingCoordinator {
         parent.mutateActiveTableRows(for: tabId) { rows in
             let result = parent.rowOperationsManager.duplicateRow(
                 sourceRowIndex: storageIndex,
-                columns: columns,
                 tableRows: &rows
             )
             dupResult = result
@@ -240,7 +230,7 @@ final class RowEditingCoordinator {
         let newDisplayIndex = displayCount - 1
         guard newDisplayIndex >= 0 else { return }
         parent.selectionState.indices = [newDisplayIndex]
-        parent.dataTabDelegate?.tableViewCoordinator?.beginEditing(displayRow: newDisplayIndex, column: 0)
+        parent.dataTabDelegate?.tableViewCoordinator?.beginEditingFirstEditableColumn(displayRow: newDisplayIndex)
     }
 
     func undoInsertRow(at rowIndex: Int) {

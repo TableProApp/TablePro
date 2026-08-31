@@ -40,6 +40,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Crash loop on every launch after resizing a column on a database with a long file path, with iCloud sync on. (#2575)
 - SSH Agent auth prompting for a private key passphrase instead of reporting that the agent was never reached. (#2583)
 - "SSH password rejected" on an SSH connection that has no password, when the server offers no keyboard-interactive.
+- NULL pre-filled into an identity column on Add Row, so the insert failed on PostgreSQL. (#2588)
+- No "Default" in a cell's Set Value menu for an identity column. (#2588)
+- Duplicate Row copying an identity column that is not the primary key. (#2588)
+- Editing a `GENERATED ALWAYS AS IDENTITY` cell, which the server rejects on save. (#2588)
+- `OVERRIDING SYSTEM VALUE` and `setval` in a SQL export of a SQL Server database.
 
 ## [0.69.0] - 2026-08-27
 

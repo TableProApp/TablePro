@@ -267,6 +267,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
                 charset: col.charset,
                 collation: col.collation,
                 comment: col.comment,
+                identityKind: col.identityKind,
                 isGenerated: col.isGenerated,
                 allowedValues: col.allowedValues,
                 generationExpression: col.generationExpression,
@@ -503,12 +504,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         let pluginResult = try await pluginDriver.fetchAllColumns(schema: pluginDriver.currentSchema)
         var result: [String: [ColumnInfo]] = [:]
         for (table, cols) in pluginResult {
-            result[table] = cols.map { col in
-                ColumnInfo(name: col.name, dataType: col.dataType, isNullable: col.isNullable,
-                           isPrimaryKey: col.isPrimaryKey, defaultValue: col.defaultValue,
-                           extra: col.extra, charset: col.charset, collation: col.collation, comment: col.comment,
-                           allowedValues: col.allowedValues)
-            }
+            result[table] = mapPluginColumns(cols)
         }
         return result
     }
