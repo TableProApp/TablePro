@@ -167,6 +167,12 @@ struct MainContentView: View {
                 if !$0 {
                     coordinator.activeSheet = nil
                     coordinator.exportPreselection = nil
+                    /// Cleared on every dismissal, Cancel included. The request holds the closure
+                    /// that runs the rebuild, and that closure holds the structure view, which
+                    /// holds this coordinator; leaving it set after a cancel keeps the cycle alive
+                    /// for the window's life and offers a stale plan to whatever opens the sheet
+                    /// next.
+                    coordinator.columnReorderRequest = nil
                 }
             }
         )

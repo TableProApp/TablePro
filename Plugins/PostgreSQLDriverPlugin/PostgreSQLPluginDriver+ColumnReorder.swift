@@ -47,7 +47,13 @@ extension PostgreSQLPluginDriver {
         var statements = ["BEGIN"]
         statements.append("ALTER TABLE \(qualified) RENAME TO \(quoteIdentifier("\(table)_tablepro_reorder"))")
         statements.append("CREATE TABLE \(qualified) (\n  " + body.joined(separator: ",\n  ") + "\n)")
-        statements.append("INSERT INTO \(qualified) (\(copyList)) SELECT \(copyList) FROM \(staging)")
+        /// `OVERRIDING SYSTEM VALUE` unconditionally. A `GENERATED ALWAYS AS IDENTITY` column
+        /// refuses a written value without it and takes the whole rebuild down; measured, the
+        /// clause is accepted and does nothing on a `BY DEFAULT` identity and on a table that has
+        /// no identity column at all.
+        statements.append("""
+            INSERT INTO \(qualified) (\(copyList)) OVERRIDING SYSTEM VALUE SELECT \(copyList) FROM \(staging)
+            """)
         statements.append(contentsOf: parts.identityResets(qualified: qualified, quote: quoteIdentifier))
         statements.append(contentsOf: parts.inboundForeignKeyDrops)
         statements.append("DROP TABLE \(staging)")
@@ -66,7 +72,7 @@ extension PostgreSQLPluginDriver {
             caveats: [
                 String(localized: "Grants, row-level security policies, publications, extended statistics, partitioning and table inheritance are not carried over."),
                 String(localized: "A column collation that differs from its type default is not reproduced."),
-                String(localized: "A sequence owned by a serial column is dropped with the old table; an identity column is reset to its current maximum.")
+                String(localized: "A sequence owned by a serial column is dropped with the old table. An identity column keeps its value but its sequence is recreated under a new name, because the old table still holds the original name when the new one is created.")
             ],
             isRunnable: false
         )
