@@ -29,6 +29,11 @@ struct TableStructureView: View {
     let connection: DatabaseConnection
     let databaseName: String
     let schemaName: String?
+
+    /// Whether the Structure tab is open on a view rather than a table. Every reorder mechanism
+    /// emits table DDL, so a view is withheld rather than allowed to fail at the statement.
+    var isViewObject: Bool = false
+
     let toolbarState: ConnectionToolbarState
     let coordinator: MainContentCoordinator?
     let selectionState: GridSelectionState
@@ -148,6 +153,7 @@ struct TableStructureView: View {
         connection: DatabaseConnection,
         databaseName: String,
         schemaName: String?,
+        isViewObject: Bool = false,
         toolbarState: ConnectionToolbarState,
         coordinator: MainContentCoordinator?,
         selectionState: GridSelectionState,
@@ -157,6 +163,7 @@ struct TableStructureView: View {
         self.connection = connection
         self.databaseName = databaseName
         self.schemaName = schemaName
+        self.isViewObject = isViewObject
         self.toolbarState = toolbarState
         self.coordinator = coordinator
         self.selectionState = selectionState

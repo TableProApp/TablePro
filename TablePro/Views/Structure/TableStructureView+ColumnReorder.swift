@@ -20,6 +20,7 @@ extension TableStructureView {
             support: PluginManager.shared.columnReorderSupport(for: connection.type),
             engineName: connection.type.displayName,
             isColumnsTab: selectedTab == .columns,
+            isTable: !isViewObject,
             canEditSchema: connection.type.supportsSchemaEditing,
             hasStagedChanges: structureChangeManager.hasChanges,
             isRearranged: !searchText.isEmpty || structureSortDescriptor != nil
@@ -29,6 +30,7 @@ extension TableStructureView {
     func beginColumnReorder(fromIndex: Int, toIndex: Int) {
         let columnsSnapshot = structureChangeManager.workingColumns
         let clearTarget = coordinator?.selectedColumnLayoutClearTarget()
+        let reorderScope = scope
 
         Task { @MainActor in
             do {
@@ -37,23 +39,24 @@ extension TableStructureView {
                     toIndex: toIndex,
                     columnNames: columnsSnapshot.map(\.name)
                 )
-                let plan = try await StructureColumnReorderHandler.plan(
+                let prepared = try await StructureColumnReorderHandler.prepare(
                     desiredOrder: desiredOrder,
                     workingColumns: columnsSnapshot,
                     tableName: tableName,
-                    schema: schemaName,
-                    connectionId: connection.id
+                    scope: reorderScope
                 )
 
-                switch plan.cost {
+                switch prepared.plan.cost {
                 case .metadataOnly:
-                    try await StructureColumnReorderHandler.execute(plan, connectionId: connection.id)
-                    await finishColumnReorder(plan: plan, clearTarget: clearTarget)
+                    try await StructureColumnReorderHandler.execute(
+                        prepared, tableName: tableName, databaseType: connection.type
+                    )
+                    await finishColumnReorder(prepared, clearTarget: clearTarget)
                 case .tableRebuild:
-                    presentColumnReorderReview(plan: plan, clearTarget: clearTarget)
+                    presentColumnReorderReview(prepared, clearTarget: clearTarget)
                 @unknown default:
                     /// A cost this build does not recognise is shown before it runs, never after.
-                    presentColumnReorderReview(plan: plan, clearTarget: clearTarget)
+                    presentColumnReorderReview(prepared, clearTarget: clearTarget)
                 }
             } catch {
                 reportColumnReorderFailure(error)
@@ -63,15 +66,21 @@ extension TableStructureView {
 
     /// A rebuild is never run on the drop. It is shown in full, with what it cannot carry over, and
     /// the user either runs it here or takes the script to a query tab.
-    private func presentColumnReorderReview(plan: PluginColumnReorderPlan, clearTarget: ColumnLayoutClearTarget?) {
+    private func presentColumnReorderReview(
+        _ prepared: StructureColumnReorderHandler.PreparedReorder,
+        clearTarget: ColumnLayoutClearTarget?
+    ) {
         guard let coordinator else { return }
         coordinator.columnReorderRequest = ColumnReorderReviewRequest(
             tableName: tableName,
-            plan: plan,
+            scope: prepared.scope,
+            plan: prepared.plan,
             perform: {
                 do {
-                    try await StructureColumnReorderHandler.execute(plan, connectionId: connection.id)
-                    await finishColumnReorder(plan: plan, clearTarget: clearTarget)
+                    try await StructureColumnReorderHandler.execute(
+                        prepared, tableName: tableName, databaseType: connection.type
+                    )
+                    await finishColumnReorder(prepared, clearTarget: clearTarget)
                 } catch {
                     reportColumnReorderFailure(error)
                 }
@@ -80,12 +89,17 @@ extension TableStructureView {
         coordinator.activeSheet = .columnReorderReview
     }
 
-    private func finishColumnReorder(plan: PluginColumnReorderPlan, clearTarget: ColumnLayoutClearTarget?) async {
+    private func finishColumnReorder(
+        _ prepared: StructureColumnReorderHandler.PreparedReorder,
+        clearTarget: ColumnLayoutClearTarget?
+    ) async {
         await services.queryHistoryManager.record(
             QueryHistoryRecordRequest(
-                query: plan.statements.map { $0.hasSuffix(";") ? $0 : $0 + ";" }.joined(separator: "\n"),
-                connectionId: connection.id,
-                databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
+                query: prepared.plan.scriptStatements
+                    .map { $0.hasSuffix(";") ? $0 : $0 + ";" }
+                    .joined(separator: "\n"),
+                connectionId: prepared.scope.connectionId,
+                databaseName: prepared.scope.database,
                 databaseType: connection.type,
                 source: .structureDDL,
                 executionTime: 0,

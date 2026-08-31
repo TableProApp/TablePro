@@ -88,8 +88,18 @@ internal func mysqlColumnDefinitionSQL(_ column: PluginColumnDefinition) -> Stri
     // A generated column takes the expression in place of the ordinary default and auto-increment
     // attributes, and MySQL rejects most of them alongside it. The keyword is spelled out because
     // both MySQL and MariaDB default to VIRTUAL.
+    // Charset and collation belong to the type, so they come before the expression. Leaving them
+    // out reset a generated string column to the table defaults, because MODIFY COLUMN replaces
+    // the whole definition and a reorder restates it.
     let kind = (column.generationKind ?? .virtual).rawValue
-    var definition = "\(name) \(column.dataType) GENERATED ALWAYS AS (\(expression)) \(kind)"
+    var definition = "\(name) \(column.dataType)"
+    if let charset = column.charset, !charset.isEmpty {
+        definition += " CHARACTER SET \(charset)"
+    }
+    if let collation = column.collation, !collation.isEmpty {
+        definition += " COLLATE \(collation)"
+    }
+    definition += " GENERATED ALWAYS AS (\(expression)) \(kind)"
     if !column.isNullable { definition += " NOT NULL" }
     if let comment = column.comment, !comment.isEmpty {
         definition += " COMMENT '\(mysqlEscapeStringLiteral(comment))'"

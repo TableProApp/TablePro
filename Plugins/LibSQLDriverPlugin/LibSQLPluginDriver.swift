@@ -733,9 +733,9 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// SQLite has no positional `ALTER`, so the order changes by rebuilding the table, using the
     /// shared recipe every SQLite-derived driver follows.
     ///
-    /// Not run by TablePro. The rebuild holds one transaction across several statements and this
-    /// driver's transport gives no guarantee that they reach the same session, so the script is
-    /// handed over for the user to run where they can see it through.
+    /// Runnable only in local mode. A local database is a real SQLite handle that holds a
+    /// transaction across statements, which is what makes the rebuild atomic; over HTTP each
+    /// statement is its own request and the script has to be handed to the user instead.
     func generateColumnReorderPlan(
         table: String,
         schema: String?,
@@ -745,7 +745,14 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         try await SQLiteColumnReorderPlanner.plan(
             tableName: table,
             desiredOrder: desiredOrder,
-            isRunnable: false,
+            isRunnable: isLocalMode,
+            execute: { try await self.execute(query: $0) }
+        )
+    }
+
+    func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String? {
+        try await SQLiteColumnReorderPlanner.schemaFingerprint(
+            tableName: table,
             execute: { try await self.execute(query: $0) }
         )
     }

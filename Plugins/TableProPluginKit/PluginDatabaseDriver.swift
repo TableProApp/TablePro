@@ -226,6 +226,15 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
         desiredOrder: [String]
     ) async throws -> PluginColumnReorderPlan?
 
+    /// A fingerprint of everything a reorder plan reproduces, cheap enough to take twice.
+    ///
+    /// A rebuild plan is built before its review sheet opens and run after it closes, and it ends
+    /// in a `DROP`. Anything another connection added in between is inside the table the plan is
+    /// about to drop and outside the plan that is about to replace it. Comparing this before and
+    /// after is what turns that into a refusal instead of silent loss. Nil where the driver cannot
+    /// answer, which stands the check down for an engine TablePro never runs a rebuild on anyway.
+    func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String?
+
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String?
 
     // Definition SQL for clipboard copy (optional — return nil if not supported)
@@ -559,6 +568,8 @@ public extension PluginDatabaseDriver {
         columns: [PluginColumnDefinition],
         desiredOrder: [String]
     ) async throws -> PluginColumnReorderPlan? { nil }
+
+    func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String? { nil }
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? { nil }
 

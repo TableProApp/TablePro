@@ -305,7 +305,7 @@ struct MainContentView: View {
             if let request = coordinator.columnReorderRequest {
                 SQLReviewSheet(
                     isPresented: dismissBinding,
-                    statements: request.plan.statements,
+                    statements: request.scriptStatements,
                     databaseType: connection.type,
                     warning: request.warning,
                     primaryAction: request.isRunnable

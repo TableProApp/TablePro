@@ -58,11 +58,20 @@ enum ColumnReorderPolicy {
         support: ColumnReorderSupport,
         engineName: String,
         isColumnsTab: Bool,
+        isTable: Bool,
         canEditSchema: Bool,
         hasStagedChanges: Bool,
         isRearranged: Bool
     ) -> ColumnReorderAvailability {
         guard isColumnsTab else { return .notApplicable }
+        /// Every mechanism emits table DDL, and the SQLite one looks the table up by
+        /// `sqlite_master.type = 'table'`, so a view drag would end in an error rather than an
+        /// explanation. A view's column order comes from its own `SELECT`.
+        guard isTable else {
+            return .unavailable(
+                reason: String(localized: "A view's column order comes from its query. Edit the view to change it.")
+            )
+        }
         guard canEditSchema else {
             return .unavailable(
                 reason: String(format: String(localized: "%@ cannot edit a table's structure."), engineName)

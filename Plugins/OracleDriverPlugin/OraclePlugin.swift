@@ -1054,17 +1054,26 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     ) async throws -> PluginColumnReorderPlan? {
         let qt = oracleQualifiedTable(table)
         let currentOrder = try await fetchColumns(table: table, schema: schema).map(\.name)
-        let statements = PluginColumnReorderPlanner
-            .appendCycle(from: currentOrder, to: desiredOrder)
-            .flatMap { column -> [String] in
-                let quoted = quoteIdentifier(column)
-                return [
-                    "ALTER TABLE \(qt) MODIFY (\(quoted) INVISIBLE)",
-                    "ALTER TABLE \(qt) MODIFY (\(quoted) VISIBLE)"
-                ]
-            }
+        let cycled = PluginColumnReorderPlanner.appendCycle(from: currentOrder, to: desiredOrder)
+        let statements = cycled.flatMap { column -> [String] in
+            let quoted = quoteIdentifier(column)
+            return [
+                "ALTER TABLE \(qt) MODIFY (\(quoted) INVISIBLE)",
+                "ALTER TABLE \(qt) MODIFY (\(quoted) VISIBLE)"
+            ]
+        }
         guard !statements.isEmpty else { return nil }
-        return PluginColumnReorderPlan(statements: statements, cost: .metadataOnly)
+
+        /// Oracle commits each DDL statement on its own, so there is no transaction to roll back:
+        /// a cycle whose `VISIBLE` half fails, on a dropped connection or a server error, leaves
+        /// that column hidden for good. Every cycled column gets a compensating `VISIBLE` that the
+        /// executor runs on any mid-plan failure, which is idempotent on a column that is already
+        /// visible and puts back the one that is not.
+        return PluginColumnReorderPlan(
+            statements: statements,
+            compensation: cycled.map { "ALTER TABLE \(qt) MODIFY (\(quoteIdentifier($0)) VISIBLE)" },
+            cost: .metadataOnly
+        )
     }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {

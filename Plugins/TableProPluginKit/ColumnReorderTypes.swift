@@ -17,13 +17,29 @@ public enum PluginColumnReorderCost: Sendable, Equatable {
 }
 
 /// The statements that put a table's columns into a wanted order.
+///
+/// A plan carries DDL and nothing else: no `BEGIN`, no `COMMIT`, no `ROLLBACK`. Whoever runs it
+/// owns the transaction, because both places that can are already opening one. TablePro's own
+/// execution path does it through `DatabaseDriver.beginTransaction`, and the query editor's Run All
+/// wraps a multi-statement script the same way, so a plan that spelled the transaction out in SQL
+/// would nest inside theirs and fail.
 public struct PluginColumnReorderPlan: Sendable, Equatable {
+    /// The DDL, in order, to run inside that transaction.
     public let statements: [String]
 
-    /// Run in order, best effort, when a statement fails part way through. A rebuild opens a
-    /// transaction across several statements, and a failure that leaves it open would strand the
-    /// session; this is what closes it.
-    public let rollbackStatements: [String]
+    /// Run before the transaction opens, and after it closes. SQLite's `foreign_keys` pragma is the
+    /// case: it is silently ignored inside a transaction, so it cannot travel with the rest.
+    public let prologue: [String]
+    public let epilogue: [String]
+
+    /// Undoes what has already run, for an engine that commits each DDL statement on its own and so
+    /// has no transaction to roll back. Oracle's invisible/visible cycle is the case: a cycle whose
+    /// second half fails leaves a column hidden, and only a compensating statement brings it back.
+    public let compensation: [String]
+
+    /// Whether the statements need a transaction around them at all. False for a plan whose
+    /// statements each stand alone, where opening one would only widen the window.
+    public let isTransactional: Bool
 
     public let cost: PluginColumnReorderCost
 
@@ -34,26 +50,35 @@ public struct PluginColumnReorderPlan: Sendable, Equatable {
 
     /// Whether TablePro may run this itself.
     ///
-    /// False where the engine's catalog cannot describe enough of a table to reproduce it, so the
-    /// script is handed over for the user to read and run instead of being offered behind a button
-    /// that would report success over a lost grant or a broken sequence. SQLite reproduces a table
-    /// from its own stored DDL verbatim and is runnable; PostgreSQL and SQL Server rebuild from
-    /// reconstructed definitions and are not.
+    /// False where the engine's catalog cannot describe enough of a table to reproduce it, or where
+    /// the transport cannot hold a transaction across the statements, so the script is handed over
+    /// for the user to read and run instead of sitting behind a button that would report success
+    /// over a lost grant or a half-applied rebuild.
     public let isRunnable: Bool
 
     public init(
         statements: [String],
-        rollbackStatements: [String] = [],
+        prologue: [String] = [],
+        epilogue: [String] = [],
+        compensation: [String] = [],
+        isTransactional: Bool = false,
         cost: PluginColumnReorderCost,
         caveats: [String] = [],
         isRunnable: Bool = true
     ) {
         self.statements = statements
-        self.rollbackStatements = rollbackStatements
+        self.prologue = prologue
+        self.epilogue = epilogue
+        self.compensation = compensation
+        self.isTransactional = isTransactional
         self.cost = cost
         self.caveats = caveats
         self.isRunnable = isRunnable
     }
+
+    /// Everything the plan runs, in order, for showing the user and for handing to an editor. The
+    /// transaction is deliberately absent: the reader's Run All supplies it.
+    public var scriptStatements: [String] { prologue + statements + epilogue }
 }
 
 /// Turns a wanted column order into the moves an engine's positional primitive can actually make.

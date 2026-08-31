@@ -12,6 +12,7 @@ struct ColumnReorderPolicyTests {
     private func resolve(
         support: ColumnReorderSupport = .alter,
         isColumnsTab: Bool = true,
+        isTable: Bool = true,
         canEditSchema: Bool = true,
         hasStagedChanges: Bool = false,
         isRearranged: Bool = false
@@ -20,6 +21,7 @@ struct ColumnReorderPolicyTests {
             support: support,
             engineName: "PostgreSQL",
             isColumnsTab: isColumnsTab,
+            isTable: isTable,
             canEditSchema: canEditSchema,
             hasStagedChanges: hasStagedChanges,
             isRearranged: isRearranged
@@ -72,6 +74,15 @@ struct ColumnReorderPolicyTests {
     /// A drop reports a position in what is on screen. Filtered or sorted, that is not the table's
     /// order, and the delegate hands the position over without mapping it back, so the drag is
     /// withheld rather than acted on against the wrong column.
+    /// Every mechanism emits table DDL, and the SQLite one looks its target up as a table, so a
+    /// view drag would end in a statement error instead of an explanation.
+    @Test("A view is withheld, whatever the engine can do to a table")
+    func viewWithholdsTheDrag() {
+        let availability = resolve(isTable: false)
+        #expect(!availability.isAvailable)
+        #expect(availability.unavailableReason != nil)
+    }
+
     @Test("A filtered or sorted column list withholds the drag")
     func rearrangedListWithholdsTheDrag() {
         let availability = resolve(isRearranged: true)

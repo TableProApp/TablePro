@@ -15,6 +15,13 @@ import TableProPluginKit
 struct ColumnReorderReviewRequest: Identifiable {
     let id = UUID()
     let tableName: String
+
+    /// The database and schema the plan was built against, carried so the script opens where it
+    /// belongs. The connection's browse database can be somewhere else by the time the sheet is
+    /// answered, and PostgreSQL cannot qualify a table with a database, so an unqualified script
+    /// opened on the wrong one would rebuild a same-named table there.
+    let scope: DatabaseScope
+
     let plan: PluginColumnReorderPlan
     let perform: () async -> Void
 
@@ -23,4 +30,6 @@ struct ColumnReorderReviewRequest: Identifiable {
     }
 
     var isRunnable: Bool { plan.isRunnable }
+
+    var scriptStatements: [String] { plan.scriptStatements }
 }

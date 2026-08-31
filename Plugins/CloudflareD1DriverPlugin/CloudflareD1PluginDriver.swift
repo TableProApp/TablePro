@@ -717,9 +717,8 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
     /// SQLite has no positional `ALTER`, so the order changes by rebuilding the table, using the
     /// shared recipe every SQLite-derived driver follows.
     ///
-    /// Not run by TablePro. The rebuild holds one transaction across several statements and this
-    /// driver's transport gives no guarantee that they reach the same session, so the script is
-    /// handed over for the user to run where they can see it through.
+    /// Never run by TablePro. D1 answers each statement over its own HTTP request, so nothing can
+    /// hold the rebuild's transaction open across them, and a half-applied rebuild is data loss.
     func generateColumnReorderPlan(
         table: String,
         schema: String?,
@@ -730,6 +729,13 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
             tableName: table,
             desiredOrder: desiredOrder,
             isRunnable: false,
+            execute: { try await self.execute(query: $0) }
+        )
+    }
+
+    func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String? {
+        try await SQLiteColumnReorderPlanner.schemaFingerprint(
+            tableName: table,
             execute: { try await self.execute(query: $0) }
         )
     }

@@ -18,6 +18,7 @@ enum StructureColumnReorderHandler {
         case notSupported
         case invalidIndices
         case sqlGenerationFailed
+        case schemaChanged
         case executionFailed(String)
 
         var errorDescription: String? {
@@ -29,11 +30,34 @@ enum StructureColumnReorderHandler {
             case .invalidIndices:
                 return String(localized: "Invalid column indices for reorder operation")
             case .sqlGenerationFailed:
-                return String(localized: "Failed to generate SQL for column reorder")
+                return String(
+                    localized: """
+                        Could not build the column reorder for this table. If this engine's driver \
+                        was installed before column reorder shipped, update it in Settings > Plugins.
+                        """
+                )
+            case .schemaChanged:
+                return String(
+                    localized: """
+                        The table changed while the script was open. Nothing was run. Close and \
+                        reopen the structure tab, then try again.
+                        """
+                )
             case .executionFailed(let message):
                 return String(format: String(localized: "Column reorder failed: %@"), message)
             }
         }
+    }
+
+    /// A plan and the fingerprint of the schema it was built from.
+    ///
+    /// The fingerprint is what makes a reviewed rebuild safe to run later: a plan ends in a `DROP`,
+    /// and anything another connection added while the sheet was open is inside the table the plan
+    /// is about to drop and absent from the one that replaces it.
+    struct PreparedReorder {
+        let plan: PluginColumnReorderPlan
+        let fingerprint: String?
+        let scope: DatabaseScope
     }
 
     /// The order a drag asks for, as column names.
@@ -62,94 +86,137 @@ enum StructureColumnReorderHandler {
 
     /// Asks the driver for the statements that produce `desiredOrder`.
     ///
+    /// Runs on the tab's own scope, never on whichever database the connection's shared driver
+    /// happens to be pointed at. Another tab or window can move that driver between the drag and
+    /// the drop, and an unqualified `DROP TABLE` would then land on a same-named table elsewhere.
+    ///
     /// Nothing is executed here. A plan whose cost is a table rebuild is reviewed and confirmed
     /// before it runs, and only the caller knows which of the two it is looking at.
-    static func plan(
+    static func prepare(
         desiredOrder: [String],
         workingColumns: [EditableColumnDefinition],
         tableName: String,
-        schema: String?,
-        connectionId: UUID
-    ) async throws -> PluginColumnReorderPlan {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
-            throw ReorderError.noDriver
-        }
-        guard let adapter = driver as? PluginDriverAdapter else {
-            throw ReorderError.notSupported
+        scope: DatabaseScope
+    ) async throws -> PreparedReorder {
+        let columns = workingColumns.map { $0.toPlugin() }
+        let schema = scope.schema
+
+        let prepared = try await DatabaseManager.shared.withScopedDriver(
+            scope: scope,
+            route: DatabaseManager.shared.executionRoute(for: scope),
+            cancellation: .untracked
+        ) { driver in
+            guard let adapter = driver as? PluginDriverAdapter else {
+                throw ReorderError.notSupported
+            }
+            let plan = try await adapter.generateColumnReorderPlan(
+                table: tableName,
+                schema: schema,
+                columns: columns,
+                desiredOrder: desiredOrder
+            )
+            guard let plan, !plan.statements.isEmpty else {
+                throw ReorderError.sqlGenerationFailed
+            }
+            let fingerprint = try? await adapter.columnReorderSchemaFingerprint(
+                table: tableName, schema: schema
+            )
+            return (plan, fingerprint)
         }
 
-        let plan = try await adapter.generateColumnReorderPlan(
-            table: tableName,
-            schema: schema,
-            columns: workingColumns.map { $0.toPlugin() },
-            desiredOrder: desiredOrder
-        )
-        guard let plan, !plan.statements.isEmpty else {
-            throw ReorderError.sqlGenerationFailed
-        }
-        return plan
+        return PreparedReorder(plan: prepared.0, fingerprint: prepared.1, scope: scope)
     }
 
-    /// Runs a plan the caller has already authorized with the user where its cost demanded it.
+    /// Runs a prepared reorder, once, on the scope it was planned against.
     ///
-    /// Every statement goes through the execution gate on its own, so Safe Mode and a connection's
-    /// read-only policy stop a rebuild at its first statement rather than part way through. A
-    /// rebuild holds a transaction open across several of them, so a failure part way runs the
-    /// plan's own rollback before reporting: leaving the transaction open would strand the session
-    /// on every later statement it ran.
+    /// Authorization happens once for the whole plan, before any statement runs, and deliberately
+    /// outside the scoped block: it can await a confirmation sheet and Touch ID, and holding the
+    /// connection's driver across a human prompt would freeze every other tab on it. Asking per
+    /// statement was worse than slow, it was wrong: a user could approve through a rebuild's last
+    /// write and decline the statement after it, by which point there was nothing left to refuse.
     static func execute(
-        _ plan: PluginColumnReorderPlan,
-        connectionId: UUID
+        _ prepared: PreparedReorder,
+        tableName: String,
+        databaseType: DatabaseType
     ) async throws {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
-            throw ReorderError.noDriver
-        }
-        guard let adapter = driver as? PluginDriverAdapter else {
-            throw ReorderError.notSupported
+        let plan = prepared.plan
+        let scope = prepared.scope
+        let combined = plan.scriptStatements.joined(separator: "\n")
+
+        let decision = await ExecutionGateProvider.shared.authorize(
+            OperationRequest(
+                connectionId: scope.connectionId,
+                databaseType: databaseType,
+                sql: combined,
+                kind: plan.cost == .tableRebuild ? .destructiveQuery : .schemaMutation,
+                caller: .userInterface,
+                capabilities: .interactiveUser,
+                operationDescription: String(localized: "Reorder Columns")
+            )
+        )
+        guard case .authorized = decision else {
+            throw DatabaseError.queryFailed(decision.deniedReason ?? String(localized: "Operation not permitted"))
         }
 
-        for (index, sql) in plan.statements.enumerated() {
-            let decision = await ExecutionGateProvider.shared.authorize(
-                OperationRequest(
-                    connectionId: connectionId,
-                    databaseType: adapter.connection.type,
-                    sql: sql,
-                    kind: .schemaMutation,
-                    caller: .userInterface,
-                    capabilities: .interactiveUser,
-                    operationDescription: String(localized: "Reorder Columns")
-                )
-            )
-            guard case .authorized = decision else {
-                await rollback(plan, startedStatements: index, driver: driver)
-                throw DatabaseError.queryFailed(decision.deniedReason ?? String(localized: "Operation not permitted"))
+        let expectedFingerprint = prepared.fingerprint
+        try await DatabaseManager.shared.withScopedDriver(
+            scope: scope,
+            route: DatabaseManager.shared.executionRoute(for: scope),
+            cancellation: .protectedWrite
+        ) { driver in
+            if let expectedFingerprint,
+               let adapter = driver as? PluginDriverAdapter,
+               let current = try? await adapter.columnReorderSchemaFingerprint(
+                   table: tableName, schema: scope.schema
+               ),
+               current != expectedFingerprint {
+                throw ReorderError.schemaChanged
             }
 
-            logger.info("Reordering columns: \(sql)")
+            for sql in plan.prologue {
+                _ = try? await driver.execute(query: sql)
+            }
 
+            /// Only the transaction this plan opened is ever rolled back. Rolling back
+            /// unconditionally would discard a transaction the user had already opened on the same
+            /// session and never committed.
+            let usesTransaction = plan.isTransactional && driver.supportsTransactions
+            if usesTransaction {
+                try await driver.beginTransaction(mode: .readWrite)
+            }
+
+            var completed = 0
             do {
-                _ = try await driver.execute(query: sql)
+                for sql in plan.statements {
+                    logger.info("Reordering columns: \(sql, privacy: .public)")
+                    _ = try await driver.execute(query: sql)
+                    completed += 1
+                }
+                if usesTransaction {
+                    try await driver.commitTransaction()
+                }
             } catch {
-                logger.error("Column reorder failed: \(error.localizedDescription, privacy: .public)")
-                await rollback(plan, startedStatements: index, driver: driver)
+                if usesTransaction {
+                    do {
+                        try await driver.rollbackTransaction()
+                    } catch {
+                        logger.error("Column reorder rollback failed: \(error.localizedDescription, privacy: .public)")
+                    }
+                } else if completed > 0 {
+                    /// An engine whose DDL commits statement by statement has nothing to roll back,
+                    /// so it supplies statements that put back what already ran.
+                    for sql in plan.compensation {
+                        _ = try? await driver.execute(query: sql)
+                    }
+                }
+                for sql in plan.epilogue {
+                    _ = try? await driver.execute(query: sql)
+                }
                 throw ReorderError.executionFailed(error.localizedDescription)
             }
-        }
-    }
 
-    /// Best effort, and deliberately ungated: it undoes a write the gate already allowed, and a
-    /// rollback that a policy could refuse would leave the transaction open instead.
-    private static func rollback(
-        _ plan: PluginColumnReorderPlan,
-        startedStatements: Int,
-        driver: any DatabaseDriver
-    ) async {
-        guard startedStatements > 0, !plan.rollbackStatements.isEmpty else { return }
-        for sql in plan.rollbackStatements {
-            do {
-                _ = try await driver.execute(query: sql)
-            } catch {
-                logger.error("Column reorder rollback failed: \(error.localizedDescription, privacy: .public)")
+            for sql in plan.epilogue {
+                _ = try? await driver.execute(query: sql)
             }
         }
     }

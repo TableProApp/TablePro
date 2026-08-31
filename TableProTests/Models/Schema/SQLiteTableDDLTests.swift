@@ -112,6 +112,8 @@ struct SQLiteTableDDLTests {
             desiredOrder: desiredOrder,
             copyableColumns: ["a", "b", "c", "pid"],
             dependentObjectSQL: ["CREATE INDEX ix_x_b ON x(b)"],
+            autoincrementHighWaterMark: nil,
+            foreignKeysWereOn: true,
             isRunnable: true
         )
     }
@@ -120,13 +122,57 @@ struct SQLiteTableDDLTests {
     func planFollowsDocumentedProcedure() throws {
         let plan = try #require(makePlan(desiredOrder: ["pid", "a", "d", "b", "c"]))
         #expect(plan.cost == .tableRebuild)
-        #expect(plan.statements.first == "PRAGMA foreign_keys = off")
-        #expect(plan.statements[1] == "BEGIN TRANSACTION")
-        #expect(plan.statements[2].hasPrefix("CREATE TABLE \"x_tablepro_reorder\""))
-        #expect(plan.statements[4] == "DROP TABLE \"x\"")
-        #expect(plan.statements[5] == "ALTER TABLE \"x_tablepro_reorder\" RENAME TO \"x\"")
+        #expect(plan.statements[0].hasPrefix("CREATE TABLE \"x_tablepro_reorder\""))
+        #expect(plan.statements[2] == "DROP TABLE \"x\"")
+        #expect(plan.statements[3] == "ALTER TABLE \"x_tablepro_reorder\" RENAME TO \"x\"")
         #expect(plan.statements.contains("CREATE INDEX ix_x_b ON x(b)"))
-        #expect(plan.statements.last == "PRAGMA foreign_keys = on")
+    }
+
+    /// The transaction is the executor's, not the plan's. Both places that run a plan open one
+    /// already, so a `BEGIN` in the statements would nest inside theirs and fail.
+    @Test("The plan carries no transaction control of its own")
+    func planCarriesNoTransactionStatements() throws {
+        let plan = try #require(makePlan(desiredOrder: ["pid", "a", "d", "b", "c"]))
+        #expect(plan.isTransactional)
+        for keyword in ["BEGIN", "COMMIT", "ROLLBACK"] {
+            #expect(!plan.statements.contains { $0.uppercased().hasPrefix(keyword) })
+        }
+    }
+
+    /// Restored to what it was, not forced on. This driver opens connections with foreign keys off,
+    /// so forcing them on turns later writes on the same connection into constraint failures.
+    @Test("The foreign-key pragma is put back the way it was", arguments: [true, false])
+    func planRestoresTheForeignKeyPragma(wasOn: Bool) throws {
+        let plan = try #require(SQLiteColumnReorderPlanner.plan(
+            tableName: "x",
+            createTableSQL: createSQL,
+            desiredOrder: ["pid", "a", "d", "b", "c"],
+            copyableColumns: ["a", "b", "c", "pid"],
+            dependentObjectSQL: [],
+            autoincrementHighWaterMark: nil,
+            foreignKeysWereOn: wasOn,
+            isRunnable: true
+        ))
+        #expect(plan.prologue == ["PRAGMA foreign_keys = off"])
+        #expect(plan.epilogue == ["PRAGMA foreign_keys = \(wasOn ? "on" : "off")"])
+    }
+
+    /// `DROP TABLE` takes the table's `sqlite_sequence` row with it, so without this the rebuilt
+    /// table is seeded from the rows copied rather than the highest id ever issued, and the next
+    /// insert reuses one that was already handed out.
+    @Test("An AUTOINCREMENT table keeps its high-water mark")
+    func planRestoresTheAutoincrementHighWaterMark() throws {
+        let plan = try #require(SQLiteColumnReorderPlanner.plan(
+            tableName: "x",
+            createTableSQL: createSQL,
+            desiredOrder: ["pid", "a", "d", "b", "c"],
+            copyableColumns: ["a", "b", "c", "pid"],
+            dependentObjectSQL: [],
+            autoincrementHighWaterMark: 42,
+            foreignKeysWereOn: false,
+            isRunnable: true
+        ))
+        #expect(plan.statements.contains("UPDATE sqlite_sequence SET seq = 42 WHERE name = 'x'"))
     }
 
     @Test("The copy names only the columns INSERT accepts, leaving the generated one out")
@@ -135,12 +181,6 @@ struct SQLiteTableDDLTests {
         let insert = try #require(plan.statements.first { $0.hasPrefix("INSERT INTO") })
         #expect(insert.contains("(\"a\", \"b\", \"c\", \"pid\")"))
         #expect(!insert.contains("\"d\""))
-    }
-
-    @Test("A failure part way closes the transaction it opened")
-    func planCarriesItsOwnRollback() throws {
-        let plan = try #require(makePlan(desiredOrder: ["pid", "a", "d", "b", "c"]))
-        #expect(plan.rollbackStatements == ["ROLLBACK", "PRAGMA foreign_keys = on"])
     }
 
     @Test("An order that changes nothing produces no plan")

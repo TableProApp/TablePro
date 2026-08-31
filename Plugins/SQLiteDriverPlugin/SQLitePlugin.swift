@@ -1237,6 +1237,13 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
+    func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String? {
+        try await SQLiteColumnReorderPlanner.schemaFingerprint(
+            tableName: table,
+            execute: { try await self.execute(query: $0) }
+        )
+    }
+
     /// ADD/DROP CONSTRAINT arrived in SQLite 3.53.0. Returning nil below that version makes
     /// `SchemaStatementGenerator` refuse the change with "Unsupported schema operation" rather than
     /// sending a statement the linked library cannot parse.
