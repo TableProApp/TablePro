@@ -26,13 +26,17 @@ extension TableViewCoordinator {
         guard let column = tableColumn else { return nil }
         guard column.identifier != ColumnIdentitySchema.rowNumberIdentifier else {
             let tableRows = tableRowsProvider()
-            return cellRegistry.makeRowNumberCell(
+            let cell = cellRegistry.makeRowNumberCell(
                 in: tableView,
                 row: row,
                 pageOffset: paginationOffsetProvider(),
                 cachedRowCount: displayIDs?.count ?? tableRows.count,
                 visualState: visualState(for: row)
             )
+            /// The row number is the handle a reorder drag starts from, so it is where the reason
+            /// the drag is withheld belongs. Reused cells carry the last value, so clear it.
+            cell.toolTip = rowReorder.unavailableReason
+            return cell
         }
 
         guard DataGridAccessibility.isActive,

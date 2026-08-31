@@ -48,6 +48,30 @@ extension MainContentCoordinator {
         activeSheet = .sqlPreview
     }
 
+    /// Hands the rebuild script to a query tab so the user can read, edit and run it themselves.
+    ///
+    /// The rebuild reproduces the table from what the server will describe, so a table using
+    /// something the catalog queries do not reach is better rebuilt by hand from a script the user
+    /// owns than by a button that reports success.
+    func openColumnReorderScriptInEditor(_ request: ColumnReorderReviewRequest) {
+        let script = request.plan.statements
+            .map { $0.hasSuffix(";") ? $0 : $0 + ";" }
+            .joined(separator: "\n\n")
+        WindowManager.shared.openTab(
+            payload: EditorTabPayload(
+                connectionId: connectionId,
+                tabType: .query,
+                databaseName: browseDatabaseName,
+                schemaName: selectedTabScope?.schema,
+                initialQuery: script,
+                skipAutoExecute: true,
+                tabTitle: String(format: String(localized: "Reorder %@"), request.tableName)
+            )
+        )
+        columnReorderRequest = nil
+        activeSheet = nil
+    }
+
     /// Everything one press of Save is about to do, in execution order.
     ///
     /// Save and Preview SQL both read this, so what the user is shown is what runs. Each step

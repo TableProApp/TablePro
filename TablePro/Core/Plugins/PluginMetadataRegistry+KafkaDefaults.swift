@@ -27,7 +27,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#231F20",
                 queryLanguageName: "KafkaQL", editorLanguage: .custom("kafkaql"),
                 connectionMode: .network, supportsDatabaseSwitching: false,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: false,

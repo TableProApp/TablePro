@@ -1,0 +1,69 @@
+//
+//  ColumnReorderPolicyTests.swift
+//  TablePro
+//
+
+import Foundation
+@testable import TablePro
+import Testing
+
+@Suite("Column Reorder Policy")
+struct ColumnReorderPolicyTests {
+    private func resolve(
+        support: ColumnReorderSupport = .alter,
+        isColumnsTab: Bool = true,
+        canEditSchema: Bool = true,
+        hasStagedChanges: Bool = false
+    ) -> ColumnReorderAvailability {
+        ColumnReorderPolicy.resolve(
+            support: support,
+            engineName: "PostgreSQL",
+            isColumnsTab: isColumnsTab,
+            canEditSchema: canEditSchema,
+            hasStagedChanges: hasStagedChanges
+        )
+    }
+
+    @Test("A positional engine on a clean column list can reorder")
+    func alterEngineIsAvailable() {
+        #expect(resolve() == .available(.alter))
+    }
+
+    @Test("A rebuild engine is available too, and says so, because the cost is decided later")
+    func rebuildEngineIsAvailable() {
+        #expect(resolve(support: .rebuild) == .available(.rebuild))
+    }
+
+    @Test("An engine that cannot reorder names itself in the reason")
+    func unsupportedEngineExplainsItself() {
+        let availability = resolve(support: .unsupported)
+        #expect(!availability.isAvailable)
+        #expect(availability.unavailableReason?.contains("PostgreSQL") == true)
+    }
+
+    @Test("A list that has no order to change is not explained, only withheld")
+    func nonColumnTabIsNotApplicable() {
+        #expect(resolve(isColumnsTab: false) == .notApplicable)
+        #expect(resolve(isColumnsTab: false).unavailableReason == nil)
+    }
+
+    @Test("An engine whose structure is read-only is withheld before its reorder support is read")
+    func readOnlyStructureOutranksSupport() {
+        let availability = resolve(support: .alter, canEditSchema: false)
+        #expect(!availability.isAvailable)
+        #expect(availability.unavailableReason?.contains("PostgreSQL") == true)
+    }
+
+    @Test("Staged edits withhold the drag, because a reorder runs against the saved table")
+    func stagedChangesWithholdTheDrag() {
+        let availability = resolve(hasStagedChanges: true)
+        #expect(!availability.isAvailable)
+        #expect(availability.unavailableReason != nil)
+    }
+
+    @Test("Staged edits on an engine that cannot reorder report the engine, not the edits")
+    func unsupportedOutranksStagedChanges() {
+        let availability = resolve(support: .unsupported, hasStagedChanges: true)
+        #expect(availability.unavailableReason?.contains("PostgreSQL") == true)
+    }
+}

@@ -1034,6 +1034,39 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "ALTER TABLE \(oracleQualifiedTable(table)) DROP COLUMN \(quoteIdentifier(columnName))"
     }
 
+    /// Oracle has no positional clause, but making a column invisible and visible again moves it to
+    /// the end of the visible order, so any order is reachable by appending the right suffix.
+    ///
+    /// Measured against Oracle Free 23: the cycle works on the primary key, on an identity column
+    /// and on a virtual column; the rows, the default, the NOT NULL, the comment, the identity
+    /// sequence, the constraints, the indexes and the foreign keys pointing at the table all
+    /// survive it, and no data is read or written. Needs 12.1, where invisible columns arrived; an
+    /// older server rejects the statement and the error is reported as it is.
+    ///
+    /// The two halves of a cycle are separate statements because Oracle commits each DDL on its
+    /// own, so a column is invisible for the width of one statement. Cycling one column at a time
+    /// keeps that window as small as it can be.
+    func generateColumnReorderPlan(
+        table: String,
+        schema: String?,
+        columns: [PluginColumnDefinition],
+        desiredOrder: [String]
+    ) async throws -> PluginColumnReorderPlan? {
+        let qt = oracleQualifiedTable(table)
+        let currentOrder = try await fetchColumns(table: table, schema: schema).map(\.name)
+        let statements = PluginColumnReorderPlanner
+            .appendCycle(from: currentOrder, to: desiredOrder)
+            .flatMap { column -> [String] in
+                let quoted = quoteIdentifier(column)
+                return [
+                    "ALTER TABLE \(qt) MODIFY (\(quoted) INVISIBLE)",
+                    "ALTER TABLE \(qt) MODIFY (\(quoted) VISIBLE)"
+                ]
+            }
+        guard !statements.isEmpty else { return nil }
+        return PluginColumnReorderPlan(statements: statements, cost: .metadataOnly)
+    }
+
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
         oracleIndexDefinition(index, qualifiedTable: oracleQualifiedTable(table))
     }

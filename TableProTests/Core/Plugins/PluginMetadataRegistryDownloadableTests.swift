@@ -63,7 +63,6 @@ struct PluginMetadataRegistryDownloadableTests {
             supportsHealthMonitor: false, urlSchemes: ["thirdparty"], postConnectActions: [],
             brandColorHex: "#000000", queryLanguageName: "SQL", editorLanguage: .sql,
             connectionMode: .network, supportsDatabaseSwitching: true,
-            supportsColumnReorder: false,
             capabilities: .defaults, schema: .defaults, editor: .defaults, connection: .defaults
         )
         registry.register(snapshot: snapshot, forTypeId: typeId)

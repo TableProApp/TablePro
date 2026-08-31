@@ -27,7 +27,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#00ED63",
                 queryLanguageName: "MQL", editorLanguage: .javascript,
                 connectionMode: .network, supportsDatabaseSwitching: true,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: true,
@@ -122,7 +121,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#DC382D",
                 queryLanguageName: "Redis CLI", editorLanguage: .bash,
                 connectionMode: .network, supportsDatabaseSwitching: false,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: false,
@@ -242,7 +240,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#E34517",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
                     supportsImport: true,
@@ -323,7 +320,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#F37440",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: true,
@@ -413,7 +409,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#DD5F3B",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
                     supportsImport: false,
@@ -532,7 +527,7 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#C3160B",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: false,
-                supportsColumnReorder: false,
+                columnReorder: .alter,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
                     supportsImport: true,
@@ -591,7 +586,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#C60018",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: false,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
                     supportsImport: true,
@@ -654,7 +648,7 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#FFD100",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
-                supportsColumnReorder: false,
+                columnReorder: .alter,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: true,
@@ -707,7 +701,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#FFD900",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .apiOnly, supportsDatabaseSwitching: true,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
                     supportsImport: true,
@@ -759,7 +752,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#3F7D20",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .fileBased, supportsDatabaseSwitching: false,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: false,
@@ -849,7 +841,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#26A0D8",
                 queryLanguageName: "CQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: false,
@@ -913,7 +904,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#6B2EE3",
                 queryLanguageName: "CQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: false,
@@ -976,7 +966,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#419EDA",
                 queryLanguageName: "etcdctl", editorLanguage: .bash,
                 connectionMode: .network, supportsDatabaseSwitching: false,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: false,
@@ -1066,7 +1055,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#F6821F",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .apiOnly, supportsDatabaseSwitching: true,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: false,
@@ -1126,7 +1114,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#4FF8D2",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .apiOnly, supportsDatabaseSwitching: false,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: false,

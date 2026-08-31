@@ -44,7 +44,6 @@ struct SwitchDatabaseReconnectFailureTests {
             supportsHealthMonitor: false, urlSchemes: ["reconnectswitchfake"], postConnectActions: [],
             brandColorHex: "#000000", queryLanguageName: "SQL", editorLanguage: .sql,
             connectionMode: .network, supportsDatabaseSwitching: true,
-            supportsColumnReorder: false,
             capabilities: capabilities, schema: .defaults, editor: .defaults, connection: .defaults
         )
         PluginMetadataRegistry.shared.register(snapshot: snapshot, forTypeId: Self.typeId)

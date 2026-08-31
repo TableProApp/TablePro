@@ -37,6 +37,8 @@ struct DataGridView: NSViewRepresentable {
     var displayFormats: [ValueDisplayFormat?] = []
     var delegate: (any DataGridViewDelegate)?
     var layoutPersister: (any ColumnLayoutPersisting)?
+    /// Whether a row may be dragged to a new position, and why not when it may not.
+    var rowReorder: DataGridRowReorder = .disabled
 
     @Binding var selectedRowIndices: Set<Int>
     @Binding var sortState: SortState
@@ -143,8 +145,8 @@ struct DataGridView: NSViewRepresentable {
         coordinator.isRebuildingColumns = false
         coordinator.updateColumnPresentations(from: initialRows)
 
-        let hasMoveRow = delegate != nil
-        if hasMoveRow {
+        coordinator.rowReorder = rowReorder
+        if rowReorder.isEnabled {
             tableView.registerForDraggedTypes([NSPasteboard.PasteboardType("com.TablePro.rowDrag")])
             tableView.draggingDestinationFeedbackStyle = .gap
         }
@@ -201,7 +203,7 @@ struct DataGridView: NSViewRepresentable {
             displayFormats: displayFormats,
             configuration: configuration,
             isEditable: isEditable,
-            hasMoveDelegate: delegate != nil,
+            rowReorder: rowReorder,
             rowHeight: rowHeight,
             alternatingRows: alternatingRows,
             reloadVersion: changeManager.reloadVersion,
@@ -227,7 +229,7 @@ struct DataGridView: NSViewRepresentable {
                 columnCount: columnCount,
                 rowHeight: rowHeight,
                 alternatingRows: alternatingRows,
-                hasMoveDelegate: snapshot.hasMoveDelegate,
+                rowReorder: snapshot.rowReorder,
                 contentChanged: contentChanged,
                 columnComments: columnComments
             )
@@ -246,7 +248,7 @@ struct DataGridView: NSViewRepresentable {
         columnCount: Int,
         rowHeight: CGFloat,
         alternatingRows: Bool,
-        hasMoveDelegate: Bool,
+        rowReorder: DataGridRowReorder,
         contentChanged: Bool,
         columnComments: [String: String]
     ) {
@@ -261,12 +263,13 @@ struct DataGridView: NSViewRepresentable {
             }
         }
 
+        coordinator.rowReorder = rowReorder
         let rowDragType = NSPasteboard.PasteboardType("com.TablePro.rowDrag")
         let hasDragRegistered = tableView.registeredDraggedTypes.contains(rowDragType)
-        if hasMoveDelegate && !hasDragRegistered {
+        if rowReorder.isEnabled && !hasDragRegistered {
             tableView.registerForDraggedTypes([rowDragType])
             tableView.draggingDestinationFeedbackStyle = .gap
-        } else if !hasMoveDelegate && hasDragRegistered {
+        } else if !rowReorder.isEnabled && hasDragRegistered {
             let remaining = tableView.registeredDraggedTypes.filter { $0 != rowDragType }
             tableView.unregisterDraggedTypes()
             if !remaining.isEmpty {

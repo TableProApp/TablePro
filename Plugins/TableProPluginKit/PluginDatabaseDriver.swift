@@ -207,6 +207,25 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func generateRenameCheckConstraintSQL(table: String, from oldName: String, to newName: String) -> String?
     func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]?
     func generateMoveColumnSQL(table: String, column: PluginColumnDefinition, afterColumn: String?) -> String?
+
+    /// The statements that put `table`'s columns into `desiredOrder`, or nil where the engine
+    /// cannot reorder them.
+    ///
+    /// Supersedes `generateMoveColumnSQL`, which can only say "one `ALTER`, one column" and so
+    /// cannot express Oracle's invisible/visible cycle or the create-copy-swap a rebuild engine
+    /// needs. The old requirement stays published and defaulted: removing one breaks every plugin
+    /// whose witness table hard-references its default.
+    ///
+    /// `columns` is the table's current definitions in current order, so a driver that has to
+    /// restate a column keeps the charset and collation the app already resolved. Anything else a
+    /// rebuild needs, the driver queries for itself.
+    func generateColumnReorderPlan(
+        table: String,
+        schema: String?,
+        columns: [PluginColumnDefinition],
+        desiredOrder: [String]
+    ) async throws -> PluginColumnReorderPlan?
+
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String?
 
     // Definition SQL for clipboard copy (optional — return nil if not supported)
@@ -533,6 +552,14 @@ public extension PluginDatabaseDriver {
     func generateRenameCheckConstraintSQL(table: String, from oldName: String, to newName: String) -> String? { nil }
     func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? { nil }
     func generateMoveColumnSQL(table: String, column: PluginColumnDefinition, afterColumn: String?) -> String? { nil }
+
+    func generateColumnReorderPlan(
+        table: String,
+        schema: String?,
+        columns: [PluginColumnDefinition],
+        desiredOrder: [String]
+    ) async throws -> PluginColumnReorderPlan? { nil }
+
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? { nil }
 
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? { nil }

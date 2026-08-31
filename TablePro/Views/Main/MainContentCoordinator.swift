@@ -64,6 +64,7 @@ enum ActiveSheet: Identifiable {
     /// object browser may be pointed somewhere else by the time the sheet appears.
     case copyObjects(ObjectCopyLaunchRequest)
     case rewind
+    case columnReorderReview
 
     var id: String {
         switch self {
@@ -79,6 +80,7 @@ enum ActiveSheet: Identifiable {
         case .createDatabase: "createDatabase"
         case .copyObjects(let launch): "copyObjects-\(launch.id)"
         case .rewind: "rewind"
+        case .columnReorderReview: "columnReorderReview"
         }
     }
 }
@@ -345,6 +347,9 @@ final class MainContentCoordinator {
 
     /// What restoring the last save would do, once it has been planned against the live rows.
     internal var rewindPlan: RewindPlan?
+
+    /// The rebuild a column drag asked for, held while the user reads it.
+    internal var columnReorderRequest: ColumnReorderReviewRequest?
 
     /// Continuation for callers that need to await the result of a fire-and-forget save
     /// (e.g. save-then-close). Set before calling `saveChanges`, resumed by `executeCommitStatements`.

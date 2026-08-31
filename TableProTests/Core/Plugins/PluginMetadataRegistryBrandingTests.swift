@@ -46,7 +46,6 @@ struct PluginMetadataRegistryBrandingTests {
             supportsHealthMonitor: false, urlSchemes: ["brandtest"], postConnectActions: [],
             brandColorHex: brandColorHex, queryLanguageName: "Q", editorLanguage: .bash,
             connectionMode: .network, supportsDatabaseSwitching: false,
-            supportsColumnReorder: false,
             capabilities: .defaults, schema: .defaults, editor: .defaults,
             connection: PluginMetadataSnapshot.ConnectionConfig(
                 additionalConnectionFields: fields,

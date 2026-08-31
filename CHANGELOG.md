@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tab rows in Settings > General > Tabs, wrapping the strip instead of scrolling it. (#2438)
 - Autoscrolling while dragging a tab, so a tab can be moved past the run currently on screen. (#2438)
 - Move Tab to New Window on a tab's right-click menu, and by dragging a tab out of the strip. (#2438)
+- Column reorder by dragging on ClickHouse and Oracle. (#2479)
 
 ### Changed
 
@@ -24,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MongoDB editor diagnostics report JavaScript syntax errors rather than unsupported method names.
 - Editor tab presses handled by AppKit rather than SwiftUI gestures. (#2438)
 - Connection-first labels with the database or schema on a second line in the connections strip. (#2550)
+- Column reorder withheld, with the reason on the row number, where the engine cannot change column order. (#2479)
 
 ### Fixed
 

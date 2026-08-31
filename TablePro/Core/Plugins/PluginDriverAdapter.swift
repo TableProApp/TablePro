@@ -624,6 +624,23 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         pluginDriver.generateMoveColumnSQL(table: table, column: column, afterColumn: afterColumn)
     }
 
+    /// Routed to the session driver rather than through `withMetadataDriver`. A rebuild plan reads
+    /// the catalog of the database this session is on, and a pooled driver is a second connection
+    /// that an embedded engine answers from a different database entirely.
+    func generateColumnReorderPlan(
+        table: String,
+        schema: String?,
+        columns: [PluginColumnDefinition],
+        desiredOrder: [String]
+    ) async throws -> PluginColumnReorderPlan? {
+        try await pluginDriver.generateColumnReorderPlan(
+            table: table,
+            schema: schema,
+            columns: columns,
+            desiredOrder: desiredOrder
+        )
+    }
+
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
         pluginDriver.generateCreateTableSQL(definition: definition)
     }

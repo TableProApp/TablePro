@@ -531,9 +531,9 @@ extension PluginManager {
             .capabilities.supportsSOCKSProxy ?? true
     }
 
-    func supportsColumnReorder(for databaseType: DatabaseType) -> Bool {
+    func columnReorderSupport(for databaseType: DatabaseType) -> ColumnReorderSupport {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
-            .supportsColumnReorder ?? false
+            .columnReorder ?? .unsupported
     }
 
     func supportsDropDatabase(for databaseType: DatabaseType) -> Bool {

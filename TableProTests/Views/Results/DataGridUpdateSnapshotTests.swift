@@ -26,7 +26,7 @@ struct DataGridUpdateSnapshotTests {
             displayFormats: displayFormats,
             configuration: DataGridConfiguration(),
             isEditable: true,
-            hasMoveDelegate: false,
+            rowReorder: .disabled,
             rowHeight: 24,
             alternatingRows: true,
             reloadVersion: reloadVersion,

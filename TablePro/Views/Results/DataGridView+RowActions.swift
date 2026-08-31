@@ -282,10 +282,15 @@ extension TableViewCoordinator {
 
     private static let rowDragType = NSPasteboard.PasteboardType("com.TablePro.rowDrag")
 
+    /// Writes the reorder type only where a reorder can actually run. The text and HTML flavours
+    /// are written either way: dragging a row into another app is a copy, and it stays available on
+    /// an engine whose columns cannot move.
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
         guard delegate != nil else { return nil }
         let item = NSPasteboardItem()
-        item.setString(String(row), forType: Self.rowDragType)
+        if rowReorder.isEnabled {
+            item.setString(String(row), forType: Self.rowDragType)
+        }
 
         if let values = displayRow(at: row)?.values {
             let tableRows = tableRowsProvider()
@@ -310,7 +315,7 @@ extension TableViewCoordinator {
         proposedRow row: Int,
         proposedDropOperation dropOperation: NSTableView.DropOperation
     ) -> NSDragOperation {
-        guard delegate != nil else { return [] }
+        guard delegate != nil, rowReorder.isEnabled else { return [] }
         guard info.draggingSource as? NSTableView === tableView else { return [] }
         guard info.draggingPasteboard.availableType(from: [Self.rowDragType]) != nil else { return [] }
         guard dropOperation == .above else {
@@ -326,7 +331,7 @@ extension TableViewCoordinator {
         row: Int,
         dropOperation: NSTableView.DropOperation
     ) -> Bool {
-        guard let delegate else { return false }
+        guard let delegate, rowReorder.isEnabled else { return false }
         guard let item = info.draggingPasteboard.pasteboardItems?.first,
               let rowString = item.string(forType: Self.rowDragType),
               let fromRow = Int(rowString) else {

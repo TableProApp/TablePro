@@ -76,6 +76,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var displayCache: RowDisplayCache { displayState.cache }
     private var pendingScrollAnchorRow: Int?
     weak var delegate: (any DataGridViewDelegate)?
+    var rowReorder: DataGridRowReorder = .disabled
     weak var activeFKPreviewPopover: NSPopover?
     weak var activeCellEditorPopover: NSPopover?
     weak var activePoppedOutEditor: JSONViewerWindowController?

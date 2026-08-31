@@ -20,7 +20,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#FF00A0",
                 queryLanguageName: "SurrealQL", editorLanguage: .custom("surrealql"),
                 connectionMode: .network, supportsDatabaseSwitching: true,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
                     supportsImport: false,

@@ -18,7 +18,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#FEC514",
                 queryLanguageName: "Query DSL", editorLanguage: .javascript,
                 connectionMode: .network, supportsDatabaseSwitching: false,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: false,

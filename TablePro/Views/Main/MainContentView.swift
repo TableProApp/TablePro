@@ -295,6 +295,29 @@ struct MainContentView: View {
                     await coordinator.applyRewind()
                 }
             }
+        case .columnReorderReview:
+            if let request = coordinator.columnReorderRequest {
+                SQLReviewSheet(
+                    isPresented: dismissBinding,
+                    statements: request.plan.statements,
+                    databaseType: connection.type,
+                    warning: request.warning,
+                    primaryAction: request.isRunnable
+                        ? SQLReviewSheet.PrimaryAction(
+                            title: String(localized: "Rebuild Table"),
+                            isDestructive: true,
+                            perform: {
+                                await request.perform()
+                                coordinator.columnReorderRequest = nil
+                                coordinator.activeSheet = nil
+                            }
+                        )
+                        : nil,
+                    onOpenInEditor: {
+                        coordinator.openColumnReorderScriptInEditor(request)
+                    }
+                )
+            }
         }
     }
 

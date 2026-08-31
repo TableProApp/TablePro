@@ -827,6 +827,52 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "ALTER TABLE \(quoteIdentifier(table)) DROP COLUMN \(quoteIdentifier(columnName))"
     }
 
+    /// `ALTER TABLE … MODIFY COLUMN name type FIRST | AFTER other`.
+    ///
+    /// Measured against 26.8: the type is mandatory (`MODIFY COLUMN c AFTER b` is a syntax error),
+    /// and naming it alone is enough. `MODIFY COLUMN` changes only the properties the statement
+    /// spells out, so the default, comment, codec, TTL and the MATERIALIZED, ALIAS and EPHEMERAL
+    /// kinds all survive a move, and the statement rewrites metadata without starting a mutation.
+    /// Restating the full definition instead would rewrite a MATERIALIZED column as a DEFAULT one
+    /// and requote every expression default.
+    ///
+    /// The type comes from the server rather than from the caller's definition, because it has to
+    /// be the stored type down to the `Nullable(…)` wrapper and a round trip is cheaper than a
+    /// column that comes back with a different type than it went in with.
+    func generateColumnReorderPlan(
+        table: String,
+        schema: String?,
+        columns: [PluginColumnDefinition],
+        desiredOrder: [String]
+    ) async throws -> PluginColumnReorderPlan? {
+        let storedTypes = try await fetchStoredColumnTypes(table: table)
+        let currentOrder = storedTypes.map(\.name)
+        let statements = PluginColumnReorderPlanner
+            .moves(from: currentOrder, to: desiredOrder)
+            .compactMap { move -> String? in
+                guard let type = storedTypes.first(where: { $0.name == move.column })?.type else { return nil }
+                let position = move.afterColumn.map { "AFTER \(quoteIdentifier($0))" } ?? "FIRST"
+                return "ALTER TABLE \(quoteIdentifier(table)) "
+                    + "MODIFY COLUMN \(quoteIdentifier(move.column)) \(type) \(position)"
+            }
+        guard !statements.isEmpty else { return nil }
+        return PluginColumnReorderPlan(statements: statements, cost: .metadataOnly)
+    }
+
+    private func fetchStoredColumnTypes(table: String) async throws -> [(name: String, type: String)] {
+        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
+        let result = try await execute(query: """
+            SELECT name, type
+            FROM system.columns
+            WHERE database = currentDatabase() AND table = '\(escapedTable)'
+            ORDER BY position
+            """)
+        return result.rows.compactMap { row in
+            guard let name = row[safe: 0]?.asText, let type = row[safe: 1]?.asText else { return nil }
+            return (name, type)
+        }
+    }
+
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
         let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
         let indexType = index.indexType ?? "minmax"

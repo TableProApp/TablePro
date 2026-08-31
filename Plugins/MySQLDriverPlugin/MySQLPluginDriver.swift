@@ -958,6 +958,25 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return "ALTER TABLE \(tableName) MODIFY COLUMN \(colName) \(def) \(position)"
     }
 
+    /// `MODIFY COLUMN` replaces the whole definition, so every move restates the column in full.
+    /// Restating only the type is what drops charset, collation and `ON UPDATE`.
+    func generateColumnReorderPlan(
+        table: String,
+        schema: String?,
+        columns: [PluginColumnDefinition],
+        desiredOrder: [String]
+    ) async throws -> PluginColumnReorderPlan? {
+        let byName = Dictionary(columns.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+        let statements = PluginColumnReorderPlanner
+            .moves(from: columns.map(\.name), to: desiredOrder)
+            .compactMap { move -> String? in
+                guard let column = byName[move.column] else { return nil }
+                return generateMoveColumnSQL(table: table, column: column, afterColumn: move.afterColumn)
+            }
+        guard !statements.isEmpty else { return nil }
+        return PluginColumnReorderPlan(statements: statements, cost: .metadataOnly)
+    }
+
     // MARK: - View Templates
 
     func createViewTemplate() -> String? {
