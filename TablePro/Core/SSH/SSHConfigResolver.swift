@@ -117,9 +117,18 @@ enum SSHConfigResolver {
 
         let effectivePort = formPort ?? merged.port ?? 22
         let effectiveUser = !formUser.isEmpty ? formUser : (merged.user ?? "")
-        let effectiveAgentSocket = !formAgentSocket.isEmpty
-            ? formAgentSocket
-            : (merged.identityAgent ?? "")
+        let effectiveAgentSocket: String
+        let agentSocketOrigin: AgentSocketOrigin
+        if !formAgentSocket.isEmpty {
+            effectiveAgentSocket = formAgentSocket
+            agentSocketOrigin = .agentSocketSetting
+        } else if let identityAgent = merged.identityAgent, !identityAgent.isEmpty {
+            effectiveAgentSocket = identityAgent
+            agentSocketOrigin = .identityAgentDirective
+        } else {
+            effectiveAgentSocket = ""
+            agentSocketOrigin = .environment
+        }
 
         let effectiveIdentityFiles: [String]
         if !formIdentityFile.isEmpty {
@@ -150,6 +159,7 @@ enum SSHConfigResolver {
             username: effectiveUser,
             identityFiles: effectiveIdentityFiles,
             agentSocketPath: effectiveAgentSocket,
+            agentSocketOrigin: agentSocketOrigin,
             identitiesOnly: merged.identitiesOnly ?? false,
             useKeychain: merged.useKeychain ?? true,
             addKeysToAgent: merged.addKeysToAgent ?? false,

@@ -159,7 +159,7 @@ struct SSHProfileEditorView: View {
                         prompt: Text("/path/to/agent.sock")
                     )
                 }
-                Text("Keys are provided by the SSH agent (e.g. 1Password, ssh-agent).")
+                Text(agentSocketOption.explanation)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else if authMethod == .keyboardInteractive {

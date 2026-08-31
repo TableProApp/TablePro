@@ -11,15 +11,63 @@ import os
 /// Why an SSH authentication attempt failed. Drives the user-facing error string so the
 /// alert points at the actual cause (wrong OTP, missing key, agent rejection) instead of
 /// the catch-all "credentials or private key" message.
-enum AuthFailureReason: Sendable, Equatable, CaseIterable {
+enum AuthFailureReason: Sendable, Hashable, CaseIterable {
     case password
     case verificationCode
     case privateKey
+    case agentUnavailable(AgentSocketOrigin)
+    case agentNoIdentities(AgentSocketOrigin)
     case agentRejected
     case passwordlessRejected
     case keyboardInteractive
+    case methodUnavailable
     case cancelled
     case generic
+
+    /// Hand-written because the two agent cases carry the socket source they are about, which
+    /// stops `CaseIterable` synthesising this.
+    static var allCases: [AuthFailureReason] {
+        [.password, .verificationCode, .privateKey]
+            + AgentSocketOrigin.allCases.map(AuthFailureReason.agentUnavailable)
+            + AgentSocketOrigin.allCases.map(AuthFailureReason.agentNoIdentities)
+            + [.agentRejected, .passwordlessRejected, .keyboardInteractive, .methodUnavailable,
+               .cancelled, .generic]
+    }
+}
+
+extension AuthFailureReason {
+    /// True when the step never exchanged a credential with the server, so its failure says
+    /// nothing about why authentication was refused. `CompositeAuthenticator` keeps an earlier,
+    /// real failure rather than letting one of these displace it.
+    var describesAnAttempt: Bool {
+        self != .methodUnavailable
+    }
+}
+
+private extension AgentSocketOrigin {
+    /// Names the socket the connect actually used, and the one place that names it. A jump hop
+    /// has no Agent Socket control of its own, and a shell-launched app can inherit an
+    /// `SSH_AUTH_SOCK` that is not the agent macOS runs, so neither can be assumed.
+    var whereTheSocketCameFrom: String {
+        switch self {
+        case .agentSocketSetting:
+            return String(localized: "the Agent Socket setting")
+        case .identityAgentDirective:
+            return String(localized: "the IdentityAgent line for this host in ~/.ssh/config")
+        case .environment:
+            return String(localized: "SSH_AUTH_SOCK")
+        }
+    }
+
+    /// How to put a key in front of that particular agent.
+    var howToLoadAKey: String {
+        switch self {
+        case .agentSocketSetting, .identityAgentDirective:
+            return String(localized: "Unlock the app that runs it and add the key there.")
+        case .environment:
+            return String(localized: "Run ssh-add to load one, or point Agent Socket at another agent.")
+        }
+    }
 }
 
 /// Error types for SSH tunnel operations
@@ -51,12 +99,25 @@ enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
                 return String(localized: "Verification code rejected. Get a new code from your authenticator app and try again.")
             case .privateKey:
                 return String(localized: "SSH private key rejected. Check the key file or passphrase.")
+            case .agentUnavailable(let origin):
+                return String(
+                    format: String(localized: "No SSH agent answered on the socket from %@. Check that agent is running."),
+                    origin.whereTheSocketCameFrom
+                )
+            case .agentNoIdentities(let origin):
+                return String(
+                    format: String(localized: "The SSH agent from %@ holds no keys. %@"),
+                    origin.whereTheSocketCameFrom,
+                    origin.howToLoadAKey
+                )
             case .agentRejected:
                 return String(localized: "SSH agent did not authenticate. Run ssh-add -l to check loaded keys.")
             case .passwordlessRejected:
                 return String(localized: "The SSH server did not accept passwordless authentication. Choose Password, Private Key, or SSH Agent.")
             case .keyboardInteractive:
                 return String(localized: "SSH verification rejected. Check your response and try again.")
+            case .methodUnavailable:
+                return String(localized: "The SSH server does not offer that authentication method.")
             case .cancelled:
                 return String(localized: "SSH authentication cancelled.")
             case .generic:

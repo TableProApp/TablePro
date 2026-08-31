@@ -12,6 +12,7 @@ internal struct AgentAuthenticator: SSHAuthenticator {
     private static let logger = Logger(subsystem: "com.TablePro", category: "AgentAuthenticator")
 
     let socketPath: String?
+    let socketOrigin: AgentSocketOrigin
 
     /// Resolve SSH_AUTH_SOCK via launchctl for GUI apps that don't inherit shell env.
     private static func resolveSocketViaLaunchctl() -> String? {
@@ -51,7 +52,7 @@ internal struct AgentAuthenticator: SSHAuthenticator {
         }
 
         guard let agent = libssh2_agent_init(session) else {
-            throw SSHTunnelError.tunnelCreationFailed("Failed to initialize SSH agent")
+            throw SSHTunnelError.authenticationFailed(reason: .agentUnavailable(socketOrigin))
         }
 
         defer {
@@ -71,17 +72,18 @@ internal struct AgentAuthenticator: SSHAuthenticator {
         var rc = libssh2_agent_connect(agent)
         guard rc == 0 else {
             Self.logger.error("Failed to connect to SSH agent (rc=\(rc))")
-            throw SSHTunnelError.tunnelCreationFailed("Failed to connect to SSH agent")
+            throw SSHTunnelError.authenticationFailed(reason: .agentUnavailable(socketOrigin))
         }
 
         rc = libssh2_agent_list_identities(agent)
         guard rc == 0 else {
             Self.logger.error("Failed to list SSH agent identities (rc=\(rc))")
-            throw SSHTunnelError.tunnelCreationFailed("Failed to list SSH agent identities")
+            throw SSHTunnelError.authenticationFailed(reason: .agentUnavailable(socketOrigin))
         }
 
         var previousIdentity: UnsafeMutablePointer<libssh2_agent_publickey>?
         var currentIdentity: UnsafeMutablePointer<libssh2_agent_publickey>?
+        var offeredCount = 0
 
         while true {
             rc = libssh2_agent_get_identity(agent, &currentIdentity, previousIdentity)
@@ -92,13 +94,14 @@ internal struct AgentAuthenticator: SSHAuthenticator {
             }
             if rc < 0 {
                 Self.logger.error("Failed to get SSH agent identity (rc=\(rc))")
-                throw SSHTunnelError.tunnelCreationFailed("Failed to get SSH agent identity")
+                throw SSHTunnelError.authenticationFailed(reason: .agentUnavailable(socketOrigin))
             }
 
             guard let identity = currentIdentity else {
                 break
             }
 
+            offeredCount += 1
             let authRc = libssh2_agent_userauth(agent, username, identity)
             if authRc == 0 {
                 Self.logger.info("SSH agent authentication succeeded")
@@ -108,7 +111,14 @@ internal struct AgentAuthenticator: SSHAuthenticator {
             previousIdentity = identity
         }
 
-        Self.logger.error("SSH agent authentication failed: no identity accepted")
+        // An agent that answered but offered nothing is a locked or empty agent, which the user
+        // fixes somewhere entirely different from an agent whose keys the server refused.
+        guard offeredCount > 0 else {
+            Self.logger.error("SSH agent offered no identities")
+            throw SSHTunnelError.authenticationFailed(reason: .agentNoIdentities(socketOrigin))
+        }
+
+        Self.logger.error("SSH agent authentication failed: none of \(offeredCount) identities accepted")
         throw SSHTunnelError.authenticationFailed(reason: .agentRejected)
     }
 }
