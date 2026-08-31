@@ -60,6 +60,22 @@ enum SSHAgentSocketOption: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Says which agent the choice actually reaches. `SSH_AUTH_SOCK` is the ssh-agent macOS
+    /// starts for the login session, so it never finds 1Password however the shell is set up,
+    /// and the connect used to fail with a passphrase prompt for an unrelated key (#2583).
+    var explanation: String {
+        switch self {
+        case .systemDefault:
+            return String(
+                localized: "The ssh-agent macOS runs, from SSH_AUTH_SOCK. 1Password and Secretive listen elsewhere."
+            )
+        case .onePassword:
+            return String(localized: "1Password's own socket. 1Password has to be running and unlocked.")
+        case .custom:
+            return String(localized: "The socket of another agent, such as Secretive or an ssh-agent you started.")
+        }
+    }
+
     init(socketPath: String) {
         let trimmedPath = socketPath.trimmingCharacters(in: .whitespacesAndNewlines)
 

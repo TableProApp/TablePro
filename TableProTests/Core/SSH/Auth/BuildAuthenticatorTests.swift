@@ -26,7 +26,8 @@ struct BuildAuthenticatorTests {
         host: String = "ssh.example.com",
         username: String = "alice",
         port: Int = 22,
-        identityFiles: [String] = []
+        identityFiles: [String] = [],
+        agentSocketOrigin: AgentSocketOrigin = .environment
     ) -> ResolvedSSHTarget {
         ResolvedSSHTarget(
             originalHost: host,
@@ -35,6 +36,7 @@ struct BuildAuthenticatorTests {
             username: username,
             identityFiles: identityFiles,
             agentSocketPath: "",
+            agentSocketOrigin: agentSocketOrigin,
             identitiesOnly: false,
             useKeychain: false,
             addKeysToAgent: false,
@@ -149,6 +151,47 @@ struct BuildAuthenticatorTests {
         #expect(composite.authenticators.first is AgentAuthenticator)
         let kbdint = try #require(composite.authenticators.last as? KeyboardInteractiveAuthenticator)
         #expect(kbdint.password == nil)
+    }
+
+    @Test("SSH agent auth is the agent and a second factor, nothing else (#2583)")
+    func sshAgentChainHoldsNoKeyFile() throws {
+        let authenticator = try LibSSH2TunnelFactory.buildAuthenticator(
+            config: config(authMethod: .sshAgent, totpMode: .none),
+            resolved: resolved(),
+            credentials: credentials()
+        )
+        let composite = try #require(authenticator as? CompositeAuthenticator)
+
+        #expect(composite.authenticators.count == 2)
+        #expect(composite.authenticators.first is AgentAuthenticator)
+        #expect(composite.authenticators.last is KeyboardInteractiveAuthenticator)
+    }
+
+    @Test("SSH agent auth never falls back to an identity file from ~/.ssh/config (#2583)")
+    func sshAgentIgnoresResolvedIdentityFiles() throws {
+        let authenticator = try LibSSH2TunnelFactory.buildAuthenticator(
+            config: config(authMethod: .sshAgent, totpMode: .none),
+            resolved: resolved(identityFiles: ["/home/alice/.ssh/id_ed25519", "/home/alice/.ssh/id_rsa"]),
+            credentials: credentials()
+        )
+        let composite = try #require(authenticator as? CompositeAuthenticator)
+
+        #expect(composite.authenticators.count == 2)
+        #expect(composite.authenticators.first is AgentAuthenticator)
+        #expect(composite.authenticators.last is KeyboardInteractiveAuthenticator)
+    }
+
+    @Test("Private key auth still tries every resolved identity file")
+    func privateKeyKeepsEveryIdentityFile() throws {
+        let authenticator = try LibSSH2TunnelFactory.buildAuthenticator(
+            config: config(authMethod: .privateKey, totpMode: .none),
+            resolved: resolved(identityFiles: ["/home/alice/.ssh/id_ed25519", "/home/alice/.ssh/id_rsa"]),
+            credentials: credentials()
+        )
+        let composite = try #require(authenticator as? CompositeAuthenticator)
+
+        #expect(composite.authenticators.count == 3)
+        #expect(composite.authenticators.last is KeyboardInteractiveAuthenticator)
     }
 
     @Test("None auth method returns a NoneAuthenticator")

@@ -26,7 +26,7 @@ flowchart LR
     Back on **General**, `localhost` reaches a database on the SSH server itself. One on a unix socket needs [Socket Path](#forwarding-to-a-unix-socket) instead.
   </Step>
   <Step title="Click Test Connection">
-    A wrong host or a blocked forward names the real reason instead of timing out. [Troubleshooting](#troubleshooting) has the three the SSH side reports.
+    A wrong host, a blocked forward, or an agent nothing answered on names the real reason instead of timing out. [Troubleshooting](#troubleshooting) has the messages the SSH side reports.
   </Step>
 </Steps>
 
@@ -45,7 +45,7 @@ There is no **SSH Tunnel** pane on SQLite, PGlite, libSQL, Beancount, BigQuery, 
 |---|---|
 | **Password** | The SSH password. Prefer a key on anything production |
 | **Private Key** | **Key File**, with **Browse** to pick one, and **Passphrase** if the key is encrypted. Leaving **Key File** empty auto-detects from `~/.ssh/config` and the default key locations |
-| **SSH Agent** | **Agent Socket**: **SSH_AUTH_SOCK**, **1Password** (its socket at `~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock`), or **Custom Path** for Secretive or your own `ssh-agent`. Signing stays in the agent; the key is never read |
+| **SSH Agent** | **Agent Socket**: **SSH_AUTH_SOCK** for the `ssh-agent` macOS runs, **1Password** for its socket at `~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock`, or **Custom Path** for Secretive or your own. Signing stays in the agent; the key is never read, and no key file is tried if the agent refuses |
 | **Keyboard Interactive** | The SSH password, sent through SSH's challenge-response. Use it when the server rejects plain password auth, common with PAM |
 | **None** | Nothing, for a server that authenticates the connection itself such as a [Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh) host. A server that does want credentials fails the connect with a message naming the other methods |
 
@@ -121,6 +121,22 @@ The destination took the connection and never answered, which usually means a fi
 ### "The SSH server would not forward the socket …"
 
 The socket path does not exist on the server, or `sshd_config` sets `AllowStreamLocalForwarding no`. That is a separate setting from `AllowTcpForwarding`.
+
+### "No SSH agent answered on the socket from …"
+
+Nothing is listening where that socket points, and the message names which of the three set it: **Agent Socket** on the SSH Tunnel pane, an `IdentityAgent` line for the host in `~/.ssh/config`, or `SSH_AUTH_SOCK`. Change it in the place the message names.
+
+`SSH_AUTH_SOCK` is the one that catches people out. An app launched from Finder gets it from launchd, which means the `ssh-agent` macOS runs, whatever a shell profile exports. 1Password and Secretive are reached by naming their own socket: switch **Agent Socket** to **1Password**, or to **Custom Path**.
+
+A jump host has no **Agent Socket** field of its own, so its agent comes from `IdentityAgent` or `SSH_AUTH_SOCK`.
+
+### "The SSH agent from … holds no keys."
+
+The agent answered and offered nothing. 1Password serves keys only while it is running and unlocked, and Secretive only while its agent is loaded; unlock it and add the key there. `ssh-add` loads keys into the `SSH_AUTH_SOCK` agent alone, so it is the fix only when that is the socket in the message.
+
+### "SSH agent did not authenticate. …"
+
+The agent offered keys and the server accepted none of them. Check the public key is in `~/.ssh/authorized_keys` on the server for the **SSH User** you filled in, and that the key you expect is in the agent rather than only on disk.
 
 ### The tunnel connects and the database refuses the login
 

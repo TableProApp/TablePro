@@ -35,7 +35,9 @@ internal enum LibSSH2TunnelFactory {
 
     // MARK: - Global Init
 
-    private static let initialized: Bool = {
+    /// libssh2's own header says `libssh2_init` uses global state and must not be called
+    /// concurrently, so every entry point in the process goes through this one lazy static.
+    internal static let initialized: Bool = {
         libssh2_init(0)
         return true
     }()
@@ -501,8 +503,7 @@ internal enum LibSSH2TunnelFactory {
                 buildKeyFileAuthenticator(
                     keyPath: keyPath,
                     providedPassphrase: credentials.keyPassphrase,
-                    resolved: resolved,
-                    canPrompt: true
+                    resolved: resolved
                 )
             }
             authenticators.append(KeyboardInteractiveAuthenticator(
@@ -513,28 +514,28 @@ internal enum LibSSH2TunnelFactory {
             return CompositeAuthenticator(authenticators: authenticators)
 
         case .sshAgent:
+            // The agent is the credential, so there is no key-file fallback: authenticating with a
+            // key the user never chose put TablePro's own passphrase prompt over an agent that had
+            // simply not been reached (#2583). Keyboard-interactive stays, being a second factor the
+            // same server asked for rather than another credential.
             let socketPath: String? = resolved.agentSocketPath.isEmpty
                 ? nil
                 : SSHPathUtilities.expandTilde(resolved.agentSocketPath)
 
-            var authenticators: [any SSHAuthenticator] = [AgentAuthenticator(socketPath: socketPath)]
-
-            for keyPath in effectiveKeyPaths(for: resolved) {
-                authenticators.append(buildKeyFileAuthenticator(
-                    keyPath: keyPath,
-                    providedPassphrase: credentials.keyPassphrase,
-                    resolved: resolved,
-                    canPrompt: true
-                ))
-            }
-
-            authenticators.append(KeyboardInteractiveAuthenticator(
-                password: nil,
-                totpProvider: buildTOTPProvider(config: config, credentials: credentials),
-                promptProvider: promptProvider
-            ))
-
-            return CompositeAuthenticator(authenticators: authenticators)
+            return CompositeAuthenticator(
+                authenticators: [
+                    AgentAuthenticator(socketPath: socketPath, socketOrigin: resolved.agentSocketOrigin),
+                    KeyboardInteractiveAuthenticator(
+                        password: nil,
+                        totpProvider: buildTOTPProvider(config: config, credentials: credentials),
+                        promptProvider: promptProvider
+                    ),
+                ],
+                endsChainOn: Set(
+                    AgentSocketOrigin.allCases.map(AuthFailureReason.agentUnavailable)
+                        + AgentSocketOrigin.allCases.map(AuthFailureReason.agentNoIdentities)
+                )
+            )
 
         case .keyboardInteractive:
             return KeyboardInteractiveAuthenticator(
@@ -562,19 +563,16 @@ internal enum LibSSH2TunnelFactory {
             .filter { FileManager.default.isReadableFile(atPath: $0) }
     }
 
-    /// Passphrase resolution is deferred to auth time (not build time) so
-    /// that, when this authenticator is used as an agent fallback, the user
-    /// is only prompted if the agent actually fails.
+    /// Passphrase resolution is deferred to auth time (not build time) so that a key later in
+    /// the chain only prompts once the ones before it have actually been refused.
     private static func buildKeyFileAuthenticator(
         keyPath: String,
         providedPassphrase: String?,
-        resolved: ResolvedSSHTarget,
-        canPrompt: Bool
+        resolved: ResolvedSSHTarget
     ) -> any SSHAuthenticator {
         KeyFileAuthenticator(
             keyPath: keyPath,
             providedPassphrase: providedPassphrase,
-            canPrompt: canPrompt,
             useKeychain: resolved.useKeychain,
             addKeysToAgent: resolved.addKeysToAgent
         )
@@ -586,7 +584,6 @@ internal enum LibSSH2TunnelFactory {
     private struct KeyFileAuthenticator: SSHAuthenticator {
         let keyPath: String
         let providedPassphrase: String?
-        let canPrompt: Bool
         let useKeychain: Bool
         let addKeysToAgent: Bool
 
@@ -617,9 +614,7 @@ internal enum LibSSH2TunnelFactory {
                 }
             }
 
-            // 2. Prompt the user if allowed (key is encrypted, no stored passphrase)
-            guard canPrompt else { throw SSHTunnelError.authenticationFailed(reason: .privateKey) }
-
+            // 2. Prompt the user (key is encrypted, no stored passphrase)
             let provider = PromptPassphraseProvider(keyPath: expandedPath)
             guard let promptResult = provider.providePassphrase() else {
                 throw SSHTunnelError.authenticationFailed(reason: .privateKey)
@@ -668,7 +663,6 @@ internal enum LibSSH2TunnelFactory {
                 KeyFileAuthenticator(
                     keyPath: path,
                     providedPassphrase: nil,
-                    canPrompt: true,
                     useKeychain: resolved.useKeychain,
                     addKeysToAgent: resolved.addKeysToAgent
                 )
@@ -678,12 +672,11 @@ internal enum LibSSH2TunnelFactory {
                 : CompositeAuthenticator(authenticators: authenticators)
         case .sshAgent:
             let socketPath: String? = resolved.agentSocketPath.isEmpty ? nil : resolved.agentSocketPath
-            let agent = AgentAuthenticator(socketPath: socketPath)
+            let agent = AgentAuthenticator(socketPath: socketPath, socketOrigin: resolved.agentSocketOrigin)
             if !jumpHost.privateKeyPath.isEmpty {
                 let keyAuth = KeyFileAuthenticator(
                     keyPath: jumpHost.privateKeyPath,
                     providedPassphrase: nil,
-                    canPrompt: true,
                     useKeychain: resolved.useKeychain,
                     addKeysToAgent: resolved.addKeysToAgent
                 )

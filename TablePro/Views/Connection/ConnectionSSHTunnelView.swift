@@ -194,7 +194,7 @@ struct ConnectionSSHTunnelView: View {
                             prompt: Text("/path/to/agent.sock")
                         )
                     }
-                    Text("Keys are provided by the SSH agent (e.g. 1Password, ssh-agent).")
+                    Text(sshState.agentSocketOption.explanation)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else if sshState.authMethod == .keyboardInteractive {
