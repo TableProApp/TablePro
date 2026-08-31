@@ -730,6 +730,26 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "ALTER TABLE \(quoteIdentifier(table)) DROP COLUMN \(quoteIdentifier(columnName))"
     }
 
+    /// SQLite has no positional `ALTER`, so the order changes by rebuilding the table, using the
+    /// shared recipe every SQLite-derived driver follows.
+    ///
+    /// Not run by TablePro. The rebuild holds one transaction across several statements and this
+    /// driver's transport gives no guarantee that they reach the same session, so the script is
+    /// handed over for the user to run where they can see it through.
+    func generateColumnReorderPlan(
+        table: String,
+        schema: String?,
+        columns: [PluginColumnDefinition],
+        desiredOrder: [String]
+    ) async throws -> PluginColumnReorderPlan? {
+        try await SQLiteColumnReorderPlanner.plan(
+            tableName: table,
+            desiredOrder: desiredOrder,
+            isRunnable: false,
+            execute: { try await self.execute(query: $0) }
+        )
+    }
+
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
         let uniqueStr = index.isUnique ? "UNIQUE " : ""
         let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")

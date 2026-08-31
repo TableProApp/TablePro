@@ -44,7 +44,18 @@ Add a column with **+** at the right of the status bar or `Cmd+Shift+N`. Select 
 
 Flag **Primary Key** on one column, or several for a composite key in one `PRIMARY KEY (col1, col2)` clause. On an existing table that becomes a drop of the old constraint followed by an add.
 
-Drag a column row to reorder it (MySQL and MariaDB only). That one runs immediately as `ALTER TABLE … MODIFY COLUMN … AFTER` and goes to query history rather than the queue. Dragging is off while unsaved changes exist.
+Drag a column row to reorder it. Dragging is off while unsaved changes exist, and off entirely on an engine that cannot change column order, where the row number carries a tooltip saying why.
+
+What the drag does depends on the engine:
+
+| Engine | What happens |
+|--------|--------------|
+| MySQL, MariaDB, ClickHouse | Runs `ALTER TABLE … MODIFY COLUMN … FIRST \| AFTER` straight away. No rows are read or written |
+| Oracle | Runs a pair of `MODIFY (col INVISIBLE)` and `MODIFY (col VISIBLE)` statements per column that has to move, which appends it to the end of the order. Needs Oracle 12.1. No rows are read or written |
+| SQLite | Shows the rebuild script, and runs it when you confirm. The table is recreated in the wanted order, the rows are copied, and the indexes and triggers are put back |
+| PostgreSQL, libSQL, Turso, Cloudflare D1 | Shows the rebuild script for you to read and run. TablePro does not run it: the script ends in `DROP TABLE`, and what it cannot carry over is listed above it |
+
+Everything that runs goes to query history rather than the change queue.
 
 ## Indexes tab
 

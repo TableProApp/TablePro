@@ -1217,6 +1217,26 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "ALTER TABLE \(quoteIdentifier(table)) DROP COLUMN \(quoteIdentifier(columnName))"
     }
 
+    /// SQLite has no positional `ALTER`, so the order changes by rebuilding the table.
+    ///
+    /// The new table is written by moving the original column definitions as text inside the
+    /// statement SQLite stored, so a `CHECK`, a `COLLATE`, a `GENERATED ALWAYS AS` and a `DEFAULT`
+    /// with a comma in it all come through untouched. Re-rendering them from `PRAGMA table_info`
+    /// would lose every one, because the pragma does not report them.
+    func generateColumnReorderPlan(
+        table: String,
+        schema: String?,
+        columns: [PluginColumnDefinition],
+        desiredOrder: [String]
+    ) async throws -> PluginColumnReorderPlan? {
+        try await SQLiteColumnReorderPlanner.plan(
+            tableName: table,
+            desiredOrder: desiredOrder,
+            isRunnable: true,
+            execute: { try await self.execute(query: $0) }
+        )
+    }
+
     /// ADD/DROP CONSTRAINT arrived in SQLite 3.53.0. Returning nil below that version makes
     /// `SchemaStatementGenerator` refuse the change with "Unsupported schema operation" rather than
     /// sending a statement the linked library cannot parse.

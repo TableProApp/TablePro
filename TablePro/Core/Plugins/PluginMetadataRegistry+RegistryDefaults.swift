@@ -1055,6 +1055,7 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#F6821F",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .apiOnly, supportsDatabaseSwitching: true,
+                columnReorder: .rebuild,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: false,
@@ -1114,6 +1115,7 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#4FF8D2",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .apiOnly, supportsDatabaseSwitching: false,
+                columnReorder: .rebuild,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: false,
