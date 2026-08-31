@@ -59,4 +59,25 @@ struct ColumnLayoutSyncTests {
     func categoryPrefix() {
         #expect(FileColumnLayoutPersister.syncCategory(for: "abc").hasPrefix(FileColumnLayoutPersister.syncCategoryPrefix))
     }
+
+    /// A SQLite database name is a file path, and the storage key percent-encodes every character
+    /// that is not alphanumeric, so a wrangler path takes the record name past what CloudKit
+    /// accepts. `CKRecord.ID(recordName:)` raised there, and the app crashed seconds later from an
+    /// unrelated call site, on every launch (#2575).
+    @Test("A long SQLite path still yields a record name CloudKit accepts")
+    func longSQLitePathYieldsAcceptableRecordName() {
+        let path = "/Users/example/projects/acme/api/.wrangler/state/v3/d1"
+            + "/miniflare-D1DatabaseObject/" + String(repeating: "f", count: 64) + ".sqlite"
+        let tableKey = ColumnLayoutTableKey(
+            connectionId: UUID(),
+            databaseName: path,
+            schemaName: nil,
+            tableName: "d1_migrations"
+        )
+        let category = FileColumnLayoutPersister.syncCategory(for: tableKey.storageKey)
+
+        #expect((("Settings_" + category) as NSString).length > SyncRecordName.maximumLength)
+        #expect((SyncRecordType.settings.recordName(for: category) as NSString).length
+            <= SyncRecordName.maximumLength)
+    }
 }

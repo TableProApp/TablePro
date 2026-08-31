@@ -391,19 +391,20 @@ final class SyncCoordinator {
 
         guard !recordsToSave.isEmpty || !uniqueDeletions.isEmpty else { return }
 
+        let identities = SyncRecordMapper.identities(for: pushedLocalIds(), in: zoneID)
         let outcome = try await engine.push(records: recordsToSave, deletions: uniqueDeletions)
 
         recordCache.store(Array(outcome.savedRecords.values))
         recordCache.remove(Array(outcome.deletedRecordIDs))
 
         for recordID in outcome.savedRecords.keys {
-            guard let parsed = SyncRecordMapper.parse(recordName: recordID.recordName) else { continue }
-            changeTracker.clearDirty(parsed.type, id: parsed.id)
+            guard let identity = identities[recordID] else { continue }
+            changeTracker.clearDirty(identity.type, id: identity.id)
         }
 
         for recordID in outcome.deletedRecordIDs {
-            guard let parsed = SyncRecordMapper.parse(recordName: recordID.recordName) else { continue }
-            metadataStorage.removeTombstone(parsed.id, type: parsed.type)
+            guard let identity = identities[recordID] else { continue }
+            metadataStorage.removeTombstone(identity.id, type: identity.type)
         }
 
         let savedCount = outcome.savedRecords.count
@@ -415,6 +416,20 @@ final class SyncCoordinator {
 
         guard let firstFailure = outcome.failures.values.first else { return }
         throw SyncError.pushRejected(count: outcome.failures.count, detail: firstFailure.message)
+    }
+
+    /// Every local identifier this push can have sent. `SyncChangeTracker` is not isolated to this
+    /// actor, so the sets can move under an await; a record whose identifier is missing from the
+    /// snapshot is left dirty and pushed again rather than cleared against the wrong entry.
+    private func pushedLocalIds() -> [SyncRecordType: Set<String>] {
+        var localIds: [SyncRecordType: Set<String>] = [:]
+        for type in SyncRecordType.allCases {
+            let ids = changeTracker.dirtyRecords(for: type)
+                .union(metadataStorage.tombstones(for: type).map(\.id))
+            guard !ids.isEmpty else { continue }
+            localIds[type] = ids
+        }
+        return localIds
     }
 
     // MARK: - Pull

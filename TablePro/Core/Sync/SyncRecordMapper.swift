@@ -45,6 +45,23 @@ struct SyncRecordMapper {
         SyncRecordType.parse(recordName: recordName)
     }
 
+    /// Maps every record the push is about to send back onto the local identifier it was built
+    /// from. `SyncRecordType.recordName(for:)` shortens an identifier that would take the name
+    /// past CloudKit's limit, so a saved record cannot be read back through `parse(recordName:)`
+    /// without clearing the wrong dirty entry and pushing the same record on every sync forever.
+    static func identities(
+        for localIds: [SyncRecordType: Set<String>],
+        in zone: CKRecordZone.ID
+    ) -> [CKRecord.ID: SyncRecordIdentity] {
+        var identities: [CKRecord.ID: SyncRecordIdentity] = [:]
+        for (type, ids) in localIds {
+            for id in ids {
+                identities[recordID(type: type, id: id, in: zone)] = SyncRecordIdentity(type: type, id: id)
+            }
+        }
+        return identities
+    }
+
     // MARK: - Connection
 
     static func toCKRecord(
