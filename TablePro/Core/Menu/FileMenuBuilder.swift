@@ -33,7 +33,7 @@ enum FileMenuBuilder {
             MenuItemFactory.separator,
             MenuItemFactory.item(
                 String(localized: "Open File…"),
-                action: #selector(MainSplitViewController.openSQLFile(_:)),
+                action: #selector(AppDelegate.openFile(_:)),
                 shortcut: .openFile,
                 keyboard: keyboard
             ),

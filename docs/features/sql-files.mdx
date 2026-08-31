@@ -5,6 +5,8 @@ description: Open .sql files as query tabs, save back to them, and resolve edits
 
 Three ways in: double-click in Finder, **File > Open File…** (`Cmd+O`), or drag onto the Dock icon. `.sql`, `.psql` and `.pgsql` all work, and what you get is an ordinary query tab with a file behind it.
 
+`Cmd+O` is not restricted to those three. It offers every file TablePro reads, and each one goes where its type belongs: a query tab for SQL, a connection window for a database file, the [CSV inspector](/features/csv-inspector) for a `.csv`. A file whose name says nothing is enabled on its contents, so a SQLite database saved without an extension is selectable. The command works with no connection open, from the welcome window too.
+
 ## Opening
 
 Each file opens in a new tab. Opening one that is already open focuses its existing tab instead of making a second, and files opened before any connection exists wait in a queue until you connect.

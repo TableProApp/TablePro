@@ -11,6 +11,8 @@ Click **Create Connection…**, select **SQLite**, pick the file with **Browse�
 
 `.db`, `.db3`, `.s3db`, `.sl3`, `.sqlite`, `.sqlite3`, and `.sqlitedb` files list TablePro under Finder's **Open With**, as an alternate handler rather than the default one. To make a double-click open them here, select one in Finder, press `Cmd+I`, set **Open with** to TablePro, and click **Change All…**.
 
+A database saved under some other name still opens. Drag it onto a TablePro window, pick it in **File > Open File…**, or drop it on the Dock icon, and the first sixteen bytes decide the driver: a file that starts `SQLite format 3` opens here whether it is called `store.bin`, `export`, or `data.csv`. Finder's double-click is the one route that still needs a name it knows.
+
 <Frame caption="SQLite connection form">
   <img className="block dark:hidden" src="/images/sqlite-connection-form.png" alt="SQLite connection form with file path field" />
   <img className="hidden dark:block" src="/images/sqlite-connection-form-dark.png" alt="SQLite connection form with file path field" />

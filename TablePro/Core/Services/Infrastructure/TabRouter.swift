@@ -10,6 +10,7 @@ import os
 internal enum TabRouterError: Error, LocalizedError {
     case connectionNotFound(UUID)
     case malformedDatabaseURL(URL)
+    case fileNoLongerExists(URL)
     case userCancelled
     case unsupportedIntent(String)
 
@@ -22,6 +23,10 @@ internal enum TabRouterError: Error, LocalizedError {
         case .malformedDatabaseURL(let url):
             return String(
                 format: String(localized: "Could not parse database URL: %@"), url.sanitizedForLogging
+            )
+        case .fileNoLongerExists(let url):
+            return String(
+                format: String(localized: "“%@” is no longer at that location."), url.lastPathComponent
             )
         case .userCancelled:
             return String(localized: "Cancelled by user.")
@@ -340,26 +345,42 @@ internal final class TabRouter {
 
     // MARK: - Database File
 
+    /// A driver that opens a local file keeps the path in whichever field it declares, and DuckDB
+    /// and libSQL leave `database` empty. Reading it directly missed a live session on the same
+    /// file, and a second `duckdb_open` is an independent read-write instance whose writes the
+    /// first one never sees.
     private func openDatabaseFile(_ url: URL, type: DatabaseType) async throws {
         let filePath = url.path(percentEncoded: false)
         let connectionName = url.deletingPathExtension().lastPathComponent
+        let pathField = PluginManager.shared.localFilePathField(for: type) ?? .database
 
         for (sessionId, session) in DatabaseManager.shared.activeSessions
         where session.connection.type == type
-            && session.connection.database == filePath
+            && session.connection.localFilePath(in: pathField) == filePath
             && session.driver != nil {
             bringConnectionWindowToFront(sessionId)
             return
+        }
+
+        guard await MissingDriverPluginPrompt.ensureInstalled(for: type, opening: url) else {
+            throw TabRouterError.userCancelled
+        }
+
+        /// Installing the driver can take long enough for the file to be renamed or removed under
+        /// us, and both engines create a database at a path that no longer exists. An empty one
+        /// left where the original stood is worse than reporting that it is gone.
+        guard FileManager.default.fileExists(atPath: filePath) else {
+            throw TabRouterError.fileNoLongerExists(url)
         }
 
         let connection = DatabaseConnection(
             name: connectionName,
             host: "",
             port: 0,
-            database: filePath,
+            database: "",
             username: "",
             type: type
-        )
+        ).substitutingLocalFilePath(filePath, in: pathField)
 
         let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
         DatabaseManager.shared.registerPendingSession(connection)

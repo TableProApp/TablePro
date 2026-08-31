@@ -36,6 +36,20 @@ struct FileDropDestinationTests {
         #expect(FileDropDestination.acceptedURLs(from: pasteboard).isEmpty)
     }
 
+    @Test("A SQLite database with no extension is openable")
+    func extensionlessDatabaseIsOpenable() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FileDropDestinationTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let header = Array("SQLite format 3\u{0}".utf8)
+        let url = directory.appendingPathComponent("ledger")
+        try Data(header + [UInt8](repeating: 0, count: 512 - header.count)).write(to: url)
+
+        #expect(FileDropDestination.isOpenable(url))
+    }
+
     @Test("A pasteboard of mixed files yields only the openable ones")
     func mixedPasteboardIsFiltered() {
         let pasteboard = NSPasteboard(name: NSPasteboard.Name("com.TablePro.tests.filedrop.mixed"))

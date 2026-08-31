@@ -36,7 +36,11 @@ Pick a `.duckdb` file to open a database, or a `.parquet`, `.csv`, `.tsv`, `.jso
 | `.parquet`, `.csv`, `.tsv`, `.json`, `.ndjson` | An in-memory database holding two read-only views over the file, one named `file` and one named after the file. A path that does not exist is reported instead of created |
 | `:memory:` | An empty database, discarded on disconnect |
 
-In Local File mode the path is the whole connection, and it is required; the form shows no host, port or Database field. Double-click a `.duckdb` or `.ddb` file in Finder to open it in TablePro; the data formats are not registered with Finder.
+In Local File mode the path is the whole connection, and it is required; the form shows no host, port or Database field.
+
+Double-click a `.duckdb` or `.ddb` file in Finder to open it here. `.parquet` files list TablePro under **Open With** rather than taking the association; to make a double-click open them here, select one in Finder, press `Cmd+I`, set **Open with** to TablePro, and click **Change All…**. `.csv`, `.tsv`, `.json` and `.ndjson` open from the connection form only.
+
+A DuckDB database carries `DUCK` eight bytes in, so a database opens under any name: drag `warehouse.db` onto a window and it reaches this driver rather than SQLite. The data formats need their extension either way, because the reader is chosen from it. Installing the plugin is offered first when it is not already there.
 
 ## Remote (Quack)
 

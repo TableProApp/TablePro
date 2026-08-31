@@ -28,12 +28,27 @@ private final class EditorWindow: NSWindow, NSDraggingDestination {
         TabWindowController.applyTitlebarChrome(to: self)
     }
 
+    /// Deciding what a drag carries reads the head of each file, and `draggingUpdated:` fires on
+    /// every pointer move. A drag session's pasteboard cannot change while it is in flight.
+    private var dragSessionOperation: NSDragOperation?
+
     func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        FileDropDestination.acceptedURLs(from: sender.draggingPasteboard).isEmpty ? [] : .copy
+        let operation: NSDragOperation =
+            FileDropDestination.acceptedURLs(from: sender.draggingPasteboard).isEmpty ? [] : .copy
+        dragSessionOperation = operation
+        return operation
     }
 
     func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        draggingEntered(sender)
+        dragSessionOperation ?? draggingEntered(sender)
+    }
+
+    func draggingExited(_ sender: (any NSDraggingInfo)?) {
+        dragSessionOperation = nil
+    }
+
+    func draggingEnded(_ sender: any NSDraggingInfo) {
+        dragSessionOperation = nil
     }
 
     func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {

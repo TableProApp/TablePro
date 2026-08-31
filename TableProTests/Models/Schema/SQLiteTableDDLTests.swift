@@ -102,7 +102,10 @@ struct SQLiteTableDDLTests {
 
     // MARK: - Plan
 
-    private func plan(desiredOrder: [String]) -> PluginColumnReorderPlan? {
+    /// Named apart from the `plan` each test binds. Shadowing it compiled here and failed on the
+    /// CI toolchain with "cannot call value of non-function type", because a local declaration is
+    /// in scope inside its own initializer.
+    private func makePlan(desiredOrder: [String]) -> PluginColumnReorderPlan? {
         SQLiteColumnReorderPlanner.plan(
             tableName: "x",
             createTableSQL: createSQL,
@@ -115,7 +118,7 @@ struct SQLiteTableDDLTests {
 
     @Test("The script follows SQLite's documented rebuild, in its order")
     func planFollowsDocumentedProcedure() throws {
-        let plan = try #require(plan(desiredOrder: ["pid", "a", "d", "b", "c"]))
+        let plan = try #require(makePlan(desiredOrder: ["pid", "a", "d", "b", "c"]))
         #expect(plan.cost == .tableRebuild)
         #expect(plan.statements.first == "PRAGMA foreign_keys = off")
         #expect(plan.statements[1] == "BEGIN TRANSACTION")
@@ -128,7 +131,7 @@ struct SQLiteTableDDLTests {
 
     @Test("The copy names only the columns INSERT accepts, leaving the generated one out")
     func planExcludesGeneratedColumnsFromTheCopy() throws {
-        let plan = try #require(plan(desiredOrder: ["pid", "a", "d", "b", "c"]))
+        let plan = try #require(makePlan(desiredOrder: ["pid", "a", "d", "b", "c"]))
         let insert = try #require(plan.statements.first { $0.hasPrefix("INSERT INTO") })
         #expect(insert.contains("(\"a\", \"b\", \"c\", \"pid\")"))
         #expect(!insert.contains("\"d\""))
@@ -136,12 +139,12 @@ struct SQLiteTableDDLTests {
 
     @Test("A failure part way closes the transaction it opened")
     func planCarriesItsOwnRollback() throws {
-        let plan = try #require(plan(desiredOrder: ["pid", "a", "d", "b", "c"]))
+        let plan = try #require(makePlan(desiredOrder: ["pid", "a", "d", "b", "c"]))
         #expect(plan.rollbackStatements == ["ROLLBACK", "PRAGMA foreign_keys = on"])
     }
 
     @Test("An order that changes nothing produces no plan")
     func planRefusesAnUnchangedOrder() {
-        #expect(plan(desiredOrder: ["a", "b", "c", "d", "pid"]) == nil)
+        #expect(makePlan(desiredOrder: ["a", "b", "c", "d", "pid"]) == nil)
     }
 }

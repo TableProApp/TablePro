@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Move Tab to New Window on a tab's right-click menu, and by dragging a tab out of the strip. (#2438)
 - Column reorder by dragging on ClickHouse and Oracle. (#2479)
 - Column reorder on PostgreSQL, SQLite, libSQL, Turso and Cloudflare D1, through a table rebuild shown before anything runs. (#2479)
+- Recognition of SQLite and DuckDB databases by their contents, whatever they are named. (#2476)
+- `.parquet` files in Finder's Open With, read through DuckDB. (#2476)
+- Prompt to install the driver a file needs, before the file opens. (#2476)
 
 ### Changed
 
@@ -27,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Editor tab presses handled by AppKit rather than SwiftUI gestures. (#2438)
 - Connection-first labels with the database or schema on a second line in the connections strip. (#2550)
 - Column reorder withheld, with the reason on the row number, where the engine cannot change column order. (#2479)
+- File > Open File… as an app command over every file TablePro reads. (#2476)
 
 ### Fixed
 

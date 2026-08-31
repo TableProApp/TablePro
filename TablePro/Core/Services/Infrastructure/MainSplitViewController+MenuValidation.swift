@@ -85,8 +85,7 @@ extension MainSplitViewController: NSMenuItemValidation {
     /// itself, so `hasEditorForFind` only ever decides the unfocused fallback.
     static func isEnabled(_ selector: Selector, context: MenuValidationContext) -> Bool {
         switch selector {
-        case #selector(openSQLFile(_:)),
-             #selector(exportTables(_:)),
+        case #selector(exportTables(_:)),
              #selector(refreshDatabase(_:)),
              #selector(openQuickSwitcher(_:)),
              #selector(toggleQueryHistory(_:)),

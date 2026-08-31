@@ -37,18 +37,6 @@ enum SQLFileService {
         }.value
     }
 
-    /// Shows an open panel for .sql files.
-    @MainActor
-    static func showOpenPanel() async -> [URL]? {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = allowedContentTypes
-        panel.allowsMultipleSelection = true
-        panel.message = String(localized: "Select SQL files to open")
-        let response = await panel.begin()
-        guard response == .OK else { return nil }
-        return panel.urls
-    }
-
     /// Shows a save panel for .sql files.
     @MainActor
     static func showSavePanel(suggestedName: String = "query.sql") async -> URL? {

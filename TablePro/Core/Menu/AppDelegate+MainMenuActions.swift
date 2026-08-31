@@ -41,6 +41,18 @@ extension AppDelegate: NSMenuItemValidation {
         WindowOpener.shared.openWelcome()
     }
 
+    /// A database file, a connection share and a plugin all open without a live connection, so
+    /// this belongs to the app and not to an editor window that may not exist.
+    @objc func openFile(_ sender: Any?) {
+        Task { @MainActor in
+            guard let urls = await FileOpenPanel.present() else { return }
+            for url in urls {
+                guard case .some(.success(let intent)) = URLClassifier.classify(url) else { continue }
+                await LaunchIntentRouter.shared.route(intent)
+            }
+        }
+    }
+
     @objc func compareAndSyncDatabases(_ sender: Any?) {
         CompareSyncLauncher.open()
     }
