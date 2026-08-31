@@ -42,6 +42,30 @@ struct SQLiteTableDDLTests {
     @Test("A statement with no column list is refused rather than half parsed")
     func parseRefusesCreateTableAsSelect() {
         #expect(SQLiteTableDDL.parse(createTableSQL: "CREATE TABLE t AS SELECT 1") == nil)
+        #expect(SQLiteTableDDL.parse(createTableSQL: "CREATE TABLE t AS SELECT (1)") == nil)
+    }
+
+    /// `sqlite_master` stores an FTS5 table as a `CREATE VIRTUAL TABLE` whose parentheses parse
+    /// exactly like a column list. Rebuilding one recreates it as a plain table and drops the index
+    /// and its shadow tables with the original, so it has to be refused before that.
+    @Test("A virtual table is refused, whatever its module", arguments: [
+        "CREATE VIRTUAL TABLE docs USING fts5(title, body)",
+        "CREATE VIRTUAL TABLE t USING rtree(id, minX, maxX)",
+        "CREATE VIRTUAL TABLE IF NOT EXISTS v USING fts4(a, b)"
+    ])
+    func parseRefusesVirtualTables(sql: String) {
+        #expect(SQLiteTableDDL.parse(createTableSQL: sql) == nil)
+    }
+
+    @Test("The ordinary forms are still accepted", arguments: [
+        "CREATE TABLE t(a INT)",
+        "CREATE TEMP TABLE t(a INT)",
+        "CREATE TEMPORARY TABLE t(a INT)",
+        "CREATE TABLE IF NOT EXISTS t(a INT)",
+        "CREATE TABLE \"my (odd) name\"(a INT)"
+    ])
+    func parseAcceptsOrdinaryTables(sql: String) {
+        #expect(SQLiteTableDDL.parse(createTableSQL: sql) != nil)
     }
 
     @Test("Reordering moves the column definitions verbatim and leaves the constraints in place")

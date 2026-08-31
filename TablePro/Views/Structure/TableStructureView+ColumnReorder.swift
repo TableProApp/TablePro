@@ -21,7 +21,8 @@ extension TableStructureView {
             engineName: connection.type.displayName,
             isColumnsTab: selectedTab == .columns,
             canEditSchema: connection.type.supportsSchemaEditing,
-            hasStagedChanges: structureChangeManager.hasChanges
+            hasStagedChanges: structureChangeManager.hasChanges,
+            isRearranged: !searchText.isEmpty || structureSortDescriptor != nil
         )
     }
 

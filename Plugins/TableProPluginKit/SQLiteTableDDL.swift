@@ -49,10 +49,16 @@ public enum SQLiteTableDDL {
     ]
 
     /// Splits `CREATE TABLE x (…) WITHOUT ROWID` into its prefix, its top-level entries and its
-    /// trailing options. Nil when the statement has no balanced parenthesised body, which is what a
-    /// `CREATE TABLE … AS SELECT` looks like and what a rebuild must not touch.
+    /// trailing options.
+    ///
+    /// Nil for anything that is not an ordinary table, because a rebuild of one of those destroys
+    /// it. `sqlite_master` stores an FTS5 table as `CREATE VIRTUAL TABLE docs USING fts5(title,
+    /// body)`, whose parentheses parse exactly like a column list, so accepting it would recreate
+    /// the table as a plain one and take the index and its shadow tables down with the `DROP`.
+    /// `CREATE TABLE … AS SELECT` has no column list to reorder either.
     public static func parse(createTableSQL sql: String) -> Parsed? {
         guard let open = topLevelBodyStart(in: sql) else { return nil }
+        guard isOrdinaryTable(prefix: sql[sql.startIndex..<open]) else { return nil }
         guard let close = matchingCloseParen(in: sql, from: open) else { return nil }
 
         let body = String(sql[sql.index(after: open)..<close])
@@ -104,6 +110,23 @@ public enum SQLiteTableDDL {
     private static func trailingOptions(of parsed: Parsed) -> String {
         let trailing = parsed.suffix.dropFirst().trimmingCharacters(in: .whitespacesAndNewlines)
         return trailing.isEmpty ? "" : " \(trailing)"
+    }
+
+    /// Whether what stands before the column list is a plain `CREATE TABLE`. Only the keywords
+    /// SQLite allows there are accepted, so an unrecognised form is refused rather than rebuilt.
+    private static func isOrdinaryTable(prefix: Substring) -> Bool {
+        let words = prefix
+            .split(whereSeparator: { $0.isWhitespace })
+            .map { $0.uppercased() }
+        guard let tableIndex = words.firstIndex(of: "TABLE") else { return false }
+        /// Only these may stand before TABLE. VIRTUAL does not, which is what rules out an FTS or
+        /// R-tree table whose module arguments would otherwise read as a column list.
+        guard words[..<tableIndex].allSatisfy({ ["CREATE", "TEMP", "TEMPORARY"].contains($0) }),
+              words.first == "CREATE" else { return false }
+        /// What follows is `IF NOT EXISTS` and a name, which may itself be several whitespace
+        /// separated tokens when it is quoted. A bare AS among them is `CREATE TABLE … AS SELECT`,
+        /// which has no column list to reorder.
+        return !words[tableIndex...].contains("AS")
     }
 
     /// The opening parenthesis of the column list, skipping any that a quoted table name contains.

@@ -97,4 +97,56 @@ struct ColumnReorderPlannerTests {
     func nonPermutationProducesNoCycle() {
         #expect(PluginColumnReorderPlanner.appendCycle(from: current, to: ["a", "b"]).isEmpty)
     }
+
+    // MARK: - Exhaustive
+
+    /// Both planners are asked for every permutation of five columns. A tie in the common
+    /// subsequence can pick a different set to leave alone without changing how many columns move,
+    /// so the guarantee worth pinning is the result, not the choice.
+    @Test("Every permutation of five columns is reached, by both mechanisms, in the minimum moves")
+    func everyPermutationIsReachable() {
+        let start = ["a", "b", "c", "d", "e"]
+        for desired in permutations(of: start) {
+            let moves = PluginColumnReorderPlanner.moves(from: start, to: desired)
+            var byMove = start
+            for move in moves {
+                byMove.removeAll { $0 == move.column }
+                if let after = move.afterColumn, let index = byMove.firstIndex(of: after) {
+                    byMove.insert(move.column, at: byMove.index(after: index))
+                } else {
+                    byMove.insert(move.column, at: 0)
+                }
+            }
+            #expect(byMove == desired, "moves did not reach \(desired)")
+            #expect(moves.count == start.count - longestCommonSubsequenceLength(start, desired))
+
+            var byCycle = start
+            for column in PluginColumnReorderPlanner.appendCycle(from: start, to: desired) {
+                byCycle.removeAll { $0 == column }
+                byCycle.append(column)
+            }
+            #expect(byCycle == desired, "cycling did not reach \(desired)")
+        }
+    }
+
+    private func permutations(of values: [String]) -> [[String]] {
+        guard values.count > 1 else { return [values] }
+        return values.indices.flatMap { index -> [[String]] in
+            var rest = values
+            let picked = rest.remove(at: index)
+            return permutations(of: rest).map { [picked] + $0 }
+        }
+    }
+
+    private func longestCommonSubsequenceLength(_ lhs: [String], _ rhs: [String]) -> Int {
+        var lengths = Array(repeating: Array(repeating: 0, count: rhs.count + 1), count: lhs.count + 1)
+        for i in stride(from: lhs.count - 1, through: 0, by: -1) {
+            for j in stride(from: rhs.count - 1, through: 0, by: -1) {
+                lengths[i][j] = lhs[i] == rhs[j]
+                    ? lengths[i + 1][j + 1] + 1
+                    : max(lengths[i + 1][j], lengths[i][j + 1])
+            }
+        }
+        return lengths[0][0]
+    }
 }

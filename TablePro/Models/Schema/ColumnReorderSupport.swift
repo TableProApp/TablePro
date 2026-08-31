@@ -59,7 +59,8 @@ enum ColumnReorderPolicy {
         engineName: String,
         isColumnsTab: Bool,
         canEditSchema: Bool,
-        hasStagedChanges: Bool
+        hasStagedChanges: Bool,
+        isRearranged: Bool
     ) -> ColumnReorderAvailability {
         guard isColumnsTab else { return .notApplicable }
         guard canEditSchema else {
@@ -79,6 +80,15 @@ enum ColumnReorderPolicy {
             guard !hasStagedChanges else {
                 return .unavailable(
                     reason: String(localized: "Save or discard the pending structure changes before reordering columns.")
+                )
+            }
+            /// A drop reports the row's position in what is on screen, and a filtered or sorted
+            /// list is not the table's order, so "third from the top" names a different column in
+            /// each. There is nothing to map it back to either: the wanted order is a statement
+            /// about every column, and a filtered list is not showing every column.
+            guard !isRearranged else {
+                return .unavailable(
+                    reason: String(localized: "Clear the filter and the sort to reorder columns.")
                 )
             }
             return .available(support)

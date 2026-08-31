@@ -13,14 +13,16 @@ struct ColumnReorderPolicyTests {
         support: ColumnReorderSupport = .alter,
         isColumnsTab: Bool = true,
         canEditSchema: Bool = true,
-        hasStagedChanges: Bool = false
+        hasStagedChanges: Bool = false,
+        isRearranged: Bool = false
     ) -> ColumnReorderAvailability {
         ColumnReorderPolicy.resolve(
             support: support,
             engineName: "PostgreSQL",
             isColumnsTab: isColumnsTab,
             canEditSchema: canEditSchema,
-            hasStagedChanges: hasStagedChanges
+            hasStagedChanges: hasStagedChanges,
+            isRearranged: isRearranged
         )
     }
 
@@ -65,5 +67,21 @@ struct ColumnReorderPolicyTests {
     func unsupportedOutranksStagedChanges() {
         let availability = resolve(support: .unsupported, hasStagedChanges: true)
         #expect(availability.unavailableReason?.contains("PostgreSQL") == true)
+    }
+
+    /// A drop reports a position in what is on screen. Filtered or sorted, that is not the table's
+    /// order, and the delegate hands the position over without mapping it back, so the drag is
+    /// withheld rather than acted on against the wrong column.
+    @Test("A filtered or sorted column list withholds the drag")
+    func rearrangedListWithholdsTheDrag() {
+        let availability = resolve(isRearranged: true)
+        #expect(!availability.isAvailable)
+        #expect(availability.unavailableReason != nil)
+    }
+
+    @Test("Staged edits outrank a rearranged list, because saving is the first thing to do")
+    func stagedChangesOutrankRearrangement() {
+        let staged = resolve(hasStagedChanges: true, isRearranged: true)
+        #expect(staged.unavailableReason == resolve(hasStagedChanges: true).unavailableReason)
     }
 }
