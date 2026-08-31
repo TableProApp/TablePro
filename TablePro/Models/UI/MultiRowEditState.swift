@@ -28,6 +28,11 @@ struct FieldEditState: Identifiable {
     /// A schema field has no data type, so it offers no type badge and no NULL or DEFAULT state.
     var isSchemaField: Bool = false
 
+    /// The server owns the value, so the field is shown without an editor. Refusing the edit further
+    /// down instead would leave a pending value here that nothing can clear, and the inspector would
+    /// go on reporting an unsaved change that Save never writes.
+    var isServerOwned: Bool = false
+
     /// The value already differs from the loaded schema because the edit is recorded elsewhere.
     var hasCommittedEdit: Bool = false
 
@@ -80,7 +85,8 @@ final class MultiRowEditState {
         columnTypes: [ColumnType],
         externallyModifiedColumns: Set<Int> = [],
         primaryKeyColumns: Set<String> = [],
-        foreignKeyColumns: Set<String> = []
+        foreignKeyColumns: Set<String> = [],
+        serverOwnedColumns: Set<String> = []
     ) {
         // Check if the underlying data has changed (not just edits)
         let columnsChanged = self.columns != columns
@@ -145,6 +151,7 @@ final class MultiRowEditState {
                 isJson: isJson,
                 isPrimaryKey: primaryKeyColumns.contains(columnName),
                 isForeignKey: foreignKeyColumns.contains(columnName),
+                isServerOwned: serverOwnedColumns.contains(columnName),
                 originalValue: originalValue,
                 hasMultipleValues: hasMultipleValues,
                 pendingValue: pendingValue,

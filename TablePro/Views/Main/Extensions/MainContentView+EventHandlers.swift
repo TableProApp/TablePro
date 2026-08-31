@@ -215,7 +215,8 @@ extension MainContentView {
             columnTypes: columnTypes,
             externallyModifiedColumns: modifiedColumns,
             primaryKeyColumns: pkColumns,
-            foreignKeyColumns: fkColumns
+            foreignKeyColumns: fkColumns,
+            serverOwnedColumns: tableRows.generatedColumns
         )
 
         guard isSidebarEditable else {

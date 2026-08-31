@@ -60,6 +60,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add Row and Duplicate Row offered before a table's schema has loaded, when nothing yet knows which columns the server fills in. (#2588)
 - Missing `SET IDENTITY_INSERT` around a SQL Server table's rows in a SQL export, so the dump could not be restored. (#2588)
 - Fill Column offered on a generated or identity column.
+- Pasted rows carrying a value for an identity or generated column, which the save then discarded. (#2588)
+- Row inspector offering an editor for a column the server owns, leaving an edit that Save could never clear. (#2588)
+- Row inspector editing a column the driver marks immutable, such as MongoDB's `_id`.
+- Add Row and Duplicate Row inert for good on a result the user switched away from while its schema was loading. (#2588)
 
 ## [0.69.0] - 2026-08-27
 

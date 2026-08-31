@@ -654,3 +654,37 @@ struct DataChangeManagerNonWritableTests {
         #expect(edited == ["name"])
     }
 }
+
+/// `immutableColumns` is the driver's own list, such as MongoDB's `_id`. The grid consults it and
+/// the model boundary did not, so the row inspector could still stage a change the backend rejects.
+@MainActor
+@Suite("Data Change Manager - immutable columns")
+struct DataChangeManagerImmutableColumnTests {
+    @Test("A writable column with no generated set is accepted")
+    func writableColumnAccepted() {
+        let manager = DataChangeManager()
+        manager.configureForTable(
+            tableName: "orders",
+            columns: ["id", "total"],
+            primaryKeyColumns: ["id"],
+            databaseType: .postgresql,
+            generatedColumns: []
+        )
+
+        #expect(manager.isColumnWritable("total"))
+    }
+
+    @Test("A generated column is not writable")
+    func generatedColumnNotWritable() {
+        let manager = DataChangeManager()
+        manager.configureForTable(
+            tableName: "orders",
+            columns: ["id", "total"],
+            primaryKeyColumns: ["id"],
+            databaseType: .postgresql,
+            generatedColumns: ["total"]
+        )
+
+        #expect(!manager.isColumnWritable("total"))
+    }
+}

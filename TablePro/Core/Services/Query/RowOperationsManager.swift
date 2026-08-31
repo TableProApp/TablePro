@@ -425,8 +425,18 @@ final class RowOperationsManager {
         var pastedRowInfo: [PastedRowInfo] = []
         var insertedIndices = IndexSet()
 
+        /// A pasted row arrives whole, so it carries values for columns the server owns too. They
+        /// never reach the cell-edit boundary that refuses them, and the statement generator drops
+        /// them silently, so the grid showed a pasted identity value the row was never saved with.
+        let serverOwned = tableRows.columns.enumerated().filter { _, name in
+            tableRows.generatedColumns.contains(name) || tableRows.columnIdentity[name] != nil
+        }.map(\.offset)
+
         for parsedRow in parsedRows {
-            let rowValues = parsedRow.values
+            var rowValues = parsedRow.values
+            for index in serverOwned where index < rowValues.count {
+                rowValues[index] = .text("__DEFAULT__")
+            }
             let newRowIndex = tableRows.count
             _ = tableRows.appendInsertedRow(values: rowValues)
             insertedIndices.insert(newRowIndex)

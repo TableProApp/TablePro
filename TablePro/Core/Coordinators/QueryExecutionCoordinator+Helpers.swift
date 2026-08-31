@@ -487,11 +487,41 @@ extension QueryExecutionCoordinator {
         tableName: String,
         resultSetId: UUID?
     ) {
+        let parsed = QueryExecutor.parseSchemaMetadata(schema)
         guard resultStillActive(tabId, resultSetId) else {
-            helpersLogger.info("[fk] phase2 apply skipped, tab closed or table changed table=\(tableName, privacy: .public)")
+            /// The result this was fetched for is still there, the user is just looking at another
+            /// one. Dropping the metadata left it with no account of which columns the server owns,
+            /// and nothing re-fetches on the way back, so the result stayed that way for good.
+            applyPhase2MetadataToInactiveResult(parsed: parsed, tabId: tabId, resultSetId: resultSetId)
+            helpersLogger.info("[fk] phase2 applied to an inactive result table=\(tableName, privacy: .public)")
             return
         }
-        applyPhase2Metadata(parsed: QueryExecutor.parseSchemaMetadata(schema), tabId: tabId)
+        applyPhase2Metadata(parsed: parsed, tabId: tabId)
+    }
+
+    private func applyPhase2MetadataToInactiveResult(
+        parsed: ParsedSchemaMetadata,
+        tabId: UUID,
+        resultSetId: UUID?
+    ) {
+        guard let resultSetId,
+              let tab = parent.tabManager.tabs.first(where: { $0.id == tabId }),
+              let resultSet = tab.display.resultSets.first(where: { $0.id == resultSetId })
+        else { return }
+
+        resultSet.tableRows.updateDisplayMetadata(
+            columnDefaults: parsed.columnDefaults,
+            columnForeignKeys: parsed.columnForeignKeys,
+            columnNullable: parsed.columnNullable,
+            columnComments: parsed.columnComments,
+            columnIdentity: parsed.columnIdentity,
+            generatedColumns: parsed.generatedColumns,
+            hasAuthoritativeSchema: parsed.isAuthoritative
+        )
+        if !parsed.primaryKeyColumns.isEmpty {
+            resultSet.origin?.primaryKeyColumns = parsed.primaryKeyColumns
+            resultSet.origin?.keysResolved = true
+        }
     }
 
     private func applyEnumValues(

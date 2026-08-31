@@ -329,7 +329,8 @@ struct RightSidebarView: View {
     }
 
     @ViewBuilder
-    private func fieldDetailRow(_ field: FieldEditState, at index: Int, isEditable: Bool) -> some View {
+    private func fieldDetailRow(_ field: FieldEditState, at index: Int, isEditable rowIsEditable: Bool) -> some View {
+        let isEditable = rowIsEditable && !field.isServerOwned
         let kind = FieldEditorResolver.resolve(field: field)
         let isJsonField = kind == .json
         let isPhpField = kind == .phpSerialized

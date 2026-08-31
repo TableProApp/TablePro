@@ -18,6 +18,9 @@ extension MainContentCoordinator {
         /// `GridSelectionOwner`, which answers `.none` in Chart mode and `.schemaGrid` in Structure
         /// mode, so without this the command is either inert or adds a column under a row's name.
         guard tab.display.resultsViewMode == .data else { return false }
+        /// A new row is pre-filled from the schema's account of which columns the server fills in,
+        /// so the command waits for that account rather than staging NULL into an identity column.
+        guard tabSessionRegistry.tableRows(for: tab.id).hasAuthoritativeSchema else { return false }
         return tab.tableContext.isEditable
             && !tab.tableContext.isView
             && !safeModeLevel.blocksAllWrites

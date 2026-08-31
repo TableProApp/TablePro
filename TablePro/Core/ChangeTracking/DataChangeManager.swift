@@ -128,6 +128,16 @@ final class DataChangeManager: ChangeManaging {
         self.generatedColumns = generatedColumns
     }
 
+    /// Whether the app may send a value for this column at all: the server computes or allocates it,
+    /// or the driver declares it immutable, as MongoDB does for `_id`. Both halves belong here,
+    /// because this is the boundary every staging path crosses and the grid's own copy of the
+    /// question does not cover the paths that reach the model directly.
+    func isColumnWritable(_ columnName: String) -> Bool {
+        guard !generatedColumns.contains(columnName) else { return false }
+        guard let databaseType else { return true }
+        return !PluginManager.shared.immutableColumns(for: databaseType).contains(columnName)
+    }
+
     // MARK: - Change Tracking
 
     func recordCellChange(
@@ -143,7 +153,7 @@ final class DataChangeManager: ChangeManaging {
         /// the row inspector reach here directly, so a column the server owns could be staged, be
         /// filtered out again during statement generation, and be cleared by a save that reported
         /// success over the changes it did write.
-        guard !generatedColumns.contains(columnName) else {
+        guard isColumnWritable(columnName) else {
             Self.logger.warning(
                 "Refusing an edit to server-owned column '\(columnName, privacy: .public)' in table '\(self.tableName, privacy: .public)'"
             )

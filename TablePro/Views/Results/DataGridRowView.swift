@@ -496,10 +496,14 @@ class DataGridRowView: NSTableRowView {
                 }
             }
 
-            let duplicateItem = NSMenuItem(
-                title: String(localized: "Duplicate"), action: #selector(duplicateRow), keyEquivalent: "")
-            duplicateItem.target = self
-            menu.addItem(duplicateItem)
+            /// The copy resets the columns the server owns, which only the schema names, so the item
+            /// stays away until it has arrived rather than appearing and doing nothing.
+            if tableRows.hasAuthoritativeSchema {
+                let duplicateItem = NSMenuItem(
+                    title: String(localized: "Duplicate"), action: #selector(duplicateRow), keyEquivalent: "")
+                duplicateItem.target = self
+                menu.addItem(duplicateItem)
+            }
 
             let deleteItem = NSMenuItem(
                 title: String(localized: "Delete"),
