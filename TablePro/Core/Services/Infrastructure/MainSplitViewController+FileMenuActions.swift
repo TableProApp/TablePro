@@ -6,10 +6,6 @@
 import AppKit
 
 extension MainSplitViewController {
-    @objc func openSQLFile(_ sender: Any?) {
-        commandActions?.openSQLFile()
-    }
-
     @objc func saveDocument(_ sender: Any?) {
         commandActions?.saveChanges()
     }

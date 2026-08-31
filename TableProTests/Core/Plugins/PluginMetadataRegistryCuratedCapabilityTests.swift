@@ -74,6 +74,18 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         )
     }
 
+    @Test("DuckDB keeps its file signatures when its plugin registers")
+    func duckDBKeepsItsFileSignatures() {
+        let registry = PluginMetadataRegistry.shared
+
+        let built = registry.buildMetadataSnapshot(from: MockDuckDBPlugin.self)
+
+        #expect(
+            built.schema.fileSignatures == [.magic("DUCK", at: 8).andZeroes(at: 14, count: 6)],
+            "No DriverPlugin declares a signature, so loading the plugin would otherwise erase it"
+        )
+    }
+
     @Test("MongoDB keeps its database-scoped authentication when its plugin registers")
     func mongoDBKeepsDatabaseScopedAuthentication() {
         let registry = PluginMetadataRegistry.shared

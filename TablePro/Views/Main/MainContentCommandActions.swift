@@ -1012,13 +1012,6 @@ final class MainContentCommandActions {
         }
     }
 
-    func openSQLFile() {
-        Task {
-            guard let urls = await SQLFileService.showOpenPanel() else { return }
-            AppCommands.shared.openSQLFiles.send(urls)
-        }
-    }
-
     func explainQuery() {
         coordinator?.runExplain()
     }

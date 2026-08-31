@@ -80,6 +80,26 @@ final class AlertHelper {
         }
     }
 
+    // MARK: - Confirmations
+
+    /// A question whose confirming button keeps Return. `confirmDestructive` takes it off on
+    /// purpose, which is right for destroying something and wrong for a step already asked for.
+    static func confirm(
+        title: String,
+        message: String,
+        confirmButton: String,
+        cancelButton: String = String(localized: "Cancel"),
+        window: NSWindow? = nil
+    ) async -> Bool {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: confirmButton)
+        Self.addCancelButton(to: alert, title: cancelButton)
+        return await run(alert, in: window) == .alertFirstButtonReturn
+    }
+
     // MARK: - Destructive Confirmations
 
     static func confirmDestructive(

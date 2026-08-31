@@ -656,6 +656,7 @@ extension PluginMetadataRegistry {
                     systemDatabaseNames: [],
                     systemSchemaNames: [],
                     fileExtensions: ["db", "db3", "s3db", "sl3", "sqlite", "sqlite3", "sqlitedb"],
+                    fileSignatures: [.magic("SQLite format 3\u{0}")],
                     databaseGroupingStrategy: .flat,
                     structureColumnFields: [
                         .name, .type, .nullable, .defaultValue, .generated, .generationExpression,

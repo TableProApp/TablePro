@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tab rows in Settings > General > Tabs, wrapping the strip instead of scrolling it. (#2438)
 - Autoscrolling while dragging a tab, so a tab can be moved past the run currently on screen. (#2438)
 - Move Tab to New Window on a tab's right-click menu, and by dragging a tab out of the strip. (#2438)
+- Recognition of SQLite and DuckDB databases by their contents, whatever they are named. (#2476)
+- `.parquet` files in Finder's Open With, read through DuckDB. (#2476)
+- Prompt to install the driver a file needs, before the file opens. (#2476)
 
 ### Changed
 
@@ -24,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MongoDB editor diagnostics report JavaScript syntax errors rather than unsupported method names.
 - Editor tab presses handled by AppKit rather than SwiftUI gestures. (#2438)
 - Connection-first labels with the database or schema on a second line in the connections strip. (#2550)
+- File > Open File… as an app command over every file TablePro reads. (#2476)
 
 ### Fixed
 

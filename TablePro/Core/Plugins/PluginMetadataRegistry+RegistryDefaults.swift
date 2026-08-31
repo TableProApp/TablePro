@@ -693,63 +693,6 @@ extension PluginMetadataRegistry {
                     tagline: String(localized: "Column-oriented OLAP for big data")
                 )
             )),
-            ("DuckDB", PluginMetadataSnapshot(
-                displayName: "DuckDB", iconName: "duckdb-icon", defaultPort: 9_494,
-                requiresAuthentication: false, supportsForeignKeys: true, supportsSchemaEditing: true,
-                isDownloadable: true, primaryUrlScheme: "duckdb", parameterStyle: .dollar,
-                navigationModel: .standard,
-                explainVariants: [
-                    ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN", format: .indentedText),
-                ],
-                pathFieldRole: .database,
-                supportsHealthMonitor: false, urlSchemes: ["duckdb", "quack"],
-                postConnectActions: [.selectSchemaFromLastSession],
-                brandColorHex: "#FFD900",
-                queryLanguageName: "SQL", editorLanguage: .sql,
-                connectionMode: .apiOnly, supportsDatabaseSwitching: true,
-                supportsColumnReorder: false,
-                capabilities: PluginMetadataSnapshot.CapabilityFlags(
-                    supportsSchemaSwitching: true,
-                    supportsImport: true,
-                    supportsExport: true,
-                    supportsSSH: false,
-                    supportsSSL: false,
-                    supportsCascadeDrop: false,
-                    supportsForeignKeyDisable: true,
-                    supportsReadOnlyMode: true,
-                    supportsQueryProgress: false,
-                    requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: false,
-                    supportsRenameColumn: true,
-                    supportsConnectionPooling: false,
-                    localFilePathField: .additionalField("duckdbFilePath")
-                ),
-                schema: PluginMetadataSnapshot.SchemaInfo(
-                    defaultSchemaName: "main",
-                    defaultGroupName: "main",
-                    tableEntityName: "Tables",
-                    containerEntityName: "Database",
-                    defaultPrimaryKeyColumn: nil,
-                    immutableColumns: [],
-                    systemDatabaseNames: ["system", "temp"],
-                    systemSchemaNames: [],
-                    fileExtensions: ["duckdb", "ddb", "parquet", "csv", "tsv", "json", "ndjson"],
-                    databaseGroupingStrategy: .bySchema,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
-                ),
-                editor: PluginMetadataSnapshot.EditorConfig(
-                    sqlDialect: duckdbDialect,
-                    statementCompletions: [],
-                    columnTypesByCategory: duckdbColumnTypes
-                ),
-                connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: Self.duckdbConnectionFields,
-                    category: .analytical,
-                    tagline: String(localized: "Embedded and remote analytical SQL"),
-                    hidesBuiltInPassword: true,
-                    hidesBuiltInDatabase: true
-                )
-            )),
             ("Beancount", PluginMetadataSnapshot(
                 displayName: "Beancount", iconName: "beancount-icon", defaultPort: 0,
                 requiresAuthentication: false, supportsForeignKeys: false, supportsSchemaEditing: false,
@@ -1202,6 +1145,7 @@ extension PluginMetadataRegistry {
                 )
             )),
         ] + tursoPluginDefaults(dialect: d1Dialect, columnTypes: d1ColumnTypes)
+            + duckdbPluginDefaults(dialect: duckdbDialect, columnTypes: duckdbColumnTypes)
             + cloudPluginDefaults() + elasticsearchPluginDefaults() + surrealDBPluginDefaults()
             + kafkaPluginDefaults()
     }
