@@ -1277,6 +1277,11 @@ final class MainContentCoordinator {
         } else {
             needsMetadataFetch = false
         }
+        /// Captured now, while the result this decision was made against is still the active one.
+        let cachedMetadata: ParsedSchemaMetadata? = needsMetadataFetch ? nil : ParsedSchemaMetadata.cached(
+            rows: tabSessionRegistry.tableRows(for: tabId),
+            primaryKeyColumns: tabManager.tabs[index].tableContext.primaryKeyColumns
+        )
         if let tableName {
             Self.logger.info(
                 "[fk] metadata decision table=\(tableName, privacy: .public) isEditable=\(isEditable) needsFetch=\(needsMetadataFetch)"
@@ -1378,7 +1383,7 @@ final class MainContentCoordinator {
                         statusMessage: fetchResult.statusMessage,
                         tableName: tableName,
                         isEditable: isEditable,
-                        metadata: inlineMeta,
+                        metadata: inlineMeta ?? cachedMetadata,
                         hasSchema: false,
                         sql: sql,
                         connection: conn,

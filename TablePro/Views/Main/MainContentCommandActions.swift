@@ -403,6 +403,11 @@ final class MainContentCommandActions {
         return coordinator.canEditActiveResult
     }
 
+    var isCurrentTabSchemaResolved: Bool {
+        guard let coordinator, let tabId = coordinator.tabManager.selectedTabId else { return false }
+        return coordinator.tabSessionRegistry.tableRows(for: tabId).hasAuthoritativeSchema
+    }
+
     var canRestorePreviousValues: Bool {
         coordinator?.canRewindSelectedTab ?? false
     }

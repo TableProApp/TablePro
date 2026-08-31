@@ -35,6 +35,30 @@ struct ParsedSchemaMetadata {
     let approximateRowCount: Int?
     let columnEnumValues: [String: [String]]
     let columnComments: [String: String]
+    /// Whether this came from the table's own schema, rather than from what the result set happened
+    /// to carry. Only the schema knows which columns the server owns, so a command that stages a
+    /// value from that knowledge waits for it rather than guessing from an empty set.
+    let isAuthoritative: Bool
+
+    /// The metadata a tab already holds, captured at the moment the cache decision is made.
+    ///
+    /// Reading it again when the result finally lands reads whichever result is active *then*, and
+    /// selecting a pinned result in between made a cached rerun adopt that other result's identity
+    /// and non-writable sets, with no schema fetch behind it to repair the mistake.
+    static func cached(rows: TableRows, primaryKeyColumns: [String]) -> ParsedSchemaMetadata {
+        ParsedSchemaMetadata(
+            columnDefaults: rows.columnDefaults,
+            columnForeignKeys: rows.foreignKeysFetched ? rows.columnForeignKeys : nil,
+            columnNullable: rows.columnNullable,
+            primaryKeyColumns: primaryKeyColumns,
+            generatedColumns: rows.generatedColumns,
+            columnIdentity: rows.columnIdentity,
+            approximateRowCount: nil,
+            columnEnumValues: rows.columnEnumValues,
+            columnComments: rows.columnComments,
+            isAuthoritative: rows.hasAuthoritativeSchema
+        )
+    }
 }
 
 @MainActor
@@ -227,7 +251,8 @@ final class QueryExecutor {
             columnIdentity: identity,
             approximateRowCount: schema.approximateRowCount,
             columnEnumValues: enumValues,
-            columnComments: comments
+            columnComments: comments,
+            isAuthoritative: true
         )
     }
 
@@ -235,10 +260,16 @@ final class QueryExecutor {
         guard let meta, !meta.isEmpty, meta.count == columns.count else { return nil }
         var nullable: [String: Bool] = [:]
         var primaryKeys: [String] = []
+        var identity: [String: IdentityKind] = [:]
         for (index, column) in columns.enumerated() {
             nullable[column] = meta[index].isNullable
             if meta[index].isPrimaryKey {
                 primaryKeys.append(column)
+            }
+            /// The result set reports only that the server allocates the column, never whether it
+            /// would refuse an explicit value, so the writable kind is the safe reading.
+            if meta[index].isAutoIncrement {
+                identity[column] = .byDefault
             }
         }
         return ParsedSchemaMetadata(
@@ -247,10 +278,11 @@ final class QueryExecutor {
             columnNullable: nullable,
             primaryKeyColumns: primaryKeys,
             generatedColumns: [],
-            columnIdentity: [:],
+            columnIdentity: identity,
             approximateRowCount: nil,
             columnEnumValues: [:],
-            columnComments: [:]
+            columnComments: [:],
+            isAuthoritative: false
         )
     }
 

@@ -47,6 +47,9 @@ final class RowEditingCoordinator {
               tab.tableContext.tableName != nil else { return }
 
         let tabId = tab.id
+        /// A new row is pre-filled from the schema's account of which columns the server owns, so
+        /// staging one before that account exists writes NULL into an identity column.
+        guard parent.tabSessionRegistry.tableRows(for: tabId).hasAuthoritativeSchema else { return }
 
         parent.dataTabDelegate?.tableViewCoordinator?.commitActiveCellEdit()
 
@@ -168,7 +171,8 @@ final class RowEditingCoordinator {
         guard !parent.safeModeLevel.blocksAllWrites,
               let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
               tab.tableContext.isEditable,
-              tab.tableContext.tableName != nil else { return }
+              tab.tableContext.tableName != nil,
+              parent.tabSessionRegistry.tableRows(for: tab.id).hasAuthoritativeSchema else { return }
 
         if parent.activeGridDisplayIDs != nil {
             duplicateFilteredRow(displayIndex: index, tab: tab, tabIndex: tabIndex)

@@ -30,6 +30,10 @@ extension TableViewCoordinator {
         guard !isCommittingCellEdit else { return nil }
         let tableRows = tableRowsProvider()
         guard columnIndex >= 0 && columnIndex < tableRows.columns.count else { return nil }
+        /// Before the rows are touched, not after. The change manager refuses a server-owned column
+        /// on its own, and editing here first would paint a value into the grid that no statement
+        /// will ever carry.
+        guard isColumnWritable(tableRows.columns[columnIndex]) else { return nil }
         guard let displayRowValues = displayRow(at: row) else { return nil }
         guard columnIndex < displayRowValues.values.count else { return nil }
         let oldValue = displayRowValues.values[columnIndex]

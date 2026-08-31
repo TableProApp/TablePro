@@ -133,6 +133,11 @@ extension QueryExecutionCoordinator {
         } else {
             needsMetadataFetch = false
         }
+        /// Captured now, while the result this decision was made against is still the active one.
+        let cachedMetadata: ParsedSchemaMetadata? = needsMetadataFetch ? nil : ParsedSchemaMetadata.cached(
+            rows: parent.tabSessionRegistry.tableRows(for: tabId),
+            primaryKeyColumns: tab.tableContext.primaryKeyColumns
+        )
 
         let boundValues = BoundParameterValues(values: parameters)
         let parameterizedTask = Task { [weak self, parent] in
@@ -172,7 +177,7 @@ extension QueryExecutionCoordinator {
                 await applyParameterizedResult(
                     tabId: tabId,
                     fetchResult: fetchResult,
-                    inlineMetadata: inlineMeta,
+                    inlineMetadata: inlineMeta ?? cachedMetadata,
                     tableName: tableName,
                     isEditable: isEditable,
                     sql: sql,

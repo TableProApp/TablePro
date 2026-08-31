@@ -121,6 +121,7 @@ extension TableViewCoordinator {
         if let dataColumnIndex = dataColumnIndex(from: column.identifier),
            isEditable,
            cachedRowCount > 0,
+           isColumnWritable(baseName),
            !primaryKeyColumns.contains(baseName) {
             let fillItem = NSMenuItem(
                 title: String(localized: "Fill Column…"),

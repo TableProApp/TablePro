@@ -22,6 +22,10 @@ struct TableRows: Sendable {
     /// fetch refills it, so a rerun that answered from cache left a generated or `GENERATED ALWAYS
     /// AS IDENTITY` column writable again.
     var generatedColumns: Set<String>
+    /// Whether the sets above came from the table's own schema. A result set reports far less than
+    /// the schema does, so a command that stages a value from them waits rather than reading an
+    /// empty set as "this table owns nothing".
+    var hasAuthoritativeSchema: Bool
     var foreignKeysFetched: Bool
 
     init(
@@ -35,6 +39,7 @@ struct TableRows: Sendable {
         columnComments: [String: String] = [:],
         columnIdentity: [String: IdentityKind] = [:],
         generatedColumns: Set<String> = [],
+        hasAuthoritativeSchema: Bool = false,
         foreignKeysFetched: Bool = false
     ) {
         self.rows = rows
@@ -48,6 +53,7 @@ struct TableRows: Sendable {
         self.columnComments = columnComments
         self.columnIdentity = columnIdentity
         self.generatedColumns = generatedColumns
+        self.hasAuthoritativeSchema = hasAuthoritativeSchema
         self.foreignKeysFetched = foreignKeysFetched
     }
 
@@ -191,7 +197,8 @@ struct TableRows: Sendable {
         columnNullable: [String: Bool]? = nil,
         columnComments: [String: String]? = nil,
         columnIdentity: [String: IdentityKind]? = nil,
-        generatedColumns: Set<String>? = nil
+        generatedColumns: Set<String>? = nil,
+        hasAuthoritativeSchema: Bool? = nil
     ) -> Delta {
         var didChange = false
         if let columnTypes, columnTypes != self.columnTypes {
@@ -229,6 +236,10 @@ struct TableRows: Sendable {
             self.generatedColumns = generatedColumns
             didChange = true
         }
+        if let hasAuthoritativeSchema, hasAuthoritativeSchema != self.hasAuthoritativeSchema {
+            self.hasAuthoritativeSchema = hasAuthoritativeSchema
+            didChange = true
+        }
         return didChange ? .columnsReplaced : .none
     }
 
@@ -243,6 +254,7 @@ struct TableRows: Sendable {
         columnComments: [String: String] = [:],
         columnIdentity: [String: IdentityKind] = [:],
         generatedColumns: Set<String> = [],
+        hasAuthoritativeSchema: Bool = false,
         foreignKeysFetched: Bool = false
     ) -> TableRows {
         var rows = ContiguousArray<Row>()
@@ -262,6 +274,7 @@ struct TableRows: Sendable {
             columnComments: columnComments,
             columnIdentity: columnIdentity,
             generatedColumns: generatedColumns,
+            hasAuthoritativeSchema: hasAuthoritativeSchema,
             foreignKeysFetched: foreignKeysFetched
         )
     }

@@ -591,3 +591,66 @@ struct DataChangeManagerTests {
         #expect(manager.reloadVersion == versionBeforeClear + 1)
     }
 }
+
+/// Paste, Fill Column and the row inspector all reach `recordCellChange` directly, without passing
+/// the grid's own writability check. A server-owned column could be staged there, silently filtered
+/// out during statement generation, and then cleared by a save that reported success.
+@MainActor
+@Suite("Data Change Manager - non-writable columns")
+struct DataChangeManagerNonWritableTests {
+    private func makeManager(generatedColumns: Set<String>) -> DataChangeManager {
+        let manager = DataChangeManager()
+        manager.configureForTable(
+            tableName: "users",
+            columns: ["id", "name"],
+            primaryKeyColumns: ["id"],
+            databaseType: .postgresql,
+            generatedColumns: generatedColumns
+        )
+        return manager
+    }
+
+    @Test("An edit to a server-owned column is refused")
+    func refusesServerOwnedColumn() {
+        let manager = makeManager(generatedColumns: ["id"])
+
+        manager.recordCellChange(
+            rowIndex: 0, columnIndex: 0, columnName: "id",
+            oldValue: .text("1"), newValue: .text("99")
+        )
+
+        #expect(!manager.hasChanges)
+        #expect(manager.rowChanges.isEmpty)
+    }
+
+    @Test("An edit to a writable column is still recorded")
+    func recordsWritableColumn() {
+        let manager = makeManager(generatedColumns: ["id"])
+
+        manager.recordCellChange(
+            rowIndex: 0, columnIndex: 1, columnName: "name",
+            oldValue: .text("Alice"), newValue: .text("Bob")
+        )
+
+        #expect(manager.hasChanges)
+    }
+
+    /// The refusal must not leave the other edits of the same save behind.
+    @Test("A refused edit does not disturb a legitimate one recorded alongside it")
+    func refusalLeavesOtherEditsIntact() {
+        let manager = makeManager(generatedColumns: ["id"])
+
+        manager.recordCellChange(
+            rowIndex: 0, columnIndex: 1, columnName: "name",
+            oldValue: .text("Alice"), newValue: .text("Bob")
+        )
+        manager.recordCellChange(
+            rowIndex: 0, columnIndex: 0, columnName: "id",
+            oldValue: .text("1"), newValue: .text("99")
+        )
+
+        #expect(manager.hasChanges)
+        let edited = manager.rowChanges.flatMap(\.cellChanges).map(\.columnName)
+        #expect(edited == ["name"])
+    }
+}

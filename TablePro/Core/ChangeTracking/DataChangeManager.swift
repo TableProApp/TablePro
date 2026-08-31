@@ -138,6 +138,17 @@ final class DataChangeManager: ChangeManaging {
         newValue: PluginCellValue,
         originalRow: [PluginCellValue]? = nil
     ) {
+        /// The last gate before a change becomes pending, and the only one every path crosses. The
+        /// grid's own check covers the inline editor and the Set Value menu; paste, Fill Column and
+        /// the row inspector reach here directly, so a column the server owns could be staged, be
+        /// filtered out again during statement generation, and be cleared by a save that reported
+        /// success over the changes it did write.
+        guard !generatedColumns.contains(columnName) else {
+            Self.logger.warning(
+                "Refusing an edit to server-owned column '\(columnName, privacy: .public)' in table '\(self.tableName, privacy: .public)'"
+            )
+            return
+        }
         let recorded = pending.recordCellChange(
             rowIndex: rowIndex,
             columnIndex: columnIndex,

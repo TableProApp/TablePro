@@ -55,6 +55,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A new row of nothing but server-assigned columns silently dropped from the save.
 - `OVERRIDING SYSTEM VALUE` and `setval` in a SQL export of a SQL Server database.
 - PGlite treated as a generic SQL dialect, so `$$` bodies split at their inner semicolons.
+- Paste, Fill Column and the row inspector staging an edit to a column the server owns, which the save then discarded. (#2588)
+- A rerun answered from cache adopting another pinned result's column metadata. (#2588)
+- Add Row and Duplicate Row offered before a table's schema has loaded, when nothing yet knows which columns the server fills in. (#2588)
+- Missing `SET IDENTITY_INSERT` around a SQL Server table's rows in a SQL export, so the dump could not be restored. (#2588)
+- Fill Column offered on a generated or identity column.
 
 ## [0.69.0] - 2026-08-27
 

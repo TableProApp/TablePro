@@ -488,6 +488,11 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             && columnInfo.contains { $0.identityKind == .always }
         let tableRef = qualifiedRef(
             schema: table.databaseName, table: table.name, dataSource: dataSource)
+        /// SQL Server refuses an explicit value for an IDENTITY column unless the table is opened
+        /// for it first. The rows are exported with their keys, so without this the dump restores
+        /// nothing: every INSERT for the table is rejected while the export itself reported success.
+        let needsIdentityInsert = dataSource.databaseTypeId == "SQL Server"
+            && columnInfo.contains(where: \.isIdentity)
 
         let stream = dataSource.streamRows(table: table.name, databaseName: table.databaseName)
         for try await element in stream {
@@ -501,6 +506,9 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                 for row in rows {
                     rowBatch.append(row)
                     if rowBatch.count >= batchSize {
+                        if needsIdentityInsert, !wroteAnyRows {
+                            try fileHandle.write(contentsOf: "SET IDENTITY_INSERT \(tableRef) ON;\n".toUTF8Data())
+                        }
                         try writeInsertStatements(
                             tableRef: tableRef,
                             columns: columns,
@@ -521,6 +529,9 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         }
 
         if !rowBatch.isEmpty {
+            if needsIdentityInsert, !wroteAnyRows {
+                try fileHandle.write(contentsOf: "SET IDENTITY_INSERT \(tableRef) ON;\n".toUTF8Data())
+            }
             try writeInsertStatements(
                 tableRef: tableRef,
                 columns: columns,
@@ -534,6 +545,10 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                 progress: progress
             )
             wroteAnyRows = true
+        }
+
+        if wroteAnyRows, needsIdentityInsert {
+            try fileHandle.write(contentsOf: "SET IDENTITY_INSERT \(tableRef) OFF;\n".toUTF8Data())
         }
 
         if wroteAnyRows {

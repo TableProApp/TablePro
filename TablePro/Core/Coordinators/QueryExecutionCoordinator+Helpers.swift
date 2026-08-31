@@ -103,15 +103,19 @@ extension QueryExecutionCoordinator {
         var columnComments: [String: String] = [:]
         var columnIdentity: [String: IdentityKind] = [:]
         var generatedColumns: Set<String> = []
+        var hasAuthoritativeSchema = false
         var foreignKeysFetched = false
     }
 
-    /// A rerun answered from cache carries no metadata of its own, so it inherits what the tab
-    /// already holds. That includes the non-writable set, which `configureForTable` clears on every
-    /// execution and only a schema fetch refills.
+    /// A rerun answered from cache carries no metadata of its own, so it takes the snapshot the
+    /// caller captured when it made that cache decision. That includes the non-writable set, which
+    /// `configureForTable` clears on every execution and only a schema fetch refills.
+    ///
+    /// The snapshot is never re-read from the session here. Reading it at this point reads whichever
+    /// result is active by then, and selecting a pinned result while the rerun was in flight made
+    /// the rerun adopt that other result's identity and non-writable sets.
     private func resolveDisplayMetadata(
         metadata: ParsedSchemaMetadata?,
-        existingTabId: UUID,
         columns: [String],
         columnTypes: [ColumnType],
         tabIndex: Int,
@@ -131,20 +135,9 @@ extension QueryExecutionCoordinator {
             resolved.columnComments = metadata.columnComments
             resolved.columnIdentity = metadata.columnIdentity
             resolved.generatedColumns = metadata.generatedColumns
+            resolved.hasAuthoritativeSchema = metadata.isAuthoritative
             resolved.foreignKeysFetched = metadata.columnForeignKeys != nil
             for (col, vals) in metadata.columnEnumValues {
-                resolved.columnEnumValues[col] = vals
-            }
-        } else {
-            let existing = parent.tabSessionRegistry.tableRows(for: existingTabId)
-            resolved.columnDefaults = existing.columnDefaults
-            resolved.columnForeignKeys = existing.columnForeignKeys
-            resolved.columnNullable = existing.columnNullable
-            resolved.columnComments = existing.columnComments
-            resolved.columnIdentity = existing.columnIdentity
-            resolved.generatedColumns = existing.generatedColumns
-            resolved.foreignKeysFetched = existing.foreignKeysFetched
-            for (col, vals) in existing.columnEnumValues where resolved.columnEnumValues[col] == nil {
                 resolved.columnEnumValues[col] = vals
             }
         }
@@ -200,7 +193,6 @@ extension QueryExecutionCoordinator {
         let existingTabId = parent.tabManager.tabs[idx].id
         let resolved = resolveDisplayMetadata(
             metadata: metadata,
-            existingTabId: existingTabId,
             columns: columns,
             columnTypes: columnTypes,
             tabIndex: idx,
@@ -219,6 +211,7 @@ extension QueryExecutionCoordinator {
             columnComments: resolved.columnComments,
             columnIdentity: resolved.columnIdentity,
             generatedColumns: generatedColumns,
+            hasAuthoritativeSchema: resolved.hasAuthoritativeSchema,
             foreignKeysFetched: resolved.foreignKeysFetched
         )
         let previousTableName = parent.tabManager.tabs[idx].tableContext.tableName
@@ -536,7 +529,8 @@ extension QueryExecutionCoordinator {
                 columnNullable: parsed.columnNullable,
                 columnComments: parsed.columnComments,
                 columnIdentity: parsed.columnIdentity,
-                generatedColumns: parsed.generatedColumns
+                generatedColumns: parsed.generatedColumns,
+                hasAuthoritativeSchema: parsed.isAuthoritative
             )
         }
 

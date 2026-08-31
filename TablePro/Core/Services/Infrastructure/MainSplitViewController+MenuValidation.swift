@@ -24,6 +24,10 @@ struct MenuValidationContext: Equatable {
     /// Export Results exports the selected tab's rows, so an empty grid has nothing to offer.
     var hasResultRows = false
     var isCurrentTabEditable = false
+    /// Add Row and Duplicate Row stage `DEFAULT` for every column the server fills in, which only
+    /// the table's own schema names. Until it lands, the result set's own metadata reports far less,
+    /// and an identity column would be staged as NULL that the server refuses.
+    var isCurrentTabSchemaResolved = false
     var canRestorePreviousValues = false
     var isQueryExecuting = false
     var hasQueryText = false
@@ -163,6 +167,7 @@ extension MainSplitViewController: NSMenuItemValidation {
 
         case #selector(addRow(_:)), #selector(duplicateRow(_:)):
             return context.isConnected && context.isCurrentTabEditable && !context.isReadOnly
+                && context.isCurrentTabSchemaResolved
         case #selector(restorePreviousValues(_:)):
             return context.isConnected && context.canRestorePreviousValues && !context.isReadOnly
         case #selector(truncateTable(_:)):
@@ -257,6 +262,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             isQueryTab: actions.isQueryTab,
             hasResultRows: actions.hasResultRows,
             isCurrentTabEditable: actions.isCurrentTabEditable,
+            isCurrentTabSchemaResolved: actions.isCurrentTabSchemaResolved,
             canRestorePreviousValues: actions.canRestorePreviousValues,
             isQueryExecuting: actions.isQueryExecuting,
             hasQueryText: actions.hasQueryText,

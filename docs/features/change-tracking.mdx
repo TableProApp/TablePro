@@ -41,9 +41,11 @@ Right-click an editable cell and open **Set Value** for the common ones without 
 - **Duplicate Row** (`Cmd+Shift+D`) on the right-click menu copies a row and resets its primary key and its identity columns to `DEFAULT`, so the database assigns new ones.
 - **Delete**: select rows by their row numbers (`Shift`-click for a range, `Cmd`-click for separate rows) and press `Delete`. They stay visible with a strikethrough, and saving asks "Delete 5 rows?" before they go.
 - **Paste** on the right-click menu inserts copied rows as new rows.
-- **Fill Column** on the header right-click menu writes one value into every loaded row, skipping primary key columns.
+- **Fill Column** on the header right-click menu writes one value into every loaded row. It is absent on primary key columns and on columns the server owns.
 
 A new row starts at `DEFAULT` in every column the server fills in. That covers a column with a default expression, and an identity or `AUTO_INCREMENT` column, which carries no default of its own. The INSERT leaves those columns out, so the server assigns them.
+
+Add Row and Duplicate Row stay dimmed until the table's schema has loaded, which is what says which columns the server fills in. On a table opened for the first time that is a fraction of a second.
 
 ## When the grid will not edit
 
