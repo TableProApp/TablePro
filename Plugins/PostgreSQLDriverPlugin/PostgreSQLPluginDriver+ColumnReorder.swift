@@ -69,7 +69,7 @@ extension PostgreSQLPluginDriver {
             statements: statements,
             rollbackStatements: ["ROLLBACK"],
             cost: .tableRebuild,
-            caveats: [
+            caveats: parts.dependentViewCaveat + [
                 String(localized: "Grants, row-level security policies, publications, extended statistics, partitioning and table inheritance are not carried over."),
                 String(localized: "A column collation that differs from its type default is not reproduced."),
                 String(localized: "A sequence owned by a serial column is dropped with the old table. An identity column keeps its value but its sequence is recreated under a new name, because the old table still holds the original name when the new one is created.")
@@ -90,6 +90,24 @@ extension PostgreSQLPluginDriver {
         var indexes: [String] = []
         var triggers: [String] = []
         var comments: [String] = []
+        var dependentViews: [String] = []
+
+        /// PostgreSQL binds a view to the table's OID, not its name, so a view follows the rename
+        /// onto the staging table and then refuses to let it be dropped. Measured: the rebuild
+        /// stops at `DROP TABLE` with "cannot drop table … because other objects depend on it" and
+        /// the whole transaction rolls back. Naming them here is what stops that being discovered
+        /// three quarters of the way through the script.
+        var dependentViewCaveat: [String] {
+            guard !dependentViews.isEmpty else { return [] }
+            return [
+                String(
+                    format: String(
+                        localized: "Drop and recreate these views first, or the script stops when it drops the old table: %@."
+                    ),
+                    dependentViews.joined(separator: ", ")
+                )
+            ]
+        }
 
         /// A new identity column starts its sequence at one, so it is wound forward to the rows the
         /// copy just wrote. Without this the next insert collides with an existing key.
@@ -249,6 +267,20 @@ extension PostgreSQLPluginDriver {
             WHERE c.relname = '\(safeTable)' AND n.nspname = '\(safeSchema)'
               AND a.attnum > 0 AND NOT a.attisdropped
               AND col_description(c.oid, a.attnum) IS NOT NULL
+            """)
+
+        parts.dependentViews = try await textRows("""
+            SELECT DISTINCT quote_ident(dn.nspname) || '.' || quote_ident(dc.relname)
+            FROM pg_depend d
+            JOIN pg_rewrite r ON r.oid = d.objid
+            JOIN pg_class dc ON dc.oid = r.ev_class
+            JOIN pg_namespace dn ON dn.oid = dc.relnamespace
+            JOIN pg_class c ON c.oid = d.refobjid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relname = '\(safeTable)' AND n.nspname = '\(safeSchema)'
+              AND dc.relkind IN ('v', 'm')
+              AND dc.oid <> c.oid
+            ORDER BY 1
             """)
 
         return parts
