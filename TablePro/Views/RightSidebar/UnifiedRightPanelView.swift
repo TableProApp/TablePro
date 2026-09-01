@@ -16,16 +16,27 @@ struct UnifiedRightPanelView: View {
     /// AI Chat is the only tab a setting can take away, and a tab that is gone cannot stay
     /// selected: the picker would show no selection and the panel no content.
     private var availableTabs: [RightPanelTab] {
-        RightPanelTab.allCases.filter { $0 != .aiChat || settingsManager.ai.enabled }
+        RightPanelTab.available(isAIEnabled: settingsManager.ai.enabled)
+    }
+
+    /// Every read of the active tab goes through the resolution, because the stored value is
+    /// restored per connection without asking whether the tab still exists and no change
+    /// notification fires for a value that was already wrong when the panel appeared.
+    private var activeTab: RightPanelTab {
+        RightPanelTab.resolved(state.activeTab, isAIEnabled: settingsManager.ai.enabled)
+    }
+
+    /// Writes the resolution back so the stored tab stops naming one the panel cannot show, and
+    /// only when it differs: every assignment persists, and the panel appears on every switch.
+    private func normalizeActiveTab() {
+        guard state.activeTab != activeTab else { return }
+        state.activeTab = activeTab
     }
 
     var body: some View {
         splitContent
-        .onChange(of: settingsManager.ai.enabled) {
-            if !settingsManager.ai.enabled, state.activeTab == .aiChat {
-                state.activeTab = .details
-            }
-        }
+        .task { normalizeActiveTab() }
+        .onChange(of: settingsManager.ai.enabled) { normalizeActiveTab() }
         .alert(
             String(localized: "Clear All Conversations?"),
             isPresented: $showClearConfirmation
@@ -57,12 +68,12 @@ struct UnifiedRightPanelView: View {
     private var tabContent: some View {
         ZStack(alignment: .topLeading) {
             detailsView
-                .opacity(state.activeTab == .details ? 1 : 0)
-                .allowsHitTesting(state.activeTab == .details)
-                .disabled(state.activeTab != .details)
-                .accessibilityHidden(state.activeTab != .details)
+                .opacity(activeTab == .details ? 1 : 0)
+                .allowsHitTesting(activeTab == .details)
+                .disabled(activeTab != .details)
+                .accessibilityHidden(activeTab != .details)
 
-            switch state.activeTab {
+            switch activeTab {
             case .details: EmptyView()
             case .json:    jsonView
             case .aiChat:  aiChatView
@@ -75,7 +86,7 @@ struct UnifiedRightPanelView: View {
         HStack(alignment: .center, spacing: 4) {
             tabPicker
             Spacer(minLength: 8)
-            if state.activeTab == .aiChat {
+            if activeTab == .aiChat {
                 historyMenu
                 newConversationButton
             }
@@ -85,7 +96,7 @@ struct UnifiedRightPanelView: View {
     }
 
     private var tabPicker: some View {
-        Picker("", selection: $state.activeTab) {
+        Picker("", selection: Binding(get: { activeTab }, set: { state.activeTab = $0 })) {
             ForEach(availableTabs, id: \.self) { tab in
                 Text(tab.localizedTitle).tag(tab)
             }

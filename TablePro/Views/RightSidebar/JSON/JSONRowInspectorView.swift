@@ -52,40 +52,22 @@ struct JSONRowInspectorView: View {
         .padding(.vertical, 6)
     }
 
+    /// The same `NSSearchField` the Details tab beside it uses.
+    ///
+    /// A plain `TextField` implements none of what a search field is: `Escape` clears the term and
+    /// only then falls through to the window, the cancel button and the magnifier are drawn by
+    /// AppKit, and assistive software reads the control as a search field rather than as text.
     private var filterField: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "line.3.horizontal.decrease")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            TextField(
-                String(localized: "Filter by text or /regex/"),
-                text: $viewModel.filterText
-            )
-            .textFieldStyle(.plain)
-            .font(.callout)
-            if !viewModel.filterText.isEmpty {
-                Button {
-                    viewModel.filterText = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(String(localized: "Clear Filter"))
-            }
-        }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color(nsColor: .textBackgroundColor))
+        NativeSearchField(
+            text: $viewModel.filterText,
+            placeholder: String(localized: "Filter by text or /regex/"),
+            controlSize: .small,
+            accessibilityIdentifier: "json-row-filter"
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(
-                    viewModel.isFilterInvalid ? Color.red.opacity(0.6) : Color(nsColor: .separatorColor)
-                )
+                .strokeBorder(Color.red.opacity(0.6))
+                .opacity(viewModel.isFilterInvalid ? 1 : 0)
         )
         .help(viewModel.isFilterInvalid
             ? String(localized: "Not a valid regular expression")
@@ -126,7 +108,9 @@ struct JSONRowInspectorView: View {
     private var tree: some View {
         let rows = viewModel.displayRows
         if rows.isEmpty {
-            noMatches
+            /// Only a filter can empty a row that has columns, so anything else that empties the
+            /// tree is the absence of a row, not the absence of a match.
+            if viewModel.isFiltering { noMatches } else { emptyState }
         } else {
             ScrollView(.vertical) {
                 LazyVStack(alignment: .leading, spacing: 0) {
