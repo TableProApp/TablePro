@@ -680,8 +680,27 @@ extension PluginManager {
             throw PluginError.notFound
         }
 
-        let entry = try await installFromRegistry(registryPlugin, registryClient: registryClient, progress: progress)
-        Self.logger.info("Installed missing plugin '\(entry.name)' for database type '\(databaseType.rawValue)'")
+        /// Published to the tracker as well as to the caller's handler. `PluginInstallStatusRow`
+        /// is built to draw the fraction and reaches it only through the tracker, so without this
+        /// every install started from a connection or a file fell back to its indeterminate
+        /// spinner while the determinate bar beside it was never fed.
+        let tracker = PluginInstallTracker.shared
+        tracker.beginInstall(pluginId: registryPlugin.id)
+        do {
+            let entry = try await installFromRegistry(
+                registryPlugin,
+                registryClient: registryClient,
+                progress: { fraction in
+                    tracker.updateProgress(pluginId: registryPlugin.id, fraction: fraction)
+                    progress(fraction)
+                }
+            )
+            tracker.completeInstall(pluginId: registryPlugin.id)
+            Self.logger.info("Installed missing plugin '\(entry.name)' for database type '\(databaseType.rawValue)'")
+        } catch {
+            tracker.failInstall(pluginId: registryPlugin.id, error: error.localizedDescription)
+            throw error
+        }
     }
 
     nonisolated static func registryPlugin(forTypeId pluginTypeId: String, in manifest: RegistryManifest?) -> RegistryPlugin? {

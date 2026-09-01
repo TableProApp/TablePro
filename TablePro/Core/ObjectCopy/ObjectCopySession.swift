@@ -132,6 +132,26 @@ internal final class ObjectCopySession {
         step == .copying
     }
 
+    /// The two list buttons act on what the search is showing, so they are offered only while
+    /// there is something in that view left to tick or untick.
+    internal var canSelectAllFiltered: Bool {
+        filteredObjects.contains { !selectedObjectIds.contains($0.id) }
+    }
+
+    internal var canDeselectAllFiltered: Bool {
+        filteredObjects.contains { selectedObjectIds.contains($0.id) }
+    }
+
+    /// Counted against every object the source has, not against the filter, because the copy
+    /// carries the whole selection and a search hides how much of it is out of view.
+    internal var selectionSummary: String {
+        String(
+            format: String(localized: "%1$@ of %2$@ selected"),
+            selectedObjectIds.count.formatted(.number.grouping(.automatic)),
+            availableObjects.count.formatted(.number.grouping(.automatic))
+        )
+    }
+
     /// Why Copy is unavailable, or nil when it is. Spelled as a reason rather than a bool so the
     /// sheet can say what is missing instead of leaving a dead button.
     internal var reviewDisabledReason: String? {

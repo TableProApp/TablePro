@@ -37,11 +37,20 @@ internal enum MissingDriverPluginPrompt {
         )
         guard confirmed else { return false }
 
+        let presenter = PluginInstallProgressPresenter()
+        presenter.begin(title: String(format: String(localized: "Downloading the %@ plugin…"), displayName))
+
         do {
-            try await PluginManager.shared.installMissingPlugin(for: type) { _ in }
+            try await PluginManager.shared.installMissingPlugin(for: type) { fraction in
+                presenter.update(fraction: fraction)
+            }
+            presenter.end()
             logger.info("Installed \(type.rawValue, privacy: .public) to open a file")
             return true
         } catch {
+            /// Ended before the failure is presented, because both are sheets on the same window
+            /// and the second would queue behind the first.
+            presenter.end()
             logger.error("Install failed for \(type.rawValue, privacy: .public): \(error.localizedDescription, privacy: .public)")
             AlertHelper.showErrorSheet(
                 title: String(localized: "Plugin Installation Failed"),

@@ -15,24 +15,51 @@ internal struct CopyObjectsListView: View {
             toolbar
             Divider()
             list
+            /// Withheld until there is a catalog to count. "0 of 0 selected" under a spinner
+            /// reports a state the source has not answered for yet.
+            if !session.isLoadingObjects, !session.availableObjects.isEmpty {
+                Divider()
+                status
+            }
         }
     }
 
+    /// `NSSearchField` rather than a text field wearing a magnifying glass. It brings the recessed
+    /// search shape, the clear button and the search menu, and it is the only one of the two that
+    /// takes Escape: a plain field lets the key through to the sheet's Cancel, so clearing a
+    /// filter threw away the target, the content choice and every tick with it.
     private var toolbar: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField(String(localized: "Search"), text: $session.searchText)
-                .textFieldStyle(.plain)
-                .accessibilityIdentifier("copy-objects-search")
+            NativeSearchField(
+                text: $session.searchText,
+                placeholder: String(localized: "Search"),
+                controlSize: .small,
+                accessibilityIdentifier: "copy-objects-search"
+            )
             Spacer(minLength: 8)
-            Button(String(localized: "All")) { session.selectAll() }
+            /// Both act on what the search is showing, which is why they are disabled the moment
+            /// there is nothing left for them to change rather than staying lit over a no-op.
+            Button(String(localized: "Select All")) { session.selectAll() }
                 .controlSize(.small)
-            Button(String(localized: "None")) { session.selectNone() }
+                .disabled(!session.canSelectAllFiltered)
+            Button(String(localized: "Deselect All")) { session.selectNone() }
                 .controlSize(.small)
+                .disabled(!session.canDeselectAllFiltered)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    /// What the copy will actually carry. The list shows the filter's result, so without a count
+    /// of the whole selection a search hides how much is ticked outside it.
+    private var status: some View {
+        Text(session.selectionSummary)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .accessibilityIdentifier("copy-objects-selection-summary")
     }
 
     @ViewBuilder

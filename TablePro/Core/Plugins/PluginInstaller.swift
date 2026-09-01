@@ -196,6 +196,11 @@ actor PluginInstaller {
             throw PluginError.downloadFailed("Invalid download URL")
         }
 
+        /// Zero here is "not started", not "nought per cent done", and nothing else arrives until
+        /// the whole file is down: measured on a 25.7 MB download with a known `Content-Length`,
+        /// `download(from:delegate:)` delivered no `URLSessionDownloadDelegate` byte callbacks at
+        /// all, because the async form routes only `URLSessionTaskDelegate` messages to a per-task
+        /// delegate. Anything drawing this has to stay indeterminate until a fraction moves.
         await progressHandler(.downloading(fraction: 0))
 
         let (tempDownloadURL, response) = try await context.session.download(from: downloadURL)

@@ -60,6 +60,7 @@ internal struct DatabaseEndpointPicker: View {
     @State private var model = DatabaseEndpointPickerModel()
     @State private var path: [DatabaseEndpointRoute] = []
     @State private var connections: [DatabaseConnection] = []
+    @State private var filter = ""
 
     internal var body: some View {
         NavigationStack(path: $path) {
@@ -71,6 +72,43 @@ internal struct DatabaseEndpointPicker: View {
         }
         .frame(width: Self.contentSize.width, height: Self.contentSize.height)
         .onAppear { connections = ConnectionStorage.shared.loadConnections() }
+        /// Each level filters its own list, so moving between them starts clean rather than
+        /// arriving at a database list already narrowed by a connection's name.
+        .onChange(of: path) { _, _ in filter = "" }
+    }
+
+    // MARK: - Search
+
+    /// A server answers with hundreds of databases and the picker is 320 points wide, so scrolling
+    /// is not a way to find one. `NSSearchField` rather than a text field: it brings the clear
+    /// button and it takes Escape itself, so clearing a filter never closes the popover.
+    private func searchable(_ list: some View, prompt: String) -> some View {
+        VStack(spacing: 0) {
+            NativeSearchField(
+                text: $filter,
+                placeholder: prompt,
+                controlSize: .small,
+                accessibilityIdentifier: "database-endpoint-search"
+            )
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            Divider()
+            list
+        }
+    }
+
+    private func matches(_ value: String) -> Bool {
+        let query = filter.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return true }
+        return value.localizedCaseInsensitiveContains(query)
+    }
+
+    private var noMatchesPane: some View {
+        ContentUnavailableView {
+            Label("No Matches", systemImage: "magnifyingglass")
+        } description: {
+            Text("Nothing here matches the search.")
+        }
     }
 
     // MARK: - Connections
@@ -84,11 +122,21 @@ internal struct DatabaseEndpointPicker: View {
                     Text("Add a connection first.")
                 }
             } else {
-                List(connections) { connection in
-                    connectionRow(connection)
-                }
-                .listStyle(.inset)
+                searchable(matchingConnectionList, prompt: String(localized: "Search Connections"))
             }
+        }
+    }
+
+    @ViewBuilder
+    private var matchingConnectionList: some View {
+        let matching = connections.filter { matches($0.name) }
+        if matching.isEmpty {
+            noMatchesPane
+        } else {
+            List(matching) { connection in
+                connectionRow(connection)
+            }
+            .listStyle(.inset)
         }
     }
 
@@ -153,11 +201,28 @@ internal struct DatabaseEndpointPicker: View {
                 }
                 .listStyle(.inset)
             } else {
-                List(names, id: \.self) { name in
-                    databaseRow(base.withDatabase(name, label: label(name, connection)), connection: connection)
-                }
-                .listStyle(.inset)
+                searchable(
+                    matchingDatabaseList(names, base: base, connection: connection),
+                    prompt: String(localized: "Search Databases")
+                )
             }
+        }
+    }
+
+    @ViewBuilder
+    private func matchingDatabaseList(
+        _ names: [String],
+        base: DatabaseEndpoint,
+        connection: DatabaseConnection
+    ) -> some View {
+        let matching = names.filter { matches(label($0, connection)) }
+        if matching.isEmpty {
+            noMatchesPane
+        } else {
+            List(matching, id: \.self) { name in
+                databaseRow(base.withDatabase(name, label: label(name, connection)), connection: connection)
+            }
+            .listStyle(.inset)
         }
     }
 
@@ -190,11 +255,21 @@ internal struct DatabaseEndpointPicker: View {
                     Text("This database reports no schemas.")
                 }
             } else {
-                List(names, id: \.self) { name in
-                    endpointRow(endpoint.withSchema(name), title: name)
-                }
-                .listStyle(.inset)
+                searchable(matchingSchemaList(names, endpoint: endpoint), prompt: String(localized: "Search Schemas"))
             }
+        }
+    }
+
+    @ViewBuilder
+    private func matchingSchemaList(_ names: [String], endpoint: DatabaseEndpoint) -> some View {
+        let matching = names.filter { matches($0) }
+        if matching.isEmpty {
+            noMatchesPane
+        } else {
+            List(matching, id: \.self) { name in
+                endpointRow(endpoint.withSchema(name), title: name)
+            }
+            .listStyle(.inset)
         }
     }
 

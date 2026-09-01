@@ -48,9 +48,10 @@ enum DatabaseMenuBuilder {
             MenuItemFactory.separator,
             /// The sidebar's own Copy To and Duplicate Database, mirrored so both are reachable
             /// from the keyboard. The menu acts on the database being browsed, which is what a
-            /// command with no clicked row can mean.
+            /// command with no clicked row can mean. Spelled exactly as the sidebar and the sheet
+            /// spell it: one command carrying two names reads as two commands.
             MenuItemFactory.item(
-                String(localized: "Copy Objects To…"),
+                String(localized: "Copy To…"),
                 action: #selector(MainSplitViewController.copyObjectsToDatabase(_:))
             ),
             MenuItemFactory.item(

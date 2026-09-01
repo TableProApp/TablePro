@@ -1,0 +1,70 @@
+//
+//  StructureColumnMoveUITests.swift
+//  TableProUITests
+//
+
+import XCTest
+
+/// Issue #2479 shipped column reorder as a drag and nothing else, so the only way to move a column
+/// needed a pointer: no menu command, no keyboard, and nothing VoiceOver could perform. The tab
+/// strip had already closed the same gap with Move Tab Left and Move Tab Right beside its drag.
+///
+/// The sample database is SQLite, which reorders by rebuilding the table, so both commands are
+/// offered and neither is run here: confirming the rebuild is a different flow.
+final class StructureColumnMoveUITests: UITestCase {
+    func testAColumnRowsContextualMenuOffersBothMoveCommands() throws {
+        let app = try launchWithSampleDatabase()
+        let window = app.windows.firstMatch
+
+        let row = objectBrowserRow("Album", in: window)
+        XCTAssertTrue(row.waitToExist(timeout: 20), "The object browser must list Album")
+        clickAtCenter(row)
+
+        showStructure(in: window)
+        let grid = window.tables.matching(identifier: "data-grid").firstMatch
+        XCTAssertTrue(grid.waitToExist(timeout: 30), "The structure editor must draw its column grid")
+        XCTAssertTrue(
+            waitForPredicate(timeout: 30) { grid.tableRows.count > 1 },
+            "Album has more than one column, so both directions have somewhere to go"
+        )
+
+        /// A point offset from the grid, never a row or cell element: the grid's columns are
+        /// siblings of its rows and later in the tree, so XCUITest reads both as obscured.
+        let target = grid.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 80, dy: 40))
+
+        /// Right-clicking an unselected row falls through to the row view's own `menu(for:)`.
+        target.rightClick()
+        assertMoveCommandsOffered(in: app, path: "an unselected column row")
+        app.typeKey(.escape, modifierFlags: [])
+
+        /// Selecting first is the ordinary path, and it is a different one in AppKit:
+        /// `KeyHandlingTableView.rightMouseDown` intercepts a click inside the selection and
+        /// answers from `DataGridRowView.contextMenu(for:)`, which never sees the row view's
+        /// override. Items added only there were missing from exactly the path most users take.
+        target.click()
+        target.rightClick()
+        assertMoveCommandsOffered(in: app, path: "a selected column row")
+        app.typeKey(.escape, modifierFlags: [])
+    }
+
+    private func assertMoveCommandsOffered(in app: XCUIApplication, path: String) {
+        let up = app.menuItems["Move Column Up"].firstMatch
+        let down = app.menuItems["Move Column Down"].firstMatch
+        XCTAssertTrue(up.waitToExist(timeout: 15), "\(path) must offer Move Column Up")
+        XCTAssertTrue(down.exists, "\(path) must offer Move Column Down")
+        /// Which of the two is live depends on where in the run the click landed; a first or last
+        /// column has one direction with nowhere to go. `ColumnMoveTests` pins that arithmetic.
+        XCTAssertTrue(
+            up.isEnabled || down.isEnabled,
+            "SQLite reorders by rebuilding, so a column has at least one direction it can move"
+        )
+    }
+
+    private func showStructure(in window: XCUIElement) {
+        let modePicker = window.radioGroups["results-view-mode-picker"].firstMatch
+        XCTAssertTrue(modePicker.waitToExist(timeout: 20), "The result must expose its view modes")
+        let structure = modePicker.radioButtons["Structure"].firstMatch
+        XCTAssertTrue(structure.waitToExist(timeout: 20), "Structure must be one of them")
+        structure.click()
+    }
+}

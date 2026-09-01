@@ -13,9 +13,14 @@ internal struct CopyObjectsConfigureView: View {
 
     internal var body: some View {
         HStack(spacing: 0) {
-            settings
-                .frame(width: 320)
-                .padding(20)
+            /// The column grows with the destination: duplicating a database adds every option
+            /// that engine's `CREATE DATABASE` takes, and the sheet's height is fixed, so the
+            /// settings scroll rather than being clipped off the bottom edge.
+            ScrollView {
+                settings
+                    .padding(20)
+            }
+            .frame(width: 320)
             Divider()
             CopyObjectsListView(session: session)
                 .frame(maxWidth: .infinity)

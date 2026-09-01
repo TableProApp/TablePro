@@ -294,4 +294,38 @@ final class ObjectCopySessionTests: XCTestCase {
         XCTAssertEqual(request.tables.map(\.name), ["orders"])
         XCTAssertEqual(request.sourceDefinedObjects.map(\.name), ["active", "audit"])
     }
+
+    // MARK: - The object list's two buttons and its count
+
+    func testSelectAllIsWithheldOnceTheSearchsObjectsAreAllSelected() {
+        let session = session()
+        XCTAssertFalse(session.canSelectAllFiltered)
+        XCTAssertTrue(session.canDeselectAllFiltered)
+
+        session.selectNone()
+        XCTAssertTrue(session.canSelectAllFiltered)
+        XCTAssertFalse(session.canDeselectAllFiltered)
+    }
+
+    /// Both buttons act on what the search is showing, so a filter that hides the only unselected
+    /// object has to leave Select All disabled rather than offering to select something off screen.
+    func testTheButtonsFollowTheSearchRatherThanTheWholeCatalog() {
+        let session = session()
+        session.setSelected(session.availableObjects[1], false)
+        session.searchText = "orders"
+
+        XCTAssertFalse(session.canSelectAllFiltered)
+        XCTAssertTrue(session.canDeselectAllFiltered)
+    }
+
+    /// Counted against every object the source has. Counting the filter instead reports "1 of 1"
+    /// over a copy that is about to carry two.
+    func testTheCountIgnoresTheSearch() {
+        let session = session()
+        let unfiltered = session.selectionSummary
+        session.searchText = "orders"
+
+        XCTAssertEqual(session.selectionSummary, unfiltered)
+        XCTAssertEqual(session.filteredObjects.count, 1)
+    }
 }

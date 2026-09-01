@@ -15,7 +15,7 @@ final class CopyObjectsUITests: UITestCase {
 
         openContextMenu(onRow: "Album", in: window, of: app)
 
-        let item = app.menuItems[copyToTitle]
+        let item = contextMenuItem(copyToTitle, in: app)
         XCTAssertTrue(
             item.waitToExist(timeout: 10),
             "Copy To must be reachable from a table row's contextual menu"
@@ -28,7 +28,7 @@ final class CopyObjectsUITests: UITestCase {
         let window = try readyWindow(of: app)
 
         openContextMenu(onRow: "Album", in: window, of: app)
-        let item = app.menuItems[copyToTitle]
+        let item = contextMenuItem(copyToTitle, in: app)
         XCTAssertTrue(item.waitToExist(timeout: 10))
         item.click()
 
@@ -47,6 +47,41 @@ final class CopyObjectsUITests: UITestCase {
         if cancel.waitToExist(timeout: 10) {
             cancel.click()
         }
+    }
+
+    /// The object search used to be a plain text field wearing a magnifying glass, so Escape went
+    /// straight past it to the sheet's Cancel: narrowing the list and changing your mind about the
+    /// search threw away the target, the content choice and every tick with it. An `NSSearchField`
+    /// takes the key itself while it holds text.
+    func testEscapeInTheObjectSearchClearsItRatherThanClosingTheSheet() throws {
+        let app = try launchWithSampleDatabase()
+        let window = try readyWindow(of: app)
+
+        openContextMenu(onRow: "Album", in: window, of: app)
+        let item = contextMenuItem(copyToTitle, in: app)
+        XCTAssertTrue(item.waitToExist(timeout: 10))
+        item.click()
+
+        let search = window.descendants(matching: .any)
+            .matching(identifier: "copy-objects-search").firstMatch
+        XCTAssertTrue(search.waitToExist(timeout: 20), "The sheet must offer a search field")
+        XCTAssertTrue(waitUntilHittable(search, timeout: 20))
+        search.click()
+        app.typeText("Album")
+
+        app.typeKey(.escape, modifierFlags: [])
+
+        XCTAssertTrue(
+            search.exists,
+            "Escape belongs to the search field while it holds text; the sheet must still be open"
+        )
+
+        /// Empty now, so this Escape is the one that leaves.
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { !search.exists },
+            "Escape on an empty search field closes the sheet"
+        )
     }
 
     // MARK: - Helpers
@@ -71,5 +106,19 @@ final class CopyObjectsUITests: UITestCase {
 
     private func dismissMenu(in app: XCUIApplication) {
         app.typeKey(.escape, modifierFlags: [])
+    }
+
+    /// Scoped to the menu the right-click raised. **Database > Copy To…** carries the same title,
+    /// on purpose, and a closed menu bar submenu is still in the accessibility tree, so an
+    /// app-rooted `menuItems[title]` matches two elements and refuses to click either.
+    ///
+    /// An open contextual menu is a direct child of the application; the menu bar is a
+    /// `.menuBar` and its submenus hang under that. Where the runner's tree does not agree,
+    /// hittability separates them: only the open menu's items can be clicked.
+    private func contextMenuItem(_ title: String, in app: XCUIApplication) -> XCUIElement {
+        let scoped = app.children(matching: .menu).firstMatch.menuItems[title].firstMatch
+        if scoped.exists { return scoped }
+        let matches = app.menuItems.matching(NSPredicate(format: "title == %@", title))
+        return matches.allElementsBoundByIndex.first { $0.isHittable } ?? matches.firstMatch
     }
 }

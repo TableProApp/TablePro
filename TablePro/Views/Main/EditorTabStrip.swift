@@ -337,9 +337,6 @@ private struct EditorTabStripItem: View {
         }
     }
 
-    /// Carries the preview state, because the italic title cannot: an assistive technology is told
-    /// the string, never the face it is set in, and the HIG asks that no interface rely on a single
-    /// method to convey a change in state.
     private var canKeepOpen: Bool {
         commands?.canKeepOpen(tab.id) ?? false
     }
@@ -356,6 +353,9 @@ private struct EditorTabStripItem: View {
         commands?.canMove(tab.id, 1) ?? false
     }
 
+    /// Carries the preview state, because the italic title cannot: an assistive technology is told
+    /// the string, never the face it is set in, and the HIG asks that no interface rely on a single
+    /// method to convey a change in state.
     private var positionDescription: String {
         var description = String(format: String(localized: "%1$d of %2$d"), position, count)
         if tab.isPreview {
@@ -363,16 +363,6 @@ private struct EditorTabStripItem: View {
         }
         guard tab.execution.finishedUnseenAt != nil, !isSelected else { return description }
         return String(format: String(localized: "%@, finished"), description)
-    }
-
-    /// The pointer's route to the same state the title's italic carries, and the only place the
-    /// gesture that keeps the tab is named outside the context menu.
-    private var tooltip: String {
-        guard tab.isPreview else { return label.description }
-        return String(
-            format: String(localized: "%@\nPreview tab. Double-click to keep it open."),
-            label.description
-        )
     }
 
     /// The system draws both labels in the same face at the same size and separates them by colour

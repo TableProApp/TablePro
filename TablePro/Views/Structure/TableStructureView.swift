@@ -479,6 +479,10 @@ struct TableStructureView: View {
         gridDelegate.moveRowHandler = availability.isAvailable ? { [self] fromIndex, toIndex in
             beginColumnReorder(fromIndex: fromIndex, toIndex: toIndex)
         } : nil
+        gridDelegate.columnReorder = DataGridRowReorder(
+            isEnabled: availability.isAvailable,
+            unavailableReason: availability.unavailableReason
+        )
     }
 
     private var structureGrid: some View {

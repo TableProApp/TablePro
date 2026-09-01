@@ -20,6 +20,10 @@ final class StructureGridDelegate: DataGridViewDelegate {
     // Column reorder callback (set externally by the view when conditions allow)
     var moveRowHandler: ((Int, Int) -> Void)?
 
+    /// Whether a column may be moved right now, and why not when it may not. Carried so the row's
+    /// contextual menu can offer the same reorder the drag offers, and name the same reason.
+    var columnReorder: DataGridRowReorder = .disabled
+
     // Sort callback (set by TableStructureView to update its @State)
     var sortHandler: ((Int, Bool) -> Void)?
 
@@ -479,6 +483,61 @@ final class StructureGridDelegate: DataGridViewDelegate {
         return rowView
     }
 
+    /// Move Column Up and Move Column Down, for whichever of the grid's two contextual menus is
+    /// asking. Dragging is the usual way to move a column and it is also the only way that needs a
+    /// pointer; these give the same reorder to the keyboard and to VoiceOver, which reaches a menu
+    /// but cannot perform a drag.
+    ///
+    /// Built here rather than in the row view because a column row raises two different menus.
+    /// `KeyHandlingTableView.rightMouseDown` intercepts a click inside the selection and answers
+    /// from `DataGridRowView.contextMenu(for:)`, which is this method's caller; a click outside it
+    /// falls through to `StructureRowViewWithMenu.menu(for:)`, which asks for the same items. One
+    /// builder, so select-then-right-click and right-click-elsewhere cannot offer different
+    /// commands.
+    func dataGridRowStructureMenuItems(forRow displayRow: Int) -> [NSMenuItem] {
+        guard selectedTab == .columns else { return [] }
+        guard columnReorder.isEnabled || columnReorder.unavailableReason != nil else { return [] }
+
+        /// The working set, not the displayed rows: a reorder is withheld under a filter or a sort
+        /// precisely so that the two are the same list, and the plan names every column.
+        let count = structureChangeManager.workingColumns.count
+        var items = [
+            columnMoveItem(String(localized: "Move Column Up"), row: displayRow, .up, count: count),
+            columnMoveItem(String(localized: "Move Column Down"), row: displayRow, .down, count: count),
+        ]
+
+        /// Spelled out under the two dead commands rather than left to the help tag on the row
+        /// number. A menu the user opened because a drag did nothing is where the answer belongs.
+        guard let reason = columnReorder.unavailableReason else { return items }
+        let explanation = NSMenuItem(title: reason, action: nil, keyEquivalent: "")
+        explanation.isEnabled = false
+        items.append(explanation)
+        return items
+    }
+
+    /// A nil action is what disables the item: both menus autoenable, and neither the row view nor
+    /// this delegate is in the responder chain to answer `validateMenuItem(_:)` for itself. The
+    /// target is held by `representedObject` so it outlives the menu that is showing it.
+    private func columnMoveItem(
+        _ title: String,
+        row: Int,
+        _ direction: ColumnMove.Direction,
+        count: Int
+    ) -> NSMenuItem {
+        let isEnabled = columnReorder.isEnabled
+            && ColumnMove.isPossible(movingRow: row, direction, columnCount: count)
+        guard isEnabled else {
+            return NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        }
+        let item = NSMenuItem(title: title, action: #selector(StructureMenuTarget.runAction), keyEquivalent: "")
+        let target = StructureMenuTarget { [weak self] in
+            self?.moveRowHandler?(row, ColumnMove.dropIndex(movingRow: row, direction))
+        }
+        item.target = target
+        item.representedObject = target
+        return item
+    }
+
     private func makeEmptySpaceMenu() -> NSMenu? {
         guard selectedTab != .ddl, selectedTab != .parts, selectedTab != .triggers else { return nil }
         guard connection.type.supportsSchemaEditing else { return nil }
@@ -503,7 +562,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
         }
 
         let target = StructureMenuTarget { [weak self] in self?.dataGridAddRow() }
-        let item = NSMenuItem(title: label, action: #selector(StructureMenuTarget.addNewItem), keyEquivalent: "")
+        let item = NSMenuItem(title: label, action: #selector(StructureMenuTarget.runAction), keyEquivalent: "")
         item.target = target
         item.representedObject = target
         menu.addItem(item)

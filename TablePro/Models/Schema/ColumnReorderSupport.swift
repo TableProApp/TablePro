@@ -47,6 +47,34 @@ enum ColumnReorderAvailability: Sendable, Equatable {
     }
 }
 
+/// Moving a column one place, as the same drop a drag would have produced.
+///
+/// The commands and the drag share one route into `StructureColumnReorderHandler.desiredOrder`,
+/// which speaks NSTableView's drop index: the row the moved column is inserted *above*, so it
+/// counts the column in its old place and moving down by one lands two rows on. Kept here rather
+/// than in the row view so the arithmetic is a pure function with tests rather than two magic
+/// numbers in an AppKit subclass.
+enum ColumnMove {
+    enum Direction {
+        case up
+        case down
+    }
+
+    static func dropIndex(movingRow row: Int, _ direction: Direction) -> Int {
+        switch direction {
+        case .up: return row - 1
+        case .down: return row + 2
+        }
+    }
+
+    static func isPossible(movingRow row: Int, _ direction: Direction, columnCount: Int) -> Bool {
+        switch direction {
+        case .up: return row > 0 && row < columnCount
+        case .down: return row >= 0 && row < columnCount - 1
+        }
+    }
+}
+
 /// The single answer to "may this column be dragged, and if not why not".
 ///
 /// Pure and exhaustive so both the affordance and its explanation come from one place. Splitting

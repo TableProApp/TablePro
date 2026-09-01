@@ -55,11 +55,19 @@ struct PluginInstallModifier: ViewModifier {
 
     private func install(_ conn: DatabaseConnection) {
         Task {
+            let presenter = PluginInstallProgressPresenter()
+            presenter.begin(
+                title: String(format: String(localized: "Downloading the %@ plugin…"), conn.type.rawValue)
+            )
             do {
-                try await PluginManager.shared.installMissingPlugin(for: conn.type) { _ in }
+                try await PluginManager.shared.installMissingPlugin(for: conn.type) { fraction in
+                    presenter.update(fraction: fraction)
+                }
+                presenter.end()
                 Self.logger.info("Installed plugin for \(conn.type.rawValue), retrying connection")
                 onInstalled(conn)
             } catch {
+                presenter.end()
                 installFailed = error.localizedDescription
             }
         }
@@ -131,11 +139,17 @@ struct PluginInstallTypeModifier: ViewModifier {
 
     private func install(_ t: DatabaseType) {
         Task {
+            let presenter = PluginInstallProgressPresenter()
+            presenter.begin(title: String(format: String(localized: "Downloading the %@ plugin…"), t.rawValue))
             do {
-                try await PluginManager.shared.installMissingPlugin(for: t) { _ in }
+                try await PluginManager.shared.installMissingPlugin(for: t) { fraction in
+                    presenter.update(fraction: fraction)
+                }
+                presenter.end()
                 Self.logger.info("Installed plugin for \(t.rawValue), opening connection form")
                 onInstalled(t)
             } catch {
+                presenter.end()
                 installFailed = error.localizedDescription
             }
         }

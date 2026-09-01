@@ -40,6 +40,23 @@ internal struct CopyObjectsSheet: View {
             await session.loadObjects()
             await session.loadCreateDatabaseForm()
         }
+        /// Escape has to leave every step. Three of the four carry a button that owns it, and the
+        /// result step's only button owns Return instead, so the key would otherwise die there.
+        /// A copy in flight is never abandoned by a keystroke that missed its Stop button: the
+        /// sheet is the only thing reporting what the run is doing.
+        .onExitCommand {
+            guard session.step != .copying else { return }
+            close()
+        }
+    }
+
+    /// Leaving cancels the work the sheet started. `review()` holds a task that reads both
+    /// databases and promotes its weak `self` to a strong one before the first await, so
+    /// dismissing without this leaves the session and its metadata reads alive with nothing left
+    /// to show them to. `backToConfiguring()` already cancels; the two exits have to agree.
+    private func close() {
+        session.cancel()
+        dismiss()
     }
 
     // MARK: - Header
@@ -89,10 +106,15 @@ internal struct CopyObjectsSheet: View {
     @ViewBuilder
     private var statusText: some View {
         if let message = session.errorMessage {
+            /// A driver's message is the only account of what went wrong, and it is routinely
+            /// longer than two lines, so it stays selectable and reachable in full from the
+            /// pointer rather than being truncated into something nobody can act on.
             Label(message, systemImage: "exclamationmark.triangle")
                 .font(.callout)
                 .foregroundStyle(.red)
                 .lineLimit(2)
+                .textSelection(.enabled)
+                .help(message)
         } else if session.step == .configuring, let reason = session.reviewDisabledReason {
             Text(reason)
                 .font(.callout)
@@ -105,12 +127,16 @@ internal struct CopyObjectsSheet: View {
     private var actionButtons: some View {
         switch session.step {
         case .configuring:
-            Button(String(localized: "Cancel"), role: .cancel) { dismiss() }
+            Button(String(localized: "Cancel"), role: .cancel) { close() }
                 .keyboardShortcut(.cancelAction)
             Button(String(localized: "Continue")) { session.review() }
                 .keyboardShortcut(.defaultAction)
                 .disabled(session.reviewDisabledReason != nil)
         case .reviewing:
+            /// Reading the script is where a user decides against the whole copy, so leaving is a
+            /// button here rather than two presses through the step before it.
+            Button(String(localized: "Cancel"), role: .cancel) { close() }
+                .keyboardShortcut(.cancelAction)
             Button(String(localized: "Back")) { session.backToConfiguring() }
             Button(String(localized: "Copy")) { session.start() }
                 .keyboardShortcut(.defaultAction)

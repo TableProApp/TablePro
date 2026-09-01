@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-connection MongoDB shell state, so a variable or function survives from one statement to the next.
 - Cursor method autocomplete after `find()` and `aggregate()`.
 - Copy To and Duplicate Database in the sidebar and the Database menu, carrying structure, data or both to any connection. (#2487)
+- Search in the connection, database and schema picker that Copy To and Compare & Sync share. (#2487)
+- Move Column Up and Move Column Down on a column's right-click menu, with the reason where the engine cannot. (#2479)
 - `Up` and `Down` while editing a cell, moving the editor to the same column of the row above or below. (#2569)
 - Tab rows in Settings > General > Tabs, wrapping the strip instead of scrolling it. (#2438)
 - Autoscrolling while dragging a tab, so a tab can be moved past the run currently on screen. (#2438)
@@ -34,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Plugin download reporting no progress at all when a connection or a file needs a driver installed.
 - Parse error on any MongoDB filter written in shell syntax, such as `db.orders.find({status: 1})`.
 - MongoDB `.sort()` and `.projection()` silently ignored when written with unquoted keys.
 - Tab drag doing nothing, about one drag in seven. (#2438)

@@ -102,7 +102,7 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         let target = StructureMenuTarget { onAddRow() }
         let item = NSMenuItem(
             title: String(localized: "Add Row"),
-            action: #selector(StructureMenuTarget.addNewItem),
+            action: #selector(StructureMenuTarget.runAction),
             keyEquivalent: ""
         )
         item.target = target

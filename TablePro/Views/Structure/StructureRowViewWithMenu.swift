@@ -105,6 +105,8 @@ final class StructureRowViewWithMenu: DataGridRowView {
             menu.addItem(navItem)
         }
 
+        addColumnMoveItems(to: menu)
+
         if isStructureEditable {
             menu.addItem(NSMenuItem.separator())
 
@@ -130,6 +132,20 @@ final class StructureRowViewWithMenu: DataGridRowView {
         }
 
         return menu
+    }
+
+    /// Built by the delegate rather than here, because this is not the only menu a column row can
+    /// raise. `KeyHandlingTableView.rightMouseDown` intercepts a click that lands inside the
+    /// selection and answers from `DataGridRowView.contextMenu(for:)` instead, so items added only
+    /// in this override are missing from the ordinary select-then-right-click path, which is also
+    /// the path the keyboard and assistive technology take.
+    private func addColumnMoveItems(to menu: NSMenu) {
+        let items = coordinator?.delegate?.dataGridRowStructureMenuItems(forRow: rowIndex) ?? []
+        guard !items.isEmpty else { return }
+        menu.addItem(NSMenuItem.separator())
+        for item in items {
+            menu.addItem(item)
+        }
     }
 
     private func effectiveIndices() -> Set<Int> {
@@ -158,7 +174,7 @@ final class StructureMenuTarget: NSObject {
         self.action = action
     }
 
-    @objc func addNewItem() {
+    @objc func runAction() {
         action()
     }
 }

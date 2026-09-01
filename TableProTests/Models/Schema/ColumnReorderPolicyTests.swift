@@ -96,3 +96,49 @@ struct ColumnReorderPolicyTests {
         #expect(staged.unavailableReason == resolve(hasStagedChanges: true).unavailableReason)
     }
 }
+
+/// The commands go through the same `desiredOrder` a drop does, so they are checked against it
+/// rather than against the index they happen to produce.
+@Suite("Column Move")
+@MainActor
+struct ColumnMoveTests {
+    private let columns = ["a", "b", "c", "d"]
+
+    private func order(movingRow row: Int, _ direction: ColumnMove.Direction) throws -> [String] {
+        try StructureColumnReorderHandler.desiredOrder(
+            fromIndex: row,
+            toIndex: ColumnMove.dropIndex(movingRow: row, direction),
+            columnNames: columns
+        )
+    }
+
+    @Test("Up swaps a column with the one before it")
+    func upSwapsWithThePrecedingColumn() throws {
+        #expect(try order(movingRow: 2, .up) == ["a", "c", "b", "d"])
+        #expect(try order(movingRow: 1, .up) == ["b", "a", "c", "d"])
+    }
+
+    @Test("Down swaps a column with the one after it, drop index counting its old place")
+    func downSwapsWithTheFollowingColumn() throws {
+        #expect(try order(movingRow: 1, .down) == ["a", "c", "b", "d"])
+        #expect(try order(movingRow: 2, .down) == ["a", "b", "d", "c"])
+    }
+
+    @Test("The ends offer only the direction that has somewhere to go")
+    func theEndsOfferOneDirection() {
+        #expect(!ColumnMove.isPossible(movingRow: 0, .up, columnCount: 4))
+        #expect(ColumnMove.isPossible(movingRow: 0, .down, columnCount: 4))
+        #expect(ColumnMove.isPossible(movingRow: 3, .up, columnCount: 4))
+        #expect(!ColumnMove.isPossible(movingRow: 3, .down, columnCount: 4))
+    }
+
+    /// A reused row view carries the last row's index, and a menu built before the count arrives
+    /// would otherwise offer a move off the end of the list.
+    @Test("A row index outside the column count offers neither direction")
+    func anOutOfRangeRowOffersNothing() {
+        #expect(!ColumnMove.isPossible(movingRow: 0, .up, columnCount: 0))
+        #expect(!ColumnMove.isPossible(movingRow: 0, .down, columnCount: 0))
+        #expect(!ColumnMove.isPossible(movingRow: 7, .up, columnCount: 4))
+        #expect(!ColumnMove.isPossible(movingRow: 7, .down, columnCount: 4))
+    }
+}
