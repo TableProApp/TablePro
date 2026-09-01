@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A failed whole-schema trigger read counting as a schema with no triggers.
 - Compare & Sync publishing one pair's results after the pickers moved to another.
 - Clicks and hovers in the scrolled tab strip's edge padding landing on a tab clipped off the edge.
+- Crash when opening CSV and TSV files on macOS 27.
 
 ## [0.70.0] - 2026-09-01
 

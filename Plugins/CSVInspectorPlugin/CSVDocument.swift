@@ -20,8 +20,6 @@ public final class CSVDocument: NSDocument, CSVConfigurableDocument {
 
     override public class var autosavesInPlace: Bool { false }
 
-    override public class func canConcurrentlyReadDocuments(ofType typeName: String) -> Bool { true }
-
     override public class var readableTypes: [String] {
         ["public.comma-separated-values-text", "public.tab-separated-values-text"]
     }
