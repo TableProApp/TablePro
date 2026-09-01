@@ -30,7 +30,7 @@ internal final class WorkspaceRailTableView: NSTableView {
     internal var onMiddleClick: ((Int) -> Void)?
 
     override internal func otherMouseUp(with event: NSEvent) {
-        guard event.buttonNumber == 2 else {
+        guard event.isMiddleButton else {
             super.otherMouseUp(with: event)
             return
         }

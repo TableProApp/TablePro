@@ -35,6 +35,9 @@ internal final class EditorTabInteractionView: NSView {
     private var hoverTrackingArea: NSTrackingArea?
     private var lastActivatedTabId: UUID?
 
+    /// The tab a middle-click was pressed on, held until the button comes up.
+    private var middleClickTabId: UUID?
+
     internal init(interaction: EditorTabStripInteraction) {
         self.interaction = interaction
         super.init(frame: .zero)
@@ -210,6 +213,48 @@ internal final class EditorTabInteractionView: NSView {
               let commands = interaction.commands
         else { return nil }
         return EditorTabContextMenuBuilder.menu(for: id, commands: commands)
+    }
+
+    // MARK: - Middle click
+
+    /// Middle-click closes the tab under the pointer, the gesture every browser and Xcode answer
+    /// and the one the connections strip already answers here. AppKit routes no action for the
+    /// wheel button, so the tab is resolved from the click point the way `menu(for:)` resolves one.
+    ///
+    /// The press is remembered and the close committed on release, which is the contract every
+    /// AppKit button keeps and the one `trackCloseButton` already keeps for the tab's own close
+    /// button: releasing anywhere else lets a user change their mind. What decides is the release's
+    /// location, never the view under it, because AppKit sends the release to whichever view took
+    /// the press however far the pointer has travelled since. Measured on a titlebar accessory,
+    /// which is where this strip lives.
+    override internal func otherMouseDown(with event: NSEvent) {
+        guard event.isMiddleButton else {
+            super.otherMouseDown(with: event)
+            return
+        }
+        beginMiddleClick(atViewPoint: convert(event.locationInWindow, from: nil))
+    }
+
+    override internal func otherMouseUp(with event: NSEvent) {
+        guard event.isMiddleButton, middleClickTabId != nil else {
+            super.otherMouseUp(with: event)
+            return
+        }
+        endMiddleClick(atViewPoint: convert(event.locationInWindow, from: nil))
+    }
+
+    internal func beginMiddleClick(atViewPoint point: CGPoint) {
+        middleClickTabId = tabIndex(atViewPoint: point).flatMap { tabId(at: $0) }
+    }
+
+    /// Closes only when the release still lands on the tab the press did. A tab that closed under
+    /// the pointer meanwhile leaves a different id in its slot, so the gesture finds nothing and
+    /// takes the tab that replaced it nowhere.
+    internal func endMiddleClick(atViewPoint point: CGPoint) {
+        guard let pressedId = middleClickTabId else { return }
+        middleClickTabId = nil
+        guard let index = tabIndex(atViewPoint: point), tabId(at: index) == pressedId else { return }
+        interaction.commands?.close(pressedId)
     }
 
     // MARK: - Tracking
