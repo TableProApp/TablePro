@@ -88,8 +88,12 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         coordinator?.navigateToFKReference(value: value, fkInfo: fkInfo, openInNewTab: openInNewTab)
     }
 
-    /// The table view has already retargeted the selection to the clicked row by the time a context
-    /// menu item fires, so the panel reads the row the reader asked about without being told which.
+    /// The panel reads the selection, not a row this is told about.
+    ///
+    /// `KeyHandlingTableView.menu(for:)` retargets the selection to a row clicked outside it, so
+    /// the usual single-row case shows the row the reader asked about. A click inside a multi-row
+    /// selection keeps that selection on purpose, and the panel then shows its first row, which is
+    /// the row the Details tab shows too.
     func dataGridShowRowAsJSON() {
         coordinator?.showJSONPanel()
     }

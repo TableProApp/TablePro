@@ -9,6 +9,15 @@ import AppKit
 import Foundation
 import os
 
+/// The referenced-row lookup a foreign key expansion runs, held as a value so a test can drive the
+/// model's cancellation and generation rules without a database behind it.
+typealias JSONForeignKeyRowFetch = @MainActor (
+    _ connectionId: UUID,
+    _ databaseType: DatabaseType,
+    _ reference: JSONForeignKeyRef,
+    _ value: String
+) async throws -> ForeignKeyRowFetcher.FetchedRow?
+
 @MainActor
 @Observable
 final class JSONRowInspectorViewModel {
@@ -29,8 +38,28 @@ final class JSONRowInspectorViewModel {
     private var generation = 0
     private var connectionId: UUID?
     private var databaseType: DatabaseType?
+    @ObservationIgnored private let fetchRow: JSONForeignKeyRowFetch
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "JSONRowInspector")
+
+    init(fetchRow: @escaping JSONForeignKeyRowFetch = JSONRowInspectorViewModel.fetchThroughDatabase) {
+        self.fetchRow = fetchRow
+    }
+
+    private static func fetchThroughDatabase(
+        connectionId: UUID,
+        databaseType: DatabaseType,
+        reference: JSONForeignKeyRef,
+        value: String
+    ) async throws -> ForeignKeyRowFetcher.FetchedRow? {
+        try await ForeignKeyRowFetcher.fetch(
+            connectionId: connectionId,
+            databaseType: databaseType,
+            reference: reference,
+            value: value,
+            includeForeignKeys: true
+        )
+    }
 
     // MARK: - Lifecycle
 
@@ -232,13 +261,8 @@ final class JSONRowInspectorViewModel {
         fetches[path] = Task { [weak self] in
             defer { self?.finishFetch(at: path, generation: generation) }
             do {
-                let fetched = try await ForeignKeyRowFetcher.fetch(
-                    connectionId: connectionId,
-                    databaseType: databaseType,
-                    reference: reference,
-                    value: value,
-                    includeForeignKeys: true
-                )
+                guard let fetch = self?.fetchRow else { return }
+                let fetched = try await fetch(connectionId, databaseType, reference, value)
                 guard let self, !Task.isCancelled, generation == self.generation else { return }
                 guard let fetched else {
                     self.states.failures[path] = .notFound
@@ -273,9 +297,16 @@ final class JSONRowInspectorViewModel {
         expandContainers(in: expansion)
     }
 
+    /// A fetch from an earlier generation cleans up nothing.
+    ///
+    /// `cancelFetches()` already dropped its handle, and `Task.cancel()` cannot interrupt a query
+    /// blocked in the driver, so a cancelled fetch still returns, late. Removing its path
+    /// unconditionally deleted the handle of the fetch the rebuilt tree had started at the same
+    /// path: that one could no longer be cancelled, and the next click on the key started a
+    /// second query for it.
     private func finishFetch(at path: JSONNodePath, generation: Int) {
-        fetches.removeValue(forKey: path)
         guard generation == self.generation else { return }
+        fetches.removeValue(forKey: path)
         states.loading.remove(path)
     }
 
