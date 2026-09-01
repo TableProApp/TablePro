@@ -85,10 +85,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         DatabaseManager.shared.startObservingSystemEvents()
         DatabaseManager.shared.tabStatePersister = SessionTabStatePersister()
 
-        /// Apple documents that this must be assigned before the app finishes launching, or a
-        /// notification the person acted on to launch the app never reaches the delegate. It is the
-        /// one piece of `PostLaunchWork` that cannot wait for the first frame.
+        /// A notification the person acted on to launch the app is delivered as soon as
+        /// `applicationDidFinishLaunching` returns, before any window has a frame. Apple documents
+        /// the delegate assignment for that reason, and the two services below own the categories
+        /// `NotificationRouter` looks the action up in, so deferring either drops the action.
         UNUserNotificationCenter.current().delegate = self
+        PluginNotificationService.shared.setUp()
+        OperationCompletionReporter.shared.setUp()
+        ChatToolBootstrap.register()
+
+        /// Prerequisites for a connection, not post-launch work: a `cloudflared` or
+        /// `cloud-sql-proxy` left behind by a crash still holds its local port, and a restored
+        /// connection reaches `ensureConnected` while intents are routing. Both hop straight off
+        /// the main actor, so starting them here costs the first frame nothing.
+        Task { await CloudflareTunnelManager.shared.sweepStalePidsIfNeeded() }
+        Task { await CloudSQLProxyManager.shared.sweepStalePidsIfNeeded() }
 
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(handleSystemDidWake),

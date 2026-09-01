@@ -387,12 +387,7 @@ final class PluginManager {
         let manifest = Bundle(url: url).flatMap { PluginManifest(bundle: $0) }
 
         plugins.removeAll { $0.url == url }
-        lazyDriverURLs = lazyDriverURLs.filter { $0.value != url }
-        lazyExportURLs = lazyExportURLs.filter { $0.value != url }
-        lazyImportURLs = lazyImportURLs.filter { $0.value != url }
-        lazyInspectorURLs = lazyInspectorURLs.filter { $0.value != url }
-        lazyInspectorFileExtensions = lazyInspectorFileExtensions.filter { $0.value != url }
-        lazyInspectorUTIs = lazyInspectorUTIs.filter { $0.value != url }
+        rebuildLazyRegistrations()
 
         guard !rejectedPlugins.contains(where: { $0.url == url }) else { return }
         let name = manifest?.bundleId ?? url.deletingPathExtension().lastPathComponent
@@ -405,6 +400,44 @@ final class PluginManager {
             isOutdated: false,
             providedDatabaseTypeIds: manifest?.providedDatabaseTypeIds ?? []
         ))
+    }
+
+    /// Rebuilt from the surviving manifests rather than filtered by URL.
+    ///
+    /// Two bundles may declare the same driver, format or inspector key, and the one registered
+    /// last owns it. Deleting the withdrawn bundle's keys would take the shared key with it and
+    /// leave the valid plugin listed but unreachable for the rest of the process.
+    private func rebuildLazyRegistrations() {
+        lazyDriverURLs = [:]
+        lazyExportURLs = [:]
+        lazyImportURLs = [:]
+        lazyInspectorURLs = [:]
+        lazyInspectorFileExtensions = [:]
+        lazyInspectorUTIs = [:]
+
+        for entry in plugins {
+            guard let bundle = Bundle(url: entry.url),
+                  let manifest = PluginManifest(bundle: bundle),
+                  manifest.supportsLazyLoad else { continue }
+            for typeId in manifest.providedDatabaseTypeIds {
+                lazyDriverURLs[typeId] = entry.url
+            }
+            for formatId in manifest.providedExportFormatIds {
+                lazyExportURLs[formatId] = entry.url
+            }
+            for formatId in manifest.providedImportFormatIds {
+                lazyImportURLs[formatId] = entry.url
+            }
+            for inspectorId in manifest.providedInspectorIds {
+                lazyInspectorURLs[inspectorId] = entry.url
+            }
+            for ext in manifest.providedInspectorFileExtensions {
+                lazyInspectorFileExtensions[ext.lowercased()] = entry.url
+            }
+            for uti in manifest.providedInspectorUTIs {
+                lazyInspectorUTIs[uti] = entry.url
+            }
+        }
     }
 
     func activateDriver(databaseTypeId typeId: String) {

@@ -66,13 +66,39 @@ final class PluginSignatureSweepTests: XCTestCase {
     /// refuse to activate.
     func testWithdrawingRemovesTheEntryAndItsLazyDriverRegistration() throws {
         let url = try makeBundle(id: "com.example.unsigned", databaseTypeIds: ["ExampleDB"])
-        let bundle = try XCTUnwrap(Bundle(url: url))
-        manager.plugins = [PluginEntry(
-            id: "com.example.unsigned",
-            bundle: bundle,
+        manager.plugins = [try entry(id: "com.example.unsigned", url: url)]
+
+        manager.withdrawPlugin(at: url, reason: PluginError.signatureInvalid(detail: "bundle is not signed"))
+
+        XCTAssertTrue(manager.plugins.isEmpty)
+        XCTAssertNil(manager.lazyDriverURLs["ExampleDB"])
+        XCTAssertEqual(manager.rejectedPlugins.count, 1)
+    }
+
+    /// Two bundles can declare the same driver key, and the one registered last owns it. Deleting
+    /// the withdrawn bundle's keys by URL would take the shared key with it, leaving the valid
+    /// plugin listed but impossible to activate.
+    func testWithdrawingRestoresAKeyAnotherPluginAlsoDeclares() throws {
+        let goodURL = try makeBundle(id: "com.example.good", databaseTypeIds: ["ExampleDB"])
+        let badURL = try makeBundle(id: "com.example.bad", databaseTypeIds: ["ExampleDB"])
+        manager.plugins = [
+            try entry(id: "com.example.good", url: goodURL),
+            try entry(id: "com.example.bad", url: badURL)
+        ]
+
+        manager.withdrawPlugin(at: badURL, reason: PluginError.signatureInvalid(detail: "bundle is not signed"))
+
+        XCTAssertEqual(manager.plugins.map(\.id), ["com.example.good"])
+        XCTAssertEqual(manager.lazyDriverURLs["ExampleDB"], goodURL)
+    }
+
+    private func entry(id: String, url: URL) throws -> PluginEntry {
+        PluginEntry(
+            id: id,
+            bundle: try XCTUnwrap(Bundle(url: url)),
             url: url,
             source: .userInstalled,
-            name: "Example",
+            name: id,
             version: "1.0",
             pluginDescription: "",
             capabilities: [.databaseDriver],
@@ -84,13 +110,7 @@ final class PluginSignatureSweepTests: XCTestCase {
             exportFormatId: nil,
             importFormatId: nil,
             inspectorId: nil
-        )]
-
-        manager.withdrawPlugin(at: url, reason: PluginError.signatureInvalid(detail: "bundle is not signed"))
-
-        XCTAssertTrue(manager.plugins.isEmpty)
-        XCTAssertNil(manager.lazyDriverURLs["ExampleDB"])
-        XCTAssertEqual(manager.rejectedPlugins.count, 1)
+        )
     }
 
     private func makeBundle(id: String, databaseTypeIds: [String]) throws -> URL {

@@ -22,14 +22,34 @@ internal protocol LaunchEnvironment: AnyObject {
     func runStartupBehavior(skipping intents: [LaunchIntent])
     func presentWelcomeIfNoMainWindow(intents: [LaunchIntent])
     func presentWelcome()
-    /// The last thing a launch does: record the frame the first window presents, and start the
-    /// subsystem work that window did not need.
+    /// Routing has finished. The live environment has usually completed the launch already, off
+    /// the first window becoming key; this is what covers a launch that shows no window.
     func launchDidComplete()
 }
 
 @MainActor
 internal final class LiveLaunchEnvironment: LaunchEnvironment {
-    internal init() {}
+    private var firstKeyWindowObserver: (any NSObjectProtocol)?
+    private var hasCompletedLaunch = false
+
+    /// The first window becoming key is the signal, not the end of intent routing.
+    ///
+    /// `TabRouter.openTable` orders its window and makes it key, and only then awaits
+    /// `ensureConnected`. Waiting for routing to return would hold every deferred subsystem, the
+    /// MCP server included, behind a database server that may be slow or unreachable, over a window
+    /// the person is already looking at.
+    internal init() {
+        firstKeyWindowObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.completeLaunch(with: NSApp.keyWindow)
+            }
+        }
+    }
+
 
     internal func scheduleNextTurn(_ body: @escaping @MainActor () -> Void) {
         RunLoop.main.perform(inModes: [.common]) {
@@ -79,19 +99,32 @@ internal final class LiveLaunchEnvironment: LaunchEnvironment {
         WindowOpener.shared.openWelcome()
     }
 
+    /// The fallback for a launch that puts no window on screen at all, which is how a process the
+    /// MCP bridge started runs. Nothing would ever become key there.
     internal func launchDidComplete() {
-        guard let window = NSApp.keyWindow ?? NSApp.windows.first(where: \.isVisible) else {
-            LaunchTracer.shared.mark(.firstWindowOrdered)
+        completeLaunch(with: NSApp.keyWindow ?? NSApp.windows.first(where: \.isVisible))
+    }
+
+    /// The observer is removed here rather than in a `deinit`, which cannot reach main-actor state.
+    /// One of these lives for the process, held by `AppLaunchCoordinator.shared`, and every launch
+    /// reaches this exactly once.
+    private func completeLaunch(with window: NSWindow?) {
+        guard !hasCompletedLaunch else { return }
+        hasCompletedLaunch = true
+        if let firstKeyWindowObserver {
+            NotificationCenter.default.removeObserver(firstKeyWindowObserver)
+            self.firstKeyWindowObserver = nil
+        }
+
+        LaunchTracer.shared.mark(.firstWindowOrdered)
+        guard let window else {
             LaunchTracer.shared.mark(.firstFramePresented)
             PostLaunchWork.start()
             return
         }
-        LaunchTracer.shared.mark(.firstWindowOrdered)
         window.afterNextFrame {
-            MainActor.assumeIsolated {
-                LaunchTracer.shared.mark(.firstFramePresented)
-                PostLaunchWork.start()
-            }
+            LaunchTracer.shared.mark(.firstFramePresented)
+            PostLaunchWork.start()
         }
     }
 
