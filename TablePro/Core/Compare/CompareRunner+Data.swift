@@ -30,45 +30,43 @@ internal extension CompareRunner {
         guard session.mode == .data, session.canCompare, !session.hasLoadedDataPlans else { return }
         session.errorMessage = nil
 
-        let generation = session.setupGeneration
+        let claim = session.currentClaim
         session.runTask = Task { [session] in
             session.activity = .connecting
             defer { session.activity = .idle }
             do {
                 let context = try resolveContext()
                 if let refusal = try await capabilityRefusal(context) {
-                    guard session.isCurrent(generation) else { return }
+                    guard session.owns(claim) else { return }
                     session.errorMessage = refusal
                     return
                 }
                 let plans = try await buildPlans(context)
                 /// The pair may have moved while this was reading. Publishing now would put one
                 /// pair's tables, columns and snapshots behind another pair's Compare.
-                guard session.isCurrent(generation) else { return }
+                guard session.owns(claim) else { return }
                 session.adoptDataPlans(plans)
             } catch is CancellationError {
             } catch {
-                guard session.isCurrent(generation) else { return }
+                guard session.owns(claim) else { return }
                 session.errorMessage = error.localizedDescription
             }
         }
     }
 
-    func runDataCompare(_ context: Context) async throws {
+    func runDataCompare(_ context: Context, claim: CompareSyncSession.RunClaim) async throws {
         if let refusal = rowService.concurrentReadRefusal(source: context.source, target: context.target) {
             throw CompareSyncError.unsupportedOperation(refusal)
         }
 
-        let generation = session.setupGeneration
-
-        /// A plan list already on screen was built for this same pair, because every change that
-        /// could invalidate it clears it. Rebuilding it would pay the whole metadata read a second
-        /// time and throw away the tables the user just ticked.
-        if session.dataPlans.isEmpty {
-            let built = try await buildPlans(context)
-            guard session.isCurrent(generation) else { throw CancellationError() }
-            session.adoptDataPlans(built)
-        }
+        /// The metadata is read again on every explicit Compare, never reused from the preload.
+        /// The list on screen can be minutes old, and a table's key can have been dropped since:
+        /// a stale key still merges the two row streams and still addresses the UPDATE and DELETE
+        /// it generates, so one reviewed row's statement can reach every row sharing that value.
+        /// `buildPlans` carries the user's ticks, keys and row exclusions onto the fresh list.
+        let built = try await buildPlans(context)
+        guard session.owns(claim) else { throw CancellationError() }
+        session.adoptDataPlans(built)
         var plans = session.dataPlans
 
         for index in plans.indices where plans[index].isEnabled && plans[index].isComparable {
@@ -89,7 +87,8 @@ internal extension CompareRunner {
             }
         }
 
-        guard session.isCurrent(generation) else { throw CancellationError() }
+        try Task.checkCancellation()
+        guard session.owns(claim) else { throw CancellationError() }
         session.dataPlans = plans
         session.hasLoadedDataPlans = true
         session.selectedPlanId = plans.first { $0.isEnabled && $0.isComparable }?.id ?? plans.first?.id

@@ -311,7 +311,7 @@ internal struct CompareMetadataService {
     ) async throws -> [TableStructureRead] {
         let bulk = narrowed
             ? BulkMetadata()
-            : await BulkMetadata(schema: schema, profile: profile, plugin: plugin)
+            : await BulkMetadata(schema: schema, profile: profile, tables: tables, plugin: plugin)
 
         /// Whatever the whole-schema reads did not answer is still one statement per table, and a
         /// driver whose statements are independent requests rather than one serialised socket can
@@ -374,12 +374,27 @@ internal struct CompareMetadataService {
         var foreignKeys: [String: [PluginForeignKeyInfo]]?
         var tableMetadata: [String: PluginTableMetadata]?
 
+        /// The folded spellings that name exactly one table in this scope. A folded fallback is
+        /// only safe for those.
+        private var unambiguousFolded: Set<String> = []
+
         init() {}
 
         /// A whole-schema query that fails takes nothing with it: the read falls back to the
         /// per-table form, which reports a failure against the one table it belongs to rather than
         /// losing the comparison. That is the same rule the per-table read already followed.
-        init(schema: String?, profile: TableReadProfile, plugin: any PluginDatabaseDriver) async {
+        init(
+            schema: String?,
+            profile: TableReadProfile,
+            tables: [PluginTableInfo],
+            plugin: any PluginDatabaseDriver
+        ) async {
+            var counts: [String: Int] = [:]
+            for table in tables {
+                counts[table.name.lowercased(), default: 0] += 1
+            }
+            unambiguousFolded = Set(counts.filter { $0.value == 1 }.keys)
+
             if plugin.providesBulkColumnFetch {
                 columns = try? await plugin.fetchAllColumns(schema: schema)
             }
@@ -406,10 +421,17 @@ internal struct CompareMetadataService {
 
         /// Engines disagree on identifier folding, so a name that was stored one way and listed
         /// another still has to find its entry.
+        ///
+        /// The folded fallback is refused where two tables in this scope fold to the same
+        /// spelling. The index and foreign key maps are sparse, so a table with none has no exact
+        /// entry, and PostgreSQL allows `"Foo"` beside `"foo"`: a folded match there handed one
+        /// table's indexes to the other, and a DROP INDEX generated from that names the index
+        /// alone, so it would have dropped the real one.
         func lookup<Value>(_ map: [String: Value]?, _ name: String) -> Value? {
             guard let map else { return nil }
             if let exact = map[name] { return exact }
             let folded = name.lowercased()
+            guard unambiguousFolded.contains(folded) else { return nil }
             return map.first { $0.key.lowercased() == folded }?.value
         }
     }

@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Saved comparisons set both endpoints, and list whatever pair is on screen.
 - Compare & Sync reopens on the source, target, mode and options it last held.
 - Table collation on MySQL, previously never read.
+- PluginKit ABI 20. Every registry plugin needs rebuilding before or with this release.
 
 ### Fixed
 

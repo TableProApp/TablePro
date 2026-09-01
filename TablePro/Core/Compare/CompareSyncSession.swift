@@ -109,6 +109,15 @@ internal final class CompareSyncSession {
     /// the connection side. Every async publisher captures this and drops its result if it moved.
     private(set) var setupGeneration = 0
 
+    /// Which set of choices the script on screen was built from.
+    ///
+    /// `setupGeneration` cannot answer this. Including an object, changing a key column, excluding
+    /// a row or flipping a write policy all invalidate the script without changing the setup, and
+    /// those controls stay live while a build is in flight. A build that finished after one of them
+    /// would republish statements for an object the user had just excluded, and Apply would then
+    /// open on them, because an ordinary INSERT or ALTER is not a hazard `runRefusalReason` catches.
+    private(set) var scriptRevision = 0
+
     /// A setup problem, which outlives the comparison it interrupted. `errorMessage` is cleared by
     /// the next reset, and a reset is exactly what changing the setup does, so a message about the
     /// setup itself cannot live there: loading a profile whose connection is gone reported the
@@ -443,6 +452,23 @@ internal final class CompareSyncSession {
         generation == setupGeneration
     }
 
+    /// What one run was started for, captured before it can suspend. Every helper takes the
+    /// caller's claim rather than reading the session again: re-reading inside a callee adopts
+    /// whatever the setup has become, which is exactly the ownership the fence is meant to check.
+    internal struct RunClaim: Sendable {
+        internal let setup: Int
+        internal let script: Int
+        internal let mode: CompareSyncMode
+    }
+
+    internal var currentClaim: RunClaim {
+        RunClaim(setup: setupGeneration, script: scriptRevision, mode: mode)
+    }
+
+    internal func owns(_ claim: RunClaim) -> Bool {
+        isCurrent(setup: claim.setup, script: claim.script)
+    }
+
     /// The one place a table list is published, so the tables a saved comparison asked for are
     /// applied where the list arrives rather than at the next Compare. Left in `pendingSelection`,
     /// they were reapplied later over whatever the user had ticked in the meantime.
@@ -454,8 +480,15 @@ internal final class CompareSyncSession {
             }
             pendingSelection = []
         }
+        let previousSelection = selectedPlanId
         dataPlans = adopted
         hasLoadedDataPlans = true
+        /// A rebuild keeps whatever row the user was reading, when that table is still there. Only
+        /// a list that no longer holds it falls back to the first table taking part.
+        if let previousSelection, adopted.contains(where: { $0.id == previousSelection }) {
+            selectedPlanId = previousSelection
+            return
+        }
         selectedPlanId = adopted.first { $0.isEnabled && $0.isComparable }?.id ?? adopted.first?.id
     }
 
@@ -474,11 +507,21 @@ internal final class CompareSyncSession {
     internal func invalidateScript() {
         statements = []
         runResult = nil
+        scriptRevision &+= 1
     }
 
+    /// True while both the setup and the choices a piece of work was started for still stand.
+    internal func isCurrent(setup: Int, script: Int) -> Bool {
+        setup == setupGeneration && script == scriptRevision
+    }
+
+    /// Cancelling advances the script revision as well as asking the task to stop, because
+    /// `Task.cancel()` is cooperative: a build already inside a driver call finishes and would
+    /// otherwise publish over a comparison the user has stopped.
     internal func cancelRunningWork() {
         progress?.cancel()
         runTask?.cancel()
+        scriptRevision &+= 1
     }
 
     internal var isBusy: Bool {
