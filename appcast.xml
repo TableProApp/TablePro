@@ -3,6 +3,159 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.70.0</title>
+            <pubDate>Tue, 01 Sep 2026 17:01:09 +0000</pubDate>
+            <sparkle:version>126</sparkle:version>
+            <sparkle:shortVersionString>0.70.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>JSON tab in the inspector, showing the selected row as JSON, with Show Row as JSON on a row's right-click menu.</li>
+<li>Foreign key expansion in the JSON tab, fetching the referenced row on click, five levels deep.</li>
+<li>Filter field in the JSON tab, taking text or a regular expression in slashes.</li>
+<li>Always Expand Foreign Keys in the JSON tab, off until turned on.</li>
+<li>JavaScript shell for MongoDB queries, with mongosh's `db` API, cursors, variables, functions and `print`.</li>
+<li>Per-connection MongoDB shell state, carried from one statement to the next.</li>
+<li>Cursor method autocomplete after `find()` and `aggregate()`.</li>
+<li>Copy To and Duplicate Database, carrying structure, data or both to any connection. (#2487)</li>
+<li>Search in the connection, database and schema picker that Copy To and Compare & Sync share. (#2487)</li>
+<li>Move Column Up and Move Column Down on a column's right-click menu, with the reason where the engine cannot. (#2479)</li>
+<li>Copy on a column's right-click menu in Structure, for the cell under the pointer.</li>
+<li>`Up` and `Down` while editing a cell, moving the editor to the same column of the row above or below. (#2569)</li>
+<li>Tab rows in Settings > General > Tabs, wrapping the strip instead of scrolling it. (#2438)</li>
+<li>Autoscrolling while dragging a tab past the end of the strip. (#2438)</li>
+<li>Move Tab to New Window on a tab's right-click menu, and by dragging a tab out of the strip. (#2438)</li>
+<li>Column reorder by dragging on ClickHouse and Oracle. (#2479)</li>
+<li>Column reorder on PostgreSQL, SQLite, libSQL, Turso and Cloudflare D1, through a previewed table rebuild. (#2479)</li>
+<li>Recognition of SQLite and DuckDB databases by their contents, whatever they are named. (#2476)</li>
+<li>`.parquet` files in Finder's Open With, read through DuckDB. (#2476)</li>
+<li>Prompt to install the driver a file needs, before the file opens. (#2476)</li>
+<li>Korean, Turkish, Vietnamese and Chinese for the 742 untranslated strings, and for the document kinds Finder shows.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>MongoDB statements split as JavaScript rather than at every semicolon.</li>
+<li>MongoDB editor diagnostics report JavaScript syntax errors rather than unsupported method names.</li>
+<li>Editor tab presses handled by AppKit rather than SwiftUI gestures. (#2438)</li>
+<li>Connection-first labels with the database or schema on a second line in the connections strip. (#2550)</li>
+<li>Column reorder withheld, with the reason on the row number, where the engine cannot change column order. (#2479)</li>
+<li>File > Open File… as an app command over every file TablePro reads. (#2476)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Row inspector lag on hover, on a tab switch and on every keystroke, from re-parsing each field's value.</li>
+<li>The data grid's row commands on a column's right-click menu in Structure, when the column was already selected.</li>
+<li>Wrong keyboard shortcuts shown beside Copy Name and Duplicate in the Structure right-click menu.</li>
+<li>Plugin download reporting no progress at all when a connection or a file needs a driver installed.</li>
+<li>Parse error on any MongoDB filter written in shell syntax, such as `db.orders.find({status: 1})`.</li>
+<li>MongoDB `.sort()` and `.projection()` silently ignored when written with unquoted keys.</li>
+<li>Tab drag doing nothing, about one drag in seven. (#2438)</li>
+<li>Tab drag released on a neighbour's exact centre leaving the order unchanged. (#2438)</li>
+<li>Compare & Sync unable to drop an overloaded PostgreSQL routine, or any trigger.</li>
+<li>PostgreSQL sequence DDL naming the schema it was read from, in SQL export and the structure editor.</li>
+<li>Half-composed input method text saved and left behind when `Tab` moved the cell editor.</li>
+<li>Cell editor opening off screen when `Tab` wrapped onto a row below the visible ones.</li>
+<li>Cell cursor left on the old column after `Tab` carried the editor to the next one.</li>
+<li>Every data grid switching to its accessibility layout after one `Tab` press, with no assistive app attached.</li>
+<li>Crash loop on every launch after resizing a column on a database with a long file path, with iCloud sync on. (#2575)</li>
+<li>SSH Agent auth prompting for a private key passphrase instead of reporting that the agent was never reached. (#2583)</li>
+<li>"SSH password rejected" on an SSH connection that has no password, when the server offers no keyboard-interactive.</li>
+<li>NULL pre-filled into an identity column on Add Row, failing the insert on PostgreSQL. (#2588)</li>
+<li>No "Default" in a cell's Set Value menu for an identity column. (#2588)</li>
+<li>Duplicate Row copying an identity column that is not the primary key. (#2588)</li>
+<li>Editing a `GENERATED ALWAYS AS IDENTITY` cell, which the server rejects on save. (#2588)</li>
+<li>Generated and identity columns editable again after a tab switch or a refresh that reused cached metadata.</li>
+<li>A new row of nothing but server-assigned columns silently dropped from the save.</li>
+<li>`OVERRIDING SYSTEM VALUE` and `setval` in a SQL export of a SQL Server database.</li>
+<li>PGlite `$$` bodies split at their inner semicolons, from treating PGlite as a generic SQL dialect.</li>
+<li>Paste, Fill Column and the row inspector staging an edit to a column the server owns. (#2588)</li>
+<li>A rerun answered from cache adopting another pinned result's column metadata. (#2588)</li>
+<li>Add Row and Duplicate Row offered before a table's schema has loaded. (#2588)</li>
+<li>Missing `SET IDENTITY_INSERT` around a SQL Server table's rows in a SQL export. (#2588)</li>
+<li>Row inspector editing a column the driver marks immutable, such as MongoDB's `_id`.</li>
+<li>Add Row and Duplicate Row inert for good on a result the user switched away from while its schema was loading. (#2588)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.70.0/TablePro-0.70.0-arm64.zip" length="26465725" type="application/octet-stream" sparkle:edSignature="Od7CGtgzRvl96EngRHct5xjNYQnPW/sOdRintNdWYGJgVsfEFgUVAPhhdB6GhxRyXUvdLwb1VEJJchr0jQZZAQ=="/>
+        </item>
+        <item>
+            <title>0.70.0</title>
+            <pubDate>Tue, 01 Sep 2026 17:01:10 +0000</pubDate>
+            <sparkle:version>126</sparkle:version>
+            <sparkle:shortVersionString>0.70.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>JSON tab in the inspector, showing the selected row as JSON, with Show Row as JSON on a row's right-click menu.</li>
+<li>Foreign key expansion in the JSON tab, fetching the referenced row on click, five levels deep.</li>
+<li>Filter field in the JSON tab, taking text or a regular expression in slashes.</li>
+<li>Always Expand Foreign Keys in the JSON tab, off until turned on.</li>
+<li>JavaScript shell for MongoDB queries, with mongosh's `db` API, cursors, variables, functions and `print`.</li>
+<li>Per-connection MongoDB shell state, carried from one statement to the next.</li>
+<li>Cursor method autocomplete after `find()` and `aggregate()`.</li>
+<li>Copy To and Duplicate Database, carrying structure, data or both to any connection. (#2487)</li>
+<li>Search in the connection, database and schema picker that Copy To and Compare & Sync share. (#2487)</li>
+<li>Move Column Up and Move Column Down on a column's right-click menu, with the reason where the engine cannot. (#2479)</li>
+<li>Copy on a column's right-click menu in Structure, for the cell under the pointer.</li>
+<li>`Up` and `Down` while editing a cell, moving the editor to the same column of the row above or below. (#2569)</li>
+<li>Tab rows in Settings > General > Tabs, wrapping the strip instead of scrolling it. (#2438)</li>
+<li>Autoscrolling while dragging a tab past the end of the strip. (#2438)</li>
+<li>Move Tab to New Window on a tab's right-click menu, and by dragging a tab out of the strip. (#2438)</li>
+<li>Column reorder by dragging on ClickHouse and Oracle. (#2479)</li>
+<li>Column reorder on PostgreSQL, SQLite, libSQL, Turso and Cloudflare D1, through a previewed table rebuild. (#2479)</li>
+<li>Recognition of SQLite and DuckDB databases by their contents, whatever they are named. (#2476)</li>
+<li>`.parquet` files in Finder's Open With, read through DuckDB. (#2476)</li>
+<li>Prompt to install the driver a file needs, before the file opens. (#2476)</li>
+<li>Korean, Turkish, Vietnamese and Chinese for the 742 untranslated strings, and for the document kinds Finder shows.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>MongoDB statements split as JavaScript rather than at every semicolon.</li>
+<li>MongoDB editor diagnostics report JavaScript syntax errors rather than unsupported method names.</li>
+<li>Editor tab presses handled by AppKit rather than SwiftUI gestures. (#2438)</li>
+<li>Connection-first labels with the database or schema on a second line in the connections strip. (#2550)</li>
+<li>Column reorder withheld, with the reason on the row number, where the engine cannot change column order. (#2479)</li>
+<li>File > Open File… as an app command over every file TablePro reads. (#2476)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Row inspector lag on hover, on a tab switch and on every keystroke, from re-parsing each field's value.</li>
+<li>The data grid's row commands on a column's right-click menu in Structure, when the column was already selected.</li>
+<li>Wrong keyboard shortcuts shown beside Copy Name and Duplicate in the Structure right-click menu.</li>
+<li>Plugin download reporting no progress at all when a connection or a file needs a driver installed.</li>
+<li>Parse error on any MongoDB filter written in shell syntax, such as `db.orders.find({status: 1})`.</li>
+<li>MongoDB `.sort()` and `.projection()` silently ignored when written with unquoted keys.</li>
+<li>Tab drag doing nothing, about one drag in seven. (#2438)</li>
+<li>Tab drag released on a neighbour's exact centre leaving the order unchanged. (#2438)</li>
+<li>Compare & Sync unable to drop an overloaded PostgreSQL routine, or any trigger.</li>
+<li>PostgreSQL sequence DDL naming the schema it was read from, in SQL export and the structure editor.</li>
+<li>Half-composed input method text saved and left behind when `Tab` moved the cell editor.</li>
+<li>Cell editor opening off screen when `Tab` wrapped onto a row below the visible ones.</li>
+<li>Cell cursor left on the old column after `Tab` carried the editor to the next one.</li>
+<li>Every data grid switching to its accessibility layout after one `Tab` press, with no assistive app attached.</li>
+<li>Crash loop on every launch after resizing a column on a database with a long file path, with iCloud sync on. (#2575)</li>
+<li>SSH Agent auth prompting for a private key passphrase instead of reporting that the agent was never reached. (#2583)</li>
+<li>"SSH password rejected" on an SSH connection that has no password, when the server offers no keyboard-interactive.</li>
+<li>NULL pre-filled into an identity column on Add Row, failing the insert on PostgreSQL. (#2588)</li>
+<li>No "Default" in a cell's Set Value menu for an identity column. (#2588)</li>
+<li>Duplicate Row copying an identity column that is not the primary key. (#2588)</li>
+<li>Editing a `GENERATED ALWAYS AS IDENTITY` cell, which the server rejects on save. (#2588)</li>
+<li>Generated and identity columns editable again after a tab switch or a refresh that reused cached metadata.</li>
+<li>A new row of nothing but server-assigned columns silently dropped from the save.</li>
+<li>`OVERRIDING SYSTEM VALUE` and `setval` in a SQL export of a SQL Server database.</li>
+<li>PGlite `$$` bodies split at their inner semicolons, from treating PGlite as a generic SQL dialect.</li>
+<li>Paste, Fill Column and the row inspector staging an edit to a column the server owns. (#2588)</li>
+<li>A rerun answered from cache adopting another pinned result's column metadata. (#2588)</li>
+<li>Add Row and Duplicate Row offered before a table's schema has loaded. (#2588)</li>
+<li>Missing `SET IDENTITY_INSERT` around a SQL Server table's rows in a SQL export. (#2588)</li>
+<li>Row inspector editing a column the driver marks immutable, such as MongoDB's `_id`.</li>
+<li>Add Row and Duplicate Row inert for good on a result the user switched away from while its schema was loading. (#2588)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.70.0/TablePro-0.70.0-x86_64.zip" length="28218963" type="application/octet-stream" sparkle:edSignature="MSoufySbNwmSq8hfBe85bYzSRBeVG68TiYZKXe5cmYMlolpVhfQL2Z76QSavxWfdb4/Qe79uH2aHDYNDsyDFAA=="/>
+        </item>
+        <item>
             <title>0.69.0</title>
             <pubDate>Thu, 27 Aug 2026 16:03:07 +0000</pubDate>
             <sparkle:version>125</sparkle:version>

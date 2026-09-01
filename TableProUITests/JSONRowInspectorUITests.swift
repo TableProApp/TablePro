@@ -15,7 +15,7 @@ final class JSONRowInspectorUITests: UITestCase {
         let window = try readyWindow(of: app)
         let grid = try albumGrid(in: app, window: window)
 
-        openRowAsJSON(in: app, grid: grid)
+        openRowAsJSON(in: window, grid: grid)
 
         XCTAssertTrue(
             waitForPredicate(timeout: 20) { self.jsonTab(in: window).exists },
@@ -32,7 +32,7 @@ final class JSONRowInspectorUITests: UITestCase {
         let window = try readyWindow(of: app)
         let grid = try albumGrid(in: app, window: window)
 
-        openRowAsJSON(in: app, grid: grid)
+        openRowAsJSON(in: window, grid: grid)
 
         /// Album's own keys hold no container, so the only closed disclosure in the tree is the
         /// foreign key on ArtistId. Its expansion is a query, which is the whole point of the test.
@@ -80,14 +80,19 @@ final class JSONRowInspectorUITests: UITestCase {
     /// The grid publishes a column as a sibling of its rows, each as tall as every row it spans, so
     /// XCUITest reads every row and cell as obscured and refuses to click one. A point offset from
     /// the grid itself is the way in, which is what the drawn-cell grid's other suites do too.
-    private func openRowAsJSON(in app: XCUIApplication, grid: XCUIElement) {
+    ///
+    /// `dy` has to clear the header, which the grid draws at 42pt to fit a column comment. A point
+    /// inside it opens the header's own column menu, which offers no row command at all.
+    private func openRowAsJSON(in window: XCUIElement, grid: XCUIElement) {
         let firstRow = grid.coordinate(withNormalizedOffset: .zero)
-            .withOffset(CGVector(dx: 60, dy: 12))
+            .withOffset(CGVector(dx: 60, dy: 70))
         firstRow.click()
         Thread.sleep(forTimeInterval: NSEvent.doubleClickInterval)
         firstRow.rightClick()
 
-        let item = app.menuItems["Show Row as JSON"]
+        /// A contextual menu opens inside the window and the menu-bar menus hang off `MenuBar`, so
+        /// scoping to the window isolates the one that just opened rather than searching both.
+        let item = window.menus.firstMatch.menuItems["Show Row as JSON"]
         XCTAssertTrue(item.waitToExist(timeout: 15), "The row's context menu must offer Show Row as JSON")
         item.click()
     }
