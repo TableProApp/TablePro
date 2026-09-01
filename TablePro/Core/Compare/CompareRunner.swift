@@ -35,12 +35,14 @@ internal struct CompareRunner {
         session.errorMessage = nil
         session.informationalMessage = nil
 
+        let generation = session.setupGeneration
         session.runTask = Task { [session] in
             session.activity = .connecting
             defer { session.activity = .idle }
             do {
                 let context = try resolveContext()
                 if let refusal = try await capabilityRefusal(context) {
+                    guard session.isCurrent(generation) else { return }
                     session.errorMessage = refusal
                     return
                 }
@@ -51,21 +53,42 @@ internal struct CompareRunner {
                 case .data:
                     try await runDataCompare(context)
                 }
+                guard session.isCurrent(generation) else { return }
                 session.informationalMessage = session.crossEngineNotice
             } catch is CancellationError {
+                guard session.isCurrent(generation) else { return }
                 session.informationalMessage = String(localized: "Comparison cancelled.")
             } catch {
+                guard session.isCurrent(generation) else { return }
                 session.errorMessage = error.localizedDescription
             }
         }
     }
 
     internal func buildScript() {
-        guard session.canBuildScript else { return }
+        guard let task = makeScriptTask() else { return }
+        session.runTask = task
+    }
+
+    /// Builds the script and waits, for the caller that needs one before it can show anything.
+    /// Apply takes this route, so a comparison is one press away from the sheet that reviews it
+    /// rather than two.
+    internal func buildScriptIfNeeded() async -> Bool {
+        guard session.statements.isEmpty else { return true }
+        let generation = session.setupGeneration
+        guard let task = makeScriptTask() else { return false }
+        session.runTask = task
+        await task.value
+        return session.isCurrent(generation) && !session.statements.isEmpty
+    }
+
+    private func makeScriptTask() -> Task<Void, Never>? {
+        guard session.canBuildScript else { return nil }
         session.cancelRunningWork()
         session.errorMessage = nil
 
-        session.runTask = Task { [session] in
+        let generation = session.setupGeneration
+        return Task { [session] in
             session.activity = .comparing
             defer { session.activity = .idle }
             do {
@@ -77,6 +100,9 @@ internal struct CompareRunner {
                 case .data:
                     built = try await dataStatements(context)
                 }
+                /// A script describes one setup. Committing it after the pair moved would arm
+                /// Apply with statements built for a database the window no longer names.
+                guard session.isCurrent(generation) else { return }
                 guard !built.isEmpty else {
                     session.errorMessage = String(localized: "Nothing is selected to apply.")
                     return
@@ -84,15 +110,17 @@ internal struct CompareRunner {
                 session.statements = built
                 session.detailPane = .script
             } catch is CancellationError {
+                guard session.isCurrent(generation) else { return }
                 session.informationalMessage = String(localized: "Script generation cancelled.")
             } catch {
+                guard session.isCurrent(generation) else { return }
                 session.errorMessage = error.localizedDescription
             }
         }
     }
 
     internal func apply() {
-        guard session.canApply, let target = session.target else { return }
+        guard session.runRefusalReason == nil, let target = session.target else { return }
         session.cancelRunningWork()
         session.errorMessage = nil
 
@@ -181,7 +209,7 @@ internal struct CompareRunner {
         )
     }
 
-    private func capabilityRefusal(_ context: Context) async throws -> String? {
+    internal func capabilityRefusal(_ context: Context) async throws -> String? {
         if let refusal = try await metadataService.refusalReason(
             for: context.source, connection: context.sourceConnection, mode: session.mode
         ) {
@@ -198,12 +226,8 @@ internal struct CompareRunner {
         let wantsViews = session.includedKinds.contains(.view)
             || session.includedKinds.contains(.materializedView)
 
-        let sourceReads = try await metadataService.tableReads(
-            for: context.source, connection: context.sourceConnection, includeViews: wantsViews
-        )
-        try Task.checkCancellation()
-        let targetReads = try await metadataService.tableReads(
-            for: context.target, connection: context.targetConnection, includeViews: wantsViews
+        let (sourceReads, targetReads) = try await metadataService.bothSideTableReads(
+            context: context, includeViews: wantsViews, profile: .structure
         )
         try Task.checkCancellation()
 
@@ -272,43 +296,45 @@ internal struct CompareRunner {
     ) async throws -> [CompareObjectResult] {
         var results: [CompareObjectResult] = []
 
+        /// Each pair reads two independent endpoints, so the two sides run together rather than the
+        /// second waiting out the first.
         if session.includedKinds.contains(.view) || session.includedKinds.contains(.materializedView) {
             let sourceViews = sourceReads.map(\.table).filter { CompareTableKindClassifier.kind(of: $0) != .table }
             let targetViews = targetReads.map(\.table).filter { CompareTableKindClassifier.kind(of: $0) != .table }
-            let sourceDefinitions = try await metadataService.viewDefinitions(
+            async let sourceDefinitions = metadataService.viewDefinitions(
                 for: context.source, connection: context.sourceConnection, views: sourceViews
             )
-            let targetDefinitions = try await metadataService.viewDefinitions(
+            async let targetDefinitions = metadataService.viewDefinitions(
                 for: context.target, connection: context.targetConnection, views: targetViews
             )
-            results += SourceObjectDiffEngine(options: session.structureOptions)
+            results += try await SourceObjectDiffEngine(options: session.structureOptions)
                 .compare(source: sourceDefinitions, target: targetDefinitions)
         }
 
         if session.includedKinds.contains(.procedure) || session.includedKinds.contains(.function) {
-            let sourceRoutines = try await metadataService.routineReads(
+            async let sourceRoutines = metadataService.routineReads(
                 for: context.source, connection: context.sourceConnection
             )
-            let targetRoutines = try await metadataService.routineReads(
+            async let targetRoutines = metadataService.routineReads(
                 for: context.target, connection: context.targetConnection
             )
-            results += SourceObjectDiffEngine(options: session.structureOptions)
+            results += try await SourceObjectDiffEngine(options: session.structureOptions)
                 .compare(source: sourceRoutines, target: targetRoutines)
                 .filter { session.includedKinds.contains($0.identity.kind) }
         }
 
         if session.includedKinds.contains(.trigger) {
-            let sourceTriggers = try await metadataService.triggerReads(
+            async let sourceTriggers = metadataService.triggerReads(
                 for: context.source,
                 connection: context.sourceConnection,
                 tables: sourceReads.map(\.table.name)
             )
-            let targetTriggers = try await metadataService.triggerReads(
+            async let targetTriggers = metadataService.triggerReads(
                 for: context.target,
                 connection: context.targetConnection,
                 tables: targetReads.map(\.table.name)
             )
-            results += SourceObjectDiffEngine(options: session.structureOptions)
+            results += try await SourceObjectDiffEngine(options: session.structureOptions)
                 .compare(source: sourceTriggers, target: targetTriggers)
         }
 

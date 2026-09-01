@@ -63,6 +63,8 @@ extension TeradataPluginDriver {
         return text
     }
 
+    var providesBulkTriggerFetch: Bool { true }
+
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo] {
         try await teradataTriggerList(schema: schema, table: nil)
     }

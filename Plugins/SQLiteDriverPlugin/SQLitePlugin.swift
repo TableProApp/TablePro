@@ -807,37 +807,62 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
+    var providesBulkColumnFetch: Bool { true }
+
+    /// `pragma_table_xinfo`, not `pragma_table_info`, for the same reason `fetchColumns` uses it:
+    /// `table_info` omits generated columns entirely, so the bulk read used to answer with a
+    /// shorter column list than the per-table read for the same table. A caller comparing two
+    /// schemas through the bulk read saw neither side's generated columns and reported them as
+    /// matching. `m.sql` rides along so the generation expressions are parsed from the CREATE
+    /// statement without a second round trip per table.
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let query = """
-            SELECT m.name AS tbl, p.cid, p.name, p.type, p."notnull", p.dflt_value, p.pk
-            FROM sqlite_master m, pragma_table_info(m.name) p
+            SELECT m.name AS tbl, p.cid, p.name, p.type, p."notnull", p.dflt_value, p.pk,
+                   p.hidden, m.sql
+            FROM sqlite_master m, pragma_table_xinfo(m.name) p
             WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%'
             ORDER BY m.name, p.cid
             """
         let result = try await execute(query: query)
 
         var allColumns: [String: [PluginColumnInfo]] = [:]
+        var expressionsByTable: [String: [String: String]] = [:]
 
         for row in result.rows {
-            guard row.count >= 7,
+            guard row.count >= 9,
                   let tableName = row[0].asText,
                   let columnName = row[2].asText,
                   let dataType = row[3].asText else {
                 continue
             }
 
+            // hidden: 0 normal, 1 a virtual table's hidden column, 2 VIRTUAL generated,
+            // 3 STORED generated.
+            let hidden = row[7].asText.flatMap { Int($0) } ?? 0
+            guard hidden != 1 else { continue }
+
             let isNullable = row[4].asText == "0"
             let defaultValue = row[5].asText
-            // PRAGMA table_info pk column: 0 = not PK, 1+ = position in composite PK
+            // PRAGMA table_xinfo pk column: 0 = not PK, 1+ = position in composite PK
             let pkText = row[6].asText
             let isPrimaryKey = pkText != nil && pkText != "0"
+            let generationKind: GenerationKind? = hidden == 2 ? .virtual : (hidden == 3 ? .stored : nil)
+
+            if generationKind != nil, expressionsByTable[tableName] == nil {
+                expressionsByTable[tableName] = SQLiteCheckConstraintParser.generationExpressions(
+                    inCreateStatement: row[8].asText ?? ""
+                )
+            }
 
             let column = PluginColumnInfo(
                 name: columnName,
                 dataType: dataType,
                 isNullable: isNullable,
                 isPrimaryKey: isPrimaryKey,
-                defaultValue: defaultValue
+                defaultValue: defaultValue,
+                isGenerated: generationKind != nil,
+                generationExpression: generationKind == nil ? nil : expressionsByTable[tableName]?[columnName],
+                generationKind: generationKind
             )
 
             allColumns[tableName, default: []].append(column)
@@ -899,41 +924,17 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             """
         let result = try await execute(query: query)
 
-        var indexMap: [(name: String, isUnique: Bool, isPrimary: Bool, columns: [String])] = []
-        var indexLookup: [String: Int] = [:]
-
-        for row in result.rows {
-            guard row.count >= 4,
-                  let indexName = row[0].asText else { continue }
-
-            let isUnique = row[1].asText == "1"
-            let origin = row[2].asText ?? "c"
-
-            if let idx = indexLookup[indexName] {
-                if let colName = row[3].asText {
-                    indexMap[idx].columns.append(colName)
-                }
-            } else {
-                let columns: [String] = row[3].asText.map { [$0] } ?? []
-                indexLookup[indexName] = indexMap.count
-                indexMap.append((
-                    name: indexName,
-                    isUnique: isUnique,
-                    isPrimary: origin == "pk",
-                    columns: columns
-                ))
-            }
-        }
-
-        return indexMap.map { entry in
-            PluginIndexInfo(
-                name: entry.name,
-                columns: entry.columns,
-                isUnique: entry.isUnique,
-                isPrimary: entry.isPrimary,
-                type: "BTREE"
+        let rows = result.rows.compactMap { row -> SQLiteIndexRow? in
+            guard row.count >= 4, let indexName = row[0].asText else { return nil }
+            return SQLiteIndexRow(
+                table: table,
+                index: indexName,
+                column: row[3].asText,
+                isUnique: row[1].asText == "1",
+                origin: row[2].asText ?? "c"
             )
-        }.sorted { $0.isPrimary && !$1.isPrimary }
+        }
+        return SQLiteIndexGrouping.group(rows)[table] ?? []
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {

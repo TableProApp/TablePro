@@ -90,12 +90,39 @@ internal final class CompareSyncProfileStorage {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "CompareSyncProfileStorage")
     private static let defaultsKey = "compareSyncProfiles"
+    private static let lastSetupKey = "compareSyncLastSetup"
 
     private let defaults: UserDefaults
 
     internal init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
     }
+
+    // MARK: - Last setup
+
+    /// The pair, the mode and the options the window last held, so reopening it lands on the same
+    /// comparison rather than on two empty pickers. It carries no included objects: what to change
+    /// is a decision about one comparison's results, and re-arming it against a report that has not
+    /// run yet would put a stale choice behind an Apply button.
+    internal func lastSetup() -> CompareSyncProfile? {
+        guard let data = defaults.data(forKey: Self.lastSetupKey) else { return nil }
+        do {
+            return try JSONDecoder().decode(CompareSyncProfile.self, from: data)
+        } catch {
+            Self.logger.error("Failed to decode last setup: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
+    internal func rememberSetup(_ profile: CompareSyncProfile) {
+        do {
+            defaults.set(try JSONEncoder().encode(profile), forKey: Self.lastSetupKey)
+        } catch {
+            Self.logger.error("Failed to persist last setup: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    // MARK: - Saved comparisons
 
     internal func allProfiles() -> [CompareSyncProfile] {
         guard let data = defaults.data(forKey: Self.defaultsKey) else { return [] }

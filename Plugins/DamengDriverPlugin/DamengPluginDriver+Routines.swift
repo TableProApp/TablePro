@@ -65,6 +65,8 @@ extension DamengPluginDriver {
         return body.uppercased().hasPrefix("CREATE") ? body : "CREATE OR REPLACE \(body)"
     }
 
+    var providesBulkTriggerFetch: Bool { true }
+
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo] {
         try await damengTriggerList(schema: schema, table: nil)
     }

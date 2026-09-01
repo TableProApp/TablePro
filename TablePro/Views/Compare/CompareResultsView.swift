@@ -51,10 +51,32 @@ internal struct CompareResultsView: View {
                 .toggleStyle(.checkbox)
                 .accessibilityIdentifier("compare.results.showIdentical")
             Spacer(minLength: 0)
+            /// The same control data mode carries. Structure mode had per-row checkboxes and a
+            /// right-click menu that needs a selection first, so including a whole comparison was
+            /// one click per object.
+            Menu(String(localized: "Select")) {
+                Button("All") {
+                    session.setIncluded(true, forIds: includableIds)
+                }
+                Button("None") {
+                    session.setIncluded(false, forIds: includableIds)
+                }
+            }
+            .fixedSize()
+            .disabled(includableIds.isEmpty)
+            .accessibilityIdentifier("compare.results.select")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(.bar)
+    }
+
+    /// What the results pane is showing, so Select follows the search field and the identical
+    /// toggle rather than reaching past them into the whole report.
+    private var includableIds: [String] {
+        session.visibleResults
+            .filter { $0.isComparable && $0.suggestedAction != .skip }
+            .map(\.id)
     }
 
     // MARK: - Table

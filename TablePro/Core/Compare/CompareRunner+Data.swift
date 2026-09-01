@@ -17,18 +17,59 @@ import Foundation
 import TableProPluginKit
 
 internal extension CompareRunner {
+    /// Lists the tables the two sides share, without reading a row.
+    ///
+    /// Data mode used to spend its first Compare on this list, because plans arrive unticked and a
+    /// comparison of nothing reads nothing, so a data sync cost two Compares and paid the whole
+    /// metadata read twice.
+    ///
+    /// The guard is `hasLoadedDataPlans` rather than an empty list, because two sides that share no
+    /// table produce an empty list from a load that did happen, and a caller on a validation pass
+    /// would reload it forever.
+    func loadDataPlans() {
+        guard session.mode == .data, session.canCompare, !session.hasLoadedDataPlans else { return }
+        session.errorMessage = nil
+
+        let generation = session.setupGeneration
+        session.runTask = Task { [session] in
+            session.activity = .connecting
+            defer { session.activity = .idle }
+            do {
+                let context = try resolveContext()
+                if let refusal = try await capabilityRefusal(context) {
+                    guard session.isCurrent(generation) else { return }
+                    session.errorMessage = refusal
+                    return
+                }
+                let plans = try await buildPlans(context)
+                /// The pair may have moved while this was reading. Publishing now would put one
+                /// pair's tables, columns and snapshots behind another pair's Compare.
+                guard session.isCurrent(generation) else { return }
+                session.adoptDataPlans(plans)
+            } catch is CancellationError {
+            } catch {
+                guard session.isCurrent(generation) else { return }
+                session.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
     func runDataCompare(_ context: Context) async throws {
         if let refusal = rowService.concurrentReadRefusal(source: context.source, target: context.target) {
             throw CompareSyncError.unsupportedOperation(refusal)
         }
 
-        var plans = try await buildPlans(context)
-        if !session.pendingSelection.isEmpty {
-            for index in plans.indices {
-                plans[index].isEnabled = session.pendingSelection.contains(plans[index].id)
-            }
-            session.pendingSelection = []
+        let generation = session.setupGeneration
+
+        /// A plan list already on screen was built for this same pair, because every change that
+        /// could invalidate it clears it. Rebuilding it would pay the whole metadata read a second
+        /// time and throw away the tables the user just ticked.
+        if session.dataPlans.isEmpty {
+            let built = try await buildPlans(context)
+            guard session.isCurrent(generation) else { throw CancellationError() }
+            session.adoptDataPlans(built)
         }
+        var plans = session.dataPlans
 
         for index in plans.indices where plans[index].isEnabled && plans[index].isComparable {
             try Task.checkCancellation()
@@ -48,19 +89,21 @@ internal extension CompareRunner {
             }
         }
 
+        guard session.isCurrent(generation) else { throw CancellationError() }
         session.dataPlans = plans
+        session.hasLoadedDataPlans = true
         session.selectedPlanId = plans.first { $0.isEnabled && $0.isComparable }?.id ?? plans.first?.id
         session.detailPane = .rows
         session.invalidateScript()
 
-        /// Plans start unchecked so a first Compare cannot stream every row of every table, which
-        /// means a first run legitimately reads nothing. Recording that as "0 differences" invited
-        /// the reader to conclude the two databases matched.
+        /// Plans start unchecked so a Compare cannot stream every row of every table by accident,
+        /// which means a run with nothing ticked legitimately reads nothing. Recording that as
+        /// "0 differences" invited the reader to conclude the two databases matched.
         let comparedAny = plans.contains { $0.isEnabled && $0.isComparable && $0.summary != nil }
         guard comparedAny else {
             session.lastAction = .none
             session.informationalMessage = String(
-                localized: "No tables were compared. Choose the tables to compare, then press Compare."
+                localized: "Nothing was compared. Tick the tables to compare, then press Compare."
             )
             return
         }
@@ -113,14 +156,11 @@ internal extension CompareRunner {
     // MARK: - Plans
 
     private func buildPlans(_ context: Context) async throws -> [DataComparePlan] {
-        let sourceReads = try await metadataService.tableReads(
-            for: context.source, connection: context.sourceConnection, includeViews: false
+        let (sourceReads, targetReads) = try await metadataService.bothSideTableReads(
+            context: context, includeViews: false, profile: .data
         )
         try Task.checkCancellation()
-        let targetReads = try await metadataService.tableReads(
-            for: context.target, connection: context.targetConnection, includeViews: false
-        )
-        try Task.checkCancellation()
+        session.unreadableTableCount = (sourceReads + targetReads).filter { $0.failure != nil }.count
 
         /// Keyed on schema and name, not name alone: two schemas of one database can hold the same
         /// table, and pairing on the bare name took the shared column set from the wrong

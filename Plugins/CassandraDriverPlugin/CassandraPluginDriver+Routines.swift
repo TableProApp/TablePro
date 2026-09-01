@@ -96,6 +96,8 @@ extension CassandraPluginDriver {
         return definition
     }
 
+    var providesBulkTriggerFetch: Bool { true }
+
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo] {
         try await cassandraTriggerList(keyspace: resolveKeyspace(schema), table: nil)
     }

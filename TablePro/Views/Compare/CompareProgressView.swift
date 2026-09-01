@@ -93,8 +93,21 @@ internal struct CompareMessageBanner: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
     internal var body: some View {
-        if session.errorMessage != nil || session.informationalMessage != nil {
+        if session.errorMessage != nil || session.informationalMessage != nil
+            || session.setupErrorMessage != nil {
             VStack(alignment: .leading, spacing: 6) {
+                /// A problem with the setup rather than with a comparison, so it outlives the reset
+                /// that changing the setup performs and is dismissed on its own.
+                if let message = session.setupErrorMessage {
+                    messageRow(
+                        message,
+                        systemImage: "exclamationmark.triangle.fill",
+                        tint: CompareStatusStyle.error,
+                        identifier: "compare.message.dismissSetupError"
+                    ) {
+                        session.setupErrorMessage = nil
+                    }
+                }
                 if let message = session.errorMessage {
                     messageRow(
                         message,

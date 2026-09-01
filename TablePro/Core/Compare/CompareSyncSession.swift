@@ -61,6 +61,16 @@ internal final class CompareSyncSession {
 
     internal var report: CompareReport?
     internal var dataPlans: [DataComparePlan] = []
+
+    /// True once the table list has been read for this pair, which an empty `dataPlans` cannot say
+    /// on its own. Without it "not read yet" and "these two share no table" are the same state, and
+    /// the pane claims the second whenever the first is true.
+    internal var hasLoadedDataPlans = false
+
+    /// Tables that were listed on one side and whose metadata could not be read. An empty plan list
+    /// with unreadable tables behind it is not "these two share no table", and saying so sent the
+    /// reader looking for a naming difference that was not there.
+    internal var unreadableTableCount = 0
     internal var actions: [String: TableSyncAction] = [:]
     internal var statements: [SyncStatement] = []
     internal var runResult: CompareSyncRunResult?
@@ -90,7 +100,36 @@ internal final class CompareSyncSession {
     internal var runTask: Task<Void, Never>?
     internal var pendingSelection: Set<String> = []
 
-    internal init() {}
+    /// Which setup the answers on screen belong to.
+    ///
+    /// `Task.cancel()` is cooperative, so work that has already reached a driver finishes whatever
+    /// the window does next, and the setup it was started for can be gone by the time it has an
+    /// answer. Publishing that answer puts one pair's plans, snapshots or statements behind another
+    /// pair's Compare and Apply, which is the same trap `ConnectionAttemptRegistry` exists for on
+    /// the connection side. Every async publisher captures this and drops its result if it moved.
+    private(set) var setupGeneration = 0
+
+    /// A setup problem, which outlives the comparison it interrupted. `errorMessage` is cleared by
+    /// the next reset, and a reset is exactly what changing the setup does, so a message about the
+    /// setup itself cannot live there: loading a profile whose connection is gone reported the
+    /// failure and had it wiped by the option change the same load caused.
+    internal var setupErrorMessage: String?
+
+    /// The two things the setup needs from outside the session: where a saved comparison lives, and
+    /// which connections a stored scope can resolve against. Injected rather than reached for, so
+    /// the restore rules can be exercised without writing to the user's own defaults.
+    @ObservationIgnored internal let profileStorage: CompareSyncProfileStorage
+    @ObservationIgnored internal let connectionsProvider: @MainActor () -> [DatabaseConnection]
+
+    internal init(
+        profileStorage: CompareSyncProfileStorage = .shared,
+        connectionsProvider: @escaping @MainActor () -> [DatabaseConnection] = {
+            ConnectionStorage.shared.loadConnections()
+        }
+    ) {
+        self.profileStorage = profileStorage
+        self.connectionsProvider = connectionsProvider
+    }
 
     // MARK: - Direction
 
@@ -111,6 +150,12 @@ internal final class CompareSyncSession {
         source = target
         target = previousSource
         resetComparison()
+    }
+
+    /// The setup message says an endpoint could not be resolved, so choosing one clears it.
+    internal func clearSetupErrorIfResolved() {
+        guard source != nil, target != nil else { return }
+        setupErrorMessage = nil
     }
 
     internal var canCompare: Bool {
@@ -255,6 +300,14 @@ internal final class CompareSyncSession {
         return nil
     }
 
+    /// Apply is available whenever there is a comparison to apply, and it builds its own script
+    /// when none has been built. Requiring Generate Script first made every sync a three-press
+    /// sequence for a script the Apply sheet shows in full anyway.
+    ///
+    /// An unallowed hazard is deliberately not a reason any more. The allowance for one lives
+    /// inside the Apply sheet, so withholding the sheet until every hazard was allowed put the
+    /// control behind the door it was locking. The sheet's own Apply button still refuses to run
+    /// while one is outstanding, which is where the refusal belongs.
     internal var applyDisabledReason: String? {
         if isBusy { return String(localized: "A run is already in progress.") }
         if isStaleAfterApply {
@@ -263,7 +316,16 @@ internal final class CompareSyncSession {
         guard target?.canBeWrittenTo == true else {
             return target?.ineligibleAsTargetReason ?? String(localized: "Choose a target to write to.")
         }
-        guard !statements.isEmpty else { return String(localized: "Generate the script first.") }
+        guard statements.isEmpty else { return nil }
+        return scriptDisabledReason
+    }
+
+    /// What the Apply sheet's own button answers to, and what the run itself refuses on. A
+    /// statement carrying an unallowed hazard stops the run rather than being dropped from it: the
+    /// count the user is about to run has to be the count they saw.
+    internal var runRefusalReason: String? {
+        if let reason = applyDisabledReason { return reason }
+        if statements.isEmpty { return String(localized: "There is no script to run.") }
         guard unacknowledgedHazardCount == 0 else {
             guard unacknowledgedHazardCount != 1 else {
                 return String(localized: "1 statement would destroy data and is not allowed yet.")
@@ -273,6 +335,7 @@ internal final class CompareSyncSession {
                 unacknowledgedHazardCount
             )
         }
+        guard runnableStatementCount > 0 else { return String(localized: "No statement is allowed to run.") }
         return nil
     }
 
@@ -357,6 +420,8 @@ internal final class CompareSyncSession {
         sourceSnapshots = [:]
         targetSnapshots = [:]
         dataPlans = []
+        hasLoadedDataPlans = false
+        unreadableTableCount = 0
         actions = [:]
         selectedObjectId = nil
         selectedPlanId = nil
@@ -366,6 +431,32 @@ internal final class CompareSyncSession {
         lastAction = .none
         isStaleAfterApply = false
         invalidateScript()
+        setupGeneration &+= 1
+        /// Every path that resets a comparison is a path that changed the setup: an endpoint, the
+        /// mode, or an option. So this is also where the setup is written down, and reopening the
+        /// window lands on the same pair instead of on two empty pickers.
+        rememberSetup()
+    }
+
+    /// True while the answer in hand still belongs to the setup on screen.
+    internal func isCurrent(_ generation: Int) -> Bool {
+        generation == setupGeneration
+    }
+
+    /// The one place a table list is published, so the tables a saved comparison asked for are
+    /// applied where the list arrives rather than at the next Compare. Left in `pendingSelection`,
+    /// they were reapplied later over whatever the user had ticked in the meantime.
+    internal func adoptDataPlans(_ plans: [DataComparePlan]) {
+        var adopted = plans
+        if !pendingSelection.isEmpty {
+            for index in adopted.indices {
+                adopted[index].isEnabled = pendingSelection.contains(adopted[index].id)
+            }
+            pendingSelection = []
+        }
+        dataPlans = adopted
+        hasLoadedDataPlans = true
+        selectedPlanId = adopted.first { $0.isEnabled && $0.isComparable }?.id ?? adopted.first?.id
     }
 
     /// After a run the report describes a target that has since changed, so it is stale rather than

@@ -7,6 +7,8 @@ import Foundation
 import TableProPluginKit
 
 extension CloudflareD1PluginDriver {
+    var providesBulkTriggerFetch: Bool { true }
+
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo] {
         try await sqliteTriggerList(table: nil)
     }

@@ -49,6 +49,8 @@ extension PostgreSQLPluginDriver {
         return ddl
     }
 
+    var providesBulkTriggerFetch: Bool { true }
+
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo] {
         let resolvedSchema = schema ?? currentSchema ?? "public"
         let query = PostgreSQLObjectQueries.triggerList(schema: resolvedSchema, table: nil)

@@ -54,6 +54,8 @@ extension OraclePluginDriver {
         return body.uppercased().hasPrefix("CREATE") ? body : "CREATE OR REPLACE \(body)"
     }
 
+    var providesBulkTriggerFetch: Bool { true }
+
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo] {
         try await triggerList(schema: routineSchema(schema), table: nil)
     }
