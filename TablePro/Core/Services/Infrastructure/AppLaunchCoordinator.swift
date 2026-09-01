@@ -14,28 +14,34 @@ internal final class AppLaunchCoordinator {
     internal static let shared = AppLaunchCoordinator()
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "AppLaunchCoordinator")
-    internal static let collectionWindow: Duration = .milliseconds(150)
 
     private(set) var phase: LaunchPhase = .launching
 
+    @ObservationIgnored private let environment: any LaunchEnvironment
     private var pendingIntents: [LaunchIntent] = []
-    private var deadlineTask: Task<Void, Never>?
     private var hasFinishedLaunching = false
 
-    private init() {}
+    internal init(environment: any LaunchEnvironment = LiveLaunchEnvironment()) {
+        self.environment = environment
+    }
 
     // MARK: - App Lifecycle Hooks
 
+    /// Intents are collected for exactly one run-loop turn rather than a fixed span of time.
+    ///
+    /// Measured on macOS 27 with a probe app registered for a URL scheme and a document type:
+    /// LaunchServices always delivers the gesture that started the app to `application(_:open:)`
+    /// before `applicationDidFinishLaunching` returns, coalesces several documents from one gesture
+    /// into a single call, and delivers a straggler from a second request 2.4 to 7.1ms later, in
+    /// every run before the first turn of the main queue. A timed window buys nothing over that and
+    /// costs the person every millisecond of it, because the window they are waiting for is not
+    /// built until it closes.
     internal func didFinishLaunching() {
         hasFinishedLaunching = true
         deliver(UITestLaunchEnvironment.launchIntents)
-        let deadline = Date().addingTimeInterval(0.150)
-        phase = .collectingIntents(deadline: deadline)
-        deadlineTask = Task { [weak self] in
-            try? await Task.sleep(for: Self.collectionWindow)
-            await MainActor.run {
-                self?.transitionToRouting()
-            }
+        phase = .collectingIntents
+        environment.scheduleNextTurn { [weak self] in
+            self?.transitionToRouting()
         }
     }
 
@@ -83,30 +89,32 @@ internal final class AppLaunchCoordinator {
     internal func handleReopen(hasVisibleWindows: Bool) -> Bool {
         AppActivationPolicyController.shared.adoptUserSession()
         if hasVisibleWindows { return true }
-        showWelcomeWindow()
+        environment.presentWelcome()
         return false
     }
 
     // MARK: - Phase Transitions
 
-    private func deliver(_ intents: [LaunchIntent]) {
+    /// The one way an intent enters the launch pipeline, whether it came from a URL, a handoff, or
+    /// the UI-test environment.
+    internal func deliver(_ intents: [LaunchIntent]) {
         guard !intents.isEmpty else { return }
         if phase.isAcceptingIntents {
             pendingIntents.append(contentsOf: intents)
-            WindowOpener.shared.closeWelcome()
+            environment.closeWelcome()
         } else {
             Task { [weak self] in
                 guard let self else { return }
                 for intent in intents {
-                    await LaunchIntentRouter.shared.route(intent)
+                    await environment.route(intent)
                 }
-                self.dismissWelcomeIfMainWindowVisible()
+                self.environment.dismissWelcomeIfMainWindowVisible()
             }
         }
     }
 
     private func transitionToRouting() {
-        guard hasFinishedLaunching else { return }
+        guard hasFinishedLaunching, !phase.isReady, phase != .routing else { return }
         phase = .routing
         let intents = pendingIntents
         pendingIntents.removeAll()
@@ -114,70 +122,15 @@ internal final class AppLaunchCoordinator {
         Task { [weak self] in
             guard let self else { return }
             for intent in intents {
-                await LaunchIntentRouter.shared.route(intent)
+                await environment.route(intent)
             }
-            self.dismissWelcomeIfMainWindowVisible()
-            self.runStartupBehaviorIfNeeded(skipping: intents)
+            self.environment.dismissWelcomeIfMainWindowVisible()
+            self.environment.runStartupBehavior(skipping: intents)
+            LaunchTracer.shared.mark(.intentsRouted)
             self.phase = .ready
-            self.finalizeWindowsIfNoVisibleMain(intents: intents)
+            self.environment.presentWelcomeIfNoMainWindow(intents: intents)
+            self.environment.launchDidComplete()
         }
-    }
-
-    private func dismissWelcomeIfMainWindowVisible() {
-        guard NSApp.windows.contains(where: { Self.isMainWindow($0) && $0.isVisible }) else { return }
-        WindowOpener.shared.closeWelcome()
-    }
-
-    /// A launch nobody asked for opens nothing, whatever the startup behaviour says. Reopening the
-    /// last session, or falling back to the welcome window, would put the person's connections on
-    /// screen because a client asked a question.
-    private func runStartupBehaviorIfNeeded(skipping intents: [LaunchIntent]) {
-        guard AppActivationPolicyController.shared.origin == .user else { return }
-        guard intents.isEmpty else { return }
-
-        let general = AppSettingsStorage.shared.loadGeneral()
-        switch general.startupBehavior {
-        case .showWelcome:
-            for window in NSApp.windows where Self.isMainWindow(window) {
-                window.close()
-            }
-        case .reopenLast:
-            reopenLastSession()
-        }
-    }
-
-    private func reopenLastSession() {
-        guard !NSApp.windows.contains(where: {
-            ConnectionWindowIdentity.isConnectionWindow($0.identifier?.rawValue)
-        }) else { return }
-
-        let connectionIds = LastOpenConnectionsStorage.shared.load()
-        guard !connectionIds.isEmpty else { return }
-
-        let knownIds = Set(ConnectionStorage.shared.loadConnections().map(\.id))
-        var frontWindow: NSWindow?
-        for connectionId in connectionIds where knownIds.contains(connectionId) {
-            WindowManager.shared.openTab(
-                payload: EditorTabPayload(connectionId: connectionId, intent: .restoreOrDefault),
-                activate: false,
-                autoConnect: true
-            )
-            if frontWindow == nil {
-                frontWindow = WindowManager.shared.window(for: connectionId)
-            }
-        }
-
-        guard let frontWindow else { return }
-        WindowOpener.shared.closeWelcome()
-        frontWindow.makeKeyAndOrderFront(nil)
-        AppActivationPolicyController.shared.activate()
-    }
-
-    private func finalizeWindowsIfNoVisibleMain(intents: [LaunchIntent]) {
-        guard AppActivationPolicyController.shared.origin == .user else { return }
-        guard intents.isEmpty else { return }
-        guard !NSApp.windows.contains(where: { Self.isMainWindow($0) && $0.isVisible }) else { return }
-        showWelcomeWindow()
     }
 
     // MARK: - Window Identification
@@ -188,9 +141,5 @@ internal final class AppLaunchCoordinator {
 
     internal static func isWelcomeWindow(_ window: NSWindow) -> Bool {
         ConnectionWindowIdentity.isWelcomeWindow(window.identifier?.rawValue)
-    }
-
-    private func showWelcomeWindow() {
-        WindowOpener.shared.openWelcome()
     }
 }

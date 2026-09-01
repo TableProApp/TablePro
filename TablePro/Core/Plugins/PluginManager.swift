@@ -121,6 +121,10 @@ final class PluginManager {
     @ObservationIgnored internal var lastNetworkSatisfied = false
     @ObservationIgnored internal var installsInFlight: Set<String> = []
 
+    /// User-installed bundles discovered but not yet signature-checked. `sweepPluginSignatures()`
+    /// drains it after the first frame.
+    @ObservationIgnored internal var pendingSignatureChecks: [URL] = []
+
     var queryBuildingDriverCache: [String: (any PluginDatabaseDriver)?] = [:]
 
     init(
@@ -303,24 +307,6 @@ final class PluginManager {
             }
             return
         }
-        if source == .userInstalled {
-            do {
-                try verifyCodeSignature(bundle: bundle)
-            } catch {
-                Self.logger.error("Lazy plugin '\(manifest.bundleId)' failed code-sign check: \(error.localizedDescription)")
-                rejectedPlugins.append(RejectedPlugin(
-                    url: url,
-                    bundleId: manifest.bundleId,
-                    registryId: Self.readRegistryMetadata(for: url)?.pluginId,
-                    name: manifest.bundleId,
-                    reason: error.localizedDescription,
-                    isOutdated: false,
-                    providedDatabaseTypeIds: manifest.providedDatabaseTypeIds
-                ))
-                return
-            }
-        }
-
         let bundleId = manifest.bundleId
         let primaryTypeId = manifest.providedDatabaseTypeIds.first
         let additionalTypeIds = Array(manifest.providedDatabaseTypeIds.dropFirst())
@@ -382,6 +368,32 @@ final class PluginManager {
             lazyInspectorUTIs[uti] = url
         }
         Self.logger.debug("Registered lazy plugin '\(bundleId)': drivers=\(manifest.providedDatabaseTypeIds), exports=\(manifest.providedExportFormatIds), imports=\(manifest.providedImportFormatIds), inspectors=\(manifest.providedInspectorIds)")
+    }
+
+    /// Takes back everything `registerLazyManifest` published for this bundle, so a plugin the app
+    /// would refuse to activate stops being offered as an installed one.
+    internal func withdrawPlugin(at url: URL, reason: Error) {
+        let manifest = Bundle(url: url).flatMap { PluginManifest(bundle: $0) }
+
+        plugins.removeAll { $0.url == url }
+        lazyDriverURLs = lazyDriverURLs.filter { $0.value != url }
+        lazyExportURLs = lazyExportURLs.filter { $0.value != url }
+        lazyImportURLs = lazyImportURLs.filter { $0.value != url }
+        lazyInspectorURLs = lazyInspectorURLs.filter { $0.value != url }
+        lazyInspectorFileExtensions = lazyInspectorFileExtensions.filter { $0.value != url }
+        lazyInspectorUTIs = lazyInspectorUTIs.filter { $0.value != url }
+
+        guard !rejectedPlugins.contains(where: { $0.url == url }) else { return }
+        let name = manifest?.bundleId ?? url.deletingPathExtension().lastPathComponent
+        rejectedPlugins.append(RejectedPlugin(
+            url: url,
+            bundleId: manifest?.bundleId,
+            registryId: Self.readRegistryMetadata(for: url)?.pluginId,
+            name: name,
+            reason: reason.localizedDescription,
+            isOutdated: false,
+            providedDatabaseTypeIds: manifest?.providedDatabaseTypeIds ?? []
+        ))
     }
 
     func activateDriver(databaseTypeId typeId: String) {
@@ -794,8 +806,14 @@ final class PluginManager {
 
         try Self.validateBundleVersions(bundle)
 
+        /// The signature is not checked here. `SecStaticCodeCheckValidity` hashes the whole bundle,
+        /// measured at 13ms per user-installed plugin and linear in how many are installed, and
+        /// discovery loads nothing: it only records the URL. The two gates that decide whether a
+        /// bundle's code runs both stay where they are, `validateAndLoadBundle` for an eager plugin
+        /// and `activateLazyBundle` for a lazy one, and `sweepPluginSignatures()` re-checks these
+        /// off the main actor once the first window is up so the Plugins pane still lists a bad one.
         if source == .userInstalled {
-            try verifyCodeSignature(bundle: bundle)
+            pendingSignatureChecks.append(url)
         }
 
         pendingPluginURLs.append((url: url, source: source))

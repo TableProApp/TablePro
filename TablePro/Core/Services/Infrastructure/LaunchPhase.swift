@@ -7,7 +7,7 @@ import Foundation
 
 internal enum LaunchPhase: Equatable, Sendable {
     case launching
-    case collectingIntents(deadline: Date)
+    case collectingIntents
     case routing
     case ready
 

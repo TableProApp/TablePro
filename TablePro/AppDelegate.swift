@@ -19,6 +19,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - URL & File Open
 
     func applicationWillFinishLaunching(_ notification: Notification) {
+        LaunchTracer.shared.mark(.willFinishLaunchingBegan)
         AppSettingsStorage.shared.migrateStartupBehaviorToReopenLastIfNeeded()
         AppSettingsStorage.shared.migrateJsonFieldHeightKeyIfNeeded()
         AIProviderRegistration.registerAll()
@@ -26,21 +27,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         /// Installed before any window exists, so the bar is correct from the first frame.
         /// Nothing else owns it now that the app no longer runs a SwiftUI `App`.
         MainMenuBuilder.install(keyboard: AppSettingsManager.shared.keyboard)
+        LaunchTracer.shared.mark(.menuInstalled)
 
         _ = InspectorDocumentController()
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         PluginManager.shared.loadPlugins()
-        /// The registry manifest only feeds the plugin-install UI, and fetching it is a network call
-        /// at launch. A sandboxed run has no user plugins directory to install into anyway.
-        if !AppStorageEnvironment.shared.isIsolated {
-            Task { await RegistryClient.shared.ensureManifest(.ifStale) }
-        }
-
-        Task { await QueryHistoryManager.shared.performStartupCleanup() }
-        Task { @MainActor in
-            let activeIds = Set(ConnectionStorage.shared.loadConnections().map(\.id))
-            await SQLFavoriteManager.shared.pruneOrphaned(activeConnectionIds: activeIds)
-        }
+        LaunchTracer.shared.mark(.pluginsDiscovered)
+        LaunchTracer.shared.mark(.willFinishLaunchingEnded)
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -62,17 +55,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        LaunchTracer.shared.mark(.didFinishLaunchingBegan)
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
             Self.logger.info("Running under XCTest, skipping normal app startup")
             return
         }
 
-        let appearanceSettings = AppSettingsManager.shared.appearance
-        ThemeEngine.shared.updateAppearanceAndTheme(
-            mode: ScreenshotEnvironment.appearanceMode ?? appearanceSettings.appearanceMode,
-            lightThemeId: appearanceSettings.preferredLightThemeId,
-            darkThemeId: appearanceSettings.preferredDarkThemeId
-        )
+        /// `AppSettingsManager.init` has already resolved the theme from these same three values.
+        /// Only a screenshot run overrides the mode, so only a screenshot run resolves it twice.
+        if let screenshotMode = ScreenshotEnvironment.appearanceMode {
+            let appearanceSettings = AppSettingsManager.shared.appearance
+            ThemeEngine.shared.updateAppearanceAndTheme(
+                mode: screenshotMode,
+                lightThemeId: appearanceSettings.preferredLightThemeId,
+                darkThemeId: appearanceSettings.preferredDarkThemeId
+            )
+        }
 
         NSWindow.allowsAutomaticWindowTabbing = true
         WindowOpener.shared.setWelcomePresenter { WelcomeWindowController.present() }
@@ -87,36 +85,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         DatabaseManager.shared.startObservingSystemEvents()
         DatabaseManager.shared.tabStatePersister = SessionTabStatePersister()
 
-        Task { await CloudflareTunnelManager.shared.sweepStalePidsIfNeeded() }
-        Task { await CloudSQLProxyManager.shared.sweepStalePidsIfNeeded() }
-
-        MemoryPressureAdvisor.startMonitoring()
+        /// Apple documents that this must be assigned before the app finishes launching, or a
+        /// notification the person acted on to launch the app never reaches the delegate. It is the
+        /// one piece of `PostLaunchWork` that cannot wait for the first frame.
         UNUserNotificationCenter.current().delegate = self
-        PluginNotificationService.shared.setUp()
-        OperationCompletionReporter.shared.setUp()
-        ChatToolBootstrap.register()
 
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(handleSystemDidWake),
             name: NSWorkspace.didWakeNotification, object: nil
         )
 
-        if AppSettingsManager.shared.mcp.enabled, !AppStorageEnvironment.shared.isIsolated {
-            Task {
-                await MCPServerManager.shared.start(port: UInt16(clamping: AppSettingsManager.shared.mcp.port))
-            }
-        }
-
-        Task.detached(priority: .background) {
-            _ = QueryHistoryManager.shared
-        }
-
-        AppLaunchCoordinator.shared.didFinishLaunching()
-
         NotificationCenter.default.addObserver(
             self, selector: #selector(windowWillClose(_:)),
             name: NSWindow.willCloseNotification, object: nil
         )
+
+        LaunchTracer.shared.mark(.didFinishLaunchingEnded)
+        AppLaunchCoordinator.shared.didFinishLaunching()
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {

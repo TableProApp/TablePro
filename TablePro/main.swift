@@ -18,9 +18,15 @@ import AppKit
 /// The activation policy resolves next, before `NSApplicationMain`. A process the MCP bridge
 /// started opens no window, and this is the only point early enough to keep LaunchServices from
 /// registering it as a foreground app and putting it in the Dock first.
+MainActor.assumeIsolated { LaunchTracer.shared.mark(.main) }
 AppStorageEnvironment.bootstrap()
+MainActor.assumeIsolated { LaunchTracer.shared.mark(.storageResolved) }
 let application = NSApplication.shared
-MainActor.assumeIsolated { AppActivationPolicyController.shared.applyLaunchRole() }
+MainActor.assumeIsolated {
+    LaunchTracer.shared.mark(.applicationCreated)
+    AppActivationPolicyController.shared.applyLaunchRole()
+    LaunchTracer.shared.mark(.activationRoleApplied)
+}
 let delegate = MainActor.assumeIsolated { AppDelegate() }
 application.delegate = delegate
 _ = NSApplicationMain(CommandLine.argc, CommandLine.unsafeArgv)

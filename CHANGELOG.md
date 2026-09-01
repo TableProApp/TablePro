@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Middle-click on a tab to close it. (#2595)
+- Launch trace in Instruments' Points of Interest, and `TABLEPRO_LAUNCH_TRACE=1` for the same table on standard error.
+
+### Changed
+
+- Cold launch to a usable window, 460ms down to 296ms.
+- Plugin signature checks run after the first window rather than on the launch thread, at 13ms each.
 
 ### Fixed
 
