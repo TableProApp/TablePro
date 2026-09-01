@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Select > All and Select > None in the structure results pane.
 - Whole-schema index and table metadata reads on the driver protocol.
 - Script that checks the SQLite whole-schema reads against the per-table ones.
+- Middle-click on a tab to close it. (#2595)
+- Launch trace in Instruments' Points of Interest, and `TABLEPRO_LAUNCH_TRACE=1` for the same table on standard error.
 
 ### Changed
 
@@ -24,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Compare & Sync reopens on the source, target, mode and options it last held.
 - Table collation on MySQL, previously never read.
 - PluginKit ABI 20. Every registry plugin needs rebuilding before or with this release.
+- Cold launch to a usable window, 460ms down to 296ms.
+- Plugin signature checks run after the first window rather than on the launch thread, at 13ms each.
 
 ### Fixed
 
@@ -34,16 +38,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Compare & Sync toolbar naming the old pair after a saved comparison was loaded from Options.
 - A failed whole-schema trigger read counting as a schema with no triggers.
 - Compare & Sync publishing one pair's results after the pickers moved to another.
-- Middle-click on a tab to close it. (#2595)
-- Launch trace in Instruments' Points of Interest, and `TABLEPRO_LAUNCH_TRACE=1` for the same table on standard error.
-
-### Changed
-
-- Cold launch to a usable window, 460ms down to 296ms.
-- Plugin signature checks run after the first window rather than on the launch thread, at 13ms each.
-
-### Fixed
-
 - Clicks and hovers in the scrolled tab strip's edge padding landing on a tab clipped off the edge.
 
 ## [0.70.0] - 2026-09-01
