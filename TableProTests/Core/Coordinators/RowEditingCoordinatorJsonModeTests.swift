@@ -39,7 +39,8 @@ struct RowEditingCoordinatorJsonModeTests {
                     [.text("3"), .text("Bob")]
                 ],
                 columns: ["id", "name"],
-                columnTypes: [.text(rawType: nil), .text(rawType: nil)]
+                columnTypes: [.text(rawType: nil), .text(rawType: nil)],
+                hasAuthoritativeSchema: true
             ),
             for: tab.id
         )
