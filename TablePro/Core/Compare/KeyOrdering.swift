@@ -56,9 +56,9 @@ internal struct KeyOrdering {
     }
 
     internal func compare(_ lhs: [PluginCellValue], _ rhs: [PluginCellValue]) -> ComparisonResult {
-        for (index, pair) in zip(lhs, rhs).enumerated() {
+        for index in 0 ..< min(lhs.count, rhs.count) {
             let order = index < orders.count ? orders[index] : .caseSensitiveText
-            let result = Self.compare(pair.0, pair.1, using: order)
+            let result = Self.compare(lhs[index], rhs[index], using: order)
             guard result == .orderedSame else { return result }
         }
         if lhs.count == rhs.count { return .orderedSame }
