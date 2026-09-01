@@ -14,7 +14,8 @@ internal struct FieldEditorContext {
     let isReadOnly: Bool
     let commitBytes: ((Data) -> Void)?
 
-    /// Set when the owning grid dictates the editor instead of the column type.
+    /// The editor to build, already resolved by the caller. `FieldEditorResolver` falls back to the
+    /// column type and the value only when this is nil, and resolving costs a parse of the value.
     let editor: FieldEditorKind?
 
     /// A schema field has no NULL or DEFAULT state and no data type to badge.

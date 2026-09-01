@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Lag switching the inspector's tabs, and on every hover over a field, on a row with long values.
 - Plugin download reporting no progress at all when a connection or a file needs a driver installed.
 - Parse error on any MongoDB filter written in shell syntax, such as `db.orders.find({status: 1})`.
 - MongoDB `.sort()` and `.projection()` silently ignored when written with unquoted keys.

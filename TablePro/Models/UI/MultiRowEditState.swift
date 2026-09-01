@@ -25,6 +25,13 @@ struct FieldEditState: Identifiable {
     /// Set when the owning grid dictates the editor instead of the column type.
     var editor: FieldEditorKind?
 
+    /// Which editor the field's own type and value ask for, resolved once here.
+    ///
+    /// Resolving it costs a full `JSONSerialization` parse of the value and a PHP-serialized parse
+    /// after it, and `FieldEditorResolver` was reached from two view bodies per field. Every hover,
+    /// every inspector tab switch and every pending-edit keystroke re-parsed every value in the row.
+    var resolvedEditor: FieldEditorKind?
+
     /// A schema field has no data type, so it offers no type badge and no NULL or DEFAULT state.
     var isSchemaField: Bool = false
 
@@ -161,6 +168,11 @@ final class MultiRowEditState {
             if let preservedId {
                 newField.id = preservedId
             }
+            newField.resolvedEditor = FieldEditorResolver.resolve(
+                for: columnTypeEnum,
+                isLongText: isLongText,
+                originalValue: originalValue
+            )
             newFields.append(newField)
         }
 
@@ -197,6 +209,13 @@ final class MultiRowEditState {
             )
             if index < reusedIds.count {
                 state.id = reusedIds[index]
+            }
+            if field.editor == nil {
+                state.resolvedEditor = FieldEditorResolver.resolve(
+                    for: .text(rawType: nil),
+                    isLongText: false,
+                    originalValue: field.value
+                )
             }
             return state
         }

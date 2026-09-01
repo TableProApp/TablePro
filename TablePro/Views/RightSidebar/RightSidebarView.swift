@@ -350,7 +350,7 @@ struct RightSidebarView: View {
                 hasMultipleValues: field.hasMultipleValues,
                 isReadOnly: !isEditable || isPhpField,
                 commitBytes: isEditable ? { data in editState.setFieldToBytes(at: index, data: data) } : nil,
-                editor: field.editor,
+                editor: kind,
                 allowsNullAndDefault: !field.isSchemaField,
                 showsTypeBadge: !field.isSchemaField
             ),
