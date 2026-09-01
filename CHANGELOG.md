@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Middle-click on a tab to close it. (#2595)
 
+### Fixed
+
+- Clicks and hovers in the scrolled tab strip's edge padding landing on a tab clipped off the edge.
+
 ## [0.70.0] - 2026-09-01
 
 ### Added
