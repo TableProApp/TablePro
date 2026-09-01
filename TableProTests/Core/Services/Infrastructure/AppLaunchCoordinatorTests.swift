@@ -111,6 +111,44 @@ final class AppLaunchCoordinatorTests: XCTestCase {
         XCTAssertEqual(environment.dismissWelcomeRuns, 2)
     }
 
+    /// Routing suspends: `TabRouter.openTable` awaits `ensureConnected`. An intent that arrives
+    /// during that wait must join the pass in flight, not start a second one, or two tasks can each
+    /// find no session for the same connection and each open one.
+    func testAnIntentArrivingDuringARouteJoinsTheSameDrain() async {
+        let first = UUID()
+        let second = UUID()
+        environment.holdsRoutes = true
+        coordinator.deliver([.openConnection(first)])
+        coordinator.didFinishLaunching()
+        environment.fireNextTurn()
+        await environment.settle()
+
+        XCTAssertEqual(environment.routedConnectionIds, [first], "The first route should still be suspended")
+
+        coordinator.deliver([.openConnection(second)])
+        await environment.settle()
+
+        XCTAssertEqual(environment.routedConnectionIds, [first], "The second intent must wait, not race")
+        XCTAssertEqual(environment.concurrentRoutes, 1)
+
+        environment.holdsRoutes = false
+        environment.releaseRoute()
+        await environment.settle()
+
+        XCTAssertEqual(environment.routedConnectionIds, [first, second])
+        XCTAssertEqual(environment.concurrentRoutes, 1, "Only one route may be in flight at a time")
+        XCTAssertEqual(environment.completions, 1)
+    }
+
+    func testStartupBehaviourIsToldWhetherAnyIntentWasRouted() async {
+        coordinator.deliver([.openConnection(UUID())])
+        coordinator.didFinishLaunching()
+
+        await environment.runNextTurnAndWaitForCompletion()
+
+        XCTAssertTrue(environment.startupBehaviorSawIntents)
+    }
+
     func testReopenWithNoVisibleWindowsPresentsWelcome() {
         let handled = coordinator.handleReopen(hasVisibleWindows: false)
 
@@ -135,6 +173,14 @@ private final class RecordingLaunchEnvironment: LaunchEnvironment {
     private(set) var welcomeFallbackRuns = 0
     private(set) var presentWelcomeRuns = 0
     private(set) var completions = 0
+    private(set) var startupBehaviorSawIntents = false
+    private(set) var concurrentRoutes = 0
+
+    /// Set to suspend `route` until `releaseRoute()` is called, which is how a launch that awaits
+    /// `ensureConnected` behaves.
+    var holdsRoutes = false
+    private var routeGate: CheckedContinuation<Void, Never>?
+    private var activeRoutes = 0
 
     private var turns: [@MainActor () -> Void] = []
     private var lastTurn: (@MainActor () -> Void)?
@@ -147,20 +193,43 @@ private final class RecordingLaunchEnvironment: LaunchEnvironment {
     }
 
     func route(_ intent: LaunchIntent) async {
+        activeRoutes += 1
+        concurrentRoutes = max(concurrentRoutes, activeRoutes)
         if let connectionId = intent.targetConnectionId {
             routedConnectionIds.append(connectionId)
         }
+        if holdsRoutes {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                routeGate = continuation
+            }
+        }
+        activeRoutes -= 1
+    }
+
+    func releaseRoute() {
+        let gate = routeGate
+        routeGate = nil
+        gate?.resume()
     }
 
     func closeWelcome() { closeWelcomeRuns += 1 }
     func dismissWelcomeIfMainWindowVisible() { dismissWelcomeRuns += 1 }
-    func runStartupBehavior(skipping intents: [LaunchIntent]) { startupBehaviorRuns += 1 }
-    func presentWelcomeIfNoMainWindow(intents: [LaunchIntent]) { welcomeFallbackRuns += 1 }
+    func runStartupBehavior(hadIntents: Bool) {
+        startupBehaviorRuns += 1
+        startupBehaviorSawIntents = hadIntents
+    }
+
+    func presentWelcomeIfNoMainWindow(hadIntents: Bool) { welcomeFallbackRuns += 1 }
     func presentWelcome() { presentWelcomeRuns += 1 }
     func launchDidComplete() { completions += 1 }
 
     func replayLastTurn() {
         lastTurn?()
+    }
+
+    func fireNextTurn() {
+        guard !turns.isEmpty else { return XCTFail("No turn was scheduled") }
+        turns.removeFirst()()
     }
 
     /// Fires the turn the coordinator scheduled, then drains the main queue until the routing task

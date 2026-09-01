@@ -26,8 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Compare & Sync reopens on the source, target, mode and options it last held.
 - Table collation on MySQL, previously never read.
 - PluginKit ABI 20. Every registry plugin needs rebuilding before or with this release.
-- Cold launch to a usable window, 460ms down to 296ms.
+- Cold launch to a usable window, 470ms down to 260ms.
 - Plugin signature checks run after the first window rather than on the launch thread, at 13ms each.
+- One gate in front of every path that loads a plugin's executable, enabling one included.
 
 ### Fixed
 

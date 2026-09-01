@@ -41,9 +41,3 @@ struct RejectedPlugin: Sendable {
     let isOutdated: Bool
     let providedDatabaseTypeIds: [String]
 }
-
-extension PluginEntry {
-    var exportPlugin: (any ExportFormatPlugin.Type)? {
-        bundle.principalClass as? any ExportFormatPlugin.Type
-    }
-}

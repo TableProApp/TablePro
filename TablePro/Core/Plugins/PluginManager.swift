@@ -483,14 +483,12 @@ final class PluginManager {
 
         let entry = plugins.first(where: { $0.id == bundleId })
 
-        if entry?.source != .builtIn {
-            do {
-                try verifyCodeSignature(bundle: bundle)
-            } catch {
-                Self.logger.error("Refusing to activate lazy plugin '\(bundleId)': code-signature re-check failed before load: \(error.localizedDescription)")
-                recordLazyActivationRejection(url: url, bundleId: bundleId, entry: entry, error: error)
-                return
-            }
+        do {
+            try assertLoadable(bundle, source: entry?.source ?? .userInstalled)
+        } catch {
+            Self.logger.error("Refusing to activate lazy plugin '\(bundleId)': failed the load gate: \(error.localizedDescription)")
+            recordLazyActivationRejection(url: url, bundleId: bundleId, entry: entry, error: error)
+            return
         }
 
         do {
@@ -545,7 +543,7 @@ final class PluginManager {
         let bundle: Bundle
     }
 
-    nonisolated private static func validateBundleVersions(_ bundle: Bundle) throws {
+    nonisolated internal static func validateBundleVersions(_ bundle: Bundle) throws {
         let infoPlist = bundle.infoDictionary ?? [:]
         let declaredPluginKit = infoPlist["TableProPluginKitVersion"] as? Int
         let declaredInspectorKit = infoPlist["TableProInspectorKitVersion"] as? Int

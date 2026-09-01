@@ -24,6 +24,18 @@ extension PluginManager {
         }
     }
 
+    /// The one check in front of every path that can load a plugin's executable.
+    ///
+    /// `Bundle.principalClass` loads that executable, so a caller that only means to *enable* a
+    /// plugin is a code-loading path too and needs the same gate as `activateLazyBundle`. Discovery
+    /// and lazy registration publish an entry before its signature has been checked, so nothing may
+    /// reach the executable on the strength of being published.
+    func assertLoadable(_ bundle: Bundle, source: PluginSource) throws {
+        try Self.validateBundleVersions(bundle)
+        guard source != .builtIn else { return }
+        try verifyCodeSignature(bundle: bundle)
+    }
+
     func verifyCodeSignature(bundle: Bundle) throws {
         let trust = try PluginCodeSignatureVerifier.evaluate(bundle: bundle)
         guard case .developerID(let identity) = trust else { return }

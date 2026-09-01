@@ -19,8 +19,8 @@ internal protocol LaunchEnvironment: AnyObject {
     func route(_ intent: LaunchIntent) async
     func closeWelcome()
     func dismissWelcomeIfMainWindowVisible()
-    func runStartupBehavior(skipping intents: [LaunchIntent])
-    func presentWelcomeIfNoMainWindow(intents: [LaunchIntent])
+    func runStartupBehavior(hadIntents: Bool)
+    func presentWelcomeIfNoMainWindow(hadIntents: Bool)
     func presentWelcome()
     /// Routing has finished. The live environment has usually completed the launch already, off
     /// the first window becoming key; this is what covers a launch that shows no window.
@@ -29,8 +29,13 @@ internal protocol LaunchEnvironment: AnyObject {
 
 @MainActor
 internal final class LiveLaunchEnvironment: LaunchEnvironment {
+    /// Nothing may start the deferred work later than this, however the frame observation goes.
+    private static let backstop = Duration.seconds(2)
+
     private var firstKeyWindowObserver: (any NSObjectProtocol)?
+    private var backstopTask: Task<Void, Never>?
     private var hasCompletedLaunch = false
+    private var hasMarkedFirstWindow = false
 
     /// The first window becoming key is the signal, not the end of intent routing.
     ///
@@ -38,6 +43,12 @@ internal final class LiveLaunchEnvironment: LaunchEnvironment {
     /// `ensureConnected`. Waiting for routing to return would hold every deferred subsystem, the
     /// MCP server included, behind a database server that may be slow or unreachable, over a window
     /// the person is already looking at.
+    ///
+    /// The observer stays armed until a frame actually lands. A launch that opens Welcome and then
+    /// replaces it with a connection window closes the first candidate before its display link ever
+    /// fires, and a view that is hidden or off-display is documented not to drive one; latching on
+    /// the candidate rather than on its frame would leave the memory-pressure monitor, the signature
+    /// sweep, the history cleanup and the MCP server off for the life of the process.
     internal init() {
         firstKeyWindowObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didBecomeKeyNotification,
@@ -45,8 +56,13 @@ internal final class LiveLaunchEnvironment: LaunchEnvironment {
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.completeLaunch(with: NSApp.keyWindow)
+                self?.observeFirstFrame(of: NSApp.keyWindow)
             }
+        }
+        backstopTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.backstop)
+            guard !Task.isCancelled else { return }
+            self?.finishLaunch()
         }
     }
 
@@ -73,9 +89,9 @@ internal final class LiveLaunchEnvironment: LaunchEnvironment {
     /// A launch nobody asked for opens nothing, whatever the startup behaviour says. Reopening the
     /// last session, or falling back to the welcome window, would put the person's connections on
     /// screen because a client asked a question.
-    internal func runStartupBehavior(skipping intents: [LaunchIntent]) {
+    internal func runStartupBehavior(hadIntents: Bool) {
         guard AppActivationPolicyController.shared.origin == .user else { return }
-        guard intents.isEmpty else { return }
+        guard !hadIntents else { return }
 
         let general = AppSettingsStorage.shared.loadGeneral()
         switch general.startupBehavior {
@@ -88,9 +104,9 @@ internal final class LiveLaunchEnvironment: LaunchEnvironment {
         }
     }
 
-    internal func presentWelcomeIfNoMainWindow(intents: [LaunchIntent]) {
+    internal func presentWelcomeIfNoMainWindow(hadIntents: Bool) {
         guard AppActivationPolicyController.shared.origin == .user else { return }
-        guard intents.isEmpty else { return }
+        guard !hadIntents else { return }
         guard !NSApp.windows.contains(where: { AppLaunchCoordinator.isMainWindow($0) && $0.isVisible }) else { return }
         presentWelcome()
     }
@@ -99,33 +115,52 @@ internal final class LiveLaunchEnvironment: LaunchEnvironment {
         WindowOpener.shared.openWelcome()
     }
 
-    /// The fallback for a launch that puts no window on screen at all, which is how a process the
-    /// MCP bridge started runs. Nothing would ever become key there.
+    /// Routing is done. A launch that put a window on screen has usually finished already, off that
+    /// window's first frame; this is what covers one that shows no window, which is how a process
+    /// the MCP bridge started runs.
     internal func launchDidComplete() {
-        completeLaunch(with: NSApp.keyWindow ?? NSApp.windows.first(where: \.isVisible))
+        let window = NSApp.keyWindow ?? NSApp.windows.first(where: \.isVisible)
+        guard let window else {
+            finishLaunch()
+            return
+        }
+        observeFirstFrame(of: window)
     }
 
-    /// The observer is removed here rather than in a `deinit`, which cannot reach main-actor state.
-    /// One of these lives for the process, held by `AppLaunchCoordinator.shared`, and every launch
-    /// reaches this exactly once.
-    private func completeLaunch(with window: NSWindow?) {
+    private func observeFirstFrame(of window: NSWindow?) {
+        guard !hasCompletedLaunch else { return }
+        if !hasMarkedFirstWindow {
+            hasMarkedFirstWindow = true
+            LaunchTracer.shared.mark(.firstWindowOrdered)
+        }
+        guard let window else {
+            finishLaunch()
+            return
+        }
+        window.afterNextFrame { [weak self] in
+            self?.finishLaunch()
+        }
+    }
+
+    /// The single completion, whichever of the three routes reaches it first. The observer is
+    /// removed here rather than in a `deinit`, which cannot reach main-actor state; one of these
+    /// lives for the process, held by `AppLaunchCoordinator.shared`.
+    private func finishLaunch() {
         guard !hasCompletedLaunch else { return }
         hasCompletedLaunch = true
+        backstopTask?.cancel()
+        backstopTask = nil
         if let firstKeyWindowObserver {
             NotificationCenter.default.removeObserver(firstKeyWindowObserver)
             self.firstKeyWindowObserver = nil
         }
 
-        LaunchTracer.shared.mark(.firstWindowOrdered)
-        guard let window else {
-            LaunchTracer.shared.mark(.firstFramePresented)
-            PostLaunchWork.start()
-            return
+        if !hasMarkedFirstWindow {
+            hasMarkedFirstWindow = true
+            LaunchTracer.shared.mark(.firstWindowOrdered)
         }
-        window.afterNextFrame {
-            LaunchTracer.shared.mark(.firstFramePresented)
-            PostLaunchWork.start()
-        }
+        LaunchTracer.shared.mark(.firstFramePresented)
+        PostLaunchWork.start()
     }
 
     private func reopenLastSession() {
