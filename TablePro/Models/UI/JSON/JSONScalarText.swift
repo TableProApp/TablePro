@@ -15,18 +15,21 @@ enum JSONScalarText {
         case .number(let literal): literal
         case .bool(let flag): flag ? "true" : "false"
         case .null: "null"
-        case .binary(let data): hex(data)
+        case .binary(let data): "\"\(hex(data, limit: maxDisplayedHexBytes))\""
         }
     }
 
     /// The value without its quotes, which is what Copy Value puts on the pasteboard.
+    ///
+    /// A blob prints in full here even though the line on screen stops at
+    /// `maxDisplayedHexBytes`: what the pasteboard carries is the value, not the rendering of it.
     static func unquoted(_ scalar: JSONScalar) -> String {
         switch scalar {
         case .string(let text): text
         case .number(let literal): literal
         case .bool(let flag): flag ? "true" : "false"
         case .null: "NULL"
-        case .binary(let data): hex(data)
+        case .binary(let data): hex(data, limit: nil)
         }
     }
 
@@ -51,9 +54,22 @@ enum JSONScalarText {
         return output
     }
 
-    private static func hex(_ data: Data) -> String {
-        let latin1 = String(data: data, encoding: .isoLatin1) ?? ""
-        guard let formatted = latin1.formattedAsCompactHex() else { return "\"\"" }
-        return "\"\(formatted)\""
+    /// How much of a blob a printed line carries. A column holding a megabyte of image data is not
+    /// a value anyone reads byte by byte, and laying the whole of it out as one line costs more
+    /// than the reader gets back.
+    static let maxDisplayedHexBytes = 64
+
+    private static let hexDigits = Array("0123456789ABCDEF")
+
+    private static func hex(_ data: Data, limit: Int?) -> String {
+        let shown = limit.map { data.prefix($0) } ?? data[...]
+        var output = "0x"
+        output.reserveCapacity(shown.count * 2 + 3)
+        for byte in shown {
+            output.append(hexDigits[Int(byte >> 4)])
+            output.append(hexDigits[Int(byte & 0x0F)])
+        }
+        if let limit, data.count > limit { output.append("…") }
+        return output
     }
 }

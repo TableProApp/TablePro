@@ -148,4 +148,42 @@ struct JSONRowFilterTests {
         #expect(visible.contains(nestedPath))
         #expect(visible.contains(keyPath))
     }
+
+    /// A container whose own key matches keeps what it holds. Keeping the container alone drew it
+    /// as `{…}` with a disclosure control that could not open it, because a filtered tree takes its
+    /// expansion from what survived the filter.
+    @Test("A container whose key matches keeps its whole subtree")
+    func matchedContainerKeepsItsContents() throws {
+        let root = makeRoot()
+        let visible = JSONRowFilter.visiblePaths(
+            root: root,
+            fetchedForeignKeys: [:],
+            matcher: try matcher("special_features")
+        )
+
+        let containerPath = try path(of: "special_features", in: root)
+        let container = try #require(root.children.first { $0.path == containerPath })
+        #expect(visible.contains(containerPath))
+        #expect(container.children.allSatisfy { visible.contains($0.path) })
+    }
+
+    @Test("A matched container prints open, not as a collapsed placeholder")
+    func matchedContainerPrintsExpanded() throws {
+        let root = makeRoot()
+        let visible = JSONRowFilter.visiblePaths(
+            root: root,
+            fetchedForeignKeys: [:],
+            matcher: try matcher("special_features")
+        )
+        let rows = JSONRowFlattener.rows(
+            root: root,
+            expanded: [root.path],
+            states: JSONForeignKeyStates(),
+            visiblePaths: visible
+        )
+
+        let container = try #require(rows.first { $0.key == .name("special_features") })
+        #expect(container.token == .openArray)
+        #expect(container.isExpanded)
+    }
 }

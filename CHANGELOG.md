@@ -41,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Row inspector lag on hover, on a tab switch and on every keystroke, from re-parsing each field's value.
 - The data grid's row commands on a column's right-click menu in Structure, when the column was already selected.
 - Wrong keyboard shortcuts shown beside Copy Name and Duplicate in the Structure right-click menu.
 - Plugin download reporting no progress at all when a connection or a file needs a driver installed.

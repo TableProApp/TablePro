@@ -76,11 +76,30 @@ enum JSONRowFilter {
             }
         }
 
-        if subtreeMatched || matches(node, matcher: matcher) {
+        /// A key that matches keeps what it holds. Keeping the container alone left it drawn as
+        /// `{…}` with a disclosure control that could not open it, because a filtered tree takes
+        /// its expansion from what survived the filter rather than from the reader's expanded set.
+        if matches(node, matcher: matcher) {
+            insertSubtree(node, fetched: fetched, into: &visible)
+            return true
+        }
+
+        if subtreeMatched {
             visible.insert(node.path)
             return true
         }
         return false
+    }
+
+    private static func insertSubtree(
+        _ node: JSONRowNode,
+        fetched: [JSONNodePath: JSONRowNode],
+        into visible: inout Set<JSONNodePath>
+    ) {
+        visible.insert(node.path)
+        for child in children(of: node, fetched: fetched) {
+            insertSubtree(child, fetched: fetched, into: &visible)
+        }
     }
 
     static func children(of node: JSONRowNode, fetched: [JSONNodePath: JSONRowNode]) -> [JSONRowNode] {

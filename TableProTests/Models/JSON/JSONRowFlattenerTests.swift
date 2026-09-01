@@ -163,4 +163,33 @@ struct JSONRowFlattenerTests {
         guard case .matcher(let matcher) = JSONRowMatcher.make(query: query) else { return nil }
         return matcher
     }
+
+    /// An expanded foreign key draws as `{`, and reading its value out of the token alone took
+    /// Copy Value and Open off the line the moment the reader opened it.
+    @Test("An expanded foreign key line still carries the value it was opened from")
+    func expandedForeignKeyKeepsItsScalar() throws {
+        let root = makeRoot(foreignKeys: ["language_id": reference])
+        let keyPath = try path(of: "language_id", in: root)
+        var states = JSONForeignKeyStates()
+        states.fetched[keyPath] = JSONRowNodeBuilder.build(
+            path: keyPath,
+            key: .name("language_id"),
+            columns: ["name"],
+            values: [.text("English")],
+            columnTypes: [.text(rawType: "CHAR")],
+            foreignKeys: [:]
+        )
+
+        let rows = JSONRowFlattener.rows(root: root, expanded: [root.path, keyPath], states: states)
+        let opened = try #require(rows.first { $0.path == keyPath && $0.token == .openObject })
+        #expect(opened.scalar == .number("1"))
+        #expect(opened.foreignKey == reference)
+    }
+
+    @Test("A collapsed foreign key carries the same value the expanded one does")
+    func collapsedForeignKeyCarriesItsScalar() throws {
+        let root = makeRoot(foreignKeys: ["language_id": reference])
+        let rows = JSONRowFlattener.rows(root: root, expanded: [root.path], states: JSONForeignKeyStates())
+        #expect(try row(rows, "language_id").scalar == .number("1"))
+    }
 }

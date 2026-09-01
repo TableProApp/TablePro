@@ -58,7 +58,7 @@ struct JSONNodeRowView: View {
     private var content: some View {
         HStack(alignment: .firstTextBaseline, spacing: 0) {
             if row.showsKey, let key = row.key.text {
-                Text("\"\(key)\"")
+                Text("\"\(JSONScalarText.escaped(key))\"")
                     .font(valueFont)
                     .foregroundStyle(colors.key)
                     .lineLimit(1)
@@ -154,7 +154,7 @@ struct JSONNodeRowView: View {
 
     @ViewBuilder
     private var menu: some View {
-        if let scalar = row.scalarValue {
+        if let scalar = row.scalar {
             Button(String(localized: "Copy Value")) {
                 copy(JSONScalarText.unquoted(scalar))
             }
@@ -164,7 +164,7 @@ struct JSONNodeRowView: View {
                 copy(key)
             }
         }
-        if let reference = row.foreignKey, let scalar = row.scalarValue, scalar != .null {
+        if let reference = row.foreignKey, let scalar = row.scalar, scalar != .null {
             Divider()
             Button(String(format: String(localized: "Open %@"), reference.qualifiedTable)) {
                 onOpenReferencedTable(reference, JSONScalarText.unquoted(scalar))
@@ -176,12 +176,5 @@ struct JSONNodeRowView: View {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
-    }
-}
-
-private extension JSONDisplayRow {
-    var scalarValue: JSONScalar? {
-        guard case .scalar(let scalar) = token else { return nil }
-        return scalar
     }
 }

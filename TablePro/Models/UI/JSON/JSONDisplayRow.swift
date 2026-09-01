@@ -43,6 +43,10 @@ struct JSONDisplayRow: Identifiable, Equatable, Sendable {
     let key: JSONNodeKey
     let token: Token
     let needsComma: Bool
+    /// The node's own value, carried beside the token rather than read out of it. An expanded
+    /// foreign key draws as `{`, and taking the value from the token alone took Copy Value and
+    /// Open off the line the moment it was opened.
+    let scalar: JSONScalar?
     let foreignKey: JSONForeignKeyRef?
     let isExpandable: Bool
     let isExpanded: Bool

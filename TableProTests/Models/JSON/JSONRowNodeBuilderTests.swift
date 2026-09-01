@@ -239,4 +239,38 @@ struct JSONRowNodeBuilderTests {
         )
         #expect(try node(root, "b").scalar == .null)
     }
+
+    /// `42`, `true`, `null` and `"text"` are whole JSON documents, and a JSON column is allowed to
+    /// hold one. Handing them back to the column-type path printed the number as a string and left
+    /// the string literal's own quotes inside the printed quotes.
+    @Test("A JSON column holding a top-level scalar keeps that scalar's kind")
+    func keepsJsonScalarDocuments() throws {
+        let root = JSONRowNodeBuilder.build(
+            columns: ["count", "flag", "missing", "label"],
+            values: [.text("42"), .text("true"), .text("null"), .text("\"ready\"")],
+            columnTypes: [
+                .json(rawType: "JSON"),
+                .json(rawType: "JSON"),
+                .json(rawType: "JSON"),
+                .json(rawType: "JSON"),
+            ],
+            foreignKeys: [:]
+        )
+
+        #expect(try node(root, "count").scalar == .number("42"))
+        #expect(try node(root, "flag").scalar == .bool(true))
+        #expect(try node(root, "missing").scalar == .null)
+        #expect(try node(root, "label").scalar == .string("ready"))
+    }
+
+    @Test("A text column holding a bare number stays a string, because it is not a document")
+    func leavesNonJsonTextAlone() throws {
+        let root = JSONRowNodeBuilder.build(
+            columns: ["note"],
+            values: [.text("42")],
+            columnTypes: [.text(rawType: "VARCHAR")],
+            foreignKeys: [:]
+        )
+        #expect(try node(root, "note").scalar == .string("42"))
+    }
 }

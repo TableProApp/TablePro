@@ -79,14 +79,16 @@ enum JSONRowNodeBuilder {
     ///
     /// The parse is `JsonSyntaxParser`, the same one the JSON cell viewer reads with, so a document
     /// cannot render one way in a cell and another in the row.
+    ///
+    /// A top-level scalar is kept rather than dropped. `42`, `true`, `null` and `"text"` are all
+    /// valid JSON documents, and a declared JSON column is allowed to hold one; handing them back
+    /// to the column-type path printed the number as a string and the string with its own quotes
+    /// still on. The gate below means only a JSON column ever reaches that case: any other column
+    /// has to start with a brace or a bracket to be parsed at all.
     private static func parsedDocument(_ text: String, type: ColumnType?) -> JsonSyntaxNode? {
         guard (text as NSString).length <= maxScannedDocumentLength else { return nil }
         if type?.isJsonType != true, !looksLikeDocument(text) { return nil }
-        guard let parsed = JsonSyntaxParser.parse(text) else { return nil }
-        switch parsed {
-        case .object, .array: return parsed
-        case .string, .number, .literal: return nil
-        }
+        return JsonSyntaxParser.parse(text)
     }
 
     /// A cell holding `42` is a number column, not a JSON document, and treating it as one would
