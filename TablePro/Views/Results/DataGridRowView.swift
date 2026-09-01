@@ -328,6 +328,47 @@ class DataGridRowView: NSTableRowView {
         menu.addItem(navInNewTabItem)
     }
 
+    /// Where a right-click landed: the table column index it hit, and the data column that
+    /// resolves to. Both are -1 when the click missed, and they are different misses: no column at
+    /// all is not the same as a column that carries no data, such as the row number.
+    private func clickedColumns(for event: NSEvent) -> (table: Int, data: Int) {
+        guard let coordinator, let tableView = coordinator.tableView else { return (-1, -1) }
+        let locationInRow = convert(event.locationInWindow, from: nil)
+        let locationInTable = tableView.convert(locationInRow, from: self)
+        let clickedColumn = tableView.column(at: locationInTable)
+        guard clickedColumn >= 0 else { return (-1, -1) }
+        let dataColumn = DataGridView.dataColumnIndex(
+            for: clickedColumn, in: tableView, schema: coordinator.identitySchema
+        ) ?? -1
+        return (clickedColumn, dataColumn)
+    }
+
+    /// The data column a right-click landed on, or -1 when it missed one.
+    private func clickedDataColumnIndex(for event: NSEvent) -> Int {
+        clickedColumns(for: event).data
+    }
+
+    /// Copy, meaning the cell under the pointer. Shared so a grid that builds its own row menu
+    /// offers the same item rather than leaving the pointer with no route to a value the keyboard
+    /// can already copy: the Structure tab had `Cmd+C` copying the clicked cell and no menu item
+    /// for it at all.
+    internal func makeCopyItem(for event: NSEvent) -> NSMenuItem {
+        let columns = clickedColumns(for: event)
+        let target: CopyContextTarget = if columns.data >= 0 {
+            .cell(columns.data)
+        } else if columns.table >= 0 {
+            .row
+        } else {
+            .unresolved
+        }
+        let item = NSMenuItem(
+            title: String(localized: "Copy"), action: #selector(copyFromContextMenu(_:)), keyEquivalent: ""
+        )
+        item.representedObject = target
+        item.target = self
+        return item
+    }
+
     /// Deliberately not `menu(for:)`. The table view owns context-menu handling because it
     /// is the only level that can re-target the selection to the clicked row first; a row
     /// view answering `menuForEvent:` would swallow the event and act on the old selection.
@@ -335,13 +376,7 @@ class DataGridRowView: NSTableRowView {
         guard let coordinator = coordinator,
               let tableView = coordinator.tableView else { return nil }
 
-        let locationInRow = convert(event.locationInWindow, from: nil)
-        let locationInTable = tableView.convert(locationInRow, from: self)
-        let clickedColumn = tableView.column(at: locationInTable)
-
-        let dataColumnIndex: Int = clickedColumn >= 0
-            ? DataGridView.dataColumnIndex(for: clickedColumn, in: tableView, schema: coordinator.identitySchema) ?? -1
-            : -1
+        let dataColumnIndex = clickedDataColumnIndex(for: event)
 
         let menu = NSMenu()
 
@@ -352,19 +387,7 @@ class DataGridRowView: NSTableRowView {
             return menu
         }
 
-        let copyTarget: CopyContextTarget = if dataColumnIndex >= 0 {
-            .cell(dataColumnIndex)
-        } else if clickedColumn >= 0 {
-            .row
-        } else {
-            .unresolved
-        }
-
-        let copyItem = NSMenuItem(
-            title: String(localized: "Copy"), action: #selector(copyFromContextMenu(_:)), keyEquivalent: "")
-        copyItem.representedObject = copyTarget
-        copyItem.target = self
-        menu.addItem(copyItem)
+        menu.addItem(makeCopyItem(for: event))
 
         let copyAsMenu = NSMenu()
 

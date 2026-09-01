@@ -27,6 +27,13 @@ final class StructureColumnMoveUITests: UITestCase {
             waitForPredicate(timeout: 30) { grid.tableRows.count > 1 },
             "Album has more than one column, so both directions have somewhere to go"
         )
+        /// Existing is not laid out. A coordinate taken off a grid whose frame is still empty
+        /// resolves to `(inf, inf)`, which `rightClick` then posts at no display at all and the
+        /// runner dies rather than failing an assertion.
+        XCTAssertTrue(
+            waitForPredicate(timeout: 30) { grid.frame.width > 0 && grid.frame.height > 0 },
+            "The grid must be laid out before a coordinate is taken off it"
+        )
 
         /// A point offset from the grid, never a row or cell element: the grid's columns are
         /// siblings of its rows and later in the tree, so XCUITest reads both as obscured.
