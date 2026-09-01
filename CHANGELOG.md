@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Recognition of SQLite and DuckDB databases by their contents, whatever they are named. (#2476)
 - `.parquet` files in Finder's Open With, read through DuckDB. (#2476)
 - Prompt to install the driver a file needs, before the file opens. (#2476)
+- Korean, Turkish, Vietnamese and Chinese for the 742 untranslated strings, and for the document kinds Finder shows.
 
 ### Changed
 
