@@ -107,18 +107,4 @@ final class CopyObjectsUITests: UITestCase {
     private func dismissMenu(in app: XCUIApplication) {
         app.typeKey(.escape, modifierFlags: [])
     }
-
-    /// Scoped to the menu the right-click raised. **Database > Copy To…** carries the same title,
-    /// on purpose, and a closed menu bar submenu is still in the accessibility tree, so an
-    /// app-rooted `menuItems[title]` matches two elements and refuses to click either.
-    ///
-    /// An open contextual menu is a direct child of the application; the menu bar is a
-    /// `.menuBar` and its submenus hang under that. Where the runner's tree does not agree,
-    /// hittability separates them: only the open menu's items can be clicked.
-    private func contextMenuItem(_ title: String, in app: XCUIApplication) -> XCUIElement {
-        let scoped = app.children(matching: .menu).firstMatch.menuItems[title].firstMatch
-        if scoped.exists { return scoped }
-        let matches = app.menuItems.matching(NSPredicate(format: "title == %@", title))
-        return matches.allElementsBoundByIndex.first { $0.isHittable } ?? matches.firstMatch
-    }
 }

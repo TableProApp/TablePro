@@ -217,6 +217,25 @@ internal class UITestCase: XCTestCase {
         element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
     }
 
+    /// An item of the contextual menu a right-click just raised, picked out from the menu bar's
+    /// copy of the same title.
+    ///
+    /// A closed menu bar submenu is still in the accessibility tree, so an app-rooted
+    /// `menuItems[title]` matches **Database > Copy To…** as readily as the menu under the pointer
+    /// and then refuses to click either. Hittability is what separates them: only the open menu's
+    /// items can be clicked.
+    ///
+    /// Scoping by container does not work here, measured: `app.children(matching: .menu)` is empty
+    /// while a contextual menu is up, so a query built on it silently answers no. That is why this
+    /// takes a title the menu bar also has and narrows it, rather than asking a container what it
+    /// holds. **A negative assertion cannot be written this way at all**: an absent contextual
+    /// item is indistinguishable from a present-but-unhittable menu bar one. Assert the absence in
+    /// a unit test over the menu-building code instead.
+    internal func contextMenuItem(_ title: String, in app: XCUIApplication) -> XCUIElement {
+        let matches = app.menuItems.matching(NSPredicate(format: "title == %@", title))
+        return matches.allElementsBoundByIndex.first { $0.isHittable } ?? matches.firstMatch
+    }
+
     /// The app removes its own defaults domain as it terminates, which is the only point that
     /// reliably comes after `cfprefsd` has written it. This sweep is the backstop for a run that
     /// crashed or was killed before it got there, and it runs before the class's tests so a
