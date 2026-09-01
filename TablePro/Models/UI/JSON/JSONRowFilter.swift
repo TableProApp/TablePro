@@ -58,48 +58,56 @@ enum JSONRowFilter {
         matcher: JSONRowMatcher
     ) -> Set<JSONNodePath> {
         var visible: Set<JSONNodePath> = []
-        _ = collect(node: root, fetched: fetchedForeignKeys, matcher: matcher, into: &visible)
+        _ = collect(
+            node: root,
+            fetched: fetchedForeignKeys,
+            matcher: matcher,
+            keepsEverything: false,
+            into: &visible
+        )
         return visible
     }
 
+    /// One walk, one visit per node.
+    ///
+    /// A key that matches keeps what it holds, decided before descending and carried down as
+    /// `keepsEverything`, so a chain of matching ancestors costs one pass rather than one pass per
+    /// ancestor over the same leaves. Keeping the container alone left it drawn as `{…}` with a
+    /// disclosure control that could not open it, because a filtered tree takes its expansion from
+    /// what survived the filter rather than from the reader's expanded set.
+    ///
+    /// Only the *key* keeps a subtree. A value that matches keeps its own line and the keys that
+    /// lead to it: an expanded foreign key carries both its own scalar and the fetched row's
+    /// fields, so treating a value match the same way answered a search for `1` with every column
+    /// of the referenced row.
     private static func collect(
         node: JSONRowNode,
         fetched: [JSONNodePath: JSONRowNode],
         matcher: JSONRowMatcher,
+        keepsEverything: Bool,
         into visible: inout Set<JSONNodePath>
     ) -> Bool {
+        let keyMatches = node.key.text.map(matcher.matches) ?? false
+        let keepsDescendants = keepsEverything || keyMatches
         var subtreeMatched = false
 
         for child in children(of: node, fetched: fetched) {
-            if collect(node: child, fetched: fetched, matcher: matcher, into: &visible) {
+            if collect(
+                node: child,
+                fetched: fetched,
+                matcher: matcher,
+                keepsEverything: keepsDescendants,
+                into: &visible
+            ) {
                 subtreeMatched = true
             }
         }
 
-        /// A key that matches keeps what it holds. Keeping the container alone left it drawn as
-        /// `{…}` with a disclosure control that could not open it, because a filtered tree takes
-        /// its expansion from what survived the filter rather than from the reader's expanded set.
-        if matches(node, matcher: matcher) {
-            insertSubtree(node, fetched: fetched, into: &visible)
-            return true
+        guard keepsDescendants || subtreeMatched || scalarMatches(node, matcher: matcher) else {
+            return false
         }
-
-        if subtreeMatched {
-            visible.insert(node.path)
-            return true
-        }
-        return false
-    }
-
-    private static func insertSubtree(
-        _ node: JSONRowNode,
-        fetched: [JSONNodePath: JSONRowNode],
-        into visible: inout Set<JSONNodePath>
-    ) {
         visible.insert(node.path)
-        for child in children(of: node, fetched: fetched) {
-            insertSubtree(child, fetched: fetched, into: &visible)
-        }
+        return true
     }
 
     static func children(of node: JSONRowNode, fetched: [JSONNodePath: JSONRowNode]) -> [JSONRowNode] {
@@ -109,8 +117,7 @@ enum JSONRowFilter {
         return node.children
     }
 
-    private static func matches(_ node: JSONRowNode, matcher: JSONRowMatcher) -> Bool {
-        if let key = node.key.text, matcher.matches(key) { return true }
+    private static func scalarMatches(_ node: JSONRowNode, matcher: JSONRowMatcher) -> Bool {
         guard let scalar = node.scalar else { return false }
         return matcher.matches(scalar.searchableText)
     }

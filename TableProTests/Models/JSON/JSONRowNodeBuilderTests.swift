@@ -273,4 +273,21 @@ struct JSONRowNodeBuilderTests {
         )
         #expect(try node(root, "note").scalar == .string("42"))
     }
+
+    /// `JsonSyntaxParser` highlights, it does not validate: it drops the backslash from an unknown
+    /// escape and reads a leading zero as a number. A JSON column the engine never validated can
+    /// hold either, and retyping one would show the reader something the cell does not say.
+    @Test("A JSON column holding text that is not strictly valid JSON stays the text it holds")
+    func refusesInvalidJsonScalars() throws {
+        let root = JSONRowNodeBuilder.build(
+            columns: ["escape", "leadingZero", "negativeZero"],
+            values: [.text("\"\\q\""), .text("01"), .text("-01")],
+            columnTypes: [.json(rawType: "JSON"), .json(rawType: "JSON"), .json(rawType: "JSON")],
+            foreignKeys: [:]
+        )
+
+        #expect(try node(root, "escape").scalar == .string("\"\\q\""))
+        #expect(try node(root, "leadingZero").scalar == .string("01"))
+        #expect(try node(root, "negativeZero").scalar == .string("-01"))
+    }
 }

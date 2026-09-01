@@ -85,10 +85,24 @@ enum JSONRowNodeBuilder {
     /// to the column-type path printed the number as a string and the string with its own quotes
     /// still on. The gate below means only a JSON column ever reaches that case: any other column
     /// has to start with a brace or a bracket to be parsed at all.
+    ///
+    /// A scalar has to be strictly valid before it is retyped, because `JsonSyntaxParser` is a
+    /// syntax highlighter's parser and not a validator: it drops the backslash from an unknown
+    /// escape and reads `01` as a number. A column the engine never validated can hold either, and
+    /// retyping one there would show the reader something the cell does not say. A container keeps
+    /// the lenient parse it has always had, since its braces are what the tree is built from.
     private static func parsedDocument(_ text: String, type: ColumnType?) -> JsonSyntaxNode? {
         guard (text as NSString).length <= maxScannedDocumentLength else { return nil }
         if type?.isJsonType != true, !looksLikeDocument(text) { return nil }
-        return JsonSyntaxParser.parse(text)
+        guard let parsed = JsonSyntaxParser.parse(text) else { return nil }
+        switch parsed {
+        case .object, .array: return parsed
+        case .string, .number, .literal: return isStrictJSON(text) ? parsed : nil
+        }
+    }
+
+    private static func isStrictJSON(_ text: String) -> Bool {
+        (try? JSONSerialization.jsonObject(with: Data(text.utf8), options: [.fragmentsAllowed])) != nil
     }
 
     /// A cell holding `42` is a number column, not a JSON document, and treating it as one would

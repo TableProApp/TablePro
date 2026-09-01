@@ -186,4 +186,69 @@ struct JSONRowFilterTests {
         #expect(container.token == .openArray)
         #expect(container.isExpanded)
     }
+
+    /// A value that matches keeps its own line and the keys that lead to it, never the subtree
+    /// under it. An expanded foreign key carries both its own scalar and the referenced row's
+    /// fields, so treating a value match as a key match answered a search for the key's value with
+    /// every column of the row it points at.
+    @Test("A value match keeps its own line, not the rows fetched underneath it")
+    func valueMatchDoesNotKeepAFetchedSubtree() throws {
+        let root = JSONRowNodeBuilder.build(
+            columns: ["title", "language_id"],
+            values: [.text("ANYTHING SAVANNAH"), .text("1")],
+            columnTypes: [.text(rawType: "VARCHAR"), .integer(rawType: "INT")],
+            foreignKeys: ["language_id": JSONForeignKeyRef(
+                column: "language_id",
+                referencedTable: "language",
+                referencedSchema: nil,
+                referencedColumn: "language_id"
+            )]
+        )
+        let keyPath = try path(of: "language_id", in: root)
+        let expansion = JSONRowNodeBuilder.build(
+            path: keyPath,
+            key: .name("language_id"),
+            columns: ["name", "country"],
+            values: [.text("English"), .text("Ireland")],
+            columnTypes: [.text(rawType: "CHAR"), .text(rawType: "CHAR")],
+            foreignKeys: [:]
+        )
+
+        let visible = JSONRowFilter.visiblePaths(
+            root: root,
+            fetchedForeignKeys: [keyPath: expansion],
+            matcher: try matcher("1")
+        )
+
+        #expect(visible.contains(keyPath))
+        for child in expansion.children {
+            #expect(visible.contains(child.path) == false, "A value match must not drag in the fetched row")
+        }
+    }
+
+    /// The filter runs on every keystroke, so a chain of matching ancestors over one large subtree
+    /// has to stay one pass rather than one pass per ancestor.
+    @Test("Nested matching containers are visited once each")
+    func nestedMatchesDoNotRewalkTheSubtree() throws {
+        var document = "{"
+        for depth in 0..<40 { document += "\"key\(depth)\": {" }
+        document += "\"leaf\": 1"
+        document += String(repeating: "}", count: 41)
+
+        let root = JSONRowNodeBuilder.build(
+            columns: ["payload"],
+            values: [.text(document)],
+            columnTypes: [.json(rawType: "JSON")],
+            foreignKeys: [:]
+        )
+
+        let visible = JSONRowFilter.visiblePaths(
+            root: root,
+            fetchedForeignKeys: [:],
+            matcher: try matcher("key")
+        )
+
+        #expect(visible.contains(try path(of: "payload", in: root)))
+        #expect(visible.count == 43, "Every node once: the root, payload, 40 keys and the leaf")
+    }
 }

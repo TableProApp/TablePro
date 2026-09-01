@@ -21,15 +21,17 @@ enum JSONScalarText {
 
     /// The value without its quotes, which is what Copy Value puts on the pasteboard.
     ///
-    /// A blob prints in full here even though the line on screen stops at
-    /// `maxDisplayedHexBytes`: what the pasteboard carries is the value, not the rendering of it.
+    /// A blob is capped here as well, at the same 64 bytes `RowValueCopyFormatter` gives the grid's
+    /// own Copy: one cell copied two ways cannot come back as two different values. Carrying the
+    /// whole blob instead would also mean hex-encoding an unbounded value on the main actor while
+    /// the reader waits for the pasteboard. The quotes are what was wrong, not the cap.
     static func unquoted(_ scalar: JSONScalar) -> String {
         switch scalar {
         case .string(let text): text
         case .number(let literal): literal
         case .bool(let flag): flag ? "true" : "false"
         case .null: "NULL"
-        case .binary(let data): hex(data, limit: nil)
+        case .binary(let data): hex(data, limit: maxDisplayedHexBytes)
         }
     }
 
@@ -59,15 +61,22 @@ enum JSONScalarText {
     /// than the reader gets back.
     static let maxDisplayedHexBytes = 64
 
-    private static let hexDigits = Array("0123456789ABCDEF")
+    private static let hexDigits: [UInt8] = Array("0123456789ABCDEF".utf8)
 
+    /// Written into a byte buffer and decoded once rather than appended a character at a time.
+    /// Copy Value asks for the whole blob, so this runs over every byte of a value that can be
+    /// megabytes, on the main thread, while the reader waits for the pasteboard.
     private static func hex(_ data: Data, limit: Int?) -> String {
         let shown = limit.map { data.prefix($0) } ?? data[...]
-        var output = "0x"
-        output.reserveCapacity(shown.count * 2 + 3)
+        var bytes: [UInt8] = [0x30, 0x78]
+        bytes.reserveCapacity(shown.count * 2 + 5)
         for byte in shown {
-            output.append(hexDigits[Int(byte >> 4)])
-            output.append(hexDigits[Int(byte & 0x0F)])
+            bytes.append(hexDigits[Int(byte >> 4)])
+            bytes.append(hexDigits[Int(byte & 0x0F)])
+        }
+        var output = String(unsafeUninitializedCapacity: bytes.count) { buffer in
+            _ = buffer.initialize(from: bytes)
+            return bytes.count
         }
         if let limit, data.count > limit { output.append("…") }
         return output
