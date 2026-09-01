@@ -34,8 +34,6 @@ internal final class EditorTabInteractionView: NSView {
     private var isResolvingAccessibilityHit = false
     private var hoverTrackingArea: NSTrackingArea?
     private var lastActivatedTabId: UUID?
-
-    /// The tab a middle-click was pressed on, held until the button comes up.
     private var middleClickTabId: UUID?
 
     internal init(interaction: EditorTabStripInteraction) {
@@ -142,8 +140,14 @@ internal final class EditorTabInteractionView: NSView {
         return super.accessibilityHitTest(point)
     }
 
+    /// A point outside the viewport names no tab, however a scrolled run would translate it. The
+    /// content offset moves the run under a fixed viewport, so without this the track's own two
+    /// points of padding, and any point the pointer reaches past the track, resolve to whichever
+    /// tab the offset happens to put there: a tab clipped off the leading edge, or one hidden
+    /// behind the new-tab button.
     private func tabIndex(atViewPoint point: CGPoint) -> Int? {
-        EditorTabRunLayoutBuilder.index(at: contentPoint(fromViewPoint: point), in: interaction.run)
+        guard viewportRect.contains(point) else { return nil }
+        return EditorTabRunLayoutBuilder.index(at: contentPoint(fromViewPoint: point), in: interaction.run)
     }
 
     private func tabId(at index: Int) -> UUID? {
