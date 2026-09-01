@@ -30,7 +30,12 @@ struct JSONRowFlattenerTests {
     }
 
     private func row(_ rows: [JSONDisplayRow], _ column: String) throws -> JSONDisplayRow {
-        try #require(rows.first { $0.path == JSONNodePath.root.appending(column) })
+        try #require(rows.first { $0.key == .name(column) && $0.token != .closeObject })
+    }
+
+    /// A column's path carries its position, so a test asks the tree for it.
+    private func path(of column: String, in root: JSONRowNode) throws -> JSONNodePath {
+        try #require(root.children.first { $0.key == .name(column) }).path
     }
 
     @Test("An expanded root prints its braces around its keys")
@@ -92,7 +97,7 @@ struct JSONRowFlattenerTests {
     @Test("A fetched foreign key prints the row it references")
     func printsFetchedForeignKey() throws {
         let root = makeRoot(foreignKeys: ["language_id": reference])
-        let keyPath = JSONNodePath.root.appending("language_id")
+        let keyPath = try path(of: "language_id", in: root)
         var states = JSONForeignKeyStates()
         states.fetched[keyPath] = JSONRowNodeBuilder.build(
             path: keyPath,
@@ -105,7 +110,8 @@ struct JSONRowFlattenerTests {
 
         let rows = JSONRowFlattener.rows(root: root, expanded: [root.path, keyPath], states: states)
         #expect(try row(rows, "language_id").token == .openObject)
-        let nested = try #require(rows.first { $0.path == keyPath.appending("name") })
+        let nestedPath = try #require(states.fetched[keyPath]?.children.first).path
+        let nested = try #require(rows.first { $0.path == nestedPath })
         #expect(nested.token == .scalar(.string("English")))
         #expect(nested.depth == 2)
     }
@@ -114,7 +120,7 @@ struct JSONRowFlattenerTests {
     func reportsLoading() throws {
         let root = makeRoot(foreignKeys: ["language_id": reference])
         var states = JSONForeignKeyStates()
-        states.loading.insert(JSONNodePath.root.appending("language_id"))
+        states.loading.insert(try path(of: "language_id", in: root))
         let rows = JSONRowFlattener.rows(root: root, expanded: [root.path], states: states)
         #expect(try row(rows, "language_id").status == .loading)
     }
@@ -123,7 +129,7 @@ struct JSONRowFlattenerTests {
     func reportsFailure() throws {
         let root = makeRoot(foreignKeys: ["language_id": reference])
         var states = JSONForeignKeyStates()
-        states.failures[JSONNodePath.root.appending("language_id")] = .cycle
+        states.failures[try path(of: "language_id", in: root)] = .cycle
         let rows = JSONRowFlattener.rows(root: root, expanded: [root.path], states: states)
         #expect(try row(rows, "language_id").status == .failure(.cycle))
     }

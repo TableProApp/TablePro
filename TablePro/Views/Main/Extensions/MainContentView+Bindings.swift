@@ -113,13 +113,8 @@ extension MainContentView {
                   in: tableRows
               ) else { return nil }
 
-        var contentHasher = Hasher()
-        contentHasher.combine(row.values)
-        contentHasher.combine(tableRows.columns)
-
         return JSONRowSnapshot(
             rowIdentity: "\(tab.id.uuidString)\u{001F}\(row.id)",
-            contentToken: contentHasher.finalize(),
             columns: tableRows.columns,
             columnTypes: tableRows.columnTypes,
             values: Array(row.values),

@@ -22,6 +22,12 @@ struct JSONRowFilterTests {
         )
     }
 
+    /// A column's path carries its position, so a test asks the tree where a key is rather than
+    /// spelling the path out.
+    private func path(of column: String, in root: JSONRowNode) throws -> JSONNodePath {
+        try #require(root.children.first { $0.key == .name(column) }).path
+    }
+
     private func matcher(_ query: String) throws -> JSONRowMatcher {
         guard case .matcher(let matcher) = JSONRowMatcher.make(query: query) else {
             throw FilterTestError.notAMatcher
@@ -41,23 +47,25 @@ struct JSONRowFilterTests {
 
     @Test("A key match keeps the key")
     func matchesKeys() throws {
+        let root = makeRoot()
         let visible = JSONRowFilter.visiblePaths(
-            root: makeRoot(),
+            root: root,
             fetchedForeignKeys: [:],
             matcher: try matcher("length")
         )
-        #expect(visible.contains(JSONNodePath.root.appending("length")))
-        #expect(visible.contains(JSONNodePath.root.appending("title")) == false)
+        #expect(visible.contains(try path(of: "length", in: root)))
+        #expect(visible.contains(try path(of: "title", in: root)) == false)
     }
 
     @Test("A value match keeps the key that holds it")
     func matchesValues() throws {
+        let root = makeRoot()
         let visible = JSONRowFilter.visiblePaths(
-            root: makeRoot(),
+            root: root,
             fetchedForeignKeys: [:],
             matcher: try matcher("savannah")
         )
-        #expect(visible.contains(JSONNodePath.root.appending("title")))
+        #expect(visible.contains(try path(of: "title", in: root)))
     }
 
     @Test("A nested match keeps its ancestors")
@@ -69,19 +77,20 @@ struct JSONRowFilterTests {
             matcher: try matcher("Deleted")
         )
         #expect(visible.contains(root.path))
-        #expect(visible.contains(JSONNodePath.root.appending("special_features")))
-        #expect(visible.contains(JSONNodePath.root.appending("title")) == false)
+        #expect(visible.contains(try path(of: "special_features", in: root)))
+        #expect(visible.contains(try path(of: "title", in: root)) == false)
     }
 
     @Test("Slashes make the query a regular expression")
     func readsRegex() throws {
+        let root = makeRoot()
         let visible = JSONRowFilter.visiblePaths(
-            root: makeRoot(),
+            root: root,
             fetchedForeignKeys: [:],
             matcher: try matcher("/^len/")
         )
-        #expect(visible.contains(JSONNodePath.root.appending("length")))
-        #expect(visible.contains(JSONNodePath.root.appending("title")) == false)
+        #expect(visible.contains(try path(of: "length", in: root)))
+        #expect(visible.contains(try path(of: "title", in: root)) == false)
     }
 
     @Test("A broken regular expression is reported, not treated as text")
@@ -103,7 +112,7 @@ struct JSONRowFilterTests {
             fetchedForeignKeys: [:],
             matcher: try matcher("a/b")
         )
-        #expect(visible.contains(JSONNodePath.root.appending("path")))
+        #expect(visible.contains(try path(of: "path", in: root)))
     }
 
     @Test("A fetched foreign key's own keys are searched")
@@ -120,7 +129,7 @@ struct JSONRowFilterTests {
             columnTypes: [.integer(rawType: "INT")],
             foreignKeys: ["language_id": reference]
         )
-        let keyPath = JSONNodePath.root.appending("language_id")
+        let keyPath = try path(of: "language_id", in: root)
         let expansion = JSONRowNodeBuilder.build(
             path: keyPath,
             key: .name("language_id"),
@@ -135,7 +144,8 @@ struct JSONRowFilterTests {
             fetchedForeignKeys: [keyPath: expansion],
             matcher: try matcher("English")
         )
-        #expect(visible.contains(keyPath.appending("name")))
+        let nestedPath = try #require(expansion.children.first).path
+        #expect(visible.contains(nestedPath))
         #expect(visible.contains(keyPath))
     }
 }

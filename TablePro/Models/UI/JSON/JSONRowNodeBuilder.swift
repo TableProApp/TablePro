@@ -25,7 +25,11 @@ enum JSONRowNodeBuilder {
         for (index, column) in columns.enumerated() {
             let value = index < values.count ? values[index] : .null
             let type = index < columnTypes.count ? columnTypes[index] : nil
-            let childPath = path.appending(column)
+            /// The column's position leads its path component, because a result set's labels are not
+            /// unique: an unaliased join selecting two `id` columns gives two of them. Sharing a path
+            /// gives the two nodes one id in the `ForEach` that draws them, and one entry in the
+            /// expanded set and the fetched-key map, so neither could be opened on its own.
+            let childPath = path.appending("\(index).\(column)")
             children.append(
                 JSONRowNode(
                     path: childPath,

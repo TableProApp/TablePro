@@ -23,8 +23,10 @@ final class JSONRowInspectorViewModel {
     private var expanded: Set<JSONNodePath> = []
     private var chains: [JSONNodePath: [JSONForeignKeyVisit]] = [:]
     private var fetches: [JSONNodePath: Task<Void, Never>] = [:]
-    private var snapshotIdentity: String?
-    private var contentToken: Int?
+    private var lastSnapshot: JSONRowSnapshot?
+    /// Bumped by every rebuild and every reset. A fetch that returns after one discards itself,
+    /// because `Task.cancel()` cannot interrupt a query already in flight.
+    private var generation = 0
     private var connectionId: UUID?
     private var databaseType: DatabaseType?
 
@@ -49,16 +51,18 @@ final class JSONRowInspectorViewModel {
         connectionId = snapshot.connectionId
         databaseType = snapshot.databaseType
 
-        let isSameRow = snapshot.rowIdentity == snapshotIdentity
-        guard !isSameRow || snapshot.contentToken != contentToken else { return }
+        guard snapshot != lastSnapshot else { return }
+        let isSameRow = snapshot.rowIdentity == lastSnapshot?.rowIdentity
+        lastSnapshot = snapshot
 
-        if !isSameRow {
-            cancelFetches()
-            states = JSONForeignKeyStates()
-            chains = [:]
-        }
-        snapshotIdentity = snapshot.rowIdentity
-        contentToken = snapshot.contentToken
+        /// A fetched row is held against the key node's path, and a rerun or a refresh keeps a row's
+        /// identity while its values move under it. So any content change drops the fetched keys:
+        /// leaving them would print the row `artist_id = 1` referenced under a cell that now holds
+        /// `artist_id = 2`, which is a wrong row presented as this row's own.
+        cancelFetches()
+        states = JSONForeignKeyStates()
+        chains = [:]
+        generation += 1
 
         let rebuilt = JSONRowNodeBuilder.build(
             columns: snapshot.columns,
@@ -80,8 +84,8 @@ final class JSONRowInspectorViewModel {
 
     private func reset() {
         cancelFetches()
-        snapshotIdentity = nil
-        contentToken = nil
+        generation += 1
+        lastSnapshot = nil
         root = nil
         expanded = []
         chains = [:]
@@ -224,9 +228,9 @@ final class JSONRowInspectorViewModel {
         states.failures.removeValue(forKey: path)
         states.loading.insert(path)
 
-        let identity = snapshotIdentity
+        let generation = generation
         fetches[path] = Task { [weak self] in
-            defer { self?.finishFetch(at: path, identity: identity) }
+            defer { self?.finishFetch(at: path, generation: generation) }
             do {
                 let fetched = try await ForeignKeyRowFetcher.fetch(
                     connectionId: connectionId,
@@ -235,7 +239,7 @@ final class JSONRowInspectorViewModel {
                     value: value,
                     includeForeignKeys: true
                 )
-                guard let self, !Task.isCancelled, identity == self.snapshotIdentity else { return }
+                guard let self, !Task.isCancelled, generation == self.generation else { return }
                 guard let fetched else {
                     self.states.failures[path] = .notFound
                     return
@@ -243,7 +247,7 @@ final class JSONRowInspectorViewModel {
                 self.adopt(fetched: fetched, at: path, reference: reference, chain: chain + [visit])
             } catch {
                 Self.logger.error("Foreign key expansion failed: \(error.localizedDescription)")
-                guard let self, !Task.isCancelled, identity == self.snapshotIdentity else { return }
+                guard let self, !Task.isCancelled, generation == self.generation else { return }
                 self.states.failures[path] = .failed(String(localized: "Failed to load referenced row"))
             }
         }
@@ -269,9 +273,9 @@ final class JSONRowInspectorViewModel {
         expandContainers(in: expansion)
     }
 
-    private func finishFetch(at path: JSONNodePath, identity: String?) {
+    private func finishFetch(at path: JSONNodePath, generation: Int) {
         fetches.removeValue(forKey: path)
-        guard identity == snapshotIdentity else { return }
+        guard generation == self.generation else { return }
         states.loading.remove(path)
     }
 

@@ -32,7 +32,7 @@ struct JSONRowTextRendererTests {
         let root = makeRoot()
         let rows = JSONRowFlattener.rows(
             root: root,
-            expanded: [root.path, JSONNodePath.root.appending("special_features")],
+            expanded: [root.path, root.children[2].path],
             states: JSONForeignKeyStates()
         )
         #expect(JSONRowTextRenderer.render(rows: rows) == """

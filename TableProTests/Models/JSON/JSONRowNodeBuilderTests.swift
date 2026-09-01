@@ -213,6 +213,22 @@ struct JSONRowNodeBuilderTests {
         #expect(payload.children.first?.scalar == .string("line\nbreak"))
     }
 
+    @Test("Two columns with the same label get their own nodes")
+    func separatesDuplicateColumnLabels() throws {
+        let root = JSONRowNodeBuilder.build(
+            columns: ["id", "name", "id"],
+            values: [.text("1"), .text("Album"), .text("7")],
+            columnTypes: [.integer(rawType: "INT"), .text(rawType: "TEXT"), .integer(rawType: "INT")],
+            foreignKeys: [:]
+        )
+
+        let paths = Set(root.children.map(\.path))
+        #expect(paths.count == root.children.count)
+        #expect(root.children.map(\.key) == [.name("id"), .name("name"), .name("id")])
+        #expect(root.children[0].scalar == .number("1"))
+        #expect(root.children[2].scalar == .number("7"))
+    }
+
     @Test("A row with fewer values than columns reads the missing ones as NULL")
     func toleratesShortRows() throws {
         let root = JSONRowNodeBuilder.build(
