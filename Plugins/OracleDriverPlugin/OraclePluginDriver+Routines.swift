@@ -54,6 +54,13 @@ extension OraclePluginDriver {
         return body.uppercased().hasPrefix("CREATE") ? body : "CREATE OR REPLACE \(body)"
     }
 
+    /// False on purpose. `triggerList` scopes a whole-schema read on OWNER, the trigger's own
+    /// schema, and a per-table read on TABLE_OWNER, the subject table's. Those are different
+    /// questions for a trigger one schema owns on another's table, and a caller holding a bare
+    /// table name cannot tell them apart, so a comparison would accept a trigger from outside its
+    /// scope and miss one inside it.
+    var providesBulkTriggerFetch: Bool { false }
+
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo] {
         try await triggerList(schema: routineSchema(schema), table: nil)
     }

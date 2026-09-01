@@ -57,6 +57,10 @@ internal struct CompareOptionsView: View {
         } else {
             session.invalidateScript()
         }
+        /// These edits deliberately do not reset the comparison, so they never reach the one place
+        /// the setup is written down. Without this, changing a tolerance or a write policy and
+        /// closing the window brought the previous values back.
+        session.rememberSetup()
     }
 
     // MARK: - Objects
@@ -161,10 +165,13 @@ internal struct CompareOptionsView: View {
 
     // MARK: - Saved comparisons
 
+    /// Every saved comparison, not only the ones matching the pair on screen. The list used to be
+    /// filtered by the current source and target, so a setup appeared only after both of its
+    /// endpoints had been chosen by hand, which is the work loading it exists to save.
     private var savedComparisonsSection: some View {
         Section {
             if savedProfiles.isEmpty {
-                Text("No saved setups for this source and target.")
+                Text("Nothing saved yet.")
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(savedProfiles) { profile in
@@ -184,18 +191,28 @@ internal struct CompareOptionsView: View {
             }
         } header: {
             Text("Saved Comparisons")
+        } footer: {
+            Text("Loading one sets the source, the target, the mode and these options. The Comparisons button in the toolbar lists them too.")
         }
     }
 
     private func profileRow(_ profile: CompareSyncProfile) -> some View {
         HStack(spacing: 8) {
-            Text(profile.name)
-                .lineLimit(1)
-                .truncationMode(.middle)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(profile.name)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(scope(of: profile))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
             Spacer(minLength: 0)
             Button("Load") {
                 session.apply(profile)
             }
+            .disabled(!session.canLoadProfile)
             .accessibilityIdentifier("compare.options.loadProfile.\(profile.id.uuidString)")
             Button("Delete", role: .destructive) {
                 session.deleteProfile(profile)
@@ -205,8 +222,17 @@ internal struct CompareOptionsView: View {
         }
     }
 
+    /// The pair a saved comparison names, so a list of several can be told apart without loading
+    /// one to find out which it was.
+    private func scope(of profile: CompareSyncProfile) -> String {
+        String(
+            format: String(localized: "%1$@ → %2$@, %3$@"),
+            profile.source.database, profile.target.database, profile.mode.displayName
+        )
+    }
+
     private var canSaveProfile: Bool {
-        guard session.source != nil, session.target != nil else { return false }
+        guard !session.isBusy, session.source != nil, session.target != nil else { return false }
         return !newProfileName.trimmingCharacters(in: .whitespaces).isEmpty
     }
 }

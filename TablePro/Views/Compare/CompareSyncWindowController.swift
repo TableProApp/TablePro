@@ -22,6 +22,7 @@ import AppKit
 import SwiftUI
 
 internal extension NSToolbarItem.Identifier {
+    static let compareSaved = NSToolbarItem.Identifier("com.TablePro.compare.saved")
     static let compareSource = NSToolbarItem.Identifier("com.TablePro.compare.source")
     static let compareSwap = NSToolbarItem.Identifier("com.TablePro.compare.swap")
     static let compareTarget = NSToolbarItem.Identifier("com.TablePro.compare.target")
@@ -36,7 +37,7 @@ internal extension NSToolbarItem.Identifier {
 
 @MainActor
 internal final class CompareSyncWindowController: NSWindowController,
-    NSWindowDelegate, NSToolbarDelegate, NSUserInterfaceValidations {
+    NSWindowDelegate, NSToolbarDelegate, NSMenuDelegate, NSUserInterfaceValidations {
     private static var controllers: [UUID?: CompareSyncWindowController] = [:]
 
     private let session = CompareSyncSession()
@@ -49,6 +50,7 @@ internal final class CompareSyncWindowController: NSWindowController,
     }
     private weak var modeControl: NSSegmentedControl?
     private weak var searchToolbarItem: NSSearchToolbarItem?
+    private var renderedEndpoints: String?
 
     internal static func present(prefillSource connectionId: UUID?) {
         let controller = controllers[connectionId] ?? CompareSyncWindowController(prefillSource: connectionId)
@@ -78,6 +80,10 @@ internal final class CompareSyncWindowController: NSWindowController,
         window.applyAutosaveName(WindowIdentifier.compareSync)
         installToolbar(on: window)
         installStatusStrip(on: window)
+        /// A restored data comparison has a pair but no table list, and the list is what the mode
+        /// needs before anything can be ticked. Routed through the one chrome refresh so the
+        /// subtitle, the picker titles and the load all follow the same rule.
+        refreshEndpointChrome()
     }
 
     @available(*, unavailable)
@@ -100,11 +106,21 @@ internal final class CompareSyncWindowController: NSWindowController,
         return hosting
     }
 
+    /// The window opens where it was left, which is what makes running the same comparison again
+    /// one press of Compare rather than a walk back through both pickers, the mode and the options.
+    /// A connection the window was opened *from* still wins the source, because that is what the
+    /// user just pointed at.
     private func applyPrefill(_ connectionId: UUID?) {
-        guard let connectionId else { return }
-        let connections = ConnectionStorage.shared.loadConnections()
-        guard let match = connections.first(where: { $0.id == connectionId }) else { return }
-        session.source = DatabaseEndpoint.from(connection: match)
+        let prefilled = connectionId.flatMap { id -> DatabaseEndpoint? in
+            let connections = ConnectionStorage.shared.loadConnections()
+            guard let match = connections.first(where: { $0.id == id }) else { return nil }
+            return DatabaseEndpoint.from(connection: match)
+        }
+        guard let setup = CompareSyncProfileStorage.shared.lastSetup() else {
+            session.source = prefilled
+            return
+        }
+        session.restore(setup, keepingSource: prefilled)
     }
 
     /// The strip belongs to the window frame, not to the content: it reports what the window is
@@ -134,7 +150,21 @@ internal final class CompareSyncWindowController: NSWindowController,
         toolbar.autosavesConfiguration = true
         window.toolbar = toolbar
         window.toolbarStyle = .unified
+        insertSavedComparisonsItemOnce(into: toolbar)
     }
+
+    /// `autosavesConfiguration` restores the identifiers a configuration was saved with, so an item
+    /// added to the defaults afterwards never appears for anyone who already has one. Inserted once,
+    /// recorded once, and never again, so a user who then removes it keeps it removed.
+    private func insertSavedComparisonsItemOnce(into toolbar: NSToolbar) {
+        let defaults = AppStorageEnvironment.shared.defaults
+        guard !defaults.bool(forKey: Self.savedComparisonsInsertedKey) else { return }
+        defaults.set(true, forKey: Self.savedComparisonsInsertedKey)
+        guard !toolbar.items.contains(where: { $0.itemIdentifier == .compareSaved }) else { return }
+        toolbar.insertItem(withItemIdentifier: .compareSaved, at: 0)
+    }
+
+    private static let savedComparisonsInsertedKey = "compareSyncToolbarHasSavedComparisonsItem"
 
     /// The HIG's item grouping: what the window is about on the leading edge, view controls in the
     /// middle, and the actions on the trailing edge, where "items on the trailing edge remain
@@ -143,7 +173,7 @@ internal final class CompareSyncWindowController: NSWindowController,
     /// for identity and made it the first thing to be clipped.
     internal func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
-            .compareSource, .compareSwap, .compareTarget,
+            .compareSaved, .compareSource, .compareSwap, .compareTarget,
             .flexibleSpace,
             .compareMode, .compareGrouping, .compareOptions, .compareSearch,
             .space,
@@ -161,6 +191,8 @@ internal final class CompareSyncWindowController: NSWindowController,
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
         switch itemIdentifier {
+        case .compareSaved:
+            return savedComparisonsItem(itemIdentifier)
         case .compareSource:
             return endpointMenus.item(for: .source, identifier: itemIdentifier)
         case .compareTarget:
@@ -291,6 +323,92 @@ internal final class CompareSyncWindowController: NSWindowController,
         modeControl?.isEnabled = !session.isBusy
     }
 
+    /// Loading a saved comparison is the one action that sets both endpoints at once, so it sits on
+    /// the leading edge with them rather than among the view controls. Its menu is built by
+    /// `menuNeedsUpdate` rather than at construction, because a comparison saved a moment ago has
+    /// to be in the list without the window being reopened.
+    private func savedComparisonsItem(_ identifier: NSToolbarItem.Identifier) -> NSToolbarItem {
+        let item = NSMenuToolbarItem(itemIdentifier: identifier)
+        item.label = String(localized: "Comparisons")
+        item.paletteLabel = String(localized: "Saved Comparisons")
+        item.toolTip = String(localized: "Load a saved source, target and options")
+        item.image = NSImage(
+            systemSymbolName: "list.star",
+            accessibilityDescription: String(localized: "Saved Comparisons")
+        )
+        item.showsIndicator = true
+        let menu = NSMenu()
+        /// Identified rather than remembered. Customize Toolbar asks the delegate for more copies
+        /// of an item with `willBeInsertedIntoToolbar` false, so a stored reference ends up naming
+        /// a palette copy that was thrown away, and the menu the user actually opens never matches
+        /// it. The same trap `refreshTitles` documents for the endpoint items.
+        menu.identifier = Self.savedComparisonsMenuIdentifier
+        menu.delegate = self
+        item.menu = menu
+        return item
+    }
+
+    private static let savedComparisonsMenuIdentifier =
+        NSUserInterfaceItemIdentifier("com.TablePro.compare.savedMenu")
+
+    internal func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu.identifier == Self.savedComparisonsMenuIdentifier else { return }
+        menu.removeAllItems()
+        for profile in session.savedProfiles {
+            let entry = NSMenuItem(title: profile.name, action: #selector(loadProfile(_:)), keyEquivalent: "")
+            entry.target = self
+            entry.representedObject = profile.id
+            entry.toolTip = describe(profile)
+            menu.addItem(entry)
+        }
+        if !menu.items.isEmpty {
+            menu.addItem(.separator())
+        }
+        let save = NSMenuItem(
+            title: String(localized: "Save Comparison…"),
+            action: #selector(saveComparison(_:)),
+            keyEquivalent: ""
+        )
+        save.target = self
+        menu.addItem(save)
+    }
+
+    private func describe(_ profile: CompareSyncProfile) -> String {
+        String(
+            format: String(localized: "%1$@ → %2$@, %3$@"),
+            profile.source.database, profile.target.database, profile.mode.displayName
+        )
+    }
+
+    @objc private func loadProfile(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? UUID,
+              let profile = session.savedProfiles.first(where: { $0.id == id }) else { return }
+        guard session.apply(profile) else { return }
+        refreshEndpointChrome()
+    }
+
+    /// The name is asked for in an alert rather than in the Options popover, because a user who has
+    /// just set up a pair should not have to find a text field in a settings sheet to keep it.
+    @objc internal func saveComparison(_ sender: Any?) {
+        guard let window, session.source != nil, session.target != nil else { return }
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Save this comparison")
+        alert.informativeText = String(
+            localized: "The source, the target, the mode and the options come back when you load it."
+        )
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        field.placeholderString = String(localized: "Name")
+        alert.accessoryView = field
+        alert.addButton(withTitle: String(localized: "Save"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
+        alert.beginSheetModal(for: window) { response in
+            guard response == .alertFirstButtonReturn else { return }
+            MainActor.assumeIsolated { self.session.saveProfile(named: field.stringValue) }
+        }
+        /// The accessory is only in the window once the sheet is up, so focus is asked for after.
+        DispatchQueue.main.async { alert.window.makeFirstResponder(field) }
+    }
+
     private func groupingItem(_ identifier: NSToolbarItem.Identifier) -> NSToolbarItem {
         let item = NSMenuToolbarItem(itemIdentifier: identifier)
         item.label = String(localized: "Group By")
@@ -371,8 +489,31 @@ internal final class CompareSyncWindowController: NSWindowController,
     /// wrong database as the one about to be written to.
     private func endpointsChanged() {
         session.resetComparison()
+        session.clearSetupErrorIfResolved()
+        refreshEndpointChrome()
+    }
+
+    /// The Source and Target titles and the window subtitle are rendered rather than observed, so
+    /// anything that sets an endpoint from outside this controller, loading a saved comparison from
+    /// the Options popover for one, used to leave the toolbar naming the old pair. Validation runs
+    /// on every event loop turn and this writes only when the pair actually changed, so the chrome
+    /// follows the session wherever the change came from.
+    private func refreshEndpointChrome() {
+        /// Keyed on the setup generation as well as the pair, because loading a saved comparison
+        /// for the pair already on screen, or changing a matching option, resets the session
+        /// without changing either endpoint id. Without the generation the promised reload never
+        /// started and the pane sat empty.
+        let rendered = "\(session.source?.id ?? "")\u{1F}\(session.target?.id ?? "")\u{1F}\(session.setupGeneration)"
+        guard renderedEndpoints != rendered else { return }
+        renderedEndpoints = rendered
         endpointMenus.refreshTitles()
         updateSubtitle()
+        syncModeControl()
+        /// A new pair in data mode needs its table list, whoever set the pair. Loading a saved
+        /// comparison from the Options popover reaches the session without passing through this
+        /// controller at all, so the list has to follow the pair rather than the call site, and one
+        /// call site rather than several is what keeps two reads of it from starting at once.
+        runner.loadDataPlans()
     }
 
     @objc internal func showOptions(_ sender: Any?) {
@@ -408,8 +549,7 @@ internal final class CompareSyncWindowController: NSWindowController,
         guard session.mode != mode else { return }
         session.mode = mode
         session.resetComparison()
-        syncModeControl()
-        endpointMenus.refreshTitles()
+        refreshEndpointChrome()
     }
 
     /// Only the Group By menu, found by identifier. Walking every `NSMenuToolbarItem` also reached
@@ -453,6 +593,7 @@ internal final class CompareSyncWindowController: NSWindowController,
         let reason = disabledReason(for: item.action)
         describe(item, reason: reason)
         syncModeControl()
+        refreshEndpointChrome()
         return reason == nil
     }
 
@@ -471,6 +612,12 @@ internal final class CompareSyncWindowController: NSWindowController,
             return session.isBusy ? nil : String(localized: "Nothing is running.")
         case #selector(performFind(_:)):
             return searchToolbarItem == nil ? String(localized: "The filter field is not in the toolbar.") : nil
+        case #selector(saveComparison(_:)):
+            if session.isBusy { return String(localized: "A run is already in progress.") }
+            guard session.source != nil, session.target != nil else {
+                return String(localized: "Choose a source and a target first.")
+            }
+            return nil
         default:
             return nil
         }
@@ -501,8 +648,24 @@ internal final class CompareSyncWindowController: NSWindowController,
 
     // MARK: - Sheets
 
+    /// Apply builds the script itself when there is not one yet, so the sheet that reviews it is
+    /// one press from a finished comparison. Generate Script stays for a user who wants to read the
+    /// SQL, or copy it, without going near the sheet.
     private func presentApplySheet() {
-        guard let window, session.canApply else { return }
+        guard session.canApply else { return }
+        guard session.statements.isEmpty else { return showApplySheet() }
+        /// The pickers stay live while the script builds, so the setup can move under the build.
+        /// Opening the sheet then would label it with the new target and offer the old script to
+        /// run against it. The generation the build started at is what says whether that happened.
+        let generation = session.setupGeneration
+        Task { [runner] in
+            guard await runner.buildScriptIfNeeded(), session.isCurrent(generation) else { return }
+            showApplySheet()
+        }
+    }
+
+    private func showApplySheet() {
+        guard let window else { return }
         let sheet = EscapeDismissingHostingController(
             rootView: CompareApplySheetView(session: session) { [weak self] choice in
                 guard let self else { return }

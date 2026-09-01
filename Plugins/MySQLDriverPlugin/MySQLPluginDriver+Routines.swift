@@ -60,6 +60,8 @@ extension MySQLPluginDriver {
         return ddl
     }
 
+    var providesBulkTriggerFetch: Bool { true }
+
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo] {
         try await triggerList(schema: routineSchema(schema), table: nil)
     }

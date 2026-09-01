@@ -225,7 +225,11 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         }
     }
 
+    /// The namespace predicate is not optional. Without it the read matched `relname` alone, so two
+    /// schemas holding a table of the same name returned each other's indexes merged into one list,
+    /// which a comparison between those two schemas reports as neither side differing.
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
+        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
         let columnOrdering = versionedCapabilities.hasArrayPosition
             ? "ORDER BY array_position(ix.indkey, a.attnum)"
             : "ORDER BY a.attnum"
@@ -240,28 +244,15 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             FROM pg_index ix
             JOIN pg_class i ON i.oid = ix.indexrelid
             JOIN pg_class t ON t.oid = ix.indrelid
+            JOIN pg_namespace n ON n.oid = t.relnamespace
             JOIN pg_am am ON am.oid = i.relam
             JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
-            WHERE t.relname = '\(escapeLiteral(table))'
+            WHERE t.relname = '\(escapeLiteral(table))' AND n.nspname = '\(schemaLiteral)'
             GROUP BY i.relname, ix.indisunique, ix.indisprimary, am.amname, ix.indpred, ix.indrelid
             ORDER BY ix.indisprimary DESC, i.relname
             """
         let result = try await execute(query: query)
-        return result.rows.compactMap { row -> PluginIndexInfo? in
-            guard row.count >= 5, let name = row[0].asText, let columnsStr = row[1].asText else { return nil }
-            let columns = columnsStr
-                .trimmingCharacters(in: CharacterSet(charactersIn: "{}"))
-                .components(separatedBy: ",")
-            let whereClause = row.count > 5 ? row[5].asText : nil
-            return PluginIndexInfo(
-                name: name,
-                columns: columns,
-                isUnique: row[2].asText == "t",
-                isPrimary: row[3].asText == "t",
-                type: row[4].asText?.uppercased() ?? "BTREE",
-                whereClause: whereClause
-            )
-        }
+        return result.rows.compactMap { PostgreSQLIndexRow.index(from: $0, offset: 0) }
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {

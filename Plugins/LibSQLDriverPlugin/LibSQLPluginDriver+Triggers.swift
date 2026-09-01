@@ -7,6 +7,8 @@ import Foundation
 import TableProPluginKit
 
 extension LibSQLPluginDriver {
+    var providesBulkTriggerFetch: Bool { true }
+
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo] {
         try await sqliteTriggerList(table: nil)
     }

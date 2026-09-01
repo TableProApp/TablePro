@@ -102,14 +102,110 @@ internal extension CompareSyncSession {
 
     // MARK: - Saved comparisons
 
+    /// Every saved comparison, not only the ones matching the pair on screen.
+    ///
+    /// Filtering by the current source and target is what made the feature circular: a setup only
+    /// listed once its own two endpoints had already been picked by hand, which is the work loading
+    /// it exists to save. The scopes a profile stores are what it sets, so it is offered from a
+    /// window that has chosen nothing.
     var savedProfiles: [CompareSyncProfile] {
-        guard let source, let target else { return [] }
-        return CompareSyncProfileStorage.shared.profiles(source: source.scope, target: target.scope, mode: mode)
+        profileStorage.allProfiles()
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     func saveProfile(named name: String) {
         guard let source, let target, !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        let profile = CompareSyncProfile(
+        profileStorage.save(
+            currentSetup(named: name, source: source, target: target, includingSelection: true)
+        )
+    }
+
+    /// Adopting a profile sets both endpoints, which is the whole point of having saved one. It
+    /// used to restore the mode and the options and leave the pickers untouched, so a load left the
+    /// window pointed at whatever pair happened to be open.
+    ///
+    /// A scope whose connection has since been deleted is reported rather than silently dropped: a
+    /// comparison that quietly loses its target would otherwise offer Compare against the endpoint
+    /// still in the other picker.
+    @discardableResult
+    func apply(_ profile: CompareSyncProfile) -> Bool {
+        /// A run in flight is writing to the target it captured, so swapping both endpoints under
+        /// it would leave the window reporting one pair while the executor finishes against
+        /// another. `canLoadProfile` is what the menu and the Load buttons validate against too.
+        guard canLoadProfile else { return false }
+
+        let connections = connectionsProvider()
+        let resolvedSource = Self.endpoint(for: profile.source, in: connections)
+        let resolvedTarget = Self.endpoint(for: profile.target, in: connections)
+
+        mode = profile.mode
+        includedKinds = profile.includedKinds.isEmpty ? [.table] : profile.includedKinds
+        structureOptions = profile.structureOptions
+        dataOptions = profile.dataOptions
+        source = resolvedSource
+        target = resolvedTarget
+        resetComparison()
+        pendingSelection = Set(profile.selectedObjects)
+
+        /// Written to the setup message rather than to `errorMessage`, which the option changes
+        /// this load just made will clear through their own `onChange` reset.
+        setupErrorMessage = resolvedSource == nil || resolvedTarget == nil
+            ? String(format: String(localized: "%@ names a connection that no longer exists."), profile.name)
+            : nil
+        return true
+    }
+
+    var canLoadProfile: Bool {
+        !isBusy
+    }
+
+    func deleteProfile(_ profile: CompareSyncProfile) {
+        profileStorage.delete(profile)
+    }
+
+    // MARK: - Last setup
+
+    /// Reopening the window lands on the comparison it last held. Nothing is compared and nothing
+    /// is written by restoring it: it is the two pickers, the mode and the options, which is the
+    /// part of the work that was being repeated by hand every time.
+    func restore(_ setup: CompareSyncProfile, keepingSource pinnedSource: DatabaseEndpoint?) {
+        let connections = connectionsProvider()
+        mode = setup.mode
+        includedKinds = setup.includedKinds.isEmpty ? [.table] : setup.includedKinds
+        structureOptions = setup.structureOptions
+        dataOptions = setup.dataOptions
+
+        guard let pinnedSource else {
+            source = Self.endpoint(for: setup.source, in: connections)
+            target = Self.endpoint(for: setup.target, in: connections)
+            return
+        }
+        /// The window was opened against one connection, so that connection is the source. The
+        /// remembered target only comes back when it was remembered against this same source,
+        /// because a target is the side that gets written to and inheriting one from an unrelated
+        /// comparison would arm the wrong database.
+        source = pinnedSource
+        /// The whole scope, not the connection alone. One connection reaches many databases and
+        /// many schemas, and `DatabaseEndpoint.id` already treats those as different endpoints, so
+        /// a connection match would hand database B the writable target remembered for database A.
+        guard setup.source == pinnedSource.scope else { return }
+        target = Self.endpoint(for: setup.target, in: connections)
+    }
+
+    func rememberSetup() {
+        guard let source, let target else { return }
+        profileStorage.rememberSetup(
+            currentSetup(named: "", source: source, target: target, includingSelection: false)
+        )
+    }
+
+    private func currentSetup(
+        named name: String,
+        source: DatabaseEndpoint,
+        target: DatabaseEndpoint,
+        includingSelection: Bool
+    ) -> CompareSyncProfile {
+        CompareSyncProfile(
             name: name,
             source: source.scope,
             target: target.scope,
@@ -117,22 +213,16 @@ internal extension CompareSyncSession {
             includedKinds: includedKinds,
             structureOptions: structureOptions,
             dataOptions: dataOptions,
-            selectedObjects: selectedObjectIdentifiers
+            selectedObjects: includingSelection ? selectedObjectIdentifiers : []
         )
-        CompareSyncProfileStorage.shared.save(profile)
     }
 
-    func apply(_ profile: CompareSyncProfile) {
-        mode = profile.mode
-        includedKinds = profile.includedKinds.isEmpty ? [.table] : profile.includedKinds
-        structureOptions = profile.structureOptions
-        dataOptions = profile.dataOptions
-        resetComparison()
-        pendingSelection = Set(profile.selectedObjects)
-    }
-
-    func deleteProfile(_ profile: CompareSyncProfile) {
-        CompareSyncProfileStorage.shared.delete(profile)
+    private static func endpoint(
+        for scope: DatabaseScope,
+        in connections: [DatabaseConnection]
+    ) -> DatabaseEndpoint? {
+        guard let connection = connections.first(where: { $0.id == scope.connectionId }) else { return nil }
+        return DatabaseEndpoint.from(connection: connection, database: scope.database, schema: scope.schema)
     }
 
     private var selectedObjectIdentifiers: [String] {

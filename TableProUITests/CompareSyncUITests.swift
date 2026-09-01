@@ -57,4 +57,21 @@ final class CompareSyncUITests: UITestCase {
         guard dialog.exists, dialog.buttons["Cancel"].exists else { return }
         dialog.buttons["Cancel"].click()
     }
+
+    /// The HIG's rule that every toolbar item is also a menu-bar command, checked where it can be
+    /// checked without a license: the item has to be in the menu even though it validates to
+    /// disabled with no window behind it.
+    func testSavingAComparisonIsAMenuBarCommand() throws {
+        let app = try launchApp()
+
+        let menuBar = app.menuBars.firstMatch
+        XCTAssertTrue(menuBar.waitToExist(timeout: 10))
+        menuBar.menuBarItems["Database"].click()
+        menuBar.menuItems["Compare"].click()
+
+        XCTAssertTrue(
+            menuBar.menuItems["Save Comparison…"].waitToExist(timeout: 10),
+            "Save Comparison must be reachable from Database > Compare"
+        )
+    }
 }

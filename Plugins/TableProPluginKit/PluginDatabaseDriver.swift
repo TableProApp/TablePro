@@ -100,6 +100,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo]
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo]
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo]
+    var providesBulkTriggerFetch: Bool { get }
     func fetchTriggerDDL(_ trigger: PluginTriggerInfo) async throws -> String
     func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo]
     func fetchRoutineDDL(_ routine: PluginRoutineInfo) async throws -> String
@@ -134,9 +135,14 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int?
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]]
+    var providesBulkColumnFetch: Bool { get }
     func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath]
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]]
     var providesBulkForeignKeyFetch: Bool { get }
+    func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]]
+    var providesBulkIndexFetch: Bool { get }
+    func fetchAllTableMetadata(schema: String?) async throws -> [String: PluginTableMetadata]
+    var providesBulkTableMetadataFetch: Bool { get }
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata]
     func fetchDependentTypes(table: String, schema: String?) async throws -> [(name: String, labels: [String])]
     func fetchDependentSequences(table: String, schema: String?) async throws -> [(name: String, ddl: String)]
@@ -308,6 +314,12 @@ public extension PluginDatabaseDriver {
 
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo] { [] }
 
+    /// Answers whether `fetchAllTriggers` lists a whole schema's triggers. The default above
+    /// returns nothing rather than looping, so a caller that wants triggers has to know whether
+    /// this driver answers at all before it decides to ask per table. False is the safe answer: it
+    /// costs a round trip per table and reports every trigger, where a wrong true reports none.
+    var providesBulkTriggerFetch: Bool { false }
+
     func fetchTriggerDDL(_ trigger: PluginTriggerInfo) async throws -> String {
         if let definition = trigger.definition, !definition.isEmpty { return definition }
         guard let table = trigger.table else {
@@ -422,6 +434,13 @@ public extension PluginDatabaseDriver {
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? { nil }
 
+    /// Answers whether `fetchAllColumns` is a single query rather than the N+1 default below, and
+    /// whether it reports every column `fetchColumns` reports. Both halves matter: a bulk query
+    /// that omits generated columns or their expressions is not a substitute for the per-table
+    /// read, and a caller that compares two schemas would report the missing detail as no
+    /// difference at all.
+    var providesBulkColumnFetch: Bool { false }
+
     /// Default: fetches columns per-table sequentially (N+1 round-trips).
     /// SQL drivers should override with a single bulk query (e.g. INFORMATION_SCHEMA.COLUMNS).
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
@@ -454,6 +473,39 @@ public extension PluginDatabaseDriver {
         for table in tables {
             let fks = try await fetchForeignKeys(table: table.name, schema: schema)
             if !fks.isEmpty { result[table.name] = fks }
+        }
+        return result
+    }
+
+    /// Answers whether `fetchAllIndexes` is a single query rather than the N+1 default below.
+    var providesBulkIndexFetch: Bool { false }
+
+    /// Default: fetches indexes per-table sequentially (N+1 round-trips).
+    /// SQL drivers should override with a single bulk query (e.g. INFORMATION_SCHEMA.STATISTICS).
+    func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]] {
+        let tables = try await fetchTables(schema: schema)
+        var result: [String: [PluginIndexInfo]] = [:]
+        for table in tables {
+            let indexes = try await fetchIndexes(table: table.name, schema: schema)
+            if !indexes.isEmpty { result[table.name] = indexes }
+        }
+        return result
+    }
+
+    /// Answers whether `fetchAllTableMetadata` is a single query rather than the N+1 default below.
+    var providesBulkTableMetadataFetch: Bool { false }
+
+    /// Default: fetches metadata per-table sequentially (N+1 round-trips).
+    /// SQL drivers should override with a single bulk query (e.g. SHOW TABLE STATUS with no filter).
+    ///
+    /// A table whose metadata cannot be read is left out rather than throwing. The caller wants
+    /// the descriptive fields, and one unreadable table is not a reason to lose the other 199.
+    func fetchAllTableMetadata(schema: String?) async throws -> [String: PluginTableMetadata] {
+        let tables = try await fetchTables(schema: schema)
+        var result: [String: PluginTableMetadata] = [:]
+        for table in tables {
+            guard let metadata = try? await fetchTableMetadata(table: table.name, schema: schema) else { continue }
+            result[table.name] = metadata
         }
         return result
     }

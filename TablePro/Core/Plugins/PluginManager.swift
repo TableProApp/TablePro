@@ -14,7 +14,18 @@ import TableProPluginKit
 @MainActor @Observable
 final class PluginManager {
     static let shared = PluginManager()
-    nonisolated static let currentPluginKitVersion = 19
+    /// Raised to 20 for the whole-schema index and table metadata requirements.
+    ///
+    /// They carry default implementations, so an already-built v19 plugin keeps loading here. The
+    /// break is the other way round, and it is not what Library Evolution covers: a plugin compiled
+    /// against these requirements emits undefined references to their method descriptors, their
+    /// default-implementation symbols and their async function pointers, none of which exist in a
+    /// v19 host. Measured on a rebuilt CassandraDriver, which implements none of them and imports
+    /// all six. Left at 19, such a plugin passes `validateBundleVersions` in a shipped v19 app and
+    /// then fails `Bundle.loadAndReturnError`; at 20 that app refuses it and says to update.
+    nonisolated static let currentPluginKitVersion = 20
+
+    /// Still 19, so every plugin already published for the previous release keeps loading.
     nonisolated static let minimumCompatiblePluginKitVersion = 19
     nonisolated static let currentInspectorKitVersion = 1
     private static let disabledPluginsKey = "com.TablePro.disabledPlugins"

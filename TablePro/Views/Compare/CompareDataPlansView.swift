@@ -293,24 +293,45 @@ internal struct CompareDataPlansView: View {
 
     // MARK: - Empty state
 
+    /// The table list is metadata, so it loads as soon as there is a pair to load it for rather
+    /// than costing a Compare of its own. This state is what is left: no pair yet, the list on its
+    /// way, or a pair with nothing in common.
     private var emptyState: some View {
         ContentUnavailableView {
-            Label("No Tables Yet", systemImage: "tablecells")
+            Label(emptyTitle, systemImage: "tablecells")
         } description: {
             Text(emptyDescription)
         } actions: {
-            Button("Compare", action: onCompare)
-                .disabled(!session.canCompare)
-                .accessibilityIdentifier("compare.plans.compare")
+            if session.compareDisabledReason == nil, !session.isBusy {
+                Button("Reload Tables", action: onCompare)
+                    .accessibilityIdentifier("compare.plans.compare")
+            }
         }
     }
 
+    private var emptyTitle: String {
+        guard session.compareDisabledReason == nil else { return String(localized: "No Tables Yet") }
+        if session.isBusy { return String(localized: "Reading Tables") }
+        if session.unreadableTableCount > 0 { return String(localized: "Tables Could Not Be Read") }
+        return session.hasLoadedDataPlans
+            ? String(localized: "No Tables in Common")
+            : String(localized: "No Tables Yet")
+    }
+
     /// Why Compare is unavailable beats a generic invitation to press it, which is what the HIG asks
-    /// for when a command cannot be carried out.
+    /// for when a command cannot be carried out. "Nothing in common" is claimed only once the list
+    /// has actually been read, because an empty list before that says nothing about either side.
     private var emptyDescription: String {
-        session.compareDisabledReason
-            ?? String(
-                localized: "Compare lists the tables both sides share. Choose the tables to compare, then press Compare."
+        if let reason = session.compareDisabledReason { return reason }
+        if session.isBusy { return String(localized: "Listing the tables both sides share.") }
+        if session.unreadableTableCount > 0 {
+            return String(
+                format: String(localized: "%d could not be read, so no pair could be made."),
+                session.unreadableTableCount
             )
+        }
+        return session.hasLoadedDataPlans
+            ? String(localized: "The source and the target have no table of the same name.")
+            : String(localized: "Reload lists the tables both sides share.")
     }
 }

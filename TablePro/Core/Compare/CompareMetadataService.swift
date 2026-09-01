@@ -104,15 +104,20 @@ internal struct CompareMetadataService {
     /// regard to case because engines disagree on identifier folding. A comparison passes nil and
     /// reads the whole scope; a copy of one table would otherwise pay four round trips for every
     /// other table in the database.
+    ///
+    /// `profile` says which of the four reads this caller actually looks at. A data comparison
+    /// pairs tables and reads their rows, so the indexes and the table metadata it used to fetch
+    /// for every table were two round trips per table spent on fields it never reads.
     internal func tableReads(
         for endpoint: DatabaseEndpoint,
         connection: DatabaseConnection,
         includeViews: Bool,
+        profile: TableReadProfile = .structure,
         names: Set<String>? = nil
     ) async throws -> [TableStructureRead] {
         try await manager.ensureConnected(connection)
         let schema = endpoint.schema
-        let concurrency = Self.metadataConcurrency(for: endpoint.databaseType)
+        let databaseType = endpoint.databaseType
         let wanted = names.map { Set($0.map { $0.lowercased() }) }
 
         return try await manager.withMetadataDriver(scope: endpoint.scope) { driver in
@@ -122,11 +127,32 @@ internal struct CompareMetadataService {
                 let kind = CompareTableKindClassifier.kind(of: table)
                 return kind == .table || includeViews
             }
-
-            return try await Self.map(tables, concurrency: concurrency) { table in
-                await Self.read(table: table, schema: table.schema ?? schema, using: plugin)
-            }
+            return try await Self.read(
+                tables: tables, schema: schema, profile: profile,
+                narrowed: wanted != nil, databaseType: databaseType, using: plugin
+            )
         }
+    }
+
+    /// Both sides at once.
+    ///
+    /// A comparison is two independent reads and used to run them one after the other, so the wall
+    /// clock was the sum of the two. `SessionDriverGate` is a FIFO queue per connection rather than
+    /// a lock a task can deadlock itself on, and these two reads are concurrent rather than nested,
+    /// so the worst case where both sides route to one connection's shared driver is that they
+    /// serialise, which is what they did before.
+    internal func bothSideTableReads(
+        context: CompareRunner.Context,
+        includeViews: Bool,
+        profile: TableReadProfile
+    ) async throws -> (source: [TableStructureRead], target: [TableStructureRead]) {
+        async let source = tableReads(
+            for: context.source, connection: context.sourceConnection, includeViews: includeViews, profile: profile
+        )
+        async let target = tableReads(
+            for: context.target, connection: context.targetConnection, includeViews: includeViews, profile: profile
+        )
+        return try await (source, target)
     }
 
     /// `fetchRoutines` supersedes the old per-kind pair and carries `identity`, which is what
@@ -161,9 +187,12 @@ internal struct CompareMetadataService {
         }
     }
 
-    /// There is no schema-wide trigger fetch on the driver protocol, so the tables the structure
-    /// read already listed are the ones asked. A trigger on a table that is not in scope is not in
-    /// scope either.
+    /// A trigger on a table that is not in scope is not in scope either, so the tables the
+    /// structure read already listed are the ones kept.
+    ///
+    /// The whole-schema read is one query where the driver has one. Where it does not, the
+    /// protocol's default answers with nothing rather than looping, so the per-table read is the
+    /// only correct fallback and `providesBulkTriggerFetch` is what tells the two apart.
     internal func triggerReads(
         for endpoint: DatabaseEndpoint,
         connection: DatabaseConnection,
@@ -171,24 +200,61 @@ internal struct CompareMetadataService {
     ) async throws -> [RoutineSourceRead] {
         try await manager.ensureConnected(connection)
         let schema = endpoint.schema
+        let inScope = Set(tables.map { $0.lowercased() })
         return try await manager.withMetadataDriver(scope: endpoint.scope) { driver in
             guard let plugin = Self.pluginDriver(from: driver) else { return [] }
-            var reads: [RoutineSourceRead] = []
-            for table in tables {
-                try Task.checkCancellation()
-                guard let triggers = try? await plugin.fetchTriggers(table: table, schema: schema) else { continue }
-                reads += triggers.map { trigger in
-                    RoutineSourceRead(
-                        name: trigger.name,
-                        kind: .trigger,
-                        schema: trigger.schema ?? schema,
-                        signature: trigger.table ?? table,
-                        source: trigger.definition ?? trigger.statement
-                    )
-                }
+            guard plugin.providesBulkTriggerFetch else {
+                return try await Self.perTableTriggerReads(tables: tables, schema: schema, using: plugin)
             }
-            return reads
+            /// A failed whole-schema query is not an answer of "no triggers". Swallowing it made an
+            /// empty set authoritative on one side, so every trigger on the other side read as a
+            /// real difference and the script offered to drop or create all of them.
+            let triggers: [PluginTriggerInfo]
+            do {
+                triggers = try await plugin.fetchAllTriggers(schema: schema)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                Self.logger.warning(
+                    "Whole-schema trigger read failed, falling back per table: \(error.localizedDescription, privacy: .public)"
+                )
+                return try await Self.perTableTriggerReads(tables: tables, schema: schema, using: plugin)
+            }
+            return triggers
+                .filter { trigger in
+                    guard let table = trigger.table?.lowercased() else { return true }
+                    return inScope.contains(table)
+                }
+                .map { Self.read($0, schema: schema, fallbackTable: nil) }
         }
+    }
+
+    nonisolated private static func perTableTriggerReads(
+        tables: [String],
+        schema: String?,
+        using plugin: any PluginDatabaseDriver
+    ) async throws -> [RoutineSourceRead] {
+        var reads: [RoutineSourceRead] = []
+        for table in tables {
+            try Task.checkCancellation()
+            guard let triggers = try? await plugin.fetchTriggers(table: table, schema: schema) else { continue }
+            reads += triggers.map { read($0, schema: schema, fallbackTable: table) }
+        }
+        return reads
+    }
+
+    nonisolated private static func read(
+        _ trigger: PluginTriggerInfo,
+        schema: String?,
+        fallbackTable: String?
+    ) -> RoutineSourceRead {
+        RoutineSourceRead(
+            name: trigger.name,
+            kind: .trigger,
+            schema: trigger.schema ?? schema,
+            signature: trigger.table ?? fallbackTable,
+            source: trigger.definition ?? trigger.statement
+        )
     }
 
     internal func viewDefinitions(
@@ -221,16 +287,169 @@ internal struct CompareMetadataService {
 
     // MARK: - Helpers
 
+    /// Reads a whole scope, asking each driver for the cheapest form of every read it needs.
+    ///
+    /// The per-table form costs four round trips per table, which is what made a 200-table
+    /// comparison 800 round trips a side. `PluginDatabaseDriver` already answers three of the four
+    /// for a whole schema in one query, and now answers the fourth, so a driver that declares them
+    /// is read in a handful of statements no matter how many tables it holds.
+    ///
+    /// The fan-out this replaces bought nothing. `withMetadataDriver` yields one driver, and a
+    /// driver dispatches its statements onto its own serial queue, so four concurrent reads of one
+    /// connection queue behind each other. Its gate was `supportsConnectionPooling`, which answers
+    /// whether a *second* connection is safe, not whether one connection can run two statements.
+    ///
+    /// `narrowed` says the caller asked for specific tables, so the whole-schema queries would read
+    /// the rest of the database to throw it away. Those callers keep the per-table reads.
+    nonisolated internal static func read(
+        tables: [PluginTableInfo],
+        schema: String?,
+        profile: TableReadProfile,
+        narrowed: Bool,
+        databaseType: DatabaseType,
+        using plugin: any PluginDatabaseDriver
+    ) async throws -> [TableStructureRead] {
+        let bulk = narrowed
+            ? BulkMetadata()
+            : await BulkMetadata(schema: schema, profile: profile, tables: tables, plugin: plugin)
+
+        /// Whatever the whole-schema reads did not answer is still one statement per table, and a
+        /// driver whose statements are independent requests rather than one serialised socket can
+        /// overlap them. Cloudflare D1 is the case that matters: it has only the bulk foreign-key
+        /// read, so everything else would otherwise be three remote calls per table in a row.
+        /// A driver that cannot take a second connection stays serial, which is the gate the
+        /// previous fan-out used and the conservative answer for a driver with no queue of its own.
+        let concurrency = bulk.answersEveryRead(for: profile) || !databaseType.supportsConnectionPooling
+            ? 1
+            : Self.fallbackConcurrency
+
+        return try await map(tables, concurrency: concurrency) { table in
+            await read(table: table, schema: table.schema ?? schema, profile: profile, bulk: bulk, using: plugin)
+        }
+    }
+
+    nonisolated private static let fallbackConcurrency = 4
+
+    nonisolated private static func map(
+        _ tables: [PluginTableInfo],
+        concurrency: Int,
+        _ transform: @escaping @Sendable (PluginTableInfo) async -> TableStructureRead
+    ) async throws -> [TableStructureRead] {
+        guard concurrency > 1, tables.count > 1 else {
+            var results: [TableStructureRead] = []
+            results.reserveCapacity(tables.count)
+            for table in tables {
+                try Task.checkCancellation()
+                results.append(await transform(table))
+            }
+            return results
+        }
+
+        return try await withThrowingTaskGroup(of: (Int, TableStructureRead).self) { group in
+            var results = [TableStructureRead?](repeating: nil, count: tables.count)
+            var next = 0
+
+            while next < tables.count, next < concurrency {
+                let index = next
+                group.addTask { (index, await transform(tables[index])) }
+                next += 1
+            }
+            while let (index, result) = try await group.next() {
+                results[index] = result
+                try Task.checkCancellation()
+                guard next < tables.count else { continue }
+                let queued = next
+                group.addTask { (queued, await transform(tables[queued])) }
+                next += 1
+            }
+            return results.compactMap { $0 }
+        }
+    }
+
+    /// What a whole-schema read produced, or nothing where the driver has no single-query form for
+    /// it and the per-table read still has to run.
+    private struct BulkMetadata: Sendable {
+        var columns: [String: [PluginColumnInfo]]?
+        var indexes: [String: [PluginIndexInfo]]?
+        var foreignKeys: [String: [PluginForeignKeyInfo]]?
+        var tableMetadata: [String: PluginTableMetadata]?
+
+        /// The folded spellings that name exactly one table in this scope. A folded fallback is
+        /// only safe for those.
+        private var unambiguousFolded: Set<String> = []
+
+        init() {}
+
+        /// A whole-schema query that fails takes nothing with it: the read falls back to the
+        /// per-table form, which reports a failure against the one table it belongs to rather than
+        /// losing the comparison. That is the same rule the per-table read already followed.
+        init(
+            schema: String?,
+            profile: TableReadProfile,
+            tables: [PluginTableInfo],
+            plugin: any PluginDatabaseDriver
+        ) async {
+            var counts: [String: Int] = [:]
+            for table in tables {
+                counts[table.name.lowercased(), default: 0] += 1
+            }
+            unambiguousFolded = Set(counts.filter { $0.value == 1 }.keys)
+
+            if plugin.providesBulkColumnFetch {
+                columns = try? await plugin.fetchAllColumns(schema: schema)
+            }
+            if profile.wantsIndexes, plugin.providesBulkIndexFetch {
+                indexes = try? await plugin.fetchAllIndexes(schema: schema)
+            }
+            if profile.wantsForeignKeys, plugin.providesBulkForeignKeyFetch {
+                foreignKeys = try? await plugin.fetchAllForeignKeys(schema: schema)
+            }
+            if profile.wantsTableMetadata, plugin.providesBulkTableMetadataFetch {
+                tableMetadata = try? await plugin.fetchAllTableMetadata(schema: schema)
+            }
+        }
+
+        /// True when nothing is left for the per-table path, so the fan-out over it is not worth
+        /// starting.
+        func answersEveryRead(for profile: TableReadProfile) -> Bool {
+            guard columns != nil else { return false }
+            if profile.wantsIndexes, indexes == nil { return false }
+            if profile.wantsForeignKeys, foreignKeys == nil { return false }
+            if profile.wantsTableMetadata, tableMetadata == nil { return false }
+            return true
+        }
+
+        /// Engines disagree on identifier folding, so a name that was stored one way and listed
+        /// another still has to find its entry.
+        ///
+        /// The folded fallback is refused where two tables in this scope fold to the same
+        /// spelling. The index and foreign key maps are sparse, so a table with none has no exact
+        /// entry, and PostgreSQL allows `"Foo"` beside `"foo"`: a folded match there handed one
+        /// table's indexes to the other, and a DROP INDEX generated from that names the index
+        /// alone, so it would have dropped the real one.
+        func lookup<Value>(_ map: [String: Value]?, _ name: String) -> Value? {
+            guard let map else { return nil }
+            if let exact = map[name] { return exact }
+            let folded = name.lowercased()
+            guard unambiguousFolded.contains(folded) else { return nil }
+            return map.first { $0.key.lowercased() == folded }?.value
+        }
+    }
+
     nonisolated private static func read(
         table: PluginTableInfo,
         schema: String?,
+        profile: TableReadProfile,
+        bulk: BulkMetadata,
         using plugin: any PluginDatabaseDriver
     ) async -> TableStructureRead {
         do {
-            let columns = try await plugin.fetchColumns(table: table.name, schema: schema)
-            let indexes = (try? await plugin.fetchIndexes(table: table.name, schema: schema)) ?? []
-            let foreignKeys = (try? await plugin.fetchForeignKeys(table: table.name, schema: schema)) ?? []
-            let metadata = try? await plugin.fetchTableMetadata(table: table.name, schema: schema)
+            let columns = try await columns(of: table, schema: schema, bulk: bulk, using: plugin)
+            let indexes = await indexes(of: table, schema: schema, profile: profile, bulk: bulk, using: plugin)
+            let foreignKeys = await foreignKeys(
+                of: table, schema: schema, profile: profile, bulk: bulk, using: plugin
+            )
+            let metadata = await metadata(of: table, schema: schema, profile: profile, bulk: bulk, using: plugin)
             return TableStructureRead(
                 table: table, columns: columns, indexes: indexes,
                 foreignKeys: foreignKeys, metadata: metadata, failure: nil
@@ -246,55 +465,76 @@ internal struct CompareMetadataService {
         }
     }
 
-    /// A driver that cannot be pooled reaches a different database on a second connection, so its
-    /// reads stay serial. Everything else fans out, because the old code paid one round trip per
-    /// table for columns, indexes, foreign keys and metadata in strict sequence.
-    nonisolated private static func metadataConcurrency(for databaseType: DatabaseType) -> Int {
-        databaseType.supportsConnectionPooling ? 4 : 1
+    /// A table with no columns is not a real answer, so a name missing from the whole-schema list
+    /// is read on its own. That keeps the per-table failure reporting, which an absent dictionary
+    /// entry cannot express.
+    nonisolated private static func columns(
+        of table: PluginTableInfo,
+        schema: String?,
+        bulk: BulkMetadata,
+        using plugin: any PluginDatabaseDriver
+    ) async throws -> [PluginColumnInfo] {
+        if let columns = bulk.lookup(bulk.columns, table.name), !columns.isEmpty { return columns }
+        return try await plugin.fetchColumns(table: table.name, schema: schema)
     }
 
-    nonisolated private static func map<Element: Sendable, Result: Sendable>(
-        _ elements: [Element],
-        concurrency: Int,
-        _ transform: @escaping @Sendable (Element) async -> Result
-    ) async throws -> [Result] {
-        guard concurrency > 1, elements.count > 1 else {
-            var results: [Result] = []
-            for element in elements {
-                try Task.checkCancellation()
-                results.append(await transform(element))
-            }
-            return results
-        }
+    /// An empty index list is a real answer, unlike an empty column list, so a table absent from a
+    /// whole-schema read has no indexes rather than needing a read of its own.
+    nonisolated private static func indexes(
+        of table: PluginTableInfo,
+        schema: String?,
+        profile: TableReadProfile,
+        bulk: BulkMetadata,
+        using plugin: any PluginDatabaseDriver
+    ) async -> [PluginIndexInfo] {
+        guard profile.wantsIndexes else { return [] }
+        guard bulk.indexes == nil else { return bulk.lookup(bulk.indexes, table.name) ?? [] }
+        return (try? await plugin.fetchIndexes(table: table.name, schema: schema)) ?? []
+    }
 
-        return try await withThrowingTaskGroup(of: (Int, Result).self) { group in
-            var results = [Result?](repeating: nil, count: elements.count)
-            var next = 0
-            var running = 0
+    nonisolated private static func foreignKeys(
+        of table: PluginTableInfo,
+        schema: String?,
+        profile: TableReadProfile,
+        bulk: BulkMetadata,
+        using plugin: any PluginDatabaseDriver
+    ) async -> [PluginForeignKeyInfo] {
+        guard profile.wantsForeignKeys else { return [] }
+        guard bulk.foreignKeys == nil else { return bulk.lookup(bulk.foreignKeys, table.name) ?? [] }
+        return (try? await plugin.fetchForeignKeys(table: table.name, schema: schema)) ?? []
+    }
 
-            while next < elements.count && running < concurrency {
-                let index = next
-                group.addTask { (index, await transform(elements[index])) }
-                next += 1
-                running += 1
-            }
-
-            while let (index, result) = try await group.next() {
-                results[index] = result
-                running -= 1
-                try Task.checkCancellation()
-                if next < elements.count {
-                    let queued = next
-                    group.addTask { (queued, await transform(elements[queued])) }
-                    next += 1
-                    running += 1
-                }
-            }
-            return results.compactMap { $0 }
-        }
+    nonisolated private static func metadata(
+        of table: PluginTableInfo,
+        schema: String?,
+        profile: TableReadProfile,
+        bulk: BulkMetadata,
+        using plugin: any PluginDatabaseDriver
+    ) async -> PluginTableMetadata? {
+        guard profile.wantsTableMetadata else { return nil }
+        guard bulk.tableMetadata == nil else { return bulk.lookup(bulk.tableMetadata, table.name) }
+        return try? await plugin.fetchTableMetadata(table: table.name, schema: schema)
     }
 
     nonisolated internal static func pluginDriver(from driver: DatabaseDriver) -> (any PluginDatabaseDriver)? {
         (driver as? PluginDriverAdapter)?.schemaPluginDriver
     }
+}
+
+/// Which of the four per-table reads a caller actually looks at.
+internal struct TableReadProfile: Sendable {
+    internal let wantsIndexes: Bool
+    internal let wantsForeignKeys: Bool
+    internal let wantsTableMetadata: Bool
+
+    internal static let structure = TableReadProfile(
+        wantsIndexes: true, wantsForeignKeys: true, wantsTableMetadata: true
+    )
+
+    /// A data comparison pairs tables by name, reads the columns they share and walks their rows.
+    /// It reads foreign keys to order the statements it writes, and it never looks at an index or
+    /// at a storage engine.
+    internal static let data = TableReadProfile(
+        wantsIndexes: false, wantsForeignKeys: true, wantsTableMetadata: false
+    )
 }

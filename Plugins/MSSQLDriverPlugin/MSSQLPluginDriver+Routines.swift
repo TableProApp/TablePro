@@ -48,6 +48,8 @@ extension MSSQLPluginDriver {
         return definition
     }
 
+    var providesBulkTriggerFetch: Bool { true }
+
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo] {
         try await triggerList(schema: effectiveSchema(schema), table: nil)
     }

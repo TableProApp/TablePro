@@ -278,17 +278,35 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     func fetchIndexes(table: String) async throws -> [IndexInfo] {
         let pluginIndexes = try await pluginDriver.fetchIndexes(table: table, schema: pluginDriver.currentSchema)
-        return pluginIndexes.map { idx in
-            IndexInfo(
-                name: idx.name,
-                columns: idx.columns,
-                isUnique: idx.isUnique,
-                isPrimary: idx.isPrimary,
-                type: idx.type,
-                columnPrefixes: idx.columnPrefixes,
-                whereClause: idx.whereClause
-            )
-        }
+        return pluginIndexes.map(Self.mapPluginIndex)
+    }
+
+    nonisolated private static func mapPluginIndex(_ index: PluginIndexInfo) -> IndexInfo {
+        IndexInfo(
+            name: index.name,
+            columns: index.columns,
+            isUnique: index.isUnique,
+            isPrimary: index.isPrimary,
+            type: index.type,
+            columnPrefixes: index.columnPrefixes,
+            whereClause: index.whereClause
+        )
+    }
+
+    nonisolated private static func mapPluginTableMetadata(_ metadata: PluginTableMetadata) -> TableMetadata {
+        TableMetadata(
+            tableName: metadata.tableName,
+            dataSize: metadata.dataSize,
+            indexSize: metadata.indexSize,
+            totalSize: metadata.totalSize,
+            avgRowLength: metadata.avgRowLength,
+            rowCount: metadata.rowCount,
+            comment: metadata.comment,
+            engine: metadata.engine,
+            collation: metadata.collation,
+            createTime: metadata.createTime,
+            updateTime: metadata.updateTime
+        )
     }
 
     func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] {
@@ -400,19 +418,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             table: tableName,
             schema: pluginDriver.currentSchema
         )
-        return TableMetadata(
-            tableName: pluginMeta.tableName,
-            dataSize: pluginMeta.dataSize,
-            indexSize: pluginMeta.indexSize,
-            totalSize: pluginMeta.totalSize,
-            avgRowLength: pluginMeta.avgRowLength,
-            rowCount: pluginMeta.rowCount,
-            comment: pluginMeta.comment,
-            engine: pluginMeta.engine,
-            collation: pluginMeta.collation,
-            createTime: pluginMeta.createTime,
-            updateTime: pluginMeta.updateTime
-        )
+        return Self.mapPluginTableMetadata(pluginMeta)
     }
 
     func fetchDatabases() async throws -> [String] {
@@ -510,6 +516,22 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     var providesBulkForeignKeyFetch: Bool { pluginDriver.providesBulkForeignKeyFetch }
+    var providesBulkColumnFetch: Bool { pluginDriver.providesBulkColumnFetch }
+    var providesBulkIndexFetch: Bool { pluginDriver.providesBulkIndexFetch }
+    var providesBulkTableMetadataFetch: Bool { pluginDriver.providesBulkTableMetadataFetch }
+    var providesBulkTriggerFetch: Bool { pluginDriver.providesBulkTriggerFetch }
+
+    func fetchAllIndexes(schema: String?) async throws -> [String: [IndexInfo]] {
+        let pluginResult = try await pluginDriver.fetchAllIndexes(schema: schema ?? pluginDriver.currentSchema)
+        return pluginResult.mapValues { $0.map(Self.mapPluginIndex) }
+    }
+
+    func fetchAllTableMetadata(schema: String?) async throws -> [String: TableMetadata] {
+        let pluginResult = try await pluginDriver.fetchAllTableMetadata(
+            schema: schema ?? pluginDriver.currentSchema
+        )
+        return pluginResult.mapValues(Self.mapPluginTableMetadata)
+    }
 
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] {
         let pluginResult = try await pluginDriver.fetchAllForeignKeys(schema: pluginDriver.currentSchema)

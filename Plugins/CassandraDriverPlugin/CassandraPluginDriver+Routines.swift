@@ -96,6 +96,12 @@ extension CassandraPluginDriver {
         return definition
     }
 
+    /// False until the whole-schema scope is checked against a live server. This driver has no
+    /// per-table trigger read, so the protocol default answers with nothing and a comparison has
+    /// never listed its triggers; opting in here would change what is compared rather than only
+    /// how fast it is read.
+    var providesBulkTriggerFetch: Bool { false }
+
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo] {
         try await cassandraTriggerList(keyspace: resolveKeyspace(schema), table: nil)
     }

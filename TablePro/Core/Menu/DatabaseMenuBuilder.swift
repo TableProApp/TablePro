@@ -119,6 +119,11 @@ enum DatabaseMenuBuilder {
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
+                String(localized: "Save Comparison…"),
+                action: #selector(CompareSyncWindowController.saveComparison(_:))
+            ),
+            MenuItemFactory.separator,
+            MenuItemFactory.item(
                 String(localized: "Compare Now"),
                 action: #selector(CompareSyncWindowController.runComparison(_:))
             ),

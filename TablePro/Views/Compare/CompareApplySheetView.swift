@@ -180,17 +180,17 @@ internal struct CompareApplySheetView: View {
         return order.map { PlannedObject(name: $0, count: counts[$0] ?? 0) }
     }
 
+    /// What a held-back statement means, said the way the button behaves. This used to read as
+    /// though the run went ahead without it, while Apply was in fact refusing to run at all until
+    /// every one of them was allowed.
     private var heldBackText: String {
         let count = session.unacknowledgedHazardCount
         guard count != 1 else {
-            return String(
-                format: String(localized: "1 statement stays out of this run and %@ keeps what it has for it."),
-                targetName
-            )
+            return String(localized: "1 statement would destroy data. Allow it or exclude it before applying.")
         }
         return String(
-            format: String(localized: "%1$d statements stay out of this run and %2$@ keeps what it has for them."),
-            count, targetName
+            format: String(localized: "%d statements would destroy data. Allow them or exclude them before applying."),
+            count
         )
     }
 
@@ -421,7 +421,7 @@ internal struct CompareApplySheetView: View {
     }
 
     private var canApply: Bool {
-        session.canApply && session.unacknowledgedHazardCount == 0 && session.runnableStatementCount > 0
+        session.runRefusalReason == nil
     }
 
     private func countBadge(_ label: String, _ count: Int, symbol: String, tint: Color) -> some View {

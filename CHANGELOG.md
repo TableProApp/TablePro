@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Comparisons button in the Compare & Sync toolbar, listing every saved comparison.
+- Save Comparison… in the Compare & Sync toolbar and under Database > Compare.
+- Select > All and Select > None in the structure results pane.
+- Whole-schema index and table metadata reads on the driver protocol.
+- Script that checks the SQLite whole-schema reads against the per-table ones.
+
+### Changed
+
+- Compare & Sync reads a whole schema in a few queries, and reads both sides at once.
+- Data mode lists the tables both sides share as soon as a pair is chosen.
+- Apply… builds the script when there is not one.
+- Saved comparisons set both endpoints, and list whatever pair is on screen.
+- Compare & Sync reopens on the source, target, mode and options it last held.
+- Table collation on MySQL, previously never read.
+- PluginKit ABI 20. Every registry plugin needs rebuilding before or with this release.
+
+### Fixed
+
+- Generated column expressions missing from MySQL's whole-schema column read.
+- Generated columns missing entirely from SQLite's whole-schema column read.
+- PostgreSQL index reads matching a table name in every schema rather than the one asked for.
+- Unreachable hazard allowances in the Apply sheet.
+- Compare & Sync toolbar naming the old pair after a saved comparison was loaded from Options.
+- A failed whole-schema trigger read counting as a schema with no triggers.
+- Compare & Sync publishing one pair's results after the pickers moved to another.
 - Middle-click on a tab to close it. (#2595)
 - Launch trace in Instruments' Points of Interest, and `TABLEPRO_LAUNCH_TRACE=1` for the same table on standard error.
 

@@ -15,11 +15,15 @@ Pick a source and a target, press **Compare**, and every object that differs lis
 - **Database > Compare > Compare & Sync Databases…**
 - Right-click a connection in the connection list and choose **Compare/Sync with…**. The connection clicked becomes the source.
 
+The window comes back on the source, target, mode and options it last held, so running the same comparison again is one press of **Compare**. Opening it from a connection makes that connection the source, and the remembered target comes back only when it was the target of that same source.
+
 Every toolbar control also sits under **Database > Compare**, so the whole flow is reachable from the keyboard.
 
 ## Choosing the two sides
 
 **Source** and **Target** are database pickers, not connection pickers: each one walks connection, then database, then schema. Two databases on one server are a valid pair, and so are two schemas in one database.
+
+**Comparisons** in the toolbar lists every saved setup and sets both pickers from the one chosen. It does not need a pair to be chosen first.
 
 The **source** never changes. The **target** is written to. A connection whose safe mode level is **Read-Only** is disabled in the target picker with the reason shown, so the refusal arrives at selection time rather than after comparing. **Swap** reverses the direction.
 
@@ -55,7 +59,7 @@ These drift between environments by design, so they are ignored by default. Turn
 
 Each object lands in one of four states: **only in source**, **only in target**, **different**, or **identical**. **Group By** sections the table by difference or by object kind, and the search field filters by name. Identical objects stay hidden until **Show Identical Objects**.
 
-Every row carries an **Include** checkbox, and a group header carries one for everything under it. Nothing is included until it is checked.
+Every row carries an **Include** checkbox, and a group header carries one for everything under it. **Select > All** covers everything the pane is currently showing, so the search field and **Show Identical Objects** narrow what it reaches. Nothing is included until it is checked.
 
 An object whose metadata could not be read keeps its own **Could Not Compare** section with the driver's reason. One unreadable object never stops the rest of the comparison.
 
@@ -63,9 +67,9 @@ The detail pane on the right has three tabs. **Definitions** shows the source an
 
 ## Comparing rows
 
-Switch the mode control to **Data**. The left pane lists the tables present on both sides.
+Switch the mode control to **Data**. The left pane lists the tables present on both sides as soon as there is a pair to list them for, without reading a row.
 
-Tables start unchecked. Choose the ones to compare, then press **Compare**: a data comparison reads every row of every checked table on both sides, so comparing a whole database by accident is expensive.
+Tables start unchecked. Tick the ones to compare, then press **Compare**: a data comparison reads every row of every ticked table on both sides, so comparing a whole database by accident is expensive.
 
 Rows are matched by key, read in key order from both sides and walked in lockstep, so neither side is ever held in memory in full.
 
@@ -95,7 +99,7 @@ Script generation needs matching database types, with MySQL and MariaDB counting
 
 Anything that would destroy data is generated, listed, and held back. Dropping a table, dropping a column, narrowing a type, adding NOT NULL, changing a primary key and deleting a row each need an explicit allowance, and that allowance covers one run and is never saved.
 
-**Apply…** opens a sheet with the script, a summary, and the warnings. **Cancel** is the default button and **Apply** is marked destructive. Apply stays disabled while any included statement still has an unacknowledged hazard.
+**Apply…** opens a sheet with the script, a summary, and the warnings, building the script first when **Generate Script** has not run. **Cancel** is the default button and **Apply** is marked destructive. Allow a held-back statement in the sheet or in the **Script** pane; the sheet's **Apply** stays disabled while any included statement is still held back.
 
 <Warning>
   Applying runs the script against the target. Statements that already ran stay applied unless the whole run is inside a transaction that rolls back.
@@ -109,4 +113,8 @@ Closing the window mid-run asks first, and says that statements which already ra
 
 ## Saving a comparison
 
-A named comparison remembers the source, the target, the mode, the object kinds, the options and the included objects. Load it from **Options** to run the same comparison again.
+**Save Comparison…** names the current setup: the source, the target, the mode, the object kinds, the options and the included objects. It sits in the **Comparisons** menu and under **Database > Compare**.
+
+Loading one sets both pickers. **Comparisons** lists them all whatever pair is on screen; **Options** lists them too, with a **Delete** for each.
+
+A saved comparison whose connection has since been deleted says so instead of loading half a pair.
