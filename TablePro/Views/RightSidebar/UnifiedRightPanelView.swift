@@ -10,18 +10,19 @@ struct UnifiedRightPanelView: View {
     let connection: DatabaseConnection
 
     private let settingsManager = AppSettingsManager.shared
+    @Environment(\.commandActions) private var commandActions
     @State private var showClearConfirmation = false
 
+    /// AI Chat is the only tab a setting can take away, and a tab that is gone cannot stay
+    /// selected: the picker would show no selection and the panel no content.
+    private var availableTabs: [RightPanelTab] {
+        RightPanelTab.allCases.filter { $0 != .aiChat || settingsManager.ai.enabled }
+    }
+
     var body: some View {
-        Group {
-            if settingsManager.ai.enabled {
-                splitContent
-            } else {
-                detailsView
-            }
-        }
+        splitContent
         .onChange(of: settingsManager.ai.enabled) {
-            if !settingsManager.ai.enabled {
+            if !settingsManager.ai.enabled, state.activeTab == .aiChat {
                 state.activeTab = .details
             }
         }
@@ -42,8 +43,28 @@ struct UnifiedRightPanelView: View {
         VStack(spacing: 0) {
             inspectorHeader
             Divider()
+            tabContent
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    /// Details stays mounted and is hidden rather than rebuilt.
+    ///
+    /// Its field list is a `List`, so leaving the tab tears down an `NSTableView` and a field editor
+    /// per column, and coming back builds them again: the switch cost grows with the row's width.
+    /// The other two tabs are cheap to rebuild and are left conditional, which also keeps the AI
+    /// chat's view model and its conversation load off a window that never opens that tab.
+    private var tabContent: some View {
+        ZStack(alignment: .topLeading) {
+            detailsView
+                .opacity(state.activeTab == .details ? 1 : 0)
+                .allowsHitTesting(state.activeTab == .details)
+                .disabled(state.activeTab != .details)
+                .accessibilityHidden(state.activeTab != .details)
+
             switch state.activeTab {
-            case .details: detailsView
+            case .details: EmptyView()
+            case .json:    jsonView
             case .aiChat:  aiChatView
             }
         }
@@ -65,7 +86,7 @@ struct UnifiedRightPanelView: View {
 
     private var tabPicker: some View {
         Picker("", selection: $state.activeTab) {
-            ForEach(RightPanelTab.allCases, id: \.self) { tab in
+            ForEach(availableTabs, id: \.self) { tab in
                 Text(tab.localizedTitle).tag(tab)
             }
         }
@@ -142,6 +163,16 @@ struct UnifiedRightPanelView: View {
             isRowDeleted: ctx.isRowDeleted,
             editState: state.editState,
             databaseType: connection.type
+        )
+    }
+
+    private var jsonView: some View {
+        JSONRowInspectorView(
+            viewModel: state.jsonViewModel,
+            snapshot: state.inspectorContext.jsonRow,
+            onOpenReferencedTable: { reference, value in
+                commandActions?.openForeignKeyTable(reference: reference, value: value)
+            }
         )
     }
 

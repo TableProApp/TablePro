@@ -764,6 +764,11 @@ final class MainContentCoordinator {
         rightPanelState?.activeTab = .aiChat
     }
 
+    func showJSONPanel() {
+        inspectorProxy?.showInspector()
+        rightPanelState?.activeTab = .json
+    }
+
     /// Set up the plugin driver for query building dispatch on the query builder and change manager.
     internal func setupPluginDriver() {
         guard let driver = services.databaseManager.driver(for: connectionId) else { return }

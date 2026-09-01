@@ -176,35 +176,20 @@ struct ForeignKeyPreviewView: View {
             return
         }
 
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
+        do {
+            let fetched = try await ForeignKeyRowFetcher.fetch(
+                connectionId: connectionId,
+                databaseType: databaseType,
+                reference: JSONForeignKeyRef(fkInfo),
+                value: value
+            )
+            if let fetched {
+                columns = fetched.columns
+                values = fetched.values.map { $0.asText }
+            }
+        } catch ForeignKeyRowFetcher.FetchFailure.noConnection {
             Self.logger.error("No active driver for FK preview")
             errorMessage = String(localized: "No database connection")
-            isLoading = false
-            return
-        }
-
-        let quotedTable: String
-        if let schema = fkInfo.referencedSchema {
-            quotedTable = "\(driver.quoteIdentifier(schema)).\(driver.quoteIdentifier(fkInfo.referencedTable))"
-        } else {
-            quotedTable = driver.quoteIdentifier(fkInfo.referencedTable)
-        }
-        let quotedColumn = driver.quoteIdentifier(fkInfo.referencedColumn)
-        let escapedValue = driver.escapeStringLiteral(value)
-
-        let query = ForeignKeyPreviewQuery.singleRow(
-            quotedTable: quotedTable,
-            quotedColumn: quotedColumn,
-            escapedValue: escapedValue,
-            dialect: PluginManager.shared.sqlDialect(for: databaseType)
-        )
-
-        do {
-            let result = try await driver.execute(query: query)
-            if let firstRow = result.rows.first {
-                columns = result.columns
-                values = firstRow.map { $0.asText }
-            }
         } catch {
             Self.logger.error("FK preview query failed: \(error.localizedDescription)")
             errorMessage = String(localized: "Failed to load referenced row")

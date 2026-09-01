@@ -14,6 +14,23 @@ private let fkNavigationLogger = Logger(subsystem: "com.TablePro", category: "FK
 extension MainContentCoordinator {
     // MARK: - Foreign Key Navigation
 
+    /// The JSON inspector's own route to the same navigation. It holds a `JSONForeignKeyRef`,
+    /// which is a `ForeignKeyInfo` without the identity and the referential actions, because a node
+    /// tree cannot hold a type whose `==` is a fresh `UUID`.
+    func navigateToFKReference(reference: JSONForeignKeyRef, value: String) {
+        navigateToFKReference(
+            value: value,
+            fkInfo: ForeignKeyInfo(
+                name: "",
+                column: reference.column,
+                referencedTable: reference.referencedTable,
+                referencedColumn: reference.referencedColumn,
+                referencedSchema: reference.referencedSchema
+            ),
+            openInNewTab: false
+        )
+    }
+
     /// Navigate to the referenced table filtered by the FK value.
     /// Reuses the current tab when it holds nothing the user authored, and otherwise opens the
     /// reference in its own tab so the originating query or edits survive.

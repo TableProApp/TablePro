@@ -17,6 +17,8 @@ struct InspectorContext {
     let isRowDeleted: Bool
     let currentQuery: String?
     let queryResults: String?
+    /// The same row the details tab shows, carried as raw cell values for the JSON tab.
+    let jsonRow: JSONRowSnapshot?
 
     static let empty = InspectorContext(
         tableName: nil,
@@ -25,6 +27,7 @@ struct InspectorContext {
         isEditable: false,
         isRowDeleted: false,
         currentQuery: nil,
-        queryResults: nil
+        queryResults: nil,
+        jsonRow: nil
     )
 }

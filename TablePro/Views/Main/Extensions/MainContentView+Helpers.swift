@@ -72,7 +72,8 @@ extension MainContentView {
             isEditable: isSidebarEditable,
             isRowDeleted: isSelectedRowDeleted,
             currentQuery: coordinator.tabManager.selectedTab?.content.query,
-            queryResults: cachedQueryResultsSummary()
+            queryResults: cachedQueryResultsSummary(),
+            jsonRow: jsonRowSnapshotForSidebar
         )
     }
 

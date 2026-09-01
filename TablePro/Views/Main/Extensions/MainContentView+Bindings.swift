@@ -94,6 +94,41 @@ extension MainContentView {
         return data
     }
 
+    // MARK: - Selected Row for the JSON Tab
+
+    /// The same selection the details tab reads, carried as raw cell values.
+    ///
+    /// The JSON tab decides from the column's own type whether a value prints quoted, which the
+    /// formatted strings the details tab takes cannot answer. Only the data grid supplies it: the
+    /// schema grid's rows are label and value pairs with no types and no foreign keys.
+    var jsonRowSnapshotForSidebar: JSONRowSnapshot? {
+        guard gridSelectionOwner == .dataGrid,
+              let tab = coordinator.tabManager.selectedTab,
+              let firstDisplayIndex = coordinator.selectionState.indices.min() else { return nil }
+        let tableRows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
+        guard !tableRows.columns.isEmpty,
+              let row = DisplayRowMapping.row(
+                  forDisplay: firstDisplayIndex,
+                  displayIDs: coordinator.activeGridDisplayIDs,
+                  in: tableRows
+              ) else { return nil }
+
+        var contentHasher = Hasher()
+        contentHasher.combine(row.values)
+        contentHasher.combine(tableRows.columns)
+
+        return JSONRowSnapshot(
+            rowIdentity: "\(tab.id.uuidString)\u{001F}\(row.id)",
+            contentToken: contentHasher.finalize(),
+            columns: tableRows.columns,
+            columnTypes: tableRows.columnTypes,
+            values: Array(row.values),
+            foreignKeys: tableRows.columnForeignKeys.mapValues(JSONForeignKeyRef.init),
+            connectionId: coordinator.connection.id,
+            databaseType: coordinator.connection.type
+        )
+    }
+
     // MARK: - Sidebar Edit State
 
     /// Determine if sidebar should be in editable mode

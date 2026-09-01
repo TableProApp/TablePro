@@ -1037,6 +1037,14 @@ final class MainContentCommandActions {
         coordinator?.toggleFKPreviewForFocusedCell()
     }
 
+    func showRowAsJSON() {
+        coordinator?.showJSONPanel()
+    }
+
+    func openForeignKeyTable(reference: JSONForeignKeyRef, value: String) {
+        coordinator?.navigateToFKReference(reference: reference, value: value)
+    }
+
     func exportTables() {
         coordinator?.openExportDialog()
     }

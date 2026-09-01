@@ -98,4 +98,18 @@ Right-click a field for its menu; an editable field also shows it on a hover but
 
 With no row selected, the inspector describes the table: data, index and total size, row count, average row size, engine, collation, and creation and update dates, as far as the database reports them. On a Structure tab it follows the structure grid.
 
+## Row as JSON
+
+Right-click a row and choose **Show Row as JSON**, or open the inspector and pick its **JSON** tab. The row prints as one JSON object, keys in the grid's column order: numbers and booleans unquoted, NULL as `null`, binary as hex. A JSON column, and a text column holding a document, arrive as nested keys instead of as a string.
+
+A foreign key key carries a disclosure control. Click it and the referenced row is fetched and printed underneath; a foreign key inside that row expands the same way, five levels down. A key pointing back at a row already open in the tree, and one past the fifth level, carry a warning icon that says which. A NULL foreign key has no control.
+
+**Always Expand Foreign Keys**, in the options menu at the trailing end of the filter field, fetches the first level on every row selected from then on. It starts off and stays off until you turn it on, every session, since each key it follows is a query. The rest of that menu is **Copy Visible**, which puts the printed lines on the pasteboard as they stand, **Collapse All**, and **Expand All**. Long values wrap; nothing is truncated.
+
+The filter field takes text, or a regular expression wrapped in slashes such as `/^rental/`. It matches keys and values, keeps the keys that lead to a match, and opens what was collapsed. An invalid expression outlines the field in red and filters nothing.
+
+Editing stays on the **Details** tab. Right-click a line for **Copy Value** and **Copy Key**; a foreign key line adds **Open** for the referenced table, filtered to that row.
+
+Caps: a document over 100,000 characters prints as a string rather than as nested keys, the same cap the [JSON tree](#limits) has.
+
 For whole-row JSON, switch the result to JSON mode with the switcher at the leading edge of the status bar, or from **View > Result View**. It shows what the [grid](/features/data-grid) shows, in the same order, minus hidden columns and rows marked for deletion, which the count line reports separately. Select rows in Data mode first to narrow it, then click **Copy JSON**.

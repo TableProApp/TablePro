@@ -88,6 +88,12 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         coordinator?.navigateToFKReference(value: value, fkInfo: fkInfo, openInNewTab: openInNewTab)
     }
 
+    /// The table view has already retargeted the selection to the clicked row by the time a context
+    /// menu item fires, so the panel reads the row the reader asked about without being told which.
+    func dataGridShowRowAsJSON() {
+        coordinator?.showJSONPanel()
+    }
+
     func dataGridHideColumn(_ columnName: String) {
         coordinator?.hideColumn(columnName)
     }
