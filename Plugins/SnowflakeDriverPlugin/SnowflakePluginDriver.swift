@@ -450,6 +450,8 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return SnowflakeSchemaQueries.parseClusterBy(clusterBy)
     }
 
+    var tableDDLIncludesForeignKeys: Bool { true }
+
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
         let database = connection?.currentDatabase
         let targetSchema = schema ?? connection?.currentSchema

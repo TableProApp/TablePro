@@ -3,6 +3,111 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.71.0</title>
+            <pubDate>Wed, 02 Sep 2026 08:12:36 +0000</pubDate>
+            <sparkle:version>127</sparkle:version>
+            <sparkle:shortVersionString>0.71.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Comparisons button in the Compare & Sync toolbar, listing every saved comparison.</li>
+<li>Save Comparison… in the Compare & Sync toolbar and under Database > Compare.</li>
+<li>Select > All and Select > None in the structure results pane.</li>
+<li>Whole-schema index and table metadata reads on the driver protocol.</li>
+<li>Script that checks the SQLite whole-schema reads against the per-table ones.</li>
+<li>Middle-click on a tab to close it. (#2595)</li>
+<li>Text in Display As for binary columns. (#2599)</li>
+<li>Smart value detection for binary columns holding UTF-8 text. (#2599)</li>
+<li>Find covering binary columns that a display format renders as text. (#2599)</li>
+<li>Launch trace in Instruments' Points of Interest, and `TABLEPRO_LAUNCH_TRACE=1` for the same table on standard error.</li>
+<li>Identity File on SSH Agent connections, and `IdentitiesOnly` from `~/.ssh/config`. (#2601)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Compare & Sync reads a whole schema in a few queries, and reads both sides at once.</li>
+<li>Data mode lists the tables both sides share as soon as a pair is chosen.</li>
+<li>Apply… builds the script when there is not one.</li>
+<li>Saved comparisons set both endpoints, and list whatever pair is on screen.</li>
+<li>Compare & Sync reopens on the source, target, mode and options it last held.</li>
+<li>Table collation on MySQL, previously never read.</li>
+<li>PluginKit ABI 20. Every registry plugin needs rebuilding before or with this release.</li>
+<li>Cold launch to a usable window, 470ms down to 260ms.</li>
+<li>Half-second grace before a connect, schema or query progress indicator appears, and a minimum time on screen.</li>
+<li>Window chrome stays put through a connect that finishes inside that grace, instead of collapsing and reopening.</li>
+<li>Plugin signature checks run after the first window rather than on the launch thread, at 13ms each.</li>
+<li>One gate in front of every path that loads a plugin's executable, enabling one included.</li>
+<li>Stale `cloudflared` and `cloud-sql-proxy` cleanup waits for the process to exit before a connection reuses its port.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Generated column expressions missing from MySQL's whole-schema column read.</li>
+<li>Generated columns missing entirely from SQLite's whole-schema column read.</li>
+<li>PostgreSQL index reads matching a table name in every schema rather than the one asked for.</li>
+<li>Unreachable hazard allowances in the Apply sheet.</li>
+<li>Compare & Sync toolbar naming the old pair after a saved comparison was loaded from Options.</li>
+<li>A failed whole-schema trigger read counting as a schema with no triggers.</li>
+<li>Compare & Sync publishing one pair's results after the pickers moved to another.</li>
+<li>Clicks and hovers in the scrolled tab strip's edge padding landing on a tab clipped off the edge.</li>
+<li>SSH Agent auth offering every key the agent holds, exhausting the server's `MaxAuthTries`. (#2601)</li>
+<li>Crash when opening CSV and TSV files on macOS 27. (#2600)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.71.0/TablePro-0.71.0-arm64.zip" length="26576647" type="application/octet-stream" sparkle:edSignature="9edfU/v2/S/X+E5NdDNVrE9TyzKxtlKBBwlmsW4zD4fm6QC34zQ/8lO3phNBgzLeL5P8+Kg85s/AAeG+Fl09CQ=="/>
+        </item>
+        <item>
+            <title>0.71.0</title>
+            <pubDate>Wed, 02 Sep 2026 08:12:37 +0000</pubDate>
+            <sparkle:version>127</sparkle:version>
+            <sparkle:shortVersionString>0.71.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Comparisons button in the Compare & Sync toolbar, listing every saved comparison.</li>
+<li>Save Comparison… in the Compare & Sync toolbar and under Database > Compare.</li>
+<li>Select > All and Select > None in the structure results pane.</li>
+<li>Whole-schema index and table metadata reads on the driver protocol.</li>
+<li>Script that checks the SQLite whole-schema reads against the per-table ones.</li>
+<li>Middle-click on a tab to close it. (#2595)</li>
+<li>Text in Display As for binary columns. (#2599)</li>
+<li>Smart value detection for binary columns holding UTF-8 text. (#2599)</li>
+<li>Find covering binary columns that a display format renders as text. (#2599)</li>
+<li>Launch trace in Instruments' Points of Interest, and `TABLEPRO_LAUNCH_TRACE=1` for the same table on standard error.</li>
+<li>Identity File on SSH Agent connections, and `IdentitiesOnly` from `~/.ssh/config`. (#2601)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Compare & Sync reads a whole schema in a few queries, and reads both sides at once.</li>
+<li>Data mode lists the tables both sides share as soon as a pair is chosen.</li>
+<li>Apply… builds the script when there is not one.</li>
+<li>Saved comparisons set both endpoints, and list whatever pair is on screen.</li>
+<li>Compare & Sync reopens on the source, target, mode and options it last held.</li>
+<li>Table collation on MySQL, previously never read.</li>
+<li>PluginKit ABI 20. Every registry plugin needs rebuilding before or with this release.</li>
+<li>Cold launch to a usable window, 470ms down to 260ms.</li>
+<li>Half-second grace before a connect, schema or query progress indicator appears, and a minimum time on screen.</li>
+<li>Window chrome stays put through a connect that finishes inside that grace, instead of collapsing and reopening.</li>
+<li>Plugin signature checks run after the first window rather than on the launch thread, at 13ms each.</li>
+<li>One gate in front of every path that loads a plugin's executable, enabling one included.</li>
+<li>Stale `cloudflared` and `cloud-sql-proxy` cleanup waits for the process to exit before a connection reuses its port.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Generated column expressions missing from MySQL's whole-schema column read.</li>
+<li>Generated columns missing entirely from SQLite's whole-schema column read.</li>
+<li>PostgreSQL index reads matching a table name in every schema rather than the one asked for.</li>
+<li>Unreachable hazard allowances in the Apply sheet.</li>
+<li>Compare & Sync toolbar naming the old pair after a saved comparison was loaded from Options.</li>
+<li>A failed whole-schema trigger read counting as a schema with no triggers.</li>
+<li>Compare & Sync publishing one pair's results after the pickers moved to another.</li>
+<li>Clicks and hovers in the scrolled tab strip's edge padding landing on a tab clipped off the edge.</li>
+<li>SSH Agent auth offering every key the agent holds, exhausting the server's `MaxAuthTries`. (#2601)</li>
+<li>Crash when opening CSV and TSV files on macOS 27. (#2600)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.71.0/TablePro-0.71.0-x86_64.zip" length="28345573" type="application/octet-stream" sparkle:edSignature="5J3dB3iolOMQ7DGdOXq14pYlvKUgzv/Ug3ZdBI0AFXY6dob28j8j5MawZfo1sQKxRl28kEvoIK2xIcMrcALuAQ=="/>
+        </item>
+        <item>
             <title>0.70.0</title>
             <pubDate>Tue, 01 Sep 2026 17:01:09 +0000</pubDate>
             <sparkle:version>126</sparkle:version>

@@ -165,7 +165,8 @@ extension QueryExecutionCoordinator {
         isTruncated: Bool = false,
         queryParameterValues: [QueryParameter]? = nil,
         historySQL: String? = nil,
-        anchor: StatementAnchor? = nil
+        anchor: StatementAnchor? = nil,
+        timing: PluginQueryTiming? = nil
     ) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
@@ -185,7 +186,8 @@ extension QueryExecutionCoordinator {
                 historySQL: historySQL ?? sql,
                 connection: conn,
                 queryParameterValues: queryParameterValues,
-                anchor: anchor
+                anchor: anchor,
+                timing: timing
             )
             return
         }
@@ -304,7 +306,8 @@ extension QueryExecutionCoordinator {
                 source: historySource(tabId: tabId),
                 executionTime: executionTime,
                 rowCount: rows.count,
-                wasSuccessful: true
+                wasSuccessful: true,
+                timing: timing
             )
         )
 
@@ -322,7 +325,8 @@ extension QueryExecutionCoordinator {
         historySQL: String,
         connection conn: DatabaseConnection,
         queryParameterValues: [QueryParameter]?,
-        anchor: StatementAnchor? = nil
+        anchor: StatementAnchor? = nil,
+        timing: PluginQueryTiming? = nil
     ) {
         let databaseName = historyDatabaseName(tabId: tabId)
         let schemaName = historySchemaName(tabId: tabId)
@@ -379,7 +383,8 @@ extension QueryExecutionCoordinator {
                 executionTime: executionTime,
                 rowCount: rowCount,
                 wasSuccessful: true,
-                planCapture: captured.capture
+                planCapture: captured.capture,
+                timing: timing
             )
         )
     }
@@ -761,7 +766,7 @@ extension QueryExecutionCoordinator {
         // itself on its own tab and leaves the window chrome to whatever is actually on screen.
         if parent.tabManager.selectedTabId == tabId {
             parent.toolbarState.isResultsCollapsed = false
-            parent.toolbarState.lastQueryDuration = nil
+            parent.toolbarState.lastQueryTiming = nil
             parent.announceQueryError(message)
         }
 

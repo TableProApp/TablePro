@@ -16,6 +16,14 @@ struct QueryResult {
     let executionTime: TimeInterval
     let error: DatabaseError?
 
+    /// What the elapsed time was spent on, when the driver could tell. Defaults to the elapsed
+    /// number alone so a result built without one reads exactly as it always did.
+    var timing: PluginQueryTiming?
+
+    var resolvedTiming: PluginQueryTiming {
+        timing ?? PluginQueryTiming(total: executionTime)
+    }
+
     /// Whether the result was truncated due to driver-level row limits
     var isTruncated: Bool = false
 

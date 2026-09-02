@@ -292,7 +292,7 @@ struct QueryHistoryMigrationTests {
             "database_name", "database_type", "schema_name", "variant_key", "format",
             "raw_plan", "byte_count", "execution_time", "captured_at", "is_pinned"
         ])
-        #expect(scalarInt(in: url, sql: "PRAGMA user_version;") == 4)
+        #expect(scalarInt(in: url, sql: "PRAGMA user_version;") == 5)
 
         let second = QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: true)
         #expect(await second.count(scope: .all) == 1)
@@ -314,7 +314,7 @@ struct QueryHistoryMigrationTests {
         let second = QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: true)
         #expect(await second.count(scope: .all) == 0)
 
-        #expect(scalarInt(in: url, sql: "PRAGMA user_version;") == 4)
+        #expect(scalarInt(in: url, sql: "PRAGMA user_version;") == 5)
         #expect(
             scalarInt(
                 in: url,

@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import TableProPluginKit
 
 final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, QueryPlanSnapshotReading, Sendable {
     static let shared = QueryHistoryManager()
@@ -32,7 +33,9 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Que
             executionTime: request.executionTime,
             rowCount: request.rowCount,
             wasSuccessful: request.wasSuccessful,
-            errorMessage: request.errorMessage
+            errorMessage: request.errorMessage,
+            firstRowTime: request.timing?.firstRow,
+            serverTime: request.timing?.server
         )
         let stored = await record(entry)
 

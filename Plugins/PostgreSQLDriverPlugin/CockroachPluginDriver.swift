@@ -141,6 +141,8 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         }
     }
 
+    var tableDDLIncludesForeignKeys: Bool { true }
+
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
         let safeTable = escapeLiteral(table)
         let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)

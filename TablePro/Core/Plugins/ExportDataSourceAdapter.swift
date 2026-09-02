@@ -113,6 +113,10 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         return try await pluginDriver.fetchAllForeignKeys(schema: exportSchema(for: databaseName))
     }
 
+    var tableDDLIncludesForeignKeys: Bool {
+        pluginDriver?.tableDDLIncludesForeignKeys ?? false
+    }
+
     // MARK: - Helpers
 
     /// The export tree names every group after a schema on a schema-aware engine and after a

@@ -20,7 +20,7 @@ Each ranked panel lists the top 10 shapes. Right-click a row for **Copy Query** 
 
 ### Summary
 
-Across the top: how many queries ran, what share failed, the average duration, and the total time spent waiting.
+Across the top: how many queries ran, what share failed, the average duration, and the total duration.
 
 ### Activity
 
@@ -52,7 +52,9 @@ Shapes ranked by how many times they failed, with the most recent error message 
 
 A row in **Slowest** or **Got Slower** is a shape, not a diagnosis. **Load in Editor** puts a real example in a query tab, where `Cmd+Option+E` gives you the execution plan: see [Explain Visualization](/features/explain-visualization).
 
-Durations are measured on this side of the wire, from sending the query to getting the result, so they cover network time and any [SSH tunnel](/connections/ssh-profiles) as well as the server. For server-side timings, locks and running queries, see the [Server Dashboard](/features/server-dashboard).
+Every duration on this page is the time the database spent, not the time you waited. On an engine that reports its own execution time that figure is used; on one that does not, the time to the first row stands in, which carries one network round trip. Where neither is available the whole elapsed time is used, and a query that is only slow to transfer then ranks as a slow query. The [results readout](/features/query-results#how-long-it-took) shows which figure a given engine supplies.
+
+For locks and running queries, see the [Server Dashboard](/features/server-dashboard).
 
 A shape ranked high under **Table Browsing** came from the app paging or sorting a table, not from anything you wrote.
 

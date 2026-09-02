@@ -101,7 +101,8 @@ extension QueryExecutionCoordinator {
                 source: .editor,
                 executionTime: result.executionTime,
                 rowCount: result.rows.count,
-                wasSuccessful: true
+                wasSuccessful: true,
+                timing: result.resolvedTiming
             )
         )
     }
@@ -109,13 +110,14 @@ extension QueryExecutionCoordinator {
     func applyMultiStatementResults(
         tabId: UUID,
         claim: TabExecutionClaim,
-        cumulativeTime: TimeInterval,
+        timing: PluginQueryTiming,
         totalRowsAffected: Int,
         newResultSets: [ResultSet]
     ) {
+        let cumulativeTime = timing.total
         guard parent.tabExecution.settle(claim) else { return }
         parent.retireQueryTask(for: claim)
-        parent.toolbarState.lastQueryDuration = cumulativeTime
+        parent.toolbarState.lastQueryTiming = timing
 
         /// Once for the batch, never once per statement, and below the settle gate rather than at
         /// the call site: a superseded batch has its results dropped here, and a notification

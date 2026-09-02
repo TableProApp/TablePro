@@ -150,7 +150,10 @@ final class LibPQDriverCore: @unchecked Sendable {
                 columnTypeNames: result.columnTypeNames,
                 rows: result.rows,
                 rowsAffected: result.affectedRows,
-                executionTime: Date().timeIntervalSince(startTime),
+                timing: PluginQueryTiming(
+                    total: Date().timeIntervalSince(startTime),
+                    firstRow: result.firstRowTime
+                ),
                 isTruncated: result.isTruncated
             )
         } catch let error as NSError where !isRetry && Self.isConnectionLostError(error) {

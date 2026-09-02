@@ -18,16 +18,23 @@ internal enum TransferResultAlert {
         case close
     }
 
+    /// An export that finished with something to report says so here, the way an import already
+    /// does. The suppression checkbox is offered only on a clean run: the alert the user turned
+    /// off is the routine one, and hiding a warning behind that switch loses it for good.
     internal static func presentExportSuccess(
+        warnings: [String],
         window: NSWindow?,
         completion: @escaping @MainActor (ExportChoice) -> Void
     ) {
         let alert = NSAlert()
-        alert.messageText = String(localized: "Export completed")
-        alert.alertStyle = .informational
+        alert.messageText = warnings.isEmpty
+            ? String(localized: "Export completed")
+            : String(localized: "Export completed with warnings")
+        alert.alertStyle = warnings.isEmpty ? .informational : .warning
+        alert.informativeText = warnings.joined(separator: "\n\n")
         alert.addButton(withTitle: String(localized: "Open in Finder"))
         alert.addButton(withTitle: String(localized: "Done"))
-        alert.showsSuppressionButton = true
+        alert.showsSuppressionButton = warnings.isEmpty
         alert.suppressionButton?.title = String(localized: "Do not show this again")
 
         let deliver: @MainActor (NSApplication.ModalResponse) -> Void = { response in

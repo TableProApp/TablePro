@@ -138,6 +138,10 @@ struct CHQueryResult {
     let rows: [[PluginCellValue]]
     let affectedRows: Int
     let isTruncated: Bool
+
+    /// Execution time as the server reported it in `X-ClickHouse-Summary`, so the figure carries no
+    /// network round trip. Nil on a server too old to send it.
+    var serverElapsed: TimeInterval?
 }
 
 // MARK: - Plugin Driver
@@ -265,7 +269,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             columnTypeNames: result.columnTypeNames,
             rows: result.rows,
             rowsAffected: result.affectedRows,
-            executionTime: executionTime,
+            timing: PluginQueryTiming(total: executionTime, server: result.serverElapsed),
             isTruncated: result.isTruncated
         )
     }
@@ -286,7 +290,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             columnTypeNames: result.columnTypeNames,
             rows: result.rows,
             rowsAffected: result.affectedRows,
-            executionTime: executionTime,
+            timing: PluginQueryTiming(total: executionTime, server: result.serverElapsed),
             isTruncated: result.isTruncated
         )
     }

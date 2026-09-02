@@ -27,6 +27,10 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     private var _columnTypeCache: [String: [String]] = [:]
     private var _queryTimeoutSeconds: Int = 300
 
+    /// How long BigQuery ran the job behind the last streamed read. The stream carries rows and a
+    /// header and nothing else, so the figure is handed over here rather than through it.
+    private var _lastJobElapsed: TimeInterval?
+
     var connection: BigQueryConnection? {
         lock.withLock { _connection }
     }
@@ -233,7 +237,10 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
                 columnTypeNames: ["STRING"],
                 rows: [[.text("Statement executed")]],
                 rowsAffected: result.dmlAffectedRows,
-                executionTime: Date().timeIntervalSince(startTime),
+                timing: PluginQueryTiming(
+                    total: Date().timeIntervalSince(startTime),
+                    server: result.serverElapsed
+                ),
                 statusMessage: buildCostMessage(result)
             )
         }
@@ -247,7 +254,10 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
             columnTypeNames: typeNames,
             rows: rows,
             rowsAffected: 0,
-            executionTime: Date().timeIntervalSince(startTime),
+            timing: PluginQueryTiming(
+                total: Date().timeIntervalSince(startTime),
+                server: result.serverElapsed
+            ),
             statusMessage: buildCostMessage(result)
         )
     }
@@ -651,8 +661,34 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
 
     // MARK: - Streaming
 
+    /// Not `boundedQueryFromStream`: the default drops the job statistics, and BigQuery's own
+    /// execution time is the whole point of the breakdown on a warehouse this far away.
+    ///
+    /// The figure is read after the stream finishes, never as a call argument: an argument is
+    /// evaluated before the await, which would report the previous query's job.
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
-        try await boundedQueryFromStream(query: query, rowCap: rowCap)
+        let started = Date()
+        lock.withLock { _lastJobElapsed = nil }
+        let collected = try await PluginBoundedStream.collect(
+            streamRows(query: query),
+            rowCap: rowCap,
+            startedAt: started
+        )
+        guard let serverElapsed = lock.withLock({ _lastJobElapsed }) else { return collected }
+        return PluginQueryResult(
+            columns: collected.columns,
+            columnTypeNames: collected.columnTypeNames,
+            rows: collected.rows,
+            rowsAffected: collected.rowsAffected,
+            timing: PluginQueryTiming(
+                total: collected.timing.total,
+                firstRow: collected.timing.firstRow,
+                server: serverElapsed
+            ),
+            isTruncated: collected.isTruncated,
+            statusMessage: collected.statusMessage,
+            columnMeta: collected.columnMeta
+        )
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
@@ -704,6 +740,7 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         }
 
         let jobInfo = try await conn.executeJobAndWait(sql, defaultDataset: dataset)
+        lock.withLock { _lastJobElapsed = jobInfo.serverElapsed }
         defer { conn.clearCurrentJob() }
 
         let firstPage = try await conn.getQueryResults(
@@ -917,7 +954,10 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
             columnTypeNames: typeNames,
             rows: rows,
             rowsAffected: 0,
-            executionTime: Date().timeIntervalSince(startTime),
+            timing: PluginQueryTiming(
+                total: Date().timeIntervalSince(startTime),
+                server: result.serverElapsed
+            ),
             statusMessage: buildCostMessage(result)
         )
     }

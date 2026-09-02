@@ -761,6 +761,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         )
         result.isTruncated = pluginResult.isTruncated
         result.statusMessage = pluginResult.statusMessage
+        result.timing = pluginResult.timing
         result.columnMeta = pluginResult.columnMeta?.map {
             ResultColumnMeta(isPrimaryKey: $0.isPrimaryKey, isNullable: $0.isNullable, isAutoIncrement: $0.isIdentity)
         }

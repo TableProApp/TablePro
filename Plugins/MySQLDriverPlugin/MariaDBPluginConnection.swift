@@ -58,6 +58,10 @@ struct MariaDBPluginQueryResult {
     let insertId: UInt64
     let isTruncated: Bool
     let columnMeta: [PluginColumnInfo]
+
+    /// Send to first row, measured from just before the statement goes out. Separates the server's
+    /// own work from the time spent pulling the rest of the result across the wire.
+    var firstRowTime: TimeInterval?
 }
 
 // MARK: - SSL Configuration
@@ -611,6 +615,10 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         let generation = cancellationGate.beginQuery()
         defer { cancellationGate.endQuery(generation) }
 
+        /// Started before the `SQL_SELECT_LIMIT` reconciliation rather than after it. That
+        /// reconciliation is a round trip of its own, and leaving it outside this clock charges it
+        /// to `total - firstRow`, which the breakdown presents as row transfer.
+        let sentAt = Date()
         try reconcileSelectLimit(rowCap: rowCap, statement: query, on: mysql)
         if cancellationGate.isCancelled(generation) { throw CancellationError() }
 
@@ -632,7 +640,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 return MariaDBPluginQueryResult(
                     columns: [], columnTypes: [], columnTypeNames: [],
                     rows: [], affectedRows: affected, insertId: insertId, isTruncated: false,
-                    columnMeta: []
+                    columnMeta: [],
+                    firstRowTime: Date().timeIntervalSince(sentAt)
                 )
             } else {
                 throw self.getError()
@@ -679,8 +688,10 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         let maxRows = mysqlClampedRowCap(rowCap) ?? PluginRowLimits.emergencyMax
         let fetchLimit = maxRows == PluginRowLimits.emergencyMax ? maxRows : maxRows + 1
         var serverSentMore = false
+        var firstRowTime: TimeInterval?
 
         while let rowPtr = mysql_fetch_row(resultPtr) {
+            if firstRowTime == nil { firstRowTime = Date().timeIntervalSince(sentAt) }
             if cancellationGate.isCancelled(generation) {
                 while mysql_fetch_row(resultPtr) != nil {}
                 mysql_free_result(resultPtr)
@@ -752,7 +763,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         return MariaDBPluginQueryResult(
             columns: columns, columnTypes: columnTypes, columnTypeNames: columnTypeNames,
             rows: rows, affectedRows: UInt64(rows.count), insertId: 0, isTruncated: truncated,
-            columnMeta: columnMeta
+            columnMeta: columnMeta,
+            firstRowTime: firstRowTime ?? Date().timeIntervalSince(sentAt)
         )
     }
 
@@ -840,8 +852,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         columnTypeNames: [String],
         columnIsBinary: [Bool],
         rowCap: Int? = nil,
-        generation: Int
-    ) throws -> (rows: [[PluginCellValue]], isTruncated: Bool) {
+        generation: Int,
+        sentAt: Date
+    ) throws -> (rows: [[PluginCellValue]], isTruncated: Bool, firstRowTime: TimeInterval) {
         let numFields = columns.count
         var resultBinds: [MYSQL_BIND] = Array(repeating: MYSQL_BIND(), count: numFields)
         var resultBuffers: [UnsafeMutableRawPointer] = []
@@ -878,6 +891,10 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         let maxRows = mysqlClampedRowCap(rowCap) ?? PluginRowLimits.emergencyMax
         let fetchLimit = maxRows == PluginRowLimits.emergencyMax ? maxRows : maxRows + 1
         var serverSentMore = false
+        /// `mysql_stmt_execute` returns once the server has answered with a header, which on an
+        /// unbuffered statement can be long before the first tuple exists. Only a fetch that
+        /// returns a row proves the server produced one.
+        var firstRowTime: TimeInterval?
 
         while true {
             let fetchStatus = mysql_stmt_fetch(stmt)
@@ -885,6 +902,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             if fetchStatus != 0, fetchStatus != MYSQL_DATA_TRUNCATED {
                 throw getStmtError(stmt)
             }
+            if firstRowTime == nil { firstRowTime = Date().timeIntervalSince(sentAt) }
 
             if cancellationGate.isCancelled(generation) {
                 throw CancellationError()
@@ -946,7 +964,11 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             rows.removeLast(rows.count - outcome.keptRows)
         }
 
-        return (rows: rows, isTruncated: outcome.isTruncated)
+        return (
+            rows: rows,
+            isTruncated: outcome.isTruncated,
+            firstRowTime: firstRowTime ?? Date().timeIntervalSince(sentAt)
+        )
     }
 
     private func executeParameterizedQuerySync(
@@ -961,6 +983,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         let generation = cancellationGate.beginQuery()
         defer { cancellationGate.endQuery(generation) }
 
+        /// Ahead of both the reconciliation and the prepare, for the reason the text path gives.
+        let sentAt = Date()
         try reconcileSelectLimit(rowCap: rowCap, statement: query, on: mysql)
         if cancellationGate.isCancelled(generation) { throw CancellationError() }
 
@@ -1001,6 +1025,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 throw getStmtError(stmt)
             }
         }
+        let executedAt = Date().timeIntervalSince(sentAt)
 
         let fieldCount = Int(mysql_stmt_field_count(stmt))
 
@@ -1010,7 +1035,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             return MariaDBPluginQueryResult(
                 columns: [], columnTypes: [], columnTypeNames: [],
                 rows: [], affectedRows: UInt64(affected), insertId: UInt64(insertId), isTruncated: false,
-                columnMeta: []
+                columnMeta: [],
+                firstRowTime: executedAt
             )
         }
 
@@ -1054,14 +1080,15 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         let fetchResult = try fetchResultSet(
             from: stmt, metadata: metadata,
             columns: columns, columnTypes: columnTypes, columnTypeNames: columnTypeNames,
-            columnIsBinary: columnIsBinary, rowCap: rowCap, generation: generation
+            columnIsBinary: columnIsBinary, rowCap: rowCap, generation: generation, sentAt: sentAt
         )
 
         return MariaDBPluginQueryResult(
             columns: columns, columnTypes: columnTypes, columnTypeNames: columnTypeNames,
             rows: fetchResult.rows, affectedRows: UInt64(fetchResult.rows.count),
             insertId: 0, isTruncated: fetchResult.isTruncated,
-            columnMeta: columnMeta
+            columnMeta: columnMeta,
+            firstRowTime: fetchResult.firstRowTime
         )
     }
 

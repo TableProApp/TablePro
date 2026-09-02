@@ -110,6 +110,49 @@ struct ForeignKeyTopologicalSortTests {
         #expect(Set(identifiers) == ["public.orders", "public.customers", "sales.orders"])
     }
 
+    @Test("A cycle names its own members, in the order they were given")
+    func cycleNamesItsMembersInInputOrder() {
+        let ordering = ForeignKeyTopologicalSort.order(
+            [table("orders", "public"), table("regions", "public"), table("customers", "public")],
+            foreignKeysByTable: [
+                "public.orders": [foreignKey(to: "customers", schema: "public")],
+                "public.customers": [foreignKey(to: "orders", schema: "public")]
+            ]
+        )
+
+        #expect(ordering.unorderedByCycle.map { $0.identifier } == ["public.orders", "public.customers"])
+        #expect(Set(ordering.tables.map { $0.identifier })
+            == ["public.orders", "public.customers", "public.regions"])
+    }
+
+    @Test("A table that only descends from a cycle is ordered after it, not reported inside it")
+    func descendantOfACycleIsOrderedAfterIt() {
+        let ordering = ForeignKeyTopologicalSort.order(
+            [table("audit", "public"), table("orders", "public"), table("customers", "public")],
+            foreignKeysByTable: [
+                "public.orders": [foreignKey(to: "customers", schema: "public")],
+                "public.customers": [foreignKey(to: "orders", schema: "public")],
+                "public.audit": [foreignKey(to: "orders", schema: "public")]
+            ]
+        )
+        let identifiers = ordering.tables.map { $0.identifier }
+
+        #expect(ordering.unorderedByCycle.map { $0.identifier } == ["public.orders", "public.customers"])
+        #expect(identifiers.last == "public.audit")
+        #expect(identifiers.count == 3)
+    }
+
+    @Test("An acyclic graph strands nothing")
+    func acyclicGraphStrandsNothing() {
+        let ordering = ForeignKeyTopologicalSort.order(
+            [table("orders", "public"), table("customers", "public")],
+            foreignKeysByTable: ["public.orders": [foreignKey(to: "customers", schema: "public")]]
+        )
+
+        #expect(ordering.unorderedByCycle.isEmpty)
+        #expect(ordering.tables.map { $0.identifier } == ["public.customers", "public.orders"])
+    }
+
     @Test("A self-referencing foreign key does not strand its table")
     func selfReferenceDoesNotStrandTheTable() {
         let ordered = ForeignKeyTopologicalSort.ordered(

@@ -389,6 +389,8 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     var providesBulkForeignKeyFetch: Bool { true }
 
+    var tableDDLIncludesForeignKeys: Bool { true }
+
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         let query = """
             SELECT m.name AS table_name, p.id, p."table" AS referenced_table,

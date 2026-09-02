@@ -1,4 +1,5 @@
 import Foundation
+import TableProPluginKit
 
 struct QueryHistoryRecordRequest: Sendable {
     /// Chosen by the caller so a run that also saves a plan can link the two before either is
@@ -20,6 +21,10 @@ struct QueryHistoryRecordRequest: Sendable {
     /// its place in history.
     var planCapture: QueryPlanCapture?
 
+    /// What the elapsed time was spent on, when the driver could tell. Defaulted, because most
+    /// recorders write a statement they timed themselves and have no split to offer.
+    var timing: PluginQueryTiming?
+
     init(
         id: UUID = UUID(),
         query: String,
@@ -32,7 +37,8 @@ struct QueryHistoryRecordRequest: Sendable {
         rowCount: Int,
         wasSuccessful: Bool,
         errorMessage: String? = nil,
-        planCapture: QueryPlanCapture? = nil
+        planCapture: QueryPlanCapture? = nil,
+        timing: PluginQueryTiming? = nil
     ) {
         self.id = id
         self.query = query
@@ -46,5 +52,6 @@ struct QueryHistoryRecordRequest: Sendable {
         self.wasSuccessful = wasSuccessful
         self.errorMessage = errorMessage
         self.planCapture = planCapture
+        self.timing = timing
     }
 }

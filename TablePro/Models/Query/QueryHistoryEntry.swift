@@ -1,4 +1,5 @@
 import Foundation
+import TableProPluginKit
 
 struct QueryHistoryEntry: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
@@ -15,6 +16,12 @@ struct QueryHistoryEntry: Identifiable, Codable, Hashable, Sendable {
     let wasSuccessful: Bool
     let errorMessage: String?
 
+    /// Client-measured time to the first row, when the driver could see one.
+    let firstRowTime: TimeInterval?
+
+    /// Execution time as the engine reported it, when its protocol carries one.
+    let serverTime: TimeInterval?
+
     init(
         id: UUID = UUID(),
         query: String,
@@ -28,7 +35,9 @@ struct QueryHistoryEntry: Identifiable, Codable, Hashable, Sendable {
         executionTime: TimeInterval,
         rowCount: Int,
         wasSuccessful: Bool,
-        errorMessage: String? = nil
+        errorMessage: String? = nil,
+        firstRowTime: TimeInterval? = nil,
+        serverTime: TimeInterval? = nil
     ) {
         self.id = id
         self.query = query
@@ -43,6 +52,20 @@ struct QueryHistoryEntry: Identifiable, Codable, Hashable, Sendable {
         self.rowCount = rowCount
         self.wasSuccessful = wasSuccessful
         self.errorMessage = errorMessage
+        self.firstRowTime = firstRowTime
+        self.serverTime = serverTime
+    }
+
+    var timing: PluginQueryTiming {
+        PluginQueryTiming(total: executionTime, firstRow: firstRowTime, server: serverTime)
+    }
+
+    /// What the database itself spent, as opposed to the wire. This is what the insights panels
+    /// rank on, so a query that is only slow to transfer stops reading as a slow query.
+    var databaseTime: TimeInterval { timing.databaseTime }
+
+    var formattedDatabaseTime: String {
+        QueryDurationFormatter.string(from: databaseTime)
     }
 
     var cursor: QueryHistoryCursor {

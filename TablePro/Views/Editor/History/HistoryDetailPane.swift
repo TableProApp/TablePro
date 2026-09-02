@@ -1,4 +1,5 @@
 import SwiftUI
+import TableProPluginKit
 
 struct HistoryDetailPane: View {
     let entry: QueryHistoryEntry?
@@ -57,7 +58,7 @@ struct HistoryDetailPane: View {
                 }
                 row(String(localized: "Database"), databaseDescription(for: entry))
                 row(String(localized: "Ran"), entry.executedAt.formatted(date: .abbreviated, time: .standard))
-                row(String(localized: "Duration"), entry.hasMeasuredDuration ? entry.formattedExecutionTime : "–")
+                durationRows(for: entry)
                 row(String(localized: "Rows"), entry.hasKnownRowCount ? entry.formattedRowCount : "–")
                 row(String(localized: "Source"), entry.source.displayName)
             }
@@ -72,6 +73,21 @@ struct HistoryDetailPane: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// A driver that could separate execution from transfer gets every part it measured, because
+    /// the whole point of storing them is that the elapsed number alone does not say which was slow.
+    @ViewBuilder
+    private func durationRows(for entry: QueryHistoryEntry) -> some View {
+        if !entry.hasMeasuredDuration {
+            row(String(localized: "Duration"), "–")
+        } else if entry.timing.hasBreakdown {
+            ForEach(QueryTimingBreakdown(timing: entry.timing).rows) { breakdownRow in
+                row(breakdownRow.label, breakdownRow.value)
+            }
+        } else {
+            row(String(localized: "Duration"), entry.formattedExecutionTime)
+        }
     }
 
     private func row(_ label: String, _ value: String) -> some View {

@@ -1263,10 +1263,6 @@ final class MainContentCoordinator {
         }
         let tab = tabManager.tabs[index]
 
-        if services.pluginManager.supportsQueryProgress(for: connection.type) {
-            installClickHouseProgressHandler()
-        }
-
         let conn = connection
         let tabId = tabManager.tabs[index].id
 
@@ -1371,10 +1367,7 @@ final class MainContentCoordinator {
                         traceStaleResultDropped(traceToken)
                         return
                     }
-                    if services.pluginManager.supportsQueryProgress(for: self.connection.type) {
-                        self.clearClickHouseProgress()
-                    }
-                    toolbarState.lastQueryDuration = fetchResult.executionTime
+                    toolbarState.lastQueryTiming = fetchResult.resolvedTiming
 
                     traceApplyingResult(traceToken, tabId: tabId)
 
@@ -1393,7 +1386,8 @@ final class MainContentCoordinator {
                         sql: sql,
                         connection: conn,
                         isTruncated: fetchResult.isTruncated,
-                        anchor: anchor
+                        anchor: anchor,
+                        timing: fetchResult.resolvedTiming
                     )
 
                     scheduleTraceCompletion(traceToken, outcome: .completed)
@@ -1505,7 +1499,7 @@ final class MainContentCoordinator {
         ])
         guard currentQueryTaskOwner == claim else { return }
         retireQueryTask(for: claim)
-        toolbarState.lastQueryDuration = executionTime
+        toolbarState.lastQueryTiming = PluginQueryTiming(total: executionTime)
     }
 
     internal func resolveTableEditability(tab: QueryTab, sql: String) -> (tableName: String?, isEditable: Bool) {

@@ -101,7 +101,8 @@ extension MainContentCoordinator {
         connection conn: DatabaseConnection,
         isTruncated: Bool = false,
         queryParameterValues: [QueryParameter]? = nil,
-        anchor: StatementAnchor? = nil
+        anchor: StatementAnchor? = nil,
+        timing: PluginQueryTiming? = nil
     ) {
         queryExecutionCoordinator.applyPhase1Result(
             tabId: tabId,
@@ -119,7 +120,8 @@ extension MainContentCoordinator {
             connection: conn,
             isTruncated: isTruncated,
             queryParameterValues: queryParameterValues,
-            anchor: anchor
+            anchor: anchor,
+            timing: timing
         )
     }
 

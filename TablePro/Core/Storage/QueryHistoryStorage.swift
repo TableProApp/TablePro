@@ -1,6 +1,7 @@
 import Foundation
 import os
 import SQLite3
+import TableProPluginKit
 
 actor QueryHistoryStorage {
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryHistoryStorage")
@@ -124,7 +125,9 @@ actor QueryHistoryStorage {
             row_count INTEGER NOT NULL,
             was_successful INTEGER NOT NULL,
             error_message TEXT,
-            fingerprint_hash INTEGER NOT NULL DEFAULT 0
+            fingerprint_hash INTEGER NOT NULL DEFAULT 0,
+            first_row_time REAL,
+            server_time REAL
         );
         """
 
@@ -195,11 +198,24 @@ actor QueryHistoryStorage {
             migrateToVersion3()
         }
         migrateToVersion4()
+        migrateToVersion5()
         // Stamped only once the column it describes is actually there. Stamping regardless would
         // claim a schema a failed ALTER never produced, and `record`'s insert would then fail to
         // prepare against the old column count, silently recording nothing.
         if hasColumn("fingerprint_hash", inTable: "history") {
-            setUserVersion(4)
+            setUserVersion(hasColumn("server_time", inTable: "history") ? 5 : 4)
+        }
+    }
+
+    /// Both columns are nullable and deliberately not backfilled. A row written before the split
+    /// existed has no honest value to put in either, and `COALESCE` down to `execution_time` reads
+    /// it exactly as this release's predecessor did.
+    private func migrateToVersion5() {
+        if hasColumn("first_row_time", inTable: "history") == false {
+            execute("ALTER TABLE history ADD COLUMN first_row_time REAL;")
+        }
+        if hasColumn("server_time", inTable: "history") == false {
+            execute("ALTER TABLE history ADD COLUMN server_time REAL;")
         }
     }
 
@@ -448,8 +464,8 @@ actor QueryHistoryStorage {
             INSERT INTO history (
                 id, query, connection_id, database_name, database_type, schema_name,
                 source, statement_type, executed_at, execution_time, row_count,
-                was_successful, error_message, fingerprint_hash
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                was_successful, error_message, fingerprint_hash, first_row_time, server_time
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """
 
         var statement: OpaquePointer?
@@ -482,6 +498,16 @@ actor QueryHistoryStorage {
             sqlite3_bind_null(statement, 13)
         }
         sqlite3_bind_int64(statement, 14, SQLQueryFingerprint.hash(entry.query, databaseType: entry.databaseType))
+        if let firstRowTime = entry.firstRowTime {
+            sqlite3_bind_double(statement, 15, firstRowTime)
+        } else {
+            sqlite3_bind_null(statement, 15)
+        }
+        if let serverTime = entry.serverTime {
+            sqlite3_bind_double(statement, 16, serverTime)
+        } else {
+            sqlite3_bind_null(statement, 16)
+        }
 
         guard sqlite3_step(statement) == SQLITE_DONE else {
             logSqliteError(context: "insert")
@@ -510,7 +536,7 @@ actor QueryHistoryStorage {
             clause.append("""
                 SELECT h.id, h.query, h.connection_id, h.database_name, h.database_type, h.schema_name,
                        h.source, h.statement_type, h.executed_at, h.execution_time, h.row_count,
-                       h.was_successful, h.error_message
+                       h.was_successful, h.error_message, h.first_row_time, h.server_time
                 FROM history h
                 INNER JOIN history_fts ON h.rowid = history_fts.rowid
                 WHERE history_fts MATCH ?
@@ -519,7 +545,7 @@ actor QueryHistoryStorage {
             clause.append("""
                 SELECT id, query, connection_id, database_name, database_type, schema_name,
                        source, statement_type, executed_at, execution_time, row_count,
-                       was_successful, error_message
+                       was_successful, error_message, first_row_time, server_time
                 FROM history
                 WHERE 1 = 1
                 """)
@@ -661,6 +687,14 @@ actor QueryHistoryStorage {
 
     /// Ranked shapes for one panel. Every arm reads a column the grouped subquery selects, so the
     /// ordering never reaches a value the caller cannot also see.
+    /// What "how long did this query take" means once transfer is separable from execution.
+    ///
+    /// The server's own report wins where a protocol carries one, the client-measured time to the
+    /// first row stands in where it does not, and elapsed is the floor so a row written before the
+    /// split existed still ranks. Every panel that answers "is this query slow" reads through this;
+    /// the totals bar deliberately does not, because "how long did I wait" is elapsed by definition.
+    private static let databaseTimeExpression = "COALESCE(server_time, first_row_time, execution_time)"
+
     private enum InsightsRanking {
         case callCount
         case totalDuration
@@ -768,8 +802,8 @@ actor QueryHistoryStorage {
             SELECT COUNT(*),
                    SUM(CASE WHEN was_successful = 0 THEN 1 ELSE 0 END),
                    COUNT(DISTINCT fingerprint_hash),
-                   SUM(execution_time),
-                   MAX(execution_time)
+                   SUM(\(Self.databaseTimeExpression)),
+                   MAX(\(Self.databaseTimeExpression))
             FROM history
             WHERE 1 = 1
             """)
@@ -809,8 +843,8 @@ actor QueryHistoryStorage {
                 SELECT fingerprint_hash,
                        COUNT(*) AS call_count,
                        SUM(CASE WHEN was_successful = 0 THEN 1 ELSE 0 END) AS failure_count,
-                       SUM(execution_time) AS total_duration,
-                       MAX(execution_time) AS max_duration,
+                       SUM(\(Self.databaseTimeExpression)) AS total_duration,
+                       MAX(\(Self.databaseTimeExpression)) AS max_duration,
                        SUM(CASE WHEN row_count >= 0 THEN row_count ELSE 0 END) AS total_rows
                 FROM history
                 WHERE 1 = 1
@@ -879,7 +913,7 @@ actor QueryHistoryStorage {
             WITH windowed AS (
                 SELECT fingerprint_hash,
                        CASE WHEN executed_at >= ? THEN 1 ELSE 0 END AS is_recent,
-                       execution_time
+                       \(Self.databaseTimeExpression) AS execution_time
                 FROM history
                 WHERE was_successful = 1 AND executed_at >= ? AND executed_at < ?
             """, .double(middle), .double(start), .double(end))
@@ -1162,7 +1196,16 @@ actor QueryHistoryStorage {
             executionTime: sqlite3_column_double(statement, 9),
             rowCount: Int(sqlite3_column_int(statement, 10)),
             wasSuccessful: sqlite3_column_int(statement, 11) == 1,
-            errorMessage: sqlite3_column_text(statement, 12).map { String(cString: $0) }
+            errorMessage: sqlite3_column_text(statement, 12).map { String(cString: $0) },
+            firstRowTime: optionalDouble(statement, 13),
+            serverTime: optionalDouble(statement, 14)
         )
+    }
+
+    /// A NULL column reads back as 0.0 through `sqlite3_column_double`, and 0.0 is a query that
+    /// took no time rather than one that was never measured.
+    private func optionalDouble(_ statement: OpaquePointer?, _ index: Int32) -> TimeInterval? {
+        guard let statement, sqlite3_column_type(statement, index) != SQLITE_NULL else { return nil }
+        return sqlite3_column_double(statement, index)
     }
 }

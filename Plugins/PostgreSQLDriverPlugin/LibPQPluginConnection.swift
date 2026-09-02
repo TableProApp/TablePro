@@ -39,6 +39,10 @@ struct LibPQPluginQueryResult {
     let affectedRows: Int
     let commandTag: String?
     let isTruncated: Bool
+
+    /// Send to first row, when the read went through single-row mode and could see one. The
+    /// buffered `PQexec` path has no such boundary and leaves it nil.
+    var firstRowTime: TimeInterval?
 }
 
 // MARK: - Type Mapping
@@ -546,6 +550,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
         let generation = cancellationGate.beginQuery()
         defer { cancellationGate.endQuery(generation) }
 
+        /// Started before the drain, so a result the previous statement abandoned is charged to the
+        /// time before the first row rather than appearing as this query's row transfer.
+        let sentAt = Date()
         while let stale = PQgetResult(conn) { PQclear(stale) }
 
         /// Cancelling a statement inside a transaction block puts the transaction into the aborted
@@ -573,9 +580,11 @@ final class LibPQPluginConnection: @unchecked Sendable {
         var commandTag: String?
         var truncated = false
         var pendingError: Error?
+        var firstRowTime: TimeInterval?
 
         while let result = PQgetResult(conn) {
             let status = PQresultStatus(result)
+            if firstRowTime == nil { firstRowTime = Date().timeIntervalSince(sentAt) }
 
             if status == PGRES_SINGLE_TUPLE {
                 let columns = metadata ?? readColumnMetadata(from: result)
@@ -644,7 +653,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
             rows: rows,
             affectedRows: affectedRows,
             commandTag: commandTag,
-            isTruncated: truncated
+            isTruncated: truncated,
+            firstRowTime: firstRowTime ?? Date().timeIntervalSince(sentAt)
         )
         return applySpatialRendering(to: bounded)
     }
@@ -1009,7 +1019,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
             rows: rows,
             affectedRows: result.affectedRows,
             commandTag: result.commandTag,
-            isTruncated: result.isTruncated
+            isTruncated: result.isTruncated,
+            firstRowTime: result.firstRowTime
         )
     }
 

@@ -21,6 +21,6 @@
 	<key>NSPrincipalClass</key>
 	<string>$(PRODUCT_MODULE_NAME).CassandraPlugin</string>
 	<key>TableProPluginKitVersion</key>
-	<integer>20</integer>
+	<integer>21</integer>
 </dict>
 </plist>

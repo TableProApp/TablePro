@@ -362,6 +362,8 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         return indexes
     }
 
+    var tableDDLIncludesForeignKeys: Bool { true }
+
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
         let safeTable = escapeLiteral(table)
         let query = """
@@ -455,8 +457,11 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             throw LibPQPluginError(message: "Failed to fetch DDL for table '\(table)'", sqlState: nil, detail: nil)
         }
 
+        var parts = columnDefs
+        parts.append(contentsOf: try await foreignKeyClauses(table: table, schema: schema))
+
         let ddl = "CREATE TABLE \(quotedSchema).\(quotedTable) (\n  " +
-            columnDefs.joined(separator: ",\n  ") +
+            parts.joined(separator: ",\n  ") +
             "\n);"
 
         do {
@@ -477,6 +482,32 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             Self.logger.debug("Could not fetch DISTKEY/SORTKEY info: \(error.localizedDescription)")
         }
         return ddl
+    }
+
+    /// `SHOW TABLE` declares foreign keys inline, so the reconstruction below has to as well or
+    /// `tableDDLIncludesForeignKeys` would be true of one path and false of the other, and a SQL
+    /// export would drop every constraint whenever the fallback ran. A failed lookup therefore
+    /// throws rather than returning nothing, because nothing here is indistinguishable from a
+    /// table that has no foreign keys.
+    private func foreignKeyClauses(table: String, schema: String?) async throws -> [String] {
+        let foreignKeys = try await fetchForeignKeys(table: table, schema: schema)
+        var orderedNames: [String] = []
+        var grouped: [String: [PluginForeignKeyInfo]] = [:]
+        for foreignKey in foreignKeys {
+            if grouped[foreignKey.name] == nil { orderedNames.append(foreignKey.name) }
+            grouped[foreignKey.name, default: []].append(foreignKey)
+        }
+        return orderedNames.compactMap { name in
+            guard let group = grouped[name], let first = group.first else { return nil }
+            let columns = group.map { quoteIdentifier($0.column) }.joined(separator: ", ")
+            let referencedColumns = group.map { quoteIdentifier($0.referencedColumn) }.joined(separator: ", ")
+            let referencedSchema = first.referencedSchema.flatMap { $0.isEmpty ? nil : $0 }
+            let referencedTable = referencedSchema.map {
+                "\(quoteIdentifier($0)).\(quoteIdentifier(first.referencedTable))"
+            } ?? quoteIdentifier(first.referencedTable)
+            return "CONSTRAINT \(quoteIdentifier(name)) FOREIGN KEY (\(columns))"
+                + " REFERENCES \(referencedTable) (\(referencedColumns))"
+        }
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {

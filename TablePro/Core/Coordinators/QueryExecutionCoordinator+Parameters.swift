@@ -116,10 +116,6 @@ extension QueryExecutionCoordinator {
         }
         let tab = parent.tabManager.tabs[index]
 
-        if PluginManager.shared.supportsQueryProgress(for: parent.connection.type) {
-            parent.installClickHouseProgressHandler()
-        }
-
         let conn = parent.connection
         let tabId = parent.tabManager.tabs[index].id
         let claim = parent.tabExecution.claim(tabId)
@@ -319,7 +315,7 @@ extension QueryExecutionCoordinator {
                 applyMultiStatementResults(
                     tabId: tabId,
                     claim: claim,
-                    cumulativeTime: results.reduce(0) { $0 + $1.executionTime },
+                    timing: PluginQueryTiming.batch(of: results),
                     totalRowsAffected: results.reduce(0) { $0 + $1.rowsAffected },
                     newResultSets: resultSets
                 )
@@ -339,7 +335,7 @@ extension QueryExecutionCoordinator {
                     statements: statements,
                     executedCount: results.count,
                     totalCount: totalCount,
-                    cumulativeTime: results.reduce(0) { $0 + $1.executionTime },
+                    timing: PluginQueryTiming.batch(of: results),
                     failedSQL: failedSQL,
                     resultSets: &resultSets
                 )
@@ -509,10 +505,7 @@ extension QueryExecutionCoordinator {
                 ])
                 return
             }
-            if PluginManager.shared.supportsQueryProgress(for: parent.connection.type) {
-                parent.clearClickHouseProgress()
-            }
-            parent.toolbarState.lastQueryDuration = fetchResult.executionTime
+            parent.toolbarState.lastQueryTiming = fetchResult.resolvedTiming
             reportOperation(
                 kind: .query,
                 claim: claim,
@@ -541,7 +534,8 @@ extension QueryExecutionCoordinator {
                 isTruncated: fetchResult.isTruncated,
                 queryParameterValues: originalParameters,
                 historySQL: originalSQL,
-                anchor: anchor
+                anchor: anchor,
+                timing: fetchResult.resolvedTiming
             )
 
             let parameterValues = nativeParameters.map { $0 as? String }
@@ -562,10 +556,11 @@ extension QueryExecutionCoordinator {
         statements: [SQLStatementScanner.ExecutableStatement],
         executedCount: Int,
         totalCount: Int,
-        cumulativeTime: TimeInterval,
+        timing: PluginQueryTiming,
         failedSQL: String?,
         resultSets: inout [ResultSet]
     ) async {
+        let cumulativeTime = timing.total
         /// A statement failure knows which statement it was: `executedCount` counts the ones that finished, so the
         /// next one is the one that threw. A commit failure knows no such thing. Every statement ran and the
         /// transaction failed on the way out, so numbering it `executedCount + 1` invented a statement past the end
@@ -621,7 +616,7 @@ extension QueryExecutionCoordinator {
             parent.seedBufferFromActiveResult(tabId: tabId)
             if parent.tabManager.selectedTabId == tabId {
                 parent.toolbarState.isResultsCollapsed = false
-                parent.toolbarState.lastQueryDuration = cumulativeTime
+                parent.toolbarState.lastQueryTiming = timing
                 parent.announceQueryError(contextMsg)
             }
 
