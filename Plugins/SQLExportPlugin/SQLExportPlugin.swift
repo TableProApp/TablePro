@@ -35,6 +35,11 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
     var ddlFailures: [String] = []
     var metadataWarnings: [String] = []
 
+    /// The tables a foreign key cycle left the ordering unable to place. They keep the order the
+    /// export tree gave them, which is the only order left once no parent-first one exists, and
+    /// the dump says so rather than reading as if it were restorable with the checks on.
+    var tablesUnorderedByCycle: [String] = []
+
     /// A dump refers to its tables unqualified whenever every selected table lives in one
     /// container, which is what makes it restorable into any database. Qualifying became necessary
     /// only once an export could span two containers holding the same table name: unqualified there
@@ -77,6 +82,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         ddlFailures = []
         metadataWarnings = []
         exportSpansContainers = false
+        tablesUnorderedByCycle = []
 
         let actualDestination: URL
         let gzipTempURL: URL?
@@ -105,6 +111,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             let fkMap = await prefetchForeignKeys(tables: tables, dataSource: dataSource)
             let sortedTables = topologicallySort(tables, fkMap: fkMap)
             noteContainerSpan(of: sortedTables)
+            try writeDependencyCycleNote(to: fileHandle)
 
             try writeDropPhase(sortedTables: sortedTables, dataSource: dataSource, to: fileHandle)
             try await writeDependentTypesAndSequences(
@@ -146,7 +153,8 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         var warnings: [String] = []
         if !ddlFailures.isEmpty {
             let failedTables = ddlFailures.joined(separator: ", ")
-            warnings.append("Could not fetch table structure for: \(failedTables)")
+            warnings.append(String(
+                format: String(localized: "Could not fetch table structure for: %@"), failedTables))
         }
         warnings.append(contentsOf: metadataWarnings)
         return ExportFormatResult(warnings: warnings)
@@ -200,8 +208,8 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             }
         }
         if anyGroupFailed {
-            metadataWarnings.append(
-                "Could not fetch foreign keys; FK constraints may be missing from the export.")
+            metadataWarnings.append(String(localized:
+                "Could not fetch foreign keys, so foreign key constraints may be missing from the export."))
         }
         return merged
     }
@@ -224,8 +232,8 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             }
         }
         if anyGroupFailed {
-            metadataWarnings.append(
-                "Could not fetch column metadata; identity columns and generated columns may not round-trip correctly.")
+            metadataWarnings.append(String(localized:
+                "Could not fetch column metadata, so identity and generated columns may not round-trip correctly."))
         }
         return merged
     }
@@ -237,8 +245,28 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         let byIdentifier = Dictionary(
             tables.map { (node(for: $0).identifier, $0) },
             uniquingKeysWith: { first, _ in first })
-        let ordered = ForeignKeyTopologicalSort.ordered(tables.map { node(for: $0) }, foreignKeysByTable: fkMap)
-        return ordered.compactMap { byIdentifier[$0.identifier] }
+        let ordering = ForeignKeyTopologicalSort.order(tables.map { node(for: $0) }, foreignKeysByTable: fkMap)
+        tablesUnorderedByCycle = ordering.unorderedByCycle.map { $0.identifier }
+        return ordering.tables.compactMap { byIdentifier[$0.identifier] }
+    }
+
+    /// The warning states what the file is rather than prescribing a remedy, because the remedy is
+    /// not the same everywhere: `foreignKeyDisableStatements` is nil on SQL Server, Oracle,
+    /// Snowflake and DuckDB, so telling every user to import with the checks off would be wrong on
+    /// the engines that cannot turn them off.
+    private func writeDependencyCycleNote(to fileHandle: FileHandle) throws {
+        guard !tablesUnorderedByCycle.isEmpty else { return }
+        let names = tablesUnorderedByCycle.joined(separator: ", ")
+        metadataWarnings.append(String(
+            format: String(localized: """
+                Foreign keys between %@ reference each other, so no order puts every parent before \
+                its children. Those tables are written in the order they were listed, and the dump \
+                cannot be restored while foreign keys are enforced.
+                """),
+            names))
+        let note = "-- Warning: \(PluginExportUtilities.sanitizeForSQLComment(names)) reference each other.\n"
+            + "-- No parent-first order exists, so they are written in the order they were listed.\n\n"
+        try fileHandle.write(contentsOf: note.toUTF8Data())
     }
 
     private func writeDropPhase(
@@ -361,13 +389,19 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         to fileHandle: FileHandle
     ) throws {
         var emittedAnything = false
-        for table in sortedTables where optionValue(table, at: 0) {
-            let fks = fkMap[node(for: table).identifier] ?? []
-            let grouped = groupForeignKeysByConstraint(fks)
-            for group in grouped {
-                let alter = renderAddConstraintFK(table: table, group: group, dataSource: dataSource)
-                try fileHandle.write(contentsOf: "\(alter)\n".toUTF8Data())
-                emittedAnything = true
+        /// A driver that hands back the server's own CREATE statement has already declared these
+        /// constraints inline, so adding them again names each one twice: MySQL and SQL Server
+        /// reject the duplicate, and SQLite has no ADD CONSTRAINT to reject it with. The phase
+        /// exists for the drivers whose DDL leaves foreign keys out, PostgreSQL and Oracle.
+        if !dataSource.tableDDLIncludesForeignKeys {
+            for table in sortedTables where optionValue(table, at: 0) {
+                let fks = fkMap[node(for: table).identifier] ?? []
+                let grouped = groupForeignKeysByConstraint(fks)
+                for group in grouped {
+                    let alter = renderAddConstraintFK(table: table, group: group, dataSource: dataSource)
+                    try fileHandle.write(contentsOf: "\(alter)\n".toUTF8Data())
+                    emittedAnything = true
+                }
             }
         }
 
@@ -425,11 +459,13 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         let containers = Set(tables.map { $0.containerName ?? "" })
         exportSpansContainers = containers.count > 1
         guard exportSpansContainers else { return }
-        metadataWarnings.append(
-            "Warning: this export spans \(containers.count) databases or schemas. Table references are "
-                + "qualified, but CREATE TABLE comes from the server unqualified, so restore it into the "
-                + "matching database or schema."
-        )
+        metadataWarnings.append(String(
+            format: String(localized: """
+                This export spans %lld databases or schemas. Table references are qualified, but \
+                CREATE TABLE comes from the server unqualified, so restore it into the matching \
+                database or schema.
+                """),
+            Int64(containers.count)))
     }
 
     private func qualifiedRef(

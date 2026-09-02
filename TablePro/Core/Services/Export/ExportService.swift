@@ -50,7 +50,7 @@ struct ExportState {
     var totalRows: Int = 0
     var statusMessage: String = ""
     var errorMessage: String?
-    var warningMessage: String?
+    var warnings: [String] = []
 }
 
 // MARK: - Export Service
@@ -171,9 +171,7 @@ final class ExportService {
 
         state.processedRows = progress.processedRows
 
-        if !result.warnings.isEmpty {
-            state.warningMessage = result.warnings.joined(separator: "\n")
-        }
+        state.warnings = result.warnings
     }
 
     // MARK: - Statement Timeout
@@ -269,9 +267,7 @@ final class ExportService {
 
         state.processedRows = progress.processedRows
 
-        if !result.warnings.isEmpty {
-            state.warningMessage = result.warnings.joined(separator: "\n")
-        }
+        state.warnings = result.warnings
     }
 
     func exportStreamingQuery(
@@ -341,9 +337,7 @@ final class ExportService {
 
         state.processedRows = progress.processedRows
 
-        if !result.warnings.isEmpty {
-            state.warningMessage = result.warnings.joined(separator: "\n")
-        }
+        state.warnings = result.warnings
     }
 
     // MARK: - Row Count Fetching

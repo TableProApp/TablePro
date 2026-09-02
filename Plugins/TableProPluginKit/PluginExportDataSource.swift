@@ -14,6 +14,7 @@ public protocol PluginExportDataSource: AnyObject, Sendable {
     func fetchAllColumns(databaseName: String) async throws -> [String: [PluginColumnInfo]]
     func fetchForeignKeys(table: String, databaseName: String) async throws -> [PluginForeignKeyInfo]
     func fetchAllForeignKeys(databaseName: String) async throws -> [String: [PluginForeignKeyInfo]]
+    var tableDDLIncludesForeignKeys: Bool { get }
 }
 
 public extension PluginExportDataSource {
@@ -23,4 +24,9 @@ public extension PluginExportDataSource {
     func fetchAllColumns(databaseName: String) async throws -> [String: [PluginColumnInfo]] { [:] }
     func fetchForeignKeys(table: String, databaseName: String) async throws -> [PluginForeignKeyInfo] { [] }
     func fetchAllForeignKeys(databaseName: String) async throws -> [String: [PluginForeignKeyInfo]] { [:] }
+
+    /// Mirrors `PluginDatabaseDriver.tableDDLIncludesForeignKeys` for the export side: `true` means
+    /// `fetchTableDDL` already declares them, so a format that defers foreign keys must not add
+    /// them a second time.
+    var tableDDLIncludesForeignKeys: Bool { false }
 }

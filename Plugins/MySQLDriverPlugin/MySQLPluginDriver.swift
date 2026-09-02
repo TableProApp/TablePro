@@ -501,6 +501,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     var providesBulkForeignKeyFetch: Bool { true }
 
+    var tableDDLIncludesForeignKeys: Bool { true }
+
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         let dbName = _activeDatabase
         let escapedDb = dbName.replacingOccurrences(of: "'", with: "''")

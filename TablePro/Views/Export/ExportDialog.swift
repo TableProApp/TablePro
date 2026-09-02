@@ -161,7 +161,10 @@ struct ExportDialog: View {
         }
         .onChange(of: showSuccessDialog) { _, isShowing in
             guard isShowing else { return }
-            TransferResultAlert.presentExportSuccess(window: hostWindow) { choice in
+            TransferResultAlert.presentExportSuccess(
+                warnings: exportService?.state.warnings ?? [],
+                window: hostWindow
+            ) { choice in
                 showSuccessDialog = false
                 if choice == .openFolder {
                     openContainingFolder()
@@ -838,7 +841,7 @@ struct ExportDialog: View {
             isExporting = false
             recordSuccessfulExport()
 
-            if hideSuccessDialog {
+            if hideSuccessDialog, exportService?.state.warnings.isEmpty ?? true {
                 isPresented = false
             } else {
                 showSuccessDialog = true
@@ -905,7 +908,7 @@ struct ExportDialog: View {
             isExporting = false
             recordSuccessfulExport()
 
-            if hideSuccessDialog {
+            if hideSuccessDialog, exportService?.state.warnings.isEmpty ?? true {
                 isPresented = false
             } else {
                 showSuccessDialog = true

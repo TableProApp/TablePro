@@ -484,6 +484,9 @@ targets:
       - Plugins/RedisDriverPlugin/RedisSentinelResolver.swift
       - Plugins/RedisDriverPlugin/RedisStatementGenerator.swift
       - Plugins/RedisDriverPlugin/RedisTopologyDiagnostics.swift
+      - Plugins/SQLExportPlugin/SQLExportModels.swift
+      - Plugins/SQLExportPlugin/SQLExportOptionsView.swift
+      - Plugins/SQLExportPlugin/SQLExportPlugin.swift
       - Plugins/SQLImportPlugin/SQLImportFailure.swift
       - Plugins/SQLImportPlugin/SQLImportOptions.swift
       - Plugins/SQLImportPlugin/SQLImportOptionsView.swift

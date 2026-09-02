@@ -23,7 +23,7 @@ final class PluginManager {
     /// v19 host. Measured on a rebuilt CassandraDriver, which implements none of them and imports
     /// all six. Left at 19, such a plugin passes `validateBundleVersions` in a shipped v19 app and
     /// then fails `Bundle.loadAndReturnError`; at 20 that app refuses it and says to update.
-    nonisolated static let currentPluginKitVersion = 20
+    nonisolated static let currentPluginKitVersion = 21
 
     /// Still 19, so every plugin already published for the previous release keeps loading.
     nonisolated static let minimumCompatiblePluginKitVersion = 19

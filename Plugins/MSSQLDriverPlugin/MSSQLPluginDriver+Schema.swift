@@ -331,6 +331,8 @@ extension MSSQLPluginDriver {
 
     var providesBulkForeignKeyFetch: Bool { true }
 
+    var tableDDLIncludesForeignKeys: Bool { true }
+
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         let esc = effectiveSchemaEscaped(schema)
         let sql = """

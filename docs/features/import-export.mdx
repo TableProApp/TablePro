@@ -70,6 +70,8 @@ A whole-table export streams from the database at constant memory, with no row-c
     All three are on by default, so an SQL export carries `DROP TABLE IF EXISTS` unless you untick **Drop**. Run that file against the wrong database and it drops the tables first.
     </Warning>
 
+    A multi-table export orders the tables by their foreign keys, so a parent is created and filled before the rows that reference it and dropped after them. Foreign keys between two tables that reference each other leave no such order: those tables keep the order the export listed them in, the file says so in a comment, and the summary repeats it. Import that one with **Disable foreign key checks** ticked.
+
     Not available on MongoDB or Redis.
   </Tab>
   <Tab title="MQL">
@@ -147,7 +149,7 @@ The checkbox runs a different statement per engine, and one of them needs a priv
 | SQLite, libSQL, Cloudflare D1 | `PRAGMA foreign_keys = OFF` | Nothing |
 | Everything else | Nothing. The option is ignored | |
 
-A server that rejects the statement stops the import with that error, so clear the checkbox and run it again. A dump TablePro exported needs no privilege: it adds foreign keys with `ALTER TABLE … ADD CONSTRAINT` after the data.
+A server that rejects the statement stops the import with that error, so clear the checkbox and run it again. A dump TablePro exported usually needs no privilege, because its tables are already ordered parents first. On PostgreSQL and Oracle, whose `CREATE TABLE` leaves foreign keys out, the dump adds them with `ALTER TABLE … ADD CONSTRAINT` after the data instead.
 
 ### Import JSON
 
