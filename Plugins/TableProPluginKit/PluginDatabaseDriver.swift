@@ -139,6 +139,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath]
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]]
     var providesBulkForeignKeyFetch: Bool { get }
+    var tableDDLIncludesForeignKeys: Bool { get }
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]]
     var providesBulkIndexFetch: Bool { get }
     func fetchAllTableMetadata(schema: String?) async throws -> [String: PluginTableMetadata]
@@ -457,6 +458,16 @@ public extension PluginDatabaseDriver {
     func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath] {
         []
     }
+
+    /// Answers whether `fetchTableDDL` already carries the table's FOREIGN KEY constraints, which
+    /// every driver returning the server's own CREATE statement does. A SQL export defers foreign
+    /// keys to `ALTER TABLE ... ADD CONSTRAINT` after the data, so it must skip that for a driver
+    /// answering `true` or the dump declares each constraint twice, and SQLite has no such
+    /// statement to declare it with at all.
+    ///
+    /// Defaults to `false`, which is the behaviour every driver shipped before this existed: the
+    /// export adds the foreign keys itself. A driver whose DDL carries them overrides it.
+    var tableDDLIncludesForeignKeys: Bool { false }
 
     /// Answers whether `fetchAllForeignKeys` is a single query rather than the N+1 default below.
     /// The app reads this before fetching a whole schema's foreign keys up front, so a driver that

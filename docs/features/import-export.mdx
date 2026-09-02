@@ -63,12 +63,22 @@ A whole-table export streams from the database at constant memory, with no row-c
     |--------|---------|
     | Compress with gzip (`.sql.gz`) | No |
     | Batch size (rows per INSERT: 1, 100, 500, 1,000) | 500 |
+    | Exclude the AUTO_INCREMENT counter | Yes |
+    | Exclude DEFINER clauses | Yes |
 
     Structure (CREATE TABLE), Drop (DROP TABLE IF EXISTS), and Data (INSERT statements) are per-table checkboxes, and a multi-table export can mix them.
 
     <Warning>
     All three are on by default, so an SQL export carries `DROP TABLE IF EXISTS` unless you untick **Drop**. Run that file against the wrong database and it drops the tables first.
     </Warning>
+
+    A multi-table export orders the tables by their foreign keys, so a parent is created and filled before the rows that reference it and dropped after them. Foreign keys between two tables that reference each other leave no such order: those tables keep the order the export listed them in, the file says so in a comment, and the summary repeats it. Import that one with **Disable foreign key checks** ticked.
+
+    The last two exclusions cover MySQL and MariaDB, and pass every other engine through untouched.
+
+    Excluding the counter drops `AUTO_INCREMENT=<n>` from the table options and leaves the column's own `AUTO_INCREMENT` attribute alone. Restoring rows sets the counter one past the highest key in the data, so a source counter that had run ahead of its rows, after deletes or a reset, does not carry over.
+
+    Excluding definers drops `DEFINER=user@host` from a view. The account running the import becomes the definer, and `SQL SECURITY` is untouched, so a definer-rights view then runs with that account's privileges. Keep the clause and the import fails with `ERROR 1227 (42000): Access denied; you need (at least one of) the SET USER privilege(s) for this operation` unless the importing account is privileged, and a view that does get created answers `ERROR 1446 (HY000): The user specified as a definer ('…') does not exist` on every query against it. An invoker-rights view still runs as its caller.
 
     Not available on MongoDB or Redis.
   </Tab>
@@ -147,7 +157,7 @@ The checkbox runs a different statement per engine, and one of them needs a priv
 | SQLite, libSQL, Cloudflare D1 | `PRAGMA foreign_keys = OFF` | Nothing |
 | Everything else | Nothing. The option is ignored | |
 
-A server that rejects the statement stops the import with that error, so clear the checkbox and run it again. A dump TablePro exported needs no privilege: it adds foreign keys with `ALTER TABLE … ADD CONSTRAINT` after the data.
+A server that rejects the statement stops the import with that error, so clear the checkbox and run it again. A dump TablePro exported usually needs no privilege, because its tables are already ordered parents first. On PostgreSQL and Oracle, whose `CREATE TABLE` leaves foreign keys out, the dump adds them with `ALTER TABLE … ADD CONSTRAINT` after the data instead.
 
 ### Import JSON
 

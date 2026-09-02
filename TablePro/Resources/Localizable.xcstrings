@@ -172,6 +172,146 @@
         }
       }
     },
+    "Exclude the AUTO_INCREMENT counter" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AUTO_INCREMENT 카운터 제외"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AUTO_INCREMENT sayacını hariç tut"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bỏ bộ đếm AUTO_INCREMENT"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排除 AUTO_INCREMENT 计数器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排除 AUTO_INCREMENT 計數器"
+          }
+        }
+      }
+    },
+    "Exclude DEFINER clauses" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DEFINER 절 제외"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DEFINER yan tümcelerini hariç tut"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bỏ mệnh đề DEFINER"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排除 DEFINER 子句"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排除 DEFINER 子句"
+          }
+        }
+      }
+    },
+    "MySQL and MariaDB. Drops the account a view was created under. The importing account becomes the definer, so the view runs with its privileges. An account the target server does not have makes the import fail." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL 및 MariaDB. 뷰를 만든 계정을 제외합니다. 가져오는 계정이 정의자가 되므로 뷰는 해당 계정의 권한으로 실행됩니다. 대상 서버에 없는 계정은 가져오기를 실패하게 만듭니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL ve MariaDB. Görünümün oluşturulduğu hesabı çıkarır. İçe aktaran hesap tanımlayıcı olur, böylece görünüm o hesabın ayrıcalıklarıyla çalışır. Hedef sunucuda bulunmayan bir hesap içe aktarmayı başarısız kılar."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL và MariaDB. Bỏ tài khoản đã tạo view. Tài khoản nhập dữ liệu trở thành người định nghĩa, nên view chạy với quyền của tài khoản đó. Tài khoản không có trên máy chủ đích sẽ làm việc nhập thất bại."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL 和 MariaDB。移除创建视图所用的账户。导入的账户成为定义者，视图将以该账户的权限运行。目标服务器上不存在的账户会导致导入失败。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL 和 MariaDB。移除建立檢視表所用的帳戶。匯入的帳戶會成為定義者，檢視表將以該帳戶的權限執行。目標伺服器上不存在的帳戶會導致匯入失敗。"
+          }
+        }
+      }
+    },
+    "MySQL and MariaDB. Drops the table's next key value. The column keeps its AUTO_INCREMENT attribute, and restoring rows sets the counter from the data." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL 및 MariaDB. 테이블의 다음 키 값을 제외합니다. 열은 AUTO_INCREMENT 속성을 유지하며, 행을 복원하면 데이터를 기준으로 카운터가 설정됩니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL ve MariaDB. Tablonun bir sonraki anahtar değerini çıkarır. Sütun AUTO_INCREMENT özelliğini korur ve satırlar geri yüklendiğinde sayaç verilerden belirlenir."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL và MariaDB. Bỏ giá trị khóa kế tiếp của bảng. Cột vẫn giữ thuộc tính AUTO_INCREMENT, và khi khôi phục các hàng, bộ đếm được đặt theo dữ liệu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL 和 MariaDB。移除表的下一个键值。列仍保留 AUTO_INCREMENT 属性，恢复数据行时会根据数据设置计数器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL 和 MariaDB。移除資料表的下一個鍵值。欄位仍保留 AUTO_INCREMENT 屬性，還原資料列時會依資料設定計數器。"
+          }
+        }
+      }
+    },
     "—" : {
       "extractionState" : "stale",
       "localizations" : {

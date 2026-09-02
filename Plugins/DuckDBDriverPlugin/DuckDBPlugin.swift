@@ -602,6 +602,8 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
+    var tableDDLIncludesForeignKeys: Bool { true }
+
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
         let schemaName = resolveSchema(schema)
         let catalog = try requireCatalog()

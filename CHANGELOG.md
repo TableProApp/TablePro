@@ -10,11 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Breakdown of a query's time into server, first row and transfer, behind the toolbar's duration readout. (#2503)
+- Exclude the AUTO_INCREMENT counter and Exclude DEFINER clauses in the SQL export, both on by default. (#2516)
 
 ### Changed
 
-- Query Insights ranks on the time the database spent rather than on elapsed time. (#2503)
 - PluginKit ABI 21. Every registry plugin needs rebuilding before or with this release.
+- Query Insights ranks on the time the database spent rather than on elapsed time. (#2503)
+- Export summary reports the warnings an export produced, instead of a bare "Export completed". (#2517)
+
+### Fixed
+
+- Silent fallback order when foreign keys between the exported tables form a cycle. (#2517)
+- Foreign keys declared twice in a SQL export on MySQL, SQL Server, DuckDB, Snowflake, CockroachDB and Redshift, and as an unsupported `ALTER TABLE` on SQLite, libSQL and Cloudflare D1. (#2517)
+- Foreign keys missing from Redshift's reconstructed `CREATE TABLE`.
 
 ## [0.71.0] - 2026-09-02
 

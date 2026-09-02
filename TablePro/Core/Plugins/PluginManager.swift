@@ -14,16 +14,18 @@ import TableProPluginKit
 @MainActor @Observable
 final class PluginManager {
     static let shared = PluginManager()
-    /// Raised to 21 for `PluginQueryTiming` and the `PluginQueryResult` initializer that carries it.
+    /// Raised to 21 for two additions: `tableDDLIncludesForeignKeys` on `PluginDatabaseDriver` and
+    /// `PluginExportDataSource`, and `PluginQueryTiming` with the `PluginQueryResult` initializer
+    /// that carries it. Raised to 20 before that for the whole-schema index and table metadata
+    /// requirements.
     ///
-    /// Raised to 20 before that for the whole-schema index and table metadata requirements.
-    ///
-    /// Every one of these additions is safe in the direction Library Evolution covers, so an
-    /// already-built v19 or v20 plugin keeps loading here. The break is the other way round: a
-    /// plugin compiled against the new API emits undefined references to symbols an older host does
-    /// not have. Measured on a rebuilt ClickHouseDriver, whose `nm -u` lists
-    /// `PluginQueryTiming.init(total:firstRow:server:)` and that type's metadata accessor. Left at
-    /// 20, such a plugin passes `validateBundleVersions` in a shipped v20 app and then fails
+    /// Every one of these is safe in the direction Library Evolution covers, so an already-built
+    /// v19 or v20 plugin keeps loading here. The break is the other way round: a plugin compiled
+    /// against the new API emits undefined references to symbols an older host does not have.
+    /// Measured on a rebuilt ClickHouseDriver, whose `nm -u` lists
+    /// `PluginQueryTiming.init(total:firstRow:server:)` and that type's metadata accessor, and on a
+    /// rebuilt CassandraDriver for the v20 requirements it implements none of. Left at 20, such a
+    /// plugin passes `validateBundleVersions` in a shipped v20 app and then fails
     /// `Bundle.loadAndReturnError`; at 21 that app refuses it and says to update.
     nonisolated static let currentPluginKitVersion = 21
 
