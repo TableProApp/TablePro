@@ -45,7 +45,7 @@ There is no **SSH Tunnel** pane on SQLite, PGlite, libSQL, Beancount, BigQuery, 
 |---|---|
 | **Password** | The SSH password. Prefer a key on anything production |
 | **Private Key** | **Key File**, with **Browse** to pick one, and **Passphrase** if the key is encrypted. Leaving **Key File** empty auto-detects from `~/.ssh/config` and the default key locations |
-| **SSH Agent** | **Agent Socket**: **SSH_AUTH_SOCK** for the `ssh-agent` macOS runs, **1Password** for its socket at `~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock`, or **Custom Path** for Secretive or your own. Signing stays in the agent; the key is never read, and no key file is tried if the agent refuses |
+| **SSH Agent** | **Agent Socket**: **SSH_AUTH_SOCK** for the `ssh-agent` macOS runs, **1Password** for its socket at `~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock`, or **Custom Path** for Secretive or your own. **Identity File** takes a `.pub` and offers that key ahead of the others; empty offers every key the agent holds. Signing stays in the agent; the key is never read, and no key file is tried if the agent refuses |
 | **Keyboard Interactive** | The SSH password, sent through SSH's challenge-response. Use it when the server rejects plain password auth, common with PAM |
 | **None** | Nothing, for a server that authenticates the connection itself such as a [Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh) host. A server that does want credentials fails the connect with a message naming the other methods |
 
@@ -65,7 +65,9 @@ If a trusted server's key later changes, an **SSH Host Key Changed** alert lists
 
 ## Using ~/.ssh/config
 
-Pick an alias from the **Config Host** picker and `HostName`, `User`, `Port`, `IdentityFile`, `IdentityAgent`, and `ProxyJump` are resolved from the config at connect time. Anything typed into the form overrides the file, which is re-read whenever it or an `Include`d file changes.
+Pick an alias from the **Config Host** picker and `HostName`, `User`, `Port`, `IdentityFile`, `IdentitiesOnly`, `IdentityAgent`, and `ProxyJump` are resolved from the config at connect time. Anything typed into the form overrides the file, which is re-read whenever it or an `Include`d file changes.
+
+`IdentityFile` picks which agent key is offered, not only which key file is read, and a `.pub` is enough. That is how a 1Password or Secretive key gets pinned to a host. `IdentitiesOnly yes` then drops every agent key the config did not name, which is what keeps a thirty-key agent inside a server's `MaxAuthTries`.
 
 <Frame caption="Picking a host from ~/.ssh/config">
   <img className="block dark:hidden" src="/images/ssh-config-hosts.png" alt="Config Host picker" />
@@ -134,9 +136,21 @@ A jump host has no **Agent Socket** field of its own, so its agent comes from `I
 
 The agent answered and offered nothing. 1Password serves keys only while it is running and unlocked, and Secretive only while its agent is loaded; unlock it and add the key there. `ssh-add` loads keys into the `SSH_AUTH_SOCK` agent alone, so it is the fix only when that is the socket in the message.
 
+### "The SSH agent from … holds no key matching the identity file set for this host. …"
+
+The agent has keys, and none of them is the one `IdentityFile` or **Identity File** names. List what that agent holds with `SSH_AUTH_SOCK=<the socket the message names> ssh-add -L`, since a bare `ssh-add` reads the shell's `SSH_AUTH_SOCK` rather than the socket TablePro used. Point the setting at a key in that list, or clear it to go back to offering every key.
+
+### "No public key could be read from the identity file set for this host, …"
+
+`IdentityFile` or **Identity File** names a path, and neither it, its `.pub` sidecar, nor its `-cert.pub` parses as an OpenSSH public key. Check the path, and run `ssh-keygen -l -f <path>` to confirm the file itself. `ssh-keygen -y -f <private key> > <private key>.pub` writes the sidecar when only the private key exists.
+
 ### "SSH agent did not authenticate. …"
 
 The agent offered keys and the server accepted none of them. Check the public key is in `~/.ssh/authorized_keys` on the server for the **SSH User** you filled in, and that the key you expect is in the agent rather than only on disk.
+
+### "The SSH server closed the connection while the agent's keys were being offered. …"
+
+The server reached `MaxAuthTries`, 6 by default, before a key it accepts came up. Count that agent's keys with `SSH_AUTH_SOCK=<the socket in **Agent Socket**> ssh-add -L`: past six, the right one may never be offered. Name it with `IdentityFile` and `IdentitiesOnly yes` for the host in `~/.ssh/config`, or fill in **Identity File** on the connection.
 
 ### The tunnel connects and the database refuses the login
 

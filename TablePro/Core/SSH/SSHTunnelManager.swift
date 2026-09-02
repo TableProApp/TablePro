@@ -17,7 +17,10 @@ enum AuthFailureReason: Sendable, Hashable, CaseIterable {
     case privateKey
     case agentUnavailable(AgentSocketOrigin)
     case agentNoIdentities(AgentSocketOrigin)
+    case agentNoMatchingIdentity(AgentSocketOrigin)
+    case agentIdentityFileUnreadable
     case agentRejected
+    case agentServerClosedConnection
     case passwordlessRejected
     case keyboardInteractive
     case methodUnavailable
@@ -30,8 +33,9 @@ enum AuthFailureReason: Sendable, Hashable, CaseIterable {
         [.password, .verificationCode, .privateKey]
             + AgentSocketOrigin.allCases.map(AuthFailureReason.agentUnavailable)
             + AgentSocketOrigin.allCases.map(AuthFailureReason.agentNoIdentities)
-            + [.agentRejected, .passwordlessRejected, .keyboardInteractive, .methodUnavailable,
-               .cancelled, .generic]
+            + AgentSocketOrigin.allCases.map(AuthFailureReason.agentNoMatchingIdentity)
+            + [.agentIdentityFileUnreadable, .agentRejected, .agentServerClosedConnection, .passwordlessRejected,
+               .keyboardInteractive, .methodUnavailable, .cancelled, .generic]
     }
 }
 
@@ -110,8 +114,35 @@ enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
                     origin.whereTheSocketCameFrom,
                     origin.howToLoadAKey
                 )
+            case .agentNoMatchingIdentity(let origin):
+                return String(
+                    format: String(
+                        localized: """
+                        The SSH agent from %@ holds no key matching the identity file set for this host. Check that \
+                        the file names a key the agent has, or clear it to offer every key.
+                        """
+                    ),
+                    origin.whereTheSocketCameFrom
+                )
+            case .agentIdentityFileUnreadable:
+                return String(
+                    localized: """
+                    No public key could be read from the identity file set for this host, and IdentitiesOnly yes \
+                    allows no other key. Check the path, and that the file is an OpenSSH public key or has a .pub \
+                    beside it.
+                    """
+                )
             case .agentRejected:
                 return String(localized: "SSH agent did not authenticate. Run ssh-add -l to check loaded keys.")
+            case .agentServerClosedConnection:
+                return String(
+                    localized: """
+                    The SSH server closed the connection while the agent's keys were being offered. Servers accept \
+                    a limited number of tries, 6 by default, and an agent holding more keys than that runs out \
+                    before the right one. Name the key with IdentityFile and IdentitiesOnly yes for this host in \
+                    ~/.ssh/config, or set Identity File on this connection.
+                    """
+                )
             case .passwordlessRejected:
                 return String(localized: "The SSH server did not accept passwordless authentication. Choose Password, Private Key, or SSH Agent.")
             case .keyboardInteractive:

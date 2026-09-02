@@ -162,6 +162,19 @@ struct SSHProfileEditorView: View {
                 Text(agentSocketOption.explanation)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                LabeledContent(String(localized: "Identity File")) {
+                    HStack {
+                        TextField("", text: $privateKeyPath, prompt: Text("~/.ssh/id_ed25519.pub"))
+                        Button(String(localized: "Browse")) { browseForPrivateKey() }
+                            .controlSize(.small)
+                    }
+                }
+                Text(String(localized: """
+                Offers the agent key matching this public key file first. With IdentitiesOnly yes \
+                in ~/.ssh/config, only that key is offered.
+                """))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             } else if authMethod == .keyboardInteractive {
                 SecureField(String(localized: "Password"), text: $sshPassword)
                 Text(String(localized: "Password is sent via keyboard-interactive challenge-response."))

@@ -187,6 +187,151 @@ struct AgentAuthenticatorFailureTests {
             }
         }
     }
+
+    /// The reported case: a 1Password agent holding one key per server, and an `IdentityFile`
+    /// naming a key that is not in it. Offering all thirty is what `MaxAuthTries 6` disconnects
+    /// on, so nothing should be offered at all and the message should say why (#2601).
+    @Test("IdentitiesOnly with no agent key matching the identity file offers nothing (#2601)")
+    func identitiesOnlyWithoutAMatchReportsNoMatchingIdentity() throws {
+        let agent = try #require(FakeSSHAgent(identities: Self.identities(count: 30, from: 1)))
+        defer { agent.stop() }
+        let identityFile = try Self.writeIdentityFile(seed: 200)
+        defer { try? FileManager.default.removeItem(at: identityFile.deletingLastPathComponent()) }
+
+        try withTransportlessSession { session in
+            #expect(
+                throws: SSHTunnelError.authenticationFailed(reason: .agentNoMatchingIdentity(.agentSocketSetting))
+            ) {
+                try AgentAuthenticator(
+                    socketPath: agent.path,
+                    socketOrigin: .agentSocketSetting,
+                    identityFiles: [identityFile.path],
+                    identitiesOnly: true
+                ).authenticate(session: session, username: "alice")
+            }
+        }
+    }
+
+    /// The other half: a match is offered, so the run gets as far as `libssh2_agent_userauth` and
+    /// fails on the missing transport rather than on identity selection.
+    @Test("IdentitiesOnly with a matching identity file offers that key (#2601)")
+    func identitiesOnlyWithAMatchReachesUserauth() throws {
+        let agent = try #require(FakeSSHAgent(identities: Self.identities(count: 30, from: 1)))
+        defer { agent.stop() }
+        let identityFile = try Self.writeIdentityFile(seed: 20)
+        defer { try? FileManager.default.removeItem(at: identityFile.deletingLastPathComponent()) }
+
+        try withTransportlessSession { session in
+            let reason = Self.failureReason {
+                try AgentAuthenticator(
+                    socketPath: agent.path,
+                    socketOrigin: .agentSocketSetting,
+                    identityFiles: [identityFile.path],
+                    identitiesOnly: true
+                ).authenticate(session: session, username: "alice")
+            }
+
+            #expect(reason != .agentNoMatchingIdentity(.agentSocketSetting))
+            #expect(reason != .agentNoIdentities(.agentSocketSetting))
+            #expect(reason != nil)
+        }
+    }
+
+    /// An identity file that names nothing readable is a typo or a moved key, not "no preference".
+    /// Quietly offering all thirty keys there hands back the `MaxAuthTries` failure the file was
+    /// set to avoid, with nothing to say why (#2601).
+    @Test("IdentitiesOnly with an unreadable identity file refuses rather than offering every key (#2601)")
+    func identitiesOnlyWithAnUnreadableIdentityFileRefuses() throws {
+        let agent = try #require(FakeSSHAgent(identities: Self.identities(count: 30, from: 1)))
+        defer { agent.stop() }
+        let absent = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("tp-absent-\(UUID().uuidString).pub").path
+
+        try withTransportlessSession { session in
+            #expect(throws: SSHTunnelError.authenticationFailed(reason: .agentIdentityFileUnreadable)) {
+                try AgentAuthenticator(
+                    socketPath: agent.path,
+                    socketOrigin: .agentSocketSetting,
+                    identityFiles: [absent],
+                    identitiesOnly: true
+                ).authenticate(session: session, username: "alice")
+            }
+        }
+    }
+
+    /// Without `IdentitiesOnly`, `ssh` also falls back to the rest of the agent, so an unreadable
+    /// identity file must not turn a working connection into a hard failure.
+    @Test("An unreadable identity file without IdentitiesOnly still offers the agent's keys (#2601)")
+    func unreadableIdentityFileWithoutIdentitiesOnlyStillOffersKeys() throws {
+        let agent = try #require(FakeSSHAgent(identities: Self.identities(count: 3, from: 1)))
+        defer { agent.stop() }
+        let absent = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("tp-absent-\(UUID().uuidString).pub").path
+
+        try withTransportlessSession { session in
+            let reason = Self.failureReason {
+                try AgentAuthenticator(
+                    socketPath: agent.path,
+                    socketOrigin: .agentSocketSetting,
+                    identityFiles: [absent],
+                    identitiesOnly: false
+                ).authenticate(session: session, username: "alice")
+            }
+
+            #expect(reason != .agentIdentityFileUnreadable)
+            #expect(reason != .agentNoMatchingIdentity(.agentSocketSetting))
+        }
+    }
+
+    /// No identity file means no preference, which has to stay exactly what it was: every key the
+    /// agent holds, in the agent's order.
+    @Test("An agent with no identity file configured still offers its keys (#2601)")
+    func noIdentityFileOffersEveryKey() throws {
+        let agent = try #require(FakeSSHAgent(identities: Self.identities(count: 3, from: 1)))
+        defer { agent.stop() }
+
+        try withTransportlessSession { session in
+            let reason = Self.failureReason {
+                try AgentAuthenticator(socketPath: agent.path, socketOrigin: .agentSocketSetting)
+                    .authenticate(session: session, username: "alice")
+            }
+
+            #expect(reason != .agentNoMatchingIdentity(.agentSocketSetting))
+            #expect(reason != .agentNoIdentities(.agentSocketSetting))
+        }
+    }
+
+    private static func identities(count: Int, from first: UInt8) -> [(blob: [UInt8], comment: String)] {
+        (0 ..< count).map { offset in
+            let seed = first &+ UInt8(offset)
+            return (
+                blob: [UInt8](SSHPublicKeyFixture.blob(type: "ssh-ed25519", seed: seed)),
+                comment: "key-\(offset + 1)"
+            )
+        }
+    }
+
+    private static func writeIdentityFile(seed: UInt8) throws -> URL {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("tp-identity-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("selected.pub")
+        try SSHPublicKeyFixture.line(type: "ssh-ed25519", seed: seed)
+            .write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
+    private static func failureReason(_ body: () throws -> Void) -> AuthFailureReason? {
+        do {
+            try body()
+            return nil
+        } catch let error as SSHTunnelError {
+            guard case .authenticationFailed(let reason) = error else { return nil }
+            return reason
+        } catch {
+            return nil
+        }
+    }
 }
 
 private struct ThrowingAuthenticator: SSHAuthenticator {

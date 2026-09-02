@@ -27,6 +27,7 @@ struct BuildAuthenticatorTests {
         username: String = "alice",
         port: Int = 22,
         identityFiles: [String] = [],
+        identitiesOnly: Bool = false,
         agentSocketOrigin: AgentSocketOrigin = .environment
     ) -> ResolvedSSHTarget {
         ResolvedSSHTarget(
@@ -37,7 +38,7 @@ struct BuildAuthenticatorTests {
             identityFiles: identityFiles,
             agentSocketPath: "",
             agentSocketOrigin: agentSocketOrigin,
-            identitiesOnly: false,
+            identitiesOnly: identitiesOnly,
             useKeychain: false,
             addKeysToAgent: false,
             proxyJump: []
@@ -167,18 +168,27 @@ struct BuildAuthenticatorTests {
         #expect(composite.authenticators.last is KeyboardInteractiveAuthenticator)
     }
 
-    @Test("SSH agent auth never falls back to an identity file from ~/.ssh/config (#2583)")
-    func sshAgentIgnoresResolvedIdentityFiles() throws {
+    /// An identity file reaches the agent as the key to select, never as a key file to read: the
+    /// agent is the credential, and reading one the user never chose put TablePro's own passphrase
+    /// prompt over an agent that had simply not been reached (#2583). Selecting with it is what
+    /// keeps an agent holding more keys than the server allows tries usable (#2601), so the chain
+    /// stays two long while the files themselves are handed to the agent step.
+    @Test("SSH agent auth selects with an identity file rather than reading one (#2583, #2601)")
+    func sshAgentSelectsWithResolvedIdentityFiles() throws {
+        let identityFiles = ["/home/alice/.ssh/id_ed25519", "/home/alice/.ssh/id_rsa"]
         let authenticator = try LibSSH2TunnelFactory.buildAuthenticator(
             config: config(authMethod: .sshAgent, totpMode: .none),
-            resolved: resolved(identityFiles: ["/home/alice/.ssh/id_ed25519", "/home/alice/.ssh/id_rsa"]),
+            resolved: resolved(identityFiles: identityFiles, identitiesOnly: true),
             credentials: credentials()
         )
         let composite = try #require(authenticator as? CompositeAuthenticator)
 
         #expect(composite.authenticators.count == 2)
-        #expect(composite.authenticators.first is AgentAuthenticator)
         #expect(composite.authenticators.last is KeyboardInteractiveAuthenticator)
+
+        let agent = try #require(composite.authenticators.first as? AgentAuthenticator)
+        #expect(agent.identityFiles == identityFiles)
+        #expect(agent.identitiesOnly)
     }
 
     @Test("Private key auth still tries every resolved identity file")

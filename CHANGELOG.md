@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Script that checks the SQLite whole-schema reads against the per-table ones.
 - Middle-click on a tab to close it. (#2595)
 - Launch trace in Instruments' Points of Interest, and `TABLEPRO_LAUNCH_TRACE=1` for the same table on standard error.
+- Identity File on SSH Agent connections, and `IdentitiesOnly` from `~/.ssh/config`. (#2601)
 
 ### Changed
 
@@ -40,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A failed whole-schema trigger read counting as a schema with no triggers.
 - Compare & Sync publishing one pair's results after the pickers moved to another.
 - Clicks and hovers in the scrolled tab strip's edge padding landing on a tab clipped off the edge.
+- SSH Agent auth offering every key the agent holds, exhausting the server's `MaxAuthTries`. (#2601)
 
 ## [0.70.0] - 2026-09-01
 

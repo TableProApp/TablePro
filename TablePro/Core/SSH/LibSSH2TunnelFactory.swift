@@ -524,7 +524,12 @@ internal enum LibSSH2TunnelFactory {
 
             return CompositeAuthenticator(
                 authenticators: [
-                    AgentAuthenticator(socketPath: socketPath, socketOrigin: resolved.agentSocketOrigin),
+                    AgentAuthenticator(
+                        socketPath: socketPath,
+                        socketOrigin: resolved.agentSocketOrigin,
+                        identityFiles: resolved.identityFiles,
+                        identitiesOnly: resolved.identitiesOnly
+                    ),
                     KeyboardInteractiveAuthenticator(
                         password: nil,
                         totpProvider: buildTOTPProvider(config: config, credentials: credentials),
@@ -534,6 +539,8 @@ internal enum LibSSH2TunnelFactory {
                 endsChainOn: Set(
                     AgentSocketOrigin.allCases.map(AuthFailureReason.agentUnavailable)
                         + AgentSocketOrigin.allCases.map(AuthFailureReason.agentNoIdentities)
+                        + AgentSocketOrigin.allCases.map(AuthFailureReason.agentNoMatchingIdentity)
+                        + [.agentIdentityFileUnreadable, .agentServerClosedConnection]
                 )
             )
 
@@ -672,7 +679,12 @@ internal enum LibSSH2TunnelFactory {
                 : CompositeAuthenticator(authenticators: authenticators)
         case .sshAgent:
             let socketPath: String? = resolved.agentSocketPath.isEmpty ? nil : resolved.agentSocketPath
-            let agent = AgentAuthenticator(socketPath: socketPath, socketOrigin: resolved.agentSocketOrigin)
+            let agent = AgentAuthenticator(
+                socketPath: socketPath,
+                socketOrigin: resolved.agentSocketOrigin,
+                identityFiles: resolved.identityFiles,
+                identitiesOnly: resolved.identitiesOnly
+            )
             if !jumpHost.privateKeyPath.isEmpty {
                 let keyAuth = KeyFileAuthenticator(
                     keyPath: jumpHost.privateKeyPath,
