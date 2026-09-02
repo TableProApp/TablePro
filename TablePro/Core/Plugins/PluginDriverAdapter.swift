@@ -516,22 +516,6 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     var providesBulkForeignKeyFetch: Bool { pluginDriver.providesBulkForeignKeyFetch }
-    var providesBulkColumnFetch: Bool { pluginDriver.providesBulkColumnFetch }
-    var providesBulkIndexFetch: Bool { pluginDriver.providesBulkIndexFetch }
-    var providesBulkTableMetadataFetch: Bool { pluginDriver.providesBulkTableMetadataFetch }
-    var providesBulkTriggerFetch: Bool { pluginDriver.providesBulkTriggerFetch }
-
-    func fetchAllIndexes(schema: String?) async throws -> [String: [IndexInfo]] {
-        let pluginResult = try await pluginDriver.fetchAllIndexes(schema: schema ?? pluginDriver.currentSchema)
-        return pluginResult.mapValues { $0.map(Self.mapPluginIndex) }
-    }
-
-    func fetchAllTableMetadata(schema: String?) async throws -> [String: TableMetadata] {
-        let pluginResult = try await pluginDriver.fetchAllTableMetadata(
-            schema: schema ?? pluginDriver.currentSchema
-        )
-        return pluginResult.mapValues(Self.mapPluginTableMetadata)
-    }
 
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] {
         let pluginResult = try await pluginDriver.fetchAllForeignKeys(schema: pluginDriver.currentSchema)

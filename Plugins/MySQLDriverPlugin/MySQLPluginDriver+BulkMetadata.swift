@@ -77,7 +77,7 @@ extension MySQLPluginDriver {
     /// `SHOW INDEX` returns text, so both are cast rather than read through a text accessor that
     /// would depend on how the driver rendered an integer cell.
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]] {
-        let escapedDb = activeDatabaseName.replacingOccurrences(of: "'", with: "''")
+        let escapedDb = mysqlEscapeStringLiteral(routineSchema(schema))
         let query = """
             SELECT
                 TABLE_NAME, INDEX_NAME, COLUMN_NAME,
@@ -107,10 +107,12 @@ extension MySQLPluginDriver {
 
     var providesBulkTableMetadataFetch: Bool { true }
 
-    /// `SHOW TABLE STATUS` with no `WHERE` is the whole schema, in the same column order the
-    /// per-table read indexes into.
+    /// `SHOW TABLE STATUS FROM` with no `WHERE` is the whole schema, in the same column order the
+    /// per-table read indexes into. The database is named rather than inherited from the session,
+    /// so a caller asking about another one is answered about the one it asked about.
     func fetchAllTableMetadata(schema: String?) async throws -> [String: PluginTableMetadata] {
-        let result = try await execute(query: "SHOW TABLE STATUS")
+        let database = mysqlQuoteIdentifier(routineSchema(schema))
+        let result = try await execute(query: "SHOW TABLE STATUS FROM \(database)")
         var metadata: [String: PluginTableMetadata] = [:]
         for row in result.rows {
             guard let name = row[safe: 0]?.asText else { continue }

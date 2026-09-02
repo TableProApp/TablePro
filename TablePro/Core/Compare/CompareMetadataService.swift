@@ -368,11 +368,34 @@ internal struct CompareMetadataService {
 
     /// What a whole-schema read produced, or nothing where the driver has no single-query form for
     /// it and the per-table read still has to run.
+    /// A whole-schema answer plus the folded spellings of its own keys, indexed once. Every table
+    /// that is missing from a sparse map asks for the folded fallback, so computing it per lookup
+    /// made the fallback quadratic in the table count.
+    private struct FoldedMap<Value: Sendable>: Sendable {
+        let byName: [String: Value]
+        let byFoldedName: [String: Value]
+
+        init(_ map: [String: Value]) {
+            byName = map
+            var folded: [String: Value] = [:]
+            var collided: Set<String> = []
+            for (key, value) in map {
+                let name = key.lowercased()
+                guard !collided.contains(name) else { continue }
+                if folded.updateValue(value, forKey: name) != nil {
+                    folded.removeValue(forKey: name)
+                    collided.insert(name)
+                }
+            }
+            byFoldedName = folded
+        }
+    }
+
     private struct BulkMetadata: Sendable {
-        var columns: [String: [PluginColumnInfo]]?
-        var indexes: [String: [PluginIndexInfo]]?
-        var foreignKeys: [String: [PluginForeignKeyInfo]]?
-        var tableMetadata: [String: PluginTableMetadata]?
+        var columns: FoldedMap<[PluginColumnInfo]>?
+        var indexes: FoldedMap<[PluginIndexInfo]>?
+        var foreignKeys: FoldedMap<[PluginForeignKeyInfo]>?
+        var tableMetadata: FoldedMap<PluginTableMetadata>?
 
         /// The folded spellings that name exactly one table in this scope. A folded fallback is
         /// only safe for those.
@@ -396,16 +419,16 @@ internal struct CompareMetadataService {
             unambiguousFolded = Set(counts.filter { $0.value == 1 }.keys)
 
             if plugin.providesBulkColumnFetch {
-                columns = try? await plugin.fetchAllColumns(schema: schema)
+                columns = (try? await plugin.fetchAllColumns(schema: schema)).map(FoldedMap.init)
             }
             if profile.wantsIndexes, plugin.providesBulkIndexFetch {
-                indexes = try? await plugin.fetchAllIndexes(schema: schema)
+                indexes = (try? await plugin.fetchAllIndexes(schema: schema)).map(FoldedMap.init)
             }
             if profile.wantsForeignKeys, plugin.providesBulkForeignKeyFetch {
-                foreignKeys = try? await plugin.fetchAllForeignKeys(schema: schema)
+                foreignKeys = (try? await plugin.fetchAllForeignKeys(schema: schema)).map(FoldedMap.init)
             }
             if profile.wantsTableMetadata, plugin.providesBulkTableMetadataFetch {
-                tableMetadata = try? await plugin.fetchAllTableMetadata(schema: schema)
+                tableMetadata = (try? await plugin.fetchAllTableMetadata(schema: schema)).map(FoldedMap.init)
             }
         }
 
@@ -427,12 +450,12 @@ internal struct CompareMetadataService {
         /// entry, and PostgreSQL allows `"Foo"` beside `"foo"`: a folded match there handed one
         /// table's indexes to the other, and a DROP INDEX generated from that names the index
         /// alone, so it would have dropped the real one.
-        func lookup<Value>(_ map: [String: Value]?, _ name: String) -> Value? {
+        func lookup<Value>(_ map: FoldedMap<Value>?, _ name: String) -> Value? {
             guard let map else { return nil }
-            if let exact = map[name] { return exact }
+            if let exact = map.byName[name] { return exact }
             let folded = name.lowercased()
             guard unambiguousFolded.contains(folded) else { return nil }
-            return map.first { $0.key.lowercased() == folded }?.value
+            return map.byFoldedName[folded]
         }
     }
 

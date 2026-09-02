@@ -127,28 +127,6 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// per table, which is too expensive to run ahead of the user.
     var providesBulkForeignKeyFetch: Bool { get }
 
-    /// Whether `fetchAllColumns` is a single query that reports what per-table `fetchColumns`
-    /// reports. Both halves matter: a bulk query missing generated columns is not a substitute.
-    var providesBulkColumnFetch: Bool { get }
-
-    /// Fetch indexes for every table in the current schema in bulk.
-    /// Default implementation falls back to per-table fetchIndexes.
-    func fetchAllIndexes(schema: String?) async throws -> [String: [IndexInfo]]
-
-    /// Whether `fetchAllIndexes` is a single query.
-    var providesBulkIndexFetch: Bool { get }
-
-    /// Fetch table metadata for every table in the current schema in bulk.
-    /// Default implementation falls back to per-table fetchTableMetadata.
-    func fetchAllTableMetadata(schema: String?) async throws -> [String: TableMetadata]
-
-    /// Whether `fetchAllTableMetadata` is a single query.
-    var providesBulkTableMetadataFetch: Bool { get }
-
-    /// Whether `fetchAllTriggers` lists a whole schema's triggers. Its default answers with nothing
-    /// rather than looping, so a caller has to know before it decides to ask per table.
-    var providesBulkTriggerFetch: Bool { get }
-
     /// Fetch foreign keys for a specific set of tables.
     /// Default implementation calls fetchAllForeignKeys and filters, or falls back to per-table.
     func fetchForeignKeys(forTables tableNames: [String]) async throws -> [String: [ForeignKeyInfo]]
@@ -436,30 +414,6 @@ extension DatabaseDriver {
     }
 
     var providesBulkForeignKeyFetch: Bool { false }
-    var providesBulkColumnFetch: Bool { false }
-    var providesBulkIndexFetch: Bool { false }
-    var providesBulkTableMetadataFetch: Bool { false }
-    var providesBulkTriggerFetch: Bool { false }
-
-    func fetchAllIndexes(schema: String?) async throws -> [String: [IndexInfo]] {
-        let tables = try await fetchTables()
-        var result: [String: [IndexInfo]] = [:]
-        for table in tables {
-            let indexes = try await fetchIndexes(table: table.name)
-            if !indexes.isEmpty { result[table.name] = indexes }
-        }
-        return result
-    }
-
-    func fetchAllTableMetadata(schema: String?) async throws -> [String: TableMetadata] {
-        let tables = try await fetchTables()
-        var result: [String: TableMetadata] = [:]
-        for table in tables {
-            guard let metadata = try? await fetchTableMetadata(tableName: table.name) else { continue }
-            result[table.name] = metadata
-        }
-        return result
-    }
 
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] {
         let allTables = try await fetchTables()

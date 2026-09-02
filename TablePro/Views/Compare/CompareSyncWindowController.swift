@@ -159,9 +159,13 @@ internal final class CompareSyncWindowController: NSWindowController,
     private func insertSavedComparisonsItemOnce(into toolbar: NSToolbar) {
         let defaults = AppStorageEnvironment.shared.defaults
         guard !defaults.bool(forKey: Self.savedComparisonsInsertedKey) else { return }
+        if !toolbar.items.contains(where: { $0.itemIdentifier == .compareSaved }) {
+            toolbar.insertItem(withItemIdentifier: .compareSaved, at: 0)
+        }
+        /// Recorded once the item is in the toolbar, not before. Burning the flag ahead of the
+        /// insert left a window that had not placed the item with no second chance at it.
+        guard toolbar.items.contains(where: { $0.itemIdentifier == .compareSaved }) else { return }
         defaults.set(true, forKey: Self.savedComparisonsInsertedKey)
-        guard !toolbar.items.contains(where: { $0.itemIdentifier == .compareSaved }) else { return }
-        toolbar.insertItem(withItemIdentifier: .compareSaved, at: 0)
     }
 
     private static let savedComparisonsInsertedKey = "compareSyncToolbarHasSavedComparisonsItem"
@@ -478,9 +482,12 @@ internal final class CompareSyncWindowController: NSWindowController,
         presentApplySheet()
     }
 
+    /// `swapEndpoints` resets on its own, so only the chrome half runs here. Calling the whole
+    /// funnel reset the session twice for one press, which advanced the setup generation twice and
+    /// wrote the remembered setup twice.
     @objc internal func swapEndpoints(_ sender: Any?) {
         session.swapEndpoints()
-        endpointsChanged()
+        adoptChangedEndpoints()
     }
 
     /// Every path that changes an endpoint funnels here, because the toolbar's Source and Target
@@ -489,6 +496,10 @@ internal final class CompareSyncWindowController: NSWindowController,
     /// wrong database as the one about to be written to.
     private func endpointsChanged() {
         session.resetComparison()
+        adoptChangedEndpoints()
+    }
+
+    private func adoptChangedEndpoints() {
         session.clearSetupErrorIfResolved()
         refreshEndpointChrome()
     }
@@ -521,7 +532,7 @@ internal final class CompareSyncWindowController: NSWindowController,
     }
 
     @objc internal func stopComparison(_ sender: Any?) {
-        session.cancelRunningWork()
+        session.stopRunningWork()
     }
 
     /// Edit > Find > Find… already owns Command F and routes by nil target, so the Compare window

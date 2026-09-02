@@ -30,9 +30,6 @@ internal struct CompareOptionsView: View {
         .onAppear {
             savedProfiles = session.savedProfiles
         }
-        .onChange(of: session.mode) {
-            savedProfiles = session.savedProfiles
-        }
         .onChange(of: session.includedKinds) {
             session.resetComparison()
         }

@@ -19,6 +19,7 @@ internal enum CompareSyncActivity: Equatable {
     case idle
     case connecting
     case comparing
+    case buildingScript
     case applying
 }
 
@@ -118,6 +119,15 @@ internal final class CompareSyncSession {
     /// open on them, because an ordinary INSERT or ALTER is not a hazard `runRefusalReason` catches.
     private(set) var scriptRevision = 0
 
+    /// Which question the answers on screen were computed for.
+    ///
+    /// A comparison invalidates the script it just made stale, so a run that fenced its own report
+    /// on `scriptRevision` could never publish one: it had already advanced the revision itself.
+    /// Ticking a table or excluding a row is the other half of the same distinction. It changes
+    /// which statements come out of an answer that still stands, so it invalidates the script and
+    /// must not throw away a comparison that has been streaming rows for minutes.
+    private(set) var answerRevision = 0
+
     /// A setup problem, which outlives the comparison it interrupted. `errorMessage` is cleared by
     /// the next reset, and a reset is exactly what changing the setup does, so a message about the
     /// setup itself cannot live there: loading a profile whose connection is gone reported the
@@ -190,7 +200,7 @@ internal final class CompareSyncSession {
         switch activity {
         case .applying:
             return String(format: String(localized: "Applying to %@…"), target?.qualifiedDescription ?? "")
-        case .comparing, .connecting:
+        case .comparing, .connecting, .buildingScript:
             return String(localized: "Comparing only. Nothing has been written.")
         case .idle:
             return idleBannerText
@@ -425,6 +435,10 @@ internal final class CompareSyncSession {
     /// it. `hasWrittenToTarget` deliberately survives, because a write already happened and no
     /// later comparison makes that untrue.
     internal func resetComparison() {
+        /// The setup the work in flight was started for is the one being replaced, so it is stopped
+        /// here rather than left holding `runTask`. A preload taking that slot from an orphaned run
+        /// left Stop with nothing to cancel while the run went on reading.
+        cancelRunningWork()
         report = nil
         sourceSnapshots = [:]
         targetSnapshots = [:]
@@ -439,7 +453,7 @@ internal final class CompareSyncSession {
         informationalMessage = nil
         lastAction = .none
         isStaleAfterApply = false
-        invalidateScript()
+        invalidateAnswer()
         setupGeneration &+= 1
         /// Every path that resets a comparison is a path that changed the setup: an endpoint, the
         /// mode, or an option. So this is also where the setup is written down, and reopening the
@@ -457,16 +471,24 @@ internal final class CompareSyncSession {
     /// whatever the setup has become, which is exactly the ownership the fence is meant to check.
     internal struct RunClaim: Sendable {
         internal let setup: Int
+        internal let answer: Int
         internal let script: Int
         internal let mode: CompareSyncMode
     }
 
     internal var currentClaim: RunClaim {
-        RunClaim(setup: setupGeneration, script: scriptRevision, mode: mode)
+        RunClaim(setup: setupGeneration, answer: answerRevision, script: scriptRevision, mode: mode)
     }
 
+    /// For statements, which describe one setup, one answer and one set of choices.
     internal func owns(_ claim: RunClaim) -> Bool {
-        isCurrent(setup: claim.setup, script: claim.script)
+        ownsAnswer(claim) && claim.script == scriptRevision
+    }
+
+    /// For a comparison's own results and for anything it reports about itself. A run advances the
+    /// script revision as it publishes, so it cannot be fenced on the revision it started with.
+    internal func ownsAnswer(_ claim: RunClaim) -> Bool {
+        claim.setup == setupGeneration && claim.answer == answerRevision
     }
 
     /// The one place a table list is published, so the tables a saved comparison asked for are
@@ -492,6 +514,39 @@ internal final class CompareSyncSession {
         selectedPlanId = adopted.first { $0.isEnabled && $0.isComparable }?.id ?? adopted.first?.id
     }
 
+    /// The one place a structure report's inclusions are published, so what the user ticked while
+    /// the comparison ran survives it. The Include controls stay live throughout, and a rebuild
+    /// that reset them to nothing discarded every choice made during the run. This is the same rule
+    /// the data side already follows, where a rebuilt plan carries the tick it had.
+    internal func adoptActions(for report: CompareReport) {
+        let carried = actions
+        actions = [:]
+        for result in report.comparable {
+            if let action = carried[result.id] {
+                actions[result.id] = action
+            } else if pendingSelection.contains(result.id) {
+                actions[result.id] = result.suggestedAction
+            }
+        }
+        pendingSelection = []
+    }
+
+    /// A comparison streams every row of both sides, so the plans it started from can be minutes
+    /// old by the time it has summaries for them, and the ticks, keys and row exclusions stay live
+    /// throughout. Writing the run's own array back put every one of those edits behind the list it
+    /// captured before the first row was read. Only the summary belongs to the run, so only the
+    /// summary is carried over, and only onto a plan still asking the question the run answered.
+    internal func applyComparedSummaries(from compared: [DataComparePlan]) {
+        let byId = Dictionary(compared.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for index in dataPlans.indices {
+            guard let run = byId[dataPlans[index].id],
+                  run.keyColumns == dataPlans[index].keyColumns,
+                  run.columns == dataPlans[index].columns else { continue }
+            dataPlans[index].summary = run.summary
+            dataPlans[index].unavailableReason = run.unavailableReason
+        }
+    }
+
     /// After a run the report describes a target that has since changed, so it is stale rather than
     /// wrong: it stays on screen to be read, and every action that would write again is withdrawn
     /// until the user compares once more.
@@ -510,18 +565,47 @@ internal final class CompareSyncSession {
         scriptRevision &+= 1
     }
 
-    /// True while both the setup and the choices a piece of work was started for still stand.
-    internal func isCurrent(setup: Int, script: Int) -> Bool {
-        setup == setupGeneration && script == scriptRevision
+    /// For the edits that make a computed answer wrong rather than merely restating which parts of
+    /// it to apply: a new setup, a new key column, a new set of compared columns.
+    internal func invalidateAnswer() {
+        answerRevision &+= 1
+        invalidateScript()
     }
 
-    /// Cancelling advances the script revision as well as asking the task to stop, because
+    /// Cancelling advances both revisions as well as asking the task to stop, because
     /// `Task.cancel()` is cooperative: a build already inside a driver call finishes and would
     /// otherwise publish over a comparison the user has stopped.
+    ///
+    /// It advances them without clearing what is on screen. Apply cancels the work in flight and
+    /// then reads the very statements it is about to run, so discarding the script here left every
+    /// confirmed Apply executing nothing and reporting success.
     internal func cancelRunningWork() {
         progress?.cancel()
         runTask?.cancel()
         scriptRevision &+= 1
+        answerRevision &+= 1
+    }
+
+    /// The user's own Stop, which reports itself here rather than waiting for the task to notice.
+    /// `Task.cancel()` is cooperative and a run already inside a driver call may never observe it,
+    /// so a message published from the cancellation path is a message that may never arrive; and a
+    /// run that does observe it can no longer tell the user's Stop from being superseded by the
+    /// next run, because both reach it the same way.
+    internal func stopRunningWork() {
+        let stopped = activity
+        cancelRunningWork()
+        switch stopped {
+        case .idle:
+            return
+        case .applying:
+            informationalMessage = String(
+                localized: "Sync stopped. Statements that already ran stay applied."
+            )
+        case .buildingScript:
+            informationalMessage = String(localized: "Script generation cancelled.")
+        case .comparing, .connecting:
+            informationalMessage = String(localized: "Comparison cancelled.")
+        }
     }
 
     internal var isBusy: Bool {

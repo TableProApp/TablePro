@@ -47,17 +47,6 @@ internal struct CompareSyncProfile: Codable, Hashable, Identifiable {
         self.selectedObjects = selectedObjects
     }
 
-    internal static func storageKey(source: DatabaseScope, target: DatabaseScope, mode: CompareSyncMode) -> String {
-        "\(key(for: source))|\(key(for: target))|\(mode.rawValue)"
-    }
-
-    internal var storageKey: String {
-        Self.storageKey(source: source, target: target, mode: mode)
-    }
-
-    private static func key(for scope: DatabaseScope) -> String {
-        "\(scope.connectionId.uuidString)/\(scope.database)/\(scope.schema ?? "")"
-    }
 }
 
 extension DatabaseScope: Codable {
@@ -132,11 +121,6 @@ internal final class CompareSyncProfileStorage {
             Self.logger.error("Failed to decode profiles: \(error.localizedDescription, privacy: .public)")
             return migrateLegacyProfiles(from: data)
         }
-    }
-
-    internal func profiles(source: DatabaseScope, target: DatabaseScope, mode: CompareSyncMode) -> [CompareSyncProfile] {
-        let key = CompareSyncProfile.storageKey(source: source, target: target, mode: mode)
-        return allProfiles().filter { $0.storageKey == key }
     }
 
     internal func save(_ profile: CompareSyncProfile) {

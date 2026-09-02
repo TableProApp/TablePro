@@ -37,18 +37,18 @@ internal extension CompareRunner {
             do {
                 let context = try resolveContext()
                 if let refusal = try await capabilityRefusal(context) {
-                    guard session.owns(claim) else { return }
+                    guard session.ownsAnswer(claim) else { return }
                     session.errorMessage = refusal
                     return
                 }
-                let plans = try await buildPlans(context)
+                let read = try await buildPlans(context)
                 /// The pair may have moved while this was reading. Publishing now would put one
                 /// pair's tables, columns and snapshots behind another pair's Compare.
-                guard session.owns(claim) else { return }
-                session.adoptDataPlans(plans)
+                guard session.ownsAnswer(claim) else { return }
+                adopt(read)
             } catch is CancellationError {
             } catch {
-                guard session.owns(claim) else { return }
+                guard session.ownsAnswer(claim) else { return }
                 session.errorMessage = error.localizedDescription
             }
         }
@@ -64,9 +64,9 @@ internal extension CompareRunner {
         /// a stale key still merges the two row streams and still addresses the UPDATE and DELETE
         /// it generates, so one reviewed row's statement can reach every row sharing that value.
         /// `buildPlans` carries the user's ticks, keys and row exclusions onto the fresh list.
-        let built = try await buildPlans(context)
-        guard session.owns(claim) else { throw CancellationError() }
-        session.adoptDataPlans(built)
+        let read = try await buildPlans(context)
+        guard session.ownsAnswer(claim) else { throw CancellationError() }
+        adopt(read)
         var plans = session.dataPlans
 
         for index in plans.indices where plans[index].isEnabled && plans[index].isComparable {
@@ -88,10 +88,9 @@ internal extension CompareRunner {
         }
 
         try Task.checkCancellation()
-        guard session.owns(claim) else { throw CancellationError() }
-        session.dataPlans = plans
+        guard session.ownsAnswer(claim) else { throw CancellationError() }
+        session.applyComparedSummaries(from: plans)
         session.hasLoadedDataPlans = true
-        session.selectedPlanId = plans.first { $0.isEnabled && $0.isComparable }?.id ?? plans.first?.id
         session.detailPane = .rows
         session.invalidateScript()
 
@@ -154,12 +153,27 @@ internal extension CompareRunner {
 
     // MARK: - Plans
 
-    private func buildPlans(_ context: Context) async throws -> [DataComparePlan] {
+    /// Everything one read of the two sides produced, so the caller publishes all of it behind one
+    /// ownership check. Writing the snapshots here put one pair's foreign key graph and CREATE
+    /// TABLE source under another pair's Apply whenever the read outlived the pair it was started
+    /// for, which is the hazard the claim exists to close.
+    struct DataPlanRead {
+        let plans: [DataComparePlan]
+        let sourceSnapshots: [String: TableStructureSnapshot]
+        let unreadableTableCount: Int
+    }
+
+    private func adopt(_ read: DataPlanRead) {
+        session.sourceSnapshots = read.sourceSnapshots
+        session.unreadableTableCount = read.unreadableTableCount
+        session.adoptDataPlans(read.plans)
+    }
+
+    private func buildPlans(_ context: Context) async throws -> DataPlanRead {
         let (sourceReads, targetReads) = try await metadataService.bothSideTableReads(
             context: context, includeViews: false, profile: .data
         )
         try Task.checkCancellation()
-        session.unreadableTableCount = (sourceReads + targetReads).filter { $0.failure != nil }.count
 
         /// Keyed on schema and name, not name alone: two schemas of one database can hold the same
         /// table, and pairing on the bare name took the shared column set from the wrong
@@ -173,7 +187,7 @@ internal extension CompareRunner {
             session.dataPlans.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }
         )
 
-        session.sourceSnapshots = Dictionary(
+        let sourceSnapshots = Dictionary(
             sourceReads.compactMap { $0.snapshot }.map { ($0.qualifiedName, $0) },
             uniquingKeysWith: { first, _ in first }
         )
@@ -205,6 +219,10 @@ internal extension CompareRunner {
             plan.unavailableReason = DataComparePlan.unavailableReason(for: plan)
             plans.append(plan)
         }
-        return plans.sorted { $0.id.localizedStandardCompare($1.id) == .orderedAscending }
+        return DataPlanRead(
+            plans: plans.sorted { $0.id.localizedStandardCompare($1.id) == .orderedAscending },
+            sourceSnapshots: sourceSnapshots,
+            unreadableTableCount: (sourceReads + targetReads).filter { $0.failure != nil }.count
+        )
     }
 }

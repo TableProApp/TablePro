@@ -21,7 +21,7 @@ internal extension CompareSyncSession {
         dataPlans[index].summary = nil
         dataPlans[index].excludedRowKeys = []
         dataPlans[index].unavailableReason = DataComparePlan.unavailableReason(for: dataPlans[index])
-        invalidateScript()
+        invalidateAnswer()
     }
 
     func toggleKeyColumn(_ column: String, for planId: String) {
@@ -73,7 +73,7 @@ internal extension CompareSyncSession {
         for index in dataPlans.indices {
             dataPlans[index].summary = nil
         }
-        invalidateScript()
+        invalidateAnswer()
     }
 
     // MARK: - Row inclusion

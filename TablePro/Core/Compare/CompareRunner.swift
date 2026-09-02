@@ -42,7 +42,7 @@ internal struct CompareRunner {
             do {
                 let context = try resolveContext()
                 if let refusal = try await capabilityRefusal(context) {
-                    guard session.owns(claim) else { return }
+                    guard session.ownsAnswer(claim) else { return }
                     session.errorMessage = refusal
                     return
                 }
@@ -53,13 +53,11 @@ internal struct CompareRunner {
                 case .data:
                     try await runDataCompare(context, claim: claim)
                 }
-                guard session.owns(claim) else { return }
+                guard session.ownsAnswer(claim) else { return }
                 session.informationalMessage = session.crossEngineNotice
             } catch is CancellationError {
-                guard session.owns(claim) else { return }
-                session.informationalMessage = String(localized: "Comparison cancelled.")
             } catch {
-                guard session.owns(claim) else { return }
+                guard session.ownsAnswer(claim) else { return }
                 session.errorMessage = error.localizedDescription
             }
         }
@@ -90,7 +88,7 @@ internal struct CompareRunner {
 
         let claim = session.currentClaim
         return Task { [session] in
-            session.activity = .comparing
+            session.activity = .buildingScript
             defer { session.activity = .idle }
             do {
                 let context = try resolveContext()
@@ -113,9 +111,9 @@ internal struct CompareRunner {
                 session.statements = built
                 session.detailPane = .script
             } catch is CancellationError {
-                guard session.owns(claim) else { return }
-                session.informationalMessage = String(localized: "Script generation cancelled.")
             } catch {
+                /// The full claim, not the answer alone: a build that failed for a selection the
+                /// user has since changed would blame an object they had just excluded.
                 guard session.owns(claim) else { return }
                 session.errorMessage = error.localizedDescription
             }
@@ -173,6 +171,7 @@ internal struct CompareRunner {
                 /// armed left Apply enabled on a stale plan, one click from running the same
                 /// CREATE/ALTER/DELETE a second time.
                 session.markAppliedAndStale()
+            } catch is CancellationError {
             } catch {
                 session.errorMessage = error.localizedDescription
             }
@@ -264,17 +263,13 @@ internal struct CompareRunner {
         results += try await sourceDefinedResults(context, sourceReads: sourceReads, targetReads: targetReads)
 
         try Task.checkCancellation()
-        guard session.owns(claim) else { throw CancellationError() }
+        guard session.ownsAnswer(claim) else { throw CancellationError() }
 
         let report = CompareReport(results: results)
         session.sourceSnapshots = sourceByName
         session.targetSnapshots = targetByName
         session.report = report
-        session.actions = [:]
-        for result in report.comparable where session.pendingSelection.contains(result.id) {
-            session.actions[result.id] = result.suggestedAction
-        }
-        session.pendingSelection = []
+        session.adoptActions(for: report)
         session.invalidateScript()
         session.selectedObjectId = session.visibleResults.first?.id
         session.lastAction = .compared(Date(), differences: report.differenceCount)

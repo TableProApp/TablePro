@@ -122,7 +122,7 @@ extension MySQLPluginDriver {
         }
     }
 
-    private func routineSchema(_ schema: String?) -> String {
+    func routineSchema(_ schema: String?) -> String {
         guard let schema, !schema.isEmpty else { return activeDatabaseName }
         return schema
     }

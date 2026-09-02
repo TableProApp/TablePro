@@ -99,7 +99,7 @@ internal struct CompareStatusStrip: View {
     private var symbol: String {
         switch session.activity {
         case .applying: return "exclamationmark.triangle.fill"
-        case .comparing, .connecting: return "magnifyingglass"
+        case .comparing, .connecting, .buildingScript: return "magnifyingglass"
         case .idle: return session.hasWrittenToTarget ? "checkmark.circle" : "eye"
         }
     }

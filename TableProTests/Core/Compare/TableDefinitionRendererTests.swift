@@ -139,50 +139,23 @@ final class CompareSyncProfileStorageTests: XCTestCase {
         let target = scope(UUID())
         storage.save(profile(name: "nightly", source: source, target: target))
 
-        let loaded = storage.profiles(source: source, target: target, mode: .structure)
+        let loaded = storage.allProfiles()
 
         XCTAssertEqual(loaded.count, 1)
         XCTAssertEqual(loaded[0].name, "nightly")
         XCTAssertEqual(loaded[0].selectedObjects, ["users"])
     }
 
-    func testProfilesAreScopedToSourceTargetAndMode() {
+    /// Every saved comparison is offered, whatever pair the window is on, because loading one is
+    /// what sets the pair. A list filtered by the pair already on screen could only be reached by
+    /// doing the work the saved comparison exists to replace.
+    func testEveryProfileIsListedWhateverTheCurrentPair() {
         let source = scope(UUID())
         let target = scope(UUID())
         storage.save(profile(name: "structure", source: source, target: target, mode: .structure))
-        storage.save(profile(name: "data", source: source, target: target, mode: .data))
+        storage.save(profile(name: "data", source: scope(UUID()), target: scope(UUID()), mode: .data))
 
-        XCTAssertEqual(storage.profiles(source: source, target: target, mode: .structure).map(\.name), ["structure"])
-        XCTAssertEqual(storage.profiles(source: source, target: target, mode: .data).map(\.name), ["data"])
-        XCTAssertTrue(storage.profiles(source: target, target: source, mode: .structure).isEmpty)
-    }
-
-    /// Keying on the connection pair alone could not tell two databases on one server apart, so a
-    /// comparison saved against staging came back for production.
-    func testTwoDatabasesOnOneConnectionKeepSeparateProfiles() {
-        let connectionId = UUID()
-        let staging = scope(connectionId, database: "app_staging")
-        let production = scope(connectionId, database: "app_prod")
-        let target = scope(UUID())
-        storage.save(profile(name: "staging", source: staging, target: target))
-        storage.save(profile(name: "production", source: production, target: target))
-
-        XCTAssertEqual(storage.profiles(source: staging, target: target, mode: .structure).map(\.name), ["staging"])
-        XCTAssertEqual(
-            storage.profiles(source: production, target: target, mode: .structure).map(\.name), ["production"]
-        )
-    }
-
-    func testTwoSchemasInOneDatabaseKeepSeparateProfiles() {
-        let connectionId = UUID()
-        let publicSchema = scope(connectionId, schema: "public")
-        let salesSchema = scope(connectionId, schema: "sales")
-        let target = scope(UUID())
-        storage.save(profile(name: "public", source: publicSchema, target: target))
-        storage.save(profile(name: "sales", source: salesSchema, target: target))
-
-        XCTAssertEqual(storage.profiles(source: publicSchema, target: target, mode: .structure).map(\.name), ["public"])
-        XCTAssertEqual(storage.profiles(source: salesSchema, target: target, mode: .structure).map(\.name), ["sales"])
+        XCTAssertEqual(storage.allProfiles().map(\.name).sorted(), ["data", "structure"])
     }
 
     func testSavingSameProfileIdUpdatesRatherThanDuplicates() {
@@ -193,7 +166,7 @@ final class CompareSyncProfileStorageTests: XCTestCase {
         existing.name = "renamed"
         storage.save(existing)
 
-        let loaded = storage.profiles(source: source, target: target, mode: .structure)
+        let loaded = storage.allProfiles()
 
         XCTAssertEqual(loaded.count, 1)
         XCTAssertEqual(loaded[0].name, "renamed")
@@ -209,6 +182,6 @@ final class CompareSyncProfileStorageTests: XCTestCase {
 
         storage.delete(drop)
 
-        XCTAssertEqual(storage.profiles(source: source, target: target, mode: .structure).map(\.name), ["keep"])
+        XCTAssertEqual(storage.allProfiles().map(\.name), ["keep"])
     }
 }

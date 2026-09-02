@@ -30,7 +30,7 @@ internal struct CompareProgressView: View {
             progressBar
                 .frame(maxWidth: 200)
             Button("Cancel") {
-                session.cancelRunningWork()
+                session.stopRunningWork()
             }
             .controlSize(.small)
             .accessibilityIdentifier("compare.progress.cancel")
