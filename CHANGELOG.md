@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Whole-schema index and table metadata reads on the driver protocol.
 - Script that checks the SQLite whole-schema reads against the per-table ones.
 - Middle-click on a tab to close it. (#2595)
+- Text in Display As for binary columns. (#2599)
+- Smart value detection for binary columns holding UTF-8 text. (#2599)
+- Find covering binary columns that a display format renders as text. (#2599)
 - Launch trace in Instruments' Points of Interest, and `TABLEPRO_LAUNCH_TRACE=1` for the same table on standard error.
 
 ### Changed

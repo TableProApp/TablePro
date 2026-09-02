@@ -77,12 +77,12 @@ extension MainContentView {
                 case .text(let s):
                     value = format == .raw
                         ? s
-                        : ValueDisplayFormatService.applyFormat(s, format: format)
+                        : ValueDisplayFormatService.applyFormat(s, format: format, columnType: columnType) ?? s
                 case .bytes(let bytes):
                     value = format.isApplicable(
                         to: columnType,
                         databaseType: coordinator.connection.type
-                    ) ? ValueDisplayFormatService.applyFormat(bytes, format: format) : nil
+                    ) ? ValueDisplayFormatService.applyFormat(bytes, format: format, columnType: columnType) : nil
                     value = value ?? BlobFormattingService.shared.format(bytes, for: .copy)
                 }
             }

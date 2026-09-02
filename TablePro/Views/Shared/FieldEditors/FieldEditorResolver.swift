@@ -42,7 +42,7 @@ internal enum FieldEditorResolver {
                 return .phpSerialized
             case .json:
                 return .json
-            case .uuid, .unixTimestamp, .unixTimestampMillis:
+            case .text, .uuid, .unixTimestamp, .unixTimestampMillis:
                 structuredAllowed = true
             }
         } else {

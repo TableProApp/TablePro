@@ -26,10 +26,18 @@ final class ValueDisplayFormatService {
 
     // MARK: - Format Application
 
-    static func applyFormat(_ rawValue: String, format: ValueDisplayFormat) -> String {
+    /// nil where the format cannot render this value, so the caller falls back to how the column
+    /// would have read without it rather than showing a value the format did not actually produce.
+    static func applyFormat(
+        _ rawValue: String,
+        format: ValueDisplayFormat,
+        columnType: ColumnType? = nil
+    ) -> String? {
         switch format {
         case .raw:
             return rawValue
+        case .text:
+            return BinaryTextDecoder.decode(isoLatin1: rawValue, columnType: columnType)
         case .uuid:
             return formatAsUuid(rawValue)
         case .unixTimestamp:
@@ -41,9 +49,20 @@ final class ValueDisplayFormatService {
         }
     }
 
-    static func applyFormat(_ rawValue: Data, format: ValueDisplayFormat) -> String? {
-        guard format == .uuid, rawValue.count == 16 else { return nil }
-        return formatAsUuid(rawValue.hexEncoded)
+    static func applyFormat(
+        _ rawValue: Data,
+        format: ValueDisplayFormat,
+        columnType: ColumnType? = nil
+    ) -> String? {
+        switch format {
+        case .text:
+            return BinaryTextDecoder.decode(rawValue, columnType: columnType)
+        case .uuid:
+            guard rawValue.count == 16 else { return nil }
+            return formatAsUuid(rawValue.hexEncoded)
+        case .raw, .unixTimestamp, .unixTimestampMillis, .json, .phpSerialized:
+            return nil
+        }
     }
 
     // MARK: - Effective Format Resolution

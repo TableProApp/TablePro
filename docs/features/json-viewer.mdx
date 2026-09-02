@@ -14,6 +14,7 @@ Right-click a column header and pick **Display As**. The submenu lists the forma
 | Format | Column types | Effect |
 | --- | --- | --- |
 | Raw Value | all | Shows the stored value, and turns off detection for that column |
+| Text | binary | Reads the bytes as UTF-8, trailing `BINARY(N)` padding trimmed |
 | UUID | binary, text | Renders 16 raw bytes or a 32-digit hex string as a hyphenated UUID |
 | Unix Timestamp (seconds) | integer | Renders the number as a formatted date |
 | Unix Timestamp (milliseconds) | integer | Same, treating the number as milliseconds |
@@ -22,7 +23,9 @@ Right-click a column header and pick **Display As**. The submenu lists the forma
 
 An override persists per column, scoped to the connection and table. A column with a format set copies in that format when you copy the single cell; a block of cells or a whole row always copies the stored value.
 
-Id-like binary and character columns, and integer columns whose names read as timestamps, pick up UUID and date rendering on their own. **Smart value detection** in [Settings > Data](/customization/data-settings) turns that off, and a manual choice always wins over it, **Raw Value** included. MongoDB binary columns never offer UUID, since the driver decodes them under its own Legacy UUID Encoding setting; see [MongoDB](/databases/mongodb).
+Id-like binary and character columns, integer columns whose names read as timestamps, and binary columns whose first rows all read as UTF-8 pick up their format on their own. **Smart value detection** in [Settings > Data](/customization/data-settings) turns that off, and a manual choice always wins over it, **Raw Value** included. MongoDB binary columns never offer UUID, since the driver decodes them under its own Legacy UUID Encoding setting; see [MongoDB](/databases/mongodb).
+
+**Text** decides per cell, not per column: an image or a hash sitting in a column set to **Text** still reads as `0x89504E…`. The cell edits as hex either way.
 
 ## JSON viewer
 
@@ -55,7 +58,7 @@ Set **Display As > PHP Serialized** on a text column, then double-click or press
 
 ## Blob and hex
 
-A blob cell renders in the grid as compact hex (`0x48656C…`). Click the chevron or double-click for the popover: a classic hex dump with offset, byte columns, and ASCII, plus an editable hex field under it on an editable table. That field takes spaced or continuous hex, with or without a `0x` prefix, and invalid hex disables **Save**.
+A blob cell renders in the grid as compact hex (`0x48656C…`), unless its column reads as text. Click the chevron or double-click for the popover: a classic hex dump with offset, byte columns, and ASCII, plus an editable hex field under it on an editable table. That field takes spaced or continuous hex, with or without a `0x` prefix, and invalid hex disables **Save**.
 
 ## Limits
 

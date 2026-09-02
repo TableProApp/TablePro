@@ -6,9 +6,13 @@
 import Foundation
 
 enum FindMatcher {
-    static func isSearchable(_ columnType: ColumnType?) -> Bool {
+    /// A binary column is searchable once a display format has turned its bytes into characters.
+    /// Left as hex it is not, which is why the exclusion was unconditional while hex was the only
+    /// thing a binary column could show.
+    static func isSearchable(_ columnType: ColumnType?, displayFormat: ValueDisplayFormat? = nil) -> Bool {
         switch columnType {
-        case .blob, .spatial: false
+        case .blob: displayFormat?.rendersBinaryAsText == true
+        case .spatial: false
         default: true
         }
     }

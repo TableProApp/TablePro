@@ -53,6 +53,107 @@ struct CellDisplayFormatterTests {
         #expect(result != ValueDisplayFormatService.applyFormat(hex, format: .uuid))
     }
 
+    @Test("binary read as text shows the text")
+    func binaryTextFormatDecodes() {
+        let result = CellDisplayFormatter.format(
+            .bytes(Data("hello world".utf8)),
+            columnType: .blob(rawType: "VARBINARY(255)"),
+            displayFormat: .text
+        )
+
+        #expect(result == "hello world")
+    }
+
+    @Test("binary that is not text falls back to hex under the text format")
+    func binaryTextFormatFallsBackToHex() {
+        let png = Data([0x89, 0x50, 0x4E, 0x47])
+        let result = CellDisplayFormatter.format(
+            .bytes(png),
+            columnType: .blob(rawType: "BLOB"),
+            displayFormat: .text
+        )
+
+        #expect(result == "0x89504E47")
+    }
+
+    @Test("line breaks in binary read as text are flattened onto the row")
+    func binaryTextFormatSanitizesLineBreaks() {
+        let result = CellDisplayFormatter.format(
+            .bytes(Data("line1\nline2".utf8)),
+            columnType: .blob(rawType: "BLOB"),
+            displayFormat: .text
+        )
+
+        #expect(result == "line1 line2")
+    }
+
+    @Test("binary read as text is capped at the cell length")
+    func binaryTextFormatTruncates() throws {
+        let long = Data(String(repeating: "a", count: CellDisplayFormatter.maxDisplayLength + 500).utf8)
+        let result = try #require(CellDisplayFormatter.format(
+            .bytes(long),
+            columnType: .blob(rawType: "LONGBLOB"),
+            displayFormat: .text
+        ))
+
+        #expect((result as NSString).length == CellDisplayFormatter.maxDisplayLength + 1)
+        #expect(result.hasSuffix("…"))
+    }
+
+    @Test("a trailing NUL is padding on BINARY and stored data everywhere else")
+    func binaryTextFormatTrimsOnlyFixedWidthPadding() {
+        let value = PluginCellValue.bytes(Data([0x61, 0x00]))
+
+        let fixedWidth = CellDisplayFormatter.format(
+            value,
+            columnType: .blob(rawType: "BINARY(2)"),
+            displayFormat: .text
+        )
+        let variableWidth = CellDisplayFormatter.format(
+            value,
+            columnType: .blob(rawType: "VARBINARY(255)"),
+            displayFormat: .text
+        )
+
+        #expect(fixedWidth == "a")
+        #expect(variableWidth == "0x6100")
+    }
+
+    @Test("a text column ignores the text format")
+    func textColumnIgnoresTextFormat() {
+        let result = CellDisplayFormatter.format(
+            .text("hello"),
+            columnType: .text(rawType: "VARCHAR(255)"),
+            displayFormat: .text
+        )
+
+        #expect(result == "hello")
+    }
+
+    @Test("a driver's byte-per-character blob string reads as text too")
+    func carrierStringDecodesUnderTextFormat() {
+        let carrier = String(data: Data("café".utf8), encoding: .isoLatin1) ?? ""
+        let result = CellDisplayFormatter.format(
+            .text(carrier),
+            columnType: .blob(rawType: "BLOB"),
+            displayFormat: .text
+        )
+
+        #expect(result == "café")
+    }
+
+    @Test("a driver's byte-per-character blob string of binary keeps its hex")
+    func carrierStringFallsBackToHexUnderTextFormat() {
+        let carrier = String(data: Data([0x89, 0x50, 0x4E, 0x47]), encoding: .isoLatin1) ?? ""
+        let result = CellDisplayFormatter.format(
+            .text(carrier),
+            columnType: .blob(rawType: "BLOB"),
+            displayFormat: .text
+        )
+
+        #expect(result == "0x89504E47")
+    }
+
     @Test("plain text passes through unchanged")
     func plainTextPassthrough() {
         let result = CellDisplayFormatter.format(.text("hello world"), columnType: nil)

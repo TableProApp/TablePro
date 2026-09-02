@@ -25,16 +25,17 @@ enum CellDisplayFormatter {
         case .bytes(let data):
             if let displayFormat,
                displayFormat.isApplicable(to: columnType, databaseType: databaseType),
-               let formatted = ValueDisplayFormatService.applyFormat(data, format: displayFormat) {
-                return formatted
+               let formatted = ValueDisplayFormatService.applyFormat(data, format: displayFormat, columnType: columnType) {
+                return fitToCell(formatted)
             }
             return BlobFormattingService.shared.format(data, for: .grid)
         case .text(let value):
             guard !value.isEmpty else { return value }
             var displayValue = value
             if let displayFormat, displayFormat != .raw,
-               displayFormat.isApplicable(to: columnType, databaseType: databaseType) {
-                displayValue = ValueDisplayFormatService.applyFormat(value, format: displayFormat)
+               displayFormat.isApplicable(to: columnType, databaseType: databaseType),
+               let formatted = ValueDisplayFormatService.applyFormat(value, format: displayFormat, columnType: columnType) {
+                displayValue = formatted
             } else if let columnType {
                 if columnType.isDateType {
                     if let formatted = DateFormattingService.shared.format(
@@ -49,11 +50,19 @@ enum CellDisplayFormatter {
                     )
                 }
             }
-            let nsDisplay = displayValue as NSString
-            if nsDisplay.length > maxDisplayLength {
-                displayValue = nsDisplay.substring(to: maxDisplayLength) + "…"
-            }
-            return displayValue.sanitizedForCellDisplay
+            return fitToCell(displayValue)
         }
+    }
+
+    /// A row is one line, so anything a format produces is capped and stripped of line breaks
+    /// before it reaches a cell. Binary read as text is the case that needs it: a blob carries
+    /// newlines and runs to megabytes where hex never did.
+    private static func fitToCell(_ value: String) -> String {
+        var displayValue = value
+        let nsDisplay = displayValue as NSString
+        if nsDisplay.length > maxDisplayLength {
+            displayValue = nsDisplay.substring(to: maxDisplayLength) + "…"
+        }
+        return displayValue.sanitizedForCellDisplay
     }
 }

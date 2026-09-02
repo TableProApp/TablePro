@@ -62,7 +62,7 @@ internal struct CellInteractionResolver {
             return isReadOnly ? .viewJson : .editJson
         case .phpSerialized:
             return .viewPhpSerialized
-        case .raw, .uuid, .unixTimestamp, .unixTimestampMillis, .none:
+        case .raw, .text, .uuid, .unixTimestamp, .unixTimestampMillis, .none:
             return plainText(for: context, isReadOnly: isReadOnly)
         }
     }

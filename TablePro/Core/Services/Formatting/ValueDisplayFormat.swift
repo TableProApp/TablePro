@@ -11,6 +11,7 @@ import Foundation
 
 enum ValueDisplayFormat: String, Codable, CaseIterable, Identifiable {
     case raw
+    case text
     case uuid
     case unixTimestamp
     case unixTimestampMillis
@@ -22,6 +23,7 @@ enum ValueDisplayFormat: String, Codable, CaseIterable, Identifiable {
     var displayName: String {
         switch self {
         case .raw: return String(localized: "Raw Value")
+        case .text: return String(localized: "Text")
         case .uuid: return String(localized: "UUID")
         case .unixTimestamp: return String(localized: "Unix Timestamp (seconds)")
         case .unixTimestampMillis: return String(localized: "Unix Timestamp (milliseconds)")
@@ -35,6 +37,8 @@ enum ValueDisplayFormat: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .raw:
             return []
+        case .text:
+            return ["blob"]
         case .uuid:
             return ["blob", "text"]
         case .unixTimestamp, .unixTimestampMillis:
@@ -60,6 +64,17 @@ enum ValueDisplayFormat: String, Codable, CaseIterable, Identifiable {
             return false
         }
         return applicableColumnTypes.contains(typeKey)
+    }
+
+    /// Whether this format turns stored bytes into readable characters. A binary column is worth
+    /// searching exactly when one of these is on it; hex is not what anyone types into Find.
+    var rendersBinaryAsText: Bool {
+        switch self {
+        case .text, .uuid:
+            return true
+        case .raw, .unixTimestamp, .unixTimestampMillis, .json, .phpSerialized:
+            return false
+        }
     }
 
     /// Returns applicable formats for a given column type.

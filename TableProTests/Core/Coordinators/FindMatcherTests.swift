@@ -80,6 +80,17 @@ struct FindMatcherTests {
         #expect(FindMatcher.isSearchable(nil))
     }
 
+    @Test("a binary column showing characters is searchable, one showing hex is not")
+    func searchableBinaryFollowsItsDisplayFormat() {
+        let blob = ColumnType.blob(rawType: "VARBINARY(255)")
+
+        #expect(FindMatcher.isSearchable(blob, displayFormat: .text))
+        #expect(FindMatcher.isSearchable(blob, displayFormat: .uuid))
+        #expect(FindMatcher.isSearchable(blob, displayFormat: .raw) == false)
+        #expect(FindMatcher.isSearchable(blob, displayFormat: nil) == false)
+        #expect(FindMatcher.isSearchable(.spatial(rawType: "GEOMETRY"), displayFormat: .text) == false)
+    }
+
     @Test("the nearest match to a display row is the first at or after it")
     func nearestMatch() {
         let matches = [

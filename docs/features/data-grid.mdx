@@ -44,7 +44,7 @@ Drag a border to resize a column, or double-click it to fit the content; **Size 
 
 Hide columns from the columns button in the status bar or from the header menu. A hidden column is not fetched, so hiding a large one makes the table load faster; the primary key and the sorted column are fetched either way. On a schemaless store the popover lists every field the grid can draw, including ones that turn up only in later documents.
 
-Widths, order, and hidden columns are remembered per table, scoped to the connection, database, and schema; **Reset Columns** in the popover puts them back. Right-click a header and choose **Display As** to render a column as a UUID, a Unix timestamp, JSON, or PHP serialized data; see [Cell and Row Viewers](/features/json-viewer).
+Widths, order, and hidden columns are remembered per table, scoped to the connection, database, and schema; **Reset Columns** in the popover puts them back. Right-click a header and choose **Display As** to read a column's stored values in a different form; [Cell and Row Viewers](/features/json-viewer) lists the formats.
 
 ## Foreign keys
 
@@ -70,7 +70,7 @@ Step back with the Back and Forward buttons at the leading edge of the toolbar, 
 
 ## Find in the loaded rows
 
-`Cmd+F` opens the find bar above the grid. `Return` and `Cmd+G` step forward, `Cmd+Shift+G` back, `Escape` clears the term and then closes the bar. Matching ignores case and accents and runs over the text as displayed; binary and spatial columns are skipped. The counter says which rows were searched:
+`Cmd+F` opens the find bar above the grid. `Return` and `Cmd+G` step forward, `Cmd+Shift+G` back, `Escape` clears the term and then closes the bar. Matching ignores case and accents and runs over the text as displayed; spatial columns are skipped, and so is a binary column still showing hex. The counter says which rows were searched:
 
 | What you see | What it means |
 |---|---|

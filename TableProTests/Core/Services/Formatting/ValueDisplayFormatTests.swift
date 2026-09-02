@@ -13,11 +13,21 @@ struct ValueDisplayFormatTests {
     @Test("rawValue strings stay stable")
     func rawValueStability() {
         #expect(ValueDisplayFormat.raw.rawValue == "raw")
+        #expect(ValueDisplayFormat.text.rawValue == "text")
         #expect(ValueDisplayFormat.uuid.rawValue == "uuid")
         #expect(ValueDisplayFormat.unixTimestamp.rawValue == "unixTimestamp")
         #expect(ValueDisplayFormat.unixTimestampMillis.rawValue == "unixTimestampMillis")
         #expect(ValueDisplayFormat.json.rawValue == "json")
         #expect(ValueDisplayFormat.phpSerialized.rawValue == "phpSerialized")
+    }
+
+    @Test("only the formats that produce characters count as rendering binary as text")
+    func rendersBinaryAsText() {
+        #expect(ValueDisplayFormat.text.rendersBinaryAsText)
+        #expect(ValueDisplayFormat.uuid.rendersBinaryAsText)
+        #expect(!ValueDisplayFormat.raw.rendersBinaryAsText)
+        #expect(!ValueDisplayFormat.unixTimestamp.rendersBinaryAsText)
+        #expect(!ValueDisplayFormat.json.rendersBinaryAsText)
     }
 
     @Test("Codable round-trip preserves value")
@@ -37,6 +47,7 @@ struct ValueDisplayFormatTests {
         #expect(formats.contains(.uuid))
         #expect(formats.contains(.raw))
         #expect(!formats.contains(.unixTimestamp))
+        #expect(!formats.contains(.text))
     }
 
     @Test("integer column applicable formats do not include json or phpSerialized")
@@ -44,15 +55,16 @@ struct ValueDisplayFormatTests {
         let formats = ValueDisplayFormat.applicableFormats(for: .integer(rawType: "INT"))
         #expect(!formats.contains(.json))
         #expect(!formats.contains(.phpSerialized))
+        #expect(!formats.contains(.text))
         #expect(formats.contains(.unixTimestamp))
     }
 
-    @Test("blob column does not include json or phpSerialized")
+    @Test("blob column offers text and uuid but not json or phpSerialized")
     func applicableForBlob() {
         let formats = ValueDisplayFormat.applicableFormats(for: .blob(rawType: "BLOB"))
         #expect(!formats.contains(.json))
         #expect(!formats.contains(.phpSerialized))
-        #expect(formats.contains(.uuid))
+        #expect(formats == [.raw, .text, .uuid])
     }
 
     @Test("MongoDB binary columns do not offer generic UUID formatting")
@@ -62,7 +74,8 @@ struct ValueDisplayFormatTests {
             databaseType: .mongodb
         )
 
-        #expect(formats == [.raw])
+        #expect(!formats.contains(.uuid))
+        #expect(formats == [.raw, .text])
     }
 
     @Test("nil column type returns only raw")

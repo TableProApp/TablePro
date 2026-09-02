@@ -22,7 +22,7 @@ The tab is app-wide, so these values apply to every connection you open; filters
 | Show alternate row backgrounds | On | |
 | Show row numbers | On | |
 | Auto-show inspector on row select | Off | Opens the row details inspector when you select a row |
-| Smart value detection | On | Renders UUID, Unix timestamp, JSON, and PHP serialized columns in readable form. Override per column with Display As, see [Data Grid](/features/data-grid) |
+| Smart value detection | On | Reads id-like binary columns as UUIDs, timestamp-named integer columns as dates, and binary columns holding UTF-8 as text. Override per column with Display As, see [Cell and Row Viewers](/features/json-viewer) |
 | Default row sort | No sorting (engine order) | Or Primary key, First column. Applied when a table first opens; clicking a column header overrides it |
 
 ## Pagination
