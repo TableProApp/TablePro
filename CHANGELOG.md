@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Exclude the AUTO_INCREMENT counter and Exclude DEFINER clauses in the SQL export, both on by default. (#2516)
+
 ### Changed
 
 - PluginKit ABI 21. Every registry plugin needs rebuilding before or with this release.

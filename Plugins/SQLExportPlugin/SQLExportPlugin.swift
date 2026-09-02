@@ -64,6 +64,13 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         settings.compressWithGzip ? "sql.gz" : "sql"
     }
 
+    private func ddlRewriter(for dataSource: any PluginExportDataSource) -> SQLExportDDLRewriter {
+        SQLExportDDLRewriter(
+            dialect: SqlDialect.from(databaseTypeId: dataSource.databaseTypeId),
+            excludesAutoIncrementValue: settings.excludeAutoIncrementValue,
+            excludesDefiner: settings.excludeDefiner)
+    }
+
     @MainActor
     func settingsView() -> AnyView? {
         AnyView(SQLExportOptionsView(plugin: self))
@@ -339,6 +346,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         to fileHandle: FileHandle,
         progress: PluginExportProgress
     ) async throws {
+        let rewriter = ddlRewriter(for: dataSource)
         for (index, table) in sortedTables.enumerated() where optionValue(table, at: 0) {
             try progress.checkCancellation()
             progress.setCurrentTable(table.qualifiedName, index: index + 1)
@@ -347,8 +355,9 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             try fileHandle.write(contentsOf: "-- Table: \(sanitizedName)\n".toUTF8Data())
             try fileHandle.write(contentsOf: "-- --------------------------------------------------------\n\n".toUTF8Data())
             do {
-                let ddl = try await dataSource.fetchTableDDL(
-                    table: table.name, databaseName: table.databaseName)
+                let ddl = rewriter.rewrite(
+                    try await dataSource.fetchTableDDL(
+                        table: table.name, databaseName: table.databaseName))
                 try fileHandle.write(contentsOf: ddl.toUTF8Data())
                 if !ddl.hasSuffix(";") {
                     try fileHandle.write(contentsOf: ";".toUTF8Data())
