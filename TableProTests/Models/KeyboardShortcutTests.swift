@@ -45,6 +45,14 @@ struct ShortcutActionDefaultsTests {
         #expect(KeyboardSettings.defaultShortcuts[.findNext] == .character("g", command: true))
         #expect(KeyboardSettings.defaultShortcuts[.findPrevious] == .character("g", command: true, shift: true))
     }
+
+    @Test("Jump to Column default is Cmd+Shift+J and belongs to the data grid")
+    func jumpToColumnDefault() {
+        #expect(KeyboardSettings.defaultShortcuts[.jumpToColumn] == .character("j", command: true, shift: true))
+        #expect(ShortcutAction.jumpToColumn.context == .dataGrid)
+        #expect(ShortcutAction.jumpToColumn.category == .dataGrid)
+        #expect(ShortcutAction.reservedConflict(for: .character("j", command: true, shift: true), context: .dataGrid) == nil)
+    }
 }
 
 @Suite("Default shortcut hygiene")

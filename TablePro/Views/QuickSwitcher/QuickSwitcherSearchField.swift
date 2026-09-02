@@ -13,6 +13,7 @@ internal struct QuickSwitcherSearchField: NSViewRepresentable {
     var onMoveUp: () -> Void
     var onMoveDown: () -> Void
     var onSubmit: () -> Void
+    var accessibilityIdentifier = "quick-switcher-search-field"
 
     func makeNSView(context: Context) -> QuickSwitcherTextField {
         let field = QuickSwitcherTextField()
@@ -28,7 +29,7 @@ internal struct QuickSwitcherSearchField: NSViewRepresentable {
         field.cell?.wraps = false
         field.delegate = context.coordinator
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        field.setAccessibilityIdentifier("quick-switcher-search-field")
+        field.setAccessibilityIdentifier(accessibilityIdentifier)
         return field
     }
 

@@ -42,6 +42,7 @@ SHORTCUT_ALIASES = {
     "Toggle history": "toggleHistory",
     "Toggle results": "toggleResults",
     "Find": "find",
+    "Jump to column": "jumpToColumn",
 }
 
 RUNTIME_LEAVES = {

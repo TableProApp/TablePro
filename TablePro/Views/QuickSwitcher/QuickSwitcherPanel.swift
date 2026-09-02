@@ -80,11 +80,20 @@ internal final class QuickSwitcherPanelController: NSObject, NSWindowDelegate {
 
     private var panel: QuickSwitcherPanel?
     private var anchor: Anchor?
+    private var presentedIdentity: String?
 
     var isPresented: Bool { panel != nil }
 
-    func present(_ content: some View, over parentWindow: NSWindow?) {
+    /// Whether the panel on screen is the one a caller named. One controller serves Open Quickly
+    /// and Jump to Column, so a command that toggles its own panel has to ask which one is up
+    /// rather than whether any is, or Command Shift J would close an Open Quickly it never opened.
+    func isPresenting(_ identity: String) -> Bool {
+        panel != nil && presentedIdentity == identity
+    }
+
+    func present(_ content: some View, over parentWindow: NSWindow?, identity: String? = nil) {
         dismiss()
+        presentedIdentity = identity
 
         let sizeReportingContent = content.onGeometryChange(for: CGSize.self) { proxy in
             proxy.size
@@ -119,6 +128,7 @@ internal final class QuickSwitcherPanelController: NSObject, NSWindowDelegate {
         panel?.contentViewController = nil
         panel = nil
         anchor = nil
+        presentedIdentity = nil
     }
 
     func windowDidResize(_ notification: Notification) {

@@ -77,6 +77,24 @@ struct QuickSwitcherPanelControllerTests {
         #expect(controller.isPresented == false)
     }
 
+    /// One controller serves Open Quickly and Jump to Column, so a command that toggles its own
+    /// panel asks which one is up rather than whether any is.
+    @Test("a presented identity answers only for itself and clears on close")
+    func presentedIdentityIsTracked() {
+        let controller = QuickSwitcherPanelController()
+        controller.present(Text(verbatim: "columns"), over: nil, identity: "column-jump")
+        #expect(controller.isPresenting("column-jump"))
+        #expect(controller.isPresenting("open-quickly") == false)
+
+        controller.present(Text(verbatim: "objects"), over: nil)
+        #expect(controller.isPresented)
+        #expect(controller.isPresenting("column-jump") == false)
+
+        controller.present(Text(verbatim: "columns"), over: nil, identity: "column-jump")
+        controller.dismiss()
+        #expect(controller.isPresenting("column-jump") == false)
+    }
+
     @Test("panel can become key but not main")
     func panelKeyAndMainBehavior() {
         let panel = QuickSwitcherPanel(

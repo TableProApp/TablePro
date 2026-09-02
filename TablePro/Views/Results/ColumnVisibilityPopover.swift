@@ -6,20 +6,25 @@
 import SwiftUI
 
 struct ColumnVisibilityPopover: View {
-    let columns: [String]
+    let columns: [GridColumnEntry]
     let hiddenColumns: Set<String>
     let onToggleColumn: (String) -> Void
     let onShowAll: () -> Void
     let onHideAll: ([String]) -> Void
     let onReset: () -> Void
+    let onJumpToColumn: ((String) -> Void)?
 
     @State private var searchText = ""
 
-    private var filteredColumns: [String] {
+    private var filteredColumns: [GridColumnEntry] {
         if searchText.isEmpty {
             return columns
         }
-        return columns.filter { $0.localizedCaseInsensitiveContains(searchText) }
+        return columns.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
+
+    private var columnNames: [String] {
+        columns.map(\.name)
     }
 
     var body: some View {
@@ -39,11 +44,21 @@ struct ColumnVisibilityPopover: View {
 
             footer
         }
-        .frame(width: 260)
+        .frame(width: 300)
     }
 
     private var footer: some View {
         HStack {
+            if let onJumpToColumn {
+                Button("Jump to Column…") { onJumpToColumn(searchText) }
+                    .buttonStyle(.link)
+                    .controlSize(.small)
+                    .help(AppSettingsManager.shared.keyboard.shortcutHint(
+                        String(localized: "Scroll to a column and put the cell cursor in it"),
+                        for: .jumpToColumn
+                    ))
+                    .accessibilityIdentifier("column-visibility-jump")
+            }
             Spacer()
             Button("Reset Columns") { onReset() }
                 .buttonStyle(.link)
@@ -75,7 +90,7 @@ struct ColumnVisibilityPopover: View {
                 .controlSize(.small)
                 .disabled(hiddenColumns.isEmpty)
 
-            Button("Hide All") { onHideAll(columns) }
+            Button("Hide All") { onHideAll(columnNames) }
                 .buttonStyle(.link)
                 .controlSize(.small)
                 .disabled(hiddenColumns.count == columns.count)
@@ -85,14 +100,19 @@ struct ColumnVisibilityPopover: View {
     }
 
     private var searchField: some View {
-        NativeSearchField(text: $searchText, placeholder: String(localized: "Search columns…"), controlSize: .small)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+        NativeSearchField(
+            text: $searchText,
+            placeholder: String(localized: "Search columns…"),
+            controlSize: .small,
+            accessibilityIdentifier: "column-visibility-search"
+        )
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
     }
 
     private var columnList: some View {
         List {
-            ForEach(filteredColumns, id: \.self) { column in
+            ForEach(filteredColumns) { column in
                 columnRow(column)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 1, leading: 12, bottom: 1, trailing: 12))
@@ -103,14 +123,27 @@ struct ColumnVisibilityPopover: View {
         .frame(minHeight: 120, maxHeight: 320)
     }
 
-    private func columnRow(_ column: String) -> some View {
+    private func columnRow(_ column: GridColumnEntry) -> some View {
         Toggle(isOn: Binding(
-            get: { !hiddenColumns.contains(column) },
-            set: { _ in onToggleColumn(column) }
+            get: { !hiddenColumns.contains(column.name) },
+            set: { _ in onToggleColumn(column.name) }
         )) {
-            Text(column)
-                .lineLimit(1)
-                .truncationMode(.tail)
+            HStack(spacing: 8) {
+                Text(column.name)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Spacer(minLength: 0)
+
+                if let typeName = column.typeName {
+                    Text(typeName)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .layoutPriority(-1)
+                }
+            }
         }
         .toggleStyle(.checkbox)
     }

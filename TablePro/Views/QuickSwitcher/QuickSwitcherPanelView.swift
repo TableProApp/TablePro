@@ -371,15 +371,15 @@ struct QuickSwitcherPanelContent: View {
     /// on screen saying so, that first press reads as a key that did nothing.
     private var footer: some View {
         HStack(spacing: 14) {
-            keyHint("\u{21A9}", String(localized: "Open"))
-            keyHint("\u{2318}\u{21A9}", String(localized: "New Tab"))
+            QuickSwitcherKeyHint(symbol: "\u{21A9}", label: String(localized: "Open"))
+            QuickSwitcherKeyHint(symbol: "\u{2318}\u{21A9}", label: String(localized: "New Tab"))
 
             Spacer(minLength: 0)
 
-            keyHint("\u{2318}1\u{2013}5", String(localized: "Scope"))
-            keyHint(
-                "\u{238B}",
-                escapeDismissesPanel ? String(localized: "Close") : String(localized: "Clear")
+            QuickSwitcherKeyHint(symbol: "\u{2318}1\u{2013}5", label: String(localized: "Scope"))
+            QuickSwitcherKeyHint(
+                symbol: "\u{238B}",
+                label: escapeDismissesPanel ? String(localized: "Close") : String(localized: "Clear")
             )
         }
         .padding(.horizontal, 16)
@@ -395,23 +395,6 @@ struct QuickSwitcherPanelContent: View {
         escapeDismissesPanel
             ? String(localized: "Escape closes Open Quickly")
             : String(localized: "Escape clears the search text")
-    }
-
-    private func keyHint(_ symbol: String, _ label: String) -> some View {
-        HStack(spacing: 4) {
-            Text(symbol)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 5)
-                .frame(minWidth: 20, minHeight: 17)
-                .background(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(Color(nsColor: .quaternarySystemFill))
-                )
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
     }
 
     // MARK: - Menu
@@ -486,15 +469,7 @@ struct QuickSwitcherPanelContent: View {
     }
 
     private func highlightedName(for item: QuickSwitcherItem) -> AttributedString {
-        var attributed = AttributedString(item.name)
-        guard !item.matchedIndices.isEmpty else { return attributed }
-        let characterIndices = Array(attributed.characters.indices)
-        for index in item.matchedIndices where index < characterIndices.count {
-            let start = characterIndices[index]
-            let end = attributed.characters.index(after: start)
-            attributed[start..<end].font = .body.weight(.semibold)
-        }
-        return attributed
+        QuickSwitcherRowChrome.highlightedName(item.name, matchedIndices: item.matchedIndices)
     }
 
     private func openSelectedItem() {

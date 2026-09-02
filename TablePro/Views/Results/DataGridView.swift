@@ -211,6 +211,7 @@ struct DataGridView: NSViewRepresentable {
             columnComments: columnComments
         )
 
+        var contentReplaced = false
         if snapshot != coordinator.lastUpdateSnapshot {
             // Read from the retained state rather than from `lastUpdateSnapshot`, which is nil on a
             // freshly mounted coordinator and would therefore report every remount as a content
@@ -220,6 +221,7 @@ struct DataGridView: NSViewRepresentable {
                 contentRevision: contentRevision
             )
             let contentChanged = coordinator.displayState.contentIdentity != contentIdentity
+            contentReplaced = contentChanged
             coordinator.displayState.contentIdentity = contentIdentity
             applyStructuralUpdate(
                 tableView: tableView,
@@ -238,6 +240,7 @@ struct DataGridView: NSViewRepresentable {
 
         syncSortState(tableView: tableView, coordinator: coordinator)
         syncSelection(tableView: tableView, coordinator: coordinator)
+        coordinator.schedulePendingColumnJump(contentReplaced: contentReplaced)
     }
 
     private func applyStructuralUpdate(

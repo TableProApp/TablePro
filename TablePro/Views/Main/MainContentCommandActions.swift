@@ -439,6 +439,18 @@ final class MainContentCommandActions {
         return findState.isVisible && !findState.matches.isEmpty
     }
 
+    /// Jump to Column reads the mounted data grid, so it needs the grid on screen and a result that
+    /// names columns. A query's result counts as much as a table's: a wide result is a wide result.
+    var canJumpToColumn: Bool {
+        guard dataGridOwnsSelection,
+              let coordinator,
+              coordinator.hasMountedDataGrid,
+              let tab = coordinator.tabManager.selectedTab,
+              tab.display.resultsViewMode == .data else { return false }
+        let resultColumns = coordinator.tabSessionRegistry.existingTableRows(for: tab.id)?.columns ?? []
+        return !coordinator.columnsForVisibilityPicker(for: tab, resultColumns: resultColumns).isEmpty
+    }
+
     /// What `pasteRows()` will actually do, so the Edit menu's Paste item is enabled only when it
     /// leads somewhere. AppKit gives a disabled item its key equivalent all the same, so an item
     /// enabled over a handler that returns at its first guard swallows Command+V in silence.
@@ -1282,6 +1294,11 @@ final class MainContentCommandActions {
 
     func openQuickSwitcher() {
         coordinator?.showQuickSwitcher()
+    }
+
+    func showColumnJump() {
+        guard canJumpToColumn else { return }
+        coordinator?.showColumnJump()
     }
 
     /// The window presents this one. It is a window command wherever it is invoked from, and

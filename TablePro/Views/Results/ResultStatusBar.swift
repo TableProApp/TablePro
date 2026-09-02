@@ -188,19 +188,25 @@ struct ResultStatusBar: View {
         .controlSize(.small)
         /// Present but inert until the result names its columns, so a reload dims the button rather
         /// than removing it and shifting everything beside it.
-        .disabled(columnState.all.isEmpty)
+        .disabled(columnState.columns.isEmpty)
         .help(String(localized: "Choose which columns the grid shows"))
         .accessibilityLabel(String(localized: "Columns"))
         .accessibilityValue(columnsAccessibilityValue)
         .accessibilityIdentifier("result-status-columns")
         .popover(isPresented: $showColumnPopover, arrowEdge: .top) {
             ColumnVisibilityPopover(
-                columns: columnState.all,
+                columns: columnState.visibilityColumns,
                 hiddenColumns: columnState.hidden,
                 onToggleColumn: columnState.onToggle,
                 onShowAll: columnState.onShowAll,
                 onHideAll: columnState.onHideAll,
-                onReset: columnState.onReset
+                onReset: columnState.onReset,
+                onJumpToColumn: columnState.onJumpToColumn.map { jump in
+                    { query in
+                        showColumnPopover = false
+                        jump(query)
+                    }
+                }
             )
         }
     }
@@ -232,8 +238,8 @@ struct ResultStatusBar: View {
     /// different control name depending on how many columns happened to be hidden.
     private var columnsAccessibilityValue: String {
         guard hasHiddenColumns else { return String(localized: "All columns visible") }
-        let visible = columnState.all.count - columnState.hidden.count
-        return String(format: String(localized: "%d of %d columns visible"), visible, columnState.all.count)
+        let total = columnState.visibilityColumns.count
+        return String(format: String(localized: "%d of %d columns visible"), total - columnState.hidden.count, total)
     }
 
     private var filtersAccessibilityValue: String {

@@ -75,6 +75,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     private(set) var displayState = DataGridDisplayState()
     var displayCache: RowDisplayCache { displayState.cache }
     private var pendingScrollAnchorRow: Int?
+    var pendingColumnJump: PendingColumnJump?
     weak var delegate: (any DataGridViewDelegate)?
     var rowReorder: DataGridRowReorder = .disabled
     weak var activeFKPreviewPopover: NSPopover?
@@ -658,6 +659,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         prewarmResumeTask = nil
         detachScrollObservers()
         selectionController.clear()
+        pendingColumnJump = nil
         overlayEditor?.dismiss(commit: false)
         overlayViewer?.dismiss()
         settingsCancellable?.cancel()

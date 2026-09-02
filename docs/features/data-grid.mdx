@@ -46,6 +46,15 @@ Hide columns from the columns button in the status bar or from the header menu. 
 
 Widths, order, and hidden columns are remembered per table, scoped to the connection, database, and schema; **Reset Columns** in the popover puts them back. Right-click a header and choose **Display As** to read a column's stored values in a different form; [Cell and Row Viewers](/features/json-viewer) lists the formats.
 
+### Jump to a column
+
+`Cmd+Shift+J`, or **Edit > Find > Jump to Column**, lists every column of the result with its type and its place in the grid. Type part of a name; matching is fuzzy, so `crat` finds `created_at`. `Return` scrolls the selected column into view and puts the cell cursor in it, on the selected row. A hidden column is listed too, marked **Hidden**, and jumping to it shows it first. **Jump to Column** at the foot of the columns popover opens the same panel with the popover's search carried over.
+
+<Frame caption="Jump to Column ranking a fuzzy match">
+  <img className="block dark:hidden" src="/images/column-jump.png" alt="A floating panel over the data grid listing columns with their types and positions" />
+  <img className="hidden dark:block" src="/images/column-jump-dark.png" alt="A floating panel over the data grid listing columns with their types and positions" />
+</Frame>
+
 ## Foreign keys
 
 A foreign key cell carries an arrow on its right edge. Click it to open the referenced table filtered to the matching row, or right-click for **Preview Referenced Row**, which shows that row in a popover. `Cmd`-click always opens a new tab; otherwise the reference takes over the current tab unless that tab holds a query or unsaved edits.

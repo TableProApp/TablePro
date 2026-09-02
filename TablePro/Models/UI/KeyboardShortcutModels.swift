@@ -113,6 +113,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case refresh
     case export
     case importData
+    case jumpToColumn
 
     // Navigation
     case navigateBack
@@ -155,7 +156,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .undo, .redo, .cut, .copy, .copyRowsExplicit, .copyWithHeaders, .copyAsJson,
              .paste, .delete, .selectAll, .clearSelection, .addRow, .duplicateRow,
              .truncateTable, .toggleHeaderRow, .previewFKReference, .saveAsFavorite, .previousPage,
-             .nextPage, .firstPage, .lastPage, .refresh, .export, .importData:
+             .nextPage, .firstPage, .lastPage, .refresh, .export, .importData, .jumpToColumn:
             return .dataGrid
         case .navigateBack, .navigateForward,
              .newTab, .closeTab, .closeOtherTabs, .closeTabsForOtherDatabases, .closeAllTabs,
@@ -182,7 +183,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
             return .editor
         case .previousPage, .nextPage, .firstPage, .lastPage, .addRow, .duplicateRow,
              .delete, .truncateTable, .previewFKReference, .saveAsFavorite,
-             .copyRowsExplicit, .copyWithHeaders, .copyAsJson, .toggleFilters:
+             .copyRowsExplicit, .copyWithHeaders, .copyAsJson, .toggleFilters, .jumpToColumn:
             return .dataGrid
         default:
             return .global
@@ -234,6 +235,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .findPrevious: return String(localized: "Find Previous")
         case .export: return String(localized: "Export")
         case .importData: return String(localized: "Import")
+        case .jumpToColumn: return String(localized: "Jump to Column")
         case .quickSwitcher: return String(localized: "Open Quickly")
         case .previousPage: return String(localized: "Previous Page")
         case .nextPage: return String(localized: "Next Page")
@@ -561,6 +563,7 @@ struct KeyboardSettings: Codable, Equatable {
         .firstPage: .special(.upArrow, command: true, option: true),
         .lastPage: .special(.downArrow, command: true, option: true),
         .refresh: .character("r", command: true),
+        .jumpToColumn: .character("j", command: true, shift: true),
 
         // Navigation
         /// Not the Safari chord. Command+[ and Command+] are Previous/Next Page and are claimed

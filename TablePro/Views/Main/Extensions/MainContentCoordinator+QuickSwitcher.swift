@@ -9,9 +9,13 @@ import AppKit
 import Foundation
 
 extension MainContentCoordinator {
+    static let openQuicklyPanelIdentity = "open-quickly"
+
+    /// Toggles only its own panel: a Jump to Column panel on the same controller is replaced,
+    /// because the reader asked for objects, the same way Jump to Column replaces this one.
     func showQuickSwitcher() {
         guard let quickSwitcherPanel else { return }
-        guard !quickSwitcherPanel.isPresented else {
+        guard !quickSwitcherPanel.isPresenting(Self.openQuicklyPanelIdentity) else {
             quickSwitcherPanel.dismiss()
             return
         }
@@ -39,7 +43,7 @@ extension MainContentCoordinator {
             onSelect: { [weak self] item, intent in self?.handleQuickSwitcherSelection(item, intent: intent) },
             onDismiss: { [weak self] in self?.quickSwitcherPanel?.dismiss() }
         )
-        quickSwitcherPanel.present(panelView, over: contentWindow)
+        quickSwitcherPanel.present(panelView, over: contentWindow, identity: Self.openQuicklyPanelIdentity)
     }
 
     func handleQuickSwitcherSelection(_ item: QuickSwitcherItem, intent: QuickSwitcherCommitIntent = .open) {

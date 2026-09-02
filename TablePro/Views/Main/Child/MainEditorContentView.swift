@@ -763,10 +763,7 @@ struct MainEditorContentView: View {
                             Divider()
                         }
 
-                        if tab.tabType == .query && !resolvedRows.columns.isEmpty
-                            && resolvedRows.rows.isEmpty && tab.execution.lastExecutedAt != nil
-                            && !coordinator.tabExecution.isExecuting(tab.id) && !tab.filterState.hasAppliedFilters
-                        {
+                        if showsEmptyResultView(tab: tab, rows: resolvedRows) {
                             emptyResultView(executionTime: tab.display.activeResultSet?.executionTime ?? tab.execution.executionTime)
                         } else {
                             dataGridView(tab: tab)
@@ -839,6 +836,14 @@ struct MainEditorContentView: View {
                 coordinator.togglePinResultSet(id: id)
             }
         )
+    }
+
+    /// A query that came back with columns and no rows shows this instead of a grid, so anything
+    /// that offers a jump into the grid reads the same condition.
+    private func showsEmptyResultView(tab: QueryTab, rows: TableRows) -> Bool {
+        tab.tabType == .query && !rows.columns.isEmpty
+            && rows.rows.isEmpty && tab.execution.lastExecutedAt != nil
+            && !coordinator.tabExecution.isExecuting(tab.id) && !tab.filterState.hasAppliedFilters
     }
 
     private func emptyResultView(executionTime: TimeInterval?) -> some View {
@@ -973,11 +978,15 @@ struct MainEditorContentView: View {
             filterState: tab.filterState,
             columnState: StatusBarColumnState(
                 hidden: tab.columnLayout.hiddenColumns,
-                all: coordinator.columnsForVisibilityPicker(for: tab, resultColumns: resolvedRows.columns),
+                columns: coordinator.columnCatalog(for: tab, resultRows: resolvedRows),
                 onToggle: { coordinator.toggleColumnVisibility($0) },
                 onShowAll: { coordinator.showAllColumns() },
                 onHideAll: { coordinator.hideAllColumns($0) },
-                onReset: { coordinator.resetColumns() }
+                onReset: { coordinator.resetColumns() },
+                onJumpToColumn: tab.display.resultsViewMode == .data && !tab.display.isResultsCollapsed
+                    && !showsEmptyResultView(tab: tab, rows: resolvedRows)
+                    ? { coordinator.showColumnJump(seededWith: $0) }
+                    : nil
             ),
             paginationCallbacks: PaginationCallbacks(
                 onFirst: onFirstPage,

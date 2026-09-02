@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Value picker on a foreign key cell, listing rows from the referenced table with a label beside the key. (#2511)
 - Breakdown of a query's time into server, first row and transfer, behind the toolbar's duration readout. (#2503)
 - Exclude the AUTO_INCREMENT counter and Exclude DEFINER clauses in the SQL export, both on by default. (#2516)
+- Jump to Column in the grid, a fuzzy search over the result's columns with their type and position. (#2495)
 
 ### Changed
 

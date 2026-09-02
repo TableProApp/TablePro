@@ -237,6 +237,18 @@ struct MainMenuShortcutCoverageTests {
         #expect(item?.keyEquivalent == "f")
         #expect(item?.keyEquivalentModifierMask == [.command, .shift])
     }
+
+    @Test("Jump to Column… sits in the Edit menu's Find submenu on Cmd+Shift+J")
+    func jumpToColumnLivesUnderFind() {
+        let edit = buildMenu().items.first { $0.title == String(localized: "Edit") }?.submenu
+        let find = edit?.items.first { $0.title == String(localized: "Find") }?.submenu
+        let item = find?.items.first { $0.identifier == MenuItemFactory.identifier(for: .jumpToColumn) }
+
+        #expect(item?.title == String(localized: "Jump to Column…"))
+        #expect(item?.action == #selector(MainSplitViewController.jumpToColumn(_:)))
+        #expect(item?.keyEquivalent == "j")
+        #expect(item?.keyEquivalentModifierMask == [.command, .shift])
+    }
 }
 
 @Suite("Main menu validation")

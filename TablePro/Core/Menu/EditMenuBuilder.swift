@@ -133,6 +133,13 @@ enum EditMenuBuilder {
                 action: #selector(MainSplitViewController.findPrevious(_:)),
                 shortcut: .findPrevious,
                 keyboard: keyboard
+            ),
+            MenuItemFactory.separator,
+            MenuItemFactory.item(
+                String(localized: "Jump to Column…"),
+                action: #selector(MainSplitViewController.jumpToColumn(_:)),
+                shortcut: .jumpToColumn,
+                keyboard: keyboard
             )
         ])
     }

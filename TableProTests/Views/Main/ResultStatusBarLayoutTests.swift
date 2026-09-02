@@ -41,11 +41,15 @@ struct ResultStatusBarLayoutTests {
             filterState: TabFilterState(),
             columnState: StatusBarColumnState(
                 hidden: [],
-                all: ["id", "name"],
+                columns: [
+                    GridColumnEntry(name: "id", dataIndex: 0, typeName: "INTEGER", position: 1, isHidden: false),
+                    GridColumnEntry(name: "name", dataIndex: 1, typeName: "TEXT", position: 2, isHidden: false)
+                ],
                 onToggle: { _ in },
                 onShowAll: {},
                 onHideAll: { _ in },
-                onReset: {}
+                onReset: {},
+                onJumpToColumn: nil
             ),
             paginationCallbacks: PaginationCallbacks(
                 onFirst: {},
