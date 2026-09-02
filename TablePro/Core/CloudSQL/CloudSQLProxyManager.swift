@@ -28,6 +28,8 @@ actor CloudSQLProxyManager: TunnelManaging {
     private let runnerFactory: () -> any SupervisedProcessRunner
     private let binaryManager: CloudSQLProxyBinaryManager
     private let systemBinaryLookup: (String) -> String?
+    private var staleSweep: Task<Void, Never>?
+    private let reaperTimings: StaleProcessReaper.Timings
 
     private static let runnerRegistry = OSAllocatedUnfairLock(initialState: [UUID: any SupervisedProcessRunner]())
 
@@ -36,11 +38,13 @@ actor CloudSQLProxyManager: TunnelManaging {
     init(
         runnerFactory: @escaping () -> any SupervisedProcessRunner = { ProcessSupervisedRunner() },
         binaryManager: CloudSQLProxyBinaryManager = .shared,
-        systemBinaryLookup: @escaping (String) -> String? = { CLIExecutableFinder.findExecutable($0) }
+        systemBinaryLookup: @escaping (String) -> String? = { CLIExecutableFinder.findExecutable($0) },
+        reaperTimings: StaleProcessReaper.Timings = .production
     ) {
         self.runnerFactory = runnerFactory
         self.binaryManager = binaryManager
         self.systemBinaryLookup = systemBinaryLookup
+        self.reaperTimings = reaperTimings
     }
 
     func createTunnel(
@@ -49,6 +53,10 @@ actor CloudSQLProxyManager: TunnelManaging {
         serviceAccountKeyJSON: String? = nil
     ) async throws -> Int {
         guard config.isValid else { throw CloudSQLProxyError.invalidInstanceConnectionName }
+
+        /// A `cloud-sql-proxy` a crashed session left behind still owns the port this is about to
+        /// ask for, and a configuration with a fixed `localPort` gets exactly one attempt at it.
+        await sweepStalePidsIfNeeded()
 
         if tunnels[connectionId] != nil {
             try await closeTunnel(connectionId: connectionId)
@@ -149,16 +157,42 @@ actor CloudSQLProxyManager: TunnelManaging {
         tunnels[connectionId]?.localPort
     }
 
-    func sweepStalePidsIfNeeded() {
-        Self.purgeCredentialsFiles()
-        defer { AppStorageEnvironment.shared.defaults.removeObject(forKey: Self.stalePidsDefaultsKey) }
-        guard let data = AppStorageEnvironment.shared.defaults.data(forKey: Self.stalePidsDefaultsKey),
-              let records = try? JSONDecoder().decode([CloudSQLProxyPidRecord].self, from: data) else {
+    /// Runs at most once per process. `createTunnel` awaits it, so it is both the launch-time
+    /// cleanup and the barrier a connection needs before it can trust the port is free.
+    func sweepStalePidsIfNeeded() async {
+        if let staleSweep {
+            await staleSweep.value
             return
         }
-        for record in records where Self.isLiveCloudSQLProxy(record) {
-            kill(record.pid, SIGTERM)
-            Self.logger.notice("Reaped stale cloud-sql-proxy pid \(record.pid)")
+        let task = Task { await self.performStaleSweep() }
+        staleSweep = task
+        await task.value
+    }
+
+    private func performStaleSweep() async {
+        Self.purgeCredentialsFiles()
+        let defaults = AppStorageEnvironment.shared.defaults
+        guard let data = defaults.data(forKey: Self.stalePidsDefaultsKey),
+              let records = try? JSONDecoder().decode([CloudSQLProxyPidRecord].self, from: data) else {
+            defaults.removeObject(forKey: Self.stalePidsDefaultsKey)
+            return
+        }
+
+        let survivors = await StaleProcessReaper.reap(
+            records.map { CloudSQLProxyPidRecord.reaperTarget($0) },
+            timings: reaperTimings
+        )
+
+        /// A process that outlived even `SIGKILL` keeps its record, so the next launch tries again
+        /// rather than forgetting a port is still held.
+        guard !survivors.isEmpty else {
+            defaults.removeObject(forKey: Self.stalePidsDefaultsKey)
+            return
+        }
+        let surviving = Set(survivors.map(\.pid))
+        let kept = records.filter { surviving.contains($0.pid) }
+        if let data = try? JSONEncoder().encode(kept) {
+            defaults.set(data, forKey: Self.stalePidsDefaultsKey)
         }
     }
 
@@ -318,17 +352,6 @@ actor CloudSQLProxyManager: TunnelManaging {
         }
     }
 
-    private static func isLiveCloudSQLProxy(_ record: CloudSQLProxyPidRecord) -> Bool {
-        guard record.pid > 0 else { return false }
-        let pathBufferSize = 4 * Int(PATH_MAX)
-        var buffer = [CChar](repeating: 0, count: pathBufferSize)
-        let length = proc_pidpath(record.pid, &buffer, UInt32(pathBufferSize))
-        guard length > 0 else { return false }
-        let path = String(cString: buffer)
-        if !record.binaryPath.isEmpty, path == record.binaryPath { return true }
-        return (path as NSString).lastPathComponent == "cloud-sql-proxy"
-    }
-
     private static func isPortInUse(_ stderrTail: String) -> Bool {
         stderrTail.lowercased().contains("address already in use")
     }
@@ -353,6 +376,14 @@ actor CloudSQLProxyManager: TunnelManaging {
 struct CloudSQLProxyPidRecord: Codable, Sendable, Equatable {
     let pid: Int32
     let binaryPath: String
+
+    static func reaperTarget(_ record: CloudSQLProxyPidRecord) -> StaleProcessReaper.Target {
+        StaleProcessReaper.Target(
+            pid: record.pid,
+            binaryPath: record.binaryPath,
+            executableName: "cloud-sql-proxy"
+        )
+    }
 }
 
 // MARK: - Startup monitor

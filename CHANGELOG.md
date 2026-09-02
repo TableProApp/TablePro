@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cold launch to a usable window, 470ms down to 260ms.
 - Plugin signature checks run after the first window rather than on the launch thread, at 13ms each.
 - One gate in front of every path that loads a plugin's executable, enabling one included.
+- Stale `cloudflared` and `cloud-sql-proxy` cleanup waits for the process to exit before a connection reuses its port.
 
 ### Fixed
 
