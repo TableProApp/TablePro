@@ -29,7 +29,7 @@ internal enum SSHPublicKeyFile {
 
     /// A `.pub` line is a few hundred bytes. The cap is here because the same path may name a
     /// private key, a directory entry, or something else entirely.
-    private static let maximumFileSize = 64 * 1024
+    private static let maximumFileSize = 64 * 1_024
 
     /// Every public key an identity file resolves to, in the order OpenSSH looks for them.
     static func blobs(atIdentityPath path: String) -> [SSHPublicKeyBlob] {

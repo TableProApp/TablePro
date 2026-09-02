@@ -30,9 +30,15 @@ struct ResultStatusReadoutView: View {
             /// Unlabelled, per the HIG: "Avoid labeling a spinning progress indicator." It stands in
             /// for the sentence rather than sitting beside one, so the readout has a single owner in
             /// every state and nothing is added to the row.
-            ProgressView()
-                .controlSize(.small)
-                .accessibilityLabel(String(localized: "Loading…"))
+            ///
+            /// Held back for the same reason it is unlabelled. A table on a local database answers
+            /// in single-digit milliseconds, and a readout that spins for that long says less than
+            /// the blank it replaces.
+            LoadingReveal(isActive: true) {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel(String(localized: "Loading…"))
+            }
         case .noRows:
             Text("No rows")
         case let .rowCount(count):

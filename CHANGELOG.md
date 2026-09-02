@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Table collation on MySQL, previously never read.
 - PluginKit ABI 20. Every registry plugin needs rebuilding before or with this release.
 - Cold launch to a usable window, 470ms down to 260ms.
+- Half-second grace before any connecting, schema or query progress indicator appears, and a minimum time on screen once one does.
+- Window chrome stays put through a connect that finishes inside that grace, instead of collapsing and reopening.
 - Plugin signature checks run after the first window rather than on the launch thread, at 13ms each.
 - One gate in front of every path that loads a plugin's executable, enabling one included.
 - Stale `cloudflared` and `cloud-sql-proxy` cleanup waits for the process to exit before a connection reuses its port.

@@ -16,9 +16,19 @@ struct ExecutionIndicatorView: View {
     let lastClickHouseProgress: ClickHouseQueryProgress?
     var onCancel: (() -> Void)?
 
+    /// Held back rather than the spinner inside it, so a query too fast to report leaves the
+    /// previous duration standing instead of emptying the item and changing the toolbar's width
+    /// twice. Clicking a table on a local database runs in single-digit milliseconds, and
+    /// "Executing…" appearing and going in that time is churn the user reads as a flicker.
+    ///
+    /// The Stop button goes with it. Nothing needs cancelling inside the grace, and past it the
+    /// button is there, which is what the HIG asks: "When it's feasible, let people halt
+    /// processing."
+    @State private var showsExecution = false
+
     var body: some View {
         HStack(spacing: 4) {
-            if isExecuting {
+            if showsExecution {
                 ProgressView()
                     .controlSize(.small)
                     .accessibilityLabel(String(localized: "Query executing"))
@@ -64,6 +74,7 @@ struct ExecutionIndicatorView: View {
                     .help(String(localized: "Run a query to see execution time"))
             }
         }
+        .loadingRevealGate(isActive: isExecuting, isRevealed: $showsExecution)
     }
 
     // MARK: - Helpers

@@ -14,14 +14,16 @@ struct SidebarObjectListPresentationTests {
         hasActiveFilter: Bool = false,
         hasAnyMatch: Bool = true,
         hasRoutines: Bool = false,
-        hasTriggers: Bool = false
+        hasTriggers: Bool = false,
+        hasOutlastedGrace: Bool = true
     ) -> SidebarObjectListPresentation {
         SidebarObjectListPresentation.resolve(
             state: state,
             hasActiveFilter: hasActiveFilter,
             hasAnyMatch: hasAnyMatch,
             hasRoutines: hasRoutines,
-            hasTriggers: hasTriggers
+            hasTriggers: hasTriggers,
+            hasOutlastedGrace: hasOutlastedGrace
         )
     }
 
@@ -75,5 +77,31 @@ struct SidebarObjectListPresentationTests {
     @Test("A failed load surfaces its message instead of claiming the database is empty")
     func failureSurfacesMessage() {
         #expect(resolve(.failed("boom")) == .failed("boom"))
+    }
+
+    // MARK: - The grace
+
+    /// The schema of a local database arrives in about 110ms, so the column stays blank rather
+    /// than spinning for a tenth of a second.
+    @Test("A schema read too young to report leaves the column blank")
+    func loadingInsideTheGracePrepares() {
+        #expect(resolve(.idle, hasOutlastedGrace: false) == .preparing)
+        #expect(resolve(.loading, hasOutlastedGrace: false) == .preparing)
+    }
+
+    /// A read that has taken long enough for the user to wonder is exactly what a spinner is for.
+    @Test("A schema read that outlasts the grace gets its spinner")
+    func loadingPastTheGraceShowsTheSpinner() {
+        #expect(resolve(.idle, hasOutlastedGrace: false) != resolve(.idle))
+        #expect(resolve(.loading) == .loading)
+    }
+
+    /// The grace holds back a wait, never an answer. A refused read has to say so at once, or the
+    /// user is left looking at a blank column that gives no reason and offers no Retry.
+    @Test("The grace never delays a failure or a finished list")
+    func settledStatesIgnoreTheGrace() {
+        #expect(resolve(.failed("boom"), hasOutlastedGrace: false) == .failed("boom"))
+        #expect(resolve(.loaded([]), hasOutlastedGrace: false) == .empty)
+        #expect(resolve(.loaded([table("users")]), hasOutlastedGrace: false) == .list)
     }
 }

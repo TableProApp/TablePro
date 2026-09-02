@@ -11,6 +11,7 @@ import TableProPluginKit
 struct SidebarView: View {
     @State private var viewModel: SidebarViewModel
     @State private var settingsManager = AppSettingsManager.shared
+    @State private var showsSchemaProgress = false
 
     private var schemaService: SchemaService { SchemaService.shared }
 
@@ -235,26 +236,43 @@ struct SidebarView: View {
         }
     }
 
-    @ViewBuilder
-    private var flatContent: some View {
-        switch SidebarObjectListPresentation.resolve(
+    private var objectListPresentation: SidebarObjectListPresentation {
+        SidebarObjectListPresentation.resolve(
             state: schemaService.state(for: connectionId),
             hasActiveFilter: !viewModel.filterQuery.isEmpty,
             hasAnyMatch: hasAnyMatch,
             hasRoutines: !routines.isEmpty,
-            hasTriggers: !triggers.isEmpty
-        ) {
-        case .loading:
-            loadingState
-        case .failed(let message):
-            errorState(message: message)
-        case .noMatch:
-            noMatchState
-        case .empty:
-            emptyState
-        case .list:
-            tableList
+            hasTriggers: !triggers.isEmpty,
+            hasOutlastedGrace: showsSchemaProgress
+        )
+    }
+
+    /// Asked above the switch rather than inside its loading branch, so which of the two the
+    /// column renders stays a decision of the pure resolver that already owns every other one,
+    /// and is tested there rather than buried in a view.
+    @ViewBuilder
+    private var flatContent: some View {
+        let presentation = objectListPresentation
+        Group {
+            switch presentation {
+            case .preparing:
+                Color.clear
+            case .loading:
+                loadingState
+            case .failed(let message):
+                errorState(message: message)
+            case .noMatch:
+                noMatchState
+            case .empty:
+                emptyState
+            case .list:
+                tableList
+            }
         }
+        .loadingRevealGate(
+            isActive: presentation == .preparing || presentation == .loading,
+            isRevealed: $showsSchemaProgress
+        )
     }
 
     private var loadingState: some View {

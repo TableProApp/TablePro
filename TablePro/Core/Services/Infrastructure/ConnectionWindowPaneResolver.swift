@@ -6,6 +6,11 @@
 import Foundation
 
 internal enum ConnectionWindowPane: Equatable {
+    /// A connect too young to be worth saying anything about. It draws nothing and, unlike every
+    /// other contentless pane, it leaves the window's chrome alone: a local file opens in about
+    /// 40ms, and collapsing the sidebar and inspector for that long only to put them back is a
+    /// layout cycle nobody asked for and a flash the HIG names outright.
+    case preparing
     case connecting
     case unavailable(ConnectionUnavailableReason)
     case content
@@ -23,10 +28,22 @@ internal enum SidebarChromeMode: Equatable {
 }
 
 internal enum ConnectionWindowPaneResolver {
+    /// `hasOutlastedGrace` is false for the first `LoadingRevealPolicy.grace` of a connect and of
+    /// the moment before one starts. Neither is a state worth reporting: the first has not lasted
+    /// long enough to be worth a word, and the second is not "not connected", it is "about to
+    /// dial", a distinction `.idle` alone cannot draw because it answers for both. Measured on the
+    /// SQLite sample, reporting them built three pane hierarchies and ran a whole chrome collapse
+    /// and reveal inside the first 103ms of a window's life, for a 39ms connect.
+    ///
+    /// The grace expiring is the exit from `.preparing` in both directions, which is why `.idle`
+    /// reads it too. A connect that never starts, because the phase disallowed it or the record
+    /// went missing, would otherwise leave the window silently empty for good.
     internal static func pane(
         phase: ConnectionWindowPhase,
         hasConnection: Bool,
-        hasRenderableSession: Bool
+        hasRenderableSession: Bool,
+        awaitsAutoConnect: Bool = false,
+        hasOutlastedGrace: Bool = true
     ) -> ConnectionWindowPane {
         switch phase {
         case .closing:
@@ -35,19 +52,45 @@ internal enum ConnectionWindowPaneResolver {
             return hasRenderableSession ? .content : .empty
         case .idle:
             if hasRenderableSession { return .content }
-            return hasConnection ? .unavailable(.notConnected) : .empty
+            guard hasConnection else { return .empty }
+            guard awaitsAutoConnect, !hasOutlastedGrace else { return .unavailable(.notConnected) }
+            return .preparing
         case .connecting:
-            return hasConnection ? .connecting : .empty
+            guard hasConnection else { return .empty }
+            return hasOutlastedGrace ? .connecting : .preparing
         case .unavailable(let reason):
             return hasConnection ? .unavailable(reason) : .empty
         }
     }
 
+    /// Whether this phase is one the grace timer runs over, so a caller knows when to arm it and
+    /// when to let it go. It is the exact set of phases `pane` answers differently for depending
+    /// on `showsProgress`, plus the pre-dial `.idle` that resolves to `.preparing` on its own.
+    internal static func awaitsProgressGrace(
+        phase: ConnectionWindowPhase,
+        awaitsAutoConnect: Bool
+    ) -> Bool {
+        switch phase {
+        case .connecting:
+            return true
+        case .idle:
+            return awaitsAutoConnect
+        case .connected, .closing, .unavailable:
+            return false
+        }
+    }
+
     /// An object browser and an inspector with nothing to put in them are not chrome, they are two
     /// empty columns that promise a session the window does not have yet.
+    ///
+    /// That argument holds for a wait the user can see and not for one they cannot. `.preparing`
+    /// is the sub-grace case and keeps the chrome, so the window that opens is the window that
+    /// stays: on the happy path nothing collapses, nothing is put back, and the panes are built
+    /// once. Collapsing for 40ms costs `splitView.autosaveName`, both split items and a
+    /// `recalculateKeyViewLoop()` in each direction, all of it to show an empty column briefly.
     internal static func hidesChrome(for pane: ConnectionWindowPane) -> Bool {
         switch pane {
-        case .content:
+        case .content, .preparing:
             return false
         case .connecting, .unavailable, .empty:
             return true

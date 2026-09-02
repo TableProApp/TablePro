@@ -46,7 +46,6 @@ internal struct CompareSyncProfile: Codable, Hashable, Identifiable {
         self.dataOptions = dataOptions
         self.selectedObjects = selectedObjects
     }
-
 }
 
 extension DatabaseScope: Codable {

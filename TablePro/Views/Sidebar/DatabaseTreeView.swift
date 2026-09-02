@@ -47,6 +47,7 @@ struct DatabaseTreeView: View {
     let sidebarState: SharedSidebarState
 
     @State private var settingsManager = AppSettingsManager.shared
+    @State private var showsDatabaseProgress = false
 
     private var activeDatabase: String? {
         let name = coordinator?.toolbarState.currentDatabase ?? ""
@@ -78,6 +79,15 @@ struct DatabaseTreeView: View {
             && filteredDatabases.isEmpty
     }
 
+    private var isLoadingDatabases: Bool {
+        switch treeService.databaseListState(for: connectionId) {
+        case .idle, .loading:
+            return true
+        case .loaded, .failed:
+            return false
+        }
+    }
+
     var body: some View {
         Group {
             switch treeService.databaseListState(for: connectionId) {
@@ -93,9 +103,14 @@ struct DatabaseTreeView: View {
                     outline
                 }
             case .idle, .loading:
-                loadingState
+                if showsDatabaseProgress {
+                    loadingState
+                } else {
+                    Color.clear
+                }
             }
         }
+        .loadingRevealGate(isActive: isLoadingDatabases, isRevealed: $showsDatabaseProgress)
         .task(id: isConnected) {
             await treeService.loadDatabases(connectionId: connectionId, databaseType: databaseType)
         }

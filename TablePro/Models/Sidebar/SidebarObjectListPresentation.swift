@@ -12,6 +12,10 @@ import Foundation
 /// database that genuinely has no objects, and telling the two apart is the whole reason
 /// this lives outside the view.
 internal enum SidebarObjectListPresentation: Equatable {
+    /// Loading, and not yet for long enough to say so. An empty column is the placeholder the HIG
+    /// asks for, and a local database answers in about 110ms, so a spinner there is a flash rather
+    /// than a report.
+    case preparing
     case loading
     case failed(String)
     case noMatch
@@ -23,11 +27,12 @@ internal enum SidebarObjectListPresentation: Equatable {
         hasActiveFilter: Bool,
         hasAnyMatch: Bool,
         hasRoutines: Bool,
-        hasTriggers: Bool
+        hasTriggers: Bool,
+        hasOutlastedGrace: Bool = true
     ) -> SidebarObjectListPresentation {
         switch state {
         case .idle, .loading:
-            return .loading
+            return hasOutlastedGrace ? .loading : .preparing
         case .failed(let message):
             return .failed(message)
         case .loaded(let tables):
