@@ -50,6 +50,17 @@ Widths, order, and hidden columns are remembered per table, scoped to the connec
 
 A foreign key cell carries an arrow on its right edge. Click it to open the referenced table filtered to the matching row, or right-click for **Preview Referenced Row**, which shows that row in a popover. `Cmd`-click always opens a new tab; otherwise the reference takes over the current tab unless that tab holds a query or unsaved edits.
 
+Double-click a foreign key cell, press `Return` on it, or open its right-click menu to pick the key rather than type it. The picker lists rows from the referenced table, each key with a label beside it, and narrows as you type. `Return` in the search field commits the text as typed, which covers a key the search has not turned up. **Set NULL** appears on a nullable column.
+
+**Label** at the foot of the picker chooses the column that reads as the row's name. The choice is remembered for the referenced table, so every column pointing at it shows the same one. A search fetches the first 50 matches, which keeps the list quick on a large table.
+
+A column of a foreign key that spans several columns keeps the text editor. The picker sets one column, and a key it offered might not pair with the values the row holds in the constraint's other columns. Type the key, or open the referenced table and read the pair off it.
+
+<Frame caption="Every artist the key can point at, with its name">
+  <img className="block dark:hidden" src="/images/fk-value-picker.png" alt="Foreign key value picker over a data grid cell" />
+  <img className="hidden dark:block" src="/images/fk-value-picker-dark.png" alt="Foreign key value picker over a data grid cell" />
+</Frame>
+
 The inspector's **JSON** tab follows a key without leaving the row: see [Row as JSON](/features/json-viewer#row-as-json).
 
 Step back with the Back and Forward buttons at the leading edge of the toolbar, or **View > Back** (`Ctrl+Cmd+[`) and **View > Forward** (`Ctrl+Cmd+]`). Back restores the table you came from as you left it: same filters, sort, page, and selected row. Each tab keeps its own history, Back never closes a tab, and it is unavailable while a tab holds unsaved edits.

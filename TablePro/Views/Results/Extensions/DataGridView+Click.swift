@@ -40,6 +40,8 @@ extension TableViewCoordinator {
             beginCellEdit(row: row, tableColumnIndex: tableColumn)
         case .editOverlay(let value):
             showOverlayEditor(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex, value: value)
+        case .editForeignKey:
+            showForeignKeyPicker(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
         case .editJson:
             showJSONEditorPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
         case .editBlob:
@@ -65,6 +67,7 @@ extension TableViewCoordinator {
             isRowDeleted: changeManager.isRowDeleted(row),
             isImmutableColumn: immutable.contains(columnName),
             isBinaryValue: cellTypedValue(at: row, column: columnIndex).asBytes != nil,
+            isForeignKey: tableRows.columnForeignKeys[columnName] != nil,
             displayFormatOverride: override
         )
     }

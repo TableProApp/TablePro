@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Value picker on a foreign key cell, listing rows from the referenced table with a label beside the key. (#2511)
+
 ## [0.71.0] - 2026-09-02
 
 ### Added

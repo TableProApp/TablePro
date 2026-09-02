@@ -244,6 +244,62 @@ extension TableViewCoordinator {
         }
     }
 
+    /// The value picker a writable foreign key cell opens in place of the plain text editor.
+    ///
+    /// Falls back to that editor whenever the picker cannot be built, the way the array editor falls
+    /// back on a literal it cannot parse: an engine with no SQL dialect has nothing to search the
+    /// referenced table with, a column of a composite key cannot be picked on its own, and a cell
+    /// that opens nothing at all reads as a broken grid.
+    ///
+    /// `canStartInlineEdit` is asked again here because `CellInteractionResolver` knows only the
+    /// columns the plugin declares immutable. A generated column carrying foreign key metadata,
+    /// which SQLite allows, would otherwise open the picker and have its commit dropped by
+    /// `recordCellEdit`, closing the popover over a cell that never changed.
+    func showForeignKeyPicker(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
+        let columnName = tableRows.columns[columnIndex]
+
+        guard let connectionId,
+              let databaseType,
+              let fkInfo = tableRows.columnForeignKeys[columnName],
+              canStartInlineEdit(row: row, columnIndex: columnIndex),
+              PluginManager.shared.sqlDialect(for: databaseType) != nil,
+              !ForeignKeyConstraintSpan.isMultiColumn(fkInfo, among: tableRows.columnForeignKeys)
+        else {
+            beginCellEdit(row: row, tableColumnIndex: column)
+            return
+        }
+
+        let scope = DatabaseScope(
+            connectionId: connectionId,
+            database: databaseName ?? DatabaseManager.shared.browseScope(for: connectionId)?.database ?? "",
+            schema: schemaName
+        )
+
+        let currentValue = cellValue(at: row, column: columnIndex)
+        let isNullable = tableRows.columnNullable[columnName] ?? true
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        dismissActiveCellEditorPopover()
+        activeCellEditorPopover = PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView
+        ) { [weak self] dismiss in
+            ForeignKeyPickerView(
+                scope: scope,
+                databaseType: databaseType,
+                fkInfo: fkInfo,
+                currentValue: currentValue,
+                isNullable: isNullable,
+                onCommit: { newValue in
+                    self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
+                },
+                onDismiss: dismiss
+            )
+        }
+    }
+
     func showSetPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         guard presentsCell(row: row, tableColumnIndex: column) else { return }
         let tableRows = tableRowsProvider()

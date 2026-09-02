@@ -12,6 +12,7 @@ internal struct CellContext: Equatable {
     let isRowDeleted: Bool
     let isImmutableColumn: Bool
     let isBinaryValue: Bool
+    let isForeignKey: Bool
     let displayFormatOverride: ValueDisplayFormat?
 
     init(
@@ -21,6 +22,7 @@ internal struct CellContext: Equatable {
         isRowDeleted: Bool,
         isImmutableColumn: Bool,
         isBinaryValue: Bool = false,
+        isForeignKey: Bool = false,
         displayFormatOverride: ValueDisplayFormat? = nil
     ) {
         self.columnType = columnType
@@ -29,6 +31,7 @@ internal struct CellContext: Equatable {
         self.isRowDeleted = isRowDeleted
         self.isImmutableColumn = isImmutableColumn
         self.isBinaryValue = isBinaryValue
+        self.isForeignKey = isForeignKey
         self.displayFormatOverride = displayFormatOverride
     }
 }
@@ -41,6 +44,7 @@ internal enum CellInteractionMode: Equatable {
 
     case editInline(value: String)
     case editOverlay(value: String)
+    case editForeignKey
     case editJson
     case editBlob
 
@@ -67,10 +71,15 @@ internal struct CellInteractionResolver {
         }
     }
 
+    /// A writable foreign key column picks from the rows it points at rather than taking a typed
+    /// key on trust. Resolved here rather than ahead of the blob and structured-format branches, so
+    /// a foreign key that is also a blob, JSON or PHP-serialized value keeps the editor its content
+    /// needs, and a read-only cell keeps every viewer it has.
     private func plainText(for context: CellContext, isReadOnly: Bool) -> CellInteractionMode {
         if isReadOnly {
             return .viewInline(value: context.value ?? "NULL")
         }
+        if context.isForeignKey { return .editForeignKey }
         let value = context.value ?? ""
         if value.containsLineBreak { return .editOverlay(value: value) }
         return .editInline(value: value)

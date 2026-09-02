@@ -294,11 +294,29 @@ class DataGridRowView: NSTableRowView {
     private func addForeignKeyMenuItems(to menu: NSMenu, dataColumnIndex: Int, tableRows: TableRows) {
         guard let coordinator, dataColumnIndex >= 0, dataColumnIndex < tableRows.columns.count else { return }
         let columnName = tableRows.columns[dataColumnIndex]
-        guard let fkInfo = tableRows.columnForeignKeys[columnName],
-              let cellValue = coordinator.cellValue(at: rowIndex, column: dataColumnIndex),
-              !cellValue.isEmpty else { return }
+        guard let fkInfo = tableRows.columnForeignKeys[columnName] else { return }
+
+        /// Choosing a value is offered on an empty cell too, which is where it is needed most,
+        /// while previewing and following a key still need one to resolve.
+        let hasValue = coordinator.cellValue(at: rowIndex, column: dataColumnIndex)?.isEmpty == false
+        let canChoose = coordinator.canStartInlineEdit(row: rowIndex, columnIndex: dataColumnIndex)
+            && !ForeignKeyConstraintSpan.isMultiColumn(fkInfo, among: tableRows.columnForeignKeys)
+        guard hasValue || canChoose else { return }
 
         menu.addItem(NSMenuItem.separator())
+
+        if canChoose {
+            let chooseItem = NSMenuItem(
+                title: String(format: String(localized: "Choose %@ Row…"), fkInfo.referencedTable),
+                action: #selector(chooseForeignKeyValue(_:)),
+                keyEquivalent: ""
+            )
+            chooseItem.representedObject = dataColumnIndex
+            chooseItem.target = self
+            menu.addItem(chooseItem)
+        }
+
+        guard hasValue else { return }
 
         let previewItem = NSMenuItem(
             title: String(localized: "Preview Referenced Row"),
@@ -737,6 +755,15 @@ class DataGridRowView: NSTableRowView {
 
     @objc private func showRowAsJSON() {
         coordinator?.delegate?.dataGridShowRowAsJSON()
+    }
+
+    @objc private func chooseForeignKeyValue(_ sender: NSMenuItem) {
+        guard let columnIndex = sender.representedObject as? Int,
+              let coordinator, let tableView = coordinator.tableView,
+              let column = coordinator.tableColumnIndex(for: columnIndex) else { return }
+        coordinator.showForeignKeyPicker(
+            tableView: tableView, row: rowIndex, column: column, columnIndex: columnIndex
+        )
     }
 
     @objc private func previewForeignKey(_ sender: NSMenuItem) {

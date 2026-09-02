@@ -31,4 +31,8 @@ enum PreferenceKeys {
     static func recentTables(connectionId: UUID) -> DefaultsKey<[RecentTableEntry]> {
         DefaultsKey("com.TablePro.recentTables." + connectionId.uuidString)
     }
+
+    static func foreignKeyLabelColumn(_ scope: TableScope) -> DefaultsKey<String> {
+        DefaultsKey("com.TablePro.foreignKey.labelColumn." + scope.storageComponent)
+    }
 }

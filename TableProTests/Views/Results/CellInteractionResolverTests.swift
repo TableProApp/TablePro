@@ -227,6 +227,79 @@ struct CellInteractionResolverBinaryTests {
     }
 }
 
+@Suite("CellInteractionResolver - foreign key columns")
+struct CellInteractionResolverForeignKeyTests {
+    private let resolver = CellInteractionResolver()
+
+    @Test("a writable foreign key cell opens the value picker")
+    func writableForeignKeyOpensThePicker() {
+        let context = ContextFactory.make(
+            value: "42", columnType: .integer(rawType: "INTEGER"), isTableEditable: true, isForeignKey: true
+        )
+        #expect(resolver.resolve(context) == .editForeignKey)
+    }
+
+    @Test("an empty foreign key cell opens the picker too")
+    func emptyForeignKeyOpensThePicker() {
+        let context = ContextFactory.make(
+            value: nil, columnType: .integer(rawType: "INTEGER"), isTableEditable: true, isForeignKey: true
+        )
+        #expect(resolver.resolve(context) == .editForeignKey)
+    }
+
+    @Test("a read-only foreign key cell keeps its viewer")
+    func readOnlyForeignKeyKeepsTheViewer() {
+        let context = ContextFactory.make(
+            value: "42", columnType: .integer(rawType: "INTEGER"), isForeignKey: true
+        )
+        #expect(resolver.resolve(context) == .viewInline(value: "42"))
+    }
+
+    @Test("an immutable foreign key column keeps its viewer")
+    func immutableForeignKeyKeepsTheViewer() {
+        let context = ContextFactory.make(
+            value: "42", columnType: .integer(rawType: "INTEGER"),
+            isTableEditable: true, isImmutableColumn: true, isForeignKey: true
+        )
+        #expect(resolver.resolve(context) == .viewInline(value: "42"))
+    }
+
+    @Test("a deleted row stays blocked on a foreign key column")
+    func deletedForeignKeyRowBlocked() {
+        let context = ContextFactory.make(
+            value: "42", isTableEditable: true, isRowDeleted: true, isForeignKey: true
+        )
+        #expect(resolver.resolve(context) == .blocked)
+    }
+
+    /// The picker lists keys, so a cell whose content needs a structured editor keeps that editor:
+    /// the reference is still followed from the arrow and the context menu.
+    @Test("a foreign key column holding a blob keeps the blob editor")
+    func blobForeignKeyKeepsTheBlobEditor() {
+        let context = ContextFactory.make(
+            value: nil, columnType: .blob(rawType: "BLOB"), isTableEditable: true, isForeignKey: true
+        )
+        #expect(resolver.resolve(context) == .editBlob)
+    }
+
+    @Test("a foreign key column shown as JSON keeps the JSON editor")
+    func jsonDisplayForeignKeyKeepsTheJsonEditor() {
+        let context = ContextFactory.make(
+            value: "{}", columnType: .text(rawType: "TEXT"), isTableEditable: true,
+            isForeignKey: true, displayFormatOverride: .json
+        )
+        #expect(resolver.resolve(context) == .editJson)
+    }
+
+    @Test("a column with no foreign key still edits inline")
+    func plainColumnStillEditsInline() {
+        let context = ContextFactory.make(
+            value: "42", columnType: .integer(rawType: "INTEGER"), isTableEditable: true
+        )
+        #expect(resolver.resolve(context) == .editInline(value: "42"))
+    }
+}
+
 private enum ContextFactory {
     static func make(
         value: String?,
@@ -235,6 +308,7 @@ private enum ContextFactory {
         isRowDeleted: Bool = false,
         isImmutableColumn: Bool = false,
         isBinaryValue: Bool = false,
+        isForeignKey: Bool = false,
         displayFormatOverride: ValueDisplayFormat? = nil
     ) -> CellContext {
         CellContext(
@@ -244,6 +318,7 @@ private enum ContextFactory {
             isRowDeleted: isRowDeleted,
             isImmutableColumn: isImmutableColumn,
             isBinaryValue: isBinaryValue,
+            isForeignKey: isForeignKey,
             displayFormatOverride: displayFormatOverride
         )
     }
