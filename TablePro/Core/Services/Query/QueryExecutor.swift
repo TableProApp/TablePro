@@ -13,6 +13,13 @@ struct QueryFetchResult {
     let statusMessage: String?
     let isTruncated: Bool
     let resultColumnMeta: [ResultColumnMeta]?
+
+    /// What the elapsed time was spent on, when the driver could tell.
+    var timing: PluginQueryTiming?
+
+    var resolvedTiming: PluginQueryTiming {
+        timing ?? PluginQueryTiming(total: executionTime)
+    }
 }
 
 struct FetchedTableSchema {
@@ -124,7 +131,8 @@ final class QueryExecutor {
             rowsAffected: result.rowsAffected,
             statusMessage: result.statusMessage,
             isTruncated: result.isTruncated,
-            resultColumnMeta: result.columnMeta
+            resultColumnMeta: result.columnMeta,
+            timing: result.timing
         )
     }
 
@@ -149,7 +157,8 @@ final class QueryExecutor {
             rowsAffected: result.rowsAffected,
             statusMessage: result.statusMessage,
             isTruncated: result.isTruncated,
-            resultColumnMeta: result.columnMeta
+            resultColumnMeta: result.columnMeta,
+            timing: result.timing
         )
     }
 
@@ -172,7 +181,8 @@ final class QueryExecutor {
             rowsAffected: result.rowsAffected,
             statusMessage: result.statusMessage,
             isTruncated: result.isTruncated,
-            resultColumnMeta: result.columnMeta
+            resultColumnMeta: result.columnMeta,
+            timing: result.timing
         )
     }
 

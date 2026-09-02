@@ -18,7 +18,7 @@ The drawer opens under the editor and its divider resizes it. Height, filters an
 
 Entries group by day, newest first, under **Today**, **Yesterday**, or the date. A row carries the outcome, the query text, the database, the time it ran and how long it took. Under a millisecond reads `<1 ms`; a step whose duration was never measured reads `–` rather than `0 ms`.
 
-Select a row and the right pane shows the full query, highlighted for the database it ran against, with its connection, database and schema, timestamp, duration, row count, source, and the error when it failed. The keyboard stays in the list, so arrow keys keep moving.
+Select a row and the right pane shows the full query, highlighted for the database it ran against, with its connection, database and schema, timestamp, duration, row count, source, and the error when it failed. Where the driver separated execution from transfer, the duration is listed as its parts instead: see [How long it took](/features/query-results#how-long-it-took). The keyboard stays in the list, so arrow keys keep moving.
 
 Recent queries also appear in [Open Quickly](/features/open-quickly). For the summary rather than the list, see [Query Insights](/features/query-insights).
 

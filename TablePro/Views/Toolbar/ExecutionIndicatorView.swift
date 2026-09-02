@@ -7,13 +7,12 @@
 //
 
 import SwiftUI
+import TableProPluginKit
 
 /// Compact execution indicator for the toolbar right section
 struct ExecutionIndicatorView: View {
     let isExecuting: Bool
-    let lastDuration: TimeInterval?
-    let clickHouseProgress: ClickHouseQueryProgress?
-    let lastClickHouseProgress: ClickHouseQueryProgress?
+    let lastTiming: PluginQueryTiming?
     var onCancel: (() -> Void)?
 
     /// Held back rather than the spinner inside it, so a query too fast to report leaves the
@@ -25,6 +24,18 @@ struct ExecutionIndicatorView: View {
     /// button is there, which is what the HIG asks: "When it's feasible, let people halt
     /// processing."
     @State private var showsExecution = false
+    @State private var showsBreakdown = false
+
+    /// Why the two numbers differ, in the popover's own words. A client-measured first row carries
+    /// one network round trip and a server-reported figure does not, and a reader comparing them
+    /// has no other way to know that.
+    private static let clientExplanation = String(localized: """
+        Time to the first row is measured here, so it includes one network round trip.
+        """)
+
+    private static let serverExplanation = String(localized: """
+        The server figure is the engine's own report, so it excludes network time.
+        """)
 
     var body: some View {
         HStack(spacing: 4) {
@@ -33,15 +44,9 @@ struct ExecutionIndicatorView: View {
                     .controlSize(.small)
                     .accessibilityLabel(String(localized: "Query executing"))
                     .accessibilityIdentifier("execution-indicator")
-                if let progress = clickHouseProgress {
-                    Text(progress.formattedLive)
-                        .font(.system(.subheadline, design: .monospaced).weight(.regular))
-                        .foregroundStyle(ThemeEngine.shared.colors.toolbar.tertiaryTextSwiftUI)
-                } else {
-                    Text("Executing…")
-                        .font(.system(.subheadline, design: .monospaced).weight(.regular))
-                        .foregroundStyle(ThemeEngine.shared.colors.toolbar.tertiaryTextSwiftUI)
-                }
+                Text("Executing…")
+                    .font(.system(.subheadline, design: .monospaced).weight(.regular))
+                    .foregroundStyle(ThemeEngine.shared.colors.toolbar.tertiaryTextSwiftUI)
                 Button {
                     onCancel?()
                 } label: {
@@ -52,20 +57,8 @@ struct ExecutionIndicatorView: View {
                 .controlSize(.small)
                 .accessibilityIdentifier("execution-stop")
                 .help(String(localized: "Cancel Query (⌘.)"))
-            } else if let chProgress = lastClickHouseProgress {
-                Text(chProgress.formattedSummary)
-                    .font(.system(.subheadline, design: .monospaced).weight(.regular))
-                    .foregroundStyle(ThemeEngine.shared.colors.toolbar.tertiaryTextSwiftUI)
-                    .accessibilityLabel(String(format: String(localized: "Last query: %@"), chProgress.formattedSummary))
-                    .help(String(localized: "Last query execution summary"))
-            } else if let duration = lastDuration {
-                Text(formattedDuration(duration))
-                    .font(.system(.subheadline, design: .monospaced).weight(.regular))
-                    .foregroundStyle(ThemeEngine.shared.colors.toolbar.tertiaryTextSwiftUI)
-                    .accessibilityLabel(
-                        String(format: String(localized: "Last query took %@"), formattedDuration(duration))
-                    )
-                    .help(String(localized: "Last query execution time"))
+            } else if let timing = lastTiming {
+                durationReadout(timing)
             } else {
                 Text("--")
                     .font(.system(.subheadline, design: .monospaced).weight(.regular))
@@ -74,51 +67,79 @@ struct ExecutionIndicatorView: View {
                     .help(String(localized: "Run a query to see execution time"))
             }
         }
+        .onChange(of: isExecuting) { _, nowExecuting in
+            if nowExecuting { showsBreakdown = false }
+        }
         .loadingRevealGate(isActive: isExecuting, isRevealed: $showsExecution)
     }
 
-    // MARK: - Helpers
+    // MARK: - Readout
 
-    /// Format duration for display
-    private func formattedDuration(_ duration: TimeInterval) -> String {
-        if duration < 0.001 {
-            return String(localized: "<1ms")
-        } else if duration < 1.0 {
-            let ms = String(format: "%.0f", duration * 1_000)
-            return String(format: String(localized: "%@ms"), ms)
-        } else if duration < 60.0 {
-            let secs = String(format: "%.2f", duration)
-            return String(format: String(localized: "%@s"), secs)
+    /// The elapsed number stays the label, because that is what a reader already knows how to read.
+    /// The split lives one click away rather than widening the toolbar with a second figure whose
+    /// meaning nothing on screen explains.
+    @ViewBuilder
+    private func durationReadout(_ timing: PluginQueryTiming) -> some View {
+        let text = QueryDurationFormatter.string(from: timing.total)
+
+        if timing.hasBreakdown {
+            let breakdown = QueryTimingBreakdown(timing: timing)
+            Button {
+                showsBreakdown.toggle()
+            } label: {
+                durationLabel(text)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(format: String(localized: "Last query took %@"), text))
+            .accessibilityHint(String(localized: "Shows how the time was spent"))
+            .accessibilityIdentifier("execution-duration")
+            .help(breakdown.summary)
+            .popover(isPresented: $showsBreakdown, arrowEdge: .bottom) {
+                QueryTimingPopover(
+                    breakdown: breakdown,
+                    explanation: timing.server != nil ? Self.serverExplanation : Self.clientExplanation
+                )
+            }
         } else {
-            let minutes = Int(duration) / 60
-            let seconds = Int(duration) % 60
-            return String(format: String(localized: "%dm %ds"), minutes, seconds)
+            durationLabel(text)
+                .accessibilityLabel(String(format: String(localized: "Last query took %@"), text))
+                .accessibilityIdentifier("execution-duration")
+                .help(String(localized: "Last query execution time"))
         }
+    }
+
+    private func durationLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(.subheadline, design: .monospaced).weight(.regular))
+            .foregroundStyle(ThemeEngine.shared.colors.toolbar.tertiaryTextSwiftUI)
     }
 }
 
 // MARK: - Preview
 
 #Preview("Executing") {
-    ExecutionIndicatorView(isExecuting: true, lastDuration: nil, clickHouseProgress: nil, lastClickHouseProgress: nil)
+    ExecutionIndicatorView(isExecuting: true, lastTiming: nil)
         .padding()
         .background(Color(nsColor: .windowBackgroundColor))
 }
 
 #Preview("Completed Fast") {
-    ExecutionIndicatorView(isExecuting: false, lastDuration: 0.023, clickHouseProgress: nil, lastClickHouseProgress: nil)
+    ExecutionIndicatorView(isExecuting: false, lastTiming: PluginQueryTiming(total: 0.023))
         .padding()
         .background(Color(nsColor: .windowBackgroundColor))
 }
 
-#Preview("Completed Slow") {
-    ExecutionIndicatorView(isExecuting: false, lastDuration: 2.456, clickHouseProgress: nil, lastClickHouseProgress: nil)
-        .padding()
-        .background(Color(nsColor: .windowBackgroundColor))
+#Preview("Split") {
+    ExecutionIndicatorView(
+        isExecuting: false,
+        lastTiming: PluginQueryTiming(total: 3.421, firstRow: 0.012)
+    )
+    .padding()
+    .background(Color(nsColor: .windowBackgroundColor))
 }
 
 #Preview("No Duration") {
-    ExecutionIndicatorView(isExecuting: false, lastDuration: nil, clickHouseProgress: nil, lastClickHouseProgress: nil)
+    ExecutionIndicatorView(isExecuting: false, lastTiming: nil)
         .padding()
         .background(Color(nsColor: .windowBackgroundColor))
 }

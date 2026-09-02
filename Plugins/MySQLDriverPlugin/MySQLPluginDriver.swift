@@ -129,7 +129,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             columnTypeNames: result.columnTypeNames,
             rows: result.rows,
             rowsAffected: Int(result.affectedRows),
-            executionTime: Date().timeIntervalSince(startTime),
+            timing: PluginQueryTiming(
+                total: Date().timeIntervalSince(startTime),
+                firstRow: result.firstRowTime
+            ),
             isTruncated: result.isTruncated,
             columnMeta: result.columnMeta
         )
@@ -154,7 +157,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             columnTypeNames: result.columnTypeNames,
             rows: result.rows,
             rowsAffected: Int(result.affectedRows),
-            executionTime: Date().timeIntervalSince(startTime),
+            timing: PluginQueryTiming(
+                total: Date().timeIntervalSince(startTime),
+                firstRow: result.firstRowTime
+            ),
             isTruncated: result.isTruncated,
             columnMeta: result.columnMeta
         )
@@ -184,7 +190,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                         columnTypeNames: Array(repeating: "TEXT", count: columns.count),
                         rows: [],
                         rowsAffected: Int(result.affectedRows),
-                        executionTime: Date().timeIntervalSince(startTime),
+                        timing: PluginQueryTiming(
+                            total: Date().timeIntervalSince(startTime),
+                            firstRow: result.firstRowTime
+                        ),
                         isTruncated: result.isTruncated
                     )
                 }
@@ -195,7 +204,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 columnTypeNames: result.columnTypeNames,
                 rows: result.rows,
                 rowsAffected: Int(result.affectedRows),
-                executionTime: Date().timeIntervalSince(startTime),
+                timing: PluginQueryTiming(
+                    total: Date().timeIntervalSince(startTime),
+                    firstRow: result.firstRowTime
+                ),
                 isTruncated: result.isTruncated,
                 columnMeta: result.columnMeta
             )

@@ -58,9 +58,7 @@ struct ToolbarPrincipalContent: View {
 
             ExecutionIndicatorView(
                 isExecuting: coordinator?.tabExecution.isAnyExecuting ?? false,
-                lastDuration: state.lastQueryDuration,
-                clickHouseProgress: state.clickHouseProgress,
-                lastClickHouseProgress: state.lastClickHouseProgress,
+                lastTiming: state.lastQueryTiming,
                 onCancel: onCancelQuery
             )
 

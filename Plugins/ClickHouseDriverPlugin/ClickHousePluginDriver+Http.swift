@@ -53,8 +53,9 @@ extension ClickHousePluginDriver {
             throw ClickHouseError(message: body.trimmingCharacters(in: .whitespacesAndNewlines))
         }
 
+        let headers = Self.headerFields(httpResponse)
         let outcome = ClickHouseResponseClassifier.classify(
-            headers: Self.headerFields(httpResponse),
+            headers: headers,
             body: data
         )
         return CHQueryResult(
@@ -62,7 +63,8 @@ extension ClickHousePluginDriver {
             columnTypeNames: outcome.columnTypeNames,
             rows: outcome.rows,
             affectedRows: outcome.affectedRows,
-            isTruncated: outcome.isTruncated
+            isTruncated: outcome.isTruncated,
+            serverElapsed: ClickHouseSummaryParser.parse(headers: headers)?.elapsed
         )
     }
 

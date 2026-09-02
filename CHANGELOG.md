@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Breakdown of a query's time into server, first row and transfer, behind the toolbar's duration readout. (#2503)
+
+### Changed
+
+- Query Insights ranks on the time the database spent rather than on elapsed time. (#2503)
+- PluginKit ABI 21. Every registry plugin needs rebuilding before or with this release.
+
 ## [0.71.0] - 2026-09-02
 
 ### Added

@@ -14,16 +14,18 @@ import TableProPluginKit
 @MainActor @Observable
 final class PluginManager {
     static let shared = PluginManager()
-    /// Raised to 20 for the whole-schema index and table metadata requirements.
+    /// Raised to 21 for `PluginQueryTiming` and the `PluginQueryResult` initializer that carries it.
     ///
-    /// They carry default implementations, so an already-built v19 plugin keeps loading here. The
-    /// break is the other way round, and it is not what Library Evolution covers: a plugin compiled
-    /// against these requirements emits undefined references to their method descriptors, their
-    /// default-implementation symbols and their async function pointers, none of which exist in a
-    /// v19 host. Measured on a rebuilt CassandraDriver, which implements none of them and imports
-    /// all six. Left at 19, such a plugin passes `validateBundleVersions` in a shipped v19 app and
-    /// then fails `Bundle.loadAndReturnError`; at 20 that app refuses it and says to update.
-    nonisolated static let currentPluginKitVersion = 20
+    /// Raised to 20 before that for the whole-schema index and table metadata requirements.
+    ///
+    /// Every one of these additions is safe in the direction Library Evolution covers, so an
+    /// already-built v19 or v20 plugin keeps loading here. The break is the other way round: a
+    /// plugin compiled against the new API emits undefined references to symbols an older host does
+    /// not have. Measured on a rebuilt ClickHouseDriver, whose `nm -u` lists
+    /// `PluginQueryTiming.init(total:firstRow:server:)` and that type's metadata accessor. Left at
+    /// 20, such a plugin passes `validateBundleVersions` in a shipped v20 app and then fails
+    /// `Bundle.loadAndReturnError`; at 21 that app refuses it and says to update.
+    nonisolated static let currentPluginKitVersion = 21
 
     /// Still 19, so every plugin already published for the previous release keeps loading.
     nonisolated static let minimumCompatiblePluginKitVersion = 19

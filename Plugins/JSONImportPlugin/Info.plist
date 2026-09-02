@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>TableProPluginKitVersion</key>
-	<integer>20</integer>
+	<integer>21</integer>
 	<key>TableProProvidesImportFormatIds</key>
 	<array>
 		<string>json</string>

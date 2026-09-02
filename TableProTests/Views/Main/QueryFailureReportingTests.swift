@@ -54,12 +54,12 @@ struct QueryFailureReportingTests {
     func failureClearsTheStaleDuration() {
         let (coordinator, tabManager) = Self.makeCoordinator()
         let tabId = Self.addQueryTab(to: tabManager)
-        coordinator.toolbarState.lastQueryDuration = 1.5
+        coordinator.toolbarState.lastQueryTiming = PluginQueryTiming(total: 1.5)
         let claim = coordinator.tabExecution.claim(tabId)
 
         Self.finishFailure(on: coordinator, tabId: tabId, claim: claim)
 
-        #expect(coordinator.toolbarState.lastQueryDuration == nil)
+        #expect(coordinator.toolbarState.lastQueryTiming == nil)
         #expect(tabManager.tabs.first?.execution.executionTime == nil)
     }
 
@@ -162,14 +162,14 @@ struct QueryFailureReportingTests {
         let backgroundTabId = Self.addQueryTab(to: tabManager)
         let selectedTabId = Self.addQueryTab(to: tabManager, title: "Query 2")
         tabManager.selectedTabId = selectedTabId
-        coordinator.toolbarState.lastQueryDuration = 1.5
+        coordinator.toolbarState.lastQueryTiming = PluginQueryTiming(total: 1.5)
         coordinator.toolbarState.isResultsCollapsed = true
         let claim = coordinator.tabExecution.claim(backgroundTabId)
 
         Self.finishFailure(on: coordinator, tabId: backgroundTabId, claim: claim)
 
         #expect(tabManager.tabs.first?.execution.errorMessage != nil)
-        #expect(coordinator.toolbarState.lastQueryDuration == 1.5)
+        #expect(coordinator.toolbarState.lastQueryTiming?.total == 1.5)
         #expect(coordinator.toolbarState.isResultsCollapsed)
     }
 

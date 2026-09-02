@@ -86,14 +86,8 @@ final class ConnectionToolbarState {
 
     // MARK: - Query Execution
 
-    /// Duration of the last completed query
-    var lastQueryDuration: TimeInterval?
-
-    /// Live ClickHouse query progress (rows/bytes read during execution)
-    var clickHouseProgress: ClickHouseQueryProgress?
-
-    /// Retained progress from last completed ClickHouse query (for summary display)
-    var lastClickHouseProgress: ClickHouseQueryProgress?
+    /// How long the last completed query took, and what that time was spent on.
+    var lastQueryTiming: PluginQueryTiming?
 
     // MARK: - Future Expansion
 
@@ -241,9 +235,7 @@ final class ConnectionToolbarState {
         brandColor = databaseType.themeColor
         identityColor = nil
         connectionState = .disconnected
-        lastQueryDuration = nil
-        clickHouseProgress = nil
-        lastClickHouseProgress = nil
+        lastQueryTiming = nil
         safeModeLevel = .silent
         isTableTab = false
         latencyMs = nil

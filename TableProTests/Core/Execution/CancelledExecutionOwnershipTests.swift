@@ -110,7 +110,7 @@ struct CancelledExecutionOwnershipTests {
 
         #expect(coordinator.currentQueryTask != nil)
         #expect(coordinator.currentQueryTaskOwner == live)
-        #expect(coordinator.toolbarState.lastQueryDuration == nil)
+        #expect(coordinator.toolbarState.lastQueryTiming == nil)
     }
 
     @Test("Closing a tab releases the execution it was running")

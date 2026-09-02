@@ -39,6 +39,23 @@ Picking a result moves the editor cursor to the statement that produced it and u
 
 The results panel expands itself when a query runs. The toolbar's trash button clears the query and the results together; to keep the query, right-click the results and choose **Clear Results**.
 
+## How long it took
+
+The toolbar's right side reads the elapsed time of the last query, from sending it to having the last row. On a remote server, or through an [SSH tunnel](/connections/ssh-profiles), most of a large result's elapsed time is transfer rather than the query.
+
+Click the number for the split.
+
+| Row | What it measures |
+|---|---|
+| Elapsed | Sending the query to having the last row |
+| Server | Execution time the engine reported for itself, with no network in it |
+| First row | Sending the query to the first row arriving, including one network round trip |
+| Transfer | The rest of the elapsed time, spent moving rows |
+
+A long **Transfer** behind a quick **Server** or **First row** is a slow link or a wide result, not a slow query.
+
+MySQL, MariaDB, PostgreSQL, CockroachDB, Redshift, ClickHouse and BigQuery report **First row**. BigQuery adds **Server** from its job statistics, and ClickHouse adds it on a query that returns no rows, where the summary arrives as a header the client sees. Every other engine shows the elapsed time on its own, and the number does not open.
+
 ## The row cap
 
 A query that returns rows and carries no `LIMIT`, `FETCH FIRST` or `TOP` of its own stops at the row cap: `SELECT`, `WITH`, `TABLE`, `VALUES`, and a set operation whose arms are parenthesised.
