@@ -38,23 +38,10 @@ internal struct SQLRowToStatementConverter {
 
         let resolvedDialect = try resolveSQLDialect(for: databaseType, explicit: dialect)
         self.quoteIdentifierFn = quoteIdentifier ?? quoteIdentifierFromDialect(resolvedDialect)
-        self.escapeStringFn = escapeStringLiteral ?? Self.defaultEscapeFunction(dialect: resolvedDialect)
+        self.escapeStringFn = escapeStringLiteral ?? escapeStringLiteralFromDialect(resolvedDialect)
     }
 
     private static let maxRows = 50_000
-
-    private static func defaultEscapeFunction(dialect: SQLDialectDescriptor) -> (String) -> String {
-        if dialect.requiresBackslashEscaping {
-            return { value in
-                var result = value
-                result = result.replacingOccurrences(of: "\\", with: "\\\\")
-                result = result.replacingOccurrences(of: "'", with: "''")
-                result = result.replacingOccurrences(of: "\0", with: "\\0")
-                return result
-            }
-        }
-        return SQLEscaping.escapeStringLiteral
-    }
 
     internal func generateInserts(rows: [[PluginCellValue]]) -> String {
         let capped = rows.prefix(Self.maxRows)

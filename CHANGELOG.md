@@ -46,6 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- PostgreSQL identifier quoting in a SQL export of query results from any other engine. (#2630)
+- Backslashes left unescaped in a SQL export of query results, silently altering the values.
+- `DROP ... CASCADE` written for engines that reject it, SQLite and SQL Server among them.
+- `DROP TABLE` naming the source table in a query-results export that writes no `CREATE TABLE`.
+- Snowflake string literals escaped without their backslashes, in the editor and in exports.
 - Restore Dump overwriting a database with no confirmation.
 - Stopping an import applying at once, while stopping an export or a backup asks first.
 - Progress bar stuck at zero and an "N/0 rows" label for the whole of a streaming query export.

@@ -69,10 +69,33 @@ final class ExportService {
         self.databaseType = databaseType
     }
 
-    /// Convenience initializer for query results export (no driver needed).
-    init(databaseType: DatabaseType) {
-        self.driver = nil
+    /// Rows already in memory still need the engine that produced them: a SQL export has to quote
+    /// identifiers and escape literals the way that engine reads them back. The driver is asked for
+    /// nothing but those two pure functions here, so an installed handle is enough and no lease is
+    /// taken. It is optional only because a connection can be gone by the time the sheet runs, and
+    /// the formats that carry no SQL still export fine without one.
+    init(queryResultsDriver driver: DatabaseDriver?, databaseType: DatabaseType) {
+        self.driver = driver
         self.databaseType = databaseType
+    }
+
+    /// The one table a query export writes. `QueryExportOptions` says why it carries no structure.
+    private static func queryResultExportTable(
+        named name: String,
+        plugin: any ExportFormatPlugin
+    ) -> PluginExportTable {
+        let optionValues = QueryExportOptions.dataOnly(
+            columns: type(of: plugin).perTableOptionColumns,
+            defaults: plugin.defaultTableOptionValues()
+        )
+        return PluginExportTable(
+            name: name,
+            databaseName: "",
+            tableType: "query",
+            optionValues: optionValues,
+            schema: nil,
+            kind: .table
+        )
     }
 
     // MARK: - Cancellation
@@ -249,14 +272,7 @@ final class ExportService {
         }
         defer { descObservation.invalidate() }
 
-        let exportTable = PluginExportTable(
-            name: config.fileName,
-            databaseName: "",
-            tableType: "query",
-            optionValues: plugin.defaultTableOptionValues(),
-            schema: nil,
-            kind: .table
-        )
+        let exportTable = Self.queryResultExportTable(named: config.fileName, plugin: plugin)
 
         let result: ExportFormatResult
         do {
@@ -317,14 +333,7 @@ final class ExportService {
         }
         defer { observation.invalidate() }
 
-        let exportTable = PluginExportTable(
-            name: config.fileName,
-            databaseName: "",
-            tableType: "query",
-            optionValues: plugin.defaultTableOptionValues(),
-            schema: nil,
-            kind: .table
-        )
+        let exportTable = Self.queryResultExportTable(named: config.fileName, plugin: plugin)
 
         await suppressStatementTimeout(on: driver)
         let result: ExportFormatResult

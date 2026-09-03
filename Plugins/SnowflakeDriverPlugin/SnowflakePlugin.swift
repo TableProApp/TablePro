@@ -265,6 +265,7 @@ final class SnowflakePlugin: NSObject, TableProPlugin, DriverPlugin {
         booleanLiteralStyle: .truefalse,
         likeEscapeStyle: .explicit,
         paginationStyle: .limit,
+        requiresBackslashEscaping: true,
         caseSensitivityStyle: .ilikeOperator
     )
 

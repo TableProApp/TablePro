@@ -66,6 +66,8 @@ A whole-table export streams from the database at constant memory, with no row-c
 
 **Export Results…** writes what the tab holds in memory, which is the output of the query that filled it. The filter bar and a sorted header are part of that query, and so is column visibility on a table tab: hiding a column re-queries without it, keeping only the primary key and anything being sorted on. Two things are not part of it. A column value filter narrows the loaded rows in the grid afterwards, so it never reaches the file. And a truncated result with more rows behind it is re-run and streamed in full rather than written as far as it got.
 
+As SQL, a results export writes `INSERT` statements only. A result set is the output of a query rather than a table, so there is no schema to recreate and nothing to drop: the **Structure** and **Drop** options belong to the toolbar export, which reads real tables. Identifiers are quoted and values escaped the way the source engine reads them, so the file imports back into it.
+
 ### Formats
 
 <Tabs>
