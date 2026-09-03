@@ -7,7 +7,7 @@ struct RestoreDatabaseFlow: View {
     let initialDatabase: String
     let sourceURL: URL
 
-    @State private var service = PostgresDumpService(kind: .restore)
+    @State private var service = NativeDumpService(kind: .restore)
     @State private var phase: Phase = .pickDatabase
 
     private enum Phase: Equatable {
@@ -97,9 +97,9 @@ struct RestoreDatabaseFlow: View {
         .frame(width: 480, alignment: .leading)
     }
 
-    private var serviceState: PostgresDumpState { service.state }
+    private var serviceState: NativeDumpState { service.state }
 
-    private func handleServiceStateChange(_ state: PostgresDumpState) {
+    private func handleServiceStateChange(_ state: NativeDumpState) {
         switch state {
         case .running(let database, _, _, _):
             phase = .running(database: database)

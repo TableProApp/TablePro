@@ -259,6 +259,12 @@ struct MainContentView: View {
                     formatId: formatId
                 )
             }
+        case .transferTables(let tables):
+            TableTransferSheet(
+                isPresented: dismissBinding,
+                sourceConnection: connectionWithCurrentDatabase,
+                preselectedTables: tables
+            )
         case .backupDatabase:
             BackupDatabaseFlow(
                 isPresented: dismissBinding,

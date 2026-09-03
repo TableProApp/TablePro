@@ -89,11 +89,11 @@ final class ExportService {
     // MARK: - Public API
 
     func export(
-        tables: [ExportTableItem],
+        objects: [ExportObjectItem],
         config: ExportConfiguration,
         to url: URL
     ) async throws {
-        guard !tables.isEmpty else {
+        guard !objects.isEmpty else {
             throw ExportError.noTablesSelected
         }
 
@@ -101,7 +101,7 @@ final class ExportService {
             throw ExportError.formatNotFound(config.formatId)
         }
 
-        state = ExportState(isExporting: true, totalTables: tables.count)
+        state = ExportState(isExporting: true, totalTables: objects.count)
         isCancelled = false
 
         defer {
@@ -115,7 +115,8 @@ final class ExportService {
             throw ExportError.notConnected
         }
 
-        state.totalRows = await fetchTotalRowCount(for: tables, driver: driver)
+        state.totalRows = await fetchTotalRowCount(
+            for: objects.filter { $0.kind.carriesRows }, driver: driver)
 
         let dataSource = ExportDataSourceAdapter(driver: driver, databaseType: databaseType)
 
@@ -143,13 +144,17 @@ final class ExportService {
         }
         defer { descObservation.invalidate() }
 
-        let pluginTables = tables.map { table in
+        let pluginTables = objects.map { object in
             PluginExportTable(
-                name: table.name,
-                databaseName: table.databaseName,
-                tableType: table.type.rawValue.lowercased(),
-                optionValues: table.optionValues,
-                schema: dataSource.exportSchema(for: table.databaseName)
+                name: object.name,
+                databaseName: object.databaseName,
+                tableType: object.kind.rawValue,
+                optionValues: object.optionValues,
+                schema: dataSource.exportSchema(for: object.databaseName),
+                kind: object.kind,
+                identity: object.identity,
+                parentTable: object.parentTable,
+                rowScope: object.rowScope
             )
         }
 
@@ -249,7 +254,8 @@ final class ExportService {
             databaseName: "",
             tableType: "query",
             optionValues: plugin.defaultTableOptionValues(),
-            schema: nil
+            schema: nil,
+            kind: .table
         )
 
         let result: ExportFormatResult
@@ -316,7 +322,8 @@ final class ExportService {
             databaseName: "",
             tableType: "query",
             optionValues: plugin.defaultTableOptionValues(),
-            schema: nil
+            schema: nil,
+            kind: .table
         )
 
         await suppressStatementTimeout(on: driver)
@@ -342,7 +349,7 @@ final class ExportService {
 
     // MARK: - Row Count Fetching
 
-    private func qualifiedTableRef(for table: ExportTableItem, driver: DatabaseDriver) -> String {
+    private func qualifiedTableRef(for table: ExportObjectItem, driver: DatabaseDriver) -> String {
         if table.databaseName.isEmpty {
             return driver.quoteIdentifier(table.name)
         }
@@ -351,7 +358,7 @@ final class ExportService {
         return "\(quotedDb).\(quotedTable)"
     }
 
-    private func fetchTotalRowCount(for tables: [ExportTableItem], driver: DatabaseDriver) async -> Int {
+    private func fetchTotalRowCount(for tables: [ExportObjectItem], driver: DatabaseDriver) async -> Int {
         guard !tables.isEmpty else { return 0 }
 
         var total = 0

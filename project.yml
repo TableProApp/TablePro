@@ -383,6 +383,7 @@ targets:
       - Plugins/EtcdDriverPlugin/EtcdCommandParser.swift
       - Plugins/EtcdDriverPlugin/EtcdQueryBuilder.swift
       - Plugins/EtcdDriverPlugin/EtcdStatementGenerator.swift
+      - Plugins/JSONExportPlugin/JSONExportModels.swift
       - Plugins/JSONImportPlugin/JSONImportOptions.swift
       - Plugins/JSONImportPlugin/JSONImportOptionsView.swift
       - Plugins/JSONImportPlugin/JSONImportParsing.swift
@@ -488,9 +489,12 @@ targets:
       - Plugins/RedisDriverPlugin/RedisStatementGenerator.swift
       - Plugins/RedisDriverPlugin/RedisTopologyDiagnostics.swift
       - Plugins/SQLExportPlugin/SQLExportDDLRewriter.swift
+      - Plugins/SQLExportPlugin/SQLExportFileWriter.swift
+      - Plugins/SQLExportPlugin/SQLExportInsertMode.swift
       - Plugins/SQLExportPlugin/SQLExportModels.swift
       - Plugins/SQLExportPlugin/SQLExportOptionsView.swift
       - Plugins/SQLExportPlugin/SQLExportPlugin.swift
+      - Plugins/SQLExportPlugin/SQLExportSnapshot.swift
       - Plugins/SQLImportPlugin/SQLImportFailure.swift
       - Plugins/SQLImportPlugin/SQLImportOptions.swift
       - Plugins/SQLImportPlugin/SQLImportOptionsView.swift

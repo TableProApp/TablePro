@@ -176,6 +176,13 @@ extension MainContentCoordinator {
         activeSheet = .exportDialog
     }
 
+    /// Copies rows into another open connection. The tables the user right-clicked travel with the
+    /// request rather than being read back from the object browser, which may have moved on by the
+    /// time the sheet appears.
+    func openTableTransferSheet(preselectedTableNames: Set<String> = []) {
+        activeSheet = .transferTables(tables: preselectedTableNames)
+    }
+
     func openExportQueryResultsDialog() {
         guard let tab = tabManager.selectedTab,
               !tabSessionRegistry.tableRows(for: tab.id).rows.isEmpty else { return }

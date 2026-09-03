@@ -25,6 +25,22 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         PluginExportOptionColumn(id: "data", label: "Data", width: 44)
     ]
 
+    static let supportedObjectKinds: [PluginExportObjectKind] = [
+        .userType, .sequence, .table, .foreignTable, .view, .materializedView,
+        .routine, .trigger, .event, .grant
+    ]
+
+    /// A routine has no rows, and a grant is a statement rather than an object with a definition to
+    /// drop, so those columns are blank slots for those kinds. The positions never move, because
+    /// `optionValues` stays aligned with the full column list for every kind.
+    static func supportsOption(columnId: String, for kind: PluginExportObjectKind) -> Bool {
+        switch columnId {
+        case "data": return kind.carriesRows
+        case "drop": return kind != .grant
+        default: return true
+        }
+    }
+
     typealias Settings = SQLExportOptions
     static let settingsStorageId = "sql"
 
@@ -104,39 +120,74 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             actualDestination = destination
         }
 
-        let (fileHandle, tempURL) = try PluginExportUtilities.beginAtomicWrite(for: actualDestination)
+        /// Compression runs over one file, so a compressed export never splits. Saying so beats
+        /// silently gzipping the first part and dropping the rest.
+        let splitSize = settings.compressWithGzip ? 0 : settings.splitSizeMegabytes
+        if settings.compressWithGzip, settings.splitSizeMegabytes > 0 {
+            metadataWarnings.append(String(localized:
+                "A compressed export is written as one file, so the split size was not applied."))
+        }
+        let writer = try SQLExportFileWriter(destination: actualDestination, splitSizeMegabytes: splitSize)
         var committed = false
         defer {
-            if !committed {
-                PluginExportUtilities.rollbackAtomicWrite(at: tempURL)
-            }
+            if !committed { writer.rollback() }
         }
 
-        do {
-            try writeHeader(to: fileHandle, dataSource: dataSource)
-            let columnsByTable = await prefetchColumns(tables: tables, dataSource: dataSource)
-            let fkMap = await prefetchForeignKeys(tables: tables, dataSource: dataSource)
-            let sortedTables = topologicallySort(tables, fkMap: fkMap)
-            noteContainerSpan(of: sortedTables)
-            try writeDependencyCycleNote(to: fileHandle)
+        let snapshot = settings.consistentSnapshot
+            ? SQLExportSnapshot(dialect: SqlDialect.from(databaseTypeId: dataSource.databaseTypeId))
+            : nil
 
-            try writeDropPhase(sortedTables: sortedTables, dataSource: dataSource, to: fileHandle)
+        do {
+            if let snapshot {
+                try await snapshot.begin(on: dataSource)
+            }
+            let rowObjects = tables.filter { $0.kind.carriesRows }
+            let definitionObjects = tables.filter { !$0.kind.carriesRows }
+
+            try writeHeader(to: writer, dataSource: dataSource)
+            let columnsByTable = await prefetchColumns(tables: rowObjects, dataSource: dataSource)
+            let fkMap = await prefetchForeignKeys(tables: rowObjects, dataSource: dataSource)
+            let sortedTables = topologicallySort(rowObjects, fkMap: fkMap)
+            noteContainerSpan(of: tables)
+            try writeDependencyCycleNote(to: writer)
+
+            try writeDropPhase(
+                sortedTables: sortedTables, definitionObjects: definitionObjects,
+                dataSource: dataSource, to: writer)
             try await writeDependentTypesAndSequences(
-                tables: tables, dataSource: dataSource, to: fileHandle)
+                tables: rowObjects, dataSource: dataSource, to: writer)
+            try await writeObjectCreatePhase(
+                objects: definitionObjects, kinds: [.userType, .sequence],
+                dataSource: dataSource, to: writer, progress: progress)
             try await writeCreatePhase(
-                sortedTables: sortedTables, dataSource: dataSource, to: fileHandle, progress: progress)
+                sortedTables: sortedTables, dataSource: dataSource, to: writer, progress: progress)
             try await writeDataPhase(
                 sortedTables: sortedTables, columnsByTable: columnsByTable,
-                dataSource: dataSource, to: fileHandle, progress: progress)
+                dataSource: dataSource, to: writer, progress: progress)
             try writeFinalizationPhase(
                 sortedTables: sortedTables, fkMap: fkMap, columnsByTable: columnsByTable,
-                dataSource: dataSource, to: fileHandle)
+                dataSource: dataSource, to: writer)
+            try await writeObjectCreatePhase(
+                objects: definitionObjects,
+                kinds: [.view, .materializedView, .routine, .trigger, .event],
+                dataSource: dataSource, to: writer, progress: progress)
+            try await writeGrantPhase(
+                objects: definitionObjects, dataSource: dataSource, to: writer)
 
-            try fileHandle.close()
-            try PluginExportUtilities.commitAtomicWrite(from: tempURL, to: actualDestination)
+            if let snapshot {
+                await snapshot.end(on: dataSource)
+            }
+            try writer.commit()
             committed = true
+            if writer.didSplit {
+                metadataWarnings.append(String(
+                    format: String(localized: "The dump was written as %lld numbered parts. Restore them in order."),
+                    Int64(writer.partCount)))
+            }
         } catch {
-            try? fileHandle.close()
+            if let snapshot {
+                await snapshot.end(on: dataSource)
+            }
             throw error
         }
 
@@ -168,13 +219,13 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
     }
 
     private func writeHeader(
-        to fileHandle: FileHandle,
+        to writer: SQLExportFileWriter,
         dataSource: any PluginExportDataSource
     ) throws {
         let dateFormatter = ISO8601DateFormatter()
-        try fileHandle.write(contentsOf: "-- TablePro SQL Export\n".toUTF8Data())
-        try fileHandle.write(contentsOf: "-- Generated: \(dateFormatter.string(from: Date()))\n".toUTF8Data())
-        try fileHandle.write(contentsOf: "-- Database Type: \(dataSource.databaseTypeId)\n\n".toUTF8Data())
+        try writer.write("-- TablePro SQL Export\n")
+        try writer.write("-- Generated: \(dateFormatter.string(from: Date()))\n")
+        try writer.write("-- Database Type: \(dataSource.databaseTypeId)\n\n")
     }
 
     private struct ExportGroup {
@@ -261,7 +312,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
     /// not the same everywhere: `foreignKeyDisableStatements` is nil on SQL Server, Oracle,
     /// Snowflake and DuckDB, so telling every user to import with the checks off would be wrong on
     /// the engines that cannot turn them off.
-    private func writeDependencyCycleNote(to fileHandle: FileHandle) throws {
+    private func writeDependencyCycleNote(to writer: SQLExportFileWriter) throws {
         guard !tablesUnorderedByCycle.isEmpty else { return }
         let names = tablesUnorderedByCycle.joined(separator: ", ")
         metadataWarnings.append(String(
@@ -273,38 +324,61 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             names))
         let note = "-- Warning: \(PluginExportUtilities.sanitizeForSQLComment(names)) reference each other.\n"
             + "-- No parent-first order exists, so they are written in the order they were listed.\n\n"
-        try fileHandle.write(contentsOf: note.toUTF8Data())
+        try writer.write(note)
     }
 
+    /// Drops run in the reverse of the order the objects are created in, so a dependent goes before
+    /// what it depends on: triggers and routines first, then views, then the tables in reverse
+    /// topological order, then the sequences and types those tables referenced.
     private func writeDropPhase(
         sortedTables: [PluginExportTable],
+        definitionObjects: [PluginExportTable],
         dataSource: any PluginExportDataSource,
-        to fileHandle: FileHandle
+        to writer: SQLExportFileWriter
     ) throws {
-        let dropTargets = sortedTables.reversed().filter { optionValue($0, at: 1) }
+        let afterTables = definitionObjects
+            .filter { $0.kind.dumpOrder > PluginExportObjectKind.table.dumpOrder }
+            .sorted { $0.kind.dumpOrder > $1.kind.dumpOrder }
+        let beforeTables = definitionObjects
+            .filter { $0.kind.dumpOrder < PluginExportObjectKind.table.dumpOrder }
+            .sorted { $0.kind.dumpOrder > $1.kind.dumpOrder }
+        let dropTargets = (afterTables + Array(sortedTables.reversed()) + beforeTables)
+            .filter { optionValue($0, at: 1) && $0.kind != .grant }
         guard !dropTargets.isEmpty else { return }
-        for table in dropTargets {
-            let tableRef = qualifiedRef(
-                schema: table.databaseName, table: table.name, dataSource: dataSource)
-            let keyword = dropStatementKeyword(for: table.tableType)
-            try fileHandle.write(contentsOf: "\(keyword) IF EXISTS \(tableRef) CASCADE;\n".toUTF8Data())
+        for object in dropTargets {
+            guard let statement = dropStatement(for: object, dataSource: dataSource) else { continue }
+            try writer.write("\(statement)\n")
         }
-        try fileHandle.write(contentsOf: "\n".toUTF8Data())
+        try writer.write("\n")
     }
 
-    private func dropStatementKeyword(for tableType: String) -> String {
-        switch tableType {
-        case "view": return "DROP VIEW"
-        case "materialized view": return "DROP MATERIALIZED VIEW"
-        case "foreign table": return "DROP FOREIGN TABLE"
-        default: return "DROP TABLE"
+    /// The engine spells its own DROP for the kinds where dialects disagree: PostgreSQL's
+    /// `DROP TRIGGER` takes an `ON <table>` clause where MySQL's does not, and MySQL has no
+    /// `DROP ROUTINE` at all. Only the table-shaped kinds, which every SQL engine spells the same
+    /// way, fall through to the generic form here.
+    private func dropStatement(
+        for object: PluginExportTable,
+        dataSource: any PluginExportDataSource
+    ) -> String? {
+        if let driverStatement = dataSource.dropStatement(for: object) {
+            return driverStatement.hasSuffix(";") ? driverStatement : "\(driverStatement);"
+        }
+        let keyword = object.kind.dropKeyword
+        guard !keyword.isEmpty else { return nil }
+        let ref = qualifiedRef(
+            schema: object.databaseName, table: object.name, dataSource: dataSource)
+        switch object.kind {
+        case .trigger, .event, .routine:
+            return "\(keyword) IF EXISTS \(dataSource.quoteIdentifier(object.name));"
+        default:
+            return "\(keyword) IF EXISTS \(ref) CASCADE;"
         }
     }
 
     private func writeDependentTypesAndSequences(
         tables: [PluginExportTable],
         dataSource: any PluginExportDataSource,
-        to fileHandle: FileHandle
+        to writer: SQLExportFileWriter
     ) async throws {
         var emittedSequenceNames: Set<String> = []
         var emittedTypeNames: Set<String> = []
@@ -317,8 +391,8 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                 for seq in sequences where !emittedSequenceNames.contains(seq.name) {
                     emittedSequenceNames.insert(seq.name)
                     let quotedName = "\"\(seq.name.replacingOccurrences(of: "\"", with: "\"\""))\""
-                    try fileHandle.write(contentsOf: "DROP SEQUENCE IF EXISTS \(quotedName) CASCADE;\n".toUTF8Data())
-                    try fileHandle.write(contentsOf: "\(seq.ddl)\n\n".toUTF8Data())
+                    try writer.write("DROP SEQUENCE IF EXISTS \(quotedName) CASCADE;\n")
+                    try writer.write("\(seq.ddl)\n\n")
                 }
             } catch {
                 Self.logger.warning("Failed to fetch dependent sequences for table \(table.name): \(error)")
@@ -330,9 +404,9 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                 for enumType in enumTypes where !emittedTypeNames.contains(enumType.name) {
                     emittedTypeNames.insert(enumType.name)
                     let quotedName = "\"\(enumType.name.replacingOccurrences(of: "\"", with: "\"\""))\""
-                    try fileHandle.write(contentsOf: "DROP TYPE IF EXISTS \(quotedName) CASCADE;\n".toUTF8Data())
+                    try writer.write("DROP TYPE IF EXISTS \(quotedName) CASCADE;\n")
                     let quotedLabels = enumType.labels.map { "'\(dataSource.escapeStringLiteral($0))'" }
-                    try fileHandle.write(contentsOf: "CREATE TYPE \(quotedName) AS ENUM (\(quotedLabels.joined(separator: ", ")));\n\n".toUTF8Data())
+                    try writer.write("CREATE TYPE \(quotedName) AS ENUM (\(quotedLabels.joined(separator: ", ")));\n\n")
                 }
             } catch {
                 Self.logger.warning("Failed to fetch dependent types for table \(table.name): \(error)")
@@ -343,7 +417,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
     private func writeCreatePhase(
         sortedTables: [PluginExportTable],
         dataSource: any PluginExportDataSource,
-        to fileHandle: FileHandle,
+        to writer: SQLExportFileWriter,
         progress: PluginExportProgress
     ) async throws {
         let rewriter = ddlRewriter(for: dataSource)
@@ -351,24 +425,114 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             try progress.checkCancellation()
             progress.setCurrentTable(table.qualifiedName, index: index + 1)
             let sanitizedName = PluginExportUtilities.sanitizeForSQLComment(table.name)
-            try fileHandle.write(contentsOf: "-- --------------------------------------------------------\n".toUTF8Data())
-            try fileHandle.write(contentsOf: "-- Table: \(sanitizedName)\n".toUTF8Data())
-            try fileHandle.write(contentsOf: "-- --------------------------------------------------------\n\n".toUTF8Data())
+            try writer.write("-- --------------------------------------------------------\n")
+            try writer.write("-- Table: \(sanitizedName)\n")
+            try writer.write("-- --------------------------------------------------------\n\n")
             do {
                 let ddl = rewriter.rewrite(
                     try await dataSource.fetchTableDDL(
                         table: table.name, databaseName: table.databaseName))
-                try fileHandle.write(contentsOf: ddl.toUTF8Data())
+                try writer.write(ddl)
                 if !ddl.hasSuffix(";") {
-                    try fileHandle.write(contentsOf: ";".toUTF8Data())
+                    try writer.write(";")
                 }
-                try fileHandle.write(contentsOf: "\n\n".toUTF8Data())
+                try writer.write("\n\n")
             } catch {
                 ddlFailures.append(sanitizedName)
                 let ddlWarning = "Warning: failed to fetch DDL for table \(sanitizedName): \(error)"
                 Self.logger.warning("Failed to fetch DDL for table \(sanitizedName): \(error)")
-                try fileHandle.write(contentsOf: "-- \(PluginExportUtilities.sanitizeForSQLComment(ddlWarning))\n\n".toUTF8Data())
+                try writer.write("-- \(PluginExportUtilities.sanitizeForSQLComment(ddlWarning))\n\n")
             }
+        }
+    }
+
+    /// Writes the definition of every object of the named kinds, in dump order within the group so
+    /// a view that another view selects from is created first. A kind the driver cannot produce a
+    /// definition for is recorded as a failure and commented into the file rather than aborting the
+    /// export: one unreadable routine must not cost the user the whole dump.
+    private func writeObjectCreatePhase(
+        objects: [PluginExportTable],
+        kinds: [PluginExportObjectKind],
+        dataSource: any PluginExportDataSource,
+        to writer: SQLExportFileWriter,
+        progress: PluginExportProgress
+    ) async throws {
+        let wanted = Set(kinds)
+        let targets = objects
+            .filter { wanted.contains($0.kind) && optionValue($0, at: 0) }
+            .sorted { ($0.kind.dumpOrder, $0.name) < ($1.kind.dumpOrder, $1.name) }
+        guard !targets.isEmpty else { return }
+
+        for object in targets {
+            try progress.checkCancellation()
+            let sanitizedName = PluginExportUtilities.sanitizeForSQLComment(object.name)
+            let label = objectCommentLabel(for: object.kind)
+            try writer.write("-- --------------------------------------------------------\n")
+            try writer.write("-- \(label): \(sanitizedName)\n")
+            try writer.write("-- --------------------------------------------------------\n\n")
+            do {
+                let ddl = ddlRewriter(for: dataSource).rewrite(try await dataSource.fetchObjectDDL(object))
+                try writer.write(ddl)
+                if !ddl.hasSuffix(";") {
+                    try writer.write(";")
+                }
+                try writer.write("\n\n")
+            } catch {
+                ddlFailures.append(sanitizedName)
+                Self.logger.warning("Failed to fetch DDL for \(sanitizedName): \(error)")
+                let warning = "Warning: failed to fetch definition for \(label.lowercased()) \(sanitizedName): \(error)"
+                try writer.write("-- \(PluginExportUtilities.sanitizeForSQLComment(warning))\n\n")
+            }
+        }
+    }
+
+    /// Grants come last, because every object they name has to exist first.
+    private func writeGrantPhase(
+        objects: [PluginExportTable],
+        dataSource: any PluginExportDataSource,
+        to writer: SQLExportFileWriter
+    ) async throws {
+        let principals = objects
+            .filter { $0.kind == .grant && optionValue($0, at: 0) }
+            .sorted { $0.name < $1.name }
+        guard !principals.isEmpty else { return }
+
+        try writer.write("-- --------------------------------------------------------\n")
+        try writer.write("-- Privileges\n")
+        try writer.write("-- --------------------------------------------------------\n\n")
+
+        for principal in principals {
+            do {
+                let statements = try await dataSource.fetchGrantStatements(
+                    principal: principal.name, host: principal.identity)
+                guard !statements.isEmpty else { continue }
+                for statement in statements {
+                    let terminated = statement.hasSuffix(";") ? statement : "\(statement);"
+                    try writer.write("\(terminated)\n")
+                }
+            } catch {
+                let sanitized = PluginExportUtilities.sanitizeForSQLComment(principal.name)
+                ddlFailures.append(sanitized)
+                Self.logger.warning("Failed to fetch grants for \(sanitized): \(error)")
+                let warning = "Warning: failed to fetch privileges for \(sanitized): \(error)"
+                try writer.write("-- \(PluginExportUtilities.sanitizeForSQLComment(warning))\n")
+            }
+        }
+        try writer.write("\n")
+    }
+
+    private func objectCommentLabel(for kind: PluginExportObjectKind) -> String {
+        switch kind {
+        case .view: return "View"
+        case .materializedView: return "Materialized view"
+        case .routine: return "Routine"
+        case .trigger: return "Trigger"
+        case .event: return "Event"
+        case .sequence: return "Sequence"
+        case .userType: return "Type"
+        case .foreignTable: return "Foreign table"
+        case .grant: return "Privileges"
+        default: return "Table"
         }
     }
 
@@ -376,16 +540,16 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         sortedTables: [PluginExportTable],
         columnsByTable: [String: [PluginColumnInfo]],
         dataSource: any PluginExportDataSource,
-        to fileHandle: FileHandle,
+        to writer: SQLExportFileWriter,
         progress: PluginExportProgress
     ) async throws {
-        for table in sortedTables where optionValue(table, at: 2) && table.tableType != "view" {
+        for table in sortedTables where optionValue(table, at: 2) && table.kind.carriesRows {
             try progress.checkCancellation()
             try await writeTableData(
                 table: table,
                 columnInfo: columnsByTable[node(for: table).identifier] ?? [],
                 dataSource: dataSource,
-                to: fileHandle,
+                to: writer,
                 progress: progress)
         }
     }
@@ -395,7 +559,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         fkMap: [String: [PluginForeignKeyInfo]],
         columnsByTable: [String: [PluginColumnInfo]],
         dataSource: any PluginExportDataSource,
-        to fileHandle: FileHandle
+        to writer: SQLExportFileWriter
     ) throws {
         var emittedAnything = false
         /// A driver that hands back the server's own CREATE statement has already declared these
@@ -408,7 +572,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                 let grouped = groupForeignKeysByConstraint(fks)
                 for group in grouped {
                     let alter = renderAddConstraintFK(table: table, group: group, dataSource: dataSource)
-                    try fileHandle.write(contentsOf: "\(alter)\n".toUTF8Data())
+                    try writer.write("\(alter)\n")
                     emittedAnything = true
                 }
             }
@@ -418,19 +582,19 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         /// rewound on PostgreSQL. Every other engine reports its identity columns the same way and
         /// would take the statement as a syntax error.
         if SqlDialect.from(databaseTypeId: dataSource.databaseTypeId) == .postgres {
-            for table in sortedTables where optionValue(table, at: 2) && table.tableType != "view" {
+            for table in sortedTables where optionValue(table, at: 2) && table.kind.carriesRows {
                 let columns = columnsByTable[node(for: table).identifier] ?? []
                 for column in columns where column.isIdentity {
                     let setval = renderIdentitySetval(
                         table: table, columnName: column.name, dataSource: dataSource)
-                    try fileHandle.write(contentsOf: "\(setval)\n".toUTF8Data())
+                    try writer.write("\(setval)\n")
                     emittedAnything = true
                 }
             }
         }
 
         if emittedAnything {
-            try fileHandle.write(contentsOf: "\n".toUTF8Data())
+            try writer.write("\n")
         }
     }
 
@@ -519,7 +683,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         table: PluginExportTable,
         columnInfo: [PluginColumnInfo],
         dataSource: any PluginExportDataSource,
-        to fileHandle: FileHandle,
+        to writer: SQLExportFileWriter,
         progress: PluginExportProgress
     ) async throws {
         let batchSize = settings.batchSize
@@ -529,6 +693,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         var rowBatch: [[PluginCellValue]] = []
 
         let generatedColumnNames = Set(columnInfo.filter { $0.isGenerated }.map { $0.name })
+        let primaryKeyColumns = columnInfo.filter(\.isPrimaryKey).map(\.name)
         let usesOverridingSystemValue = SqlDialect.from(databaseTypeId: dataSource.databaseTypeId) == .postgres
             && columnInfo.contains { $0.identityKind == .always }
         let tableRef = qualifiedRef(
@@ -539,7 +704,17 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         let needsIdentityInsert = dataSource.databaseTypeId == "SQL Server"
             && columnInfo.contains(where: \.isIdentity)
 
-        let stream = dataSource.streamRows(table: table.name, databaseName: table.databaseName)
+        if !table.rowScope.isUnrestricted {
+            let scopeNote = PluginExportUtilities.sanitizeForSQLComment(table.rowScope.summary)
+            try writer.write("-- Rows narrowed to: \(scopeNote)\n")
+        }
+        if table.rowScope.hasRejectedFilter {
+            metadataWarnings.append(String(
+                format: String(localized:
+                    "The row filter on %@ was not a single expression, so every row was exported."),
+                table.name))
+        }
+        let stream = dataSource.streamRows(for: table)
         for try await element in stream {
             try progress.checkCancellation()
 
@@ -552,7 +727,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                     rowBatch.append(row)
                     if rowBatch.count >= batchSize {
                         if needsIdentityInsert, !wroteAnyRows {
-                            try fileHandle.write(contentsOf: "SET IDENTITY_INSERT \(tableRef) ON;\n".toUTF8Data())
+                            try writer.write("SET IDENTITY_INSERT \(tableRef) ON;\n")
                         }
                         try writeInsertStatements(
                             tableRef: tableRef,
@@ -561,9 +736,10 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                             rows: rowBatch,
                             batchSize: batchSize,
                             excludedColumnNames: generatedColumnNames,
+                            primaryKeyColumns: primaryKeyColumns,
                             usesOverridingSystemValue: usesOverridingSystemValue,
                             dataSource: dataSource,
-                            to: fileHandle,
+                            to: writer,
                             progress: progress
                         )
                         wroteAnyRows = true
@@ -575,7 +751,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
 
         if !rowBatch.isEmpty {
             if needsIdentityInsert, !wroteAnyRows {
-                try fileHandle.write(contentsOf: "SET IDENTITY_INSERT \(tableRef) ON;\n".toUTF8Data())
+                try writer.write("SET IDENTITY_INSERT \(tableRef) ON;\n")
             }
             try writeInsertStatements(
                 tableRef: tableRef,
@@ -584,20 +760,21 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                 rows: rowBatch,
                 batchSize: batchSize,
                 excludedColumnNames: generatedColumnNames,
+                primaryKeyColumns: primaryKeyColumns,
                 usesOverridingSystemValue: usesOverridingSystemValue,
                 dataSource: dataSource,
-                to: fileHandle,
+                to: writer,
                 progress: progress
             )
             wroteAnyRows = true
         }
 
         if wroteAnyRows, needsIdentityInsert {
-            try fileHandle.write(contentsOf: "SET IDENTITY_INSERT \(tableRef) OFF;\n".toUTF8Data())
+            try writer.write("SET IDENTITY_INSERT \(tableRef) OFF;\n")
         }
 
         if wroteAnyRows {
-            try fileHandle.write(contentsOf: "\n".toUTF8Data())
+            try writer.write("\n")
         }
     }
 
@@ -608,9 +785,10 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         rows: [[PluginCellValue]],
         batchSize: Int,
         excludedColumnNames: Set<String>,
+        primaryKeyColumns: [String],
         usesOverridingSystemValue: Bool,
         dataSource: any PluginExportDataSource,
-        to fileHandle: FileHandle,
+        to writer: SQLExportFileWriter,
         progress: PluginExportProgress
     ) throws {
         let includedColumnIndices = columns.enumerated().compactMap { index, name in
@@ -622,7 +800,22 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             .map { dataSource.quoteIdentifier(columns[$0]) }
             .joined(separator: ", ")
         let overriding = usesOverridingSystemValue ? " OVERRIDING SYSTEM VALUE" : ""
-        let insertPrefix = "INSERT INTO \(tableRef) (\(quotedColumns))\(overriding) VALUES\n"
+        let rendered = SQLExportInsertRenderer(
+            dialect: SqlDialect.from(databaseTypeId: dataSource.databaseTypeId),
+            quoteIdentifier: dataSource.quoteIdentifier
+        ).render(
+            mode: settings.insertMode,
+            tableRef: tableRef,
+            quotedColumns: quotedColumns,
+            overriding: overriding,
+            columnNames: includedColumnIndices.map { columns[$0] },
+            primaryKeyColumns: primaryKeyColumns
+        )
+        if let warning = rendered.warning, !metadataWarnings.contains(warning) {
+            metadataWarnings.append(warning)
+        }
+        let insertPrefix = rendered.prefix
+        let insertSuffix = rendered.suffix
 
         let numericIndices: Set<Int> = Set(includedColumnIndices.filter { idx in
             idx < columnTypeNames.count && PluginExportUtilities.isNumericColumnType(columnTypeNames[idx])
@@ -656,8 +849,8 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             valuesBatch.append("  (\(values))")
 
             if valuesBatch.count >= effectiveBatchSize {
-                let statement = insertPrefix + valuesBatch.joined(separator: ",\n") + ";\n\n"
-                try fileHandle.write(contentsOf: statement.toUTF8Data())
+                let statement = insertPrefix + valuesBatch.joined(separator: ",\n") + insertSuffix + ";\n\n"
+                try writer.write(statement)
                 valuesBatch.removeAll(keepingCapacity: true)
             }
 
@@ -665,8 +858,8 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         }
 
         if !valuesBatch.isEmpty {
-            let statement = insertPrefix + valuesBatch.joined(separator: ",\n") + ";\n\n"
-            try fileHandle.write(contentsOf: statement.toUTF8Data())
+            let statement = insertPrefix + valuesBatch.joined(separator: ",\n") + insertSuffix + ";\n\n"
+            try writer.write(statement)
         }
     }
 

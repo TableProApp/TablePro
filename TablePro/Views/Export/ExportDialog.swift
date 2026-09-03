@@ -33,6 +33,10 @@ struct ExportDialog: View {
     @State private var settingsSnapshot: PluginSettingsSnapshot?
     @State private var exportSucceeded = false
 
+    /// Which object kinds the last load actually read, so a format switch knows whether the tree it
+    /// already holds can answer for the new format without another round trip.
+    @State private var loadedObjectKinds: Set<PluginExportObjectKind> = []
+
     /// The window this dialog is hosted in, used for presenting its alerts and panels.
     /// Avoids `NSApp.keyWindow`, which when a result is presented is the progress sheet being
     /// torn down in the same transaction, and AppKit ends a sheet's children with it (#2314).
@@ -123,6 +127,7 @@ struct ExportDialog: View {
         }
         .onChange(of: config.formatId) {
             resetOptionValues()
+            Task { await reconcileObjectKindsForFormat() }
         }
         .onExitCommand {
             if !isExporting {
@@ -274,9 +279,10 @@ struct ExportDialog: View {
                 }
                 .frame(minHeight: 300, maxHeight: .infinity)
             } else {
-                ExportTableTreeView(
+                ExportObjectTreeView(
                     databaseItems: $databaseItems,
-                    formatId: config.formatId
+                    formatId: config.formatId,
+                    loadColumns: { await columnNames(for: $0) }
                 )
                 .frame(minHeight: 300, maxHeight: .infinity)
             }
@@ -418,19 +424,28 @@ struct ExportDialog: View {
         databaseItems.reduce(0) { $0 + $1.selectedCount }
     }
 
-    private var selectedTables: [ExportTableItem] {
-        databaseItems.flatMap { $0.selectedTables }
+    private var selectedObjects: [ExportObjectItem] {
+        databaseItems.flatMap { $0.selectedObjects }
     }
 
-    private var exportableTables: [ExportTableItem] {
-        let tables = selectedTables
-        guard let plugin = currentPlugin else { return tables }
-        return tables.filter { plugin.isTableExportable(optionValues: $0.optionValues) }
+    private var exportableObjects: [ExportObjectItem] {
+        let objects = selectedObjects
+        guard let plugin = currentPlugin else { return objects }
+        return objects.filter { plugin.isExportable(optionValues: $0.optionValues, kind: $0.kind) }
+    }
+
+    /// The kinds the chosen format can write, narrowed to the kinds a driver can actually list. A
+    /// format that declares none of its own receives tables and views, which is what every format
+    /// written before object scope expects.
+    private var supportedObjectKinds: Set<PluginExportObjectKind> {
+        guard let plugin = currentPlugin else { return [.table, .view] }
+        return Set(type(of: plugin).supportedObjectKinds)
+            .intersection(ExportObjectLoader.loadableKinds)
     }
 
     /// Count of tables that will actually produce output
     private var exportableCount: Int {
-        exportableTables.count
+        exportableObjects.count
     }
 
     private var fileExtension: String {
@@ -463,8 +478,43 @@ struct ExportDialog: View {
         }
     }
 
+    /// A format change changes which object kinds can be written. Kinds the new format cannot
+    /// write are dropped from the tree, and a format that reaches further than the last load did is
+    /// what makes a reload worth its round trips.
+    @MainActor
+    private func reconcileObjectKindsForFormat() async {
+        guard !isQueryResultsMode else { return }
+        let wanted = supportedObjectKinds
+        guard !loadedObjectKinds.isEmpty else { return }
+        guard wanted.isSubset(of: loadedObjectKinds) else {
+            await loadDatabaseItems()
+            return
+        }
+        databaseItems = databaseItems.compactMap { database in
+            var filtered = database
+            filtered.objects = database.objects.filter { wanted.contains($0.kind) }
+            return filtered.objects.isEmpty ? nil : filtered
+        }
+    }
+
     private func resetOptionValues() {
-        databaseItems = databaseItems.resettingOptionValues(to: currentDefaultOptionValues)
+        databaseItems = normalizedForCurrentFormat(
+            databaseItems.resettingOptionValues(to: currentDefaultOptionValues))
+    }
+
+    /// Aligns every row's option values with the chosen format's columns and clears the ones the
+    /// row's kind does not support, so a routine never carries a `Data` flag that would count it as
+    /// exportable for a phase it has no rows for.
+    private func normalizedForCurrentFormat(_ items: [ExportDatabaseItem]) -> [ExportDatabaseItem] {
+        let normalized = items.normalizingOptionValues(
+            optionColumnCount: currentOptionColumnCount,
+            defaultOptionValues: currentDefaultOptionValues
+        )
+        guard let plugin = currentPlugin else { return normalized }
+        let pluginType = type(of: plugin)
+        return normalized.maskingUnsupportedOptions(columns: pluginType.perTableOptionColumns) {
+            columnId, kind in pluginType.supportsOption(columnId: columnId, for: kind)
+        }
     }
 
     // MARK: - Actions
@@ -523,13 +573,15 @@ struct ExportDialog: View {
         /// failed load would leave them on screen looking like that database's contents.
         guard preselection.scopedDatabase == nil else { return }
         let dbName = connection.database
-        let tableItems = sidebarTables.map { table in
-            ExportTableItem(
+        let objectItems = sidebarTables.map { table in
+            let kind = PluginExportObjectKind.from(tableType: table.type.rawValue)
+            return ExportObjectItem(
                 name: table.name,
                 databaseName: "",
-                type: table.type,
+                kind: kind,
                 isSelected: preselection.selects(
-                    table: table.name,
+                    object: table.name,
+                    kind: kind,
                     inContainer: .database(dbName),
                     isCurrentContainer: true
                 )
@@ -537,13 +589,10 @@ struct ExportDialog: View {
         }
         let item = ExportDatabaseItem(
             name: dbName.isEmpty ? "Tables" : dbName,
-            tables: tableItems,
+            objects: objectItems,
             isExpanded: true
         )
-        databaseItems = [item].normalizingOptionValues(
-            optionColumnCount: currentOptionColumnCount,
-            defaultOptionValues: currentDefaultOptionValues
-        )
+        databaseItems = normalizedForCurrentFormat([item])
         isLoading = false
     }
 
@@ -552,17 +601,21 @@ struct ExportDialog: View {
         let optionValues: [Bool]
     }
 
+    /// Keyed by kind too, so a routine and a table that share a name do not inherit each other's
+    /// checkboxes when the format changes and the tree reloads.
     private func priorRowSnapshots() -> [String: ExportRowSnapshot] {
         var snapshots: [String: ExportRowSnapshot] = [:]
         for database in databaseItems {
-            for table in database.tables {
-                snapshots["\(database.name).\(table.name)"] = ExportRowSnapshot(
-                    isSelected: table.isSelected,
-                    optionValues: table.optionValues
-                )
+            for object in database.objects {
+                snapshots[Self.snapshotKey(container: database.name, object: object.name, kind: object.kind)] =
+                    ExportRowSnapshot(isSelected: object.isSelected, optionValues: object.optionValues)
             }
         }
         return snapshots
+    }
+
+    private static func snapshotKey(container: String, object: String, kind: PluginExportObjectKind) -> String {
+        "\(container).\(kind.rawValue).\(object)"
     }
 
     @MainActor
@@ -583,26 +636,25 @@ struct ExportDialog: View {
                 for schema in schemas {
                     let tables = try await fetchTablesForSchema(schema)
                     let isDefaultSchema = schema.caseInsensitiveCompare(defaultSchema) == .orderedSame
-                    let tableItems = tables.map { table in
-                        let priorRow = priorRows["\(schema).\(table.name)"]
-                        let selected = priorRow?.isSelected
-                            ?? preselection.selects(
-                                table: table.name,
-                                inContainer: .schema(database: exportDatabaseName, schema: schema),
-                                isCurrentContainer: isDefaultSchema
-                            )
-                        return ExportTableItem(
-                            name: table.name,
-                            databaseName: schema,
-                            type: table.type,
-                            isSelected: selected,
-                            optionValues: priorRow?.optionValues ?? []
+                    let loaded = await loadObjects(
+                        containerName: schema,
+                        schema: schema,
+                        tables: tables,
+                        includesPrincipals: isDefaultSchema
+                    )
+                    let objectItems = loaded.map { object in
+                        restoring(
+                            object,
+                            priorRows: priorRows,
+                            container: schema,
+                            containerRef: .schema(database: exportDatabaseName, schema: schema),
+                            isCurrentContainer: isDefaultSchema
                         )
                     }
-                    if !tableItems.isEmpty {
+                    if !objectItems.isEmpty {
                         items.append(ExportDatabaseItem(
                             name: schema,
-                            tables: tableItems,
+                            objects: objectItems,
                             isExpanded: isDefaultSchema || preselection.containerNames.contains(schema)
                         ))
                     }
@@ -627,26 +679,25 @@ struct ExportDialog: View {
                 for dbName in databases {
                     let tables = tablesByDatabase[dbName] ?? []
                     let isCurrentDB = dbName == connection.database
-                    let tableItems = tables.map { table in
-                        let priorRow = priorRows["\(dbName).\(table.name)"]
-                        let selected = priorRow?.isSelected
-                            ?? preselection.selects(
-                                table: table.name,
-                                inContainer: .database(dbName),
-                                isCurrentContainer: isCurrentDB
-                            )
-                        return ExportTableItem(
-                            name: table.name,
-                            databaseName: dbName,
-                            type: table.type,
-                            isSelected: selected,
-                            optionValues: priorRow?.optionValues ?? []
+                    let loaded = await loadObjects(
+                        containerName: dbName,
+                        schema: isCurrentDB ? nil : dbName,
+                        tables: tables,
+                        includesPrincipals: isCurrentDB
+                    )
+                    let objectItems = loaded.map { object in
+                        restoring(
+                            object,
+                            priorRows: priorRows,
+                            container: dbName,
+                            containerRef: .database(dbName),
+                            isCurrentContainer: isCurrentDB
                         )
                     }
-                    if !tableItems.isEmpty {
+                    if !objectItems.isEmpty {
                         items.append(ExportDatabaseItem(
                             name: dbName,
-                            tables: tableItems,
+                            objects: objectItems,
                             isExpanded: isCurrentDB || preselection.containerNames.contains(dbName)
                         ))
                     }
@@ -658,10 +709,8 @@ struct ExportDialog: View {
                 }
             }
 
-            databaseItems = items.normalizingOptionValues(
-                optionColumnCount: currentOptionColumnCount,
-                defaultOptionValues: currentDefaultOptionValues
-            )
+            loadedObjectKinds = supportedObjectKinds
+            databaseItems = normalizedForCurrentFormat(items)
             isLoading = false
 
             if let singleTable = preselection.singleTableName {
@@ -688,22 +737,86 @@ struct ExportDialog: View {
         let tables = try await withExportDriver { driver in
             try await driver.fetchTables()
         }
-        let tableItems = tables.map { table in
-            let priorRow = priorRows["\(name).\(table.name)"]
-            return ExportTableItem(
-                name: table.name,
-                databaseName: "",
-                type: table.type,
-                isSelected: priorRow?.isSelected ?? preselection.selects(
-                    table: table.name,
-                    inContainer: .database(name),
-                    isCurrentContainer: true
-                ),
-                optionValues: priorRow?.optionValues ?? []
+        let loaded = await loadObjects(
+            containerName: "", schema: nil, tables: tables, includesPrincipals: true)
+        let objectItems = loaded.map { object in
+            restoring(
+                object,
+                priorRows: priorRows,
+                container: name,
+                containerRef: .database(name),
+                isCurrentContainer: true
             )
         }
-        guard !tableItems.isEmpty else { return nil }
-        return ExportDatabaseItem(name: name, tables: tableItems, isExpanded: true)
+        guard !objectItems.isEmpty else { return nil }
+        return ExportDatabaseItem(name: name, objects: objectItems, isExpanded: true)
+    }
+
+    /// Reads one container's objects for the kinds the chosen format can write. Principals are
+    /// server-wide, so only the container the dialog opened on offers them: listing them under
+    /// every schema would offer the same GRANT statements several times over.
+    private func loadObjects(
+        containerName: String,
+        schema: String?,
+        tables: [TableInfo],
+        includesPrincipals: Bool
+    ) async -> [ExportObjectItem] {
+        var kinds = supportedObjectKinds
+        if !includesPrincipals { kinds.remove(.grant) }
+        guard !kinds.isEmpty else { return [] }
+        let request = ExportObjectLoader.Request(
+            containerName: containerName, schema: schema, kinds: kinds)
+        do {
+            return try await withExportDriver { driver in
+                await ExportObjectLoader.loadObjects(request: request, tables: tables, driver: driver)
+            }
+        } catch {
+            Self.logger.warning("Failed to load export objects: \(error.localizedDescription)")
+            return []
+        }
+    }
+
+    /// The column names the row-scope popover offers. Read on demand, because a tree of forty
+    /// tables would otherwise pay for forty column lists nobody opens.
+    @MainActor
+    private func columnNames(for object: ExportObjectItem) async -> [String] {
+        guard object.kind.carriesRows else { return [] }
+        do {
+            return try await withExportDriver(workload: .interactive) { driver in
+                guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else { return [] }
+                let schema = object.databaseName.isEmpty ? nil : object.databaseName
+                return try await pluginDriver.fetchColumns(table: object.name, schema: schema).map(\.name)
+            }
+        } catch {
+            Self.logger.warning("Failed to read columns for the export scope: \(error.localizedDescription)")
+            return []
+        }
+    }
+
+    /// Carries a row's checkboxes across a reload, falling back to what the preselection asked for.
+    private func restoring(
+        _ object: ExportObjectItem,
+        priorRows: [String: ExportRowSnapshot],
+        container: String,
+        containerRef: DatabaseContainerRef,
+        isCurrentContainer: Bool
+    ) -> ExportObjectItem {
+        let priorRow = priorRows[
+            Self.snapshotKey(container: container, object: object.name, kind: object.kind)]
+        return ExportObjectItem(
+            name: object.name,
+            databaseName: object.databaseName,
+            kind: object.kind,
+            identity: object.identity,
+            parentTable: object.parentTable,
+            isSelected: priorRow?.isSelected ?? preselection.selects(
+                object: object.name,
+                kind: object.kind,
+                inContainer: containerRef,
+                isCurrentContainer: isCurrentContainer
+            ),
+            optionValues: priorRow?.optionValues ?? []
+        )
     }
 
     private func fetchTablesForSchema(_ schema: String) async throws -> [TableInfo] {
@@ -863,7 +976,7 @@ struct ExportDialog: View {
     private func runTableExport(on driver: DatabaseDriver, to url: URL) async throws {
         let service = ExportService(driver: driver, databaseType: connection.type)
         exportService = service
-        try await service.export(tables: exportableTables, config: config, to: url)
+        try await service.export(objects: exportableObjects, config: config, to: url)
     }
 
     @MainActor

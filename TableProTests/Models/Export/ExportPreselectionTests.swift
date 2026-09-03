@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 
 @testable import TablePro
@@ -14,31 +15,31 @@ struct ExportPreselectionTests {
     func namedTablesStayInCurrentContainer() {
         let preselection = ExportPreselection.tables(["users"])
 
-        #expect(preselection.selects(table: "users", inContainer: .database("sales"), isCurrentContainer: true))
-        #expect(!preselection.selects(table: "users", inContainer: .database("analytics"), isCurrentContainer: false))
+        #expect(preselection.selects(object: "users", kind: .table, inContainer: .database("sales"), isCurrentContainer: true))
+        #expect(!preselection.selects(object: "users", kind: .table, inContainer: .database("analytics"), isCurrentContainer: false))
     }
 
     @Test("A container preselection selects every table it holds")
     func containerSelectsAllItsTables() {
         let preselection = ExportPreselection.containers([.database("analytics")])
 
-        #expect(preselection.selects(table: "events", inContainer: .database("analytics"), isCurrentContainer: false))
-        #expect(preselection.selects(table: "sessions", inContainer: .database("analytics"), isCurrentContainer: false))
+        #expect(preselection.selects(object: "events", kind: .table, inContainer: .database("analytics"), isCurrentContainer: false))
+        #expect(preselection.selects(object: "sessions", kind: .table, inContainer: .database("analytics"), isCurrentContainer: false))
     }
 
     @Test("A container preselection ignores tables in other containers")
     func containerIgnoresOtherContainers() {
         let preselection = ExportPreselection.containers([.database("analytics")])
 
-        #expect(!preselection.selects(table: "events", inContainer: .database("sales"), isCurrentContainer: true))
+        #expect(!preselection.selects(object: "events", kind: .table, inContainer: .database("sales"), isCurrentContainer: true))
     }
 
     @Test("Schema containers match by schema name")
     func schemaContainersMatchByName() {
         let preselection = ExportPreselection.containers([.schema(database: "sales", schema: "reporting")])
 
-        #expect(preselection.selects(table: "totals", inContainer: .schema(database: "sales", schema: "reporting"), isCurrentContainer: false))
-        #expect(!preselection.selects(table: "totals", inContainer: .schema(database: "sales", schema: "public"), isCurrentContainer: true))
+        #expect(preselection.selects(object: "totals", kind: .table, inContainer: .schema(database: "sales", schema: "reporting"), isCurrentContainer: false))
+        #expect(!preselection.selects(object: "totals", kind: .table, inContainer: .schema(database: "sales", schema: "public"), isCurrentContainer: true))
     }
 
     @Test("A single table names the export file")
@@ -96,12 +97,10 @@ struct ExportPreselectionTests {
     func databaseSelectsItsSchemas() {
         let preselection = ExportPreselection.containers([.database("app")])
 
-        #expect(preselection.selects(
-            table: "users", inContainer: .schema(database: "app", schema: "public"),
+        #expect(preselection.selects(object: "users", kind: .table, inContainer: .schema(database: "app", schema: "public"),
             isCurrentContainer: true
         ))
-        #expect(preselection.selects(
-            table: "totals", inContainer: .schema(database: "app", schema: "reporting"),
+        #expect(preselection.selects(object: "totals", kind: .table, inContainer: .schema(database: "app", schema: "reporting"),
             isCurrentContainer: false
         ))
     }
@@ -110,8 +109,7 @@ struct ExportPreselectionTests {
     func databaseDoesNotSelectAnotherDatabasesSchemas() {
         let preselection = ExportPreselection.containers([.database("analytics")])
 
-        #expect(!preselection.selects(
-            table: "users", inContainer: .schema(database: "app", schema: "public"),
+        #expect(!preselection.selects(object: "users", kind: .table, inContainer: .schema(database: "app", schema: "public"),
             isCurrentContainer: true
         ))
     }
@@ -122,11 +120,9 @@ struct ExportPreselectionTests {
     func schemaDoesNotMatchASameNamedDatabase() {
         let preselection = ExportPreselection.containers([.schema(database: "app", schema: "analytics")])
 
-        #expect(!preselection.selects(
-            table: "events", inContainer: .database("analytics"), isCurrentContainer: false
+        #expect(!preselection.selects(object: "events", kind: .table, inContainer: .database("analytics"), isCurrentContainer: false
         ))
-        #expect(!preselection.selects(
-            table: "events", inContainer: .schema(database: "other", schema: "analytics"),
+        #expect(!preselection.selects(object: "events", kind: .table, inContainer: .schema(database: "other", schema: "analytics"),
             isCurrentContainer: false
         ))
     }

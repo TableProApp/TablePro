@@ -1078,7 +1078,7 @@ final class MainContentCommandActions {
     }
 
     var supportsBackup: Bool {
-        connection.type == .postgresql || connection.type == .redshift
+        NativeDumpRegistry.supports(connection.type)
     }
 
     var supportsRestore: Bool { supportsBackup }

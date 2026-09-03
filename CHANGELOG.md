@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Breakdown of a query's time into server, first row and transfer, behind the toolbar's duration readout. (#2503)
 - Exclude the AUTO_INCREMENT counter and Exclude DEFINER clauses in the SQL export, both on by default. (#2516)
 - Jump to Column in the grid, a fuzzy search over the result's columns with their type and position. (#2495)
+- Views, routines, triggers, user-defined types and privileges in the export tree, grouped by kind. (#2618)
+- Per-table `WHERE`, row limit and column subset in the export tree. (#2618)
+- Insert mode for SQL exports: skip, replace or update rows that already exist. (#2618)
+- Split a SQL export into numbered parts at a chosen size. (#2618)
+- Read every table at one snapshot during a SQL export. (#2618)
+- Backup and restore for MySQL, MariaDB, MongoDB, SQLite and libSQL, using each engine's own tools. (#2618)
+- Transfer To, copying table rows straight into another open connection with no file in between. (#2618)
+- NDJSON layout for JSON exports, one row per line. (#2618)
 
 ### Changed
 

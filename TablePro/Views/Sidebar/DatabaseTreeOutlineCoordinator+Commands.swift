@@ -49,6 +49,10 @@ extension DatabaseTreeOutlineCoordinator {
             activateThen(ref) { [weak self] in
                 self?.mainCoordinator?.openExportDialog(preselectedTableNames: names)
             }
+        case .transferTables(let names, let ref):
+            activateThen(ref) { [weak self] in
+                self?.mainCoordinator?.openTableTransferSheet(preselectedTableNames: names)
+            }
         case .importTables(let formatId, let ref):
             activateThen(ref) { [weak self] in
                 self?.mainCoordinator?.openImportDialog(formatId: formatId)

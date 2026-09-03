@@ -31,6 +31,7 @@ internal enum SidebarMenuCommand: Equatable {
     /// without switching there first runs the command against a same-named table somewhere else,
     /// which for Truncate and Drop destroys the wrong data.
     case exportTables(names: Set<String>, ref: DatabaseTreeTableRef)
+    case transferTables(names: Set<String>, ref: DatabaseTreeTableRef)
     case importTables(formatId: String, ref: DatabaseTreeTableRef)
     case maintenance(operation: String, tableName: String, ref: DatabaseTreeTableRef)
     /// Queued rather than run, so these carry every target in full: a queue keyed by name is

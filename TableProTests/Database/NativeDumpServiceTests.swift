@@ -1,5 +1,5 @@
 //
-//  PostgresDumpServiceTests.swift
+//  NativeDumpServiceTests.swift
 //  TableProTests
 //
 
@@ -9,8 +9,15 @@ import Testing
 
 @testable import TablePro
 
-@Suite("PostgresDumpService command construction")
-struct PostgresDumpServiceCommandTests {
+@Suite("NativeDumpService command construction")
+struct NativeDumpServiceCommandTests {
+    private var postgresDescriptor: NativeDumpDescriptor {
+        guard let descriptor = NativeDumpRegistry.descriptor(for: .postgresql) else {
+            fatalError("PostgreSQL must have a dump descriptor")
+        }
+        return descriptor
+    }
+
     private func connection(
         host: String = "db.example.com",
         port: Int = 5_432,
@@ -32,9 +39,10 @@ struct PostgresDumpServiceCommandTests {
     }
 
     @Test("backup command sets -Fc, host, port, username, -d, -f")
-    func backupCommandShape() {
-        let command = PostgresDumpService.buildCommand(
+    func backupCommandShape() throws {
+        let command = try NativeDumpService.buildCommand(
             kind: .backup,
+            descriptor: postgresDescriptor,
             executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
             effective: connection(),
             database: "sales",
@@ -53,9 +61,10 @@ struct PostgresDumpServiceCommandTests {
     }
 
     @Test("restore command sets --no-owner, --no-acl, -d, positional path")
-    func restoreCommandShape() {
-        let command = PostgresDumpService.buildCommand(
+    func restoreCommandShape() throws {
+        let command = try NativeDumpService.buildCommand(
             kind: .restore,
+            descriptor: postgresDescriptor,
             executable: URL(fileURLWithPath: "/usr/bin/pg_restore"),
             effective: connection(),
             database: "sales",
@@ -73,9 +82,10 @@ struct PostgresDumpServiceCommandTests {
     }
 
     @Test("empty host falls back to 127.0.0.1")
-    func hostFallback() {
-        let command = PostgresDumpService.buildCommand(
+    func hostFallback() throws {
+        let command = try NativeDumpService.buildCommand(
             kind: .backup,
+            descriptor: postgresDescriptor,
             executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
             effective: connection(host: ""),
             database: "sales",
@@ -86,9 +96,10 @@ struct PostgresDumpServiceCommandTests {
     }
 
     @Test("empty username omits -U entirely")
-    func usernameOmitted() {
-        let command = PostgresDumpService.buildCommand(
+    func usernameOmitted() throws {
+        let command = try NativeDumpService.buildCommand(
             kind: .backup,
+            descriptor: postgresDescriptor,
             executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
             effective: connection(username: ""),
             database: "sales",
@@ -99,17 +110,19 @@ struct PostgresDumpServiceCommandTests {
     }
 
     @Test("nil/empty password does not set PGPASSWORD")
-    func passwordOptional() {
-        let nilPw = PostgresDumpService.buildCommand(
+    func passwordOptional() throws {
+        let nilPw = try NativeDumpService.buildCommand(
             kind: .backup,
+            descriptor: postgresDescriptor,
             executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
             effective: connection(),
             database: "sales",
             fileURL: URL(fileURLWithPath: "/tmp/x.dump"),
             password: nil
         )
-        let emptyPw = PostgresDumpService.buildCommand(
+        let emptyPw = try NativeDumpService.buildCommand(
             kind: .backup,
+            descriptor: postgresDescriptor,
             executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
             effective: connection(),
             database: "sales",
@@ -130,9 +143,10 @@ struct PostgresDumpServiceCommandTests {
             (TableProPluginKit.SSLMode.verifyIdentity, "verify-full")
         ]
     )
-    func sslModeMapping(mode: TableProPluginKit.SSLMode, expected: String?) {
-        let command = PostgresDumpService.buildCommand(
+    func sslModeMapping(mode: TableProPluginKit.SSLMode, expected: String?) throws {
+        let command = try NativeDumpService.buildCommand(
             kind: .backup,
+            descriptor: postgresDescriptor,
             executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
             effective: connection(sslMode: mode),
             database: "sales",
@@ -143,9 +157,10 @@ struct PostgresDumpServiceCommandTests {
     }
 
     @Test("environment is restricted to a known allowlist plus libpq vars")
-    func environmentIsMinimal() {
-        let command = PostgresDumpService.buildCommand(
+    func environmentIsMinimal() throws {
+        let command = try NativeDumpService.buildCommand(
             kind: .backup,
+            descriptor: postgresDescriptor,
             executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
             effective: connection(sslMode: .required),
             database: "sales",
@@ -169,14 +184,14 @@ struct PostgresDumpServiceCommandTests {
 
 // MARK: - Fake Runner
 
-private final class FakeDumpRunner: PostgresDumpRunner, @unchecked Sendable {
-    private(set) var startedCommand: PostgresDumpCommand?
+private final class FakeDumpRunner: NativeDumpRunner, @unchecked Sendable {
+    private(set) var startedCommand: NativeDumpCommand?
     private(set) var cancelCount: Int = 0
-    private var continuation: CheckedContinuation<PostgresDumpRunResult, Never>?
-    private var bufferedResult: PostgresDumpRunResult?
+    private var continuation: CheckedContinuation<NativeDumpRunResult, Never>?
+    private var bufferedResult: NativeDumpRunResult?
     private let lock = NSLock()
 
-    func start(_ command: PostgresDumpCommand) throws {
+    func start(_ command: NativeDumpCommand) throws {
         startedCommand = command
     }
 
@@ -186,7 +201,7 @@ private final class FakeDumpRunner: PostgresDumpRunner, @unchecked Sendable {
         lock.unlock()
     }
 
-    var result: PostgresDumpRunResult {
+    var result: NativeDumpRunResult {
         get async {
             await withCheckedContinuation { continuation in
                 lock.lock()
@@ -202,7 +217,7 @@ private final class FakeDumpRunner: PostgresDumpRunner, @unchecked Sendable {
         }
     }
 
-    func finish(_ outcome: PostgresDumpRunResult) {
+    func finish(_ outcome: NativeDumpRunResult) {
         lock.lock()
         if let continuation = self.continuation {
             self.continuation = nil
@@ -215,11 +230,11 @@ private final class FakeDumpRunner: PostgresDumpRunner, @unchecked Sendable {
     }
 }
 
-@Suite("PostgresDumpService state machine", .serialized)
+@Suite("NativeDumpService state machine", .serialized)
 @MainActor
-struct PostgresDumpServiceStateMachineTests {
-    private func fakeCommand() -> PostgresDumpCommand {
-        PostgresDumpCommand(
+struct NativeDumpServiceStateMachineTests {
+    private func fakeCommand() -> NativeDumpCommand {
+        NativeDumpCommand(
             executable: URL(fileURLWithPath: "/usr/bin/true"),
             arguments: [],
             environment: [:],
@@ -230,7 +245,7 @@ struct PostgresDumpServiceStateMachineTests {
     @Test("successful run transitions idle -> running -> finished")
     func successfulBackup() async throws {
         let runner = FakeDumpRunner()
-        let service = PostgresDumpService(kind: .backup, runnerFactory: { runner })
+        let service = NativeDumpService(kind: .backup, runnerFactory: { runner })
         let updates = service.stateUpdates()
 
         #expect(service.state == .idle)
@@ -261,7 +276,7 @@ struct PostgresDumpServiceStateMachineTests {
     @Test("non-zero exit transitions to failed and surfaces stderr")
     func failedRun() async throws {
         let runner = FakeDumpRunner()
-        let service = PostgresDumpService(kind: .restore, runnerFactory: { runner })
+        let service = NativeDumpService(kind: .restore, runnerFactory: { runner })
         let updates = service.stateUpdates()
 
         try service.run(
@@ -283,7 +298,7 @@ struct PostgresDumpServiceStateMachineTests {
     @Test("cancel transitions running -> cancelling -> cancelled")
     func cancelRun() async throws {
         let runner = FakeDumpRunner()
-        let service = PostgresDumpService(kind: .backup, runnerFactory: { runner })
+        let service = NativeDumpService(kind: .backup, runnerFactory: { runner })
         let updates = service.stateUpdates()
 
         try service.run(
@@ -304,7 +319,7 @@ struct PostgresDumpServiceStateMachineTests {
     @Test("calling run while already running throws alreadyRunning")
     func doubleRunThrows() throws {
         let runner = FakeDumpRunner()
-        let service = PostgresDumpService(kind: .backup, runnerFactory: { runner })
+        let service = NativeDumpService(kind: .backup, runnerFactory: { runner })
 
         try service.run(
             command: fakeCommand(),
@@ -312,7 +327,7 @@ struct PostgresDumpServiceStateMachineTests {
             fileURL: URL(fileURLWithPath: "/tmp/test-double.dump")
         )
 
-        #expect(throws: PostgresDumpError.alreadyRunning) {
+        #expect(throws: NativeDumpError.alreadyRunning) {
             try service.run(
                 command: fakeCommand(),
                 database: "sales",
@@ -324,7 +339,7 @@ struct PostgresDumpServiceStateMachineTests {
     @Test("empty stderr falls back to a synthesized error message")
     func emptyStderrFallback() async throws {
         let runner = FakeDumpRunner()
-        let service = PostgresDumpService(kind: .backup, runnerFactory: { runner })
+        let service = NativeDumpService(kind: .backup, runnerFactory: { runner })
         let updates = service.stateUpdates()
 
         try service.run(
@@ -343,9 +358,9 @@ struct PostgresDumpServiceStateMachineTests {
     }
 
     private func firstMatching(
-        _ stream: AsyncStream<PostgresDumpState>,
-        where predicate: @Sendable (PostgresDumpState) -> Bool
-    ) async throws -> PostgresDumpState {
+        _ stream: AsyncStream<NativeDumpState>,
+        where predicate: @Sendable (NativeDumpState) -> Bool
+    ) async throws -> NativeDumpState {
         for await state in stream where predicate(state) {
             return state
         }

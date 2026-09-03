@@ -134,6 +134,8 @@ internal enum DatabaseTreeMenuSpec {
         items.append(.separator)
         items.append(.command(copyNamesTitle(count: names.count), .copyTableNames(names)))
         items.append(.command(String(localized: "Export…"), .exportTables(names: Set(names), ref: ref)))
+        items.append(.command(
+            String(localized: "Transfer To…"), .transferTables(names: Set(names), ref: ref)))
         if context.canCopyObjects {
             /// Narrowed to the clicked row's own schema as well as its database. A copy names one
             /// source scope, so a selection spanning two schemas would read one of them and either

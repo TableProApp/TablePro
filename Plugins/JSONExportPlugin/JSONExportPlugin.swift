@@ -26,6 +26,10 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sen
 
     required init() { loadSettings() }
 
+    var currentFileExtension: String {
+        settings.layout.fileExtension
+    }
+
     @MainActor
     func settingsView() -> AnyView? {
         AnyView(JSONExportOptionsView(plugin: self))
@@ -49,25 +53,33 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sen
             }
         }
 
-        let prettyPrint = settings.prettyPrint
+        /// NDJSON is one row per line by definition, so the pretty-print setting cannot apply to it
+        /// and the wrapping object has no place to go.
+        let isNewlineDelimited = settings.layout == .newlineDelimited
+        let prettyPrint = settings.prettyPrint && !isNewlineDelimited
         let indent = prettyPrint ? "  " : ""
         let newline = prettyPrint ? "\n" : ""
 
-        try fileHandle.write(contentsOf: "{\(newline)".toUTF8Data())
+        if !isNewlineDelimited {
+            try fileHandle.write(contentsOf: "{\(newline)".toUTF8Data())
+        }
 
+        var hasWrittenAnyRow = false
         for (tableIndex, table) in tables.enumerated() {
             try progress.checkCancellation()
 
             progress.setCurrentTable(table.qualifiedName, index: tableIndex + 1)
 
             let escapedTableName = PluginExportUtilities.escapeJSONString(table.qualifiedName)
-            try fileHandle.write(contentsOf: "\(indent)\"\(escapedTableName)\": [\(newline)".toUTF8Data())
+            if !isNewlineDelimited {
+                try fileHandle.write(contentsOf: "\(indent)\"\(escapedTableName)\": [\(newline)".toUTF8Data())
+            }
 
-            var hasWrittenRow = false
+            var hasWrittenRow = isNewlineDelimited ? hasWrittenAnyRow : false
             var columns: [String]?
             var columnTypeNames: [String]?
 
-            let stream = dataSource.streamRows(table: table.name, databaseName: table.databaseName)
+            let stream = dataSource.streamRows(for: table)
             for try await element in stream {
                 try progress.checkCancellation()
 
@@ -81,7 +93,7 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sen
                         var rowString = ""
 
                         if hasWrittenRow {
-                            rowString += ",\(newline)"
+                            rowString += isNewlineDelimited ? "\n" : ",\(newline)"
                         }
 
                         rowString += rowPrefix
@@ -117,11 +129,15 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sen
 
                         try fileHandle.write(contentsOf: rowString.toUTF8Data())
                         hasWrittenRow = true
+                        hasWrittenAnyRow = true
                         progress.incrementRow()
                     }
                 }
             }
 
+            if isNewlineDelimited {
+                continue
+            }
             if hasWrittenRow {
                 try fileHandle.write(contentsOf: newline.toUTF8Data())
             }
@@ -129,7 +145,13 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sen
             try fileHandle.write(contentsOf: "\(indent)]\(tableSuffix)".toUTF8Data())
         }
 
-        try fileHandle.write(contentsOf: "}".toUTF8Data())
+        if isNewlineDelimited {
+            if hasWrittenAnyRow {
+                try fileHandle.write(contentsOf: "\n".toUTF8Data())
+            }
+        } else {
+            try fileHandle.write(contentsOf: "}".toUTF8Data())
+        }
 
         try progress.checkCancellation()
         try fileHandle.close()
