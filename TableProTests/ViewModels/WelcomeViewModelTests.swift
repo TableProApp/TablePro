@@ -115,7 +115,7 @@ final class WelcomeViewModelTests: XCTestCase {
     func testCreateGroupShowsImmediatelyInTree() throws {
         XCTAssertTrue(groupIds(in: viewModel.treeItems).isEmpty)
 
-        viewModel.createGroup(name: "Production", color: .red, parentId: nil)
+        try viewModel.createGroup(name: "Production", color: .red, parentId: nil)
 
         let created = try XCTUnwrap(groupStorage.loadGroups().first { $0.name == "Production" })
         XCTAssertTrue(groupIds(in: viewModel.treeItems).contains(created.id))
@@ -123,10 +123,10 @@ final class WelcomeViewModelTests: XCTestCase {
     }
 
     func testCreateSubgroupExpandsParentAndChild() throws {
-        viewModel.createGroup(name: "Parent", color: .none, parentId: nil)
+        try viewModel.createGroup(name: "Parent", color: .none, parentId: nil)
         let parentId = try XCTUnwrap(groupStorage.loadGroups().first { $0.name == "Parent" }?.id)
 
-        viewModel.createGroup(name: "Child", color: .none, parentId: parentId)
+        try viewModel.createGroup(name: "Child", color: .none, parentId: parentId)
         let childId = try XCTUnwrap(groupStorage.loadGroups().first { $0.name == "Child" }?.id)
 
         XCTAssertTrue(groupIds(in: viewModel.treeItems).contains(parentId))
@@ -135,14 +135,90 @@ final class WelcomeViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.expandedGroupIds.contains(childId))
     }
 
-    func testCreateDuplicateNameDoesNotAddSecondNode() {
-        viewModel.createGroup(name: "Staging", color: .orange, parentId: nil)
-        viewModel.createGroup(name: "staging", color: .blue, parentId: nil)
+    func testCreateDuplicateNameReportsWhyAndAddsNoSecondNode() throws {
+        try viewModel.createGroup(name: "Staging", color: .orange, parentId: nil)
+
+        XCTAssertThrowsError(try viewModel.createGroup(name: "staging", color: .blue, parentId: nil)) { error in
+            XCTAssertEqual(error as? GroupStorageError, .duplicateName("staging"))
+        }
 
         let stagingNodes = groupIds(in: viewModel.treeItems).filter { id in
             viewModel.groups.first { $0.id == id }?.name.lowercased() == "staging"
         }
         XCTAssertEqual(stagingNodes.count, 1)
+    }
+
+    // MARK: - Reorder
+
+    private func renderedConnectionIds(_ nodes: [ConnectionGroupTreeNode]) -> [UUID] {
+        nodes.compactMap { node in
+            guard case .connection(let conn) = node else { return nil }
+            return conn.id
+        }
+    }
+
+    /// The favorite is drawn in its own section, so the tree hands `.onMove` three rows while the
+    /// stored array still holds four. Mapping those offsets into the array moved the connection
+    /// one slot over from the one the user dragged.
+    func testReorderMovesTheRowTheListDrewWhenAFavoriteIsHidden() {
+        var favorite = DatabaseConnection(name: "A", type: .mysql, sortOrder: 0)
+        favorite.isFavorite = true
+        let b = DatabaseConnection(name: "B", type: .mysql, sortOrder: 1)
+        let c = DatabaseConnection(name: "C", type: .mysql, sortOrder: 2)
+        let d = DatabaseConnection(name: "D", type: .mysql, sortOrder: 3)
+        connectionStorage.saveConnections([favorite, b, c, d])
+        viewModel.loadConnections()
+
+        let rendered = renderedConnectionIds(viewModel.treeItems)
+        XCTAssertEqual(rendered, [b.id, c.id, d.id])
+
+        viewModel.moveConnections(renderedIds: rendered, from: IndexSet(integer: 2), to: 0, inGroup: nil)
+
+        XCTAssertEqual(renderedConnectionIds(viewModel.treeItems), [d.id, b.id, c.id])
+        XCTAssertEqual(
+            viewModel.connections.first { $0.id == favorite.id }?.sortOrder,
+            0,
+            "A row the list did not draw keeps the slot it held"
+        )
+    }
+
+    func testReorderInsideAGroupIgnoresRowsATagFilterHid() throws {
+        let group = ConnectionGroup(name: "Acme")
+        try groupStorage.addGroup(group)
+        let tagId = UUID()
+
+        var hidden = DatabaseConnection(name: "Hidden", type: .mysql, sortOrder: 0)
+        hidden.groupId = group.id
+        var first = DatabaseConnection(name: "First", type: .mysql, sortOrder: 1)
+        first.groupId = group.id
+        first.tagIds = [tagId]
+        var second = DatabaseConnection(name: "Second", type: .mysql, sortOrder: 2)
+        second.groupId = group.id
+        second.tagIds = [tagId]
+        connectionStorage.saveConnections([hidden, first, second])
+
+        viewModel.loadConnections()
+        viewModel.tagFilter = TagFilter(selectedIds: [tagId])
+
+        guard case .group(_, let children)? = viewModel.treeItems.first else {
+            XCTFail("The group is missing from the tree")
+            return
+        }
+        let rendered = renderedConnectionIds(children)
+        XCTAssertEqual(rendered, [first.id, second.id])
+
+        viewModel.moveConnections(renderedIds: rendered, from: IndexSet(integer: 1), to: 0, inGroup: group.id)
+
+        guard case .group(_, let reordered)? = viewModel.treeItems.first else {
+            XCTFail("The group is missing from the tree")
+            return
+        }
+        XCTAssertEqual(renderedConnectionIds(reordered), [second.id, first.id])
+        XCTAssertEqual(
+            viewModel.connections.first { $0.id == hidden.id }?.sortOrder,
+            0,
+            "The filtered-out connection keeps the slot it held"
+        )
     }
 
     // MARK: - Welcome Router Requests

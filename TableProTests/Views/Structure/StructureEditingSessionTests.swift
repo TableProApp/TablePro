@@ -156,17 +156,29 @@ struct StructureEditingSessionTests {
     /// The save no longer needs a mounted structure view. This is the whole point: `hasUnsavedWork`
     /// reads the session, so the prompt offering Save can be raised by a tab showing its Data view
     /// or by a background tab in a batch close, and the save it offers has to reach the work.
+    ///
+    /// The ALTER lands on a pooled connection, not the session driver, because a save runs on the
+    /// schema change route. The pool is seeded here for the same reason it is in
+    /// `DatabaseManagerSchemaChangeRoutingTests`: no plugin loads under XCTest, so a pool left to
+    /// open its own connection reports the driver missing and nothing runs.
     @Test("A session applies its staged edits with no view mounted")
     func applyRunsWithoutAView() async throws {
         let connection = TestFixtures.makeConnection(database: "testdb")
-        let driver = StructureSessionDriver()
-        let adapter = PluginDriverAdapter(connection: connection, pluginDriver: driver)
-        var connectionSession = ConnectionSession(connection: connection, driver: adapter)
+        let sessionDriver = StructureSessionDriver()
+        var connectionSession = ConnectionSession(
+            connection: connection,
+            driver: PluginDriverAdapter(connection: connection, pluginDriver: sessionDriver)
+        )
         connectionSession.browseDatabase = "testdb"
         DatabaseManager.shared.injectSession(connectionSession, for: connection.id)
-        defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
         let session = Self.makeSession(connection: connection)
+        let pooledDriver = try await Self.seedPooledDriver(connection, scope: session.scope)
+        defer {
+            MetadataConnectionPool.shared.closeAll(connectionId: connection.id)
+            DatabaseManager.shared.removeSession(for: connection.id)
+        }
+
         Self.stageAColumn(on: session)
         #expect(session.changeManager.hasChanges)
 
@@ -174,9 +186,22 @@ struct StructureEditingSessionTests {
 
         #expect(outcome == .applied)
         #expect(outcome.allowsClose)
-        #expect(driver.executedQueries.contains { $0.contains("ADD COLUMN") })
+        #expect(pooledDriver.executedQueries.contains { $0.contains("ADD COLUMN") })
+        #expect(sessionDriver.executedQueries.isEmpty)
         #expect(!session.changeManager.hasChanges)
         #expect(session.appliedVersion == 1)
         #expect(!session.hasLoaded)
+    }
+
+    /// Stands in for the connection the pool would open on the scope.
+    private static func seedPooledDriver(
+        _ connection: DatabaseConnection,
+        scope: DatabaseScope
+    ) async throws -> StructureSessionDriver {
+        let driver = StructureSessionDriver()
+        let adapter = PluginDriverAdapter(connection: connection, pluginDriver: driver)
+        try await adapter.connect()
+        MetadataConnectionPool.shared.injectEntry(adapter, scope: scope)
+        return driver
     }
 }

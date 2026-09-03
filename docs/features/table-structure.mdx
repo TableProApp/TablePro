@@ -116,13 +116,15 @@ The queue outlives everything short of an explicit discard: closing the tab, clo
   <img className="hidden dark:block" src="/images/schema-change-preview-dark.png" alt="Schema change preview with ALTER TABLE statements" />
 </Frame>
 
+A save runs on a connection of its own, so it never joins a transaction you have left open in a query tab.
+
 ### When one statement fails
 
 A save is often several statements, run in order. Engines with transactional DDL roll the whole set back; MySQL, MariaDB, and Oracle commit each one as it runs, so everything before the failure has landed while the queue still holds all of it. An **Error Applying Changes** sheet reports what the server said: refresh before saving again, or the second save replays work the server already did.
 
 ## Triggers tab
 
-Lists **Name**, **Timing** (BEFORE, AFTER, INSTEAD OF), **Event** (INSERT, UPDATE, DELETE), and **Enabled** where the engine reports it. Select one to read its `CREATE TRIGGER` statement from the catalog, with **Copy** and **Open in Editor**. **New Trigger**, **Edit**, and **Delete** sit in the action bar; the editor opens the trigger's real DDL, including the trigger function on PostgreSQL.
+Lists **Name**, **Timing** (BEFORE, AFTER, INSTEAD OF), **Event** (INSERT, UPDATE, DELETE), and **Enabled** where the engine reports it. Select one to read its `CREATE TRIGGER` statement from the catalog, with **Copy** and **Open in Editor**. **New Trigger**, **Edit**, and **Delete** sit in the action bar; the editor opens the trigger's real DDL, including the trigger function on PostgreSQL. Trigger changes run on their own connection, like a structure save.
 
 <Info>
 Triggers are available for MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracle, libSQL, and Cloudflare D1; the tab is hidden elsewhere. Oracle does not return the trigger body, so the viewer and the editor start from the trigger header alone.

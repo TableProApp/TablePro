@@ -35,8 +35,7 @@ internal struct GroupMenuEntry: Equatable, Identifiable {
 }
 
 internal enum GroupMenuEntries {
-    /// The maximum nesting a group is allowed to be moved under, mirroring the tree's own limit.
-    internal static let maximumDepth = 3
+    private static let maximumDepth = ConnectionGroup.maxNestingDepth
 
     internal static func forConnection(groups: [ConnectionGroup], noneTitle: String) -> [GroupMenuEntry] {
         var entries = [GroupMenuEntry(id: nil, title: noneTitle)]

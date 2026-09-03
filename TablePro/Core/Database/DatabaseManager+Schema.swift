@@ -13,9 +13,10 @@ import TableProPluginKit
 // MARK: - Schema Changes
 
 extension DatabaseManager {
-    /// Execute schema changes (ALTER TABLE, CREATE INDEX, etc.) in a transaction.
-    /// The connection, database and schema all come from the editing tab's own scope,
-    /// never from ambient session state that another window or tab can move.
+    /// Execute schema changes (ALTER TABLE, CREATE INDEX, etc.) in a transaction of their own,
+    /// on the schema change route rather than the session driver a query tab may have left
+    /// mid-transaction. The connection, database and schema all come from the editing tab's
+    /// own scope, never from ambient session state that another window or tab can move.
     ///
     /// Authorization sits between two scoped blocks rather than inside one: it awaits a
     /// confirmation sheet and Touch ID, and holding the connection's driver gate across a
@@ -26,7 +27,7 @@ extension DatabaseManager {
         databaseType: DatabaseType,
         scope: DatabaseScope
     ) async throws {
-        let route = executionRoute(for: scope)
+        let route = schemaChangeRoute(for: scope)
 
         let statements = try await withScopedDriver(
             scope: scope, route: route, cancellation: .untracked

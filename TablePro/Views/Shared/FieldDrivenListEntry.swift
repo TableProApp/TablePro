@@ -3,12 +3,12 @@
 //  TablePro
 //
 
-import Foundation
+import AppKit
 
 /// One row of a `FieldDrivenList`, after sections have been flattened into the single index space
 /// an `NSTableView` works in.
 internal enum FieldDrivenListEntry<Item: Identifiable> where Item.ID: Hashable {
-    case header(id: String, title: String)
+    case header(id: String, title: String, accentColor: NSColor?)
     case item(Item)
 
     internal var isHeader: Bool {
@@ -23,10 +23,16 @@ internal enum FieldDrivenListEntry<Item: Identifiable> where Item.ID: Hashable {
 
     /// Identity, not content. A refilter that produces the same rows in the same order reloads
     /// nothing, which keeps the hosted SwiftUI views and their state alive.
+    ///
+    /// A header is the exception: only item rows are refreshed in place, so a header identified by
+    /// its section id alone would keep a group's old name and colour on screen after a rename
+    /// arrives from another device. Its drawn content is part of what identifies it.
     internal var identity: AnyHashable {
         switch self {
-        case .header(let id, _): return AnyHashable("header:" + id)
-        case .item(let item): return AnyHashable(item.id)
+        case .header(let id, let title, let accentColor):
+            return AnyHashable(HeaderIdentity(id: id, title: title, accentColor: accentColor))
+        case .item(let item):
+            return AnyHashable(item.id)
         }
     }
 
@@ -37,7 +43,13 @@ internal enum FieldDrivenListEntry<Item: Identifiable> where Item.ID: Hashable {
             guard !section.items.isEmpty else { return [] }
             let rows = section.items.map { FieldDrivenListEntry.item($0) }
             guard let title = section.title else { return rows }
-            return [.header(id: section.id, title: title)] + rows
+            return [.header(id: section.id, title: title, accentColor: section.accentColor)] + rows
         }
     }
+}
+
+private struct HeaderIdentity: Hashable {
+    let id: String
+    let title: String
+    let accentColor: NSColor?
 }

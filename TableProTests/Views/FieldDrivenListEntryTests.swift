@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import AppKit
 @testable import TablePro
 import Testing
 
@@ -69,6 +70,33 @@ struct FieldDrivenListEntryTests {
         let first = FieldDrivenListEntry.flatten([section("a", title: nil, ["one", "two"])])
         let second = FieldDrivenListEntry.flatten([section("a", title: nil, ["one"])])
         #expect(first.map(\.identity) != second.map(\.identity))
+    }
+
+    /// Only item rows are refreshed in place, so a header that keeps its identity keeps whatever
+    /// it was already drawing. A group renamed on another device would have stayed on screen under
+    /// its old name.
+    @Test("A renamed section is a different header")
+    func headerIdentityFollowsItsTitle() {
+        let before = FieldDrivenListEntry.flatten([section("g", title: "ACME", ["one"])])
+        let after = FieldDrivenListEntry.flatten([section("g", title: "ACME CORP", ["one"])])
+
+        #expect(before.map(\.identity) != after.map(\.identity))
+    }
+
+    @Test("A recoloured section is a different header")
+    func headerIdentityFollowsItsAccent() {
+        let plain = FieldDrivenListSection(id: "g", title: "ACME", items: [Item(id: "one")])
+        let coloured = FieldDrivenListSection(
+            id: "g",
+            title: "ACME",
+            accentColor: .systemRed,
+            items: [Item(id: "one")]
+        )
+
+        #expect(
+            FieldDrivenListEntry.flatten([plain]).map(\.identity)
+                != FieldDrivenListEntry.flatten([coloured]).map(\.identity)
+        )
     }
 
     @Test("A header never reports an item id")
