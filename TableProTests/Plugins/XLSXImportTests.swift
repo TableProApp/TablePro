@@ -193,13 +193,14 @@ struct ZipReaderTests {
 
     private func deflated(_ data: Data) -> Data {
         guard !data.isEmpty else { return Data() }
-        var output = Data(count: max(data.count * 2, 1_024))
+        let capacity = max(data.count * 2, 1_024)
+        var output = Data(count: capacity)
         let written = output.withUnsafeMutableBytes { destination -> Int in
             guard let destinationBase = destination.bindMemory(to: UInt8.self).baseAddress else { return 0 }
             return data.withUnsafeBytes { source -> Int in
                 guard let sourceBase = source.bindMemory(to: UInt8.self).baseAddress else { return 0 }
                 return compression_encode_buffer(
-                    destinationBase, output.count, sourceBase, data.count, nil, COMPRESSION_ZLIB)
+                    destinationBase, capacity, sourceBase, data.count, nil, COMPRESSION_ZLIB)
             }
         }
         return output.prefix(written)
