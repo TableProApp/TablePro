@@ -182,6 +182,50 @@ internal class UITestCase: XCTestCase {
         waitForPredicate(timeout: timeout) { element.exists && element.isHittable }
     }
 
+    /// Switches the result to its Structure editor, through **View > Result View > Structure**
+    /// rather than the `Structure` segment of the results status bar.
+    ///
+    /// The segment cannot be clicked on the runner. Its screen is 1024x768, and a window that
+    /// wide cannot hold the sidebar, the detail pane at its minimum width and the row inspector
+    /// at once: the detail pane keeps its minimum and is drawn under the sidebar, taking the
+    /// leading half of the status bar with it. XCUITest still reports the segment as existing and
+    /// hittable, because its accessibility frame is where the layout says it is, so the click is
+    /// posted at (314, 691) and lands on the sidebar. Nothing fails there. The result stays on
+    /// Data, and the suite's next assertion reads the data grid as though it were the structure
+    /// grid, or waits out its timeout for a structure tab picker that was never going to appear.
+    /// (Run 33734073855, where the element tree captured the mode picker still reporting
+    /// `Data` selected after the click.)
+    ///
+    /// The menu item carries no geometry, so it is reachable whatever the window is doing.
+    /// Nothing probes for it first: XCUITest resolves a menu item by opening its parent, and a
+    /// probe that resolves it leaves that menu open, so the click's own traversal then fails with
+    /// "open menu during menu traversal" and waits out a ten second watchdog. Waiting on the menu
+    /// bar costs nothing and waiting for the tab picker afterwards is what makes the switch
+    /// observed rather than assumed.
+    internal func showStructure(in app: XCUIApplication, window: XCUIElement) {
+        let menuBar = app.menuBars.firstMatch
+        XCTAssertTrue(menuBar.waitToExist(timeout: 20), "The app must publish its menu bar")
+        menuBar.menuItems["Structure"].click()
+        XCTAssertTrue(
+            window.radioGroups["structure-tab-picker"].firstMatch.waitToExist(timeout: 30),
+            "The structure editor must open on the Structure result view"
+        )
+    }
+
+    /// A point inside the data grid that an overlapping pane cannot steal.
+    ///
+    /// A coordinate is the only way to click a row at all: the grid's columns are siblings of its
+    /// rows and later in the tree, so XCUITest reads every row and every cell as obscured and
+    /// refuses to click either. The grid's leading edge is not safe to measure from, though. On
+    /// the runner the detail pane is drawn under the sidebar, so a point 80pt in from that edge
+    /// lands on the object browser and a right-click raises its menu rather than the grid's.
+    /// Starting from whichever edge is further right keeps the point on the grid at any width.
+    internal func gridPoint(in grid: XCUIElement, of window: XCUIElement, dy: CGFloat) -> XCUICoordinate {
+        let clearOfBrowser = window.outlines.firstMatch.frame.maxX + 40 - grid.frame.minX
+        return grid.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: max(80, clearOfBrowser), dy: dy))
+    }
+
     /// The object browser draws its rows as hosted cells, so a row's name arrives as the static
     /// text's `value`, carrying the object kind the row reads out to VoiceOver, rather than as a
     /// label or an identifier. Matching on `value` is what finds them.

@@ -28,7 +28,7 @@ final class StructureRowMenuParityUITests: UITestCase {
         XCTAssertTrue(row.waitToExist(timeout: 20), "The object browser must list Album")
         clickAtCenter(row)
 
-        showStructure(in: window)
+        showStructure(in: app, window: window)
         let grid = window.tables.matching(identifier: "data-grid").firstMatch
         XCTAssertTrue(grid.waitToExist(timeout: 30), "The structure editor must draw its column grid")
         XCTAssertTrue(
@@ -43,9 +43,7 @@ final class StructureRowMenuParityUITests: UITestCase {
             "The grid must be laid out before a coordinate is taken off it"
         )
 
-        /// A point offset from the grid, never a row or cell element: the grid's columns are
-        /// siblings of its rows and later in the tree, so XCUITest reads both as obscured.
-        let target = grid.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 80, dy: 40))
+        let target = gridPoint(in: grid, of: window, dy: 40)
 
         target.rightClick()
         assertStructureMenu(in: app, path: "an unselected column row")
@@ -67,13 +65,5 @@ final class StructureRowMenuParityUITests: UITestCase {
             contextMenuItem(structureOnlyItem, in: app).waitToExist(timeout: 15),
             "\(path) must offer \(structureOnlyItem), which only the structure menu builds"
         )
-    }
-
-    private func showStructure(in window: XCUIElement) {
-        let modePicker = window.radioGroups["results-view-mode-picker"].firstMatch
-        XCTAssertTrue(modePicker.waitToExist(timeout: 20), "The result must expose its view modes")
-        let structure = modePicker.radioButtons["Structure"].firstMatch
-        XCTAssertTrue(structure.waitToExist(timeout: 20), "Structure must be one of them")
-        structure.click()
     }
 }
