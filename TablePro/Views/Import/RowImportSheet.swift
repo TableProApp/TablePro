@@ -56,6 +56,12 @@ struct RowImportSheet: View {
     @State private var isLoadingContext = false
     @State private var loadError: String?
 
+    /// The plugin's own options are persistent and shared, and this sheet edits them in place.
+    /// Without a snapshot, Cancel kept every change, so `Delete existing rows` stayed armed for
+    /// the next import from anywhere in the app.
+    @State private var settingsSnapshot: PluginSettingsSnapshot?
+    @State private var importSucceeded = false
+
     @State private var importService: ImportService?
     @State private var importResult: PluginImportResult?
     @State private var importError: (any Error)?
@@ -97,13 +103,15 @@ struct RowImportSheet: View {
             footerView
                 .padding()
         }
-        .frame(width: 720, height: 640)
+        .frame(minWidth: 720, minHeight: 560, idealHeight: 640, maxHeight: .infinity)
         .background {
             WindowAccessor { window in
                 hostWindow = window
             }
         }
         .task {
+            settingsSnapshot = PluginSettingsSnapshot(
+                plugins: [currentPlugin as? any SettablePluginDiscoverable].compactMap { $0 })
             await loadTables()
             await loadNewColumns()
         }
@@ -116,7 +124,11 @@ struct RowImportSheet: View {
         .onChange(of: currentPlugin?.fieldDetectionSignature) { _, _ in
             Task { await redetectFields() }
         }
-        .onDisappear { importTask?.cancel() }
+        .onDisappear {
+            importTask?.cancel()
+            if !importSucceeded { settingsSnapshot?.restore() }
+            settingsSnapshot = nil
+        }
         .sheet(isPresented: $showProgressDialog) {
             if let service = importService {
                 ImportProgressView(service: service) { service.cancelImport() }
@@ -237,21 +249,54 @@ struct RowImportSheet: View {
 
     @ViewBuilder
     private var contentArea: some View {
+        if let loadError {
+            unreadableFile(reason: loadError)
+        } else {
+            switch destination {
+            case .existingTable:
+                if selectedTargetTable == nil {
+                    placeholder("Choose a destination table to map fields.")
+                } else if mappings.isEmpty {
+                    placeholder("No fields found in the file.")
+                } else {
+                    mappingTable
+                }
+            case .newTable:
+                if newColumns.isEmpty {
+                    placeholder("No columns found in the file.")
+                } else {
+                    newColumnsTable
+                }
+            }
+        }
+    }
+
+    /// A file the plugin could not read is a failure, not an empty result. Showing the parser's
+    /// message as grey placeholder text left the sheet with nothing to press but Cancel.
+    private func unreadableFile(reason: String) -> some View {
+        ContentUnavailableView {
+            Label(String(localized: "Cannot read this file"), systemImage: "exclamationmark.triangle")
+        } description: {
+            Text(reason)
+        } actions: {
+            Button(String(localized: "Try Again")) {
+                Task { await retryLoad() }
+            }
+        }
+    }
+
+    @MainActor
+    private func retryLoad() async {
+        loadError = nil
+        newColumnsLoaded = false
+        newColumns = []
+        mappings = []
         switch destination {
-        case .existingTable:
-            if selectedTargetTable == nil {
-                placeholder("Choose a destination table to map fields.")
-            } else if mappings.isEmpty {
-                placeholder(loadError ?? "No fields found in the file.")
-            } else {
-                mappingTable
-            }
         case .newTable:
-            if newColumns.isEmpty {
-                placeholder(loadError ?? "No columns found in the file.")
-            } else {
-                newColumnsTable
-            }
+            await loadNewColumns()
+        case .existingTable:
+            guard let table = selectedTargetTable else { return }
+            await loadExistingContext(table: table)
         }
     }
 
@@ -380,22 +425,14 @@ struct RowImportSheet: View {
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 150)
                 .disabled(!row.include)
-            Menu {
+            Picker(String(localized: "Type"), selection: typeBinding(row)) {
                 ForEach(typeOptions(including: row.type), id: \.self) { type in
-                    Button {
-                        columnBinding(row).type.wrappedValue = type
-                    } label: {
-                        if type.caseInsensitiveCompare(row.type) == .orderedSame {
-                            Label(type, systemImage: "checkmark")
-                        } else {
-                            Text(type)
-                        }
-                    }
+                    Text(type).tag(type)
                 }
-            } label: {
-                Text(row.type)
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .accessibilityLabel(Text(String(format: String(localized: "Type of %@"), row.name)))
             .frame(width: 150)
             .disabled(!row.include)
             Toggle(String(localized: "Primary key"), isOn: columnBinding(row).isPrimaryKey)
@@ -476,6 +513,17 @@ struct RowImportSheet: View {
             .sorted()
     }
 
+    /// The selection has to be one of the options by exact spelling or the menu draws blank, and
+    /// `typeOptions` suppresses its insert on a case-insensitive match. The getter resolves through
+    /// the same comparison so a differently-cased stored type still selects its own row.
+    private func typeBinding(_ row: NewColumn) -> Binding<String> {
+        let options = typeOptions(including: row.type)
+        return Binding(
+            get: { options.first { $0.caseInsensitiveCompare(row.type) == .orderedSame } ?? row.type },
+            set: { columnBinding(row).type.wrappedValue = $0 }
+        )
+    }
+
     private func typeOptions(including current: String) -> [String] {
         var types = dialectTypes
         if !types.contains(where: { $0.caseInsensitiveCompare(current) == .orderedSame }) {
@@ -513,13 +561,27 @@ struct RowImportSheet: View {
         }
     }
 
+    /// `detectSourceFields` is synchronous and reads the file: the XLSX plugin materialises the
+    /// whole workbook, the CSV one reads a megabyte. Every state write stays on the main actor,
+    /// only the parse leaves it.
+    nonisolated private static func detectFields(
+        plugin: any ImportFormatPlugin,
+        at url: URL,
+        targetTable: String?
+    ) async throws -> [PluginImportField] {
+        try await Task.detached {
+            try plugin.detectSourceFields(at: url, targetTable: targetTable)
+        }.value
+    }
+
     @MainActor
     private func loadNewColumns() async {
         guard !newColumnsLoaded, let plugin = currentPlugin else { return }
         isLoadingContext = true
+        loadError = nil
         defer { isLoadingContext = false }
         do {
-            let fields = try plugin.detectSourceFields(at: fileURL, targetTable: nil)
+            let fields = try await Self.detectFields(plugin: plugin, at: fileURL, targetTable: nil)
             newColumns = fields.map { field in
                 NewColumn(
                     field: field,
@@ -547,7 +609,7 @@ struct RowImportSheet: View {
         defer { isLoadingContext = false }
         do {
             let columns = try await driver.fetchColumns(table: table).map(\.name)
-            let fields = try plugin.detectSourceFields(at: fileURL, targetTable: table)
+            let fields = try await Self.detectFields(plugin: plugin, at: fileURL, targetTable: table)
             targetColumns = columns
             mappings = fields.map { field in
                 let match = columns.first { $0.caseInsensitiveCompare(field.name) == .orderedSame }
@@ -661,11 +723,18 @@ struct RowImportSheet: View {
                 )
                 await MainActor.run {
                     showProgressDialog = false
+                    importSucceeded = true
                     importResult = result
                     showSuccessDialog = true
                 }
             } catch is PluginImportCancellationError {
-                await MainActor.run { showProgressDialog = false }
+                await MainActor.run {
+                    showProgressDialog = false
+                    TransferResultAlert.presentImportCancelled(
+                        executedStatements: service.state.processedStatements,
+                        window: hostWindow
+                    ) {}
+                }
             } catch {
                 await MainActor.run {
                     showProgressDialog = false

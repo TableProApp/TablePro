@@ -59,7 +59,7 @@ struct SQLExportOptionsView: View {
 
                 Spacer()
 
-                Picker("", selection: $plugin.settings.batchSize) {
+                Picker(String(localized: "Rows per INSERT", bundle: .main), selection: $plugin.settings.batchSize) {
                     ForEach(Self.batchSizeOptions, id: \.self) { size in
                         Text(size == 1 ? String(localized: "1 (no batching)", bundle: .main) : "\(size)")
                             .tag(size)
@@ -77,7 +77,7 @@ struct SQLExportOptionsView: View {
 
                 Spacer()
 
-                Picker("", selection: $plugin.settings.insertMode) {
+                Picker(String(localized: "On existing rows", bundle: .main), selection: $plugin.settings.insertMode) {
                     ForEach(SQLExportInsertMode.allCases) { mode in
                         Text(mode.label).tag(mode)
                     }
@@ -94,7 +94,7 @@ struct SQLExportOptionsView: View {
 
                 Spacer()
 
-                Picker("", selection: $plugin.settings.splitSizeMegabytes) {
+                Picker(String(localized: "Split every", bundle: .main), selection: $plugin.settings.splitSizeMegabytes) {
                     ForEach(Self.splitSizeOptions, id: \.self) { size in
                         Text(size == 0 ? String(localized: "One file", bundle: .main) : "\(size) MB")
                             .tag(size)

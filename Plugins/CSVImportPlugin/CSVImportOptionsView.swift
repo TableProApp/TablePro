@@ -15,7 +15,7 @@ struct CSVImportOptionsView: View {
                 GridRow {
                     Text("Delimiter:")
                         .gridColumnAlignment(.trailing)
-                    Picker("", selection: Bindable(plugin).settings.delimiter) {
+                    Picker(String(localized: "Delimiter", bundle: .main), selection: Bindable(plugin).settings.delimiter) {
                         Text("Auto-detect").tag(CSVImportOptions.Delimiter.auto)
                         Text("Comma (,)").tag(CSVImportOptions.Delimiter.comma)
                         Text("Semicolon (;)").tag(CSVImportOptions.Delimiter.semicolon)
@@ -29,7 +29,7 @@ struct CSVImportOptionsView: View {
 
                 GridRow {
                     Text("Quote character:")
-                    Picker("", selection: Bindable(plugin).settings.quoteCharacter) {
+                    Picker(String(localized: "Quote character", bundle: .main), selection: Bindable(plugin).settings.quoteCharacter) {
                         Text("Double quote (\")").tag(CSVImportOptions.QuoteCharacter.doubleQuote)
                         Text("Single quote (')").tag(CSVImportOptions.QuoteCharacter.singleQuote)
                     }
@@ -40,7 +40,7 @@ struct CSVImportOptionsView: View {
 
                 GridRow {
                     Text("Encoding:")
-                    Picker("", selection: Bindable(plugin).settings.encoding) {
+                    Picker(String(localized: "Encoding", bundle: .main), selection: Bindable(plugin).settings.encoding) {
                         Text("Auto-detect").tag(CSVImportOptions.TextEncoding.auto)
                         Text("UTF-8").tag(CSVImportOptions.TextEncoding.utf8)
                         Text("ISO Latin 1").tag(CSVImportOptions.TextEncoding.isoLatin1)
@@ -53,7 +53,7 @@ struct CSVImportOptionsView: View {
 
                 GridRow {
                     Text("On error:")
-                    Picker("", selection: Bindable(plugin).settings.errorHandling) {
+                    Picker(String(localized: "On error", bundle: .main), selection: Bindable(plugin).settings.errorHandling) {
                         Text("Stop and Rollback").tag(ImportErrorHandling.stopAndRollback)
                         Text("Stop and Commit").tag(ImportErrorHandling.stopAndCommit)
                         Text("Skip and Continue").tag(ImportErrorHandling.skipAndContinue)

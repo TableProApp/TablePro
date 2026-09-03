@@ -30,7 +30,7 @@ struct CSVExportOptionsView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 optionRow(String(localized: "Delimiter", bundle: .main)) {
-                    Picker("", selection: $plugin.settings.delimiter) {
+                    Picker(String(localized: "Delimiter", bundle: .main), selection: $plugin.settings.delimiter) {
                         ForEach(CSVDelimiter.allCases) { delimiter in
                             Text(delimiter.displayName).tag(delimiter)
                         }
@@ -41,7 +41,7 @@ struct CSVExportOptionsView: View {
                 }
 
                 optionRow(String(localized: "Quote", bundle: .main)) {
-                    Picker("", selection: $plugin.settings.quoteHandling) {
+                    Picker(String(localized: "Quote", bundle: .main), selection: $plugin.settings.quoteHandling) {
                         ForEach(CSVQuoteHandling.allCases) { handling in
                             Text(handling.rawValue).tag(handling)
                         }
@@ -52,7 +52,7 @@ struct CSVExportOptionsView: View {
                 }
 
                 optionRow(String(localized: "Line break", bundle: .main)) {
-                    Picker("", selection: $plugin.settings.lineBreak) {
+                    Picker(String(localized: "Line break", bundle: .main), selection: $plugin.settings.lineBreak) {
                         ForEach(CSVLineBreak.allCases) { lineBreak in
                             Text(lineBreak.rawValue).tag(lineBreak)
                         }
@@ -63,7 +63,7 @@ struct CSVExportOptionsView: View {
                 }
 
                 optionRow(String(localized: "Decimal", bundle: .main)) {
-                    Picker("", selection: $plugin.settings.decimalFormat) {
+                    Picker(String(localized: "Decimal", bundle: .main), selection: $plugin.settings.decimalFormat) {
                         ForEach(CSVDecimalFormat.allCases) { format in
                             Text(format.rawValue).tag(format)
                         }

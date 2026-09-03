@@ -12,7 +12,7 @@ struct MarkdownExportOptionsView: View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle("Align columns", isOn: $plugin.settings.alignsColumns)
                 .toggleStyle(.checkbox)
-                .help("Pads cells so the columns line up in the raw text. Widths come from the header and the first 200 rows")
+                .help("Pads cells so the columns line up in the raw text. Widths come from the header and the first 200 rows.")
 
             Toggle("Write each table's name as a heading", isOn: $plugin.settings.includesTableNames)
                 .toggleStyle(.checkbox)

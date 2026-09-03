@@ -15,7 +15,7 @@ struct JSONExportOptionsView: View {
 
                 Spacer()
 
-                Picker("", selection: $plugin.settings.layout) {
+                Picker(String(localized: "Layout", bundle: .main), selection: $plugin.settings.layout) {
                     ForEach(JSONExportLayout.allCases) { layout in
                         Text(layout.label).tag(layout)
                     }

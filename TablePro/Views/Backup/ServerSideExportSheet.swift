@@ -191,6 +191,25 @@ struct ServerSideExportSheet: View {
         .padding(.vertical, 12)
     }
 
+    /// Oracle's Data Pump block ends in `DETACH`, so the statement returns once the job has been
+    /// queued and the file is not written yet. Snowflake and BigQuery both block until their unload
+    /// finishes, so for those the file exists by the time this is read.
+    private static func completionMessage(
+        for type: DatabaseType,
+        table: String,
+        destination: String
+    ) -> String {
+        guard type == .oracle else {
+            return String(
+                format: String(localized: "The server wrote %1$@ to %2$@."), table, destination)
+        }
+        return String(
+            format: String(
+                localized: "A Data Pump job for %1$@ was started, writing to %2$@. Watch DBA_DATAPUMP_JOBS for its progress."),
+            table,
+            destination)
+    }
+
     /// Asks the driver to cancel and stops waiting either way. `cancelQuery()` is a no-op on some
     /// engines and `Task.cancel()` cannot interrupt a driver blocked in a C call, so the sheet says
     /// it is stopping rather than claiming the server stopped.
@@ -263,10 +282,8 @@ struct ServerSideExportSheet: View {
 
         do {
             _ = try await driver.execute(query: statement)
-            completion = String(
-                format: String(localized: "The server wrote %1$@ to %2$@."),
-                selectedTable,
-                destinationText)
+            completion = Self.completionMessage(
+                for: connection.type, table: selectedTable, destination: destinationText)
         } catch {
             guard !isCancelling else { return }
             Self.logger.warning("Server-side export failed: \(error.localizedDescription)")

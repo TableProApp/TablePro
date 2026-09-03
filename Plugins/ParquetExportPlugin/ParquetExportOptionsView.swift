@@ -15,7 +15,7 @@ struct ParquetExportOptionsView: View {
             HStack {
                 Text("Compression")
                 Spacer()
-                Picker("", selection: $plugin.settings.compression) {
+                Picker(String(localized: "Compression", bundle: .main), selection: $plugin.settings.compression) {
                     ForEach(ParquetCompression.allCases) { compression in
                         Text(compression.label).tag(compression)
                     }
@@ -24,12 +24,12 @@ struct ParquetExportOptionsView: View {
                 .labelsHidden()
                 .frame(width: 130)
             }
-            .help("Snappy is what every Parquet reader supports. Zstd is smaller and needs a reader built with it")
+            .help("Snappy is what every Parquet reader supports. Zstd is smaller and needs a reader built with it.")
 
             HStack {
                 Text("Rows per group")
                 Spacer()
-                Picker("", selection: $plugin.settings.rowGroupSize) {
+                Picker(String(localized: "Rows per group", bundle: .main), selection: $plugin.settings.rowGroupSize) {
                     ForEach(Self.rowGroupSizes, id: \.self) { size in
                         Text(size.formatted()).tag(size)
                     }

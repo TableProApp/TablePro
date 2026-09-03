@@ -31,7 +31,7 @@ struct BackupDatabaseFlow: View {
         case pickDatabase
         case running(database: String, totalBytes: Int64?)
         case finished(database: String, destination: URL, bytes: Int64)
-        case failed(message: String)
+        case failed(message: String, targetMayBeModified: Bool)
         case cancelled
     }
 
@@ -56,10 +56,11 @@ struct BackupDatabaseFlow: View {
                     onClose: { isPresented = false },
                     onShowInFinder: { NSWorkspace.shared.activateFileViewerSelecting([destination]) }
                 )
-            case .failed(let message):
+            case .failed(let message, let targetMayBeModified):
                 BackupResultSheet(
                     kind: .backup,
-                    outcome: .failure(message: message),
+                    outcome: .failure(
+                        message: message, targetMayBeModified: targetMayBeModified),
                     onClose: { isPresented = false },
                     onShowInFinder: nil
                 )
@@ -116,8 +117,8 @@ struct BackupDatabaseFlow: View {
         case .finished(let database, let fileURL, let bytes):
             phase = .finished(database: database, destination: fileURL, bytes: bytes)
             reportBackupFinished(.succeeded(OperationSummary(fileURL: fileURL)), database: database)
-        case .failed(let message):
-            phase = .failed(message: message)
+        case .failed(let message, let targetMayBeModified):
+            phase = .failed(message: message, targetMayBeModified: targetMayBeModified)
             reportBackupFinished(.failed(reason: message), database: backupDatabase)
         case .cancelled:
             phase = .cancelled
@@ -188,7 +189,7 @@ struct BackupDatabaseFlow: View {
                 totalBytesEstimate: totalBytes
             )
         } catch {
-            phase = .failed(message: error.localizedDescription)
+            phase = .failed(message: error.localizedDescription, targetMayBeModified: false)
         }
     }
 

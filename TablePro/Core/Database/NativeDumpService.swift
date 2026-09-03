@@ -26,7 +26,10 @@ enum NativeDumpState: Equatable {
     case running(database: String, fileURL: URL, bytesProcessed: Int64, totalBytes: Int64?)
     case cancelling
     case finished(database: String, fileURL: URL, bytesProcessed: Int64)
-    case failed(message: String)
+    /// A restore that fails part way through has already replayed some of the dump, and the
+    /// target is left in whatever state that reached. A backup writes only to its own file, which
+    /// is removed, so nothing of the user's is touched.
+    case failed(message: String, targetMayBeModified: Bool)
     case cancelled
 }
 
@@ -206,7 +209,7 @@ final class NativeDumpService {
             return (name, path)
         }).first else {
             throw NativeDumpError.binaryNotFound(
-                name: candidates.joined(separator: String(localized: " or ")),
+                name: candidates.formatted(.list(type: .or)),
                 installHint: descriptor.installHint
             )
         }
@@ -397,7 +400,7 @@ final class NativeDumpService {
         let summary = result.stderr.isEmpty
             ? String(format: String(localized: "Process exited with code %d"), Int(result.exitCode))
             : result.stderr
-        setState(.failed(message: summary))
+        setState(.failed(message: summary, targetMayBeModified: kind == .restore))
         Self.logger.error("\(self.kind == .backup ? "pg_dump" : "pg_restore", privacy: .public) failed code=\(result.exitCode) db=\(database, privacy: .public) stderr=\(result.stderr)")
     }
 

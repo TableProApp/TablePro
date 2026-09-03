@@ -288,7 +288,7 @@ struct NativeDumpServiceStateMachineTests {
         runner.finish(.init(exitCode: 1, stderr: "FATAL: connection refused", wasCancelled: false))
         let finalState = try await firstMatching(updates) { if case .failed = $0 { return true }; return false }
 
-        if case .failed(let message) = finalState {
+        if case .failed(let message, _) = finalState {
             #expect(message == "FATAL: connection refused")
         } else {
             Issue.record("expected failed, got \(finalState)")
@@ -350,7 +350,7 @@ struct NativeDumpServiceStateMachineTests {
         runner.finish(.init(exitCode: 42, stderr: "", wasCancelled: false))
         let finalState = try await firstMatching(updates) { if case .failed = $0 { return true }; return false }
 
-        if case .failed(let message) = finalState {
+        if case .failed(let message, _) = finalState {
             #expect(message.contains("42"))
         } else {
             Issue.record("expected failed, got \(finalState)")

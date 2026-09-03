@@ -51,6 +51,9 @@ The lookup takes the first match from `/usr/bin/which`, then `/opt/homebrew/bin`
   <Step title="Pick the target database">
     `pg_restore` runs with `--no-owner --no-acl`, so the connection user ends up owning the restored objects. `mongorestore` is scoped with `--nsInclude` to the database you pick.
   </Step>
+  <Step title="Confirm">
+    The dump is replayed into a database that already has contents. Objects it names are overwritten.
+  </Step>
   <Step title="Wait it out">
     Restore shows no percentage. **Cancel** confirms and sends `SIGTERM`, and the target database is left as it stands: drop it and restore into a fresh one, or clean up the partial objects yourself.
   </Step>
@@ -73,6 +76,10 @@ Oracle, Snowflake and BigQuery do not have a client-side dump. They unload to so
 Pick a table and name the destination. Oracle takes the name of a `DIRECTORY` object rather than a path, because the path belongs to the server. Snowflake takes a stage, with or without its `@`. BigQuery takes a `gs://` prefix and shards its output under it.
 
 The statement runs on your own connection, so it carries your privileges and the server's own error comes back when the destination is not writable.
+
+Snowflake and BigQuery block until the unload finishes, so the file exists by the time the sheet says so. **Stop** asks the server to cancel one and stops waiting either way.
+
+Oracle is different. The Data Pump block starts a job and detaches, so the statement returns before anything is written and the sheet says the job was started rather than finished. Watch `DBA_DATAPUMP_JOBS` for its progress, and stop it there.
 
 <Info>
 Nothing lands on your Mac. The result is on the server or in the bucket, and the sheet says where it went.

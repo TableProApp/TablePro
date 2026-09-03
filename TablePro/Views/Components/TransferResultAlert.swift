@@ -85,6 +85,24 @@ internal enum TransferResultAlert {
         return String(format: template, Int64(rowCount), destinationName, Int64(tableCount))
     }
 
+    /// A stopped import leaves whatever it already ran committed, and used to close its progress
+    /// sheet without saying so. Stopping looked the same as importing nothing.
+    internal static func presentImportCancelled(
+        executedStatements: Int,
+        window: NSWindow?,
+        completion: @escaping @MainActor () -> Void
+    ) {
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Import stopped")
+        alert.alertStyle = .warning
+        let template = executedStatements == 1
+            ? String(localized: "%lld statement had already run and stays committed.")
+            : String(localized: "%lld statements had already run and stay committed.")
+        alert.informativeText = String(format: template, Int64(executedStatements))
+        AlertHelper.addCancelButton(to: alert, title: String(localized: "Done"))
+        AlertHelper.present(alert, in: window) { _ in completion() }
+    }
+
     internal static func presentImportSuccess(
         result: PluginImportResult?,
         window: NSWindow?,

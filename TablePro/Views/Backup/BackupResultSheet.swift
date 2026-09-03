@@ -16,7 +16,7 @@ struct BackupResultSheet: View {
     enum Outcome {
         case backupSuccess(database: String, destination: URL, bytes: Int64)
         case restoreSuccess(database: String, source: URL)
-        case failure(message: String)
+        case failure(message: String, targetMayBeModified: Bool)
         case cancelled
     }
 
@@ -52,14 +52,24 @@ struct BackupResultSheet: View {
             }
         }
         .padding(24)
-        .frame(width: 420)
+        .frame(minWidth: 420)
         .background(Color(nsColor: .windowBackgroundColor))
     }
+
+    private static let partialStateWarning = String(
+        localized: "The target database may be in a partial state. Review it and clean up as needed.")
 
     @ViewBuilder
     private var detailView: some View {
         switch outcome {
-        case .failure(let message):
+        case .failure(let message, let targetMayBeModified):
+            if targetMayBeModified {
+                Text(Self.partialStateWarning)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             ScrollView {
                 Text(message)
                     .font(.system(.callout, design: .monospaced))
@@ -144,13 +154,13 @@ struct BackupResultSheet: View {
                 database,
                 source.path
             )
-        case .failure(let message):
+        case .failure(let message, _):
             return message
         case .cancelled:
             switch kind {
             case .backup: return nil
             case .restore:
-                return String(localized: "The target database may be in a partial state. Review the database and clean up as needed.")
+                return Self.partialStateWarning
             }
         }
     }
@@ -184,7 +194,9 @@ struct BackupResultSheet: View {
 #Preview("Restore Failure") {
     BackupResultSheet(
         kind: .restore,
-        outcome: .failure(message: "pg_restore: error: could not connect to database \"missing\": FATAL: database does not exist"),
+        outcome: .failure(
+            message: "pg_restore: error: could not connect to database \"missing\": FATAL: database does not exist",
+            targetMayBeModified: true),
         onClose: {},
         onShowInFinder: nil
     )

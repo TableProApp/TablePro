@@ -15,9 +15,9 @@ public enum ParquetCompression: String, Codable, CaseIterable, Sendable, Identif
 
     public var label: String {
         switch self {
-        case .snappy: return String(localized: "Snappy")
-        case .zstd: return String(localized: "Zstd")
-        case .gzip: return String(localized: "Gzip")
+        case .snappy: return "Snappy"
+        case .zstd: return "Zstd"
+        case .gzip: return "Gzip"
         case .uncompressed: return String(localized: "None")
         }
     }

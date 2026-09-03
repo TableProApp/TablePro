@@ -214,7 +214,7 @@ struct TableTransferSheet: View {
                 .scaleEffect(0.5)
                 .frame(width: 16)
         } else if destinationColumns[table] == nil {
-            Text("no such table")
+            Text("No such table")
                 .font(.caption)
                 .foregroundStyle(.red)
         } else {
@@ -249,7 +249,7 @@ struct TableTransferSheet: View {
     }
 
     private func mappingLabel(_ match: TableColumnMatcher.Match) -> String {
-        guard !match.isEmpty else { return String(localized: "no columns match") }
+        guard !match.isEmpty else { return String(localized: "No columns match") }
         guard match.unmatchedSource.isEmpty else {
             return String(
                 format: String(localized: "%1$lld mapped, %2$lld skipped"),

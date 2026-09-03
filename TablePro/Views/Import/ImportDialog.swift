@@ -492,6 +492,10 @@ struct ImportDialog: View {
             } catch is PluginImportCancellationError {
                 await MainActor.run {
                     showProgressDialog = false
+                    TransferResultAlert.presentImportCancelled(
+                        executedStatements: service.state.processedStatements,
+                        window: hostWindow
+                    ) {}
                 }
             } catch {
                 await MainActor.run {

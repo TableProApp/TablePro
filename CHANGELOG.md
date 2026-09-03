@@ -52,6 +52,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Checkboxes, pickers and text fields across the import and export sheets unnamed to VoiceOver.
 - Import plugin options kept after cancelling the row importer, `Delete existing rows` among them.
 - Escape not dismissing the export and import result alerts.
+- A stopped import closing its progress sheet without saying what had already run.
+- A failed restore leaving a partly-restored database without saying so.
+- Oracle server-side export reported as written when the Data Pump job had only been started.
+- Import stuck on a file that will not parse, with the parser's message as placeholder text.
 - Backup save panel and password warning landing on whatever window was frontmost.
 - DuckDB aggregate, JSON and Parquet functions failing on a Mac that cannot reach `extensions.duckdb.org`. (#2626)
 - Last line of a helper process's output lost when it exits right after writing it.

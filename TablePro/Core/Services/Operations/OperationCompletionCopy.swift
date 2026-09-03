@@ -95,10 +95,18 @@ internal enum OperationCompletionCopy {
     /// A notification body is not an error dialog. The HIG is explicit that an alert, not a
     /// notification, carries an error message, so this announces the outcome and leaves the full
     /// text to the inline error the tab already shows.
+    /// Flattened before it is cut. A dump tool writes its diagnosis over several lines, and a
+    /// head-truncated block of those reaches the notification as the first line and a half of raw
+    /// stderr, with the sentence that names the cause below the cut.
     private static func truncated(_ reason: String) -> String {
+        let flattened = reason
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
         let limit = 120
-        let bridged = reason as NSString
-        guard bridged.length > limit else { return reason }
+        let bridged = flattened as NSString
+        guard bridged.length > limit else { return flattened }
         return bridged.substring(to: limit).trimmingCharacters(in: .whitespaces) + "…"
     }
 }

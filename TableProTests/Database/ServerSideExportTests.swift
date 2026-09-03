@@ -89,6 +89,39 @@ struct ServerSideExportTests {
         #expect(statement(.oracle, destination: .oracleDirectory(name: "")) == nil)
     }
 
+    /// An Oracle identifier may hold a quote. Left raw it closes the literal it sits in and hands
+    /// the rest of the name to the PL/SQL parser, which is the whole reason the other two arms
+    /// take an escaping function.
+    @Test("Oracle escapes a quote in the table name through both levels of quoting")
+    func oracleEscapesTableName() throws {
+        let sql = try #require(
+            statement(.oracle, destination: .oracleDirectory(name: "d"), table: "it's"))
+        #expect(sql.contains(#"'IN (''IT''''S'')'"#))
+        #expect(!sql.contains(#"'IN (''IT'S'')'"#))
+    }
+
+    @Test("Oracle escapes a quote in the schema name")
+    func oracleEscapesSchemaName() throws {
+        let sql = try #require(
+            statement(.oracle, destination: .oracleDirectory(name: "d"), schema: "o'brien"))
+        #expect(sql.contains(#"'IN (''O''''BRIEN'')'"#))
+    }
+
+    @Test("Oracle escapes a quote in the directory object name")
+    func oracleEscapesDirectory() throws {
+        let sql = try #require(statement(.oracle, destination: .oracleDirectory(name: "dir's")))
+        #expect(sql.contains(#"'DIR''S'"#))
+        #expect(!sql.contains(#"'DIR'S'"#))
+    }
+
+    /// `USER` has to be concatenated in PL/SQL, not written inside the literal: the expression the
+    /// filter receives is a string, and an identifier written into one is only ever that text.
+    @Test("The session-user fallback concatenates USER rather than quoting it")
+    func oracleUserFallbackIsConcatenated() throws {
+        let sql = try #require(statement(.oracle, destination: .oracleDirectory(name: "d")))
+        #expect(sql.contains(#"'SCHEMA_EXPR', 'IN (''' || USER || ''')'"#))
+    }
+
     // MARK: - Snowflake
 
     @Test("Snowflake copies into the stage and takes the format's own options")
