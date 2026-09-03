@@ -146,6 +146,51 @@ A whole-table export streams from the database at constant memory, with no row-c
 
     Each table becomes its own worksheet and numbers are stored as numeric cells. A table over 1,048,576 rows, Excel's limit, splits across sheets.
   </Tab>
+  <Tab title="Markdown">
+    GitHub-flavoured tables.
+
+    | Option | Default |
+    |--------|---------|
+    | Align columns | Yes |
+    | Write each table's name as a heading | Yes |
+    | NULL shows as | `NULL` |
+
+    Column widths come from the header and the first 200 rows, so a wide value later in a long table is written whole rather than widening every row before it. A pipe or a line break inside a value is neutralised: both would end the cell early.
+  </Tab>
+  <Tab title="HTML">
+    | Option | Default |
+    |--------|---------|
+    | Write a full HTML document | Yes |
+    | Write each table's name as a heading | Yes |
+    | Mark NULL cells | Yes |
+
+    A full document carries its own stylesheet and follows the reader's light or dark setting. Turn it off to paste bare `<table>` elements into a page that has its own styling.
+  </Tab>
+  <Tab title="XML">
+    One element per row, one child element per column.
+
+    | Option | Default |
+    |--------|---------|
+    | Pretty print | Yes |
+    | Mark NULL with `xsi:nil` | Yes |
+    | Row element | `row` |
+
+    A column name that is not a legal XML element name is rewritten: a leading digit gains an underscore, an illegal character becomes one, and a name starting `xml` is prefixed. Control characters XML 1.0 forbids are dropped, so a binary column cannot make the document unparseable.
+  </Tab>
+  <Tab title="Parquet">
+    Install the Parquet plugin from **Settings > Plugins** first. It carries its own copy of DuckDB, which does the encoding, and is too large to ship in the app.
+
+    | Option | Default |
+    |--------|---------|
+    | Compression (Snappy, Zstd, Gzip, None) | Snappy |
+    | Rows per group | 122,880 |
+
+    Column types come from the source engine's own declarations, so numbers, dates and booleans arrive as those rather than as strings. A value that will not convert is written as null rather than failing the export.
+
+    <Warning>
+    Parquet holds one table per file. Selecting several writes `dump.users.parquet`, `dump.orders.parquet` and so on beside the name you chose.
+    </Warning>
+  </Tab>
 </Tabs>
 
 ## Transfer to another connection
@@ -233,6 +278,20 @@ The sheet accepts an array of objects `[{…}, {…}]`, newline-delimited JSON s
 - **New table**: name it and review the columns TablePro infers. Name, type, primary key, nullable flag, and default are all editable before the table is created.
 
 Rows insert through parameterized statements, so a JSON value is never concatenated into SQL. Nested objects and arrays are stored as JSON text.
+
+### Import XLSX
+
+Reads the first worksheet of an `.xlsx` workbook.
+
+| Option | Default |
+|--------|---------|
+| First row holds column names | Yes |
+| Trim whitespace | No |
+| Treat empty cells as NULL | Yes |
+
+A row that omits its empty cells still lands in the right columns: each cell's own reference decides where it goes, not its position among the cells that were written. Text stored in the workbook's shared string table is resolved, including a value split across several formatting runs.
+
+The workbook is read whole rather than streamed, because a sheet's rows refer back to a string table that has to be held anyway.
 
 ### Import CSV
 

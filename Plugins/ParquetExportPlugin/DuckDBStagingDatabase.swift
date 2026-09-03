@@ -35,6 +35,10 @@ final class DuckDBStagingDatabase {
     /// The staged column types, kept so every inserted value can be cast into its own column.
     private var columnTypes: [String] = []
 
+    /// Where DuckDB spills. An in-memory database holds the staged table in RAM until told
+    /// otherwise, so exporting a table larger than memory would fail rather than take longer.
+    private let spillDirectory: URL
+
     init() throws {
         var db: duckdb_database?
         guard duckdb_open(nil, &db) == DuckDBSuccess, db != nil else { throw StagingError.openFailed }
@@ -45,11 +49,18 @@ final class DuckDBStagingDatabase {
         }
         database = db
         connection = conn
+
+        spillDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-parquet-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: spillDirectory, withIntermediateDirectories: true)
+        try run("SET temp_directory = '\(Self.escapeLiteral(spillDirectory.path(percentEncoded: false)))'")
+        try run("SET preserve_insertion_order = false")
     }
 
     deinit {
         if connection != nil { duckdb_disconnect(&connection) }
         if database != nil { duckdb_close(&database) }
+        try? FileManager.default.removeItem(at: spillDirectory)
     }
 
     func createTable(columns: [String], types: [String]) throws {

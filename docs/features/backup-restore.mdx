@@ -11,6 +11,7 @@ The engine's own tools do the work, and none of them ship inside TablePro. Insta
 | MySQL, MariaDB | `mysqldump`, `mysql` | `brew install mysql-client` | `.sql` |
 | MongoDB | `mongodump`, `mongorestore` | `brew install mongodb-database-tools` | `.archive`, gzipped |
 | SQLite, libSQL | `sqlite3` | `brew install sqlite` | `.sql` |
+| SQL Server | `sqlpackage` | [Download from Microsoft](https://learn.microsoft.com/sql/tools/sqlpackage/sqlpackage-download) | `.bacpac` |
 
 MariaDB 11.0 renamed its clients, so `mariadb-dump` and `mariadb` are accepted in place of `mysqldump` and `mysql`.
 
@@ -65,9 +66,25 @@ No `--clean` is passed, so restoring on top of a schema that already holds confl
 
 Both flows reuse the connection's active SSH tunnel, with no second port forward. SSL mode reaches PostgreSQL through `PGSSLMODE` and MySQL through `--ssl-mode`, `verify-ca` and `verify-full` included. SQLite opens a file, so neither applies.
 
+## Server-side export
+
+Oracle, Snowflake and BigQuery do not have a client-side dump. They unload to somewhere the server can write: a `DIRECTORY` object, a stage, a Cloud Storage bucket. Choose **File > Server-Side Export…** for those.
+
+Pick a table and name the destination. Oracle takes the name of a `DIRECTORY` object rather than a path, because the path belongs to the server. Snowflake takes a stage, with or without its `@`. BigQuery takes a `gs://` prefix and shards its output under it.
+
+The statement runs on your own connection, so it carries your privileges and the server's own error comes back when the destination is not writable.
+
+<Info>
+Nothing lands on your Mac. The result is on the server or in the bucket, and the sheet says where it went.
+</Info>
+
 ## Passwords
 
 Your password never reaches the tool's argument list, which every process on the machine can read through `ps`. PostgreSQL gets `PGPASSWORD` and MySQL gets `MYSQL_PWD`, both in the environment. MongoDB's tools read neither, so TablePro writes a `0600` config file and deletes it when the process exits.
+
+<Warning>
+SqlPackage is the exception. It accepts a password only inside its connection string, which means the command line, where other processes on the Mac can read it while the dump runs. TablePro asks before starting one. Windows or Entra authentication avoids it entirely: leave the username empty and the tool uses integrated security.
+</Warning>
 
 ## Failures
 

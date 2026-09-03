@@ -158,6 +158,18 @@
       "category": "database-driver",
       "homepage": "https://docs.tablepro.app/databases/etcd"
     },
+    "html": {
+      "target": "HTMLExport",
+      "bundleName": "HTMLExport",
+      "bundleId": "com.TablePro.HTMLExportPlugin",
+      "bundled": true,
+      "displayName": "HTML Export",
+      "summary": "Export data as an HTML table",
+      "databaseTypeIds": null,
+      "icon": "chevron.left.forwardslash.chevron.right",
+      "category": "export-format",
+      "homepage": "https://docs.tablepro.app/features/import-export"
+    },
     "kafka": {
       "target": "KafkaDriverPlugin",
       "bundleName": "KafkaDriverPlugin",
@@ -186,6 +198,18 @@
       "icon": "libsql-icon",
       "category": "database-driver",
       "homepage": "https://docs.tablepro.app/databases/libsql"
+    },
+    "markdown": {
+      "target": "MarkdownExport",
+      "bundleName": "MarkdownExport",
+      "bundleId": "com.TablePro.MarkdownExportPlugin",
+      "bundled": true,
+      "displayName": "Markdown Export",
+      "summary": "Export data as Markdown tables",
+      "databaseTypeIds": null,
+      "icon": "text.alignleft",
+      "category": "export-format",
+      "homepage": "https://docs.tablepro.app/features/import-export"
     },
     "mongodb": {
       "target": "MongoDBDriver",
@@ -240,6 +264,18 @@
       "icon": "oracle-icon",
       "category": "database-driver",
       "homepage": "https://docs.tablepro.app/databases/oracle"
+    },
+    "parquet": {
+      "target": "ParquetExport",
+      "bundleName": "ParquetExport",
+      "bundleId": "com.TablePro.ParquetExportPlugin",
+      "bundled": false,
+      "displayName": "Parquet Export",
+      "summary": "Export data to Apache Parquet",
+      "databaseTypeIds": null,
+      "icon": "square.grid.3x3",
+      "category": "export-format",
+      "homepage": "https://docs.tablepro.app/features/import-export"
     },
     "redis": {
       "target": "RedisDriver",
@@ -346,6 +382,30 @@
       "summary": "Export data to Microsoft Excel XLSX format",
       "databaseTypeIds": null,
       "icon": "tablecells",
+      "category": "export-format",
+      "homepage": "https://docs.tablepro.app/features/import-export"
+    },
+    "xlsximport": {
+      "target": "XLSXImport",
+      "bundleName": "XLSXImport",
+      "bundleId": "com.TablePro.XLSXImportPlugin",
+      "bundled": true,
+      "displayName": "XLSX Import",
+      "summary": "Import data from Excel workbooks",
+      "databaseTypeIds": null,
+      "icon": "tablecells",
+      "category": "import-format",
+      "homepage": "https://docs.tablepro.app/features/import-export"
+    },
+    "xml": {
+      "target": "XMLExport",
+      "bundleName": "XMLExport",
+      "bundleId": "com.TablePro.XMLExportPlugin",
+      "bundled": true,
+      "displayName": "XML Export",
+      "summary": "Export data as XML",
+      "databaseTypeIds": null,
+      "icon": "doc.badge.gearshape",
       "category": "export-format",
       "homepage": "https://docs.tablepro.app/features/import-export"
     }

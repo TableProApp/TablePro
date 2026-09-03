@@ -141,6 +141,10 @@ extension MainSplitViewController {
         commandActions?.backupDatabase()
     }
 
+    @objc func serverSideExport(_ sender: Any?) {
+        commandActions?.serverSideExport()
+    }
+
     @objc func restoreDatabase(_ sender: Any?) {
         commandActions?.restoreDatabase()
     }

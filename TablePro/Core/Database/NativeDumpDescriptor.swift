@@ -61,6 +61,12 @@ struct NativeDumpDescriptor: Sendable {
     let backupDelivery: OutputDelivery
     let restoreDelivery: OutputDelivery
 
+    /// True when the tool has no channel for a password but its own argument list, which every
+    /// process on the machine can read through `ps`. Only `sqlpackage` is in that position; every
+    /// other engine here takes one from the environment or a file. The flows that touch such a tool
+    /// say so rather than leaving the user to find out.
+    let exposesPasswordInArguments: Bool
+
     let backupArguments: @Sendable (Request) -> [String]
     let restoreArguments: @Sendable (Request) -> [String]
     let environment: @Sendable (Request) -> [String: String]
@@ -72,6 +78,7 @@ struct NativeDumpDescriptor: Sendable {
         archiveFormat: ArchiveFormat,
         backupDelivery: OutputDelivery,
         restoreDelivery: OutputDelivery,
+        exposesPasswordInArguments: Bool = false,
         backupArguments: @escaping @Sendable (Request) -> [String],
         restoreArguments: @escaping @Sendable (Request) -> [String],
         environment: @escaping @Sendable (Request) -> [String: String] = { _ in [:] }
@@ -82,6 +89,7 @@ struct NativeDumpDescriptor: Sendable {
         self.archiveFormat = archiveFormat
         self.backupDelivery = backupDelivery
         self.restoreDelivery = restoreDelivery
+        self.exposesPasswordInArguments = exposesPasswordInArguments
         self.backupArguments = backupArguments
         self.restoreArguments = restoreArguments
         self.environment = environment

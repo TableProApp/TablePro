@@ -49,3 +49,20 @@ public struct ParquetExportOptions: Equatable, Codable {
             ?? defaults.rowGroupSize
     }
 }
+
+/// Where each table's file goes when one export covers several.
+///
+/// Parquet holds one table per file, so a multi-table export cannot concatenate. Kept here rather
+/// than on the plugin so it is testable without linking DuckDB.
+public enum ParquetFileNaming {
+    /// `dump.parquet` plus `users` becomes `dump.users.parquet`, so every file keeps the extension
+    /// a reader looks for. A separator in the table name is neutralised: it would otherwise name a
+    /// directory that does not exist.
+    public static func perTableURL(destination: URL, table: String) -> URL {
+        let ext = destination.pathExtension
+        let stem = destination.deletingPathExtension().lastPathComponent
+        let safeTable = table.replacingOccurrences(of: "/", with: "_")
+        let name = ext.isEmpty ? "\(stem).\(safeTable)" : "\(stem).\(safeTable).\(ext)"
+        return destination.deletingLastPathComponent().appendingPathComponent(name)
+    }
+}

@@ -109,6 +109,10 @@ enum FileMenuBuilder {
             MenuItemFactory.item(
                 String(localized: "Restore Dump…"),
                 action: #selector(MainSplitViewController.restoreDatabase(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Server-Side Export…"),
+                action: #selector(MainSplitViewController.serverSideExport(_:))
             )
         ])
         file.submenu?.delegate = closeTitleDelegate

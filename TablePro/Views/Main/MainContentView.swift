@@ -287,6 +287,12 @@ struct MainContentView: View {
                     ?? connection.database,
                 sourceURL: fileURL
             )
+        case .serverSideExport(let table):
+            ServerSideExportSheet(
+                isPresented: dismissBinding,
+                connection: connectionWithCurrentDatabase,
+                initialTable: table
+            )
         case .maintenance(let operation, let tableName, let database, let schema):
             MaintenanceSheet(
                 operation: operation,

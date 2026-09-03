@@ -1083,6 +1083,16 @@ final class MainContentCommandActions {
 
     var supportsRestore: Bool { supportsBackup }
 
+    /// Oracle, Snowflake and BigQuery unload to a server directory or a bucket rather than to a
+    /// file on this Mac, so they get their own command instead of a mode of Backup Dump.
+    var supportsServerSideExport: Bool {
+        ServerSideExport.supports(connection.type)
+    }
+
+    func serverSideExport() {
+        coordinator?.activeSheet = .serverSideExport(table: nil)
+    }
+
     func restoreDatabase() {
         Task { @MainActor [weak self] in
             await self?.presentRestoreSourcePicker()

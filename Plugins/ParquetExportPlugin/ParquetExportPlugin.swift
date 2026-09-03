@@ -68,7 +68,7 @@ final class ParquetExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked 
             progress.setCurrentTable(table.qualifiedName, index: index + 1)
             let fileURL = tables.count == 1
                 ? destination
-                : Self.perTableURL(destination: destination, table: table.name)
+                : ParquetFileNaming.perTableURL(destination: destination, table: table.name)
             do {
                 try await writeTable(table, dataSource: dataSource, to: fileURL, progress: progress)
                 written.append(fileURL)
@@ -85,16 +85,6 @@ final class ParquetExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked 
         }
         progress.finalizeTable()
         return ExportFormatResult(warnings: warnings)
-    }
-
-    /// `dump.parquet` plus `users` becomes `dump.users.parquet`, so every file keeps the extension
-    /// a reader looks for.
-    static func perTableURL(destination: URL, table: String) -> URL {
-        let ext = destination.pathExtension
-        let stem = destination.deletingPathExtension().lastPathComponent
-        let safeTable = table.replacingOccurrences(of: "/", with: "_")
-        let name = ext.isEmpty ? "\(stem).\(safeTable)" : "\(stem).\(safeTable).\(ext)"
-        return destination.deletingLastPathComponent().appendingPathComponent(name)
     }
 
     private func writeTable(

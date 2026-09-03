@@ -28,6 +28,8 @@ enum NativeDumpRegistry {
             return mongodb
         case .sqlite, .libsql:
             return sqlite
+        case .mssql:
+            return sqlServer
         default:
             return nil
         }
@@ -189,6 +191,62 @@ enum NativeDumpRegistry {
             flags.append("--ssl")
         }
         return flags
+    }
+
+    // MARK: - SQL Server
+
+    /// `sqlpackage` is Microsoft's own client-side export, and the only one that writes a whole
+    /// database to a local file. `bcp` moves one table at a time and produces no schema, so it
+    /// cannot stand in for a dump.
+    ///
+    /// Not verified against a live server here: the arguments come from Microsoft's documented CLI
+    /// surface rather than from a run, so a mistake in them surfaces as the tool's own usage error
+    /// rather than a wrong file.
+    private static var sqlServer: NativeDumpDescriptor {
+        NativeDumpDescriptor(
+            backupBinaries: ["sqlpackage"],
+            restoreBinaries: ["sqlpackage"],
+            installHint: String(localized: "Download SqlPackage from Microsoft and put it on your PATH."),
+            archiveFormat: NativeDumpDescriptor.ArchiveFormat(
+                fileExtension: "bacpac",
+                contentDescription: String(localized: "SQL Server bacpac")
+            ),
+            backupDelivery: .toolWritesFile,
+            restoreDelivery: .toolWritesFile,
+            exposesPasswordInArguments: true,
+            backupArguments: { request in
+                ["/Action:Export",
+                 "/TargetFile:\(request.fileURL.path)",
+                 "/SourceConnectionString:\(sqlServerConnectionString(request))"]
+            },
+            restoreArguments: { request in
+                ["/Action:Import",
+                 "/SourceFile:\(request.fileURL.path)",
+                 "/TargetConnectionString:\(sqlServerConnectionString(request))"]
+            }
+        )
+    }
+
+    /// `sqlpackage` takes no password flag and no password environment variable: the connection
+    /// string is the only channel it has. That puts the password in `argv`, where `ps` can read it,
+    /// so the string is built here and `NativeDumpService` keeps SQL Server out of the flows that
+    /// promise otherwise. Anything better needs Entra or integrated auth, which have no password.
+    private static func sqlServerConnectionString(_ request: NativeDumpDescriptor.Request) -> String {
+        var parts = [
+            "Server=\(request.host),\(request.connection.port)",
+            "Database=\(request.database)"
+        ]
+        if request.connection.username.isEmpty {
+            parts.append("Integrated Security=true")
+        } else {
+            parts.append("User ID=\(request.connection.username)")
+            parts.append("Password=\(request.password ?? "")")
+        }
+        parts.append(request.connection.sslConfig.isEnabled ? "Encrypt=true" : "Encrypt=false")
+        if request.connection.sslConfig.mode == .required || request.connection.sslConfig.mode == .preferred {
+            parts.append("TrustServerCertificate=true")
+        }
+        return parts.joined(separator: ";")
     }
 
     // MARK: - SQLite

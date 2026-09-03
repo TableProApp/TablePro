@@ -26,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - NDJSON layout for JSON exports, one row per line. (#2618)
 - Saved export selections, reapplied from the export tree's bookmark menu. (#2618)
 - Save Report on an import that skipped rows, listing each one's line and error as CSV. (#2618)
+- Markdown, HTML and XML export. (#2618)
+- Parquet export, through a plugin installed from Settings > Plugins. (#2618)
+- XLSX import, reading the first worksheet of a workbook. (#2618)
+- Server-Side Export for Oracle, Snowflake and BigQuery, which unload to a server directory, a stage or a bucket. (#2618)
+- Backup and restore for SQL Server through SqlPackage. (#2618)
+- MySQL events and PostgreSQL sequences in the export tree. (#2618)
 
 ### Changed
 
@@ -35,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- DuckDB aggregate, JSON and Parquet functions failing on a Mac that cannot reach `extensions.duckdb.org`. (#2626)
 - Last line of a helper process's output lost when it exits right after writing it.
 - Structure and trigger edits committing or rolling back a transaction left open in a query tab on the same connection.
 - Composite, range and extension-typed PostgreSQL columns labelled `ENUM(…)` in the structure editor.

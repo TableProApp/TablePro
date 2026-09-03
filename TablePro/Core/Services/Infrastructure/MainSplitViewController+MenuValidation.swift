@@ -69,6 +69,7 @@ struct MenuValidationContext: Equatable {
     var supportsContainerSwitching = false
     var supportsBackup = false
     var supportsRestore = false
+    var supportsServerSideExport = false
     var supportsServerDashboard = false
     var supportsUserManagement = false
     var supportsSchemaSwitching = false
@@ -145,6 +146,10 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.supportsBackup
         case #selector(restoreDatabase(_:)):
             return context.isConnected && context.supportsRestore && !context.isReadOnly
+        case #selector(serverSideExport(_:)):
+            /// The server does the writing, so this is a write on the connection and a read-only
+            /// Safe Mode has to stop it the same way Restore is stopped.
+            return context.isConnected && context.supportsServerSideExport && !context.isReadOnly
 
         case #selector(executeQuery(_:)),
              #selector(executeAllStatements(_:)),
@@ -300,6 +305,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             supportsContainerSwitching: actions.supportsContainerSwitching,
             supportsBackup: actions.supportsBackup,
             supportsRestore: actions.supportsRestore,
+            supportsServerSideExport: actions.supportsServerSideExport,
             supportsServerDashboard: actions.supportsServerDashboard,
             supportsUserManagement: actions.supportsUserManagement,
             supportsSchemaSwitching: actions.supportsSchemaSwitching,

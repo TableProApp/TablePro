@@ -200,6 +200,9 @@ targets:
       - target: XMLExport
         embed: true
         copy: { destination: plugins }
+      - target: XLSXImport
+        embed: true
+        copy: { destination: plugins }
       - target: XLSXExport
         embed: true
         copy: { destination: plugins }
@@ -512,6 +515,9 @@ targets:
       - Plugins/SQLImportPlugin/SQLImportOptions.swift
       - Plugins/SQLImportPlugin/SQLImportOptionsView.swift
       - Plugins/SQLImportPlugin/SQLImportPlugin.swift
+      - Plugins/XLSXImportPlugin/XLSXImportOptions.swift
+      - Plugins/XLSXImportPlugin/XLSXSheetParser.swift
+      - Plugins/XLSXImportPlugin/ZipReader.swift
       - Plugins/XMLExportPlugin/XMLExportModels.swift
       - Plugins/SnowflakeDriverPlugin/PluginCellValueBox.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeAuth.swift
@@ -733,6 +739,15 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.HTMLExportPlugin
+
+  XLSXImport:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: XLSXImportPlugin
+      principalClass: XLSXImportPlugin
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.XLSXImportPlugin
 
   XMLExport:
     templates: [DriverPlugin]
@@ -1160,6 +1175,7 @@ aggregateTargets:
       - MarkdownExport
       - ParquetExport
       - SQLExport
+      - XLSXImport
       - XMLExport
       - SQLImport
       - SQLiteDriver

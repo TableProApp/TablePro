@@ -162,6 +162,11 @@ struct BackupDatabaseFlow: View {
             return
         }
 
+        guard await confirmPasswordExposureIfNeeded() else {
+            phase = .pickDatabase
+            return
+        }
+
         phase = .running(database: database, totalBytes: nil)
 
         let totalBytes = await NativeDumpService.estimatedDatabaseSize(
@@ -179,6 +184,29 @@ struct BackupDatabaseFlow: View {
         } catch {
             phase = .failed(message: error.localizedDescription)
         }
+    }
+
+    /// One tool, `sqlpackage`, takes a password only in its argument list, where `ps` can read
+    /// it. The user is told before it runs rather than after, because the exposure lasts as long
+    /// as the dump and there is no other channel to move it to.
+    @MainActor
+    private func confirmPasswordExposureIfNeeded() async -> Bool {
+        guard let descriptor = NativeDumpRegistry.descriptor(for: connection.type),
+              descriptor.exposesPasswordInArguments,
+              !connection.username.isEmpty,
+              ConnectionStorage.shared.loadPassword(for: connection.id) != nil else {
+            return true
+        }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = String(localized: "This tool takes your password on its command line.")
+        alert.informativeText = String(localized: "SqlPackage has no other way to receive one, so while the dump runs the password is readable by other processes on this Mac. Windows or Entra authentication avoids it.")
+        alert.addButton(withTitle: String(localized: "Continue"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
+        guard let window = NSApp.keyWindow else {
+            return alert.runModal() == .alertFirstButtonReturn
+        }
+        return await alert.beginSheetModal(for: window) == .alertFirstButtonReturn
     }
 
     /// The extension follows the engine's own archive format, so a MySQL dump is offered as `.sql`
