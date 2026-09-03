@@ -240,6 +240,40 @@
         }
       }
     },
+    "A tag named “%@” already exists." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@”라는 이름의 태그가 이미 있습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” adlı bir etiket zaten var."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đã có thẻ tên “%@”."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已有名为“%@”的标签。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已有名為「%@」的標籤。"
+          }
+        }
+      }
+    },
     "Exclude the AUTO_INCREMENT counter" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -1598,6 +1632,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法讀取已儲存的群組。未做任何變更。"
+          }
+        }
+      }
+    },
+    "The saved tags could not be read. Nothing was changed." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "저장된 태그를 읽을 수 없습니다. 아무것도 변경되지 않았습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kayıtlı etiketler okunamadı. Hiçbir şey değiştirilmedi."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không đọc được các thẻ đã lưu. Không có gì thay đổi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取已保存的标签。未做任何更改。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取已儲存的標籤。未做任何變更。"
           }
         }
       }

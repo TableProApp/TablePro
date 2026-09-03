@@ -387,23 +387,23 @@ enum ConnectionExportService {
         }
 
         if let envelopeTags = preview.envelope.tags {
-            let existingTags = TagStorage.shared.loadTags()
             for exportTag in envelopeTags {
-                let alreadyExists = existingTags.contains {
+                /// Re-read per tag rather than once for the envelope: two tags sharing a name in
+                /// one file both passed a snapshot taken before either was added.
+                let alreadyExists = TagStorage.shared.loadTags().contains {
                     $0.name.lowercased() == exportTag.name.lowercased()
                 }
-                if !alreadyExists {
-                    // Match preset tags by name
-                    let preset = ConnectionTag.presets.first {
-                        $0.name.lowercased() == exportTag.name.lowercased()
-                    }
-                    if let preset {
-                        TagStorage.shared.addTag(preset)
-                    } else {
-                        let color = exportTag.color.flatMap { ConnectionColor(rawValue: $0) } ?? .gray
-                        let tag = ConnectionTag(name: exportTag.name, color: color)
-                        TagStorage.shared.addTag(tag)
-                    }
+                guard !alreadyExists else { continue }
+
+                let preset = ConnectionTag.presets.first {
+                    $0.name.lowercased() == exportTag.name.lowercased()
+                }
+                let color = exportTag.color.flatMap { ConnectionColor(rawValue: $0) } ?? .gray
+                let tag = preset ?? ConnectionTag(name: exportTag.name, color: color)
+                do {
+                    try TagStorage.shared.addTag(tag)
+                } catch {
+                    Self.logger.error("Skipped importing tag: \(error.localizedDescription, privacy: .public)")
                 }
             }
         }

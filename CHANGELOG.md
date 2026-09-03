@@ -39,6 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Wrong connection moved when dragging a list that holds a favorite or an active tag filter. (#1311)
 - Crash opening the connection list after two Macs moved two groups inside each other. (#1311)
 - Every saved group lost when one unreadable entry stopped the whole list decoding. (#1311)
+- New tag discarded without a word when the name was already taken.
+- Every saved tag replaced by the preset list when one unreadable entry stopped the library decoding.
+- Tag created in one window missing from another until relaunch.
+- Two Macs re-uploading the whole tag library to each other after a single tag changed.
 - Two Macs re-uploading the whole group list to each other after a single group changed. (#1311)
 - Deleting a group that a broken sync left in a loop also deleting the group it pointed at. (#1311)
 

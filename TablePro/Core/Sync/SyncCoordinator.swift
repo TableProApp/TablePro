@@ -719,14 +719,7 @@ final class SyncCoordinator {
         guard let remoteTag = SyncRecordMapper.toTag(record) else { return false }
         if tombstoneIds.contains(remoteTag.id.uuidString) { return false }
 
-        var tags = services.tagStorage.loadTags()
-        if let index = tags.firstIndex(where: { $0.id == remoteTag.id }) {
-            tags[index] = remoteTag
-        } else {
-            tags.append(remoteTag)
-        }
-        services.tagStorage.saveTags(tags)
-        return true
+        return services.tagStorage.applyRemoteTag(remoteTag)
     }
 
     private func applyRemoteSSHProfile(_ record: CKRecord, tombstoneIds: Set<String>) {
