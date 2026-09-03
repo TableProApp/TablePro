@@ -54,7 +54,7 @@ public enum PostgresColumnTypeResolver {
 
         if upper == "USER-DEFINED" {
             guard let labels = enumLabelsByQualifiedName[key] else {
-                return Resolution(dataType: "ENUM(\(udtName))", allowedValues: nil)
+                return Resolution(dataType: udtName, allowedValues: nil)
             }
             return Resolution(dataType: "ENUM", allowedValues: labels)
         }

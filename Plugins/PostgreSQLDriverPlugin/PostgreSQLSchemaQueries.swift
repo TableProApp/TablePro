@@ -201,11 +201,15 @@ enum PostgreSQLSchemaQueries {
         WHERE t.typtype = 'e'
         """
 
+    /// Every enum appears, with a NULL label where it has none, so the column resolver can tell
+    /// an enum apart from a composite, a range or an extension's base type: all four reach it as
+    /// `USER-DEFINED`, and only an enum has a row here.
     static let enumLabelQuery = """
         SELECT n.nspname, t.typname, e.enumlabel
         FROM pg_catalog.pg_type t
         JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
-        JOIN pg_catalog.pg_enum e ON e.enumtypid = t.oid
+        LEFT JOIN pg_catalog.pg_enum e ON e.enumtypid = t.oid
+        WHERE t.typtype = 'e'
         ORDER BY n.nspname, t.typname, e.enumsortorder
         """
 

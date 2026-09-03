@@ -72,11 +72,38 @@ struct PostgresColumnTypeResolverTests {
         #expect(resolve("ARRAY", schema: "public", udt: "_pair").allowedValues == nil)
     }
 
-    @Test("An enum with no catalog entry keeps the existing named fallback")
-    func fallsBackForUnknownEnum() {
-        let resolution = resolve("USER-DEFINED", schema: "app", udt: "nope")
-        #expect(resolution.dataType == "ENUM(nope)")
-        #expect(resolution.allowedValues == nil)
+    /// A composite, a range and an extension's base type all reach the resolver as
+    /// `USER-DEFINED`, exactly like an enum. Only an enum has a catalog entry, so a name without
+    /// one is a type of another kind and is shown as itself rather than as an enum it is not.
+    @Test("A user-defined type with no enum entry keeps its own name")
+    func keepsNameForNonEnumUserType() {
+        for udt in ["point3d", "floatrange", "hstore", "geometry"] {
+            let resolution = resolve("USER-DEFINED", schema: "app", udt: udt)
+            #expect(resolution.dataType == udt)
+            #expect(resolution.allowedValues == nil)
+        }
+    }
+
+    @Test("An enum declared with no labels is still an enum")
+    func resolvesEmptyEnum() {
+        let resolution = PostgresColumnTypeResolver.resolve(
+            rawDataType: "USER-DEFINED",
+            udtSchema: "app",
+            udtName: "empty",
+            enumLabelsByQualifiedName: ["app.empty": []],
+            arrayTypesByQualifiedName: [:]
+        )
+        #expect(resolution.dataType == "ENUM")
+        #expect(resolution.allowedValues?.isEmpty == true)
+    }
+
+    /// The catalog read has to list an enum with no labels, or the resolver could not tell it
+    /// from a composite.
+    @Test("The enum label query lists every enum, labels or not")
+    func enumLabelQueryListsLabellessEnums() {
+        let sql = PostgreSQLSchemaQueries.enumLabelQuery
+        #expect(sql.contains("LEFT JOIN pg_catalog.pg_enum"))
+        #expect(sql.contains("WHERE t.typtype = 'e'"))
     }
 
     @Test("Ordinary columns pass through unchanged")
