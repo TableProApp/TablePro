@@ -254,7 +254,18 @@ internal final class WindowManager {
         return true
     }
 
-    private func openInNewWindow(payload: EditorTabPayload, activate: Bool, autoConnect: Bool) {
+    /// Forced, rather than the adoption `openTab` prefers.
+    ///
+    /// `joinsTabGroup` is the difference between "not in the window it would have been adopted
+    /// into" and "in a window of its own". Left alone, this joins the existing group, so a caller
+    /// that wants two connections side by side has to say so: without it the new window arrives as
+    /// a native tab of the very window it was meant to sit beside.
+    internal func openInNewWindow(
+        payload: EditorTabPayload,
+        activate: Bool,
+        autoConnect: Bool,
+        joinsTabGroup: Bool = true
+    ) {
         let t0 = Date()
         Self.lifecycleLogger.info(
             "[open] WindowManager.openTab start payloadId=\(payload.id, privacy: .public) connId=\(payload.connectionId, privacy: .public) intent=\(String(describing: payload.intent), privacy: .public) skipAutoExecute=\(payload.skipAutoExecute) activate=\(activate)"
@@ -282,8 +293,9 @@ internal final class WindowManager {
         // orderFront before addTabbedWindow avoids a synchronous full-tree
         // SwiftUI layout pass that adds 700-900ms per open.
         let tabbingId = window.tabbingIdentifier
+        let sibling = joinsTabGroup ? findSibling(tabbingIdentifier: tabbingId, excluding: window) : nil
 
-        if let sibling = findSibling(tabbingIdentifier: tabbingId, excluding: window) {
+        if let sibling {
             let target = sibling.tabbedWindows?.last ?? sibling
             target.addTabbedWindow(window, ordered: .above)
             if activate {
@@ -293,11 +305,21 @@ internal final class WindowManager {
                 "[open] WindowManager joined existing tab group payloadId=\(payload.id, privacy: .public) tabbingId=\(tabbingId, privacy: .public)"
             )
         } else {
+            /// The system preference can tab a window on its own, without anyone asking AppKit to,
+            /// so a window asked to stand apart refuses for the moment it is placed and allows it
+            /// again straight after: standing apart now does not cost it the right to be merged by
+            /// hand later.
+            if !joinsTabGroup {
+                window.tabbingMode = .disallowed
+            }
             if activate {
                 window.makeKeyAndOrderFront(nil)
                 AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             } else {
                 window.orderFront(nil)
+            }
+            if !joinsTabGroup {
+                window.tabbingMode = .automatic
             }
             Self.lifecycleLogger.info(
                 "[open] WindowManager standalone window payloadId=\(payload.id, privacy: .public) tabbingId=\(tabbingId, privacy: .public)"

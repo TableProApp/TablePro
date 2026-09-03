@@ -114,7 +114,9 @@ final class AppEvents {
 
     let pluginsRejected = PassthroughSubject<[RejectedPlugin], Never>()
 
-    private init() {}
+    /// Not private so a test can hand an isolated bus to the object under test. App code uses
+    /// `shared`, which is the only instance anything observes.
+    init() {}
 }
 
 struct ConnectionStatusChange: Sendable {

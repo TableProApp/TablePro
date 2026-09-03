@@ -78,11 +78,13 @@ A connection's group, tags, and favorite star sync through iCloud unless it is m
 
 ## Switch connections and databases
 
-**Switch Connection** (`Ctrl+Cmd+C`) lists active sessions and saved connections: type to filter, arrow keys to move, Return to switch. **Open Database** (`Cmd+K`) moves to another database on the same server.
+Press `Ctrl+Cmd+C` for **Switch Connection**. Whatever is already open sits at the top, and the rest are listed under the group they belong to, a nested group carrying its full path. Arrow keys move, `Return` switches the window to that connection, and `Cmd`-click opens a saved one in a window of its own. Typing searches every group at once and collapses the matches into a single list.
+
+**Open Database** (`Cmd+K`) moves to another database on the same server.
 
 <Frame caption="Database switcher in toolbar">
-  <img className="block dark:hidden" src="/images/database-switcher-toolbar.png" alt="Database switcher in toolbar" />
-  <img className="hidden dark:block" src="/images/database-switcher-toolbar-dark.png" alt="Database switcher in toolbar" />
+  <img className="block dark:hidden" src="/images/database-switcher-toolbar.png" alt="Database list with the current database checked" />
+  <img className="hidden dark:block" src="/images/database-switcher-toolbar-dark.png" alt="Database list with the current database checked" />
 </Frame>
 
 Leaving **Database** empty on MySQL, MariaDB, MongoDB, SQL Server, and ClickHouse browses every database the user can reach. PostgreSQL and Redshift need one to connect at all: use `postgres` (Redshift: `dev`) and switch with `Cmd+K`. To hide the rest, choose **View > Filter Databases** and check the ones you want; the choice is saved per connection.
