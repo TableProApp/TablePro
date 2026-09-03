@@ -9,11 +9,15 @@ import SwiftUI
 internal struct FieldDrivenListSection<Item: Identifiable>: Identifiable {
     internal let id: String
     internal let title: String?
+    /// Drawn as a dot beside the title, for a section that stands for something the user gave a
+    /// colour to. Nil leaves the header as a plain label.
+    internal let accentColor: NSColor?
     internal let items: [Item]
 
-    internal init(id: String, title: String? = nil, items: [Item]) {
+    internal init(id: String, title: String? = nil, accentColor: NSColor? = nil, items: [Item]) {
         self.id = id
         self.title = title
+        self.accentColor = accentColor
         self.items = items
     }
 }
@@ -213,8 +217,8 @@ internal struct FieldDrivenList<Item: Identifiable, Row: View>: NSViewRepresenta
         internal func tableView(_ tableView: NSTableView, viewFor column: NSTableColumn?, row: Int) -> NSView? {
             guard row < entries.count else { return nil }
             switch entries[row] {
-            case .header(_, let title):
-                return FieldDrivenHeaderView.make(title: title)
+            case .header(_, let title, let accentColor):
+                return FieldDrivenHeaderView.make(title: title, accentColor: accentColor)
             case .item(let item):
                 let cell = tableView.makeView(
                     withIdentifier: FieldDrivenCellView<Row>.reuseIdentifier,
@@ -445,7 +449,9 @@ internal final class FieldDrivenCellView<Row: View>: NSTableCellView {
 }
 
 internal enum FieldDrivenHeaderView {
-    internal static func make(title: String) -> NSView {
+    private static let dotSize: CGFloat = 6
+
+    internal static func make(title: String, accentColor: NSColor? = nil) -> NSView {
         let label = NSTextField(labelWithString: title)
         label.font = .preferredFont(forTextStyle: .caption1)
         label.textColor = .secondaryLabelColor
@@ -454,10 +460,46 @@ internal enum FieldDrivenHeaderView {
         let container = NSView()
         container.addSubview(label)
         NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 4),
             label.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor),
             label.centerYAnchor.constraint(equalTo: container.centerYAnchor),
         ])
+
+        guard let accentColor else {
+            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 4).isActive = true
+            return container
+        }
+
+        let dot = ColorDotView(color: accentColor)
+        dot.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(dot)
+        NSLayoutConstraint.activate([
+            dot.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 4),
+            dot.centerYAnchor.constraint(equalTo: label.centerYAnchor),
+            dot.widthAnchor.constraint(equalToConstant: dotSize),
+            dot.heightAnchor.constraint(equalToConstant: dotSize),
+            label.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: 5),
+        ])
         return container
+    }
+}
+
+/// A dot that repaints itself when the appearance changes, because a dynamic system colour
+/// resolved once into a layer stays at the appearance it was resolved in.
+private final class ColorDotView: NSView {
+    private let color: NSColor
+
+    init(color: NSColor) {
+        self.color = color
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("ColorDotView does not support NSCoder init")
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        color.setFill()
+        NSBezierPath(ovalIn: bounds).fill()
     }
 }

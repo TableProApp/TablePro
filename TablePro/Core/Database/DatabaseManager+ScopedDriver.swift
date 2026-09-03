@@ -26,6 +26,16 @@ extension DatabaseManager {
         return canPool(session) ? .pooled : .sessionDriver
     }
 
+    /// A structure, trigger or enum edit is the app's own DDL with its own BEGIN and COMMIT, so
+    /// it must not share a connection with the user: on the session driver its BEGIN joins
+    /// whatever transaction a query tab left open, and its COMMIT or ROLLBACK then takes that
+    /// tab's uncommitted work with it. It runs on a pooled connection wherever one reaches the
+    /// same database, which is the metadata route, and on the session driver only where nothing
+    /// else can.
+    func schemaChangeRoute(for scope: DatabaseScope) -> ScopedDriverRoute {
+        metadataRoute(for: scope)
+    }
+
     /// SQL the user owns stays on the session driver, which holds their transaction,
     /// their temp tables and the handle Stop cancels. The pool is the fallback only for
     /// engines that cannot change database on a live connection, where the alternative

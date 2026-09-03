@@ -16,6 +16,7 @@ struct TriggerEditorView: View {
         case edit(originalName: String, originalDefinition: String)
     }
 
+    let scope: DatabaseScope
     let connection: DatabaseConnection
     let tableName: String
     let mode: Mode
@@ -29,7 +30,15 @@ struct TriggerEditorView: View {
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage("structureCodeFontSize", store: AppStorageEnvironment.shared.defaults) private var fontSize: Double = 13
 
-    init(connection: DatabaseConnection, tableName: String, mode: Mode, initialSQL: String, onClose: @escaping () -> Void) {
+    init(
+        scope: DatabaseScope,
+        connection: DatabaseConnection,
+        tableName: String,
+        mode: Mode,
+        initialSQL: String,
+        onClose: @escaping () -> Void
+    ) {
+        self.scope = scope
         self.connection = connection
         self.tableName = tableName
         self.mode = mode
@@ -104,6 +113,7 @@ struct TriggerEditorView: View {
             defer { isApplying = false }
             do {
                 try await TriggerEditing.apply(
+                    scope: scope,
                     connection: connection,
                     tableName: tableName,
                     sql: sql,
