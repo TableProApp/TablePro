@@ -500,6 +500,130 @@ struct ConnectionGroupTreeTests {
         #expect(depth <= 2)
     }
 
+    // MARK: - Unreachable Parents
+
+    @Test("A two group cycle is presented at the top level instead of vanishing with its connections")
+    func cyclicGroups_arePresentedAtTheTopLevel() {
+        let idA = UUID()
+        let idB = UUID()
+        let a = makeGroup(id: idA, name: "A", parentId: idB)
+        let b = makeGroup(id: idB, name: "B", parentId: idA)
+        let inA = makeConnection(name: "In A", groupId: idA)
+
+        let tree = buildGroupTreeIndexed(groups: [a, b], connections: [inA])
+
+        #expect(Set(groupIds(from: tree)) == [idA, idB])
+        let aNode = tree.first { node in
+            if case .group(let group, _) = node { return group.id == idA }
+            return false
+        }
+        guard case .group(_, let children)? = aNode else {
+            Issue.record("The cyclic group is missing from the tree")
+            return
+        }
+        #expect(children.contains { node in
+            if case .connection(let conn) = node { return conn.id == inA.id }
+            return false
+        })
+    }
+
+    @Test("A three group cycle roots every member, and the reference tree agrees")
+    func cyclicGroups_threeDeep_matchReference() {
+        let ids = (0..<3).map { _ in UUID() }
+        let groups = ids.enumerated().map { index, id in
+            makeGroup(id: id, name: "G\(index)", parentId: ids[(index + 1) % ids.count])
+        }
+        let connections = ids.map { makeConnection(name: "In \($0.uuidString.prefix(4))", groupId: $0) }
+
+        let indexed = buildGroupTreeIndexed(groups: groups, connections: connections)
+        let reference = buildGroupTree(groups: groups, connections: connections, parentId: nil)
+
+        #expect(Set(groupIds(from: indexed)) == Set(ids))
+        #expect(treeNodeFingerprint(indexed) == treeNodeFingerprint(reference))
+    }
+
+    @Test("A group hanging off a cycle stays attached once the cycle is rooted")
+    func groupBelowACycle_staysAttached() {
+        let idA = UUID()
+        let idB = UUID()
+        let idC = UUID()
+        let a = makeGroup(id: idA, name: "A", parentId: idB)
+        let b = makeGroup(id: idB, name: "B", parentId: idA)
+        let c = makeGroup(id: idC, name: "C", parentId: idA)
+
+        let tree = buildGroupTreeIndexed(groups: [a, b, c], connections: [])
+
+        #expect(Set(groupIds(from: tree)) == [idA, idB])
+        let aNode = tree.first { node in
+            if case .group(let group, _) = node { return group.id == idA }
+            return false
+        }
+        guard case .group(_, let children)? = aNode else {
+            Issue.record("The cyclic group is missing from the tree")
+            return
+        }
+        #expect(groupIds(from: children) == [idC])
+    }
+
+    /// The indices fell back to the unguarded free function for any group the root walk could not
+    /// reach, which is exactly what a cycle produces, and the two then recursed into each other
+    /// until the stack ran out. The welcome list computes these on every rebuild.
+    @Test("Indices over cyclic data terminate instead of recursing forever")
+    func computeGroupTreeIndices_cyclicData() {
+        let idA = UUID()
+        let idB = UUID()
+        let a = makeGroup(id: idA, name: "A", parentId: idB)
+        let b = makeGroup(id: idB, name: "B", parentId: idA)
+        let inA = makeConnection(name: "In A", groupId: idA)
+
+        let indices = computeGroupTreeIndices(groups: [a, b], connections: [inA])
+
+        #expect(indices.depthByGroup[idA] == 1)
+        #expect(indices.depthByGroup[idB] == 1)
+        #expect(indices.maxDescendantDepthByGroup[idA] == 0)
+        #expect(indices.connectionCountByGroup[idA] == 1)
+    }
+
+    @Test("maxDescendantDepth terminates on cyclic data")
+    func maxDescendantDepth_cyclicData() {
+        let idA = UUID()
+        let idB = UUID()
+        let a = makeGroup(id: idA, name: "A", parentId: idB)
+        let b = makeGroup(id: idB, name: "B", parentId: idA)
+
+        #expect(maxDescendantDepth(groupId: idA, groups: [a, b]) == 0)
+    }
+
+    // MARK: - Placement
+
+    @Test("A group may sit under a parent while its whole subtree still fits")
+    func canPlaceGroup_allowsASubtreeThatFits() {
+        let parent = makeGroup(name: "Parent")
+        let mover = makeGroup(name: "Mover")
+        let leaf = makeGroup(name: "Leaf", parentId: mover.id)
+
+        #expect(canPlaceGroup(mover.id, under: parent.id, groups: [parent, mover, leaf]))
+    }
+
+    @Test("A move is refused when the subtree it carries would nest past the cap")
+    func canPlaceGroup_refusesASubtreeThatWouldOverflow() {
+        let top = makeGroup(name: "Top")
+        let topChild = makeGroup(name: "TopChild", parentId: top.id)
+        let mover = makeGroup(name: "Mover")
+        let leaf = makeGroup(name: "Leaf", parentId: mover.id)
+        let groups = [top, topChild, mover, leaf]
+
+        #expect(canPlaceGroup(mover.id, under: topChild.id, groups: groups) == false)
+    }
+
+    @Test("A group cannot be placed inside its own descendant")
+    func canPlaceGroup_refusesACycle() {
+        let parent = makeGroup(name: "Parent")
+        let child = makeGroup(name: "Child", parentId: parent.id)
+
+        #expect(canPlaceGroup(parent.id, under: child.id, groups: [parent, child]) == false)
+    }
+
     // MARK: - Indexed Tree Equivalence
 
     @Test("Indexed buildGroupTree matches reference across nested + orphan topologies")

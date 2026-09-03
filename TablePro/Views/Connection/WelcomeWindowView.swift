@@ -90,7 +90,7 @@ struct WelcomeWindowView: View {
             switch sheet {
             case .newGroup(let parentId):
                 CreateGroupSheet(parentId: parentId) { name, color, pid in
-                    vm.createGroup(name: name, color: color, parentId: pid)
+                    try vm.createGroup(name: name, color: color, parentId: pid)
                 }
             case .activation:
                 LicenseActivationSheet()
@@ -142,6 +142,19 @@ struct WelcomeWindowView: View {
             Button(String(localized: "Cancel"), role: .cancel) { vm.renameGroupTarget = nil }
         } message: {
             Text("Enter a new name for the group.")
+        }
+        .alert(
+            String(localized: "Group Not Updated"),
+            isPresented: Binding(
+                get: { vm.groupErrorMessage != nil },
+                set: { if !$0 { vm.groupErrorMessage = nil } }
+            )
+        ) {
+            Button(String(localized: "OK")) { vm.groupErrorMessage = nil }
+        } message: {
+            if let message = vm.groupErrorMessage {
+                Text(message)
+            }
         }
         .alert(
             String(localized: "Connection Failed"),
@@ -554,11 +567,15 @@ private struct TreeRowsView<ConnectionContent: View>: View {
         }
         .onMove(perform: allConnections ? { from, to in
             guard vm.searchText.isEmpty else { return }
-            if let parentGroupId, let group = vm.groups.first(where: { $0.id == parentGroupId }) {
-                vm.moveGroupedConnections(in: group, from: from, to: to)
-            } else {
-                vm.moveUngroupedConnections(from: from, to: to)
-            }
+            vm.moveConnections(
+                renderedIds: items.compactMap { item in
+                    guard case .connection(let conn) = item else { return nil }
+                    return conn.id
+                },
+                from: from,
+                to: to,
+                inGroup: parentGroupId
+            )
         } : nil)
     }
 
@@ -653,14 +670,7 @@ private struct TreeRowsView<ConnectionContent: View>: View {
                 Divider()
 
                 ForEach(vm.groups.filter({ $0.id != group.id })) { targetGroup in
-                    let wouldCircle = wouldCreateCircle(
-                        movingGroupId: group.id,
-                        toParentId: targetGroup.id,
-                        groups: vm.groups
-                    )
-                    let targetDepth = vm.depthByGroup[targetGroup.id] ?? 0
-                    let subtreeDepth = vm.maxDescendantDepthByGroup[group.id] ?? 0
-                    let wouldExceedDepth = targetDepth + 1 + subtreeDepth > 3
+                    let canPlace = canPlaceGroup(group.id, under: targetGroup.id, groups: vm.groups)
 
                     Button {
                         vm.moveGroup(group, toParent: targetGroup.id)
@@ -677,7 +687,7 @@ private struct TreeRowsView<ConnectionContent: View>: View {
                             }
                         }
                     }
-                    .disabled(wouldCircle || wouldExceedDepth || group.parentId == targetGroup.id)
+                    .disabled(!canPlace || group.parentId == targetGroup.id)
                 }
             }
         }

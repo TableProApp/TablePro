@@ -17,6 +17,59 @@ enum ConnectionGroupTreeNode: Identifiable {
     }
 }
 
+// MARK: - Reachability
+
+/// Every group that lies on a parent cycle. A group that merely descends from one is left alone,
+/// because rooting the cycle itself already makes the whole chain reachable again.
+func cyclicGroupIds(_ groups: [ConnectionGroup]) -> Set<UUID> {
+    let byId = Dictionary(groups.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    var cyclic: Set<UUID> = []
+    var acyclic: Set<UUID> = []
+
+    for group in groups {
+        var path: [UUID] = []
+        var onPath: Set<UUID> = []
+        var current: ConnectionGroup? = group
+
+        while let node = current {
+            if acyclic.contains(node.id) || cyclic.contains(node.id) { break }
+            if onPath.contains(node.id) {
+                if let start = path.firstIndex(of: node.id) {
+                    cyclic.formUnion(path[start...])
+                }
+                break
+            }
+            path.append(node.id)
+            onPath.insert(node.id)
+            current = node.parentId.flatMap { byId[$0] }
+        }
+
+        acyclic.formUnion(path.filter { !cyclic.contains($0) })
+    }
+
+    return cyclic
+}
+
+/// The groups as every reader must interpret them: one whose parent chain never reaches the root
+/// is presented at the top level rather than under its own parent.
+///
+/// Two Macs that reparent P under C and C under P inside one sync window each apply the other's
+/// record, and the stored graph then has no root for either. Left under their own parent, neither
+/// is reachable from the root, so both groups and every connection inside them leave the tree
+/// with no row left to repair them from. Rooting them keeps a broken graph visible, and it is also
+/// what stops a descendant walk following the cycle forever.
+func groupsWithReachableParents(_ groups: [ConnectionGroup]) -> [ConnectionGroup] {
+    let cyclic = cyclicGroupIds(groups)
+    guard !cyclic.isEmpty else { return groups }
+
+    return groups.map { group in
+        guard cyclic.contains(group.id) else { return group }
+        var rooted = group
+        rooted.parentId = nil
+        return rooted
+    }
+}
+
 // MARK: - Tree Building
 
 func buildGroupTree(
@@ -26,6 +79,7 @@ func buildGroupTree(
     maxDepth: Int = 3,
     currentDepth: Int = 0
 ) -> [ConnectionGroupTreeNode] {
+    let groups = groupsWithReachableParents(groups)
     var items: [ConnectionGroupTreeNode] = []
 
     let validGroupIds = Set(groups.map(\.id))
@@ -158,20 +212,49 @@ func wouldCreateCircle(movingGroupId: UUID, toParentId: UUID?, groups: [Connecti
     return descendants.contains(targetId)
 }
 
-func depthOf(groupId: UUID?, groups: [ConnectionGroup], visited: Set<UUID> = []) -> Int {
+func depthOf(groupId: UUID?, groups: [ConnectionGroup]) -> Int {
+    depthOfReachable(groupId: groupId, groups: groupsWithReachableParents(groups), visited: [])
+}
+
+private func depthOfReachable(groupId: UUID?, groups: [ConnectionGroup], visited: Set<UUID>) -> Int {
     guard let gid = groupId else { return 0 }
     guard !visited.contains(gid) else { return 0 }
     guard let group = groups.first(where: { $0.id == gid }) else { return 0 }
-    return 1 + depthOf(groupId: group.parentId, groups: groups, visited: visited.union([gid]))
+    return 1 + depthOfReachable(groupId: group.parentId, groups: groups, visited: visited.union([gid]))
+}
+
+/// Whether a group may sit under a parent: it cannot enclose itself, and the subtree it carries
+/// still has to fit inside the nesting cap.
+///
+/// The storage enforces this and the menus dim against it, so both ask the same function. A group
+/// that is not in `groups` yet carries no subtree, which is what makes this the rule for a new
+/// group as well as for a move.
+func canPlaceGroup(_ groupId: UUID, under parentId: UUID?, groups: [ConnectionGroup]) -> Bool {
+    guard !wouldCreateCircle(movingGroupId: groupId, toParentId: parentId, groups: groups) else { return false }
+    let parentDepth = depthOf(groupId: parentId, groups: groups)
+    let subtreeDepth = maxDescendantDepth(groupId: groupId, groups: groups)
+    return parentDepth + 1 + subtreeDepth <= ConnectionGroup.maxNestingDepth
 }
 
 func maxDescendantDepth(groupId: UUID, groups: [ConnectionGroup]) -> Int {
-    let children = groups.filter { $0.parentId == groupId }
+    maxDescendantDepthReachable(groupId: groupId, groups: groupsWithReachableParents(groups), visited: [])
+}
+
+private func maxDescendantDepthReachable(
+    groupId: UUID,
+    groups: [ConnectionGroup],
+    visited: Set<UUID>
+) -> Int {
+    let children = groups.filter { $0.parentId == groupId && !visited.contains($0.id) }
     if children.isEmpty { return 0 }
-    return 1 + (children.map { maxDescendantDepth(groupId: $0.id, groups: groups) }.max() ?? 0)
+    let nextVisited = visited.union([groupId])
+    return 1 + (children.map {
+        maxDescendantDepthReachable(groupId: $0.id, groups: groups, visited: nextVisited)
+    }.max() ?? 0)
 }
 
 func connectionCount(in groupId: UUID, connections: [DatabaseConnection], groups: [ConnectionGroup]) -> Int {
+    let groups = groupsWithReachableParents(groups)
     let directCount = connections.filter { $0.groupId == groupId }.count
     let descendants = collectAllDescendantGroupIds(groupId: groupId, groups: groups)
     let descendantCount = connections.filter { conn in
@@ -203,7 +286,9 @@ private func sortGroups(_ groups: [ConnectionGroup]) -> [ConnectionGroup] {
     }
 }
 
-private func sortConnections(_ connections: [DatabaseConnection]) -> [DatabaseConnection] {
+/// The order the tree presents connections in. Anything that reorders them has to agree with it,
+/// or a drag lands the row somewhere the list does not draw it.
+func sortConnections(_ connections: [DatabaseConnection]) -> [DatabaseConnection] {
     connections.sorted {
         $0.sortOrder != $1.sortOrder
             ? $0.sortOrder < $1.sortOrder
@@ -212,6 +297,7 @@ private func sortConnections(_ connections: [DatabaseConnection]) -> [DatabaseCo
 }
 
 private func buildGroupTreeIndex(groups: [ConnectionGroup], connections: [DatabaseConnection]) -> GroupTreeIndex {
+    let groups = groupsWithReachableParents(groups)
     let validGroupIds = Set(groups.map(\.id))
 
     var childrenByParentId: [UUID?: [ConnectionGroup]] = [:]

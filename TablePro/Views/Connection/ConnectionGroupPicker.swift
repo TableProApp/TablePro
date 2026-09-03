@@ -41,7 +41,7 @@ struct ConnectionGroupPicker: View {
         .sheet(isPresented: $showingCreateSheet) {
             CreateGroupSheet { groupName, groupColor, parentId in
                 let group = ConnectionGroup(name: groupName, color: groupColor, parentId: parentId)
-                groupStorage.addGroup(group)
+                try groupStorage.addGroup(group)
                 selectedGroupId = group.id
                 allGroups = groupStorage.loadGroups()
             }
@@ -57,11 +57,15 @@ struct CreateGroupSheet: View {
     @State private var groupColor: ConnectionColor = .none
     @State private var selectedParentId: UUID?
     @State private var allGroups: [ConnectionGroup] = []
+    @State private var errorMessage: String?
 
     private let initialParentId: UUID?
-    let onSave: (String, ConnectionColor, UUID?) -> Void
+    /// Throwing, because the store refuses a duplicate sibling name, a cycle and a group nested
+    /// past the cap. A sheet that dismissed on the attempt left the caller holding the id of a
+    /// group that was never saved.
+    let onSave: (String, ConnectionColor, UUID?) throws -> Void
 
-    init(parentId: UUID? = nil, onSave: @escaping (String, ConnectionColor, UUID?) -> Void) {
+    init(parentId: UUID? = nil, onSave: @escaping (String, ConnectionColor, UUID?) throws -> Void) {
         self.initialParentId = parentId
         self.onSave = onSave
     }
@@ -91,6 +95,14 @@ struct CreateGroupSheet: View {
                 }
             }
 
+            if let errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
             HStack {
                 Button("Cancel") {
                     dismiss()
@@ -98,8 +110,12 @@ struct CreateGroupSheet: View {
                 .keyboardShortcut(.cancelAction)
 
                 Button("Create") {
-                    onSave(groupName, groupColor, selectedParentId)
-                    dismiss()
+                    do {
+                        try onSave(groupName, groupColor, selectedParentId)
+                        dismiss()
+                    } catch {
+                        errorMessage = error.localizedDescription
+                    }
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
@@ -108,6 +124,8 @@ struct CreateGroupSheet: View {
         }
         .padding(20)
         .frame(width: 300)
+        .onChange(of: groupName) { _, _ in errorMessage = nil }
+        .onChange(of: selectedParentId) { _, _ in errorMessage = nil }
         .onAppear {
             allGroups = GroupStorage.shared.loadGroups()
             selectedParentId = initialParentId

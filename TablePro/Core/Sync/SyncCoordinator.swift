@@ -632,6 +632,13 @@ final class SyncCoordinator {
             }
         }
 
+        /// After the batch, never per record: a pull carries no dependency order, so a legal
+        /// hierarchy change spread over two records passes through a state that reads as a cycle
+        /// until both have landed.
+        if groupsOrTagsChanged {
+            services.groupStorage.repairHierarchy()
+        }
+
         if actualConnectionChanges || groupsOrTagsChanged {
             services.appEvents.connectionUpdated.send(nil)
         }
@@ -704,14 +711,7 @@ final class SyncCoordinator {
         guard let remoteGroup = SyncRecordMapper.toGroup(record) else { return false }
         if tombstoneIds.contains(remoteGroup.id.uuidString) { return false }
 
-        var groups = services.groupStorage.loadGroups()
-        if let index = groups.firstIndex(where: { $0.id == remoteGroup.id }) {
-            groups[index] = remoteGroup
-        } else {
-            groups.append(remoteGroup)
-        }
-        services.groupStorage.saveGroups(groups)
-        return true
+        return services.groupStorage.applyRemoteGroup(remoteGroup)
     }
 
     @discardableResult

@@ -29,6 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Silent fallback order when foreign keys between the exported tables form a cycle. (#2517)
 - Foreign keys declared twice in a SQL export on MySQL, SQL Server, DuckDB, Snowflake, CockroachDB and Redshift, and as an unsupported `ALTER TABLE` on SQLite, libSQL and Cloudflare D1. (#2517)
 - Foreign keys missing from Redshift's reconstructed `CREATE TABLE`.
+- New group discarded without a word when the connection form's picker could not save it. (#1311)
+- Group created in one window missing from another until relaunch. (#1311)
+- Wrong connection moved when dragging a list that holds a favorite or an active tag filter. (#1311)
+- Crash opening the connection list after two Macs moved two groups inside each other. (#1311)
+- Every saved group lost when one unreadable entry stopped the whole list decoding. (#1311)
+- Two Macs re-uploading the whole group list to each other after a single group changed. (#1311)
+- Deleting a group that a broken sync left in a loop also deleting the group it pointed at. (#1311)
 
 ## [0.71.0] - 2026-09-02
 
