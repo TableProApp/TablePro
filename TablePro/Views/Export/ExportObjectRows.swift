@@ -39,6 +39,14 @@ internal enum ExportObjectKindPresentation {
         }
     }
 
+    internal static func checkboxValue(for state: TristateCheckbox.State) -> String {
+        switch state {
+        case .checked: String(localized: "Selected")
+        case .unchecked: String(localized: "Not selected")
+        case .mixed: String(localized: "Partly selected")
+        }
+    }
+
     internal static func iconColor(for kind: PluginExportObjectKind) -> Color {
         switch kind {
         case .table, .foreignTable: return .gray
@@ -64,12 +72,18 @@ internal struct ExportTreeContainerRow: View {
 
     internal var body: some View {
         HStack(spacing: 4) {
-            TristateCheckbox(state: state, action: toggle)
-                .frame(width: 18)
+            TristateCheckbox(
+                state: state,
+                accessibilityLabel: title,
+                accessibilityValue: ExportObjectKindPresentation.checkboxValue(for: state),
+                action: toggle
+            )
+            .frame(width: 18)
 
             Image(systemName: iconName)
                 .foregroundStyle(iconColor)
                 .font(.body)
+                .accessibilityHidden(true)
 
             Text(title)
                 .font(.body)
@@ -100,13 +114,17 @@ internal struct ExportTreeObjectRow: View {
     internal var body: some View {
         HStack(spacing: 4) {
             if optionColumns.isEmpty {
-                Toggle("", isOn: Binding(get: { object.isSelected }, set: setSelected))
+                Toggle(object.name, isOn: Binding(get: { object.isSelected }, set: setSelected))
                     .toggleStyle(.checkbox)
                     .labelsHidden()
                     .frame(width: 18)
             } else {
-                TristateCheckbox(state: checkboxState) {
-                    setSelected(!object.isSelected)
+                TristateCheckbox(
+                    state: checkboxState,
+                    accessibilityLabel: object.name,
+                    accessibilityValue: ExportObjectKindPresentation.checkboxValue(for: checkboxState)
+                ) {
+                    setSelected(checkboxState != .checked)
                 }
                 .frame(width: 18)
             }
@@ -114,6 +132,7 @@ internal struct ExportTreeObjectRow: View {
             Image(systemName: ExportObjectKindPresentation.iconName(for: object.kind))
                 .foregroundStyle(ExportObjectKindPresentation.iconColor(for: object.kind))
                 .font(.body)
+                .accessibilityHidden(true)
 
             Text(object.name)
                 .font(.body)
@@ -155,6 +174,10 @@ internal struct ExportTreeObjectRow: View {
                 .foregroundStyle(object.rowScope.isUnrestricted ? Color.secondary : Color.accentColor)
         }
         .buttonStyle(.borderless)
+        .accessibilityLabel(String(localized: "Row scope"))
+        .accessibilityValue(object.rowScope.isUnrestricted
+            ? String(localized: "Every row and column")
+            : object.rowScope.summary)
         .help(object.rowScope.isUnrestricted
             ? String(localized: "Narrow the rows and columns to export")
             : object.rowScope.summary)
@@ -182,7 +205,6 @@ internal struct ExportTreeObjectRow: View {
             .toggleStyle(.checkbox)
             .labelsHidden()
             .disabled(!object.isSelected)
-            .opacity(object.isSelected ? 1.0 : 0.4)
             .frame(width: column.width, alignment: .center)
         } else {
             Color.clear.frame(width: column.width, height: 1)

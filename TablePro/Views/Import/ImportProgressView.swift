@@ -2,14 +2,20 @@
 //  ImportProgressView.swift
 //  TablePro
 //
-//  Progress dialog shown during import.
-//
 
 import SwiftUI
 
+/// How far an import has got, and the one way to stop it.
+///
+/// Stopping asks first, the way the export and backup sheets do. An import writes rows, so an
+/// accidental press is the expensive one of the three: statements already run stay committed.
 struct ImportProgressView: View {
     let service: ImportService
     let onStop: () -> Void
+
+    @State private var showStopConfirmation = false
+
+    private var hasEstimate: Bool { service.state.estimatedTotalStatements > 0 }
 
     var body: some View {
         VStack(spacing: 20) {
@@ -18,39 +24,47 @@ struct ImportProgressView: View {
 
             VStack(spacing: 8) {
                 HStack {
-                    if !service.state.statusMessage.isEmpty {
+                    if service.state.statusMessage.isEmpty {
+                        Text("Executed \(service.state.processedStatements) ^[statement](inflect: true)")
+                            .font(.body)
+                    } else {
                         Text(service.state.statusMessage)
                             .font(.body)
                             .foregroundStyle(.secondary)
-                    } else {
-                        Text("Executed \(service.state.processedStatements) statements")
-                            .font(.body)
-
-                        Spacer()
                     }
+
+                    Spacer()
                 }
 
-                if !service.state.statusMessage.isEmpty {
-                    ProgressView()
+                if service.state.statusMessage.isEmpty, hasEstimate {
+                    ProgressView(value: progressValue)
                         .progressViewStyle(.linear)
                 } else {
-                    ProgressView(value: progressValue)
+                    ProgressView()
                         .progressViewStyle(.linear)
                 }
             }
 
             Button("Stop") {
-                onStop()
+                showStopConfirmation = true
             }
-            .frame(width: 80)
         }
         .padding(24)
-        .frame(width: 500)
+        .frame(minWidth: 500)
         .background(Color(nsColor: .windowBackgroundColor))
+        .onExitCommand { showStopConfirmation = true }
+        .alert(String(localized: "Stop Import?"), isPresented: $showStopConfirmation) {
+            Button(String(localized: "Continue"), role: .cancel) {}
+            Button(String(localized: "Stop"), role: .destructive) { onStop() }
+        } message: {
+            Text("Statements already executed stay committed.")
+        }
     }
 
     private var progressValue: Double {
         guard service.state.estimatedTotalStatements > 0 else { return 0 }
-        return min(1.0, Double(service.state.processedStatements) / Double(service.state.estimatedTotalStatements))
+        return min(
+            1.0,
+            Double(service.state.processedStatements) / Double(service.state.estimatedTotalStatements))
     }
 }

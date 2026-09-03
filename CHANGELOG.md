@@ -38,12 +38,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Export, Transfer and Server-Side Export sheets resize, and the export object tree takes the extra room. (#2618)
+- Cancel sits beside the action button in the export, transfer and server-side export footers.
 - PluginKit ABI 21. Every registry plugin needs rebuilding before or with this release.
 - Query Insights ranks on the time the database spent rather than on elapsed time. (#2503)
 - Export summary reports the warnings an export produced, instead of a bare "Export completed". (#2517)
 
 ### Fixed
 
+- Restore Dump overwriting a database with no confirmation.
+- Stopping an import applying at once, while stopping an export or a backup asks first.
+- Progress bar stuck at zero and an "N/0 rows" label for the whole of a streaming query export.
+- Checkboxes, pickers and text fields across the import and export sheets unnamed to VoiceOver.
+- Import plugin options kept after cancelling the row importer, `Delete existing rows` among them.
+- Escape not dismissing the export and import result alerts.
+- Backup save panel and password warning landing on whatever window was frontmost.
 - DuckDB aggregate, JSON and Parquet functions failing on a Mac that cannot reach `extensions.duckdb.org`. (#2626)
 - Last line of a helper process's output lost when it exits right after writing it.
 - Structure and trigger edits committing or rolling back a transaction left open in a query tab on the same connection.

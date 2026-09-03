@@ -29,6 +29,8 @@ struct ServerSideExportSheet: View {
     @State private var errorMessage: String?
     @State private var completion: String?
     @State private var hostWindow: NSWindow?
+    @State private var runTask: Task<Void, Never>?
+    @State private var isCancelling = false
 
     private var formats: [ServerSideExport.Format] {
         ServerSideExport.supportedFormats(for: connection.type)
@@ -103,12 +105,15 @@ struct ServerSideExportSheet: View {
 
             footer
         }
-        .frame(width: 440)
+        .frame(minWidth: 440)
         .background(Color(nsColor: .windowBackgroundColor))
         .background { WindowAccessor { window in hostWindow = window } }
         .task { await load() }
         .onExitCommand {
-            guard !isRunning else { return }
+            guard !isRunning else {
+                stop()
+                return
+            }
             isPresented = false
         }
     }
@@ -125,8 +130,9 @@ struct ServerSideExportSheet: View {
                 Text(destinationLabel)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                TextField(destinationPrompt, text: $destinationText)
+                TextField(destinationLabel, text: $destinationText, prompt: Text(destinationPrompt))
                     .textFieldStyle(.roundedBorder)
+                    .labelsHidden()
                 Text(destinationHelp)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -159,15 +165,23 @@ struct ServerSideExportSheet: View {
     }
 
     private var footer: some View {
-        HStack {
-            Button("Cancel") { isPresented = false }
-                .disabled(isRunning)
-            Spacer()
+        DialogFooter {
             if isRunning {
                 ProgressView().scaleEffect(0.7)
+                Text(isCancelling
+                    ? String(localized: "Stopping\u{2026}")
+                    : String(localized: "The server is writing the file\u{2026}"))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
+        } actions: {
+            Button(isRunning ? String(localized: "Stop") : String(localized: "Cancel")) {
+                if isRunning { stop() } else { isPresented = false }
+            }
+
             Button("Export") {
-                Task { await run() }
+                runTask = Task { await run() }
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
@@ -175,6 +189,19 @@ struct ServerSideExportSheet: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+
+    /// Asks the driver to cancel and stops waiting either way. `cancelQuery()` is a no-op on some
+    /// engines and `Task.cancel()` cannot interrupt a driver blocked in a C call, so the sheet says
+    /// it is stopping rather than claiming the server stopped.
+    @MainActor
+    private func stop() {
+        guard isRunning, !isCancelling else { return }
+        isCancelling = true
+        if let driver = DatabaseManager.shared.driver(for: connection.id) {
+            try? driver.cancelQuery()
+        }
+        runTask?.cancel()
     }
 
     @MainActor
@@ -207,7 +234,12 @@ struct ServerSideExportSheet: View {
         errorMessage = nil
         completion = nil
         isRunning = true
-        defer { isRunning = false }
+        isCancelling = false
+        defer {
+            isRunning = false
+            isCancelling = false
+            runTask = nil
+        }
 
         guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
             errorMessage = String(localized: "Not connected.")
@@ -236,6 +268,7 @@ struct ServerSideExportSheet: View {
                 selectedTable,
                 destinationText)
         } catch {
+            guard !isCancelling else { return }
             Self.logger.warning("Server-side export failed: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
         }

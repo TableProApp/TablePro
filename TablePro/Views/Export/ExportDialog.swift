@@ -2,9 +2,6 @@
 //  ExportDialog.swift
 //  TablePro
 //
-//  Main export dialog for exporting tables using format plugins.
-//  Features a split layout with table selection tree on the left and format options on the right.
-//
 
 import AppKit
 import os
@@ -12,7 +9,6 @@ import SwiftUI
 import TableProPluginKit
 import UniformTypeIdentifiers
 
-/// Main export dialog view
 struct ExportDialog: View {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ExportDialog")
 
@@ -78,6 +74,16 @@ struct ExportDialog: View {
         return 0
     }
 
+    /// The name the progress sheet puts in front of the user. A streaming query has no current
+    /// table, so it is named by the file it is being written to instead of by an empty string.
+    private var progressSubject: String {
+        let currentTable = exportService?.state.currentTable ?? ""
+        guard currentTable.isEmpty else { return currentTable }
+        return config.fileName.isEmpty
+            ? String(localized: "Query results")
+            : config.fileName
+    }
+
     private var preselection: ExportPreselection {
         if case .tables(_, let preselection) = mode {
             return preselection
@@ -92,21 +98,25 @@ struct ExportDialog: View {
             HStack(spacing: 0) {
                 if !isQueryResultsMode {
                     tableSelectionView
-                        .frame(minWidth: leftPanelWidth)
+                        .frame(minWidth: leftPanelWidth, maxWidth: .infinity)
 
                     Divider()
                 }
 
                 exportOptionsView
-                    .frame(width: 280)
+                    .frame(width: Self.optionsPanelWidth)
             }
-            .frame(height: 420)
+            .frame(minHeight: 320, idealHeight: 420, maxHeight: .infinity)
 
             Divider()
 
             footerView
         }
-        .frame(width: dialogWidth)
+        .frame(
+            minWidth: dialogWidth,
+            idealWidth: dialogWidth,
+            maxWidth: isQueryResultsMode ? dialogWidth : .infinity
+        )
         .background(Color(nsColor: .windowBackgroundColor))
         .background {
             WindowAccessor { window in
@@ -157,7 +167,7 @@ struct ExportDialog: View {
         }
         .sheet(isPresented: $showProgressDialog) {
             ExportProgressView(
-                tableName: exportService?.state.currentTable ?? "",
+                subject: progressSubject,
                 tableIndex: exportService?.state.currentTableIndex ?? 0,
                 totalTables: exportService?.state.totalTables ?? 0,
                 processedRows: exportService?.state.processedRows ?? 0,
@@ -188,7 +198,7 @@ struct ExportDialog: View {
 
     private var availableFormats: [any ExportFormatPlugin] {
         let dbTypeId = connection.type.rawValue
-        return PluginManager.shared.allExportPlugins()
+        let supported = PluginManager.shared.allExportPlugins()
             .filter { plugin in
                 let pluginType = type(of: plugin)
                 if !pluginType.supportedDatabaseTypeIds.isEmpty {
@@ -199,11 +209,7 @@ struct ExportDialog: View {
                 }
                 return true
             }
-            .sorted { a, b in
-                let aIndex = Self.formatDisplayOrder.firstIndex(of: type(of: a).formatId) ?? Int.max
-                let bIndex = Self.formatDisplayOrder.firstIndex(of: type(of: b).formatId) ?? Int.max
-                return aIndex < bIndex
-            }
+        return ExportFormatCatalog.sorted(supported)
     }
 
     private var availableFormatIds: [String] {
@@ -225,13 +231,17 @@ struct ExportDialog: View {
 
     // MARK: - Layout Constants
 
+    /// The options column is an inspector: it holds one control per option and gains nothing from
+    /// being wider. The tree beside it takes every point the user drags the sheet out to.
+    private static let optionsPanelWidth: CGFloat = 280
+
     private var leftPanelWidth: CGFloat {
         guard let plugin = currentPlugin else { return 240 }
         return type(of: plugin).perTableOptionColumns.isEmpty ? 240 : 380
     }
 
     private var dialogWidth: CGFloat {
-        isQueryResultsMode ? 280 : leftPanelWidth + 280
+        isQueryResultsMode ? Self.optionsPanelWidth : leftPanelWidth + Self.optionsPanelWidth
     }
 
     // MARK: - Table Selection View
@@ -394,7 +404,7 @@ struct ExportDialog: View {
                     HStack {
                         Spacer()
 
-                        Picker("", selection: $config.formatId) {
+                        Picker(String(localized: "Format"), selection: $config.formatId) {
                             ForEach(availableFormatIds, id: \.self) { formatId in
                                 if let plugin = PluginManager.shared.exportPlugin(forFormat: formatId) {
                                     Text(type(of: plugin).formatDisplayName).tag(formatId)
@@ -406,11 +416,13 @@ struct ExportDialog: View {
                         Spacer()
                     }
 
-                    let description = formatDescription(for: config.formatId)
-                    if !description.isEmpty {
-                        Text(description)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                    if let plugin = currentPlugin {
+                        let description = ExportFormatCatalog.description(for: plugin)
+                        if !description.isEmpty {
+                            Text(description)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
@@ -420,11 +432,11 @@ struct ExportDialog: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     } else if isQueryResultsMode {
-                        Text("\(queryResultsRowCount) row\(queryResultsRowCount == 1 ? "" : "s") to export")
+                        Text("\(queryResultsRowCount) ^[row](inflect: true) to export")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     } else {
-                        Text("\(exportableCount) table\(exportableCount == 1 ? "" : "s") to export")
+                        Text("\(exportableCount) ^[table](inflect: true) to export")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
 
@@ -454,7 +466,7 @@ struct ExportDialog: View {
                             Button("Reset to Defaults") {
                                 resetCurrentFormatSettings()
                             }
-                            .buttonStyle(.link)
+                            .buttonStyle(.borderless)
                             .font(.callout)
                         }
                         .padding(.top, 8)
@@ -471,27 +483,22 @@ struct ExportDialog: View {
     // MARK: - Footer
 
     private var footerView: some View {
-        HStack {
+        DialogFooter {
+            if isExporting {
+                ProgressView()
+                    .scaleEffect(0.7)
+
+                Text(exportService?.state.currentTable ?? "")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+        } actions: {
             Button("Cancel") {
                 isPresented = false
             }
             .disabled(isExporting)
-
-            Spacer()
-
-            if isExporting {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .scaleEffect(0.7)
-
-                    Text(exportService?.state.currentTable ?? "")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .frame(maxWidth: 120)
-                }
-            }
 
             Button("Export…") {
                 Task {
@@ -531,7 +538,6 @@ struct ExportDialog: View {
             .intersection(ExportObjectLoader.loadableKinds)
     }
 
-    /// Count of tables that will actually produce output
     private var exportableCount: Int {
         exportableObjects.count
     }
@@ -551,22 +557,6 @@ struct ExportDialog: View {
             return queryResultsRowCount == 0
         }
         return exportableCount == 0
-    }
-
-    private static let formatDisplayOrder = ["csv", "json", "sql", "xlsx", "md", "html", "xml", "mql"]
-
-    private func formatDescription(for formatId: String) -> String {
-        switch formatId {
-        case "csv": return String(localized: "Comma-separated values. Compatible with Excel and most tools.")
-        case "json": return String(localized: "Structured data format. Ideal for APIs and web applications.")
-        case "sql": return String(localized: "SQL INSERT statements. Use to recreate data in another database.")
-        case "xlsx": return String(localized: "Excel spreadsheet with formatting support.")
-        case "md": return String(localized: "Markdown tables. Paste into a README, an issue or a wiki.")
-        case "html": return String(localized: "An HTML table. Open in a browser or paste into a page.")
-        case "xml": return String(localized: "One element per row. Use where a parser expects XML.")
-        case "mql": return String(localized: "MongoDB query language. Use to import into MongoDB.")
-        default: return ""
-        }
     }
 
     /// A format change changes which object kinds can be written. Kinds the new format cannot
@@ -652,8 +642,6 @@ struct ExportDialog: View {
         )
     }
 
-    /// Instantly populate the current database from sidebar tables (no network).
-    ///
     /// The sidebar lists exactly what the export scope already points at, so the rows carry
     /// no qualifier. Naming the database here would reach the export data source as a schema
     /// on the engines that group by schema, which is a different container.
@@ -967,13 +955,7 @@ struct ExportDialog: View {
         }
 
         let formatName = currentPlugin.map { type(of: $0).formatDisplayName } ?? config.formatId.uppercased()
-        if case .streamingQuery = mode {
-            savePanel.message = String(format: String(localized: "Export query results to %@"), formatName)
-        } else if isQueryResultsMode {
-            savePanel.message = String(format: String(localized: "Export %d row(s) to %@"), queryResultsRowCount, formatName)
-        } else {
-            savePanel.message = String(format: String(localized: "Export %d table(s) to %@"), exportableCount, formatName)
-        }
+        savePanel.message = savePanelMessage(formatName: formatName)
 
         let response = await savePanel.presentAsSheet(for: window)
         guard response == .OK, let url = savePanel.url else { return }
@@ -983,6 +965,26 @@ struct ExportDialog: View {
         } else {
             await startExport(to: url)
         }
+    }
+
+    /// Counts pick between an explicit singular and plural key. Automatic grammar agreement is a
+    /// SwiftUI `Text` facility: `String(localized:)` returns `^[table](inflect: true)` verbatim.
+    private func savePanelMessage(formatName: String) -> String {
+        if case .streamingQuery = mode {
+            return String(format: String(localized: "Export query results to %@"), formatName)
+        }
+        let count = isQueryResultsMode ? queryResultsRowCount : exportableCount
+        let template: String
+        if isQueryResultsMode {
+            template = count == 1
+                ? String(localized: "Export %1$lld row to %2$@")
+                : String(localized: "Export %1$lld rows to %2$@")
+        } else {
+            template = count == 1
+                ? String(localized: "Export %1$lld table to %2$@")
+                : String(localized: "Export %1$lld tables to %2$@")
+        }
+        return String(format: template, Int64(count), formatName)
     }
 
     /// The database this dialog exports from. Its connection carries the database the sheet

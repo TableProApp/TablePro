@@ -94,7 +94,7 @@ enum ServerSideExport {
     ) -> String? {
         switch request.destination {
         case .oracleDirectory(let directory):
-            return oracleStatement(request, directory: directory)
+            return oracleStatement(request, directory: directory, escape: escapeLiteral)
         case .snowflakeStage(let stage):
             return snowflakeStatement(request, stage: stage, quote: quoteIdentifier, escape: escapeLiteral)
         case .googleCloudStorage(let uri):
@@ -109,21 +109,23 @@ enum ServerSideExport {
     /// caller is told where rather than handed anything.
     private static func oracleStatement(
         _ request: Request,
-        directory: String
+        directory: String,
+        escape: (String) -> String
     ) -> String? {
         guard !directory.isEmpty else { return nil }
-        let dumpFile = "\(sanitizedFileStem(request.table)).dmp"
-        let logFile = "\(sanitizedFileStem(request.table)).log"
+        let stem = sanitizedFileStem(request.table)
+        let directoryLiteral = escape(directory.uppercased())
+        let tableFilter = nestedLiteral(request.table.uppercased(), escape: escape)
         return """
             DECLARE
               handle NUMBER;
             BEGIN
-              handle := DBMS_DATAPUMP.OPEN('EXPORT', 'TABLE', NULL, '\(sanitizedFileStem(request.table))');
-              DBMS_DATAPUMP.ADD_FILE(handle, '\(dumpFile)', '\(directory.uppercased())');
-              DBMS_DATAPUMP.ADD_FILE(handle, '\(logFile)', '\(directory.uppercased())', NULL,
+              handle := DBMS_DATAPUMP.OPEN('EXPORT', 'TABLE', NULL, '\(escape(stem))');
+              DBMS_DATAPUMP.ADD_FILE(handle, '\(escape(stem)).dmp', '\(directoryLiteral)');
+              DBMS_DATAPUMP.ADD_FILE(handle, '\(escape(stem)).log', '\(directoryLiteral)', NULL,
                 DBMS_DATAPUMP.KU$_FILE_TYPE_LOG_FILE);
-              DBMS_DATAPUMP.METADATA_FILTER(handle, 'NAME_EXPR', 'IN (''\(request.table.uppercased())'')');
-              DBMS_DATAPUMP.METADATA_FILTER(handle, 'SCHEMA_EXPR', 'IN (''\(schemaFilter(request))'')');
+              DBMS_DATAPUMP.METADATA_FILTER(handle, 'NAME_EXPR', 'IN (''\(tableFilter)'')');
+              DBMS_DATAPUMP.METADATA_FILTER(handle, 'SCHEMA_EXPR', \(schemaFilterExpression(request, escape: escape)));
               DBMS_DATAPUMP.START_JOB(handle);
               DBMS_DATAPUMP.DETACH(handle);
             END;
@@ -131,10 +133,21 @@ enum ServerSideExport {
     }
 
     /// Data Pump filters by schema separately from table, so an unqualified request exports from
-    /// whatever schema the session is in, which is what `USER` names.
-    private static func schemaFilter(_ request: Request) -> String {
-        guard let schema = request.schema, !schema.isEmpty else { return "'' || USER || ''" }
-        return schema.uppercased()
+    /// whatever schema the session is in, which is what `USER` names. `USER` is concatenated in
+    /// PL/SQL rather than written inside a literal, because a literal cannot hold an identifier.
+    private static func schemaFilterExpression(_ request: Request, escape: (String) -> String) -> String {
+        guard let schema = request.schema, !schema.isEmpty else {
+            return "'IN (''' || USER || ''')'"
+        }
+        return "'IN (''\(nestedLiteral(schema.uppercased(), escape: escape))'')'"
+    }
+
+    /// A value written inside a literal that is itself inside a literal, which is what Data Pump's
+    /// `NAME_EXPR` and `SCHEMA_EXPR` are. A quote has to survive both levels, so it is escaped
+    /// twice. An Oracle identifier may legally hold one, and left raw it closes the outer literal
+    /// early and hands the rest of the name to the parser as PL/SQL.
+    private static func nestedLiteral(_ value: String, escape: (String) -> String) -> String {
+        escape(escape(value))
     }
 
     // MARK: - Snowflake

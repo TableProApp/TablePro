@@ -48,7 +48,8 @@ internal struct TableTransferMappingEditor: View {
                                 .truncationMode(.middle)
                                 .frame(width: 130, alignment: .leading)
 
-                            Picker("", selection: binding(for: column)) {
+                            Picker(String(format: String(localized: "Destination for %@"), column),
+                                   selection: binding(for: column)) {
                                 Text("Skip").tag(String?.none)
                                 ForEach(destinationColumns, id: \.self) { target in
                                     Text(target).tag(String?.some(target))

@@ -38,7 +38,7 @@ struct MainContentView: View {
     @Binding var tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions]
     var rightPanelState: RightPanelState
 
-    private var tables: [TableInfo] {
+    var tables: [TableInfo] {
         schemaService.tables(for: connection.id)
     }
 
@@ -137,7 +137,7 @@ struct MainContentView: View {
 
     /// Connection with the active database from the current session,
     /// so export/import dialogs see the database the user actually switched to.
-    private var connectionWithCurrentDatabase: DatabaseConnection {
+    var connectionWithCurrentDatabase: DatabaseConnection {
         var conn = connection
         if let currentDB = DatabaseManager.shared.session(for: connection.id)?.browseDatabase {
             conn.database = currentDB
@@ -148,7 +148,7 @@ struct MainContentView: View {
     /// Exporting a container names the database that container lives in, which is not always the
     /// one being browsed. The dialog scopes every list and the export itself to this connection's
     /// database, so naming it here is what makes exporting another database show that database.
-    private var exportConnection: DatabaseConnection {
+    var exportConnection: DatabaseConnection {
         var conn = connectionWithCurrentDatabase
         if let scoped = coordinator.exportPreselection?.scopedDatabase, !scoped.isEmpty {
             conn.database = scoped
@@ -162,7 +162,7 @@ struct MainContentView: View {
     /// The transfer sheet is built here rather than inline, because `sheetContent(for:)` is one
     /// switch over every sheet the window can present and is already at the function length limit.
     @ViewBuilder
-    private func transferSheet(tables: Set<String>, dismiss: Binding<Bool>) -> some View {
+    func transferSheet(tables: Set<String>, dismiss: Binding<Bool>) -> some View {
         TableTransferSheet(
             isPresented: dismiss,
             sourceConnection: connectionWithCurrentDatabase,
@@ -204,95 +204,9 @@ struct MainContentView: View {
             )
         case .copyObjects(let launch):
             CopyObjectsSheet(launch: launch, connection: connection)
-        case .exportDialog:
-            let exportConnection = exportConnection
-            ExportDialog(
-                isPresented: dismissBinding,
-                mode: .tables(
-                    connection: exportConnection,
-                    preselection: coordinator.exportPreselection
-                        ?? .tables(Set(coordinator.windowSidebarState.selectedTables.map(\.table.name)))
-                ),
-                sidebarTables: tables
-            )
-        case .exportQueryResults:
-            if let tab = coordinator.tabManager.selectedTab {
-                let fileName = tab.tableContext.tableName ?? "query_results"
-                if tab.pagination.hasMoreRows, let baseQuery = tab.pagination.baseQueryForMore {
-                    ExportDialog(
-                        isPresented: dismissBinding,
-                        mode: .streamingQuery(
-                            connection: connectionWithCurrentDatabase,
-                            query: baseQuery,
-                            suggestedFileName: fileName
-                        )
-                    )
-                } else {
-                    ExportDialog(
-                        isPresented: dismissBinding,
-                        mode: .queryResults(
-                            connection: connectionWithCurrentDatabase,
-                            tableRows: coordinator.tabSessionRegistry.tableRows(for: tab.id),
-                            suggestedFileName: fileName
-                        )
-                    )
-                }
-            }
-        case .importDialog(let formatId):
-            let importDismiss = Binding<Bool>(
-                get: { coordinator.activeSheet != nil },
-                set: { if !$0 {
-                    coordinator.activeSheet = nil
-                    coordinator.importFileURL = nil
-                }
-                }
-            )
-            ImportDialog(
-                isPresented: importDismiss,
-                connection: connection,
-                initialFileURL: coordinator.importFileURL,
-                initialFormatId: formatId
-            )
-        case .rowImport(let formatId):
-            let rowDismiss = Binding<Bool>(
-                get: { coordinator.activeSheet != nil },
-                set: { if !$0 {
-                    coordinator.activeSheet = nil
-                    coordinator.importFileURL = nil
-                }
-                }
-            )
-            if let url = coordinator.importFileURL {
-                RowImportSheet(
-                    isPresented: rowDismiss,
-                    connection: connection,
-                    fileURL: url,
-                    formatId: formatId
-                )
-            }
-        case .transferTables(let tables):
-            transferSheet(tables: tables, dismiss: dismissBinding)
-        case .backupDatabase:
-            BackupDatabaseFlow(
-                isPresented: dismissBinding,
-                connection: connectionWithCurrentDatabase,
-                initialDatabase: DatabaseManager.shared.session(for: connection.id)?.browseDatabase
-                    ?? connection.database
-            )
-        case .restoreDatabase(let fileURL):
-            RestoreDatabaseFlow(
-                isPresented: dismissBinding,
-                connection: connectionWithCurrentDatabase,
-                initialDatabase: DatabaseManager.shared.session(for: connection.id)?.browseDatabase
-                    ?? connection.database,
-                sourceURL: fileURL
-            )
-        case .serverSideExport(let table):
-            ServerSideExportSheet(
-                isPresented: dismissBinding,
-                connection: connectionWithCurrentDatabase,
-                initialTable: table
-            )
+        case .exportDialog, .exportQueryResults, .importDialog, .rowImport,
+             .transferTables, .backupDatabase, .restoreDatabase, .serverSideExport:
+            transferSheetContent(for: sheet, dismiss: dismissBinding)
         case .maintenance(let operation, let tableName, let database, let schema):
             MaintenanceSheet(
                 operation: operation,

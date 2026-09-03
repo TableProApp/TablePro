@@ -70,7 +70,7 @@ struct TableTransferSheet: View {
 
             footer
         }
-        .frame(width: 460, height: 460)
+        .frame(minWidth: 460, minHeight: 420, idealHeight: 460, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
         .background {
             WindowAccessor { window in hostWindow = window }
@@ -164,25 +164,22 @@ struct TableTransferSheet: View {
     }
 
     private var footer: some View {
-        HStack {
-            Button("Cancel") {
+        DialogFooter {
+            if isRunning {
+                ProgressView()
+                    .scaleEffect(0.7)
+                Text(progressLabel)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+        } actions: {
+            Button(isRunning ? String(localized: "Stop") : String(localized: "Cancel")) {
                 if isRunning {
                     service.cancel()
                 } else {
                     isPresented = false
-                }
-            }
-
-            Spacer()
-
-            if isRunning {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .scaleEffect(0.7)
-                    Text(progressLabel)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
                 }
             }
 
@@ -340,20 +337,24 @@ struct TableTransferSheet: View {
     @MainActor
     private func confirmIfNeeded(destination: DatabaseConnection) async -> Bool {
         guard deleteExistingRows || destination.safeModeLevel.requiresConfirmation else { return true }
-        let alert = NSAlert()
-        alert.alertStyle = deleteExistingRows ? .critical : .warning
-        alert.messageText = String(
-            format: String(localized: "Transfer %1$lld table(s) into %2$@?"),
-            Int64(selectedTables.count),
-            destination.name)
-        alert.informativeText = deleteExistingRows
-            ? String(localized: "Every row in each destination table is deleted first. This cannot be undone.")
-            : String(localized: "Rows are written into tables that already exist on the destination.")
-        alert.addButton(withTitle: String(localized: "Transfer"))
-        alert.addButton(withTitle: String(localized: "Cancel"))
-
-        guard let hostWindow else { return alert.runModal() == .alertFirstButtonReturn }
-        return await alert.beginSheetModal(for: hostWindow) == .alertFirstButtonReturn
+        let template = selectedTables.count == 1
+            ? String(localized: "Transfer %1$lld table into %2$@?")
+            : String(localized: "Transfer %1$lld tables into %2$@?")
+        let title = String(format: template, Int64(selectedTables.count), destination.name)
+        guard deleteExistingRows else {
+            return await AlertHelper.confirm(
+                title: title,
+                message: String(localized: "Rows are written into tables that already exist on the destination."),
+                confirmButton: String(localized: "Transfer"),
+                window: hostWindow
+            )
+        }
+        return await AlertHelper.confirmCritical(
+            title: title,
+            message: String(localized: "Every row in each destination table is deleted first. This cannot be undone."),
+            confirmButton: String(localized: "Transfer"),
+            window: hostWindow
+        )
     }
 
     /// Reads the columns on both sides for every ticked table, so the sheet can say what will map
@@ -370,16 +371,10 @@ struct TableTransferSheet: View {
             sourceColumns[table] = await columns(
                 of: table, on: sourceScope, schema: nil)
         }
-        guard let destinationDriver = DatabaseManager.shared.driver(for: destinationConnection.id),
-              let pluginDriver = (destinationDriver as? PluginDriverAdapter)?.schemaPluginDriver
-        else { return }
+        guard let destinationScope else { return }
         for table in tables where destinationColumns[table] == nil {
-            do {
-                let found = try await pluginDriver.fetchColumns(table: table, schema: nil).map(\.name)
-                destinationColumns[table] = found.isEmpty ? nil : found
-            } catch {
-                Self.logger.warning("Destination has no \(table, privacy: .public)")
-            }
+            let found = await columns(of: table, on: destinationScope, schema: nil)
+            destinationColumns[table] = found.isEmpty ? nil : found
         }
     }
 
@@ -404,12 +399,23 @@ struct TableTransferSheet: View {
         ) ?? DatabaseScope(connectionId: sourceConnection.id, database: sourceConnection.database, schema: nil)
     }
 
+    /// The database the user picked, not wherever the destination connection was last parked. Both
+    /// the column read and the write go through this: the picker used to bind to a value nothing
+    /// read, so choosing a database changed the label and sent the rows somewhere else.
+    private var destinationScope: DatabaseScope? {
+        guard let destinationConnection else { return nil }
+        let database = destinationDatabase.isEmpty
+            ? destinationConnection.database
+            : destinationDatabase
+        return DatabaseScope(
+            connectionId: destinationConnection.id, database: database, schema: nil)
+    }
+
     // MARK: - Running
 
     @MainActor
     private func runTransfer() async {
-        guard let destinationConnection,
-              let destinationDriver = DatabaseManager.shared.driver(for: destinationConnection.id) else {
+        guard let destinationConnection, let destinationScope else {
             errorMessage = TableTransferError.notConnected(connectionName: "").localizedDescription
             return
         }
@@ -422,6 +428,7 @@ struct TableTransferSheet: View {
         guard await confirmIfNeeded(destination: destinationConnection) else { return }
 
         errorMessage = nil
+        service.prepareForRun()
         isRunning = true
         defer { isRunning = false }
 
@@ -454,21 +461,73 @@ struct TableTransferSheet: View {
             wrapInTransaction: wrapInTransaction
         )
 
+        let startedAt = ContinuousClock.Instant.now
+        let destinationRoute = DatabaseManager.shared.executionRoute(for: destinationScope)
         do {
             try await DatabaseManager.shared.withMetadataDriver(
                 scope: sourceScope, workload: .bulk
             ) { sourceDriver in
-                try await service.transfer(
-                    request: request,
-                    sourceDriver: sourceDriver,
-                    destinationDriver: destinationDriver
-                )
+                try await DatabaseManager.shared.withScopedDriver(
+                    scope: destinationScope,
+                    route: destinationRoute,
+                    workload: .bulk,
+                    cancellation: .untracked
+                ) { destinationDriver in
+                    try await service.transfer(
+                        request: request,
+                        sourceDriver: sourceDriver,
+                        destinationDriver: destinationDriver
+                    )
+                }
             }
-            isPresented = false
+            reportFinished(
+                .succeeded(OperationSummary(rowsAffected: service.state.transferredRows)),
+                destination: destinationConnection,
+                since: startedAt)
+            presentResult(destination: destinationConnection)
         } catch is PluginImportCancellationError {
             errorMessage = nil
+            reportFinished(.cancelled, destination: destinationConnection, since: startedAt)
         } catch {
             errorMessage = error.localizedDescription
+            reportFinished(
+                .failed(reason: error.localizedDescription),
+                destination: destinationConnection,
+                since: startedAt)
         }
+    }
+
+    /// A transfer that finished used to close its sheet and say nothing, so a run that skipped rows
+    /// looked identical to a clean one. The alert closes the sheet once the user has read it.
+    @MainActor
+    private func presentResult(destination: DatabaseConnection) {
+        TransferResultAlert.presentTransferSuccess(
+            tableCount: selectedTables.count,
+            rowCount: service.state.transferredRows,
+            destinationName: destination.name,
+            warnings: service.state.warnings,
+            window: hostWindow
+        ) {
+            isPresented = false
+        }
+    }
+
+    @MainActor
+    private func reportFinished(
+        _ outcome: OperationOutcome,
+        destination: DatabaseConnection,
+        since startedAt: ContinuousClock.Instant
+    ) {
+        OperationCompletionReporter.shared.report(
+            OperationCompletion(
+                kind: .dataImport,
+                owner: .connection(destination.id),
+                connectionId: destination.id,
+                connectionName: destination.name,
+                databaseName: destinationScope?.database,
+                elapsed: startedAt.duration(to: .now),
+                outcome: outcome
+            )
+        )
     }
 }

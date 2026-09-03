@@ -2,15 +2,18 @@
 //  ExportProgressView.swift
 //  TablePro
 //
-//  Progress dialog shown during table export.
-//  Displays table name, row progress, progress bar, and stop button.
-//
 
 import SwiftUI
 
-/// Progress dialog shown during export operation
+/// What the export is working on and how far through it is.
+///
+/// A determinate bar is drawn only when there is a total to be a fraction of. A streaming query has
+/// no row count until it ends, so the bar used to sit at zero for the whole run beside a label
+/// reading "18,204/0 rows", which says the export is stuck rather than that its size is unknown.
 struct ExportProgressView: View {
-    let tableName: String
+    /// What is being exported, named by the caller. Deriving it from the table index reads
+    /// " (0/1)" on the streaming path, where no table is ever current.
+    let subject: String
     let tableIndex: Int
     let totalTables: Int
     let processedRows: Int
@@ -20,40 +23,53 @@ struct ExportProgressView: View {
 
     @State private var showStopConfirmation = false
 
+    private var hasRowTotal: Bool { totalRows > 0 }
+
+    private var title: String {
+        totalTables > 1
+            ? String(localized: "Export multiple tables")
+            : String(localized: "Export table")
+    }
+
+    private var subjectLabel: String {
+        guard totalTables > 1 else { return subject }
+        return String(
+            format: String(localized: "%1$@ (%2$lld of %3$lld)"),
+            subject, Int64(tableIndex), Int64(totalTables))
+    }
+
     var body: some View {
         VStack(spacing: 20) {
-            Text(totalTables > 1
-                ? String(localized: "Export multiple tables")
-                : String(localized: "Export table"))
+            Text(title)
                 .font(.title3.weight(.semibold))
 
             VStack(spacing: 8) {
                 HStack {
-                    if !statusMessage.isEmpty {
-                        Text(statusMessage)
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("\(tableName) (\(tableIndex)/\(totalTables))")
+                    if statusMessage.isEmpty {
+                        Text(subjectLabel)
                             .font(.body)
                             .lineLimit(1)
                             .truncationMode(.middle)
+                    } else {
+                        Text(statusMessage)
+                            .font(.body)
+                            .foregroundStyle(.secondary)
                     }
 
                     Spacer()
 
                     if statusMessage.isEmpty {
-                        Text("\(processedRows.formatted())/\(totalRows.formatted()) rows")
+                        Text(rowCountLabel)
                             .font(.system(.body, design: .monospaced))
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                if !statusMessage.isEmpty {
-                    ProgressView()
+                if statusMessage.isEmpty, hasRowTotal {
+                    ProgressView(value: progressValue)
                         .progressViewStyle(.linear)
                 } else {
-                    ProgressView(value: progressValue)
+                    ProgressView()
                         .progressViewStyle(.linear)
                 }
             }
@@ -61,10 +77,9 @@ struct ExportProgressView: View {
             Button("Stop") {
                 showStopConfirmation = true
             }
-            .frame(width: 80)
         }
         .padding(24)
-        .frame(width: 400)
+        .frame(minWidth: 400)
         .background(Color(nsColor: .windowBackgroundColor))
         .alert(String(localized: "Stop Export?"), isPresented: $showStopConfirmation) {
             Button(String(localized: "Continue"), role: .cancel) {}
@@ -74,9 +89,18 @@ struct ExportProgressView: View {
         }
     }
 
+    private var rowCountLabel: String {
+        guard hasRowTotal else {
+            return String(format: String(localized: "%@ rows"), processedRows.formatted())
+        }
+        return String(
+            format: String(localized: "%1$@/%2$@ rows"),
+            processedRows.formatted(), totalRows.formatted())
+    }
+
     private var progressValue: Double {
         guard totalRows > 0 else { return 0 }
-        return Double(processedRows) / Double(totalRows)
+        return min(1.0, Double(processedRows) / Double(totalRows))
     }
 }
 
@@ -84,7 +108,7 @@ struct ExportProgressView: View {
 
 #Preview {
     ExportProgressView(
-        tableName: "users",
+        subject: "users",
         tableIndex: 1,
         totalTables: 3,
         processedRows: 95_500,

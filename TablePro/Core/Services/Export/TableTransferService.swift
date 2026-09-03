@@ -69,6 +69,12 @@ final class TableTransferService {
 
     private var isCancelled = false
 
+    /// Cleared once, before the run's first cancellable step. The sheet reads both sides' columns
+    /// before `transfer()` is reached, and a Stop pressed during that read has to survive into it.
+    func prepareForRun() {
+        isCancelled = false
+    }
+
     func cancel() {
         isCancelled = true
     }
@@ -118,8 +124,10 @@ final class TableTransferService {
         let rowObjects = request.objects.filter { $0.kind.carriesRows }
         guard !rowObjects.isEmpty else { throw TableTransferError.noTablesSelected }
 
+        /// The flag is cleared on the way out, never on the way in. A Stop pressed while the sheet
+        /// was still reading both sides' columns arrives before this line, and clearing it here
+        /// threw that press away and started the transfer the user had just stopped.
         state = TableTransferState(isTransferring: true, totalTables: rowObjects.count)
-        isCancelled = false
         defer {
             state.isTransferring = false
             isCancelled = false

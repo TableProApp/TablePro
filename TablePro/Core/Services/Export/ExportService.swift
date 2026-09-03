@@ -376,8 +376,8 @@ final class ExportService {
                 }
             }
             if failedCount > 0 {
-                Self.logger.warning("\(failedCount) table(s) failed row count - progress indicator may be inaccurate")
-                state.statusMessage = String(format: String(localized: "Progress estimated (%d table(s) could not be counted)"), failedCount)
+                Self.logger.warning("\(failedCount) tables failed row count, the progress indicator may be inaccurate")
+                state.statusMessage = Self.estimatedProgressMessage(uncountedTables: failedCount)
             }
             return total
         }
@@ -418,9 +418,18 @@ final class ExportService {
         }
 
         if failedCount > 0 {
-            Self.logger.warning("\(failedCount) table(s) failed row count - progress indicator may be inaccurate")
-            state.statusMessage = String(format: String(localized: "Progress estimated (%d table(s) could not be counted)"), failedCount)
+            Self.logger.warning("\(failedCount) tables failed row count, the progress indicator may be inaccurate")
+            state.statusMessage = Self.estimatedProgressMessage(uncountedTables: failedCount)
         }
         return total
+    }
+
+    /// Counts pick between an explicit singular and plural key. Automatic grammar agreement is a
+    /// SwiftUI `Text` facility: `String(localized:)` returns the markup verbatim.
+    private static func estimatedProgressMessage(uncountedTables: Int) -> String {
+        let template = uncountedTables == 1
+            ? String(localized: "Progress estimated (%lld table could not be counted)")
+            : String(localized: "Progress estimated (%lld tables could not be counted)")
+        return String(format: template, Int64(uncountedTables))
     }
 }

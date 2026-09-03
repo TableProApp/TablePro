@@ -85,7 +85,7 @@ struct DatabaseSwitcherSheet: View {
     private var primaryButtonLabel: String {
         switch mode {
         case .backup: return String(localized: "Choose Destination…")
-        case .restore: return String(localized: "Restore…")
+        case .restore: return String(localized: "Restore")
         }
     }
 

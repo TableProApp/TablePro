@@ -54,6 +54,10 @@ internal struct ExportRowScopeEditor: View {
                 TextField("All rows", text: $rowLimitText)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 120)
+                    .onChange(of: rowLimitText) { _, entered in
+                        let digits = entered.filter(\.isWholeNumber)
+                        if digits != entered { rowLimitText = digits }
+                    }
             }
 
             if !availableColumns.isEmpty {
@@ -63,11 +67,10 @@ internal struct ExportRowScopeEditor: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Button(selectedColumns.isEmpty ? "Select None" : "Select All") {
-                            selectedColumns = selectedColumns.isEmpty ? [] : Set(availableColumns)
-                        }
-                        .buttonStyle(.link)
-                        .font(.caption)
+                        Button("Select All") { selectedColumns = [] }
+                            .buttonStyle(.borderless)
+                            .font(.caption)
+                            .disabled(selectedColumns.isEmpty)
                     }
                     ScrollView {
                         VStack(alignment: .leading, spacing: 2) {
@@ -130,6 +133,13 @@ internal struct ExportRowScopeEditor: View {
     private func commit() {
         let trimmedLimit = rowLimitText.trimmingCharacters(in: .whitespaces)
         let limit = Int(trimmedLimit).flatMap { $0 > 0 ? $0 : nil }
+        /// The column list is read on demand and a failed read comes back empty, which cannot be
+        /// told apart here from a table with no columns. Deriving the set from it either way threw
+        /// away a column subset the user had already saved.
+        guard !availableColumns.isEmpty else {
+            scope = PluginExportRowScope(filter: filter, rowLimit: limit, columns: scope.columns)
+            return
+        }
         scope = PluginExportRowScope(
             filter: filter,
             rowLimit: limit,

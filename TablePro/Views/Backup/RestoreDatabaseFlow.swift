@@ -9,6 +9,7 @@ struct RestoreDatabaseFlow: View {
 
     @State private var service = NativeDumpService(kind: .restore)
     @State private var phase: Phase = .pickDatabase
+    @State private var hostWindow: NSWindow?
 
     private enum Phase: Equatable {
         case pickDatabase
@@ -54,6 +55,9 @@ struct RestoreDatabaseFlow: View {
                     onShowInFinder: nil
                 )
             }
+        }
+        .background {
+            WindowAccessor { window in hostWindow = window }
         }
         .onChange(of: serviceState) { _, newState in
             handleServiceStateChange(newState)
@@ -114,7 +118,23 @@ struct RestoreDatabaseFlow: View {
         }
     }
 
+    /// A restore replays a dump into a database that already has contents, and the tools it drives
+    /// do not ask. Picking a database in the list used to be the last step before the first write.
     private func startRestore(database: String) async {
+        guard await AlertHelper.confirmDestructive(
+            title: String(
+                format: String(localized: "Restore into \u{201C}%@\u{201D}?"), database),
+            message: String(
+                localized: """
+                    The dump is replayed into this database. Objects it names are overwritten and \
+                    the change cannot be undone.
+                    """),
+            confirmButton: String(localized: "Restore"),
+            window: hostWindow
+        ) else {
+            phase = .pickDatabase
+            return
+        }
         phase = .running(database: database)
         do {
             try await service.start(connection: connection, database: database, fileURL: sourceURL)

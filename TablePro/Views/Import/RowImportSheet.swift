@@ -170,7 +170,7 @@ struct RowImportSheet: View {
             GridRow {
                 Text("Destination:")
                     .gridColumnAlignment(.trailing)
-                Picker("", selection: $destination) {
+                Picker(String(localized: "Destination"), selection: $destination) {
                     Text("Existing table").tag(Destination.existingTable)
                     Text("New table").tag(Destination.newTable)
                 }
@@ -182,7 +182,7 @@ struct RowImportSheet: View {
             if destination == .existingTable {
                 GridRow {
                     Text("Import into:")
-                    Picker("", selection: $selectedTargetTable) {
+                    Picker(String(localized: "Import into"), selection: $selectedTargetTable) {
                         Text("Select a table…").tag(String?.none)
                         ForEach(availableTables, id: \.id) { table in
                             Text(table.name).tag(String?.some(table.name))
@@ -301,8 +301,9 @@ struct RowImportSheet: View {
 
     private func mappingRow(_ row: FieldMapping) -> some View {
         HStack(spacing: 12) {
-            Toggle("", isOn: mappingBinding(row).include)
+            Toggle(row.field.name, isOn: mappingBinding(row).include)
                 .labelsHidden()
+                .accessibilityLabel(Text(String(format: String(localized: "Import %@"), row.field.name)))
                 .frame(width: 16)
             VStack(alignment: .leading, spacing: 1) {
                 Text(row.field.name).lineLimit(1)
@@ -311,7 +312,8 @@ struct RowImportSheet: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Picker("", selection: mappingBinding(row).targetColumn) {
+            Picker(String(format: String(localized: "Column for %@"), row.field.name),
+                   selection: mappingBinding(row).targetColumn) {
                 Text("Skip").tag(String?.none)
                 ForEach(targetColumns, id: \.self) { column in
                     Text(column).tag(String?.some(column))
@@ -326,9 +328,10 @@ struct RowImportSheet: View {
     private var newColumnsTable: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                Toggle("", isOn: allColumnsIncluded)
+                Toggle(String(localized: "Create all columns"), isOn: allColumnsIncluded)
                     .labelsHidden()
                     .help(String(localized: "Create all columns"))
+                    .accessibilityLabel(Text("Create all columns"))
                     .frame(width: 16)
                 Text("Column")
                     .font(.caption)
@@ -369,8 +372,9 @@ struct RowImportSheet: View {
 
     private func newColumnRow(_ row: NewColumn) -> some View {
         HStack(spacing: 10) {
-            Toggle("", isOn: columnBinding(row).include)
+            Toggle(row.name, isOn: columnBinding(row).include)
                 .labelsHidden()
+                .accessibilityLabel(Text(String(format: String(localized: "Create %@"), row.name)))
                 .frame(width: 16)
             TextField("name", text: columnBinding(row).name)
                 .textFieldStyle(.roundedBorder)
@@ -394,15 +398,19 @@ struct RowImportSheet: View {
             }
             .frame(width: 150)
             .disabled(!row.include)
-            Toggle("", isOn: columnBinding(row).isPrimaryKey)
+            Toggle(String(localized: "Primary key"), isOn: columnBinding(row).isPrimaryKey)
                 .labelsHidden()
+                .accessibilityLabel(Text(String(format: String(localized: "%@ is a primary key"), row.name)))
                 .frame(minWidth: 30)
                 .disabled(!row.include)
-            Toggle("", isOn: columnBinding(row).isNullable)
+            Toggle(String(localized: "Nullable"), isOn: columnBinding(row).isNullable)
                 .labelsHidden()
+                .accessibilityLabel(Text(String(format: String(localized: "%@ accepts null"), row.name)))
                 .frame(minWidth: 30)
                 .disabled(!row.include)
-            TextField("", text: columnBinding(row).defaultValue)
+            TextField(String(localized: "Default value"), text: columnBinding(row).defaultValue)
+                .labelsHidden()
+                .accessibilityLabel(Text(String(format: String(localized: "Default for %@"), row.name)))
                 .textFieldStyle(.roundedBorder)
                 .frame(maxWidth: .infinity)
                 .disabled(!row.include)

@@ -23,6 +23,10 @@ struct BackupDatabaseFlow: View {
     @State private var service = NativeDumpService(kind: .backup)
     @State private var phase: Phase = .pickDatabase
 
+    /// The window this flow is hosted in. `NSApp.keyWindow` at the moment a panel is presented is
+    /// whatever is frontmost, which during a sheet transition is not this flow's own window.
+    @State private var hostWindow: NSWindow?
+
     private enum Phase: Equatable {
         case pickDatabase
         case running(database: String, totalBytes: Int64?)
@@ -67,6 +71,9 @@ struct BackupDatabaseFlow: View {
                     onShowInFinder: nil
                 )
             }
+        }
+        .background {
+            WindowAccessor { window in hostWindow = window }
         }
         .onChange(of: serviceState) { _, newState in
             handleServiceStateChange(newState)
@@ -149,9 +156,8 @@ struct BackupDatabaseFlow: View {
         savePanel.title = String(localized: "Save Dump")
         savePanel.message = String(format: String(localized: "Choose where to save the dump of \u{201C}%@\u{201D}."), database)
 
-        let window = NSApp.keyWindow
         let response: NSApplication.ModalResponse
-        if let window {
+        if let window = AlertHelper.resolveWindow(hostWindow) {
             response = await savePanel.beginSheetModal(for: window)
         } else {
             response = savePanel.runModal()
@@ -197,16 +203,17 @@ struct BackupDatabaseFlow: View {
               ConnectionStorage.shared.loadPassword(for: connection.id) != nil else {
             return true
         }
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = String(localized: "This tool takes your password on its command line.")
-        alert.informativeText = String(localized: "SqlPackage has no other way to receive one, so while the dump runs the password is readable by other processes on this Mac. Windows or Entra authentication avoids it.")
-        alert.addButton(withTitle: String(localized: "Continue"))
-        alert.addButton(withTitle: String(localized: "Cancel"))
-        guard let window = NSApp.keyWindow else {
-            return alert.runModal() == .alertFirstButtonReturn
-        }
-        return await alert.beginSheetModal(for: window) == .alertFirstButtonReturn
+        return await AlertHelper.confirm(
+            title: String(localized: "This tool takes your password on its command line."),
+            message: String(
+                localized: """
+                    SqlPackage has no other way to receive one, so while the dump runs the password \
+                    is readable by other processes on this Mac. Windows or Entra authentication \
+                    avoids it.
+                    """),
+            confirmButton: String(localized: "Continue"),
+            window: hostWindow
+        )
     }
 
     /// The extension follows the engine's own archive format, so a MySQL dump is offered as `.sql`
