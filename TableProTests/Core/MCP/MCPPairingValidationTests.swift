@@ -138,12 +138,12 @@ struct MCPPairingValidationTests {
         )
         try await store.insert(code: "code-1", record: record)
 
-        await #expect(throws: MCPDataLayerError.self) {
+        await #expect(throws: DatabaseAccessError.self) {
             _ = try await store.consume(code: "code-1", verifier: String(repeating: "b", count: 43))
         }
         #expect(await store.contains(code: "code-1") == false)
 
-        await #expect(throws: MCPDataLayerError.self) {
+        await #expect(throws: DatabaseAccessError.self) {
             _ = try await store.consume(code: "code-1", verifier: verifier)
         }
     }

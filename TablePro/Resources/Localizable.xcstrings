@@ -15640,7 +15640,7 @@
         }
       }
     },
-    "AI Policy controls in-app AI agents. External Clients controls Raycast, Cursor, Claude Desktop, and other MCP clients. Effective scope is the minimum of the requesting token's scope and the External Clients level." : {
+    "AI Policy controls in-app AI agents. External Clients controls Raycast, Cursor, Claude Desktop, other MCP clients, and AppleScript. Effective scope is the minimum of the requesting token's scope and the External Clients level." : {
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -38096,7 +38096,7 @@
         }
       }
     },
-    "Controls how external clients (Raycast, Cursor, Claude Desktop) access this connection. Tokens cannot exceed this level even with full-access scope." : {
+    "Controls how external clients (Raycast, Cursor, Claude Desktop, AppleScript) access this connection. Tokens cannot exceed this level even with full-access scope." : {
       "localizations" : {
         "ko" : {
           "stringUnit" : {

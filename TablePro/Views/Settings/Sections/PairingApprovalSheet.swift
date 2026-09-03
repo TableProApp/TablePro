@@ -206,7 +206,7 @@ struct PairingApprovalSheet: View {
     private var actionBar: some View {
         DialogFooter {
             Button(String(localized: "Deny"), role: .cancel) {
-                onComplete(.failure(MCPDataLayerError.userCancelled))
+                onComplete(.failure(DatabaseAccessError.userCancelled))
             }
             .keyboardShortcut(.cancelAction)
 

@@ -1,6 +1,6 @@
 import Foundation
 
-public enum MCPDataLayerError: Error, Sendable {
+public enum DatabaseAccessError: Error, Sendable {
     case notConnected(UUID)
     case invalidArgument(String)
     case forbidden(String, context: [String: String]? = nil)
@@ -37,6 +37,6 @@ public enum MCPDataLayerError: Error, Sendable {
     }
 }
 
-extension MCPDataLayerError: LocalizedError {
+extension DatabaseAccessError: LocalizedError {
     public var errorDescription: String? { message }
 }

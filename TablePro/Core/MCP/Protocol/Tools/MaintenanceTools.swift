@@ -129,7 +129,7 @@ public struct RunMaintenanceTool: MCPToolImplementation {
                 table: table,
                 options: options
             )
-        } catch let error as MCPDataLayerError {
+        } catch let error as DatabaseAccessError {
             throw MCPToolExecutionError.from(error, secrets: meta.redactionSecrets)
         }
 

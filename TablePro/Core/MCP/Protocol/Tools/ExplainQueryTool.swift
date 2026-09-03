@@ -101,7 +101,7 @@ public struct ExplainQueryTool: MCPToolImplementation {
                 variantId: variant,
                 analyze: analyze
             )
-        } catch let error as MCPDataLayerError {
+        } catch let error as DatabaseAccessError {
             throw MCPToolExecutionError.from(error, secrets: meta.redactionSecrets)
         }
 

@@ -93,6 +93,7 @@ extension TrackedOperationKind {
         case .backup: return String(localized: "Backups")
         case .fetchAll: return String(localized: "Fetch all rows")
         case .mcpQuery: return String(localized: "AI and MCP queries")
+        case .scriptQuery: return String(localized: "AppleScript queries")
         }
     }
 }

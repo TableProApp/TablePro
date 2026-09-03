@@ -128,4 +128,22 @@ struct HistoryDateRangeTests {
         #expect(month < week)
         #expect(week < hour)
     }
+
+    /// A stored filter that was "Everything" before `script` existed must not start hiding it.
+    @Test("The previous all-sources selection widens to include the new source")
+    func everythingMigratesToIncludeScript() {
+        let before: Set<QueryHistorySource> = [
+            .editor, .explain, .tableBrowse, .rowEdit, .structureDDL, .dataImport, .mcp
+        ]
+        #expect(QueryHistorySource.migratingStoredSelection(before) == Set(QueryHistorySource.allCases))
+    }
+
+    @Test("A custom selection is left exactly as the user set it")
+    func customSelectionIsUntouched() {
+        let custom: Set<QueryHistorySource> = [.editor, .mcp]
+        #expect(QueryHistorySource.migratingStoredSelection(custom) == custom)
+
+        let userAuthored = QueryHistorySource.userAuthored
+        #expect(QueryHistorySource.migratingStoredSelection(userAuthored) == userAuthored)
+    }
 }

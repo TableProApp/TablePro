@@ -9,6 +9,9 @@ internal enum OperationCaller: Sendable, Equatable {
     case userInterface
     case mcpClient(label: String?)
     case aiAssistant(sessionId: String?)
+    /// An Apple event from another app. The name is the sending application's, taken from the pid
+    /// the kernel stamps on the event rather than from anything the script says about itself.
+    case appleScript(client: String?)
     case importPipeline
     case backgroundMaintenance
 }

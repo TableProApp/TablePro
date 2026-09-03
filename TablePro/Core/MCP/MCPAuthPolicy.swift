@@ -159,14 +159,14 @@ public actor MCPAuthPolicy {
             return
 
         case .denied(let reason):
-            throw MCPDataLayerError.forbidden(reason)
+            throw DatabaseAccessError.forbidden(reason)
 
         case .deniedInsufficientScope(let required, let reason):
             throw MCPProtocolError.insufficientScope(required: required, reason: reason)
 
         case .requiresUserApproval(let reason):
             guard let connectionId else {
-                throw MCPDataLayerError.forbidden(reason)
+                throw DatabaseAccessError.forbidden(reason)
             }
             let approved = try await runApprovalDedup(
                 principal: principal,
@@ -179,7 +179,7 @@ public actor MCPAuthPolicy {
                 approved: approved
             )
             guard approved else {
-                throw MCPDataLayerError.forbidden(
+                throw DatabaseAccessError.forbidden(
                     String(localized: "User denied MCP access to this connection")
                 )
             }
@@ -257,7 +257,7 @@ public actor MCPAuthPolicy {
             )
         )
         if case .denied(let reason) = decision {
-            throw MCPDataLayerError.forbidden(reason)
+            throw DatabaseAccessError.forbidden(reason)
         }
     }
 
@@ -342,12 +342,12 @@ public actor MCPAuthPolicy {
             }
             group.addTask {
                 try await Task.sleep(for: .seconds(30))
-                throw MCPDataLayerError.timeout(
+                throw DatabaseAccessError.timeout(
                     String(localized: "User approval timed out after 30 seconds")
                 )
             }
             guard let result = try await group.next() else {
-                throw MCPDataLayerError.dataSourceError("No result from approval prompt")
+                throw DatabaseAccessError.dataSourceError("No result from approval prompt")
             }
             return result
         }

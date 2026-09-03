@@ -83,7 +83,7 @@ internal extension MCPHttpRequestRouter {
         if let protocolError = error as? MCPProtocolError {
             return (protocolError.httpStatus, protocolError.message, protocolError.extraHeaders)
         }
-        guard let domainError = error as? MCPDataLayerError else {
+        guard let domainError = error as? DatabaseAccessError else {
             return (.internalServerError, "Internal error", [])
         }
         switch domainError {

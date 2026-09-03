@@ -24,7 +24,7 @@ internal final class PairingApprovalGate {
     }
 
     internal func cancel() {
-        deliver(.failure(MCPDataLayerError.userCancelled))
+        deliver(.failure(DatabaseAccessError.userCancelled))
     }
 
     internal func value() async throws -> PairingApproval {
@@ -35,7 +35,7 @@ internal final class PairingApprovalGate {
     }
 
     internal func result() throws -> PairingApproval {
-        guard let outcome else { throw MCPDataLayerError.userCancelled }
+        guard let outcome else { throw DatabaseAccessError.userCancelled }
         return try outcome.get()
     }
 }

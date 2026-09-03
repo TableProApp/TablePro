@@ -59,7 +59,7 @@ extension MCPConnectionBridge {
         }
 
         guard let count = outcome.count else {
-            throw MCPDataLayerError.dataSourceError(
+            throw DatabaseAccessError.dataSourceError(
                 String(localized: "This engine cannot count rows for that table.")
             )
         }
@@ -84,7 +84,7 @@ extension MCPConnectionBridge {
         let sql = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver -> String in
             let columnInfos = try await driver.fetchColumns(table: request.table, schema: schema)
             guard !columnInfos.isEmpty else {
-                throw MCPDataLayerError.notFound(
+                throw DatabaseAccessError.notFound(
                     String(localized: "That table has no readable columns.")
                 )
             }
@@ -274,7 +274,7 @@ extension MCPConnectionBridge {
         let known = Set(available)
         let unknown = requested.filter { !known.contains($0) }.sorted()
         guard unknown.isEmpty else {
-            throw MCPDataLayerError.invalidArgument(
+            throw DatabaseAccessError.invalidArgument(
                 String(
                     format: String(localized: "Unknown column(s): %@"),
                     unknown.joined(separator: ", ")
@@ -333,7 +333,7 @@ extension MCPConnectionBridge {
         let prefix: String
         if let variantId {
             guard let variant = variants.first(where: { $0.id == variantId }) else {
-                throw MCPDataLayerError.invalidArgument(
+                throw DatabaseAccessError.invalidArgument(
                     String(
                         format: String(localized: "Unknown explain variant '%@'."),
                         variantId
@@ -350,7 +350,7 @@ extension MCPConnectionBridge {
         }
         let trimmed = stripTrailingSemicolons(query)
         guard !trimmed.isEmpty else {
-            throw MCPDataLayerError.invalidArgument(String(localized: "The query is empty."))
+            throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
         }
         guard !QueryClassifier.isExplainStatement(trimmed) else { return trimmed }
         return "\(prefix) \(trimmed)"

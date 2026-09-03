@@ -38,33 +38,19 @@ internal enum ResultJsonSerializer {
         deletedDisplayIndices: Set<Int> = [],
         columns projection: VisibleColumnProjection
     ) -> Output {
-        let positions: [Int]
-        if selectedDisplayIndices.isEmpty {
-            positions = Array(0..<(displayIDs?.count ?? tableRows.rows.count))
-        } else {
-            positions = selectedDisplayIndices.sorted()
-        }
-
-        var skippedDeleted = 0
-        let rows: [[PluginCellValue]] = positions.compactMap { displayIndex in
-            guard let row = DisplayRowMapping.row(
-                forDisplay: displayIndex, displayIDs: displayIDs, in: tableRows
-            ) else { return nil }
-            guard !deletedDisplayIndices.contains(displayIndex) else {
-                skippedDeleted += 1
-                return nil
-            }
-            return projection.values(Array(row.values))
-        }
-
-        let converter = JsonRowConverter(
-            columns: projection.columns(tableRows.columns),
-            columnTypes: projection.columnTypes(tableRows.columnTypes)
+        let read = DisplayedResultReader.read(
+            tableRows: tableRows,
+            displayIDs: displayIDs,
+            selectedDisplayIndices: selectedDisplayIndices,
+            deletedDisplayIndices: deletedDisplayIndices,
+            columns: projection
         )
+
+        let converter = JsonRowConverter(columns: read.columns, columnTypes: read.columnTypes)
         return Output(
-            json: converter.generateJson(rows: rows),
-            rowCount: rows.count,
-            skippedDeletedCount: skippedDeleted
+            json: converter.generateJson(rows: read.rows),
+            rowCount: read.rows.count,
+            skippedDeletedCount: read.skippedDeletedCount
         )
     }
 }

@@ -9,7 +9,7 @@ extension MCPConnectionBridge {
         try await ensureConnected(connectionId)
         let driver = await MainActor.run { DatabaseManager.shared.principalDriver(for: connectionId) }
         guard let driver else {
-            throw MCPDataLayerError.dataSourceError(
+            throw DatabaseAccessError.dataSourceError(
                 String(localized: "This engine does not expose users and roles.")
             )
         }
@@ -56,7 +56,7 @@ extension MCPConnectionBridge {
         try await ensureConnected(connectionId)
         let driver = await MainActor.run { DatabaseManager.shared.principalDriver(for: connectionId) }
         guard let driver else {
-            throw MCPDataLayerError.dataSourceError(
+            throw DatabaseAccessError.dataSourceError(
                 String(localized: "This engine does not expose users and roles.")
             )
         }
@@ -83,18 +83,18 @@ extension MCPConnectionBridge {
     func serverDashboard(connectionId: UUID, panels: Set<String>) async throws -> JsonValue {
         let databaseType = try await ensureConnected(connectionId)
         guard ServerDashboardQueryProviderFactory.provider(for: databaseType) != nil else {
-            throw MCPDataLayerError.dataSourceError(
+            throw DatabaseAccessError.dataSourceError(
                 String(localized: "TablePro has no server dashboard for this engine.")
             )
         }
         let scope = await MainActor.run { DatabaseManager.shared.browseScope(for: connectionId) }
         guard let scope else {
-            throw MCPDataLayerError.notConnected(connectionId)
+            throw DatabaseAccessError.notConnected(connectionId)
         }
 
         return try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
             guard let provider = ServerDashboardQueryProviderFactory.provider(for: databaseType) else {
-                throw MCPDataLayerError.dataSourceError(
+                throw DatabaseAccessError.dataSourceError(
                     String(localized: "TablePro has no server dashboard for this engine.")
                 )
             }
@@ -150,7 +150,7 @@ extension MCPConnectionBridge {
     ) async throws -> String {
         let databaseType = try await ensureConnected(connectionId)
         guard let provider = ServerDashboardQueryProviderFactory.provider(for: databaseType) else {
-            throw MCPDataLayerError.dataSourceError(
+            throw DatabaseAccessError.dataSourceError(
                 String(localized: "TablePro has no server dashboard for this engine.")
             )
         }
@@ -158,7 +158,7 @@ extension MCPConnectionBridge {
             ? provider.cancelQuerySQL(processId: processId)
             : provider.killSessionSQL(processId: processId)
         guard let sql else {
-            throw MCPDataLayerError.dataSourceError(
+            throw DatabaseAccessError.dataSourceError(
                 String(localized: "This engine cannot stop a session from TablePro.")
             )
         }
@@ -188,7 +188,7 @@ extension MCPConnectionBridge {
                 .maintenanceStatements(operation: operation, table: table, options: options)
         }
         guard let statements, !statements.isEmpty else {
-            throw MCPDataLayerError.invalidArgument(
+            throw DatabaseAccessError.invalidArgument(
                 String(localized: "That maintenance operation is not available on this connection.")
             )
         }
@@ -199,7 +199,7 @@ extension MCPConnectionBridge {
         try await ensureConnected(connectionId)
         let scope = await MainActor.run { DatabaseManager.shared.browseScope(for: connectionId) }
         guard let scope else {
-            throw MCPDataLayerError.notConnected(connectionId)
+            throw DatabaseAccessError.notConnected(connectionId)
         }
         let contexts = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
             try await driver.fetchSessionContexts()
@@ -224,7 +224,7 @@ extension MCPConnectionBridge {
             DatabaseManager.shared.driver(for: scope.connectionId)?.supportsTransactions ?? false
         }
         guard supported else {
-            throw MCPDataLayerError.dataSourceError(
+            throw DatabaseAccessError.dataSourceError(
                 String(localized: "This engine does not support transactions.")
             )
         }
@@ -238,7 +238,7 @@ extension MCPConnectionBridge {
             case "commit": try await driver.commitTransaction()
             case "rollback": try await driver.rollbackTransaction()
             default:
-                throw MCPDataLayerError.invalidArgument(
+                throw DatabaseAccessError.invalidArgument(
                     String(localized: "Transaction action must be begin, commit, or rollback.")
                 )
             }
@@ -250,7 +250,7 @@ extension MCPConnectionBridge {
         try await ensureConnected(connectionId)
         let scope = await MainActor.run { DatabaseManager.shared.browseScope(for: connectionId) }
         guard let scope else {
-            throw MCPDataLayerError.notConnected(connectionId)
+            throw DatabaseAccessError.notConnected(connectionId)
         }
 
         let snapshot = try await DatabaseManager.shared.withMetadataDriver(

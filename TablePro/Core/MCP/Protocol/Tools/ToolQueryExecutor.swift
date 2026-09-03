@@ -105,7 +105,7 @@ enum ToolQueryExecutor {
     }
 
     static func translate(_ error: Error, secrets: [String]) -> Error {
-        if let dataError = error as? MCPDataLayerError {
+        if let dataError = error as? DatabaseAccessError {
             return MCPToolExecutionError.from(dataError, secrets: secrets)
         }
         if let toolError = error as? MCPToolExecutionError {

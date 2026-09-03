@@ -34,7 +34,8 @@ struct QueryInsightsPreferences: Codable, Equatable, Sendable {
         showsAllConnections = try container.decodeIfPresent(Bool.self, forKey: .showsAllConnections)
             ?? fallback.showsAllConnections
         let decodedSources = try container.decodeIfPresent(Set<QueryHistorySource>.self, forKey: .sources)
-        sources = (decodedSources?.isEmpty == false ? decodedSources : nil) ?? fallback.sources
+        let resolvedSources = (decodedSources?.isEmpty == false ? decodedSources : nil) ?? fallback.sources
+        sources = QueryHistorySource.migratingStoredSelection(resolvedSources)
         dateRange = try container.decodeIfPresent(HistoryDateRange.self, forKey: .dateRange) ?? fallback.dateRange
         slowestRanking = try container.decodeIfPresent(QueryInsightsSlowestRanking.self, forKey: .slowestRanking)
             ?? fallback.slowestRanking

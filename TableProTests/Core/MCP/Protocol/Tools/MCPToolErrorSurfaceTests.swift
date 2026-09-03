@@ -61,11 +61,11 @@ struct MCPToolErrorSurfaceTests {
 
     @Test("A data-layer failure is translated into a tool result")
     func dataLayerErrorsAreTranslated() async throws {
-        let notConnected = try await result(for: MCPDataLayerError.notConnected(UUID()))
+        let notConnected = try await result(for: DatabaseAccessError.notConnected(UUID()))
         #expect(notConnected.isError)
         #expect(MCPToolTestHarness.errorText(notConnected)?.hasPrefix("not_connected:") == true)
 
-        let forbidden = try await result(for: MCPDataLayerError.forbidden("Safe Mode is read-only"))
+        let forbidden = try await result(for: DatabaseAccessError.forbidden("Safe Mode is read-only"))
         #expect(forbidden.isError)
         #expect(MCPToolTestHarness.errorText(forbidden)?.hasPrefix("denied:") == true)
     }

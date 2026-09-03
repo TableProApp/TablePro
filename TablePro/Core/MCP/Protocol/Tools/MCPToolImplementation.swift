@@ -48,7 +48,7 @@ public extension MCPToolImplementation {
             throw error
         } catch let error as MCPToolExecutionError {
             return error.asToolResult
-        } catch let error as MCPDataLayerError {
+        } catch let error as DatabaseAccessError {
             return MCPToolExecutionError.from(error).asToolResult
         } catch is CancellationError {
             throw MCPProtocolError.requestCancelled()

@@ -129,8 +129,8 @@ struct MCPRequestRateLimitTests {
         )
         let subject = MCPRateLimitSubject.token(UUID())
 
-        await #expect(throws: MCPDataLayerError.self) {
-            let work: () async throws -> Void = { throw MCPDataLayerError.userCancelled }
+        await #expect(throws: DatabaseAccessError.self) {
+            let work: () async throws -> Void = { throw DatabaseAccessError.userCancelled }
             try await limiter.withRequestSlot(subject: subject, operation: work)
         }
         #expect(await limiter.inFlightCount(subject: subject) == 0)

@@ -11,20 +11,9 @@ struct ToolConnectionMetadata: Sendable {
 
     static func resolve(connectionId: UUID) async throws -> ToolConnectionMetadata {
         try await MainActor.run {
-            switch DatabaseManager.shared.connectionState(connectionId) {
-            case .live(_, let session):
-                return make(
-                    connectionId: connectionId,
-                    connection: session.connection,
-                    databaseName: session.resolvedBrowseDatabase
-                )
-            case .stored(let connection):
-                return make(
-                    connectionId: connectionId,
-                    connection: connection,
-                    databaseName: connection.database
-                )
-            case .unknown:
+            do {
+                return make(try ExternalConnectionPolicySnapshot.resolve(connectionId: connectionId))
+            } catch {
                 throw MCPToolExecutionError.notFound(
                     String(localized: "No saved connection has that id.")
                 )
@@ -33,23 +22,19 @@ struct ToolConnectionMetadata: Sendable {
     }
 
     @MainActor
-    private static func make(
-        connectionId: UUID,
-        connection: DatabaseConnection,
-        databaseName: String
-    ) -> ToolConnectionMetadata {
+    private static func make(_ snapshot: ExternalConnectionPolicySnapshot) -> ToolConnectionMetadata {
         ToolConnectionMetadata(
-            connectionId: connectionId,
-            databaseType: connection.type,
-            safeModeLevel: connection.safeModeLevel,
-            externalAccess: connection.externalAccess,
-            databaseName: databaseName,
-            connectionName: connection.name,
+            connectionId: snapshot.connectionId,
+            databaseType: snapshot.databaseType,
+            safeModeLevel: snapshot.safeModeLevel,
+            externalAccess: snapshot.externalAccess,
+            databaseName: snapshot.databaseName,
+            connectionName: snapshot.connectionName,
             redactionSecrets: [
-                connection.host,
-                connection.username,
-                connection.database,
-                String(connection.port)
+                snapshot.host,
+                snapshot.username,
+                snapshot.storedDatabaseName,
+                String(snapshot.port)
             ].filter { !$0.isEmpty }
         )
     }

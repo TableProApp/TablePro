@@ -87,7 +87,7 @@ public struct ToolsCallHandler: MCPMethodHandler {
                 connectionId: connectionId,
                 sql: Self.sqlArgument(in: arguments)
             )
-        } catch let error as MCPDataLayerError {
+        } catch let error as DatabaseAccessError {
             Self.audit(
                 context: context,
                 tool: toolName,

@@ -162,7 +162,7 @@ public struct StopServerSessionTool: MCPToolImplementation {
                 processId: processId,
                 cancelOnly: mode == "cancel"
             )
-        } catch let error as MCPDataLayerError {
+        } catch let error as DatabaseAccessError {
             throw MCPToolExecutionError.from(error, secrets: meta.redactionSecrets)
         }
 

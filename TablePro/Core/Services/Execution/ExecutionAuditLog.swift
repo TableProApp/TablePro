@@ -80,6 +80,7 @@ internal actor ExecutionAuditLog: ExecutionAuditLogging {
         case .userInterface: "userInterface"
         case .mcpClient: "mcpClient"
         case .aiAssistant: "aiAssistant"
+        case .appleScript: "appleScript"
         case .importPipeline: "importPipeline"
         case .backgroundMaintenance: "backgroundMaintenance"
         }

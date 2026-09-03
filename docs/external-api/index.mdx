@@ -1,14 +1,18 @@
 ---
 title: External API
-description: URL scheme, MCP server, pairing flow, terminal, and iOS Shortcuts for driving TablePro from other apps
+description: URL scheme, AppleScript, MCP server, pairing flow, terminal, and iOS Shortcuts for driving TablePro from other apps
 ---
 
-Deep links drive the GUI. MCP moves data. That one split decides which page you need, and pairing is
-the step in front of MCP that gets a client its token.
+Deep links drive the GUI. MCP moves data. AppleScript does both and hands the answer back to the
+script that asked. That split decides which page you need, and pairing is the step in front of MCP
+that gets a client its token.
 
-<CardGroup cols={3}>
+<CardGroup cols={2}>
   <Card title="URL scheme" icon="link" href="/external-api/url-scheme">
     `tablepro://` deep links open connections, tables, and queries in the GUI.
+  </Card>
+  <Card title="AppleScript" icon="scroll" href="/external-api/applescript">
+    A scripting dictionary for connections, tabs, results and queries.
   </Card>
   <Card title="MCP server" icon="plug" href="/external-api/mcp-tools">
     JSON-RPC tools, resources and prompts for AI clients, over stdio or local HTTP.
@@ -42,6 +46,10 @@ allowed only where the token's scope, the token's connection allowlist, and the 
 [Tokens](/external-api/tokens) has the full model. On top of that, an AI policy of **Never** refuses
 the connection outright, and [Safe Mode](/features/safe-mode) still holds destructive statements
 behind a confirmation.
+
+AppleScript has no token. macOS asks the sending app for Automation permission instead, and the
+connection's **External Clients** level and Safe Mode apply exactly as they do over MCP. The AI
+policy does not: it governs the assistant, not other apps.
 
 Each request lands in the activity log with the token behind it, and a statement is stored as a
 SHA-256 digest rather than as text. Open **Settings > Integrations** and click **View Activity** to

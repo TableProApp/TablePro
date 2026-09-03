@@ -42,7 +42,8 @@ struct HistoryPanelPreferences: Codable, Equatable, Sendable {
             ?? fallback.showsAllConnections
         pinnedConnectionId = try container.decodeIfPresent(UUID.self, forKey: .pinnedConnectionId)
         let decodedSources = try container.decodeIfPresent(Set<QueryHistorySource>.self, forKey: .sources)
-        sources = (decodedSources?.isEmpty == false ? decodedSources : nil) ?? fallback.sources
+        let resolvedSources = (decodedSources?.isEmpty == false ? decodedSources : nil) ?? fallback.sources
+        sources = QueryHistorySource.migratingStoredSelection(resolvedSources)
         dateRange = try container.decodeIfPresent(HistoryDateRange.self, forKey: .dateRange) ?? fallback.dateRange
         outcome = try container.decodeIfPresent(QueryHistoryOutcome.self, forKey: .outcome) ?? fallback.outcome
     }

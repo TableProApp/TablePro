@@ -41,7 +41,7 @@ enum MCPErrorRedactor {
         if let toolError = error as? MCPToolExecutionError {
             return redact(toolError.message, secrets: secrets)
         }
-        if let dataError = error as? MCPDataLayerError {
+        if let dataError = error as? DatabaseAccessError {
             return redact(dataError.message, secrets: secrets)
         }
         if let databaseError = error as? DatabaseError {

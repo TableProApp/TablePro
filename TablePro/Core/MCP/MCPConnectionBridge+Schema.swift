@@ -329,7 +329,7 @@ extension MCPConnectionBridge {
         try await ensureConnected(connectionId)
         let scope = await MainActor.run { DatabaseManager.shared.browseScope(for: connectionId) }
         guard let scope else {
-            throw MCPDataLayerError.notConnected(connectionId)
+            throw DatabaseAccessError.notConnected(connectionId)
         }
         let metadata = try await DatabaseManager.shared.withMetadataDriver(
             scope: scope,

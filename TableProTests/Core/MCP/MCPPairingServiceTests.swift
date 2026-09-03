@@ -64,7 +64,7 @@ struct MCPPairingServiceTests {
         _ = try await store.consume(code: "code-2", verifier: verifier)
 
         #expect(await store.contains(code: "code-2") == false)
-        await #expect(throws: MCPDataLayerError.self) {
+        await #expect(throws: DatabaseAccessError.self) {
             _ = try await store.consume(code: "code-2", verifier: verifier)
         }
     }
@@ -78,7 +78,7 @@ struct MCPPairingServiceTests {
         do {
             _ = try await store.consume(code: "code-3", verifier: makeVerifier("b"))
             Issue.record("Expected the mismatched verifier to be refused")
-        } catch let error as MCPDataLayerError {
+        } catch let error as DatabaseAccessError {
             guard case .forbidden = error else {
                 Issue.record("Expected forbidden, got \(error)")
                 return
@@ -86,7 +86,7 @@ struct MCPPairingServiceTests {
         }
 
         #expect(await store.contains(code: "code-3") == false)
-        await #expect(throws: MCPDataLayerError.self) {
+        await #expect(throws: DatabaseAccessError.self) {
             _ = try await store.consume(code: "code-3", verifier: verifier)
         }
     }
@@ -98,7 +98,7 @@ struct MCPPairingServiceTests {
         do {
             _ = try await store.consume(code: "missing", verifier: makeVerifier())
             Issue.record("Expected notFound")
-        } catch let error as MCPDataLayerError {
+        } catch let error as DatabaseAccessError {
             guard case .notFound = error else {
                 Issue.record("Expected notFound, got \(error)")
                 return
@@ -120,7 +120,7 @@ struct MCPPairingServiceTests {
         do {
             _ = try await store.consume(code: "code-4", verifier: verifier, now: Date.now)
             Issue.record("Expected expired")
-        } catch let error as MCPDataLayerError {
+        } catch let error as DatabaseAccessError {
             guard case .expired = error else {
                 Issue.record("Expected expired, got \(error)")
                 return
@@ -187,7 +187,7 @@ struct MCPPairingServiceTests {
         do {
             try await store.insert(code: "code-overflow", record: makeRecord(challenge: "challenge"))
             Issue.record("Expected the pending cap to refuse another code")
-        } catch let error as MCPDataLayerError {
+        } catch let error as DatabaseAccessError {
             guard case .forbidden = error else {
                 Issue.record("Expected forbidden, got \(error)")
                 return

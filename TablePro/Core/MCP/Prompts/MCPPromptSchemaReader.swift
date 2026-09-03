@@ -261,7 +261,7 @@ struct MCPPromptSchemaReader: Sendable {
     }
 
     private static func mapped(_ error: Error) -> Error {
-        guard let dataLayerError = error as? MCPDataLayerError else { return error }
+        guard let dataLayerError = error as? DatabaseAccessError else { return error }
         switch dataLayerError {
         case .invalidArgument(let detail):
             return MCPProtocolError.invalidParams(detail: detail)

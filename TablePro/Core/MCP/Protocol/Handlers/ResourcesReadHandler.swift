@@ -60,7 +60,7 @@ public struct ResourcesReadHandler: MCPMethodHandler {
                 )
             }
             return try await payload(for: route, principal: context.principal, services: services)
-        } catch let error as MCPDataLayerError {
+        } catch let error as DatabaseAccessError {
             throw mapDomainError(error)
         }
     }
@@ -115,7 +115,7 @@ public struct ResourcesReadHandler: MCPMethodHandler {
         ])
     }
 
-    private static func mapDomainError(_ error: MCPDataLayerError) -> MCPProtocolError {
+    private static func mapDomainError(_ error: DatabaseAccessError) -> MCPProtocolError {
         switch error {
         case .invalidArgument(let detail):
             return .invalidParams(detail: detail)

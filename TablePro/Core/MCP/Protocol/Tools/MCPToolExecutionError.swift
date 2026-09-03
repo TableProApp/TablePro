@@ -49,7 +49,7 @@ public struct MCPToolExecutionError: Error, Sendable, Equatable {
         MCPToolExecutionError(code: .queryFailed, message: message)
     }
 
-    public static func from(_ error: MCPDataLayerError, secrets: [String] = []) -> MCPToolExecutionError {
+    public static func from(_ error: DatabaseAccessError, secrets: [String] = []) -> MCPToolExecutionError {
         switch error {
         case .notConnected:
             return MCPToolExecutionError(

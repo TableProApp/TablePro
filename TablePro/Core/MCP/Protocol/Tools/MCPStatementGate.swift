@@ -12,38 +12,18 @@ enum MCPStatementGate {
         context: MCPRequestContext,
         services: MCPToolServices
     ) async throws -> QueryClassification {
-        let classification = QueryClassifier.classify(sql, databaseType: meta.databaseType)
-
-        guard !classification.reachesFilesystemOrExecutesCode else {
-            throw MCPToolExecutionError.denied(
-                String(
-                    localized: """
-                    Statements that read or write files, or that run server-side code, cannot be sent \
-                    through MCP. Run this one in TablePro instead.
-                    """
-                )
-            )
-        }
-
-        if !allowsMultiStatement,
-           QueryClassifier.isMultiStatement(sql, databaseType: meta.databaseType) {
-            throw MCPToolExecutionError.invalidArgument(
-                String(localized: "Send one statement at a time.")
-            )
-        }
-
-        if classification.tier != .safe, meta.externalAccess != .readWrite {
-            throw MCPToolExecutionError.denied(
-                String(localized: "This connection is read only for external clients.")
-            )
-        }
-
-        if classification.tier == .destructive, !allowsDestructive {
-            throw MCPToolExecutionError.denied(
-                String(
-                    localized: """
-                    This statement drops or truncates data. Use confirm_destructive_operation for it.
-                    """
+        let classification = try translating {
+            try ExternalStatementGate.classify(
+                ExternalStatementGate.Statement(
+                    sql: sql,
+                    connectionId: meta.connectionId,
+                    databaseType: meta.databaseType,
+                    externalAccess: meta.externalAccess,
+                    allowsDestructive: allowsDestructive,
+                    allowsMultiStatement: allowsMultiStatement,
+                    destructiveAlternative: String(
+                        localized: "Use confirm_destructive_operation for it."
+                    )
                 )
             )
         }
@@ -86,10 +66,27 @@ enum MCPStatementGate {
         sql: String,
         meta: ToolConnectionMetadata
     ) -> Bool {
-        if classification.tier == .destructive { return true }
-        if QueryClassifier.isDangerousQuery(sql, databaseType: meta.databaseType) { return true }
-        guard meta.safeModeLevel.requiresConfirmation else { return false }
-        return classification.tier != .safe || meta.safeModeLevel.appliesToAllQueries
+        ExternalStatementGate.requiresUserConsent(
+            classification: classification,
+            sql: sql,
+            databaseType: meta.databaseType,
+            safeModeLevel: meta.safeModeLevel
+        )
+    }
+
+    /// The shared gate speaks in its own vocabulary so it owes nothing to MCP. Its two refusals map
+    /// onto the two tool errors that already mean the same things.
+    private static func translating<T>(_ body: () throws -> T) throws -> T {
+        do {
+            return try body()
+        } catch let error as ExternalStatementGateError {
+            switch error {
+            case .denied(let detail):
+                throw MCPToolExecutionError.denied(detail)
+            case .invalidArgument(let detail):
+                throw MCPToolExecutionError.invalidArgument(detail)
+            }
+        }
     }
 
     private static func consentOutcome(

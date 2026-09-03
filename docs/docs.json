@@ -296,6 +296,7 @@
             "group": "Drive the app",
             "pages": [
               "external-api/url-scheme",
+              "external-api/applescript",
               "external-api/connection-import",
               "external-api/terminal",
               "external-api/raycast",

@@ -22,7 +22,7 @@ actor PairingExchangeStore {
     func insert(code: String, record: PairingExchangeRecord) throws {
         prune(now: Date.now)
         guard pending.count < Self.maxPendingCodes else {
-            throw MCPDataLayerError.forbidden(
+            throw DatabaseAccessError.forbidden(
                 String(localized: "Too many pending pairing codes. Try again later.")
             )
         }
@@ -32,19 +32,19 @@ actor PairingExchangeStore {
     func consume(code: String, verifier: String, now: Date = .now) throws -> PairingExchangeRecord {
         guard let entry = pending[code] else {
             prune(now: now)
-            throw MCPDataLayerError.notFound("pairing code")
+            throw DatabaseAccessError.notFound("pairing code")
         }
 
         guard entry.expiresAt > now else {
             pending.removeValue(forKey: code)
             prune(now: now)
-            throw MCPDataLayerError.expired("pairing code")
+            throw DatabaseAccessError.expired("pairing code")
         }
 
         let computed = Self.sha256Base64Url(of: verifier)
         guard Self.constantTimeEqual(entry.challenge, computed) else {
             pending.removeValue(forKey: code)
-            throw MCPDataLayerError.forbidden("challenge mismatch")
+            throw DatabaseAccessError.forbidden("challenge mismatch")
         }
 
         pending.removeValue(forKey: code)
@@ -133,20 +133,20 @@ final class MCPPairingService {
                 ip: MCPClientAddress.loopback.displayValue,
                 reason: error.reason
             )
-            throw MCPDataLayerError.invalidArgument(error.localizedMessage)
+            throw DatabaseAccessError.invalidArgument(error.localizedMessage)
         }
 
         await MCPServerManager.shared.lazyStart()
 
         guard let tokenStore = MCPServerManager.shared.tokenStore else {
             Self.logger.error("Token store unavailable after lazyStart")
-            throw MCPDataLayerError.dataSourceError("Token store unavailable")
+            throw DatabaseAccessError.dataSourceError("Token store unavailable")
         }
 
         let approval: PairingApproval
         do {
             approval = try await AlertHelper.runPairingApproval(request: request)
-        } catch let error as MCPDataLayerError where error.isUserCancelled {
+        } catch let error as DatabaseAccessError where error.isUserCancelled {
             Self.logger.info("Pairing denied for client '\(request.clientName, privacy: .public)'")
             if let redirect = buildErrorRedirect(
                 base: target.url,
@@ -186,7 +186,7 @@ final class MCPPairingService {
             Self.logger.error("Failed to build pairing redirect URL")
             await store.discard(code: code)
             await tokenStore.delete(tokenId: result.token.id)
-            throw MCPDataLayerError.invalidArgument("redirect URL")
+            throw DatabaseAccessError.invalidArgument("redirect URL")
         }
 
         Self.logger.info(
@@ -215,7 +215,7 @@ final class MCPPairingService {
         } catch let error as PairingValidationError {
             await store.discard(code: exchange.code)
             _ = await rateLimiter.recordAttempt(key: key, success: false)
-            throw MCPDataLayerError.invalidArgument(error.localizedMessage)
+            throw DatabaseAccessError.invalidArgument(error.localizedMessage)
         }
 
         do {
