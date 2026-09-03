@@ -40,6 +40,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every saved group lost when one unreadable entry stopped the whole list decoding. (#1311)
 - Two Macs re-uploading the whole group list to each other after a single group changed. (#1311)
 - Deleting a group that a broken sync left in a loop also deleting the group it pointed at. (#1311)
+- "Operator does not exist" from a Contains, Starts with, Ends with or Regex filter on a PostgreSQL uuid, enum, number, date or json column.
+- "Function lower does not exist" from an ignore-case filter on a PostgreSQL column that is not text.
+- Is empty filter on a PostgreSQL array column.
+- MongoDB collection named like a `db` method, such as `stats` or `version`, failing to open, save or export.
+- Row count missing after a MongoDB raw filter written in shell syntax.
 
 ## [0.71.0] - 2026-09-02
 

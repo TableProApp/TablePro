@@ -18,9 +18,8 @@ struct MongoDBStatementGenerator {
     let columns: [String]
     var columnKinds: [String: BsonValueKind] = [:]
 
-    /// Collection accessor using bracket notation for safety with dotted names
     private var collectionAccessor: String {
-        "db[\"\(escapeJsonString(collectionName))\"]"
+        MongoCollectionAccessor.expression(for: collectionName)
     }
 
     /// Index of "_id" field in the columns array (used as primary key equivalent)

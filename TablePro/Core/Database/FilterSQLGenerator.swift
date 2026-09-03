@@ -75,8 +75,8 @@ struct FilterSQLGenerator {
                 return "\(quotedColumn) IS NULL"
             case .value(let literal):
                 return generateComparisonCondition(
-                    column: quotedColumn, literal: literal, rawValue: filter.value,
-                    negated: false, folding: folding
+                    column: quotedColumn, columnType: columnType, literal: literal,
+                    rawValue: filter.value, negated: false, folding: folding
                 )
             }
 
@@ -86,14 +86,14 @@ struct FilterSQLGenerator {
                 return "\(quotedColumn) IS NOT NULL"
             case .value(let literal):
                 return generateComparisonCondition(
-                    column: quotedColumn, literal: literal, rawValue: filter.value,
-                    negated: true, folding: folding
+                    column: quotedColumn, columnType: columnType, literal: literal,
+                    rawValue: filter.value, negated: true, folding: folding
                 )
             }
 
         case .contains, .notContains, .startsWith, .endsWith:
             return generateLikeFamilyCondition(
-                column: quotedColumn, filter: filter, folding: folding
+                column: patternOperand(quotedColumn, columnType: columnType), filter: filter, folding: folding
             )
 
         case .greaterThan:
@@ -118,13 +118,13 @@ struct FilterSQLGenerator {
             guard ColumnTypeSQLQuoting.supportsEmptyStringComparison(columnType) else {
                 return "\(quotedColumn) IS NULL"
             }
-            return "(\(quotedColumn) IS NULL OR \(quotedColumn) = '')"
+            return "(\(quotedColumn) IS NULL OR \(patternOperand(quotedColumn, columnType: columnType)) = '')"
 
         case .isNotEmpty:
             guard ColumnTypeSQLQuoting.supportsEmptyStringComparison(columnType) else {
                 return "\(quotedColumn) IS NOT NULL"
             }
-            return "(\(quotedColumn) IS NOT NULL AND \(quotedColumn) != '')"
+            return "(\(quotedColumn) IS NOT NULL AND \(patternOperand(quotedColumn, columnType: columnType)) != '')"
 
         case .inList:
             return generateInCondition(
@@ -145,15 +145,27 @@ struct FilterSQLGenerator {
             return "\(quotedColumn) BETWEEN \(lower) AND \(upper)"
 
         case .regex:
+            let operand = patternOperand(quotedColumn, columnType: columnType)
             guard dialect.regexSyntax != .unsupported else {
                 let pattern = "'%\(escapeSQLQuote(filter.value))%'"
-                return "\(folding.foldingLikeOperand(quotedColumn)) \(folding.likeKeyword) "
+                return "\(folding.foldingLikeOperand(operand)) \(folding.likeKeyword) "
                     + folding.foldingLikeOperand(pattern)
             }
             return generateRegexCondition(
-                column: quotedColumn, pattern: filter.value, ignoresCase: !filter.isCaseSensitive
+                column: operand, pattern: filter.value, ignoresCase: !filter.isCaseSensitive
             )
         }
+    }
+
+    /// The operand `LIKE`, a regex and a case fold see. An engine that names a
+    /// `textCastTypeName` refuses those on anything but character data, so every other column
+    /// is cast first, including one whose type the grid has not resolved yet, because a cast
+    /// to text is valid on every column and a bare operand is not. A plain `=` keeps the
+    /// column's own type and its index.
+    private func patternOperand(_ column: String, columnType: ColumnType?) -> String {
+        guard let castType = dialect.textCastTypeName,
+              !ColumnTypeSQLQuoting.isCharacterType(columnType) else { return column }
+        return "CAST(\(column) AS \(castType))"
     }
 
     // MARK: - Case Sensitivity
@@ -170,9 +182,12 @@ struct FilterSQLGenerator {
     }
 
     /// Folding a non-text column is a type error on strict engines, so only fold
-    /// columns that are text or whose type the grid has not resolved.
+    /// columns that are text or whose type the grid has not resolved, unless the
+    /// dialect casts the operand to text first, which makes every column foldable.
     private func allowsCaseFolding(_ columnType: ColumnType?) -> Bool {
-        columnType == nil || ColumnTypeSQLQuoting.isKnownTextLike(columnType)
+        columnType == nil
+            || ColumnTypeSQLQuoting.isKnownTextLike(columnType)
+            || dialect.textCastTypeName != nil
     }
 
     private func foldedComparison(_ literal: String, folding: PluginSQLCaseFolding) -> String? {
@@ -195,18 +210,20 @@ struct FilterSQLGenerator {
         let parsed = parseListValues(values)
         guard !parsed.isEmpty else { return nil }
 
-        var nonNullValues: [String] = []
+        var literals: [String] = []
         var hasNull = false
         for item in parsed {
             switch renderLiteral(item, columnType: columnType) {
             case .null:
                 hasNull = true
             case .value(let literal):
-                nonNullValues.append(folding.foldingComparison(literal))
+                literals.append(literal)
             }
         }
 
-        let foldedColumn = folding.foldingComparison(column)
+        let foldsList = folding.foldsComparisonOperands && literals.allSatisfy { $0.hasPrefix("'") }
+        let nonNullValues = foldsList ? literals.map(folding.fold) : literals
+        let foldedColumn = foldsList ? folding.fold(patternOperand(column, columnType: columnType)) : column
         let inClause: String? = nonNullValues.isEmpty ? nil : {
             let list = nonNullValues.joined(separator: ", ")
             return negated
@@ -283,6 +300,7 @@ struct FilterSQLGenerator {
 
     private func generateComparisonCondition(
         column: String,
+        columnType: ColumnType?,
         literal: String,
         rawValue: String,
         negated: Bool,
@@ -292,14 +310,18 @@ struct FilterSQLGenerator {
             let pattern = PluginSQLRegexPattern.pattern(
                 matchingLiteral: rawValue, anchoring: .exact, ignoresCase: false
             )
-            let condition = generateRegexCondition(column: column, pattern: pattern, ignoresCase: true)
+            let condition = generateRegexCondition(
+                column: patternOperand(column, columnType: columnType), pattern: pattern, ignoresCase: true
+            )
             return negated ? "NOT (\(condition))" : condition
         }
         let operatorText = negated ? "!=" : "="
         guard let foldedValue = foldedComparison(literal, folding: folding) else {
             return "\(column) \(operatorText) \(literal)"
         }
-        let foldedColumn = folding.foldsComparisonOperands ? folding.fold(column) : column
+        let foldedColumn = folding.foldsComparisonOperands
+            ? folding.fold(patternOperand(column, columnType: columnType))
+            : column
         return "\(foldedColumn) \(operatorText) \(foldedValue)"
     }
 

@@ -14,6 +14,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var scriptRuntime: MongoScriptRuntime?
     private var currentDb: String
     private let columnKindLock = NSLock()
+    private let rawFilterNormalizer = MongoDBRawFilterNormalizer()
     private var columnKindsByCollection: [String: [String: BsonValueKind]] = [:]
     private var fieldPathKindsByCollection: [String: [String: BsonValueKind]] = [:]
 
@@ -432,7 +433,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw MongoDBPluginError.notConnected
         }
 
-        let filterJson = MongoDBQueryBuilder(columnKinds: filterKinds(for: table))
+        let filterJson = filterQueryBuilder(for: table)
             .buildFilterDocument(from: filters, logicMode: logicMode)
         let count = try await conn.countDocuments(
             database: currentDb, collection: table, filter: filterJson, background: background
@@ -494,9 +495,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     opts.append("\"name\": \"\(name)\"")
 
                     let optsJson = "{\(opts.joined(separator: ", "))}"
-                    let escapedTable = table.replacingOccurrences(of: "\\", with: "\\\\")
-                        .replacingOccurrences(of: "\"", with: "\\\"")
-                    sections.append("db[\"\(escapedTable)\"].createIndex(\(keyJson), \(optsJson))")
+                    let accessor = MongoCollectionAccessor.expression(for: table)
+                    sections.append("\(accessor).createIndex(\(keyJson), \(optsJson))")
                 }
             }
         } catch {
@@ -699,7 +699,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         offset: Int,
         columnKinds: [String: PluginColumnKind]
     ) -> String? {
-        let builder = MongoDBQueryBuilder(columnKinds: filterKinds(for: table))
+        let builder = filterQueryBuilder(for: table)
         return builder.buildFilteredQuery(
             collection: table, queryFilters: queryFilters, logicMode: logicMode,
             sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
@@ -921,6 +921,14 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return columnKindLock.withLock {
             (fieldPathKindsByCollection[key] ?? [:]).merging(columnKindsByCollection[key] ?? [:]) { _, top in top }
         }
+    }
+
+    private func filterQueryBuilder(for collection: String) -> MongoDBQueryBuilder {
+        let normalizer = rawFilterNormalizer
+        return MongoDBQueryBuilder(
+            columnKinds: filterKinds(for: collection),
+            rawFilterNormalizer: { normalizer.normalize($0) }
+        )
     }
 
     /// Two databases can hold a collection of the same name with different field types.
