@@ -70,6 +70,23 @@ struct SupervisedProcessRunnerTests {
         #expect(lines == ["first", "second"])
     }
 
+    /// The readability callback and the termination handler run on different threads, so a line
+    /// read just before the process exited used to race the stream's close and lose. One run
+    /// shows it rarely; a hundred in a row showed it on CI.
+    @Test("A line written right before exit is delivered every time")
+    func lastLineSurvivesExit() async throws {
+        for _ in 0..<100 {
+            let runner = try runner(script: "echo first >&2; echo second >&2; exit 0")
+
+            var lines: [String] = []
+            for await line in runner.stderrLines {
+                lines.append(line)
+            }
+
+            #expect(lines == ["first", "second"])
+        }
+    }
+
     @Test("A trailing line without a newline is still delivered")
     func deliversTrailingLine() async throws {
         let runner = try runner(script: "printf 'no trailing newline' >&2; exit 0")

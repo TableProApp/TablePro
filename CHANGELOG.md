@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Last line of a helper process's output lost when it exits right after writing it.
 - Silent fallback order when foreign keys between the exported tables form a cycle. (#2517)
 - Foreign keys declared twice in a SQL export on MySQL, SQL Server, DuckDB, Snowflake, CockroachDB and Redshift, and as an unsupported `ALTER TABLE` on SQLite, libSQL and Cloudflare D1. (#2517)
 - Foreign keys missing from Redshift's reconstructed `CREATE TABLE`.

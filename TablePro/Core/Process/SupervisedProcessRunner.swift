@@ -24,6 +24,13 @@ final class ProcessSupervisedRunner: SupervisedProcessRunner, @unchecked Sendabl
     private let stderrPipe = Pipe()
     private let stateLock = NSLock()
 
+    /// Held for the whole of a stderr read, from taking the bytes off the pipe to handing the
+    /// lines to the stream, and for the whole of `finish`. The readability callback runs on
+    /// Foundation's queue and the termination handler on another thread, so without it a chunk
+    /// read just before the process exited could still be on its way to the stream when
+    /// `finish` drained an already empty pipe and closed the stream under it.
+    private let ingestLock = NSLock()
+
     private var partialLine = ""
     private var wasRequested = false
     private var terminationResult: SubprocessTermination?
@@ -56,8 +63,11 @@ final class ProcessSupervisedRunner: SupervisedProcessRunner, @unchecked Sendabl
         }
 
         stderrPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            guard let self else { return }
+            self.ingestLock.lock()
+            defer { self.ingestLock.unlock() }
             let chunk = handle.availableData
-            guard !chunk.isEmpty, let self else { return }
+            guard !chunk.isEmpty else { return }
             self.ingestStderr(chunk)
         }
 
@@ -108,13 +118,17 @@ final class ProcessSupervisedRunner: SupervisedProcessRunner, @unchecked Sendabl
     }
 
     private func finish(exitCode: Int32) {
+        ingestLock.lock()
+        defer { ingestLock.unlock() }
         stdoutPipe.fileHandleForReading.readabilityHandler = nil
         stderrPipe.fileHandleForReading.readabilityHandler = nil
 
         /// The termination handler can run before the pipe delivers its last readability
         /// callback, and clearing the handler above cancels that callback outright. Whatever is
         /// still buffered is drained here, because a dropped final line is how a process that
-        /// announced itself ready right before exiting reads as one that never did.
+        /// announced itself ready right before exiting reads as one that never did. A callback
+        /// already dispatched waits on the lock and then finds the pipe at end of file, so it
+        /// cannot hand the stream a line after it has been closed.
         if let remaining = try? stderrPipe.fileHandleForReading.readToEnd(), !remaining.isEmpty {
             ingestStderr(remaining)
         }
