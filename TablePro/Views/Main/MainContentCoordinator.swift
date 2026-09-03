@@ -809,6 +809,13 @@ final class MainContentCoordinator {
         }
     }
 
+    func refreshUserDefinedTypes() async {
+        guard connection.type.supportsUserDefinedTypeBrowse else { return }
+        try? await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { [services, connectionId] driver in
+            _ = await services.schemaService.reloadUserDefinedTypes(connectionId: connectionId, driver: driver)
+        }
+    }
+
     /// Opens the viewer rather than fetching here. Inspecting an object should not put its source
     /// into an editable query buffer, where the next Cmd+Return runs it, and the viewer refetches
     /// on its own so a restored tab shows the current definition instead of a stale one.

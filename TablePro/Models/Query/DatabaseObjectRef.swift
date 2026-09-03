@@ -2,7 +2,7 @@
 //  DatabaseObjectRef.swift
 //  TablePro
 //
-//  Everything needed to find one routine or trigger again and read its source.
+//  Everything needed to find one routine, trigger or type again and read its source.
 //
 
 import Foundation
@@ -11,12 +11,14 @@ enum DatabaseObjectKind: String, Codable, Sendable, Hashable {
     case procedure
     case function
     case trigger
+    case userType
 
     var sidebarObjectKind: SidebarObjectKind {
         switch self {
         case .procedure: return .procedure
         case .function:  return .function
         case .trigger:   return .trigger
+        case .userType:  return .type
         }
     }
 
@@ -41,9 +43,13 @@ struct DatabaseObjectRef: Hashable, Codable, Sendable {
     /// The owning table. Triggers only.
     let table: String?
 
-    /// The driver's own key for this routine, opaque here. Routines only.
+    /// The driver's own key for this routine or type, opaque here.
     let identity: String?
     let argumentSignature: String?
+
+    /// Which kind of named type this is. Types only, and optional so a tab persisted before types
+    /// existed still decodes.
+    let typeKind: UserDefinedTypeInfo.Kind?
 
     /// What the sidebar's listing already learned about the object. Carried so the viewer does not
     /// re-list an entire schema to recover it, and short enough to persist with the tab.
@@ -57,6 +63,7 @@ struct DatabaseObjectRef: Hashable, Codable, Sendable {
         table: String? = nil,
         identity: String? = nil,
         argumentSignature: String? = nil,
+        typeKind: UserDefinedTypeInfo.Kind? = nil,
         attributes: [ObjectAttribute] = []
     ) {
         self.kind = kind
@@ -66,6 +73,7 @@ struct DatabaseObjectRef: Hashable, Codable, Sendable {
         self.table = table
         self.identity = identity
         self.argumentSignature = argumentSignature
+        self.typeKind = typeKind
         self.attributes = attributes
     }
 
@@ -92,6 +100,18 @@ struct DatabaseObjectRef: Hashable, Codable, Sendable {
         )
     }
 
+    init(userType: UserDefinedTypeInfo, database: String) {
+        self.init(
+            kind: .userType,
+            name: userType.name,
+            database: database,
+            schema: userType.schema,
+            identity: userType.identity,
+            typeKind: userType.kind,
+            attributes: userType.attributes
+        )
+    }
+
     /// What the tab is titled and what the viewer's header shows: enough to tell two overloads
     /// apart, and enough to tell two same-named triggers on different tables apart.
     var displayIdentity: String {
@@ -102,7 +122,21 @@ struct DatabaseObjectRef: Hashable, Codable, Sendable {
         case .trigger:
             guard let table, !table.isEmpty else { return qualifiedName }
             return String(format: String(localized: "%1$@ on %2$@"), qualifiedName, table)
+        case .userType:
+            return qualifiedName
         }
+    }
+
+    /// The kind's name for the header capsule. A type says which kind of type it is, because an
+    /// enum and a domain are edited differently and the reader should know which one opened.
+    var kindDisplayName: String {
+        guard kind == .userType else { return kind.displayName }
+        return (typeKind ?? .other).displayName
+    }
+
+    var kindIconName: String {
+        guard kind == .userType else { return kind.iconName }
+        return (typeKind ?? .other).iconName
     }
 
     var qualifiedName: String {
@@ -122,6 +156,7 @@ struct DatabaseObjectRef: Hashable, Codable, Sendable {
             table: table,
             identity: identity,
             argumentSignature: argumentSignature,
+            typeKind: typeKind,
             attributes: attributes
         )
     }
@@ -136,7 +171,7 @@ struct DatabaseObjectRef: Hashable, Codable, Sendable {
                 argumentSignature: argumentSignature,
                 identity: identity
             )
-        case .trigger:
+        case .trigger, .userType:
             return nil
         }
     }
@@ -144,6 +179,17 @@ struct DatabaseObjectRef: Hashable, Codable, Sendable {
     var trigger: TriggerInfo? {
         guard kind == .trigger else { return nil }
         return TriggerInfo(name: name, timing: "", event: "", statement: "", table: table, schema: schema)
+    }
+
+    var userType: UserDefinedTypeInfo? {
+        guard kind == .userType else { return nil }
+        return UserDefinedTypeInfo(
+            name: name,
+            kind: typeKind ?? .other,
+            schema: schema,
+            identity: identity,
+            attributes: attributes
+        )
     }
 
     /// A file name for Export, safe on every filesystem the save panel can reach.

@@ -214,17 +214,19 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
                 _ = service.tablesLoadState(connectionId: connectionId, database: metadata.name, schema: nil)
                 _ = service.routinesLoadState(connectionId: connectionId, database: metadata.name, schema: nil)
                 _ = service.triggersLoadState(connectionId: connectionId, database: metadata.name, schema: nil)
+                _ = service.typesLoadState(connectionId: connectionId, database: metadata.name, schema: nil)
             case .schema(let database, let schema):
                 _ = service.tablesLoadState(connectionId: connectionId, database: database, schema: schema)
                 _ = service.routinesLoadState(connectionId: connectionId, database: database, schema: schema)
                 _ = service.triggersLoadState(connectionId: connectionId, database: database, schema: schema)
+                _ = service.typesLoadState(connectionId: connectionId, database: database, schema: schema)
             case .hierarchicalSchemaSection(let schema):
                 _ = schemaService.schemaState(for: connectionId, schema: schema)
             case .table(let ref) where ref.table.type == .partitionedTable:
                 _ = service.partitionsLoadState(
                     connectionId: connectionId, database: ref.database ?? "", schema: ref.schema, table: ref.table.name
                 )
-            case .recentSection, .recentTable, .table, .routine, .trigger, .status,
+            case .recentSection, .recentTable, .table, .routine, .trigger, .userType, .status,
                  .objectKindSection, .containerObjectKindSection,
                  .redisKeysSection, .redisNode:
                 break
@@ -546,6 +548,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         switch kind {
         case .procedure, .function: Task { await mainCoordinator.refreshRoutines() }
         case .trigger: Task { await mainCoordinator.refreshTriggers() }
+        case .type: Task { await mainCoordinator.refreshUserDefinedTypes() }
         case .table, .view, .materializedView, .foreignTable: Task { await mainCoordinator.refreshTables() }
         }
     }
@@ -568,6 +571,12 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
                 )
             case .trigger:
                 await service.refreshTriggerObjects(
+                    connectionId: connectionId,
+                    database: group.database,
+                    schema: group.schema
+                )
+            case .type:
+                await service.refreshUserDefinedTypeObjects(
                     connectionId: connectionId,
                     database: group.database,
                     schema: group.schema

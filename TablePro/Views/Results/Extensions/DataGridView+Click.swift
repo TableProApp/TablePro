@@ -150,6 +150,7 @@ extension TableViewCoordinator {
 
         let currentValue = cellValue(at: row, column: columnIndex) ?? ""
         let dbType = databaseType ?? .mysql
+        let scope = userDefinedTypeScope
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
         dismissActiveCellEditorPopover()
@@ -157,15 +158,25 @@ extension TableViewCoordinator {
             relativeTo: cellRect,
             of: tableView
         ) { [weak self] dismiss in
-            TypePickerContentView(
-                databaseType: dbType,
-                currentValue: currentValue,
-                onCommit: { newValue in
-                    guard let self else { return }
-                    self.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
-                },
-                onDismiss: dismiss
-            )
+            UserDefinedTypeAwarePicker(scope: scope) { userDefinedTypes in
+                TypePickerContentView(
+                    databaseType: dbType,
+                    currentValue: currentValue,
+                    userDefinedTypes: userDefinedTypes,
+                    onCommit: { newValue in
+                        guard let self else { return }
+                        self.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
+                    },
+                    onDismiss: dismiss
+                )
+            }
         }
+    }
+
+    /// The table the structure grid edits, as the scope a type lookup runs against. Nil where the
+    /// grid has no connection behind it, which is every grid that is not a structure grid.
+    private var userDefinedTypeScope: DatabaseScope? {
+        guard let connectionId, tabType == .table || tabType == .createTable else { return nil }
+        return DatabaseScope(connectionId: connectionId, database: databaseName ?? "", schema: schemaName)
     }
 }

@@ -17,7 +17,7 @@ internal enum DatabaseTreeSelection {
         switch kind {
         case .status, .recentSection, .objectKindSection, .hierarchicalSchemaSection, .redisKeysSection:
             return false
-        case .database, .schema, .table, .routine, .trigger, .recentTable,
+        case .database, .schema, .table, .routine, .trigger, .userType, .recentTable,
              .containerObjectKindSection, .redisNode:
             return true
         }

@@ -10,6 +10,10 @@ import SwiftUI
 struct TypePickerContentView: View {
     let databaseType: DatabaseType
     let currentValue: String
+    /// The types the user created in the table's own database, already spelled the way a column
+    /// definition names them. Listed first, because a column that uses one is why the picker is
+    /// open more often than not once a schema has any.
+    var userDefinedTypes: [String] = []
     let onCommit: (String) -> Void
     let onDismiss: () -> Void
 
@@ -21,9 +25,11 @@ struct TypePickerContentView: View {
     private static let maxTotalHeight: CGFloat = 360
 
     private var allCategories: [(name: String, types: [String])] {
-        PluginManager.shared.columnTypesByCategory(for: databaseType)
+        let engineCategories = PluginManager.shared.columnTypesByCategory(for: databaseType)
             .sorted { $0.key < $1.key }
             .map { (name: $0.key, types: $0.value) }
+        guard !userDefinedTypes.isEmpty else { return engineCategories }
+        return [(name: String(localized: "User-Defined"), types: userDefinedTypes)] + engineCategories
     }
 
     private var visibleCategories: [(name: String, types: [String])] {

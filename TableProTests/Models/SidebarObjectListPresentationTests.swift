@@ -13,16 +13,14 @@ struct SidebarObjectListPresentationTests {
         _ state: SchemaState,
         hasActiveFilter: Bool = false,
         hasAnyMatch: Bool = true,
-        hasRoutines: Bool = false,
-        hasTriggers: Bool = false,
+        hasSideObjects: Bool = false,
         hasOutlastedGrace: Bool = true
     ) -> SidebarObjectListPresentation {
         SidebarObjectListPresentation.resolve(
             state: state,
             hasActiveFilter: hasActiveFilter,
             hasAnyMatch: hasAnyMatch,
-            hasRoutines: hasRoutines,
-            hasTriggers: hasTriggers,
+            hasSideObjects: hasSideObjects,
             hasOutlastedGrace: hasOutlastedGrace
         )
     }
@@ -42,11 +40,10 @@ struct SidebarObjectListPresentationTests {
         #expect(resolve(.loaded([])) == .empty)
     }
 
-    @Test("A database with only routines is not empty")
-    func routinesAloneAreNotEmpty() {
-        #expect(resolve(.loaded([]), hasRoutines: true) == .list)
-        /// A schema whose only objects are triggers is not an empty schema.
-        #expect(resolve(.loaded([]), hasTriggers: true) == .list)
+    @Test("A database whose only objects are routines, triggers or types is not empty")
+    func sideObjectsAloneAreNotEmpty() {
+        #expect(resolve(.loaded([]), hasSideObjects: true) == .list)
+        #expect(resolve(.loaded([]), hasSideObjects: false) == .empty)
     }
 
     @Test("Loaded objects render the list")

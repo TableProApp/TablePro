@@ -361,6 +361,8 @@ final class SidebarViewModel {
     @ObservationIgnored private var cachedFilteredRoutinesFingerprint: (count: Int, generation: Int, query: String)?
     @ObservationIgnored private var cachedFilteredTriggers: [TriggerInfo] = []
     @ObservationIgnored private var cachedFilteredTriggersFingerprint: (count: Int, generation: Int, query: String)?
+    @ObservationIgnored private var cachedFilteredUserTypes: [UserDefinedTypeInfo] = []
+    @ObservationIgnored private var cachedFilteredUserTypesFingerprint: (count: Int, generation: Int, query: String)?
 
     private var schemaGeneration: Int {
         SchemaService.shared.generationToken(for: connectionId)
@@ -427,6 +429,18 @@ final class SidebarViewModel {
             cachedFilteredTriggersFingerprint = fingerprint
         }
         return cachedFilteredTriggers
+    }
+
+    func filteredUserTypes(from types: [UserDefinedTypeInfo]) -> [UserDefinedTypeInfo] {
+        let query = filterQuery
+        let fingerprint = (count: types.count, generation: schemaGeneration, query: query)
+        if cachedFilteredUserTypesFingerprint?.count != fingerprint.count
+            || cachedFilteredUserTypesFingerprint?.generation != fingerprint.generation
+            || cachedFilteredUserTypesFingerprint?.query != fingerprint.query {
+            cachedFilteredUserTypes = DatabaseTreeFilter.filteredUserTypes(types, searchText: query)
+            cachedFilteredUserTypesFingerprint = fingerprint
+        }
+        return cachedFilteredUserTypes
     }
 
     func effectiveExpanded(kind: SidebarObjectKind, hasMatches: Bool) -> Bool {

@@ -52,7 +52,7 @@ extension DatabaseTreeOutlineCoordinator {
             return redisChildren(of: nil)
         case .redisNode(let redisNode):
             return redisChildren(of: redisNode)
-        case .recentTable, .routine, .trigger, .status:
+        case .recentTable, .routine, .trigger, .userType, .status:
             return []
         }
     }
@@ -165,6 +165,8 @@ extension DatabaseTreeOutlineCoordinator {
             return viewModel.filteredRoutines(of: kind, from: schemaService.routines(for: connectionId)).count
         case .trigger:
             return viewModel.filteredTriggers(from: schemaService.triggers(for: connectionId)).count
+        case .type:
+            return viewModel.filteredUserTypes(from: schemaService.userDefinedTypes(for: connectionId)).count
         }
     }
 
@@ -186,6 +188,12 @@ extension DatabaseTreeOutlineCoordinator {
                 .map { trigger in
                     let ref = DatabaseTreeTriggerRef(database: database, schema: trigger.schema, trigger: trigger)
                     return node(id: DatabaseTreeNode.triggerId(ref), kind: .trigger(ref))
+                }
+        case .type:
+            return viewModel.filteredUserTypes(from: schemaService.userDefinedTypes(for: connectionId))
+                .map { type in
+                    let ref = DatabaseTreeUserTypeRef(database: database, schema: type.schema, type: type)
+                    return node(id: DatabaseTreeNode.userTypeId(ref), kind: .userType(ref))
                 }
         }
     }
@@ -314,17 +322,31 @@ extension DatabaseTreeOutlineCoordinator {
             tables: service.tables(connectionId: connectionId, database: database, schema: schema),
             routines: service.routines(connectionId: connectionId, database: database, schema: schema),
             triggers: service.triggers(connectionId: connectionId, database: database, schema: schema),
+            userTypes: service.userDefinedTypes(connectionId: connectionId, database: database, schema: schema),
             searchText: searchText
         )
         objectBucketsCache[key] = buckets
         return buckets
     }
 
+    /// A fetch the engine never runs stays idle for good, and idle is not loaded: counting it
+    /// would hold every empty container on a spinner for a list that is never coming. So only the
+    /// kinds this engine declares take part in deciding between "empty" and "loading".
+    private func sideLoadStates(database: String, schema: String?) -> [MetadataLoadPhase] {
+        var states = [service.routinesLoadState(connectionId: connectionId, database: database, schema: schema).erased]
+        let declared = declaredObjectKinds
+        if declared.contains(.trigger) {
+            states.append(service.triggersLoadState(connectionId: connectionId, database: database, schema: schema).erased)
+        }
+        if declared.contains(.type) {
+            states.append(service.typesLoadState(connectionId: connectionId, database: database, schema: schema).erased)
+        }
+        return states
+    }
+
     private func loadedObjectNodes(database: String, schema: String?, parentId: String) -> [DatabaseTreeNode] {
         let buckets = objectBuckets(database: database, schema: schema)
-        let routinesState = service.routinesLoadState(connectionId: connectionId, database: database, schema: schema)
-        let triggersState = service.triggersLoadState(connectionId: connectionId, database: database, schema: schema)
-        let sideStates = [routinesState.erased, triggersState.erased]
+        let sideStates = sideLoadStates(database: database, schema: schema)
         let sideFailure = sideStates.compactMap(\.failureMessage).first
 
         guard !buckets.isEmpty else {
@@ -383,6 +405,14 @@ extension DatabaseTreeOutlineCoordinator {
                 )
                 return node(id: DatabaseTreeNode.triggerId(ref), kind: .trigger(ref))
             }
+        case .type:
+            guard !buckets.userTypes.isEmpty else {
+                return [statusNode(parentId: emptyId, status: .empty)]
+            }
+            return buckets.userTypes.map { type in
+                let ref = DatabaseTreeUserTypeRef(database: group.database, schema: group.schema, type: type)
+                return node(id: DatabaseTreeNode.userTypeId(ref), kind: .userType(ref))
+            }
         }
     }
 
@@ -423,6 +453,8 @@ extension DatabaseTreeOutlineCoordinator {
         let tables = service.tables(connectionId: connectionId, database: database, schema: schema)
         if tables.contains(where: { DatabaseTreeFilter.matches(searchText, $0.name) }) { return true }
         let routines = service.routines(connectionId: connectionId, database: database, schema: schema)
-        return routines.contains { DatabaseTreeFilter.matches(searchText, $0.name) }
+        if routines.contains(where: { DatabaseTreeFilter.matches(searchText, $0.name) }) { return true }
+        let types = service.userDefinedTypes(connectionId: connectionId, database: database, schema: schema)
+        return types.contains { DatabaseTreeFilter.matches(searchText, $0.name) }
     }
 }

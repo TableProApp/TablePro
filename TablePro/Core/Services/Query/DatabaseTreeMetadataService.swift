@@ -35,6 +35,7 @@ final class DatabaseTreeMetadataService {
     private(set) var tablesState: [ObjectsKey: MetadataLoadState<[TableInfo]>] = [:]
     private(set) var routinesState: [ObjectsKey: MetadataLoadState<[RoutineInfo]>] = [:]
     private(set) var triggersState: [ObjectsKey: MetadataLoadState<[TriggerInfo]>] = [:]
+    private(set) var typesState: [ObjectsKey: MetadataLoadState<[UserDefinedTypeInfo]>] = [:]
     private(set) var partitionsState: [PartitionsKey: MetadataLoadState<[TableInfo]>] = [:]
 
     @ObservationIgnored private let databaseDedup = OnceTask<UUID, [DatabaseMetadata]>()
@@ -42,6 +43,7 @@ final class DatabaseTreeMetadataService {
     @ObservationIgnored private let tablesDedup = OnceTask<ObjectsKey, [TableInfo]>()
     @ObservationIgnored private let routinesDedup = OnceTask<ObjectsKey, [RoutineInfo]>()
     @ObservationIgnored private let triggersDedup = OnceTask<ObjectsKey, [TriggerInfo]>()
+    @ObservationIgnored private let typesDedup = OnceTask<ObjectsKey, [UserDefinedTypeInfo]>()
     @ObservationIgnored private let partitionsDedup = OnceTask<PartitionsKey, [TableInfo]>()
 
     @ObservationIgnored nonisolated private static let logger = Logger(
@@ -90,6 +92,16 @@ final class DatabaseTreeMetadataService {
 
     func triggers(connectionId: UUID, database: String, schema: String?) -> [TriggerInfo] {
         triggersState[Self.objectsKey(connectionId: connectionId, database: database, schema: schema)]?.value ?? []
+    }
+
+    func typesLoadState(
+        connectionId: UUID, database: String, schema: String?
+    ) -> MetadataLoadState<[UserDefinedTypeInfo]> {
+        typesState[Self.objectsKey(connectionId: connectionId, database: database, schema: schema)] ?? .idle
+    }
+
+    func userDefinedTypes(connectionId: UUID, database: String, schema: String?) -> [UserDefinedTypeInfo] {
+        typesState[Self.objectsKey(connectionId: connectionId, database: database, schema: schema)]?.value ?? []
     }
 
     func partitionsLoadState(
@@ -254,6 +266,40 @@ final class DatabaseTreeMetadataService {
         }
     }
 
+    func loadUserDefinedTypes(connectionId: UUID, database: String, schema: String?) async {
+        guard isConnected(connectionId), browsesUserDefinedTypes(connectionId) else { return }
+        let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
+        switch typesState[key] ?? .idle {
+        case .loaded, .loading: return
+        case .idle, .failed: break
+        }
+        typesState[key] = .loading
+        do {
+            typesState[key] = .loaded(try await fetchTypeList(key))
+        } catch is CancellationError {
+            if case .loading = typesState[key] { typesState[key] = .idle }
+        } catch {
+            typesState[key] = .failed(error.localizedDescription)
+            Self.logger.warning(
+                "types load failed db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
+        }
+    }
+
+    private func fetchTypeList(_ key: ObjectsKey) async throws -> [UserDefinedTypeInfo] {
+        let schema = key.schema
+        return try await typesDedup.execute(key: key) { [self] in
+            try await withDriver(
+                connectionId: key.connectionId,
+                database: key.database,
+                schema: schema,
+                workload: .bulk
+            ) { driver in
+                try await driver.fetchUserDefinedTypes(schema: schema)
+            }
+        }
+    }
+
     func loadPartitions(connectionId: UUID, database: String, schema: String?, table: String) async {
         guard isConnected(connectionId) else { return }
         let key = Self.partitionsKey(connectionId: connectionId, database: database, schema: schema, table: table)
@@ -329,12 +375,15 @@ final class DatabaseTreeMetadataService {
         async let tables: Void = refreshTableObjects(connectionId: connectionId, database: database, schema: schema)
         async let routines: Void = refreshRoutineObjects(connectionId: connectionId, database: database, schema: schema)
         async let triggers: Void = refreshTriggerObjects(connectionId: connectionId, database: database, schema: schema)
-        _ = await (tables, routines, triggers)
+        async let types: Void = refreshUserDefinedTypeObjects(
+            connectionId: connectionId, database: database, schema: schema
+        )
+        _ = await (tables, routines, triggers, types)
     }
 
-    /// Tables, routines and triggers are three separate fetches behind three separate states, so a
-    /// row that stands for one kind refreshes only the fetch its kind comes from. Partitions ride
-    /// with the tables, because a partition row is drawn as a child of the table it belongs to.
+    /// Tables, routines, triggers and types are four separate fetches behind four separate states,
+    /// so a row that stands for one kind refreshes only the fetch its kind comes from. Partitions
+    /// ride with the tables, because a partition row is drawn as a child of the table it belongs to.
     func refreshTableObjects(connectionId: UUID, database: String, schema: String?) async {
         let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
         await tablesDedup.cancel(key: key)
@@ -353,6 +402,29 @@ final class DatabaseTreeMetadataService {
         let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
         await triggersDedup.cancel(key: key)
         await refreshTriggers(key)
+    }
+
+    func refreshUserDefinedTypeObjects(connectionId: UUID, database: String, schema: String?) async {
+        let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
+        await typesDedup.cancel(key: key)
+        await refreshUserDefinedTypes(key)
+    }
+
+    private func refreshUserDefinedTypes(_ key: ObjectsKey) async {
+        guard case .loaded = typesState[key] ?? .idle else {
+            typesState.removeValue(forKey: key)
+            await loadUserDefinedTypes(connectionId: key.connectionId, database: key.database, schema: key.schema)
+            return
+        }
+        guard isConnected(key.connectionId) else { return }
+        do {
+            typesState[key] = .loaded(try await fetchTypeList(key))
+        } catch is CancellationError {
+        } catch {
+            Self.logger.warning(
+                "types refresh failed db=\(key.database, privacy: .public) schema=\(key.schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
+        }
     }
 
     private func refreshTables(_ key: ObjectsKey) async {
@@ -494,6 +566,7 @@ final class DatabaseTreeMetadataService {
             tableKeys: tablesState.keys,
             routineKeys: routinesState.keys,
             triggerKeys: triggersState.keys,
+            typeKeys: typesState.keys,
             connectionId: connectionId
         )
         await databaseDedup.cancel(key: connectionId)
@@ -502,6 +575,7 @@ final class DatabaseTreeMetadataService {
             await tablesDedup.cancel(key: key)
             await routinesDedup.cancel(key: key)
             await triggersDedup.cancel(key: key)
+            await typesDedup.cancel(key: key)
         }
         for key in connectionPartitionKeys(connectionId) {
             await partitionsDedup.cancel(key: key)
@@ -511,6 +585,7 @@ final class DatabaseTreeMetadataService {
         tablesState = tablesState.filter { $0.key.connectionId != connectionId }
         routinesState = routinesState.filter { $0.key.connectionId != connectionId }
         triggersState = triggersState.filter { $0.key.connectionId != connectionId }
+        typesState = typesState.filter { $0.key.connectionId != connectionId }
         partitionsState = partitionsState.filter { $0.key.connectionId != connectionId }
     }
 
@@ -522,6 +597,7 @@ final class DatabaseTreeMetadataService {
             tableKeys: tablesState.keys,
             routineKeys: routinesState.keys,
             triggerKeys: triggersState.keys,
+            typeKeys: typesState.keys,
             connectionId: connectionId
         )
 
@@ -535,6 +611,7 @@ final class DatabaseTreeMetadataService {
             if isPending(tablesState[key]) { await tablesDedup.cancel(key: key) }
             if isPending(routinesState[key]) { await routinesDedup.cancel(key: key) }
             if isPending(triggersState[key]) { await triggersDedup.cancel(key: key) }
+            if isPending(typesState[key]) { await typesDedup.cancel(key: key) }
         }
         let partitionKeys = connectionPartitionKeys(connectionId)
         for key in partitionKeys where isPending(partitionsState[key]) {
@@ -547,6 +624,7 @@ final class DatabaseTreeMetadataService {
             if isPending(tablesState[key]) { tablesState[key] = .idle }
             if isPending(routinesState[key]) { routinesState[key] = .idle }
             if isPending(triggersState[key]) { triggersState[key] = .idle }
+            if isPending(typesState[key]) { typesState[key] = .idle }
         }
         for key in partitionKeys where isPending(partitionsState[key]) { partitionsState[key] = .idle }
     }
@@ -568,6 +646,11 @@ final class DatabaseTreeMetadataService {
     private func browsesTriggers(_ connectionId: UUID) -> Bool {
         DatabaseManager.shared.session(for: connectionId)?
             .connection.type.supportsDatabaseTriggerBrowse ?? false
+    }
+
+    private func browsesUserDefinedTypes(_ connectionId: UUID) -> Bool {
+        DatabaseManager.shared.session(for: connectionId)?
+            .connection.type.supportsUserDefinedTypeBrowse ?? false
     }
 
     /// Always routes through a scoped driver. Reusing the session driver when the target
@@ -618,8 +701,10 @@ final class DatabaseTreeMetadataService {
         tableKeys: some Sequence<ObjectsKey>,
         routineKeys: some Sequence<ObjectsKey>,
         triggerKeys: some Sequence<ObjectsKey>,
+        typeKeys: some Sequence<ObjectsKey> = [],
         connectionId: UUID
     ) -> [ObjectsKey] {
-        Array(Set(tableKeys).union(routineKeys).union(triggerKeys)).filter { $0.connectionId == connectionId }
+        Array(Set(tableKeys).union(routineKeys).union(triggerKeys).union(typeKeys))
+            .filter { $0.connectionId == connectionId }
     }
 }

@@ -22,12 +22,13 @@ internal enum SidebarObjectListPresentation: Equatable {
     case empty
     case list
 
+    /// `hasSideObjects` is whether any non-table kind returned rows: routines, triggers, types.
+    /// A database with no tables but a stored procedure is a list, not an empty state.
     internal static func resolve(
         state: SchemaState,
         hasActiveFilter: Bool,
         hasAnyMatch: Bool,
-        hasRoutines: Bool,
-        hasTriggers: Bool,
+        hasSideObjects: Bool,
         hasOutlastedGrace: Bool = true
     ) -> SidebarObjectListPresentation {
         switch state {
@@ -39,7 +40,7 @@ internal enum SidebarObjectListPresentation: Equatable {
             if hasActiveFilter, !hasAnyMatch {
                 return .noMatch
             }
-            if tables.isEmpty, !hasRoutines, !hasTriggers {
+            if tables.isEmpty, !hasSideObjects {
                 return .empty
             }
             return .list

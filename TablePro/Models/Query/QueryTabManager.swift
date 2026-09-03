@@ -418,6 +418,7 @@ final class QueryTabManager {
         case .procedure: format = String(localized: "Procedure: %@")
         case .function:  format = String(localized: "Function: %@")
         case .trigger:   format = String(localized: "Trigger: %@")
+        case .userType:  format = String(localized: "Type: %@")
         }
         return String(format: format, objectRef.displayIdentity)
     }

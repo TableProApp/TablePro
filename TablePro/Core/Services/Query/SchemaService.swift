@@ -15,6 +15,7 @@ final class SchemaService {
     private(set) var states: [UUID: SchemaState] = [:]
     private(set) var routines: [UUID: [RoutineInfo]] = [:]
     private(set) var triggers: [UUID: [TriggerInfo]] = [:]
+    private(set) var userDefinedTypes: [UUID: [UserDefinedTypeInfo]] = [:]
     private(set) var schemasInOrder: [UUID: [String]] = [:]
     private(set) var perSchemaStates: [UUID: [String: SchemaState]] = [:]
     private(set) var generations: [UUID: Int] = [:]
@@ -32,6 +33,7 @@ final class SchemaService {
     @ObservationIgnored private let loadDedup = OnceTask<LoadKey, [TableInfo]>()
     @ObservationIgnored private let routinesDedup = OnceTask<UUID, [RoutineInfo]>()
     @ObservationIgnored private let triggersDedup = OnceTask<UUID, [TriggerInfo]>()
+    @ObservationIgnored private let typesDedup = OnceTask<UUID, [UserDefinedTypeInfo]>()
     @ObservationIgnored private let schemasDedup = OnceTask<UUID, [String]>()
     @ObservationIgnored private let perSchemaDedup = OnceTask<SchemaKey, [TableInfo]>()
 
@@ -132,6 +134,10 @@ final class SchemaService {
 
     func triggers(for connectionId: UUID) -> [TriggerInfo] {
         triggers[connectionId] ?? []
+    }
+
+    func userDefinedTypes(for connectionId: UUID) -> [UserDefinedTypeInfo] {
+        userDefinedTypes[connectionId] ?? []
     }
 
     func schemas(for connectionId: UUID) -> [String] {
@@ -276,6 +282,25 @@ final class SchemaService {
         }
     }
 
+    @discardableResult
+    func reloadUserDefinedTypes(connectionId: UUID, driver: DatabaseDriver) async -> Bool {
+        do {
+            let loaded = try await typesDedup.execute(key: connectionId) {
+                try await driver.fetchUserDefinedTypes(schema: nil)
+            }
+            userDefinedTypes[connectionId] = loaded
+            bumpGeneration(connectionId)
+            return true
+        } catch is CancellationError {
+            return false
+        } catch {
+            Self.logger.warning(
+                "[schema] types reload failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
+            return false
+        }
+    }
+
     /// Cancels in-flight fetches while keeping cached content on screen, so a
     /// refresh never blanks a sidebar that already has valid data.
     func prepareForReload(connectionId: UUID) async {
@@ -286,6 +311,7 @@ final class SchemaService {
         await loadDedup.cancel { $0.connectionId == connectionId }
         await routinesDedup.cancel(key: connectionId)
         await triggersDedup.cancel(key: connectionId)
+        await typesDedup.cancel(key: connectionId)
         await schemasDedup.cancel(key: connectionId)
         await perSchemaDedup.cancel { $0.connectionId == connectionId }
     }
@@ -297,6 +323,7 @@ final class SchemaService {
         states.removeValue(forKey: connectionId)
         routines.removeValue(forKey: connectionId)
         triggers.removeValue(forKey: connectionId)
+        userDefinedTypes.removeValue(forKey: connectionId)
         schemasInOrder.removeValue(forKey: connectionId)
         perSchemaStates.removeValue(forKey: connectionId)
         generations.removeValue(forKey: connectionId)
@@ -358,6 +385,7 @@ final class SchemaService {
                 connectionId: connectionId,
                 driver: driver,
                 browsesTriggers: connection.type.supportsDatabaseTriggerBrowse,
+                browsesTypes: connection.type.supportsUserDefinedTypeBrowse,
                 generation: generation,
                 scope: scope
             )
@@ -382,6 +410,15 @@ final class SchemaService {
                 label: "triggers",
                 dedup: triggersDedup,
                 fetch: { try await driver.fetchAllTriggers(schema: nil) }
+            )
+            : nil
+        let browsesTypes = connection.type.supportsUserDefinedTypeBrowse
+        async let typesTask: [UserDefinedTypeInfo]? = browsesTypes
+            ? Self.fetchObjectsSafely(
+                connectionId: connectionId,
+                label: "types",
+                dedup: typesDedup,
+                fetch: { try await driver.fetchUserDefinedTypes(schema: nil) }
             )
             : nil
         async let schemasTask: [String]? = supportsSchemas
@@ -419,6 +456,16 @@ final class SchemaService {
                 triggers.removeValue(forKey: connectionId)
             }
 
+            let loadedTypes = await typesTask
+            guard isCurrentLoadGeneration(generation, for: connectionId, phase: "types-loaded") else {
+                return
+            }
+            if let loadedTypes {
+                userDefinedTypes[connectionId] = loadedTypes
+            } else if scopeChanged {
+                userDefinedTypes.removeValue(forKey: connectionId)
+            }
+
             if let loadedSchemas = await schemasTask {
                 guard isCurrentLoadGeneration(generation, for: connectionId, phase: "schemas-loaded") else {
                     return
@@ -449,6 +496,7 @@ final class SchemaService {
         connectionId: UUID,
         driver: DatabaseDriver,
         browsesTriggers: Bool,
+        browsesTypes: Bool,
         generation: Int,
         scope: DatabaseScope?
     ) async {
@@ -467,9 +515,18 @@ final class SchemaService {
                 fetch: { try await driver.fetchAllTriggers(schema: nil) }
             )
             : nil
+        async let typesTask: [UserDefinedTypeInfo]? = browsesTypes
+            ? Self.fetchObjectsSafely(
+                connectionId: connectionId,
+                label: "types",
+                dedup: typesDedup,
+                fetch: { try await driver.fetchUserDefinedTypes(schema: nil) }
+            )
+            : nil
 
         let loadedRoutines = await routinesTask
         let loadedTriggers = await triggersTask
+        let loadedTypes = await typesTask
 
         let loadedSchemas: [String]
         do {
@@ -502,6 +559,11 @@ final class SchemaService {
             triggers[connectionId] = loadedTriggers
         } else if scopeChanged {
             triggers.removeValue(forKey: connectionId)
+        }
+        if let loadedTypes {
+            userDefinedTypes[connectionId] = loadedTypes
+        } else if scopeChanged {
+            userDefinedTypes.removeValue(forKey: connectionId)
         }
         states[connectionId] = .loaded([])
         if let scope {

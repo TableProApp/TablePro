@@ -11,7 +11,7 @@ import Testing
 struct SidebarObjectKindTests {
     private let everyKind: [SidebarObjectKind: Int] = [
         .table: 2, .view: 1, .materializedView: 1, .foreignTable: 1,
-        .procedure: 1, .function: 1, .trigger: 1,
+        .procedure: 1, .function: 1, .trigger: 1, .type: 1,
     ]
 
     /// The bug: a driver can return materialized views, foreign tables, procedures or functions that
@@ -25,7 +25,7 @@ struct SidebarObjectKindTests {
                 includingEmptyTables: includingEmptyTables
             )
             #expect(
-                visible == [.table, .view, .materializedView, .foreignTable, .procedure, .function, .trigger]
+                visible == [.table, .view, .materializedView, .foreignTable, .procedure, .function, .trigger, .type]
             )
         }
     }
@@ -128,6 +128,7 @@ struct SidebarObjectKindTests {
     func categoriesPartitionTheKinds() {
         #expect(SidebarObjectKind.allCases.filter { $0.category == .routine } == [.procedure, .function])
         #expect(SidebarObjectKind.allCases.filter { $0.category == .trigger } == [.trigger])
+        #expect(SidebarObjectKind.allCases.filter { $0.category == .type } == [.type])
         #expect(
             SidebarObjectKind.allCases.filter { $0.category == .table }
                 == [.table, .view, .materializedView, .foreignTable]

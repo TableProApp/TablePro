@@ -20,6 +20,10 @@ struct InspectorContext {
     /// The same row the details tab shows, carried as raw cell values for the JSON tab.
     let jsonRow: JSONRowSnapshot?
 
+    /// The table a structure row belongs to, for the column type picker's user-defined types.
+    /// Nil on every tab that is not editing a table's structure.
+    var userDefinedTypeScope: DatabaseScope?
+
     static let empty = InspectorContext(
         tableName: nil,
         tableMetadata: nil,

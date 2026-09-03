@@ -378,6 +378,7 @@ extension PluginMetadataRegistry {
                     supportsGeneratedColumns: true,
                     supportsRoutines: true,
                     supportsDatabaseTriggerBrowse: true,
+                    supportsUserDefinedTypeBrowse: true,
                     defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -572,6 +573,7 @@ extension PluginMetadataRegistry {
                     supportsCheckConstraints: true,
                     supportsCheckConstraintEditing: true,
                     supportsGeneratedColumns: true,
+                    supportsUserDefinedTypeBrowse: true,
                     defaultSSLMode: .disabled,
                     supportsCloudflareTunnel: false,
                     supportsConnectionPooling: false

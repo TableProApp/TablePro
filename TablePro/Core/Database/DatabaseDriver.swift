@@ -179,6 +179,17 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// `identity` is the driver's own key for finding it again.
     func fetchRoutineDDL(_ routine: RoutineInfo) async throws -> String
 
+    /// Fetch every named type the user created in the given schema, or the current schema if nil.
+    func fetchUserDefinedTypes(schema: String?) async throws -> [UserDefinedTypeInfo]
+
+    /// Read one type again, definition and labels included. The type must be one this driver
+    /// listed, because its `identity` is the driver's own key for finding it again.
+    func fetchUserDefinedType(_ type: UserDefinedTypeInfo) async throws -> UserDefinedTypeInfo
+
+    func createTypeTemplate(schema: String?) -> String?
+    func generateAddEnumLabelSQL(type: UserDefinedTypeInfo, label: String, placement: EnumLabelPlacement?) -> String?
+    func generateRenameEnumLabelSQL(type: UserDefinedTypeInfo, from oldLabel: String, to newLabel: String) -> String?
+
     /// Fetch every trigger in the given schema, across all its tables.
     func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo]
 
@@ -535,6 +546,25 @@ extension DatabaseDriver {
 
     func fetchRoutineDDL(_ routine: RoutineInfo) async throws -> String {
         throw PluginObjectSourceError.unsupported(routine.name)
+    }
+
+    func fetchUserDefinedTypes(schema: String?) async throws -> [UserDefinedTypeInfo] { [] }
+
+    func fetchUserDefinedType(_ type: UserDefinedTypeInfo) async throws -> UserDefinedTypeInfo {
+        guard let definition = type.definition, !definition.isEmpty else {
+            throw PluginObjectSourceError.unsupported(type.name)
+        }
+        return type
+    }
+
+    func createTypeTemplate(schema: String?) -> String? { nil }
+
+    func generateAddEnumLabelSQL(type: UserDefinedTypeInfo, label: String, placement: EnumLabelPlacement?) -> String? {
+        nil
+    }
+
+    func generateRenameEnumLabelSQL(type: UserDefinedTypeInfo, from oldLabel: String, to newLabel: String) -> String? {
+        nil
     }
 
     func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo] { [] }

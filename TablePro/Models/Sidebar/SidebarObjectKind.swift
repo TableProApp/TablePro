@@ -12,6 +12,7 @@ enum SidebarObjectCategory: Sendable, Hashable {
     case table
     case routine
     case trigger
+    case type
 }
 
 enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
@@ -22,6 +23,7 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
     case procedure
     case function
     case trigger
+    case type
 
     var displayName: String {
         switch self {
@@ -32,6 +34,7 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
         case .procedure:        return String(localized: "Procedure")
         case .function:         return String(localized: "Function")
         case .trigger:          return String(localized: "Trigger")
+        case .type:             return String(localized: "Type")
         }
     }
 
@@ -44,6 +47,7 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
         case .procedure:        return String(localized: "Procedures")
         case .function:         return String(localized: "Functions")
         case .trigger:          return String(localized: "Triggers")
+        case .type:             return String(localized: "Types")
         }
     }
 
@@ -56,6 +60,7 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
         case .procedure:        return String(localized: "No procedures")
         case .function:         return String(localized: "No functions")
         case .trigger:          return String(localized: "No triggers")
+        case .type:             return String(localized: "No types")
         }
     }
 
@@ -76,6 +81,7 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
         case .procedure:        return "curlybraces.square"
         case .function:         return "function"
         case .trigger:          return "bolt"
+        case .type:             return "cube"
         }
     }
 
@@ -84,6 +90,7 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
         case .table, .view, .materializedView, .foreignTable: return .table
         case .procedure, .function:                           return .routine
         case .trigger:                                        return .trigger
+        case .type:                                           return .type
         }
     }
 

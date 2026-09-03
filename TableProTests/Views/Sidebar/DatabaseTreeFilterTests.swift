@@ -41,6 +41,43 @@ struct DatabaseTreeFilterTests {
         #expect(DatabaseTreeFilter.filteredRoutines(routines, searchText: "audit").map(\.name) == ["audit_log"])
     }
 
+    private func userType(_ name: String) -> UserDefinedTypeInfo {
+        UserDefinedTypeInfo(name: name, kind: .enumeration, schema: "public")
+    }
+
+    @Test("filteredUserTypes deduplicates and substring matches")
+    func filteredUserTypesSearch() {
+        let types = [userType("mood"), userType("status"), userType("mood")]
+        #expect(DatabaseTreeFilter.filteredUserTypes(types, searchText: "").map(\.name) == ["mood", "status"])
+        #expect(DatabaseTreeFilter.filteredUserTypes(types, searchText: "stat").map(\.name) == ["status"])
+    }
+
+    @Test("Object buckets count types under the Types kind and keep a type-only container non-empty")
+    func objectBucketsCountTypes() {
+        let buckets = DatabaseTreeFilter.objectBuckets(
+            tables: [],
+            routines: [],
+            triggers: [],
+            userTypes: [userType("mood"), userType("status")],
+            searchText: ""
+        )
+        #expect(!buckets.isEmpty)
+        #expect(buckets.itemCounts[.type] == 2)
+        #expect(buckets.userTypes.map(\.name) == ["mood", "status"])
+
+        let filtered = DatabaseTreeFilter.objectBuckets(
+            tables: [], routines: [], triggers: [], userTypes: [userType("mood")], searchText: "zzz"
+        )
+        #expect(filtered.isEmpty)
+    }
+
+    @Test("A declared Types kind is listed even before any type has loaded")
+    func declaredTypesKindIsVisible() {
+        let visible = SidebarObjectKind.visible(itemCounts: [:], declaredKinds: [.type], includingEmptyTables: false)
+        #expect(visible == [.type])
+        #expect(SidebarObjectKind.allCases.last == .type)
+    }
+
     @Test("visibleSchemas drops system schemas and deduplicates")
     func visibleSchemasNoSearch() {
         let schemas = ["public", "pg_catalog", "public", "sales"]

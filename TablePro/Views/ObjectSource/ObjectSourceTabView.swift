@@ -2,7 +2,7 @@
 //  ObjectSourceTabView.swift
 //  TablePro
 //
-//  Tab showing the source of one stored procedure, function or trigger.
+//  Tab showing the source of one stored procedure, function, trigger or user-defined type.
 //
 
 import SwiftUI
@@ -13,11 +13,22 @@ import TableProPluginKit
 final class ObjectSourceLoader {
     enum State {
         case loading
-        case loaded(source: String, attributes: [ObjectAttribute])
+        case loaded(source: String, attributes: [ObjectAttribute], enumLabels: [String])
         case failed(String)
     }
 
+    private struct Fetched: Sendable {
+        let source: String
+        let attributes: [ObjectAttribute]
+        let enumLabels: [String]
+        let userType: UserDefinedTypeInfo?
+    }
+
     private(set) var state: State = .loading
+
+    /// The type as the server last described it, so an edit addresses the object on screen rather
+    /// than whatever the sidebar listed when the tab was opened.
+    private(set) var userType: UserDefinedTypeInfo?
 
     private let connectionId: UUID
     private let objectRef: DatabaseObjectRef
@@ -28,12 +39,17 @@ final class ObjectSourceLoader {
     }
 
     var source: String {
-        if case .loaded(let source, _) = state { return source }
+        if case .loaded(let source, _, _) = state { return source }
         return ""
     }
 
     var attributes: [ObjectAttribute] {
-        if case .loaded(_, let attributes) = state { return attributes }
+        if case .loaded(_, let attributes, _) = state { return attributes }
+        return []
+    }
+
+    var enumLabels: [String] {
+        if case .loaded(_, _, let labels) = state { return labels }
         return []
     }
 
@@ -43,7 +59,8 @@ final class ObjectSourceLoader {
         if !isRefresh { state = .loading }
         do {
             let fetched = try await fetch()
-            state = .loaded(source: fetched.source, attributes: fetched.attributes)
+            userType = fetched.userType
+            state = .loaded(source: fetched.source, attributes: fetched.attributes, enumLabels: fetched.enumLabels)
         } catch is CancellationError {
         } catch {
             guard case .loaded = state, isRefresh else {
@@ -54,28 +71,44 @@ final class ObjectSourceLoader {
     }
 
     /// One round trip. Re-listing the schema to recover the attributes cost a full catalog scan
-    /// per open and per reload, for values the sidebar's listing already carried into the ref.
-    private func fetch() async throws -> (source: String, attributes: [ObjectAttribute]) {
+    /// per open and per reload, for values the sidebar's listing already carried into the ref. A
+    /// type is the exception: its labels are what the viewer edits, so they are read fresh.
+    private func fetch() async throws -> Fetched {
         let scope = DatabaseScope(
             connectionId: connectionId,
             database: objectRef.database,
             schema: objectRef.schema
         )
-        let source = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { [objectRef] driver in
+        return try await DatabaseManager.shared.withMetadataDriver(scope: scope) { [objectRef] driver in
             switch objectRef.kind {
             case .procedure, .function:
                 guard let routine = objectRef.routine else {
                     throw PluginObjectSourceError.unsupported(objectRef.name)
                 }
-                return try await driver.fetchRoutineDDL(routine)
+                let source = try await driver.fetchRoutineDDL(routine)
+                return Fetched(source: source, attributes: objectRef.attributes, enumLabels: [], userType: nil)
             case .trigger:
                 guard let trigger = objectRef.trigger else {
                     throw PluginObjectSourceError.unsupported(objectRef.name)
                 }
-                return try await driver.fetchTriggerDDL(trigger)
+                let source = try await driver.fetchTriggerDDL(trigger)
+                return Fetched(source: source, attributes: objectRef.attributes, enumLabels: [], userType: nil)
+            case .userType:
+                guard let type = objectRef.userType else {
+                    throw PluginObjectSourceError.unsupported(objectRef.name)
+                }
+                let fetched = try await driver.fetchUserDefinedType(type)
+                guard let source = fetched.definition, !source.isEmpty else {
+                    throw PluginObjectSourceError.unsupported(objectRef.name)
+                }
+                return Fetched(
+                    source: source,
+                    attributes: fetched.attributes,
+                    enumLabels: fetched.enumLabels,
+                    userType: fetched
+                )
             }
         }
-        return (source, objectRef.attributes)
     }
 }
 
@@ -109,25 +142,36 @@ struct ObjectSourceTabView: View {
         .task { await loader.load() }
     }
 
+    /// Only an enum has anything to edit in place: a label is appended or renamed with one
+    /// statement. Every other object stays read-only here and is edited in a query tab.
+    private var enumEditor: EnumLabelEditor? {
+        guard objectRef.kind == .userType, objectRef.typeKind == .enumeration,
+              let connection = DatabaseManager.shared.session(for: connectionId)?.connection
+        else { return nil }
+        return EnumLabelEditor(connection: connection, objectRef: objectRef)
+    }
+
     private var header: some View {
         HStack(spacing: 8) {
-            Image(systemName: objectRef.kind.iconName)
+            Image(systemName: objectRef.kindIconName)
                 .foregroundStyle(Color.accentColor)
             Text(objectRef.displayIdentity)
                 .font(.headline)
                 .textSelection(.enabled)
                 .lineLimit(1)
                 .truncationMode(.middle)
-            Text(objectRef.kind.displayName)
+            Text(objectRef.kindDisplayName)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
                 .background(Color(nsColor: .quaternaryLabelColor), in: Capsule())
             Spacer()
-            Text("Read Only")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            if enumEditor?.canEdit != true {
+                Text("Read Only")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Button {
                 Task { await loader.load(isRefresh: true) }
             } label: {
@@ -161,13 +205,31 @@ struct ObjectSourceTabView: View {
             }
             .background(Color(nsColor: .textBackgroundColor))
         case .loaded:
-            ObjectSourceView(
-                source: loader.source,
-                databaseType: databaseType,
-                exportFileName: objectRef.suggestedFileName,
-                attributes: loader.attributes,
-                onOpenInEditor: { onOpenInEditor(loader.source) }
-            )
+            VStack(spacing: 0) {
+                if let editor = enumEditor, let type = loader.userType {
+                    EnumLabelListView(
+                        labels: loader.enumLabels,
+                        canEdit: editor.canEdit,
+                        canRename: editor.canRename(type),
+                        onAdd: { label, placement in
+                            try await editor.add(label: label, placement: placement, to: type)
+                            await loader.load(isRefresh: true)
+                        },
+                        onRename: { oldLabel, newLabel in
+                            try await editor.rename(oldLabel, to: newLabel, in: type)
+                            await loader.load(isRefresh: true)
+                        }
+                    )
+                    Divider()
+                }
+                ObjectSourceView(
+                    source: loader.source,
+                    databaseType: databaseType,
+                    exportFileName: objectRef.suggestedFileName,
+                    attributes: loader.attributes,
+                    onOpenInEditor: { onOpenInEditor(loader.source) }
+                )
+            }
         }
     }
 }

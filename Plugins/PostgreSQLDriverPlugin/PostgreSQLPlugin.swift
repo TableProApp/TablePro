@@ -90,6 +90,7 @@ final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsTriggers = true
     static let supportsRoutines = true
     static let supportsDatabaseTriggerBrowse = true
+    static let supportsUserDefinedTypeBrowse = true
     static let supportsTriggerEditing = true
     static let structureColumnFields: [StructureColumnField] =
         [.name, .type, .nullable, .defaultValue, .generated, .generationExpression, .autoIncrement, .comment]

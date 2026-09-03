@@ -22,6 +22,9 @@ internal struct FieldEditorContext {
     let allowsNullAndDefault: Bool
     let showsTypeBadge: Bool
 
+    /// The table a column type picker offers user-defined types for. Nil outside a structure row.
+    let userDefinedTypeScope: DatabaseScope?
+
     init(
         columnName: String,
         columnType: ColumnType,
@@ -33,7 +36,8 @@ internal struct FieldEditorContext {
         commitBytes: ((Data) -> Void)? = nil,
         editor: FieldEditorKind? = nil,
         allowsNullAndDefault: Bool = true,
-        showsTypeBadge: Bool = true
+        showsTypeBadge: Bool = true,
+        userDefinedTypeScope: DatabaseScope? = nil
     ) {
         self.columnName = columnName
         self.columnType = columnType
@@ -46,6 +50,7 @@ internal struct FieldEditorContext {
         self.editor = editor
         self.allowsNullAndDefault = allowsNullAndDefault
         self.showsTypeBadge = showsTypeBadge
+        self.userDefinedTypeScope = userDefinedTypeScope
     }
 
     var placeholderText: String {

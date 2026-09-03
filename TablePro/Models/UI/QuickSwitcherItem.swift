@@ -18,6 +18,7 @@ internal enum QuickSwitcherItemKind: String, Hashable, Sendable {
     case procedure
     case function
     case trigger
+    case userType
     case savedQuery
     case queryHistory
 }
@@ -141,6 +142,7 @@ internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
         case .procedure: return "curlybraces.square"
         case .function: return "function"
         case .trigger: return "bolt"
+        case .userType: return SidebarObjectKind.type.iconName
         case .savedQuery: return "star"
         case .queryHistory: return "clock.arrow.circlepath"
         }
@@ -157,6 +159,7 @@ internal struct QuickSwitcherItem: Identifiable, Hashable, Sendable {
         case .procedure: return String(localized: "Procedure")
         case .function: return String(localized: "Function")
         case .trigger: return String(localized: "Trigger")
+        case .userType: return String(localized: "Type")
         case .savedQuery: return String(localized: "Saved Query")
         case .queryHistory: return String(localized: "History")
         }

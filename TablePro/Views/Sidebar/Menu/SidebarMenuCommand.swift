@@ -15,6 +15,10 @@ import TableProPluginKit
 internal enum SidebarMenuCommand: Equatable {
     case createTable
     case createView
+    /// Carries the database and schema of the section it was raised from, because a tree lists
+    /// every database and schema, and a template opened against the browsed one would create the
+    /// type somewhere else: PostgreSQL cannot reach another database by qualifying the name.
+    case createType(database: String?, schema: String?)
     case filterDatabases
     case showAllDatabases
     case openInNewTab(DatabaseTreeTableRef)

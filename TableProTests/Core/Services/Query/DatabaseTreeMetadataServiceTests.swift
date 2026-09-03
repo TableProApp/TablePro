@@ -25,6 +25,23 @@ struct DatabaseTreeMetadataServiceTests {
         #expect(Set(keys) == [tableOnly, routineOnly, shared])
     }
 
+    @Test("connectionObjectKeys includes a type key with no matching table, routine or trigger key")
+    func includesOrphanTypeKey() {
+        let connectionId = UUID()
+        let typeOnly = ObjectsKey(connectionId: connectionId, database: "shop", schema: "public")
+        let otherConnection = ObjectsKey(connectionId: UUID(), database: "shop", schema: "public")
+
+        let keys = DatabaseTreeMetadataService.connectionObjectKeys(
+            tableKeys: [ObjectsKey](),
+            routineKeys: [ObjectsKey](),
+            triggerKeys: [ObjectsKey](),
+            typeKeys: [typeOnly, otherConnection],
+            connectionId: connectionId
+        )
+
+        #expect(keys == [typeOnly])
+    }
+
     @Test("connectionObjectKeys includes a routine key with no matching table key")
     func includesOrphanRoutineKey() {
         let connectionId = UUID()

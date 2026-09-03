@@ -510,7 +510,11 @@ struct TableStructureView: View {
                 typePickerColumns: provider.typePickerColumns,
                 customDropdownOptions: customOptions.isEmpty ? nil : customOptions,
                 connectionId: connection.id,
-                databaseType: connection.type
+                databaseType: connection.type,
+                tableName: tableName,
+                databaseName: databaseName,
+                schemaName: schemaName,
+                tabType: .table
             ),
             delegate: gridDelegate,
             rowReorder: DataGridRowReorder(

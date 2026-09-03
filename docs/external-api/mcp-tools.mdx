@@ -1,9 +1,9 @@
 ---
 title: MCP Tools
-description: The 46 tools TablePro's MCP server exposes, with arguments, defaults, result shapes, and scope requirements
+description: The 47 tools TablePro's MCP server exposes, with arguments, defaults, result shapes, and scope requirements
 ---
 
-If a dedicated tool covers the job, it beats hand-written SQL. It quotes identifiers for the engine in front of it, applies the user's row limits, and runs on connections where raw execution is refused. All 46 publish a JSON Schema for input and output, so a client can validate both sides without reading this page. For the wire format, headers and error codes see [MCP Protocol](/external-api/mcp-protocol).
+If a dedicated tool covers the job, it beats hand-written SQL. It quotes identifiers for the engine in front of it, applies the user's row limits, and runs on connections where raw execution is refused. All 47 publish a JSON Schema for input and output, so a client can validate both sides without reading this page. For the wire format, headers and error codes see [MCP Protocol](/external-api/mcp-protocol).
 
 ## How to read this page
 
@@ -22,7 +22,7 @@ Row limits default to the server's **Default row limit** setting (500) and are c
 | Group | Tools |
 |-------|-------|
 | [Connections](#connections) | `list_connections` `connect` `disconnect` `get_connection_status` `switch_database` `switch_schema` |
-| [Schema discovery](#schema-discovery) | `list_databases` `list_schemas` `list_tables` `describe_table` `get_table_ddl` `search_schema` `list_indexes` `list_foreign_keys` `list_triggers` `get_view_definition` `list_routines` `list_partitions` `get_table_statistics` `get_database_statistics` |
+| [Schema discovery](#schema-discovery) | `list_databases` `list_schemas` `list_tables` `describe_table` `get_table_ddl` `search_schema` `list_indexes` `list_foreign_keys` `list_triggers` `get_view_definition` `list_routines` `list_types` `list_partitions` `get_table_statistics` `get_database_statistics` |
 | [Reading data](#reading-data) | `browse_table` `count_rows` `execute_query` `explain_query` `export_data` `quote_identifiers` |
 | [Writing data](#writing-data) | `insert_rows` `confirm_destructive_operation` `transaction_control` |
 | [Databases and objects](#databases-and-objects) | `describe_create_database_options` `create_database` `drop_database_object` `list_maintenance_operations` `run_maintenance` |
@@ -31,7 +31,7 @@ Row limits default to the server's **Default row limit** setting (500) and are c
 
 ## Scopes and gates
 
-Fourteen tools need `tools:write`: `connect`, `disconnect`, `switch_database`, `switch_schema`, `insert_rows`, `confirm_destructive_operation`, `transaction_control`, `create_database`, `drop_database_object`, `run_maintenance`, `stop_server_session`, `focus_query_tab`, `open_connection_window`, `open_table_tab`. The other 32 need `tools:read`, `execute_query` among them until the statement writes.
+Fourteen tools need `tools:write`: `connect`, `disconnect`, `switch_database`, `switch_schema`, `insert_rows`, `confirm_destructive_operation`, `transaction_control`, `create_database`, `drop_database_object`, `run_maintenance`, `stop_server_session`, `focus_query_tab`, `open_connection_window`, `open_table_tab`. The other 33 need `tools:read`, `execute_query` among them until the statement writes.
 
 Past the scope, a call clears three more gates:
 
@@ -73,6 +73,7 @@ The two `switch_` tools move what the user sees in TablePro. To run one statemen
 | `list_triggers` | `connection_id` (`table`, `database`, `schema`) | `triggers[]` (`name`, `table`, `schema`, `timing`, `event`, `orientation`, `statement`, `definition`, `is_enabled`), sorted by table then name, plus `table` when one was named |
 | `get_view_definition` | `connection_id`, `view` (`database`, `schema`) | `view`, `schema`, `definition` |
 | `list_routines` | `connection_id` (`kind`, `database`, `schema`) | `routines[]` (`name`, `kind`, `schema`, `qualified_name`, `signature`, `return_type`, `language`) |
+| `list_types` | `connection_id` (`kind`, `database`, `schema`) | `types[]` (`name`, `kind`, `schema`, `qualified_name`, `labels`, `fields`, `base_type`, `definition`), sorted by qualified name |
 | `list_partitions` | `connection_id`, `table` (`database`, `schema`) | `table`, `partitions[]`, shaped like `list_tables` entries |
 | `get_table_statistics` | `connection_id`, `table` (`database`, `schema`) | `table` plus whatever the engine records: `data_size_bytes`, `index_size_bytes`, `total_size_bytes`, `average_row_length`, `row_count`, `comment`, `engine`, `collation`, `created_at`, `updated_at` |
 | `get_database_statistics` | `connection_id` (`database`) | `databases[]` (`name`, `table_count`, `size_bytes`, `is_system_database`), sorted by name |
@@ -81,7 +82,7 @@ The two `switch_` tools move what the user sees in TablePro. To run one statemen
 
 `include_row_counts` defaults to `false`. Counts come from engine statistics rather than `COUNT(*)`, and are fetched one table at a time, so `list_tables` skips them when the schema holds more than 200 objects.
 
-`search_schema` locates a column without describing every table; its `limit` runs 1 to 500, default 50. `list_routines` takes `kind` as `procedure` or `function`, omitted for both, and its `signature` is the argument list, not the return type. `list_triggers` takes `table` to scope to one table, omitted for every trigger in the schema.
+`search_schema` locates a column without describing every table; its `limit` runs 1 to 500, default 50. `list_routines` takes `kind` as `procedure` or `function`, omitted for both, and its `signature` is the argument list, not the return type. `list_triggers` takes `table` to scope to one table, omitted for every trigger in the schema. `list_types` takes `kind` as `enum`, `composite`, `domain` or `range`, omitted for all four; `labels` is set for an enum, `fields` for a composite and `base_type` for a domain or range, and only PostgreSQL and PGlite answer with rows.
 
 ## Reading data
 

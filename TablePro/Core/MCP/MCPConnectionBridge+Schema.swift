@@ -256,6 +256,44 @@ extension MCPConnectionBridge {
         return .object(["routines": .array(payload)])
     }
 
+    func listUserDefinedTypes(scope: DatabaseScope, kind: String?) async throws -> JsonValue {
+        try await ensureConnected(scope.connectionId)
+        let schema = scope.schema
+        let types = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+            let all = try await driver.fetchUserDefinedTypes(schema: schema)
+            guard let kind else { return all }
+            return all.filter { $0.kind.rawValue == kind }
+        }
+        let payload = types
+            .sorted { $0.qualifiedName < $1.qualifiedName }
+            .map { type -> JsonValue in
+                var fields: [String: JsonValue] = [
+                    "name": .string(type.name),
+                    "kind": .string(type.kind.rawValue),
+                    "qualified_name": .string(type.qualifiedName)
+                ]
+                if let schema = type.schema {
+                    fields["schema"] = .string(schema)
+                }
+                if !type.enumLabels.isEmpty {
+                    fields["labels"] = .array(type.enumLabels.map(JsonValue.string))
+                }
+                if !type.fields.isEmpty {
+                    fields["fields"] = .array(type.fields.map {
+                        .object(["name": .string($0.name), "type": .string($0.type)])
+                    })
+                }
+                if let baseType = type.baseType {
+                    fields["base_type"] = .string(baseType)
+                }
+                if let definition = type.definition {
+                    fields["definition"] = .string(definition)
+                }
+                return .object(fields)
+            }
+        return .object(["types": .array(payload)])
+    }
+
     func listPartitions(scope: DatabaseScope, table: String) async throws -> JsonValue {
         try await ensureConnected(scope.connectionId)
         let schema = scope.schema

@@ -359,6 +359,8 @@ struct QuickSwitcherPanelContent: View {
             return String(localized: "Switch")
         case .procedure, .function, .trigger:
             return String(localized: "Show DDL")
+        case .userType:
+            return String(localized: "Show Definition")
         case .savedQuery, .queryHistory:
             return String(localized: "Load Query")
         }

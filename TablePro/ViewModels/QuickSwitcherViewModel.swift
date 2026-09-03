@@ -285,6 +285,7 @@ internal final class QuickSwitcherViewModel {
 
         items += routineItems(connectionId: connectionId, database: activeDatabase)
         items += triggerItems(connectionId: connectionId, database: activeDatabase)
+        items += userTypeItems(connectionId: connectionId, database: activeDatabase)
 
         let favorites = await services.sqlFavoriteManager.fetchFavorites(connectionId: connectionId)
         for favorite in favorites {
@@ -977,6 +978,19 @@ internal final class QuickSwitcherViewModel {
         }
     }
 
+    private func userTypeItems(connectionId: UUID, database: String?) -> [QuickSwitcherItem] {
+        SchemaService.shared.userDefinedTypes(for: connectionId).map { type in
+            QuickSwitcherItem(
+                id: "usertype_\(type.id)",
+                name: type.name,
+                kind: .userType,
+                subtitle: type.schema ?? database ?? "",
+                schemaName: type.schema,
+                objectRef: DatabaseObjectRef(userType: type, database: database ?? "")
+            )
+        }
+    }
+
     nonisolated static func databaseDisplayName(
         _ databaseName: String?,
         pathFieldRole: PathFieldRole
@@ -990,7 +1004,7 @@ internal final class QuickSwitcherViewModel {
 private extension QuickSwitcherItemKind {
     static let displayOrder: [QuickSwitcherItemKind] = [
         .table, .view, .systemTable, .database, .schema,
-        .procedure, .function, .trigger, .savedQuery, .queryHistory
+        .procedure, .function, .trigger, .userType, .savedQuery, .queryHistory
     ]
 
     var rankWeight: Double {
@@ -1003,6 +1017,7 @@ private extension QuickSwitcherItemKind {
         case .procedure: return 0.92
         case .function: return 0.92
         case .trigger: return 0.91
+        case .userType: return 0.91
         case .savedQuery: return 0.9
         case .queryHistory: return 0.7
         }
@@ -1018,6 +1033,7 @@ private extension QuickSwitcherItemKind {
         case .procedure: return String(localized: "Procedures")
         case .function: return String(localized: "Functions")
         case .trigger: return String(localized: "Triggers")
+        case .userType: return String(localized: "Types")
         case .savedQuery: return String(localized: "Saved Queries")
         case .queryHistory: return String(localized: "Recent Queries")
         }

@@ -38,7 +38,7 @@ final class DatabaseTreeCellView: RenamableSidebarCellView<DatabaseTreeRowView> 
             return metadata.isSystemDatabase ? "gearshape" : "cylinder"
         case .schema:
             return "folder"
-        case .routine, .trigger, .status, .recentSection, .objectKindSection,
+        case .routine, .trigger, .userType, .status, .recentSection, .objectKindSection,
              .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
             return "tablecells"
         }

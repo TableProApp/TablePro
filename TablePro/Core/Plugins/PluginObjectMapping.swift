@@ -2,7 +2,7 @@
 //  PluginObjectMapping.swift
 //  TablePro
 //
-//  The single crossing between PluginKit's routine and trigger transfer types and the app's.
+//  The single crossing between PluginKit's routine, trigger and type transfer types and the app's.
 //
 
 import Foundation
@@ -97,6 +97,81 @@ extension TriggerInfo {
             statement: statement,
             definition: definition,
             enabled: enabled,
+            attributes: attributes.map(\.pluginAttribute)
+        )
+    }
+}
+
+extension UserDefinedTypeInfo.Kind {
+    /// A plugin built against a later PluginKit can hand back a kind this build has no case for.
+    /// Reading it as `other` keeps the type listed with its definition rather than dropping it.
+    init(_ kind: PluginUserDefinedTypeKind) {
+        switch kind {
+        case .enumeration: self = .enumeration
+        case .composite:   self = .composite
+        case .domain:      self = .domain
+        case .range:       self = .range
+        @unknown default:  self = .other
+        }
+    }
+
+    var pluginKind: PluginUserDefinedTypeKind? {
+        switch self {
+        case .enumeration: return .enumeration
+        case .composite:   return .composite
+        case .domain:      return .domain
+        case .range:       return .range
+        case .other:       return nil
+        }
+    }
+}
+
+extension UserDefinedTypeInfo.Field {
+    init(_ field: PluginUserDefinedTypeField) {
+        self.init(name: field.name, type: field.type, collation: field.collation)
+    }
+
+    var pluginField: PluginUserDefinedTypeField {
+        PluginUserDefinedTypeField(name: name, type: type, collation: collation)
+    }
+}
+
+extension EnumLabelPlacement {
+    var pluginPlacement: PluginEnumLabelPlacement {
+        PluginEnumLabelPlacement(anchor: anchor, placesBefore: placesBefore)
+    }
+}
+
+extension UserDefinedTypeInfo {
+    init(_ type: PluginUserDefinedTypeInfo) {
+        self.init(
+            name: type.name,
+            kind: Kind(type.kind),
+            schema: type.schema,
+            identity: type.identity,
+            enumLabels: type.enumLabels,
+            fields: type.fields.map(Field.init),
+            baseType: type.baseType,
+            columnTypeSpelling: type.columnTypeSpelling,
+            definition: type.definition,
+            attributes: type.attributes.map(ObjectAttribute.init)
+        )
+    }
+
+    /// Handed straight back to the driver that produced it, so `identity` survives the round trip.
+    /// A kind this build read as `other` goes back as the plugin's first kind only because the
+    /// transfer type needs one; the driver addresses the type by identity and name, never by kind.
+    var pluginType: PluginUserDefinedTypeInfo {
+        PluginUserDefinedTypeInfo(
+            name: name,
+            kind: kind.pluginKind ?? .composite,
+            schema: schema,
+            identity: identity,
+            enumLabels: enumLabels,
+            fields: fields.map(\.pluginField),
+            baseType: baseType,
+            columnTypeSpelling: columnTypeSpelling,
+            definition: definition,
             attributes: attributes.map(\.pluginAttribute)
         )
     }

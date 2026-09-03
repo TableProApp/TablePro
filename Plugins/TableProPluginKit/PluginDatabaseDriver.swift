@@ -104,6 +104,11 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchTriggerDDL(_ trigger: PluginTriggerInfo) async throws -> String
     func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo]
     func fetchRoutineDDL(_ routine: PluginRoutineInfo) async throws -> String
+    func fetchUserDefinedTypes(schema: String?) async throws -> [PluginUserDefinedTypeInfo]
+
+    /// Reads one type again, definition included. The type must be one this driver listed,
+    /// because its `identity` is the driver's own key for finding it.
+    func fetchUserDefinedType(_ type: PluginUserDefinedTypeInfo) async throws -> PluginUserDefinedTypeInfo
     func fetchTableDDL(table: String, schema: String?) async throws -> String
     func fetchViewDefinition(view: String, schema: String?) async throws -> String
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata
@@ -289,6 +294,15 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     var triggerEditUsesReplace: Bool { get }
     var supportsTransactionalDDL: Bool { get }
 
+    // User-defined type editing (optional: return nil when unsupported)
+    func createTypeTemplate(schema: String?) -> String?
+    func generateAddEnumLabelSQL(
+        type: PluginUserDefinedTypeInfo,
+        label: String,
+        placement: PluginEnumLabelPlacement?
+    ) -> String?
+    func generateRenameEnumLabelSQL(type: PluginUserDefinedTypeInfo, from oldLabel: String, to newLabel: String) -> String?
+
     // All-tables metadata SQL (optional — returns nil for non-SQL databases)
     func allTablesMetadataSQL(schema: String?) -> String?
 
@@ -358,6 +372,29 @@ public extension PluginDatabaseDriver {
             return try await legacy.fetchFunctionDDL(name: routine.name, schema: routine.schema)
         }
     }
+
+    func fetchUserDefinedTypes(schema: String?) async throws -> [PluginUserDefinedTypeInfo] { [] }
+
+    func fetchUserDefinedType(_ type: PluginUserDefinedTypeInfo) async throws -> PluginUserDefinedTypeInfo {
+        guard let definition = type.definition, !definition.isEmpty else {
+            throw PluginObjectSourceError.unsupported(type.name)
+        }
+        return type
+    }
+
+    func createTypeTemplate(schema: String?) -> String? { nil }
+
+    func generateAddEnumLabelSQL(
+        type: PluginUserDefinedTypeInfo,
+        label: String,
+        placement: PluginEnumLabelPlacement?
+    ) -> String? { nil }
+
+    func generateRenameEnumLabelSQL(
+        type: PluginUserDefinedTypeInfo,
+        from oldLabel: String,
+        to newLabel: String
+    ) -> String? { nil }
 
     /// Engines whose partitions are metadata on one table object, rather than
     /// separate relations, have nothing to nest and keep the empty default.

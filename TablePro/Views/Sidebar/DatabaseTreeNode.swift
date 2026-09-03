@@ -40,6 +40,7 @@ final class DatabaseTreeNode: SidebarOutlineNode {
         case table(DatabaseTreeTableRef)
         case routine(DatabaseTreeRoutineRef)
         case trigger(DatabaseTreeTriggerRef)
+        case userType(DatabaseTreeUserTypeRef)
         case status(Status)
 
         /// Flat shape: one collapsible section per object kind.
@@ -71,7 +72,7 @@ final class DatabaseTreeNode: SidebarOutlineNode {
         case .redisNode(let node):
             guard case .namespace = node else { return false }
             return true
-        case .recentTable, .routine, .trigger, .status:
+        case .recentTable, .routine, .trigger, .userType, .status:
             return false
         }
     }
@@ -98,7 +99,7 @@ final class DatabaseTreeNode: SidebarOutlineNode {
             return true
         case .database, .schema, .containerObjectKindSection,
              .hierarchicalSchemaSection, .recentTable, .table,
-             .routine, .trigger, .status, .redisNode:
+             .routine, .trigger, .userType, .status, .redisNode:
             return false
         }
     }
@@ -107,7 +108,7 @@ final class DatabaseTreeNode: SidebarOutlineNode {
         switch kind {
         case .database, .schema:
             return true
-        case .recentSection, .recentTable, .table, .routine, .trigger, .status,
+        case .recentSection, .recentTable, .table, .routine, .trigger, .userType, .status,
              .objectKindSection, .containerObjectKindSection,
              .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
             return false
@@ -120,7 +121,7 @@ final class DatabaseTreeNode: SidebarOutlineNode {
             return .database(metadata.name, isSystem: metadata.isSystemDatabase)
         case .schema(let database, let schema):
             return .schema(database: database, schema: schema, isSystem: systemSchemas.contains(schema))
-        case .recentSection, .recentTable, .table, .routine, .trigger, .status,
+        case .recentSection, .recentTable, .table, .routine, .trigger, .userType, .status,
              .objectKindSection, .containerObjectKindSection,
              .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
             return nil
@@ -134,6 +135,7 @@ final class DatabaseTreeNode: SidebarOutlineNode {
     static func recentTableId(_ ref: DatabaseTreeTableRef) -> String { "recent\u{1}table\u{1}\(ref.id)" }
     static func routineId(_ ref: DatabaseTreeRoutineRef) -> String { "routine\u{1}\(ref.id)" }
     static func triggerId(_ ref: DatabaseTreeTriggerRef) -> String { "trigger\u{1}\(ref.id)" }
+    static func userTypeId(_ ref: DatabaseTreeUserTypeRef) -> String { "usertype\u{1}\(ref.id)" }
     static func statusId(parentId: String, status: Status) -> String {
         switch status {
         case .loading: return "\(parentId)\u{1}status.loading"

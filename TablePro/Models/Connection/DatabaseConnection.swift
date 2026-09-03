@@ -230,6 +230,11 @@ extension DatabaseType {
             .capabilities.supportsDatabaseTriggerBrowse ?? false
     }
 
+    var supportsUserDefinedTypeBrowse: Bool {
+        PluginMetadataRegistry.shared.snapshot(for: self)?
+            .capabilities.supportsUserDefinedTypeBrowse ?? false
+    }
+
     /// The object kinds the sidebar should offer a section for even before any have been fetched.
     /// It never subtracts: a kind whose driver returned rows is listed whatever this says.
     var declaredObjectKinds: Set<SidebarObjectKind> {
@@ -240,6 +245,9 @@ extension DatabaseType {
         }
         if supportsDatabaseTriggerBrowse {
             kinds.insert(.trigger)
+        }
+        if supportsUserDefinedTypeBrowse {
+            kinds.insert(.type)
         }
         return kinds
     }

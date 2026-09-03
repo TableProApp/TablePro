@@ -207,18 +207,23 @@ final class SchemaRefreshService {
             guard let scope = metadataDriverProvider.browseScope(for: connectionId) else {
                 throw DatabaseError.notConnected
             }
-            let browsesTriggers = databaseManager?.session(for: connectionId)?
-                .connection.type.supportsDatabaseTriggerBrowse ?? false
+            let connectionType = databaseManager?.session(for: connectionId)?.connection.type
+            let browsesTriggers = connectionType?.supportsDatabaseTriggerBrowse ?? false
+            let browsesTypes = connectionType?.supportsUserDefinedTypeBrowse ?? false
             let reloaded = try await metadataDriverProvider.withMetadataDriver(
                 scope: scope,
                 workload: .bulk
             ) { [schemaService] driver in
-                /// Both run, and neither short circuits the other: a failed routine fetch must
-                /// not skip the trigger fetch that would still have succeeded.
+                /// All run, and none short circuits another: a failed routine fetch must not skip
+                /// the trigger fetch that would still have succeeded.
                 let routines = await schemaService.reloadRoutines(connectionId: connectionId, driver: driver)
-                guard browsesTriggers else { return routines }
-                let triggers = await schemaService.reloadTriggers(connectionId: connectionId, driver: driver)
-                return routines && triggers
+                let triggers = browsesTriggers
+                    ? await schemaService.reloadTriggers(connectionId: connectionId, driver: driver)
+                    : true
+                let types = browsesTypes
+                    ? await schemaService.reloadUserDefinedTypes(connectionId: connectionId, driver: driver)
+                    : true
+                return routines && triggers && types
             }
             /// Recording the new scope says the loaded routines belong to it. A reload that failed
             /// left the previous schema's routines in place, so claiming coverage there would pin

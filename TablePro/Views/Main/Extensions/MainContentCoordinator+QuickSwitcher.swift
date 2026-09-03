@@ -86,7 +86,7 @@ extension MainContentCoordinator {
                 await switchSchema(to: item.name)
             }
 
-        case .procedure, .function, .trigger:
+        case .procedure, .function, .trigger, .userType:
             guard let objectRef = item.objectRef else { return }
             showObjectSource(objectRef)
 

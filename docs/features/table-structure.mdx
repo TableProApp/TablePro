@@ -18,7 +18,7 @@ The tabs are **Columns**, **Indexes**, **Foreign Keys**, **Constraints**, **Trig
 
 ## Columns tab
 
-Columns are edited in place. **Nullable**, **Primary Key**, and **Auto Inc** are YES/NO dropdowns; **Primary Key** set to YES forces **Nullable** to NO and holds it there until the key comes back off. **Type** opens a picker of the engine's types by category: search to filter, or type a parametric value such as `VARCHAR(255)` and press Return to use it as written.
+Columns are edited in place. **Nullable**, **Primary Key**, and **Auto Inc** are YES/NO dropdowns; **Primary Key** set to YES forces **Nullable** to NO and holds it there until the key comes back off. **Type** opens a picker of the engine's types by category: search to filter, or type a parametric value such as `VARCHAR(255)` and press Return to use it as written. On PostgreSQL and PGlite the picker opens with a **User-Defined** group of the database's enums, composites, domains and ranges, each listed schema-qualified as `sales.status`. See [User-Defined Types](/features/user-defined-types).
 
 Which remaining columns appear is the driver's choice. **Comment** is there on most engines and writes the column comment. MySQL and MariaDB add **Charset**, **Collation**, and **On Update**; **On Update** set to YES on a `TIMESTAMP` or `DATETIME` column adds `ON UPDATE CURRENT_TIMESTAMP` at that column's own precision, so `TIMESTAMP(6)` gets `ON UPDATE CURRENT_TIMESTAMP(6)`.
 

@@ -449,6 +449,34 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try await pluginDriver.fetchRoutineDDL(routine.pluginRoutine)
     }
 
+    func fetchUserDefinedTypes(schema: String?) async throws -> [UserDefinedTypeInfo] {
+        let resolvedSchema = schema ?? pluginDriver.currentSchema
+        do {
+            return try await pluginDriver.fetchUserDefinedTypes(schema: resolvedSchema)
+                .map(UserDefinedTypeInfo.init)
+                .sorted { $0.name < $1.name }
+        } catch {
+            Self.logger.warning("fetchUserDefinedTypes failed: \(error.localizedDescription, privacy: .public)")
+            throw error
+        }
+    }
+
+    func fetchUserDefinedType(_ type: UserDefinedTypeInfo) async throws -> UserDefinedTypeInfo {
+        UserDefinedTypeInfo(try await pluginDriver.fetchUserDefinedType(type.pluginType))
+    }
+
+    func createTypeTemplate(schema: String?) -> String? {
+        pluginDriver.createTypeTemplate(schema: schema ?? pluginDriver.currentSchema)
+    }
+
+    func generateAddEnumLabelSQL(type: UserDefinedTypeInfo, label: String, placement: EnumLabelPlacement?) -> String? {
+        pluginDriver.generateAddEnumLabelSQL(type: type.pluginType, label: label, placement: placement?.pluginPlacement)
+    }
+
+    func generateRenameEnumLabelSQL(type: UserDefinedTypeInfo, from oldLabel: String, to newLabel: String) -> String? {
+        pluginDriver.generateRenameEnumLabelSQL(type: type.pluginType, from: oldLabel, to: newLabel)
+    }
+
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata {
         let pluginMeta = try await pluginDriver.fetchDatabaseMetadata(database)
         return DatabaseMetadata(

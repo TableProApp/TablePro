@@ -173,7 +173,8 @@ struct UnifiedRightPanelView: View {
             isEditable: ctx.isEditable,
             isRowDeleted: ctx.isRowDeleted,
             editState: state.editState,
-            databaseType: connection.type
+            databaseType: connection.type,
+            userDefinedTypeScope: ctx.userDefinedTypeScope
         )
     }
 

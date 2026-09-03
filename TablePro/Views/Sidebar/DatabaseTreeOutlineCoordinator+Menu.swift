@@ -84,7 +84,8 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
                 editorLanguage: PluginManager.shared.editorLanguage(for: databaseType),
                 supportsDatabaseSwitching: PluginManager.shared.supportsDatabaseSwitching(for: databaseType),
                 isReadOnly: mainCoordinator?.safeModeLevel.blocksAllWrites ?? false
-            )
+            ),
+            canCreateType: DatabaseManager.shared.driver(for: connectionId)?.createTypeTemplate(schema: nil) != nil
         )
     }
 

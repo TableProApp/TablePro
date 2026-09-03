@@ -30,6 +30,7 @@ public protocol DriverPlugin: TableProPlugin {
     static var supportsGeneratedColumns: Bool { get }
     static var supportsRoutines: Bool { get }
     static var supportsDatabaseTriggerBrowse: Bool { get }
+    static var supportsUserDefinedTypeBrowse: Bool { get }
     static var supportsSchemaEditing: Bool { get }
     static var supportsDatabaseSwitching: Bool { get }
     static var supportsSchemaSwitching: Bool { get }
@@ -106,6 +107,7 @@ public extension DriverPlugin {
     /// declares nothing and returns routines anyway still gets its section.
     static var supportsRoutines: Bool { false }
     static var supportsDatabaseTriggerBrowse: Bool { supportsTriggers }
+    static var supportsUserDefinedTypeBrowse: Bool { false }
     static var supportsSchemaEditing: Bool { true }
     static var supportsDatabaseSwitching: Bool { true }
     static var supportsSchemaSwitching: Bool { false }

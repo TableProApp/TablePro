@@ -45,6 +45,8 @@ internal struct DatabaseTreeMenuContext {
     internal var canCopyObjects: Bool = false
     /// Duplicating means creating a database, which is the same test the New Database command uses.
     internal var canDuplicateDatabase: Bool = false
+    /// Whether the driver can offer a CREATE TYPE template. Read-only mode still hides the item.
+    internal var canCreateType: Bool = false
 }
 
 internal enum DatabaseTreeMenuSpec {
@@ -84,10 +86,13 @@ internal enum DatabaseTreeMenuSpec {
             return routineItems(ref)
         case .trigger(let ref):
             return triggerItems(ref)
+        case .userType(let ref):
+            return userTypeItems(ref)
         case .objectKindSection(let kind):
             return objectKindItems(kind, context: context)
         case .containerObjectKindSection(let group):
             return [.command(String(localized: "Refresh"), .refreshContainerObjectKind(group))]
+                + createTypeItems(kind: group.kind, database: group.database, schema: group.schema, context: context)
         case .hierarchicalSchemaSection(let schema):
             return hierarchicalSchemaItems(schema, context: context)
         case .redisNode(let node):
@@ -214,6 +219,31 @@ internal enum DatabaseTreeMenuSpec {
         return items
     }
 
+    private static func userTypeItems(_ ref: DatabaseTreeUserTypeRef) -> [DatabaseTreeMenuItem] {
+        var items: [DatabaseTreeMenuItem] = [.command(String(localized: "Copy Name"), .copyText(ref.type.name))]
+        if ref.type.qualifiedName != ref.type.name {
+            items.append(.command(String(localized: "Copy Qualified Name"), .copyText(ref.type.qualifiedName)))
+        }
+        items.append(.separator)
+        items.append(.command(String(localized: "Show Definition"), .showObjectSource(ref.objectRef)))
+        return items
+    }
+
+    /// Only the Types section offers it, and only where the engine can hand over a template. It is
+    /// omitted rather than disabled in read-only mode, the way Create New View is on a table row.
+    private static func createTypeItems(
+        kind: SidebarObjectKind,
+        database: String?,
+        schema: String?,
+        context: DatabaseTreeMenuContext
+    ) -> [DatabaseTreeMenuItem] {
+        guard kind == .type, context.canCreateType, !context.isReadOnly else { return [] }
+        return [
+            .separator,
+            .command(String(localized: "Create New Type…"), .createType(database: database, schema: schema))
+        ]
+    }
+
     private static func redisItems(_ node: RedisKeyNode) -> [DatabaseTreeMenuItem] {
         switch node {
         case .namespace(_, let fullPrefix, _, _):
@@ -239,6 +269,9 @@ internal enum DatabaseTreeMenuSpec {
             ))
         }
         items.append(.command(String(localized: "Refresh"), .refreshObjectKind(kind)))
+        items += createTypeItems(
+            kind: kind, database: context.activeDatabase, schema: context.activeSchema, context: context
+        )
         return items
     }
 

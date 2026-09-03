@@ -3,7 +3,7 @@ title: Procedures, Functions, and Triggers
 description: Browse stored procedures, functions, and triggers per schema and read their source
 ---
 
-Expand a schema and **Procedures**, **Functions**, and **Triggers** sit beside **Tables**. Select one, press Return, and its source opens in a read-only tab.
+Expand a schema and **Procedures**, **Functions**, and **Triggers** sit beside **Tables**. Select one, press Return, and its source opens in a read-only tab. Named types have a section of their own; see [User-Defined Types](/features/user-defined-types).
 
 <Frame caption="Sections under a PostgreSQL schema, with one overloaded function open">
   <img className="block dark:hidden" src="/images/routines-triggers-sidebar.png" alt="Sidebar tree with Procedures, Functions, and Triggers expanded, and a function's source in a tab beside it" />
@@ -35,7 +35,7 @@ A section appears only where the engine has that kind of object. An engine that 
 
 A trigger row carries the table it fires for beside its name. The sidebar filter matches a trigger by its own name or by that table; type-select matches the name only. Triggers also appear on their table's **Structure** tab.
 
-`Cmd+P` indexes all three kinds alongside tables and views. Choosing one opens its source.
+**File > Open Quickly…** (`Cmd+Shift+O`) indexes all three kinds alongside tables and views. Choosing one opens its source.
 
 ### Overloaded names
 

@@ -311,6 +311,87 @@ public struct ListRoutinesTool: MCPToolImplementation {
     }
 }
 
+public struct ListUserDefinedTypesTool: MCPToolImplementation {
+    public static let name = "list_types"
+    public static let title: String? = String(localized: "List Types")
+    public static let description = String(
+        localized: "List the user-defined types in a schema: enums, composites, domains and ranges."
+    )
+    public static let requiredScopes: Set<MCPScope> = [.toolsRead]
+    public static let annotations = MCPToolAnnotations(
+        title: String(localized: "List Types"),
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+    )
+
+    public static let kinds = UserDefinedTypeInfo.Kind.allCases.filter { $0 != .other }.map(\.rawValue)
+
+    public static let inputSchema = MCPToolSchema.object(
+        properties: [
+            "connection_id": MCPToolSchema.connectionId,
+            "kind": MCPToolSchema.string(
+                String(localized: "Restrict to one kind. Omit for every kind."),
+                enumValues: kinds
+            ),
+            "database": MCPToolSchema.database,
+            "schema": MCPToolSchema.schema
+        ],
+        required: ["connection_id"]
+    )
+
+    public static let outputSchema: JsonValue? = MCPToolSchema.object(
+        properties: [
+            "types": MCPToolSchema.array(
+                String(localized: "Types, sorted by qualified name"),
+                of: MCPToolSchema.object(
+                    properties: [
+                        "name": MCPToolSchema.string(String(localized: "Type name")),
+                        "kind": MCPToolSchema.string(String(localized: "enum, composite, domain or range")),
+                        "schema": MCPToolSchema.string(String(localized: "Schema the type lives in")),
+                        "qualified_name": MCPToolSchema.string(String(localized: "Schema-qualified name")),
+                        "labels": MCPToolSchema.array(
+                            String(localized: "An enum's labels in declaration order"),
+                            of: MCPToolSchema.string(String(localized: "Label"))
+                        ),
+                        "fields": MCPToolSchema.array(
+                            String(localized: "A composite's fields in declaration order"),
+                            of: MCPToolSchema.object(
+                                properties: [
+                                    "name": MCPToolSchema.string(String(localized: "Field name")),
+                                    "type": MCPToolSchema.string(String(localized: "Field type"))
+                                ],
+                                required: ["name", "type"]
+                            )
+                        ),
+                        "base_type": MCPToolSchema.string(
+                            String(localized: "A domain's base type, or a range's subtype")
+                        ),
+                        "definition": MCPToolSchema.string(String(localized: "The CREATE statement"))
+                    ],
+                    required: ["name", "kind", "qualified_name"]
+                )
+            )
+        ],
+        required: ["types"]
+    )
+
+    public init() {}
+
+    public func perform(
+        arguments: JsonValue,
+        context: MCPRequestContext,
+        services: MCPToolServices
+    ) async throws -> MCPToolCallResult {
+        try MCPArgumentDecoder.rejectUnknownKeys(arguments, allowed: MCPScopeArguments.keys.union(["kind"]))
+        let kind = try MCPArgumentDecoder.optionalEnum(arguments, key: "kind", allowed: Self.kinds)
+        let scope = try await MCPScopeArguments.resolve(arguments, services: services)
+        let payload = try await services.connectionBridge.listUserDefinedTypes(scope: scope, kind: kind)
+        return .structured(payload)
+    }
+}
+
 public struct ListPartitionsTool: MCPToolImplementation {
     public static let name = "list_partitions"
     public static let title: String? = String(localized: "List Partitions")

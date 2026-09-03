@@ -19,9 +19,25 @@ struct DatabaseTreeObjectBuckets {
     let tables: [SidebarObjectKind: [TableInfo]]
     let routines: [SidebarObjectKind: [RoutineInfo]]
     let triggers: [TriggerInfo]
+    let userTypes: [UserDefinedTypeInfo]
+
+    init(
+        tables: [SidebarObjectKind: [TableInfo]],
+        routines: [SidebarObjectKind: [RoutineInfo]],
+        triggers: [TriggerInfo],
+        userTypes: [UserDefinedTypeInfo] = []
+    ) {
+        self.tables = tables
+        self.routines = routines
+        self.triggers = triggers
+        self.userTypes = userTypes
+    }
 
     var isEmpty: Bool {
-        tables.values.allSatisfy(\.isEmpty) && routines.values.allSatisfy(\.isEmpty) && triggers.isEmpty
+        tables.values.allSatisfy(\.isEmpty)
+            && routines.values.allSatisfy(\.isEmpty)
+            && triggers.isEmpty
+            && userTypes.isEmpty
     }
 
     var itemCounts: [SidebarObjectKind: Int] {
@@ -30,6 +46,9 @@ struct DatabaseTreeObjectBuckets {
             counts[kind, default: 0] += list.count
         }
         counts[.trigger, default: 0] += triggers.count
+        if !userTypes.isEmpty {
+            counts[.type, default: 0] += userTypes.count
+        }
         return counts
     }
 }
@@ -62,10 +81,16 @@ enum DatabaseTreeFilter {
         return deduplicated(matched + byTable, by: \.id)
     }
 
+    static func filteredUserTypes(_ types: [UserDefinedTypeInfo], searchText: String) -> [UserDefinedTypeInfo] {
+        let matched = SidebarNameFilter.ranked(types, query: searchText, name: { $0.name })
+        return deduplicated(matched, by: \.id)
+    }
+
     static func objectBuckets(
         tables: [TableInfo],
         routines: [RoutineInfo],
         triggers: [TriggerInfo],
+        userTypes: [UserDefinedTypeInfo] = [],
         searchText: String
     ) -> DatabaseTreeObjectBuckets {
         var tableBuckets: [SidebarObjectKind: [TableInfo]] = [:]
@@ -79,7 +104,8 @@ enum DatabaseTreeFilter {
         return DatabaseTreeObjectBuckets(
             tables: tableBuckets,
             routines: routineBuckets,
-            triggers: filteredTriggers(triggers, searchText: searchText)
+            triggers: filteredTriggers(triggers, searchText: searchText),
+            userTypes: filteredUserTypes(userTypes, searchText: searchText)
         )
     }
 

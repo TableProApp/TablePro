@@ -295,7 +295,10 @@ struct CreateTableView: View {
                 typePickerColumns: provider.typePickerColumns,
                 customDropdownOptions: provider.customDropdownOptions,
                 connectionId: connection.id,
-                databaseType: connection.type
+                databaseType: connection.type,
+                databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
+                schemaName: coordinator?.toolbarState.currentSchema,
+                tabType: .createTable
             ),
             delegate: gridDelegate,
             selectedRowIndices: $selectedRows,

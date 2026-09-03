@@ -33,7 +33,8 @@ struct DatabaseTreeMenuSpecTests {
         hasDatabaseFilter: Bool = false,
         supportsRename: Bool = true,
         canCopyObjects: Bool = true,
-        canDuplicateDatabase: Bool = true
+        canDuplicateDatabase: Bool = true,
+        canCreateType: Bool = false
     ) -> DatabaseTreeMenuContext {
         DatabaseTreeMenuContext(
             clicked: clicked,
@@ -76,7 +77,8 @@ struct DatabaseTreeMenuSpecTests {
             canFilterDatabases: canFilterDatabases,
             hasDatabaseFilter: hasDatabaseFilter,
             canCopyObjects: canCopyObjects,
-            canDuplicateDatabase: canDuplicateDatabase
+            canDuplicateDatabase: canDuplicateDatabase,
+            canCreateType: canCreateType
         )
     }
 
@@ -509,6 +511,7 @@ struct DatabaseTreeMenuSpecTests {
                 database: "app", schema: "public",
                 routine: RoutineInfo(name: "do_thing", kind: .function, schema: "public")
             )),
+            .userType(userTypeRef("mood")),
             .status(.loading),
             .recentSection,
             .redisKeysSection
@@ -517,6 +520,66 @@ struct DatabaseTreeMenuSpecTests {
         for kind in kinds {
             #expect(!DatabaseTreeMenuSpec.items(for: context(clicked: kind, isReadOnly: true)).isEmpty)
         }
+    }
+
+    // MARK: - Types
+
+    private func userTypeRef(_ name: String, schema: String? = "public") -> DatabaseTreeUserTypeRef {
+        DatabaseTreeUserTypeRef(
+            database: "app", schema: schema,
+            type: UserDefinedTypeInfo(name: name, kind: .enumeration, schema: schema)
+        )
+    }
+
+    @Test("A type row copies its name, its qualified name, and shows its definition")
+    func typeRowItems() {
+        let ref = userTypeRef("mood")
+        let issued = commands(DatabaseTreeMenuSpec.items(for: context(clicked: .userType(ref))))
+
+        #expect(issued.contains(.copyText("mood")))
+        #expect(issued.contains(.copyText("public.mood")))
+        #expect(issued.contains(.showObjectSource(ref.objectRef)))
+    }
+
+    @Test("A type with no schema offers no qualified copy")
+    func bareTypeRowHasNoQualifiedCopy() {
+        let ref = userTypeRef("mood", schema: nil)
+        let issued = commands(DatabaseTreeMenuSpec.items(for: context(clicked: .userType(ref))))
+
+        #expect(issued.filter { if case .copyText = $0 { return true } else { return false } }.count == 1)
+    }
+
+    @Test("The Types section offers Create New Type when the driver has a template and writes are allowed")
+    func typesSectionOffersCreate() {
+        let flat = commands(DatabaseTreeMenuSpec.items(
+            for: context(clicked: .objectKindSection(.type), activeSchema: "sales", canCreateType: true)
+        ))
+        #expect(flat.contains(.createType(database: "app", schema: "sales")))
+
+        /// A tree lists every database, so the section names its own rather than the browsed one:
+        /// PostgreSQL cannot reach another database by qualifying the type name.
+        let group = DatabaseTreeObjectGroup(database: "warehouse", schema: "billing", kind: .type)
+        let tree = commands(DatabaseTreeMenuSpec.items(
+            for: context(clicked: .containerObjectKindSection(group), canCreateType: true)
+        ))
+        #expect(tree.contains(.createType(database: "warehouse", schema: "billing")))
+        #expect(tree.contains(.refreshContainerObjectKind(group)))
+    }
+
+    @Test("Create New Type is omitted in read-only mode, without a template, and on other sections")
+    func createTypeIsOmittedWhereItCannotRun() {
+        let readOnly = commands(DatabaseTreeMenuSpec.items(
+            for: context(clicked: .objectKindSection(.type), isReadOnly: true, canCreateType: true)
+        ))
+        #expect(!readOnly.contains { if case .createType = $0 { return true } else { return false } })
+
+        let noTemplate = commands(DatabaseTreeMenuSpec.items(for: context(clicked: .objectKindSection(.type))))
+        #expect(!noTemplate.contains { if case .createType = $0 { return true } else { return false } })
+
+        let functions = commands(DatabaseTreeMenuSpec.items(
+            for: context(clicked: .objectKindSection(.function), canCreateType: true)
+        ))
+        #expect(!functions.contains { if case .createType = $0 { return true } else { return false } })
     }
 
     // MARK: - Copying

@@ -88,6 +88,8 @@ struct DatabaseTreeRowView: View {
             RoutineRowView(routine: ref.routine, displayLabel: context.routineDisplayLabel(ref))
         case .trigger(let ref):
             TriggerRowView(trigger: ref.trigger)
+        case .userType(let ref):
+            UserTypeRowView(type: ref.type)
         case .status(let status):
             statusRow(status)
         case .objectKindSection(let kind):

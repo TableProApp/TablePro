@@ -429,6 +429,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/LibPQByteaDecoder.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQSSLMapping.swift
       - Plugins/PostgreSQLDriverPlugin/PostGISSpatialRewrite.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLCapabilities.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogPresence.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCheckConstraintDefinition.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLObjectQueries.swift
@@ -436,6 +437,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSystemDatabases.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTableListingLadder.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTransactionStatement.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLTypeDefinition.swift
       - Plugins/PostgreSQLDriverPlugin/RedshiftExternalSchemaQueries.swift
       - Plugins/PostgreSQLDriverPlugin/RedshiftSchemaQueries.swift
       - Plugins/KafkaDriverPlugin/KafkaApiKey.swift

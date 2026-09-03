@@ -34,6 +34,20 @@ struct DatabaseTreeTriggerRef: Identifiable, Equatable {
     }
 }
 
+struct DatabaseTreeUserTypeRef: Identifiable, Equatable {
+    let database: String?
+    let schema: String?
+    let type: UserDefinedTypeInfo
+
+    var id: String {
+        "\(database ?? "")|\(schema ?? "")|\(type.id)"
+    }
+
+    var objectRef: DatabaseObjectRef {
+        DatabaseObjectRef(userType: type, database: database ?? "")
+    }
+}
+
 struct DatabaseTreeView: View {
     @Bindable private var treeService = DatabaseTreeMetadataService.shared
 

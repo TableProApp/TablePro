@@ -204,6 +204,7 @@
             "pages": [
               "features/table-structure",
               "features/routines-triggers",
+              "features/user-defined-types",
               "features/table-operations",
               "features/er-diagram",
               "features/explain-visualization",

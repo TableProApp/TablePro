@@ -16,6 +16,7 @@ struct RightSidebarView: View {
 
     var editState: MultiRowEditState
     let databaseType: DatabaseType
+    var userDefinedTypeScope: DatabaseScope?
 
     @State private var searchText: String = ""
     @State private var expandedJsonColumnIndex: Int?
@@ -352,7 +353,8 @@ struct RightSidebarView: View {
                 commitBytes: isEditable ? { data in editState.setFieldToBytes(at: index, data: data) } : nil,
                 editor: kind,
                 allowsNullAndDefault: !field.isSchemaField,
-                showsTypeBadge: !field.isSchemaField
+                showsTypeBadge: !field.isSchemaField,
+                userDefinedTypeScope: field.isSchemaField ? userDefinedTypeScope : nil
             ),
             isPendingNull: field.isPendingNull,
             isPendingDefault: field.isPendingDefault,

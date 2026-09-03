@@ -73,7 +73,20 @@ extension MainContentView {
             isRowDeleted: isSelectedRowDeleted,
             currentQuery: coordinator.tabManager.selectedTab?.content.query,
             queryResults: cachedQueryResultsSummary(),
-            jsonRow: jsonRowSnapshotForSidebar
+            jsonRow: jsonRowSnapshotForSidebar,
+            userDefinedTypeScope: structureTypeScope
+        )
+    }
+
+    /// The scope a structure row's type picker looks types up in: the tab's own database and
+    /// schema, never the sidebar's, because a tab bound to another database edits that one.
+    private var structureTypeScope: DatabaseScope? {
+        guard let tab = currentTab, tab.tabType == .table || tab.tabType == .createTable else { return nil }
+        let database = tab.tableContext.databaseName ?? coordinator.browseDatabaseName
+        return DatabaseScope(
+            connectionId: coordinator.connection.id,
+            database: database,
+            schema: tab.tableContext.schemaName
         )
     }
 

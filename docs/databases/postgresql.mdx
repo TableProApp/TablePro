@@ -62,6 +62,10 @@ An array column opens one of two editors, decided by its element type:
 
 In the list editor, reorder rows with the arrows, add and remove elements, and set a single element to NULL; an empty array and a NULL column stay distinct. Enum elements pick from the labels the type declares, and a label the type no longer lists stays selectable and is flagged. **Edit as Text** switches to the raw literal at any time.
 
+## User-defined types
+
+Enums, composites, domains and ranges are listed under **Types** in each schema, the `CREATE` statement rebuilt from `pg_type`. An enum's labels are edited in place with `ALTER TYPE … ADD VALUE` and, from PostgreSQL 10, `RENAME VALUE`; PostgreSQL has no statement that drops or reorders a label. The structure editor's type picker offers the schema's types under **User-Defined**. See [User-Defined Types](/features/user-defined-types).
+
 ## Cross-database tabs
 
 PostgreSQL has no in-place `USE`, so a tab bound to a database other than the connection's active one runs on a second connection opened for that database. It shares no temp tables, session variables, or open transaction with the query editor on the main connection: keep a multi-statement transaction or a `CREATE TEMP TABLE` on tabs bound to one database. Binding itself is on [Tabs](/features/tabs#where-a-tab-points).

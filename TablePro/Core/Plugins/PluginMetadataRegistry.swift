@@ -67,6 +67,7 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsGeneratedColumns: Bool = false
         var supportsRoutines: Bool = false
         var supportsDatabaseTriggerBrowse: Bool = false
+        var supportsUserDefinedTypeBrowse: Bool = false
         var defaultSSLMode: SSLMode = .disabled
         var supportsOpportunisticTLS: Bool = true
         var supportsCloudflareTunnel: Bool = true
@@ -594,6 +595,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsGeneratedColumns: driverType.supportsGeneratedColumns,
                 supportsRoutines: driverType.supportsRoutines,
                 supportsDatabaseTriggerBrowse: driverType.supportsDatabaseTriggerBrowse,
+                supportsUserDefinedTypeBrowse: driverType.supportsUserDefinedTypeBrowse,
                 defaultSSLMode: existingSnapshot?.capabilities.defaultSSLMode ?? .disabled,
                 supportsOpportunisticTLS: existingSnapshot?.capabilities.supportsOpportunisticTLS ?? true,
                 supportsCloudflareTunnel: driverType.supportsSSH,

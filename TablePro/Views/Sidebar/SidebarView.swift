@@ -35,6 +35,10 @@ struct SidebarView: View {
         schemaService.triggers(for: connectionId)
     }
 
+    private var userDefinedTypes: [UserDefinedTypeInfo] {
+        schemaService.userDefinedTypes(for: connectionId)
+    }
+
     private var hasAnyMatch: Bool {
         SidebarObjectKind.allCases.contains { kind in
             countFor(kind: kind) > 0
@@ -241,8 +245,7 @@ struct SidebarView: View {
             state: schemaService.state(for: connectionId),
             hasActiveFilter: !viewModel.filterQuery.isEmpty,
             hasAnyMatch: hasAnyMatch,
-            hasRoutines: !routines.isEmpty,
-            hasTriggers: !triggers.isEmpty,
+            hasSideObjects: !routines.isEmpty || !triggers.isEmpty || !userDefinedTypes.isEmpty,
             hasOutlastedGrace: showsSchemaProgress
         )
     }
@@ -356,6 +359,7 @@ struct SidebarView: View {
         case .table:   return viewModel.filteredTables(of: kind, from: tables).count
         case .routine: return viewModel.filteredRoutines(of: kind, from: routines).count
         case .trigger: return viewModel.filteredTriggers(from: triggers).count
+        case .type:    return viewModel.filteredUserTypes(from: userDefinedTypes).count
         }
     }
 }

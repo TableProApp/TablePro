@@ -14,8 +14,8 @@ import Foundation
 internal enum DatabaseTreeDoubleClickIntent: Equatable {
     /// Open the table in a tab the next sidebar click will not replace.
     case openPermanently(DatabaseTreeTableRef)
-    /// Open a routine's or trigger's source. Selection alone does not open one, because fetching a
-    /// definition is a round trip, and arrowing through a section would fire one per row.
+    /// Open a routine's, trigger's or type's source. Selection alone does not open one, because
+    /// fetching a definition is a round trip, and arrowing through a section would fire one per row.
     case openObjectSource(DatabaseObjectRef)
     /// Expand or collapse a container row.
     case toggleDisclosure
@@ -34,6 +34,8 @@ internal enum DatabaseTreeDoubleClickResolver {
         case .routine(let ref):
             return .openObjectSource(ref.objectRef)
         case .trigger(let ref):
+            return .openObjectSource(ref.objectRef)
+        case .userType(let ref):
             return .openObjectSource(ref.objectRef)
         default:
             return node.isExpandable ? .toggleDisclosure : .ignore

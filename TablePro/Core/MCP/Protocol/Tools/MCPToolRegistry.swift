@@ -40,6 +40,7 @@ public enum MCPToolRegistry {
         ListSessionContextsTool(),
         ListTablesTool(),
         ListTriggersTool(),
+        ListUserDefinedTypesTool(),
         OpenConnectionWindowTool(),
         OpenTableTabTool(),
         QuoteIdentifiersTool(),

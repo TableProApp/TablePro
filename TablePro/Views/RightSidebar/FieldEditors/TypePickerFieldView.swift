@@ -28,12 +28,15 @@ internal struct TypePickerFieldView: View {
             .disabled(context.isReadOnly)
             .accessibilityLabel(String(localized: "Choose Type"))
             .popover(isPresented: $isPickerPresented) {
-                TypePickerContentView(
-                    databaseType: databaseType,
-                    currentValue: context.value.wrappedValue,
-                    onCommit: { context.value.wrappedValue = $0 },
-                    onDismiss: { isPickerPresented = false }
-                )
+                UserDefinedTypeAwarePicker(scope: context.userDefinedTypeScope) { userDefinedTypes in
+                    TypePickerContentView(
+                        databaseType: databaseType,
+                        currentValue: context.value.wrappedValue,
+                        userDefinedTypes: userDefinedTypes,
+                        onCommit: { context.value.wrappedValue = $0 },
+                        onDismiss: { isPickerPresented = false }
+                    )
+                }
             }
         }
     }
