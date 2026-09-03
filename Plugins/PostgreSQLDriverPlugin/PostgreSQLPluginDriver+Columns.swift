@@ -92,10 +92,13 @@ extension PostgreSQLPluginDriver {
         var map: [String: [String]] = [:]
         for row in result.rows {
             guard let schemaName = row[safe: 0]?.asText,
-                  let typeName = row[safe: 1]?.asText,
-                  let label = row[safe: 2]?.asText else { continue }
+                  let typeName = row[safe: 1]?.asText else { continue }
             let key = PostgresColumnTypeResolver.qualifiedName(schema: schemaName, name: typeName)
-            map[key, default: []].append(label)
+            var labels = map[key] ?? []
+            if let label = row[safe: 2]?.asText {
+                labels.append(label)
+            }
+            map[key] = labels
         }
         return map
     }

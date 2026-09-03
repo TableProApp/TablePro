@@ -216,12 +216,20 @@ final class SchemaRefreshService {
             ) { [schemaService] driver in
                 /// All run, and none short circuits another: a failed routine fetch must not skip
                 /// the trigger fetch that would still have succeeded.
-                let routines = await schemaService.reloadRoutines(connectionId: connectionId, driver: driver)
+                let routines = await schemaService.reloadRoutines(
+                    connectionId: connectionId,
+                    driver: driver,
+                    scope: scope
+                )
                 let triggers = browsesTriggers
-                    ? await schemaService.reloadTriggers(connectionId: connectionId, driver: driver)
+                    ? await schemaService.reloadTriggers(connectionId: connectionId, driver: driver, scope: scope)
                     : true
                 let types = browsesTypes
-                    ? await schemaService.reloadUserDefinedTypes(connectionId: connectionId, driver: driver)
+                    ? await schemaService.reloadUserDefinedTypes(
+                        connectionId: connectionId,
+                        driver: driver,
+                        scope: scope
+                    )
                     : true
                 return routines && triggers && types
             }

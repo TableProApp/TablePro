@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Last line of a helper process's output lost when it exits right after writing it.
 - Structure and trigger edits committing or rolling back a transaction left open in a query tab on the same connection.
+- Composite, range and extension-typed PostgreSQL columns labelled `ENUM(…)` in the structure editor.
+- Sidebar routines, triggers and types from the previous database after switching while it was still loading.
 - Silent fallback order when foreign keys between the exported tables form a cycle. (#2517)
 - Foreign keys declared twice in a SQL export on MySQL, SQL Server, DuckDB, Snowflake, CockroachDB and Redshift, and as an unsupported `ALTER TABLE` on SQLite, libSQL and Cloudflare D1. (#2517)
 - Foreign keys missing from Redshift's reconstructed `CREATE TABLE`.
