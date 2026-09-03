@@ -797,22 +797,29 @@ final class MainContentCoordinator {
     }
 
     func refreshRoutines() async {
+        let scope = services.databaseManager.browseScope(for: connectionId)
         try? await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { [services, connectionId] driver in
-            _ = await services.schemaService.reloadRoutines(connectionId: connectionId, driver: driver)
+            _ = await services.schemaService.reloadRoutines(connectionId: connectionId, driver: driver, scope: scope)
         }
     }
 
     func refreshTriggers() async {
         guard connection.type.supportsDatabaseTriggerBrowse else { return }
+        let scope = services.databaseManager.browseScope(for: connectionId)
         try? await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { [services, connectionId] driver in
-            _ = await services.schemaService.reloadTriggers(connectionId: connectionId, driver: driver)
+            _ = await services.schemaService.reloadTriggers(connectionId: connectionId, driver: driver, scope: scope)
         }
     }
 
     func refreshUserDefinedTypes() async {
         guard connection.type.supportsUserDefinedTypeBrowse else { return }
+        let scope = services.databaseManager.browseScope(for: connectionId)
         try? await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { [services, connectionId] driver in
-            _ = await services.schemaService.reloadUserDefinedTypes(connectionId: connectionId, driver: driver)
+            _ = await services.schemaService.reloadUserDefinedTypes(
+                connectionId: connectionId,
+                driver: driver,
+                scope: scope
+            )
         }
     }
 
