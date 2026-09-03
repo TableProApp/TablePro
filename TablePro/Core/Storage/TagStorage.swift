@@ -132,17 +132,17 @@ internal final class TagStorage {
     /// every tag dirty and the push uploads every dirty tag, so writing an unchanged record
     /// re-uploads the whole library to the device it came from, which writes it back.
     @discardableResult
-    internal func applyRemoteTag(_ tag: ConnectionTag) -> Bool {
+    internal func applyRemoteTag(_ tag: ConnectionTag) -> RemoteApplyOutcome {
         var tags = loadTags()
 
         if let index = tags.firstIndex(where: { $0.id == tag.id }) {
-            guard tags[index] != tag else { return false }
+            guard tags[index] != tag else { return .skipped }
             tags[index] = tag
         } else {
             tags.append(tag)
         }
 
-        return saveTags(tags)
+        return saveTags(tags) ? .applied : .failed
     }
 
     /// Delete a custom tag (presets cannot be deleted)

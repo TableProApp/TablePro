@@ -461,11 +461,21 @@ final class SyncCoordinator {
     }
 
     private func applyPullResult(_ result: PullResult) {
+        let persisted = applyRemoteChanges(result)
+
+        /// The token and the cache are the record of what this device holds, so neither is
+        /// committed over a batch a store refused. Saving the token first acknowledged records that
+        /// were never written and the server never sent them again, and the cached record then
+        /// stood in as the merge base for an edit that had no local base at all. Not saving it
+        /// means the next pull replays the batch, which every apply here is written to survive.
+        guard persisted else {
+            Self.logger.error("Pull not acknowledged: a store refused to persist part of the batch")
+            return
+        }
+
         if let newToken = result.newToken {
             metadataStorage.saveToken(newToken)
         }
-
-        applyRemoteChanges(result)
 
         recordCache.store(result.changedRecords)
         recordCache.remove(result.deletedRecordIDs)
@@ -478,7 +488,10 @@ final class SyncCoordinator {
     // Performance: storage reads here (loadSync, loadConnections, loadGroups, etc.) run on
     // @MainActor and can block the UI on large sync batches. Consider moving to Task.detached
     // for large payloads.
-    private func applyRemoteChanges(_ result: PullResult) {
+    /// Reports whether every record that can say so was persisted. A pull that answers false must
+    /// not commit its token: the batch has to arrive again.
+    @discardableResult
+    private func applyRemoteChanges(_ result: PullResult) -> Bool {
         let settings = services.appSettingsStorage.loadSync()
 
         services.connectionStorage.invalidateCache()
@@ -490,6 +503,7 @@ final class SyncCoordinator {
 
         var actualConnectionChanges = false
         var groupsOrTagsChanged = false
+        var persistenceFailed = false
 
         let connectionTombstoneIds = Set(metadataStorage.tombstones(for: .connection).map(\.id))
         let groupTombstoneIds = Set(metadataStorage.tombstones(for: .group).map(\.id))
@@ -505,16 +519,22 @@ final class SyncCoordinator {
         for record in result.changedRecords {
             switch record.recordType {
             case SyncRecordType.connection.rawValue where settings.syncConnections:
-                if applyRemoteConnection(record, tombstoneIds: connectionTombstoneIds) {
-                    actualConnectionChanges = true
+                switch applyRemoteConnection(record, tombstoneIds: connectionTombstoneIds) {
+                case .applied: actualConnectionChanges = true
+                case .failed: persistenceFailed = true
+                case .skipped: break
                 }
             case SyncRecordType.group.rawValue where settings.syncGroupsAndTags:
-                if applyRemoteGroup(record, tombstoneIds: groupTombstoneIds) {
-                    groupsOrTagsChanged = true
+                switch applyRemoteGroup(record, tombstoneIds: groupTombstoneIds) {
+                case .applied: groupsOrTagsChanged = true
+                case .failed: persistenceFailed = true
+                case .skipped: break
                 }
             case SyncRecordType.tag.rawValue where settings.syncGroupsAndTags:
-                if applyRemoteTag(record, tombstoneIds: tagTombstoneIds) {
-                    groupsOrTagsChanged = true
+                switch applyRemoteTag(record, tombstoneIds: tagTombstoneIds) {
+                case .applied: groupsOrTagsChanged = true
+                case .failed: persistenceFailed = true
+                case .skipped: break
                 }
             case SyncRecordType.sshProfile.rawValue where settings.syncSSHProfiles:
                 applyRemoteSSHProfile(record, tombstoneIds: sshTombstoneIds)
@@ -642,6 +662,8 @@ final class SyncCoordinator {
         if actualConnectionChanges || groupsOrTagsChanged {
             services.appEvents.connectionUpdated.send(nil)
         }
+
+        return !persistenceFailed
     }
 
     @discardableResult
@@ -667,17 +689,17 @@ final class SyncCoordinator {
         }
     }
 
-    private func applyRemoteConnection(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
+    private func applyRemoteConnection(_ record: CKRecord, tombstoneIds: Set<String>) -> RemoteApplyOutcome {
         let remoteConnection: DatabaseConnection
         do {
             remoteConnection = try SyncRecordMapper.toConnection(record)
         } catch {
             Self.logger.error("Skipping remote connection \(record.recordID.recordName, privacy: .public): \(error.localizedDescription, privacy: .public)")
-            return false
+            return .skipped
         }
 
         if tombstoneIds.contains(remoteConnection.id.uuidString) {
-            return false
+            return .skipped
         }
 
         var connections = services.connectionStorage.loadConnections()
@@ -688,7 +710,7 @@ final class SyncCoordinator {
                     into: record,
                     localConnection: connections[index]
                 ) else {
-                    return false
+                    return .skipped
                 }
                 incoming = reconciled
             }
@@ -701,23 +723,22 @@ final class SyncCoordinator {
         }
         guard services.connectionStorage.saveConnections(connections) else {
             Self.logger.error("Failed to apply remote connection update: persistence error for \(remoteConnection.id, privacy: .public)")
-            return false
+            return .failed
         }
-        return true
+        return .applied
     }
 
-    @discardableResult
-    private func applyRemoteGroup(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
-        guard let remoteGroup = SyncRecordMapper.toGroup(record) else { return false }
-        if tombstoneIds.contains(remoteGroup.id.uuidString) { return false }
+    private func applyRemoteGroup(_ record: CKRecord, tombstoneIds: Set<String>) -> RemoteApplyOutcome {
+        guard let remoteGroup = SyncRecordMapper.toGroup(record) else { return .skipped }
+        if tombstoneIds.contains(remoteGroup.id.uuidString) { return .skipped }
 
         return services.groupStorage.applyRemoteGroup(remoteGroup)
     }
 
     @discardableResult
-    private func applyRemoteTag(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
-        guard let remoteTag = SyncRecordMapper.toTag(record) else { return false }
-        if tombstoneIds.contains(remoteTag.id.uuidString) { return false }
+    private func applyRemoteTag(_ record: CKRecord, tombstoneIds: Set<String>) -> RemoteApplyOutcome {
+        guard let remoteTag = SyncRecordMapper.toTag(record) else { return .skipped }
+        if tombstoneIds.contains(remoteTag.id.uuidString) { return .skipped }
 
         return services.tagStorage.applyRemoteTag(remoteTag)
     }

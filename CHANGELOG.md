@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every saved tag replaced by the preset list when one unreadable entry stopped the library decoding.
 - Tag created in one window missing from another until relaunch.
 - Two Macs re-uploading the whole tag library to each other after a single tag changed.
+- Connections, groups and tags from another device silently dropped when the store could not be written, and never sent again.
 - Two Macs re-uploading the whole group list to each other after a single group changed. (#1311)
 - Deleting a group that a broken sync left in a loop also deleting the group it pointed at. (#1311)
 

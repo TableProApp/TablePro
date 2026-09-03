@@ -120,8 +120,20 @@ final class TagStorageTests: XCTestCase {
         try storage.addTag(tag)
         tracker.clearAllDirty(.tag)
 
-        XCTAssertFalse(storage.applyRemoteTag(tag))
+        XCTAssertEqual(storage.applyRemoteTag(tag), .skipped)
         XCTAssertTrue(tracker.dirtyRecords(for: .tag).isEmpty)
+    }
+
+    func testApplyingANewRemoteTagReportsItWasWritten() {
+        XCTAssertEqual(storage.applyRemoteTag(ConnectionTag(name: "from-another-mac")), .applied)
+    }
+
+    /// The pull reads this to decide whether to acknowledge the batch, so a store that refused must
+    /// not answer the same as one that had nothing to do.
+    func testApplyingARemoteTagOverAnUnreadableStoreReportsFailure() {
+        let storage = makeStorage(seeding: Data([0x00, 0x01]))
+
+        XCTAssertEqual(storage.applyRemoteTag(ConnectionTag(name: "from-another-mac")), .failed)
     }
 
     func testApplyingARemoteTagAnnouncesNothing() {
