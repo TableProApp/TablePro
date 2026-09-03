@@ -159,6 +159,17 @@ struct MainContentView: View {
     /// Returns the appropriate sheet view for the given `ActiveSheet` case.
     /// Uses a dismissal binding that sets `coordinator.activeSheet = nil` when the
     /// child view sets `isPresented = false`.
+    /// The transfer sheet is built here rather than inline, because `sheetContent(for:)` is one
+    /// switch over every sheet the window can present and is already at the function length limit.
+    @ViewBuilder
+    private func transferSheet(tables: Set<String>, dismiss: Binding<Bool>) -> some View {
+        TableTransferSheet(
+            isPresented: dismiss,
+            sourceConnection: connectionWithCurrentDatabase,
+            preselectedTables: tables
+        )
+    }
+
     @ViewBuilder
     private func sheetContent(for sheet: ActiveSheet) -> some View {
         let dismissBinding = Binding<Bool>(
@@ -260,11 +271,7 @@ struct MainContentView: View {
                 )
             }
         case .transferTables(let tables):
-            TableTransferSheet(
-                isPresented: dismissBinding,
-                sourceConnection: connectionWithCurrentDatabase,
-                preselectedTables: tables
-            )
+            transferSheet(tables: tables, dismiss: dismissBinding)
         case .backupDatabase:
             BackupDatabaseFlow(
                 isPresented: dismissBinding,

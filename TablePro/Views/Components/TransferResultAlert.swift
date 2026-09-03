@@ -5,6 +5,7 @@
 
 import AppKit
 import TableProPluginKit
+import UniformTypeIdentifiers
 
 /// Import and export results were three bespoke views with fixed widths and hand-picked green,
 /// yellow and red badges. `NSAlert` supplies the icon from its style, sizes itself to its content,
@@ -50,6 +51,8 @@ internal enum TransferResultAlert {
     internal static func presentImportSuccess(
         result: PluginImportResult?,
         window: NSWindow?,
+        sourceFileName: String = "",
+        targetTable: String? = nil,
         completion: @escaping @MainActor () -> Void
     ) {
         let alert = NSAlert()
@@ -61,12 +64,66 @@ internal enum TransferResultAlert {
         alert.informativeText = importSummary(result)
         alert.addButton(withTitle: String(localized: "Done"))
 
-        if let errors = result?.errors, !errors.isEmpty {
+        let errors = result?.errors ?? []
+        if !errors.isEmpty {
+            /// The alert shows the first few, which is enough to recognise the shape of the
+            /// problem. Anything past that belongs in a file the user can sort and search.
+            alert.addButton(withTitle: String(localized: "Save Report…"))
             alert.accessoryView = TransferReportView(report: failureReport(for: errors))
             alert.layout()
         }
 
-        AlertHelper.present(alert, in: window) { _ in completion() }
+        AlertHelper.present(alert, in: window) { response in
+            guard !errors.isEmpty, response == .alertSecondButtonReturn else {
+                completion()
+                return
+            }
+            saveErrorReport(
+                errors: errors,
+                totalSkipped: skipped,
+                sourceFileName: sourceFileName,
+                targetTable: targetTable,
+                window: window,
+                completion: completion
+            )
+        }
+    }
+
+    @MainActor
+    private static func saveErrorReport(
+        errors: [PluginImportResult.ImportStatementError],
+        totalSkipped: Int,
+        sourceFileName: String,
+        targetTable: String?,
+        window: NSWindow?,
+        completion: @escaping @MainActor () -> Void
+    ) {
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.showsTagField = false
+        panel.allowedContentTypes = [.commaSeparatedText]
+        panel.nameFieldStringValue = ImportErrorReport.defaultFileName(forSource: sourceFileName)
+        panel.title = String(localized: "Save Import Errors")
+
+        let handler: @MainActor (NSApplication.ModalResponse) -> Void = { response in
+            defer { completion() }
+            guard response == .OK, let url = panel.url else { return }
+            let csv = ImportErrorReport.makeCSV(
+                sourceFileName: sourceFileName,
+                targetTable: targetTable,
+                errors: errors,
+                totalSkipped: totalSkipped
+            )
+            try? csv.write(to: url, atomically: true, encoding: .utf8)
+        }
+
+        guard let window else {
+            handler(panel.runModal())
+            return
+        }
+        panel.beginSheetModal(for: window) { response in
+            MainActor.assumeIsolated { handler(response) }
+        }
     }
 
     internal static func presentImportFailure(

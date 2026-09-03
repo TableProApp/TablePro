@@ -27,11 +27,6 @@ struct NativeDumpDescriptor: Sendable {
     struct ArchiveFormat: Sendable, Equatable {
         let fileExtension: String
         let contentDescription: String
-
-        init(fileExtension: String, contentDescription: String) {
-            self.fileExtension = fileExtension
-            self.contentDescription = contentDescription
-        }
     }
 
     struct Request: Sendable {

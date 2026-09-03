@@ -205,7 +205,7 @@ final class TableTransferService {
     /// A row arrives as positional values and the sink writes by column name, so the two are
     /// zipped here. A row shorter than its header is padded with nulls rather than dropped: a
     /// driver that omits trailing nulls would otherwise lose whole rows silently.
-    static func dictionary(columns: [String], row: [PluginCellValue]) -> [String: PluginCellValue] {
+    nonisolated static func dictionary(columns: [String], row: [PluginCellValue]) -> [String: PluginCellValue] {
         var values: [String: PluginCellValue] = [:]
         values.reserveCapacity(columns.count)
         for (index, column) in columns.enumerated() {

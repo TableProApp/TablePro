@@ -21,6 +21,8 @@ The toolbar's **Export** (`Cmd+Shift+E`) re-reads every table you tick with `SEL
 
 The last format and its options come back next time, but only after an export succeeds; cancelling discards the changes. **Reset to Defaults** restores the stock settings for the current format.
 
+The bookmark button above the tree saves the current selection under a name and reapplies it later, including each table's options and row filter. A saved selection naming tables the database no longer has says how many it still matches, and applying it selects those and clears the rest.
+
 <Frame caption="Export dialog">
   <img className="block dark:hidden" src="/images/export-dialog.png" alt="Export dialog" />
   <img className="hidden dark:block" src="/images/export-dialog-dark.png" alt="Export dialog" />
@@ -162,7 +164,7 @@ Right-click tables in the sidebar and choose **Transfer To…** to copy their ro
   </Step>
 </Steps>
 
-Rows only. The destination table has to exist and its column names have to match, because inventing DDL that crosses two engines would create tables whose types quietly disagree with the data landing in them. A per-table row filter set in the export tree is not carried over; narrow the transfer by transferring fewer tables.
+Rows only. The destination table has to exist and its column names have to match, because inventing DDL that crosses from one engine to another would create tables whose types quietly disagree with the data landing in them. A per-table row filter set in the export tree is not carried over; narrow the transfer by transferring fewer tables.
 
 <Warning>
 **Delete existing rows first** empties each destination table before writing. There is no undo.
@@ -208,7 +210,7 @@ Select a row in the data grid and press `Cmd+V` to paste tabular data straight i
 | **Stop and Commit** | Stops there, keeping what already succeeded |
 | **Skip and Continue** | Logs it and carries on, including a line the parser cannot read. No transaction |
 
-Skip and Continue collects up to 1,000 failures with their line numbers and messages, and the summary counts successes against failures behind a **Copy Details** button. A stop shows the line, the database's own message, and the failing statement, with the dialog still open behind it, ready for a changed setting and another run.
+Skip and Continue collects up to 1,000 failures with their line numbers and messages, and the summary counts successes against failures behind a **Copy Details** button. **Save Report…** writes them all to a CSV with a line, a statement and the database's own error per row, so a large import's failures can be sorted and searched rather than scrolled. A stop shows the line, the database's own message, and the failing statement, with the dialog still open behind it, ready for a changed setting and another run.
 
 ### Disabling foreign key checks
 

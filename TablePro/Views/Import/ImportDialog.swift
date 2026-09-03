@@ -127,7 +127,12 @@ struct ImportDialog: View {
         }
         .onChange(of: showSuccessDialog) { _, isShowing in
             guard isShowing else { return }
-            TransferResultAlert.presentImportSuccess(result: importResult, window: hostWindow) {
+            TransferResultAlert.presentImportSuccess(
+                result: importResult,
+                window: hostWindow,
+                sourceFileName: fileURL?.lastPathComponent ?? "",
+                targetTable: nil
+            ) {
                 showSuccessDialog = false
                 isPresented = false
                 AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))

@@ -65,9 +65,9 @@ struct TableTransferServiceTests {
 
     /// The transfer moves rows, so a request naming only definition objects has nothing to do and
     /// must say so rather than reporting a successful transfer of nothing.
-    @Test("A request with no row-carrying object is refused")
-    func requestWithoutTablesIsRefused() async {
-        let service = await TableTransferService()
+    @MainActor @Test("A request with no row-carrying object is refused")
+    func requestWithoutTablesIsRefused() {
+        let service = TableTransferService()
         let request = TableTransferService.Request(
             objects: [
                 ExportObjectItem(name: "recalc", kind: .routine),
@@ -77,7 +77,7 @@ struct TableTransferServiceTests {
             destinationType: .postgresql
         )
         #expect(request.objects.allSatisfy { !$0.kind.carriesRows })
-        await #expect(service.state.isTransferring == false)
+        #expect(service.state.isTransferring == false)
     }
 
     @Test("A request keeps the row scope of every object it names")

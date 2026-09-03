@@ -203,11 +203,16 @@ struct TableTransferSheet: View {
     /// A transfer needs two live sessions, so only connections that are already open are offered.
     /// Opening one from here would mean a connect, a possible prompt and a possible failure inside
     /// a sheet that is about to start writing rows.
+    ///
+    /// A read-only destination is left out rather than shown and refused later: this sheet writes
+    /// rows through the import sink, which reaches the driver directly rather than through the
+    /// execution gate, so the list is where that policy has to hold.
     @MainActor
     private func load() async {
         availableDestinations = DatabaseManager.shared.activeSessions.values
             .filter { $0.id != sourceConnection.id && $0.isConnected }
             .map { $0.effectiveConnection ?? $0.connection }
+            .filter { !$0.safeModeLevel.blocksAllWrites }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         do {
             let tables = try await DatabaseManager.shared.withMetadataDriver(
@@ -245,6 +250,27 @@ struct TableTransferSheet: View {
         }
     }
 
+    /// Emptying the destination's tables is not undoable, and a connection whose Safe Mode asks
+    /// before a write has to be asked here too, because these rows never pass the execution gate.
+    @MainActor
+    private func confirmIfNeeded(destination: DatabaseConnection) async -> Bool {
+        guard deleteExistingRows || destination.safeModeLevel.requiresConfirmation else { return true }
+        let alert = NSAlert()
+        alert.alertStyle = deleteExistingRows ? .critical : .warning
+        alert.messageText = String(
+            format: String(localized: "Transfer %1$lld table(s) into %2$@?"),
+            Int64(selectedTables.count),
+            destination.name)
+        alert.informativeText = deleteExistingRows
+            ? String(localized: "Every row in each destination table is deleted first. This cannot be undone.")
+            : String(localized: "Rows are written into tables that already exist on the destination.")
+        alert.addButton(withTitle: String(localized: "Transfer"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
+
+        guard let hostWindow else { return alert.runModal() == .alertFirstButtonReturn }
+        return await alert.beginSheetModal(for: hostWindow) == .alertFirstButtonReturn
+    }
+
     private var sourceScope: DatabaseScope {
         DatabaseManager.shared.resolvedScope(
             database: sourceConnection.database, schema: nil, for: sourceConnection.id
@@ -260,6 +286,14 @@ struct TableTransferSheet: View {
             errorMessage = TableTransferError.notConnected(connectionName: "").localizedDescription
             return
         }
+        guard !destinationConnection.safeModeLevel.blocksAllWrites else {
+            errorMessage = String(
+                format: String(localized: "%@ is read-only, so nothing can be written to it."),
+                destinationConnection.name)
+            return
+        }
+        guard await confirmIfNeeded(destination: destinationConnection) else { return }
+
         errorMessage = nil
         isRunning = true
         defer { isRunning = false }

@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Backup and restore for MySQL, MariaDB, MongoDB, SQLite and libSQL, using each engine's own tools. (#2618)
 - Transfer To, copying table rows straight into another open connection with no file in between. (#2618)
 - NDJSON layout for JSON exports, one row per line. (#2618)
+- Saved export selections, reapplied from the export tree's bookmark menu. (#2618)
+- Save Report on an import that skipped rows, listing each one's line and error as CSV. (#2618)
 
 ### Changed
 

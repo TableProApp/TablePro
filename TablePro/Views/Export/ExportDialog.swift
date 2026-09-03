@@ -37,6 +37,10 @@ struct ExportDialog: View {
     /// already holds can answer for the new format without another round trip.
     @State private var loadedObjectKinds: Set<PluginExportObjectKind> = []
 
+    @State private var profiles: [ExportProfile] = []
+    @State private var profileName = ""
+    @State private var isNamingProfile = false
+
     /// The window this dialog is hosted in, used for presenting its alerts and panels.
     /// Avoids `NSApp.keyWindow`, which when a result is presented is the progress sheet being
     /// torn down in the same transaction, and AppKit ends a sheet's children with it (#2314).
@@ -119,6 +123,7 @@ struct ExportDialog: View {
                 config.formatId = type(of: first).formatId
             }
             captureSettingsSnapshot()
+            profiles = ExportProfileStorage.shared.profiles(for: connection.id)
         }
         .onDisappear {
             if !exportSucceeded {
@@ -238,6 +243,8 @@ struct ExportDialog: View {
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
 
+                profileMenu
+
                 Spacer()
 
                 if let plugin = currentPlugin {
@@ -287,6 +294,87 @@ struct ExportDialog: View {
                 .frame(minHeight: 300, maxHeight: .infinity)
             }
         }
+    }
+
+    /// Saves and reapplies a selection. A profile that names objects the database no longer holds
+    /// says how many it still matches rather than quietly selecting fewer rows than its name
+    /// implies.
+    private var profileMenu: some View {
+        Menu {
+            if profiles.isEmpty {
+                Text("No saved selections")
+            }
+            ForEach(profiles) { profile in
+                Button {
+                    applyProfile(profile)
+                } label: {
+                    Text(profileLabel(profile))
+                }
+            }
+            Divider()
+            Button("Save Selection…") { isNamingProfile = true }
+                .disabled(selectedObjects.isEmpty)
+            if !profiles.isEmpty {
+                Menu("Delete") {
+                    ForEach(profiles) { profile in
+                        Button(profile.name) {
+                            ExportProfileStorage.shared.delete(id: profile.id, for: connection.id)
+                            profiles = ExportProfileStorage.shared.profiles(for: connection.id)
+                        }
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "bookmark")
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help(String(localized: "Saved selections"))
+        .popover(isPresented: $isNamingProfile, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Name this selection")
+                    .font(.headline)
+                TextField("Nightly tables", text: $profileName)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 220)
+                HStack {
+                    Spacer()
+                    Button("Cancel") { isNamingProfile = false }
+                    Button("Save") { saveProfile() }
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(profileName.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+            .padding(14)
+        }
+    }
+
+    private func profileLabel(_ profile: ExportProfile) -> String {
+        let matched = ExportProfileStorage.matchCount(profile, in: databaseItems)
+        guard matched < profile.entries.count else { return profile.name }
+        return String(
+            format: String(localized: "%1$@ (%2$lld of %3$lld still present)"),
+            profile.name,
+            Int64(matched),
+            Int64(profile.entries.count)
+        )
+    }
+
+    private func applyProfile(_ profile: ExportProfile) {
+        config.formatId = profile.formatId
+        databaseItems = normalizedForCurrentFormat(
+            ExportProfileStorage.apply(profile, to: databaseItems))
+    }
+
+    private func saveProfile() {
+        let trimmed = profileName.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        let profile = ExportProfileStorage.makeProfile(
+            name: trimmed, formatId: config.formatId, databases: databaseItems)
+        ExportProfileStorage.shared.save(profile, for: connection.id)
+        profiles = ExportProfileStorage.shared.profiles(for: connection.id)
+        profileName = ""
+        isNamingProfile = false
     }
 
     // MARK: - Export Options View
@@ -512,8 +600,8 @@ struct ExportDialog: View {
         )
         guard let plugin = currentPlugin else { return normalized }
         let pluginType = type(of: plugin)
-        return normalized.maskingUnsupportedOptions(columns: pluginType.perTableOptionColumns) {
-            columnId, kind in pluginType.supportsOption(columnId: columnId, for: kind)
+        return normalized.maskingUnsupportedOptions(columns: pluginType.perTableOptionColumns) { columnId, kind in
+            pluginType.supportsOption(columnId: columnId, for: kind)
         }
     }
 
