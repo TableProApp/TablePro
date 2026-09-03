@@ -244,6 +244,11 @@ struct TriggerApplyExecutionTests {
 
     /// The session driver holds whatever transaction a query tab left open, so a trigger edit
     /// with a BEGIN of its own ran inside it and committed or rolled back the tab's work.
+    ///
+    /// The gate is supplied rather than taken from `ExecutionGateProvider`. A drop is a
+    /// `.destructiveQuery`, which the real gate confirms with an `NSAlert`, and an alert raised
+    /// with no window runs application-modal: on a CI runner nobody answers it, so the whole
+    /// unit job stops there and is killed by its timeout rather than failing.
     @Test("Apply and drop run on the pooled connection and leave the session driver alone")
     func applyAndDropRunOnThePooledConnection() async throws {
         let connection = TestFixtures.makeConnection(database: "app", type: .postgresql)
@@ -272,9 +277,16 @@ struct TriggerApplyExecutionTests {
             sql: "CREATE TRIGGER t",
             isEdit: false,
             originalName: nil,
-            originalDefinition: nil
+            originalDefinition: nil,
+            gate: AlwaysAllowGate()
         )
-        try await TriggerEditing.drop(scope: scope, connection: connection, tableName: "orders", name: "t")
+        try await TriggerEditing.drop(
+            scope: scope,
+            connection: connection,
+            tableName: "orders",
+            name: "t",
+            gate: AlwaysAllowGate()
+        )
 
         #expect(pooledStub.executedQueries == ["BEGIN", "CREATE TRIGGER t", "COMMIT", "DROP TRIGGER t"])
         #expect(sessionStub.executedQueries.isEmpty)

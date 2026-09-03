@@ -170,17 +170,17 @@ internal final class GroupStorage {
     /// re-uploads the whole list, which the other device receives and writes back, and two Macs
     /// trade the same records forever. The iOS coordinator has always had this guard.
     @discardableResult
-    internal func applyRemoteGroup(_ group: ConnectionGroup) -> Bool {
+    internal func applyRemoteGroup(_ group: ConnectionGroup) -> RemoteApplyOutcome {
         var groups = loadGroups()
 
         if let index = groups.firstIndex(where: { $0.id == group.id }) {
-            guard groups[index] != group else { return false }
+            guard groups[index] != group else { return .skipped }
             groups[index] = group
         } else {
             groups.append(group)
         }
 
-        return saveGroups(groups)
+        return saveGroups(groups) ? .applied : .failed
     }
 
     /// Root every group left on a parent cycle, reporting whether anything moved.

@@ -53,9 +53,10 @@ enum TriggerEditing {
         sql: String,
         isEdit: Bool,
         originalName: String?,
-        originalDefinition: String?
+        originalDefinition: String?,
+        gate: any ExecutionGate = ExecutionGateProvider.shared
     ) async throws {
-        let decision = await ExecutionGateProvider.shared.authorize(
+        let decision = await gate.authorize(
             OperationRequest(
                 connectionId: connection.id,
                 databaseType: connection.type,
@@ -95,7 +96,13 @@ enum TriggerEditing {
         AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id, scope: scope))
     }
 
-    static func drop(scope: DatabaseScope, connection: DatabaseConnection, tableName: String, name: String) async throws {
+    static func drop(
+        scope: DatabaseScope,
+        connection: DatabaseConnection,
+        tableName: String,
+        name: String,
+        gate: any ExecutionGate = ExecutionGateProvider.shared
+    ) async throws {
         guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
             throw TriggerEditingError.notConnected
         }
@@ -103,7 +110,7 @@ enum TriggerEditing {
             throw TriggerEditingError.dropUnavailable
         }
 
-        let decision = await ExecutionGateProvider.shared.authorize(
+        let decision = await gate.authorize(
             OperationRequest(
                 connectionId: connection.id,
                 databaseType: connection.type,

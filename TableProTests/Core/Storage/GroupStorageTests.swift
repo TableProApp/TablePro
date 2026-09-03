@@ -366,8 +366,20 @@ final class GroupStorageTests: XCTestCase {
         try storage.addGroup(group)
         tracker.clearAllDirty(.group)
 
-        XCTAssertFalse(storage.applyRemoteGroup(group))
+        XCTAssertEqual(storage.applyRemoteGroup(group), .skipped)
         XCTAssertTrue(tracker.dirtyRecords(for: .group).isEmpty)
+    }
+
+    func testApplyingANewRemoteGroupReportsItWasWritten() {
+        XCTAssertEqual(storage.applyRemoteGroup(ConnectionGroup(name: "FromAnotherMac")), .applied)
+    }
+
+    /// The pull reads this to decide whether to acknowledge the batch, so a store that refused must
+    /// not answer the same as one that had nothing to do.
+    func testApplyingARemoteGroupOverAnUnreadableStoreReportsFailure() {
+        defaults.set(Data([0x00, 0x01]), forKey: "com.TablePro.groups")
+
+        XCTAssertEqual(storage.applyRemoteGroup(ConnectionGroup(name: "FromAnotherMac")), .failed)
     }
 
     // MARK: - Unreadable Store
