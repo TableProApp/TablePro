@@ -53,12 +53,22 @@ enum ImportErrorReport {
 
     /// Quotes only what has to be quoted, and doubles an interior quote, which is what every
     /// spreadsheet reads back as one quote rather than the start of a new field.
+    ///
+    /// A value opening with `=`, `+`, `-` or `@` is prefixed with a quote first. The text here is
+    /// the server's own error message, which quotes values the server was handed, so a row rejected
+    /// for holding `=cmd|'/c calc'!A1` would otherwise put that straight into a cell the user opens
+    /// in Excel. The CSV export guards the same way, for the same reason.
     private static func csvField(_ value: String) -> String {
-        let flattened = value
+        var flattened = value
             .replacingOccurrences(of: "\r\n", with: " ")
             .replacingOccurrences(of: "\n", with: " ")
             .replacingOccurrences(of: "\r", with: " ")
+        if let first = flattened.first, Self.formulaPrefixes.contains(first) {
+            flattened = "'" + flattened
+        }
         guard flattened.contains(",") || flattened.contains("\"") else { return flattened }
         return "\"\(flattened.replacingOccurrences(of: "\"", with: "\"\""))\""
     }
+
+    private static let formulaPrefixes: Set<Character> = ["=", "+", "-", "@"]
 }

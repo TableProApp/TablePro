@@ -191,6 +191,15 @@ targets:
       - target: SQLExport
         embed: true
         copy: { destination: plugins }
+      - target: MarkdownExport
+        embed: true
+        copy: { destination: plugins }
+      - target: HTMLExport
+        embed: true
+        copy: { destination: plugins }
+      - target: XMLExport
+        embed: true
+        copy: { destination: plugins }
       - target: XLSXExport
         embed: true
         copy: { destination: plugins }
@@ -383,7 +392,11 @@ targets:
       - Plugins/EtcdDriverPlugin/EtcdCommandParser.swift
       - Plugins/EtcdDriverPlugin/EtcdQueryBuilder.swift
       - Plugins/EtcdDriverPlugin/EtcdStatementGenerator.swift
+      - Plugins/HTMLExportPlugin/HTMLExportModels.swift
       - Plugins/JSONExportPlugin/JSONExportModels.swift
+      - Plugins/MarkdownExportPlugin/MarkdownExportModels.swift
+      - Plugins/ParquetExportPlugin/ParquetExportModels.swift
+      - Plugins/ParquetExportPlugin/ParquetTypeMapper.swift
       - Plugins/JSONImportPlugin/JSONImportOptions.swift
       - Plugins/JSONImportPlugin/JSONImportOptionsView.swift
       - Plugins/JSONImportPlugin/JSONImportParsing.swift
@@ -499,6 +512,7 @@ targets:
       - Plugins/SQLImportPlugin/SQLImportOptions.swift
       - Plugins/SQLImportPlugin/SQLImportOptionsView.swift
       - Plugins/SQLImportPlugin/SQLImportPlugin.swift
+      - Plugins/XMLExportPlugin/XMLExportModels.swift
       - Plugins/SnowflakeDriverPlugin/PluginCellValueBox.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeAuth.swift
       - Plugins/SnowflakeDriverPlugin/SnowflakeBindingEncoder.swift
@@ -701,6 +715,57 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.JSONExportPlugin
+
+  MarkdownExport:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: MarkdownExportPlugin
+      principalClass: MarkdownExportPlugin
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.MarkdownExportPlugin
+
+  HTMLExport:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: HTMLExportPlugin
+      principalClass: HTMLExportPlugin
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.HTMLExportPlugin
+
+  XMLExport:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: XMLExportPlugin
+      principalClass: XMLExportPlugin
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.XMLExportPlugin
+
+  ParquetExport:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: ParquetExportPlugin
+      principalClass: ParquetExportPlugin
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.ParquetExportPlugin
+        # DuckDB does the Parquet encoding, so this links the same static library the
+        # DuckDB driver does. That is why the plugin is registry-only rather than bundled:
+        # 149MB universal is not worth adding to every app download for one export format.
+        HEADER_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Plugins/DuckDBDriverPlugin/CDuckDB/include
+        LIBRARY_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Libs
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -force_load
+          - $(SRCROOT)/Libs/libduckdb.a
+          - -lc++
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/DuckDBDriverPlugin/CDuckDB
 
   SQLExport:
     templates: [DriverPlugin]
@@ -1091,7 +1156,11 @@ aggregateTargets:
       - OracleDriver
       - PostgreSQLDriver
       - RedisDriver
+      - HTMLExport
+      - MarkdownExport
+      - ParquetExport
       - SQLExport
+      - XMLExport
       - SQLImport
       - SQLiteDriver
       - SnowflakeDriverPlugin

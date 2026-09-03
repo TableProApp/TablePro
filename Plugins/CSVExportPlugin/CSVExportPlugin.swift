@@ -146,33 +146,36 @@ final class CSVExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         try fileHandle.write(contentsOf: (rowLine + lineBreak).toUTF8Data())
     }
 
+    /// Escaping and quoting live in `PluginRowWriters`, so this format, the other export formats
+    /// and the MCP tool spell a value the same way. Only the option mapping is this plugin's own.
+    ///
+    /// `originalHadLineBreaks` says the value's breaks were already replaced with spaces upstream,
+    /// and it still forces quoting: the source text spanned lines, and a reader that splits on the
+    /// delimiter has no way to know the space it now sees was one.
     private func escapeCSVField(_ field: String, options: CSVExportOptions, originalHadLineBreaks: Bool = false) -> String {
-        var processed = field
-
-        if options.sanitizeFormulas {
-            let dangerousPrefixes: [Character] = ["=", "+", "-", "@"]
-            if let first = processed.first, dangerousPrefixes.contains(first) {
-                processed = "'" + processed
-            }
+        let escaped = PluginRowWriters.csvField(field, options: writeOptions(options))
+        guard originalHadLineBreaks, options.quoteHandling == .asNeeded, !escaped.hasPrefix("\"") else {
+            return escaped
         }
+        return "\"\(escaped.replacingOccurrences(of: "\"", with: "\"\""))\""
+    }
 
-        switch options.quoteHandling {
-        case .always:
-            let escaped = processed.replacingOccurrences(of: "\"", with: "\"\"")
-            return "\"\(escaped)\""
-        case .never:
-            return processed
-        case .asNeeded:
-            let needsQuotes = processed.contains(options.delimiter.actualValue) ||
-                processed.contains("\"") ||
-                processed.contains("\n") ||
-                processed.contains("\r") ||
-                originalHadLineBreaks
-            if needsQuotes {
-                let escaped = processed.replacingOccurrences(of: "\"", with: "\"\"")
-                return "\"\(escaped)\""
-            }
-            return processed
+    private func writeOptions(_ options: CSVExportOptions) -> PluginCsvWriteOptions {
+        PluginCsvWriteOptions(
+            delimiter: options.delimiter.actualValue,
+            quoteHandling: quoteHandling(options.quoteHandling),
+            lineEnding: options.lineBreak.value,
+            nullAsEmpty: true,
+            sanitizesFormulas: options.sanitizeFormulas,
+            flattensLineBreaks: false
+        )
+    }
+
+    private func quoteHandling(_ handling: CSVQuoteHandling) -> PluginCsvWriteOptions.QuoteHandling {
+        switch handling {
+        case .always: return .always
+        case .never: return .never
+        case .asNeeded: return .asNeeded
         }
     }
 }

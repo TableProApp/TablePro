@@ -16,6 +16,8 @@ actor ExportObjectCache {
     private var routinesByDatabase: [String: [PluginRoutineInfo]] = [:]
     private var triggersByDatabase: [String: [PluginTriggerInfo]] = [:]
     private var userTypesByDatabase: [String: [PluginUserDefinedTypeInfo]] = [:]
+    private var eventsByDatabase: [String: [PluginEventInfo]] = [:]
+    private var sequencesByDatabase: [String: [PluginSequenceInfo]] = [:]
 
     func routines(
         forDatabase database: String,
@@ -34,6 +36,26 @@ actor ExportObjectCache {
         if let cached = triggersByDatabase[database] { return cached }
         let loaded = try await load()
         triggersByDatabase[database] = loaded
+        return loaded
+    }
+
+    func events(
+        forDatabase database: String,
+        load: () async throws -> [PluginEventInfo]
+    ) async throws -> [PluginEventInfo] {
+        if let cached = eventsByDatabase[database] { return cached }
+        let loaded = try await load()
+        eventsByDatabase[database] = loaded
+        return loaded
+    }
+
+    func sequences(
+        forDatabase database: String,
+        load: () async throws -> [PluginSequenceInfo]
+    ) async throws -> [PluginSequenceInfo] {
+        if let cached = sequencesByDatabase[database] { return cached }
+        let loaded = try await load()
+        sequencesByDatabase[database] = loaded
         return loaded
     }
 

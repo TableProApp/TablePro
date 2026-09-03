@@ -13,6 +13,7 @@ enum TableTransferError: LocalizedError {
     case noTablesSelected
     case sameConnectionAndContainer
     case targetMissing(table: String)
+    case noMatchingColumns(table: String)
     case transferFailed(String)
 
     var errorDescription: String? {
@@ -25,6 +26,10 @@ enum TableTransferError: LocalizedError {
             return String(localized: "The source and the destination are the same database.")
         case .targetMissing(let table):
             return String(format: String(localized: "The destination has no table named %@"), table)
+        case .noMatchingColumns(let table):
+            return String(
+                format: String(localized: "No column of %@ matches a column on the destination table."),
+                table)
         case .transferFailed(let message):
             return String(format: String(localized: "Transfer failed: %@"), message)
         }
@@ -74,6 +79,11 @@ final class TableTransferService {
         let destinationType: DatabaseType
         let destinationSchema: String?
         let columnMapping: [String: [String: String]]
+
+        /// The source columns per table, so a mapping can be matched by name without re-reading the
+        /// source schema mid-transfer.
+        let sourceColumns: [String: [String]]
+
         let deleteExistingRows: Bool
         let wrapInTransaction: Bool
 
@@ -83,6 +93,7 @@ final class TableTransferService {
             destinationType: DatabaseType,
             destinationSchema: String? = nil,
             columnMapping: [String: [String: String]] = [:],
+            sourceColumns: [String: [String]] = [:],
             deleteExistingRows: Bool = false,
             wrapInTransaction: Bool = true
         ) {
@@ -91,6 +102,7 @@ final class TableTransferService {
             self.destinationType = destinationType
             self.destinationSchema = destinationSchema
             self.columnMapping = columnMapping
+            self.sourceColumns = sourceColumns
             self.deleteExistingRows = deleteExistingRows
             self.wrapInTransaction = wrapInTransaction
         }
@@ -120,7 +132,8 @@ final class TableTransferService {
             state.currentTable = object.name
             state.currentTableIndex = index + 1
 
-            let mapping = request.columnMapping[object.name] ?? [:]
+            let mapping = try await resolveMapping(
+                for: object, request: request, destinationDriver: destinationDriver)
             let sink = ImportDataSinkAdapter(
                 driver: destinationDriver,
                 databaseType: request.destinationType,
@@ -129,6 +142,47 @@ final class TableTransferService {
             )
             try await transferOne(object: object, from: source, into: sink, request: request)
         }
+    }
+
+    /// The sink writes by column name and skips any field the mapping does not name, so an empty
+    /// mapping writes nothing and reports every row as unmapped. A caller that supplies no mapping
+    /// gets one matched by name, and a table whose columns match nothing is refused by name here
+    /// rather than failing on its first batch with the sink's generic message.
+    private func resolveMapping(
+        for object: ExportObjectItem,
+        request: Request,
+        destinationDriver: DatabaseDriver
+    ) async throws -> [String: String] {
+        if let supplied = request.columnMapping[object.name], !supplied.isEmpty {
+            return supplied
+        }
+        guard let pluginDriver = (destinationDriver as? PluginDriverAdapter)?.schemaPluginDriver else {
+            throw TableTransferError.targetMissing(table: object.name)
+        }
+        let destinationColumns: [String]
+        do {
+            destinationColumns = try await pluginDriver
+                .fetchColumns(table: object.name, schema: request.destinationSchema)
+                .map(\.name)
+        } catch {
+            throw TableTransferError.targetMissing(table: object.name)
+        }
+        guard !destinationColumns.isEmpty else {
+            throw TableTransferError.targetMissing(table: object.name)
+        }
+
+        let sourceColumns = request.sourceColumns[object.name] ?? []
+        let match = TableColumnMatcher.match(source: sourceColumns, destination: destinationColumns)
+        guard !match.isEmpty else {
+            throw TableTransferError.noMatchingColumns(table: object.name)
+        }
+        if !match.unmatchedSource.isEmpty {
+            state.warnings.append(String(
+                format: String(localized: "%1$@: %2$@ had no column of that name on the destination."),
+                object.name,
+                match.unmatchedSource.joined(separator: ", ")))
+        }
+        return match.mapping
     }
 
     private func transferOne(

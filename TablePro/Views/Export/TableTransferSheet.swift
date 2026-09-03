@@ -33,6 +33,14 @@ struct TableTransferSheet: View {
     @State private var errorMessage: String?
     @State private var hostWindow: NSWindow?
 
+    /// Source and destination columns per table, plus the user's overrides, so the sheet can show
+    /// what will map before anything is written.
+    @State private var sourceColumns: [String: [String]] = [:]
+    @State private var destinationColumns: [String: [String]] = [:]
+    @State private var overrides: [String: [String: String?]] = [:]
+    @State private var inspectedTable: String?
+    @State private var isMatching = false
+
     private var destinationConnection: DatabaseConnection? {
         guard let destinationConnectionId else { return nil }
         return availableDestinations.first { $0.id == destinationConnectionId }
@@ -105,7 +113,10 @@ struct TableTransferSheet: View {
                 }
             }
             .onChange(of: destinationConnectionId) {
-                Task { await loadDestinationDatabases() }
+                Task {
+                    await loadDestinationDatabases()
+                    await loadColumnsForSelection()
+                }
             }
 
             if !destinationDatabases.isEmpty {
@@ -122,8 +133,16 @@ struct TableTransferSheet: View {
 
             List {
                 ForEach(sourceTables) { table in
-                    Toggle(table.name, isOn: binding(for: table))
-                        .toggleStyle(.checkbox)
+                    HStack(spacing: 6) {
+                        Toggle(table.name, isOn: binding(for: table))
+                            .toggleStyle(.checkbox)
+
+                        Spacer(minLength: 4)
+
+                        if table.isSelected {
+                            mappingSummary(for: table.name)
+                        }
+                    }
                 }
             }
             .listStyle(.bordered)
@@ -188,12 +207,78 @@ struct TableTransferSheet: View {
         )
     }
 
+    /// Says how a table will map before anything is written, and opens the editor. A table whose
+    /// columns match nothing is called out here rather than failing on its first batch.
+    @ViewBuilder
+    private func mappingSummary(for table: String) -> some View {
+        let match = resolvedMatch(for: table)
+        if isMatching, destinationColumns[table] == nil {
+            ProgressView()
+                .scaleEffect(0.5)
+                .frame(width: 16)
+        } else if destinationColumns[table] == nil {
+            Text("no such table")
+                .font(.caption)
+                .foregroundStyle(.red)
+        } else {
+            Button {
+                inspectedTable = table
+            } label: {
+                HStack(spacing: 3) {
+                    Text(mappingLabel(match))
+                        .font(.caption)
+                        .foregroundStyle(match.isEmpty ? Color.red : .secondary)
+                    Image(systemName: "arrow.left.arrow.right")
+                        .font(.caption)
+                }
+            }
+            .buttonStyle(.borderless)
+            .popover(isPresented: Binding(
+                get: { inspectedTable == table },
+                set: { if !$0 { inspectedTable = nil } }
+            )) {
+                TableTransferMappingEditor(
+                    tableName: table,
+                    sourceColumns: sourceColumns[table] ?? [],
+                    destinationColumns: destinationColumns[table] ?? [],
+                    overrides: Binding(
+                        get: { overrides[table] ?? [:] },
+                        set: { overrides[table] = $0 }
+                    ),
+                    dismiss: { inspectedTable = nil }
+                )
+            }
+        }
+    }
+
+    private func mappingLabel(_ match: TableColumnMatcher.Match) -> String {
+        guard !match.isEmpty else { return String(localized: "no columns match") }
+        guard match.unmatchedSource.isEmpty else {
+            return String(
+                format: String(localized: "%1$lld mapped, %2$lld skipped"),
+                Int64(match.mapping.count),
+                Int64(match.unmatchedSource.count))
+        }
+        return String(format: String(localized: "%lld mapped"), Int64(match.mapping.count))
+    }
+
+    private func resolvedMatch(for table: String) -> TableColumnMatcher.Match {
+        let destination = destinationColumns[table] ?? []
+        let automatic = TableColumnMatcher.match(
+            source: sourceColumns[table] ?? [], destination: destination)
+        guard let tableOverrides = overrides[table], !tableOverrides.isEmpty else { return automatic }
+        return TableColumnMatcher.applying(
+            overrides: tableOverrides, to: automatic, destination: destination)
+    }
+
     private func binding(for table: ExportObjectItem) -> Binding<Bool> {
         Binding(
             get: { sourceTables.first { $0.id == table.id }?.isSelected ?? false },
             set: { isOn in
                 guard let index = sourceTables.firstIndex(where: { $0.id == table.id }) else { return }
                 sourceTables[index].isSelected = isOn
+                guard isOn else { return }
+                Task { await loadColumnsForSelection() }
             }
         )
     }
@@ -271,6 +356,48 @@ struct TableTransferSheet: View {
         return await alert.beginSheetModal(for: hostWindow) == .alertFirstButtonReturn
     }
 
+    /// Reads the columns on both sides for every ticked table, so the sheet can say what will map
+    /// before anything is written. Only the ticked ones, because a database of four hundred tables
+    /// would otherwise pay for four hundred column reads to open a sheet.
+    @MainActor
+    private func loadColumnsForSelection() async {
+        let tables = selectedTables.map(\.name)
+        guard !tables.isEmpty, let destinationConnection else { return }
+        isMatching = true
+        defer { isMatching = false }
+
+        for table in tables where sourceColumns[table] == nil {
+            sourceColumns[table] = await columns(
+                of: table, on: sourceScope, schema: nil)
+        }
+        guard let destinationDriver = DatabaseManager.shared.driver(for: destinationConnection.id),
+              let pluginDriver = (destinationDriver as? PluginDriverAdapter)?.schemaPluginDriver
+        else { return }
+        for table in tables where destinationColumns[table] == nil {
+            do {
+                let found = try await pluginDriver.fetchColumns(table: table, schema: nil).map(\.name)
+                destinationColumns[table] = found.isEmpty ? nil : found
+            } catch {
+                Self.logger.warning("Destination has no \(table, privacy: .public)")
+            }
+        }
+    }
+
+    @MainActor
+    private func columns(of table: String, on scope: DatabaseScope, schema: String?) async -> [String] {
+        do {
+            return try await DatabaseManager.shared.withMetadataDriver(
+                scope: scope, workload: .interactive
+            ) { driver in
+                guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else { return [] }
+                return try await pluginDriver.fetchColumns(table: table, schema: schema).map(\.name)
+            }
+        } catch {
+            Self.logger.warning("Failed to read source columns: \(error.localizedDescription)")
+            return []
+        }
+    }
+
     private var sourceScope: DatabaseScope {
         DatabaseManager.shared.resolvedScope(
             database: sourceConnection.database, schema: nil, for: sourceConnection.id
@@ -298,10 +425,31 @@ struct TableTransferSheet: View {
         isRunning = true
         defer { isRunning = false }
 
+        await loadColumnsForSelection()
+
+        var mappings: [String: [String: String]] = [:]
+        var unmapped: [String] = []
+        for table in selectedTables.map(\.name) {
+            let match = resolvedMatch(for: table)
+            guard !match.isEmpty else {
+                unmapped.append(table)
+                continue
+            }
+            mappings[table] = match.mapping
+        }
+        guard unmapped.isEmpty else {
+            errorMessage = String(
+                format: String(localized: "No column matches the destination for: %@"),
+                unmapped.joined(separator: ", "))
+            return
+        }
+
         let request = TableTransferService.Request(
             objects: selectedTables,
             sourceType: sourceConnection.type,
             destinationType: destinationConnection.type,
+            columnMapping: mappings,
+            sourceColumns: sourceColumns,
             deleteExistingRows: deleteExistingRows,
             wrapInTransaction: wrapInTransaction
         )

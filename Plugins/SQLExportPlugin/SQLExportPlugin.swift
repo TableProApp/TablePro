@@ -56,6 +56,11 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
     /// the dump says so rather than reading as if it were restorable with the checks on.
     var tablesUnorderedByCycle: [String] = []
 
+    /// Sequence names already written this export. A sequence can be reached twice, once as an
+    /// object the user ticked and once as a dependency of a table that defaults from it, and
+    /// `CREATE SEQUENCE` a second time fails the restore.
+    private var emittedSequenceNames: Set<String> = []
+
     /// A dump refers to its tables unqualified whenever every selected table lives in one
     /// container, which is what makes it restorable into any database. Qualifying became necessary
     /// only once an export could span two containers holding the same table name: unqualified there
@@ -106,6 +111,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         metadataWarnings = []
         exportSpansContainers = false
         tablesUnorderedByCycle = []
+        emittedSequenceNames = []
 
         let actualDestination: URL
         let gzipTempURL: URL?
@@ -154,11 +160,11 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             try writeDropPhase(
                 sortedTables: sortedTables, definitionObjects: definitionObjects,
                 dataSource: dataSource, to: writer)
-            try await writeDependentTypesAndSequences(
-                tables: rowObjects, dataSource: dataSource, to: writer)
             try await writeObjectCreatePhase(
                 objects: definitionObjects, kinds: [.userType, .sequence],
                 dataSource: dataSource, to: writer, progress: progress)
+            try await writeDependentTypesAndSequences(
+                tables: rowObjects, dataSource: dataSource, to: writer)
             try await writeCreatePhase(
                 sortedTables: sortedTables, dataSource: dataSource, to: writer, progress: progress)
             try await writeDataPhase(
@@ -380,7 +386,6 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         dataSource: any PluginExportDataSource,
         to writer: SQLExportFileWriter
     ) async throws {
-        var emittedSequenceNames: Set<String> = []
         var emittedTypeNames: Set<String> = []
         let structureTables = tables.filter { optionValue($0, at: 0) }
 
@@ -470,6 +475,9 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             try writer.write("-- --------------------------------------------------------\n")
             try writer.write("-- \(label): \(sanitizedName)\n")
             try writer.write("-- --------------------------------------------------------\n\n")
+            if object.kind == .sequence {
+                guard emittedSequenceNames.insert(object.name).inserted else { continue }
+            }
             do {
                 let ddl = ddlRewriter(for: dataSource).rewrite(try await dataSource.fetchObjectDDL(object))
                 try writer.write(ddl)

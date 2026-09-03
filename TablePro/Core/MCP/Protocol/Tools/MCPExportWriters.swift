@@ -61,45 +61,39 @@ struct MCPSqlExportDialect: Sendable {
     }
 }
 
+/// Escaping and quoting live in `PluginRowWriters`, so a tool result and an exported file spell a
+/// value the same way. Only the mapping from `JsonValue` to text is MCP's own.
 enum MCPCsvWriter {
-    static let formulaPrefixes: Set<Character> = ["=", "+", "-", "@"]
+    static let options = PluginCsvWriteOptions.toolResult
 
     static func write(columns: [String], rows: [JsonValue]) -> String {
-        var lines: [String] = [columns.map(field).joined(separator: ",")]
+        var lines: [String] = [PluginRowWriters.csvLine(columns, options: options)]
         for row in rows {
             guard let cells = row.arrayValue else { continue }
-            lines.append(cells.map(cell).joined(separator: ","))
+            lines.append(PluginRowWriters.csvLine(cells.map(text), options: options))
         }
-        return lines.joined(separator: "\r\n")
+        return lines.joined(separator: options.lineEnding)
     }
 
     static func cell(_ value: JsonValue) -> String {
-        switch value {
-        case .null: return ""
-        case .string(let text): return field(text)
-        case .int(let number): return String(number)
-        case .double(let number): return String(number)
-        case .bool(let flag): return flag ? "true" : "false"
-        case .array, .object: return field(value.jsonString())
-        }
+        PluginRowWriters.csvField(text(value), options: options)
     }
 
     static func field(_ value: String) -> String {
-        let neutralised = neutralisingFormula(value)
-        let needsQuoting = neutralised.contains(",")
-            || neutralised.contains("\"")
-            || neutralised.contains("\n")
-            || neutralised.contains("\r")
-            || neutralised.contains("\t")
-            || neutralised != value
-        guard needsQuoting else { return neutralised }
-        return "\"\(neutralised.replacingOccurrences(of: "\"", with: "\"\""))\""
+        PluginRowWriters.csvField(value, options: options)
     }
 
-    static func neutralisingFormula(_ value: String) -> String {
-        guard let first = value.first else { return value }
-        guard formulaPrefixes.contains(first) || first == "\t" || first == "\r" else { return value }
-        return "'" + value
+    /// A null is an empty cell rather than the word `null`, which is what a spreadsheet expects and
+    /// what every reader round-trips back to nothing.
+    private static func text(_ value: JsonValue) -> String {
+        switch value {
+        case .null: return ""
+        case .string(let text): return text
+        case .int(let number): return String(number)
+        case .double(let number): return String(number)
+        case .bool(let flag): return flag ? "true" : "false"
+        case .array, .object: return value.jsonString()
+        }
     }
 }
 
@@ -130,15 +124,15 @@ enum MCPSqlExportWriter {
             .split(separator: ".", omittingEmptySubsequences: true)
             .map { dialect.quote(String($0)) }
             .joined(separator: ".")
-        let columnList = columns.map(dialect.quote).joined(separator: ", ")
 
+        let quotedColumns = columns.map(dialect.quote)
         var statements: [String] = []
         for row in rows {
             guard let cells = row.arrayValue else { continue }
             let values = cells.map { value in literal(value, dialect: dialect) }
-            statements.append(
-                "INSERT INTO \(quotedTable) (\(columnList)) VALUES (\(values.joined(separator: ", ")));"
-            )
+            guard let statement = PluginRowWriters.sqlInsert(
+                table: quotedTable, columns: quotedColumns, values: values) else { continue }
+            statements.append(statement)
         }
         return statements.joined(separator: "\n")
     }

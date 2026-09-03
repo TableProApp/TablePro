@@ -553,7 +553,7 @@ struct ExportDialog: View {
         return exportableCount == 0
     }
 
-    private static let formatDisplayOrder = ["csv", "json", "sql", "xlsx", "mql"]
+    private static let formatDisplayOrder = ["csv", "json", "sql", "xlsx", "md", "html", "xml", "mql"]
 
     private func formatDescription(for formatId: String) -> String {
         switch formatId {
@@ -561,6 +561,9 @@ struct ExportDialog: View {
         case "json": return String(localized: "Structured data format. Ideal for APIs and web applications.")
         case "sql": return String(localized: "SQL INSERT statements. Use to recreate data in another database.")
         case "xlsx": return String(localized: "Excel spreadsheet with formatting support.")
+        case "md": return String(localized: "Markdown tables. Paste into a README, an issue or a wiki.")
+        case "html": return String(localized: "An HTML table. Open in a browser or paste into a page.")
+        case "xml": return String(localized: "One element per row. Use where a parser expects XML.")
         case "mql": return String(localized: "MongoDB query language. Use to import into MongoDB.")
         default: return ""
         }

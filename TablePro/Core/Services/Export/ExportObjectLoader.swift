@@ -16,11 +16,11 @@ import TableProPluginKit
 internal enum ExportObjectLoader {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ExportObjectLoader")
 
-    /// The kinds this loader knows how to read. `.sequence` and `.event` are absent because no
-    /// driver publishes a standalone list of either yet; sequences still reach a dump through
-    /// `fetchDependentSequences` on the tables that own them.
+    /// The kinds this loader knows how to read. A driver that has no answer for one returns empty,
+    /// so a kind listed here costs nothing on an engine that lacks it.
     internal static let loadableKinds: Set<PluginExportObjectKind> = [
-        .table, .view, .materializedView, .foreignTable, .routine, .trigger, .userType, .grant
+        .table, .view, .materializedView, .foreignTable,
+        .routine, .trigger, .event, .sequence, .userType, .grant
     ]
 
     internal struct Request: Sendable {
@@ -53,6 +53,12 @@ internal enum ExportObjectLoader {
         }
         if request.kinds.contains(.trigger) {
             items += await loadTriggers(schema: request.schema, container: request.containerName, driver: pluginDriver)
+        }
+        if request.kinds.contains(.event) {
+            items += await loadEvents(schema: request.schema, container: request.containerName, driver: pluginDriver)
+        }
+        if request.kinds.contains(.sequence) {
+            items += await loadSequences(schema: request.schema, container: request.containerName, driver: pluginDriver)
         }
         if request.kinds.contains(.userType) {
             items += await loadUserTypes(schema: request.schema, container: request.containerName, driver: pluginDriver)
@@ -102,6 +108,39 @@ internal enum ExportObjectLoader {
             }
         } catch {
             logger.warning("Failed to list triggers for export: \(error.localizedDescription)")
+            return []
+        }
+    }
+
+    private static func loadEvents(
+        schema: String?,
+        container: String,
+        driver: any PluginDatabaseDriver
+    ) async -> [ExportObjectItem] {
+        do {
+            return try await driver.fetchEvents(schema: schema).map { event in
+                ExportObjectItem(name: event.name, databaseName: container, kind: .event)
+            }
+        } catch {
+            logger.warning("Failed to list events for export: \(error.localizedDescription)")
+            return []
+        }
+    }
+
+    /// Every sequence in the container, including the ones a table already owns. The SQL export
+    /// emits each name once, so a sequence reached by both this list and `fetchDependentSequences`
+    /// is written a single time.
+    private static func loadSequences(
+        schema: String?,
+        container: String,
+        driver: any PluginDatabaseDriver
+    ) async -> [ExportObjectItem] {
+        do {
+            return try await driver.fetchSequences(schema: schema).map { sequence in
+                ExportObjectItem(name: sequence.name, databaseName: container, kind: .sequence)
+            }
+        } catch {
+            logger.warning("Failed to list sequences for export: \(error.localizedDescription)")
             return []
         }
     }

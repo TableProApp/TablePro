@@ -104,6 +104,15 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchTriggerDDL(_ trigger: PluginTriggerInfo) async throws -> String
     func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo]
     func fetchRoutineDDL(_ routine: PluginRoutineInfo) async throws -> String
+
+    /// Scheduled events, which only MySQL and MariaDB have. An engine without them answers empty
+    /// and nothing above has to know which engines those are.
+    func fetchEvents(schema: String?) async throws -> [PluginEventInfo]
+    func fetchEventDDL(_ event: PluginEventInfo) async throws -> String
+
+    /// Sequences that stand on their own rather than backing a column. `fetchDependentSequences`
+    /// answers the ones a table owns; this answers the rest, which a dump would otherwise drop.
+    func fetchSequences(schema: String?) async throws -> [PluginSequenceInfo]
     func fetchUserDefinedTypes(schema: String?) async throws -> [PluginUserDefinedTypeInfo]
 
     /// Reads one type again, definition included. The type must be one this driver listed,
@@ -360,6 +369,17 @@ public extension PluginDatabaseDriver {
         return procedures.map { $0.adopting(kind: .procedure, schema: schema) }
             + functions.map { $0.adopting(kind: .function, schema: schema) }
     }
+
+    func fetchEvents(schema: String?) async throws -> [PluginEventInfo] { [] }
+
+    func fetchEventDDL(_ event: PluginEventInfo) async throws -> String {
+        guard let definition = event.definition, !definition.isEmpty else {
+            throw PluginObjectSourceError.unsupported(event.name)
+        }
+        return definition
+    }
+
+    func fetchSequences(schema: String?) async throws -> [PluginSequenceInfo] { [] }
 
     func fetchRoutineDDL(_ routine: PluginRoutineInfo) async throws -> String {
         guard let legacy = self as? PluginProcedureFunctionSupport else {

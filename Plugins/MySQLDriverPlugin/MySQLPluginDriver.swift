@@ -594,6 +594,35 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return ddl.hasSuffix(";") ? ddl : ddl + ";"
     }
 
+    /// Scheduled events. `information_schema.EVENTS` lists them for the current database, and
+    /// `SHOW CREATE EVENT` is the only thing that produces a runnable definition.
+    func fetchEvents(schema: String?) async throws -> [PluginEventInfo] {
+        let result = try await execute(query: """
+            SELECT EVENT_NAME, EVENT_TYPE, STATUS, EVENT_SCHEMA
+            FROM information_schema.EVENTS
+            WHERE EVENT_SCHEMA = DATABASE()
+            ORDER BY EVENT_NAME
+            """)
+        return result.rows.compactMap { row in
+            guard let name = row[safe: 0]?.asText else { return nil }
+            return PluginEventInfo(
+                name: name,
+                schema: row[safe: 3]?.asText,
+                kind: row[safe: 1]?.asText,
+                isEnabled: row[safe: 2]?.asText?.uppercased() == "ENABLED"
+            )
+        }
+    }
+
+    func fetchEventDDL(_ event: PluginEventInfo) async throws -> String {
+        let safeName = event.name.replacingOccurrences(of: "`", with: "``")
+        let result = try await execute(query: "SHOW CREATE EVENT `\(safeName)`")
+        guard let row = result.rows.first, let ddl = row[safe: 3]?.asText else {
+            throw PluginObjectSourceError.unsupported(event.name)
+        }
+        return ddl
+    }
+
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
         let safeView = view.replacingOccurrences(of: "`", with: "``")
         let result = try await execute(query: "SHOW CREATE VIEW `\(safeView)`")

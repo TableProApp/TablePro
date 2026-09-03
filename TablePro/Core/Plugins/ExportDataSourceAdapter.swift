@@ -181,6 +181,20 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
                 throw PluginObjectSourceError.unsupported(object.name)
             }
             return try await pluginDriver.fetchTriggerDDL(trigger)
+        case .event:
+            guard let event = try await cachedEvents(schema: schema, databaseName: object.databaseName)
+                .first(where: { $0.name == object.name })
+            else {
+                throw PluginObjectSourceError.unsupported(object.name)
+            }
+            return try await pluginDriver.fetchEventDDL(event)
+        case .sequence:
+            guard let sequence = try await cachedSequences(schema: schema, databaseName: object.databaseName)
+                .first(where: { $0.name == object.name })
+            else {
+                throw PluginObjectSourceError.unsupported(object.name)
+            }
+            return sequence.ddl
         case .userType:
             guard let type = try await cachedUserTypes(schema: schema, databaseName: object.databaseName)
                 .first(where: { $0.name == object.name })
@@ -229,6 +243,18 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
             )
         default:
             return nil
+        }
+    }
+
+    private func cachedEvents(schema: String?, databaseName: String) async throws -> [PluginEventInfo] {
+        try await objectCache.events(forDatabase: databaseName) { [pluginDriver] in
+            try await pluginDriver?.fetchEvents(schema: schema) ?? []
+        }
+    }
+
+    private func cachedSequences(schema: String?, databaseName: String) async throws -> [PluginSequenceInfo] {
+        try await objectCache.sequences(forDatabase: databaseName) { [pluginDriver] in
+            try await pluginDriver?.fetchSequences(schema: schema) ?? []
         }
     }
 

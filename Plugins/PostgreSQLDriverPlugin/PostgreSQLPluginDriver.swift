@@ -783,6 +783,52 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         }
     }
 
+    /// Every sequence in the schema, including the ones no column defaults from.
+    ///
+    /// `fetchDependentSequences` answers only those a table's `nextval` default reaches, which is
+    /// what a table dump needs. A sequence a routine or the application advances by hand belongs to
+    /// nothing, so it is invisible to that query and a dump built only from it restores a database
+    /// whose sequence is gone.
+    func fetchSequences(schema: String?) async throws -> [PluginSequenceInfo] {
+        guard includesSequencesCatalog() else { return [] }
+        let schemaName = schema ?? core.currentSchema
+        let schemaLiteral = escapeLiteral(schemaName)
+        let query = """
+            SELECT s.sequencename,
+                   s.start_value,
+                   s.min_value,
+                   s.max_value,
+                   s.increment_by,
+                   s.cycle,
+                   s.last_value,
+                   d.refobjid IS NOT NULL AS owned
+            FROM pg_sequences s
+            JOIN pg_class c ON c.relname = s.sequencename
+            JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = s.schemaname
+            LEFT JOIN pg_depend d ON d.objid = c.oid AND d.deptype = 'a'
+            WHERE s.schemaname = '\(schemaLiteral)'
+            ORDER BY s.sequencename
+            """
+        let result = try await execute(query: query)
+        return result.rows.compactMap { row -> PluginSequenceInfo? in
+            guard let name = row[0].asText else { return nil }
+            let start = row[1].asText ?? "1"
+            let minValue = row[2].asText ?? "1"
+            let maxValue = row[3].asText ?? "9223372036854775807"
+            let increment = row[4].asText ?? "1"
+            let cycle = row[5].asText == "t" ? " CYCLE" : ""
+            let lastValue = row.count > 6 ? row[6].asText : nil
+            let quoted = quoteIdentifier(name)
+            var ddl = "CREATE SEQUENCE \(quoted) INCREMENT BY \(increment)"
+                + " MINVALUE \(minValue) MAXVALUE \(maxValue)"
+                + " START WITH \(start)\(cycle);"
+            if let last = lastValue, !last.isEmpty, Int64(last) != nil {
+                ddl += "\nSELECT pg_catalog.setval('\"\(escapeStringLiteral(name))\"', \(last), true);"
+            }
+            return PluginSequenceInfo(name: name, ddl: ddl, schema: schemaName)
+        }
+    }
+
     private static let supportedEncodings: [String] = [
         "UTF8", "LATIN1", "SQL_ASCII", "WIN1252", "EUC_JP",
         "EUC_KR", "ISO_8859_5", "KOI8R", "SJIS", "BIG5", "GBK"
