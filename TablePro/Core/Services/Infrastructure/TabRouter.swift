@@ -99,6 +99,38 @@ internal final class TabRouter {
         try await openConnection(id: connection.id, transientConnection: connection)
     }
 
+    /// Open a saved connection in a window of its own. One some window already hosts takes the
+    /// ordinary route instead, which selects it where it already is.
+    ///
+    /// The host is checked here rather than by the caller. A caller decides on a modifier key and
+    /// the work runs a main-actor job later, and anything else that opens a connection in between,
+    /// the MCP tool among them, would leave that answer stale and two workspaces restoring the same
+    /// tabs. Nothing is awaited between the question and the window.
+    ///
+    /// No pre-connect script prompt here, matching the window-opening half of `openConnection`. A
+    /// window whose connection carries a script does not auto-connect at all: it waits in its
+    /// not-connected state, where Connect asks. Asking first would put the same question twice and
+    /// the first answer would change nothing.
+    internal func openConnectionPreferringNewWindow(id: UUID) async throws {
+        guard WindowManager.shared.window(for: id) == nil else {
+            try await openConnection(id: id)
+            return
+        }
+        guard let connection = ConnectionStorage.shared.loadConnections().first(where: { $0.id == id }) else {
+            throw TabRouterError.connectionNotFound(id)
+        }
+
+        let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
+        WindowManager.shared.openInNewWindow(
+            payload: payload,
+            activate: true,
+            autoConnect: true,
+            joinsTabGroup: false
+        )
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
+        WindowOpener.shared.closeWelcome()
+    }
+
     private func openConnection(id: UUID, transientConnection: DatabaseConnection? = nil) async throws {
         let connection: DatabaseConnection
         if let stored = ConnectionStorage.shared.loadConnections().first(where: { $0.id == id }) {
