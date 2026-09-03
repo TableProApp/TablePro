@@ -101,6 +101,14 @@ final class MetadataConnectionPool {
         }
     }
 
+    #if DEBUG
+    /// Seeds a connected driver as the pooled connection for `scope`, so a test can observe
+    /// what runs on the pool without a plugin to open a real connection.
+    internal func injectEntry(_ driver: DatabaseDriver, scope: DatabaseScope, workload: Workload = .interactive) {
+        entries[Key(scope: scope, workload: workload)] = Entry(driver: driver)
+    }
+    #endif
+
     private func releaseEntry(_ entry: Entry) {
         entry.inFlightCount -= 1
         if entry.inFlightCount == 0, entry.closeWhenIdle {

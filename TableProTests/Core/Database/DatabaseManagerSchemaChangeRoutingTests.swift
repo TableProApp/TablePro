@@ -5,7 +5,9 @@
 //  Pins the fix for #2015 and #2026: a table structure save runs its DDL on the scope
 //  the editing tab owns, and moving the shared driver there is a mechanical detail no
 //  UI reads. The save must not drag the sidebar, the toolbar or the saved default
-//  database onto the edited tab's database.
+//  database onto the edited tab's database. And it runs on a connection of its own
+//  wherever the engine can pool one, so its BEGIN never joins a transaction a query tab
+//  left open on the session driver.
 //
 
 import Combine
@@ -82,6 +84,34 @@ private final class SchemaRoutingDriver: SchemaRoutingBaseDriver, PluginDatabase
 @Suite("DatabaseManager schema change routing", .serialized)
 @MainActor
 struct DatabaseManagerSchemaChangeRoutingTests {
+    /// An engine that changes database on its live connection but cannot pool a second one,
+    /// so a save has nowhere to run but the session driver and has to pin it.
+    private static let singleConnectionTypeId = "SchemaRoutingSingleConnection"
+
+    private static var singleConnectionType: DatabaseType {
+        registerSingleConnectionTypeIfNeeded()
+        return DatabaseType(rawValue: singleConnectionTypeId)
+    }
+
+    private static func registerSingleConnectionTypeIfNeeded() {
+        guard PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: singleConnectionTypeId) == nil else {
+            return
+        }
+        var capabilities = PluginMetadataSnapshot.CapabilityFlags.defaults
+        capabilities.supportsConnectionPooling = false
+        let snapshot = PluginMetadataSnapshot(
+            displayName: singleConnectionTypeId, iconName: "cylinder", defaultPort: 1_234,
+            requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,
+            isDownloadable: false, primaryUrlScheme: "schemaroutingsingle", parameterStyle: .questionMark,
+            navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
+            supportsHealthMonitor: false, urlSchemes: ["schemaroutingsingle"], postConnectActions: [],
+            brandColorHex: "#000000", queryLanguageName: "SQL", editorLanguage: .sql,
+            connectionMode: .network, supportsDatabaseSwitching: true,
+            capabilities: capabilities, schema: .defaults, editor: .defaults, connection: .defaults
+        )
+        PluginMetadataRegistry.shared.register(snapshot: snapshot, forTypeId: singleConnectionTypeId)
+    }
+
     private static func makeAddColumnChange(named name: String = "notes") -> SchemaChange {
         var column = EditableColumnDefinition.placeholder()
         column.name = name
@@ -108,6 +138,26 @@ struct DatabaseManagerSchemaChangeRoutingTests {
         return (connection, pluginDriver)
     }
 
+    /// Stands in for the connection the pool would open on the scope, which the pool puts on
+    /// the scope's database and schema before handing it out.
+    private static func seedPooledDriver(
+        _ connection: DatabaseConnection,
+        scope: DatabaseScope
+    ) async throws -> SchemaRoutingDriver {
+        let pluginDriver = SchemaRoutingDriver(currentSchema: scope.schema)
+        let adapter = PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
+        try await adapter.connect()
+        MetadataConnectionPool.shared.injectEntry(adapter, scope: scope)
+        return pluginDriver
+    }
+
+    private static func tearDown(_ connections: DatabaseConnection...) {
+        for connection in connections {
+            MetadataConnectionPool.shared.closeAll(connectionId: connection.id)
+            DatabaseManager.shared.removeSession(for: connection.id)
+        }
+    }
+
     private static func makeScope(
         _ connection: DatabaseConnection,
         database: String,
@@ -116,18 +166,33 @@ struct DatabaseManagerSchemaChangeRoutingTests {
         DatabaseScope(connectionId: connection.id, database: database, schema: schema)
     }
 
+    @Test("A save takes a pooled connection wherever the engine can open one")
+    func schemaChangeRouteIsPooledWhereverTheEngineCanPool() throws {
+        let (pooling, _) = Self.makeSession(savedDatabase: "orders")
+        let (single, _) = Self.makeSession(type: Self.singleConnectionType, savedDatabase: "orders")
+        defer { Self.tearDown(pooling, single) }
+
+        let poolingScope = try #require(Self.makeScope(pooling, database: "orders"))
+        let singleScope = try #require(Self.makeScope(single, database: "orders"))
+        let serverScope = try #require(Self.makeScope(pooling, database: ""))
+
+        #expect(DatabaseManager.shared.schemaChangeRoute(for: poolingScope) == .pooled)
+        #expect(DatabaseManager.shared.schemaChangeRoute(for: singleScope) == .sessionDriver)
+        #expect(DatabaseManager.shared.schemaChangeRoute(for: serverScope) == .sessionDriver)
+    }
+
     @Test("Schema changes run on the requested connection, not the last activated one")
     func schemaChangeUsesRequestedConnection() async throws {
         let (connectionA, driverA) = Self.makeSession(savedDatabase: "alpha")
         let (connectionB, driverB) = Self.makeSession(savedDatabase: "beta")
         DatabaseManager.shared.lastActiveSessionId = connectionA.id
         defer {
-            DatabaseManager.shared.removeSession(for: connectionA.id)
-            DatabaseManager.shared.removeSession(for: connectionB.id)
+            Self.tearDown(connectionA, connectionB)
             DatabaseManager.shared.lastActiveSessionId = nil
         }
 
         let scope = try #require(Self.makeScope(connectionB, database: "beta"))
+        let pooledB = try await Self.seedPooledDriver(connectionB, scope: scope)
         try await DatabaseManager.shared.executeSchemaChanges(
             tableName: "orders",
             changes: [Self.makeAddColumnChange()],
@@ -135,20 +200,25 @@ struct DatabaseManagerSchemaChangeRoutingTests {
             scope: scope
         )
 
-        #expect(driverB.executedQueries.count == 1)
-        #expect(driverB.executedQueries.first?.contains("ADD COLUMN") == true)
+        #expect(pooledB.executedQueries.count == 1)
+        #expect(pooledB.executedQueries.first?.contains("ADD COLUMN") == true)
         #expect(driverA.executedQueries.isEmpty)
+        #expect(driverB.executedQueries.isEmpty)
     }
 
-    @Test("A save runs on the tab's database without moving the browse cursor")
-    func schemaChangeRunsOnTheTabsDatabaseWithoutMovingTheBrowseCursor() async throws {
+    /// The session driver holds whatever transaction a query tab left open. A save that ran
+    /// there wrapped its DDL in a BEGIN that joined that transaction and a COMMIT that took the
+    /// tab's uncommitted work with it, or a ROLLBACK that threw it away.
+    @Test("A save runs on the tab's database on its own connection, leaving the session driver alone")
+    func schemaChangeRunsOnItsOwnConnectionWithoutMovingTheBrowseCursor() async throws {
         let (connection, driver) = Self.makeSession(
             savedDatabase: "analytics",
             browseDatabase: "inventory"
         )
-        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        defer { Self.tearDown(connection) }
 
         let scope = try #require(Self.makeScope(connection, database: "orders"))
+        let pooled = try await Self.seedPooledDriver(connection, scope: scope)
         try await DatabaseManager.shared.executeSchemaChanges(
             tableName: "orders",
             changes: [Self.makeAddColumnChange()],
@@ -156,25 +226,25 @@ struct DatabaseManagerSchemaChangeRoutingTests {
             scope: scope
         )
 
-        #expect(driver.switchedDatabases.allSatisfy { $0 == "orders" })
-        #expect(!driver.switchedDatabases.isEmpty)
-        #expect(driver.executedQueries.count == 1)
+        #expect(pooled.executedQueries.count == 1)
+        #expect(driver.executedQueries.isEmpty)
+        #expect(driver.switchedDatabases.isEmpty)
 
         let session = DatabaseManager.shared.session(for: connection.id)
         #expect(session?.browseDatabase == "inventory")
         #expect(session?.connection.database == "analytics")
     }
 
-    @Test("A save always pins its target database because nothing tracks where the driver is")
-    func schemaChangeAlwaysPinsItsTargetDatabase() async throws {
-        let (connection, driver) = Self.makeSession(savedDatabase: "orders")
-        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+    @Test("An engine with one connection pins the session driver to the target database")
+    func singleConnectionEnginePinsItsTargetDatabase() async throws {
+        let (connection, driver) = Self.makeSession(type: Self.singleConnectionType, savedDatabase: "orders")
+        defer { Self.tearDown(connection) }
 
         let scope = try #require(Self.makeScope(connection, database: "orders"))
         try await DatabaseManager.shared.executeSchemaChanges(
             tableName: "orders",
             changes: [Self.makeAddColumnChange()],
-            databaseType: .mysql,
+            databaseType: Self.singleConnectionType,
             scope: scope
         )
 
@@ -186,18 +256,19 @@ struct DatabaseManagerSchemaChangeRoutingTests {
     @Test("A failed database pin aborts the save before any DDL runs")
     func failedDatabasePinAbortsSave() async throws {
         let (connection, driver) = Self.makeSession(
+            type: Self.singleConnectionType,
             savedDatabase: "orders",
             browseDatabase: "inventory"
         )
         driver.switchDatabaseError = DatabaseError.queryFailed("unknown database")
-        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        defer { Self.tearDown(connection) }
 
         let scope = try #require(Self.makeScope(connection, database: "orders"))
         await #expect(throws: DatabaseError.self) {
             try await DatabaseManager.shared.executeSchemaChanges(
                 tableName: "orders",
                 changes: [Self.makeAddColumnChange()],
-                databaseType: .mysql,
+                databaseType: Self.singleConnectionType,
                 scope: scope
             )
         }
@@ -211,9 +282,10 @@ struct DatabaseManagerSchemaChangeRoutingTests {
             type: .postgresql,
             savedDatabase: "orders"
         )
-        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        defer { Self.tearDown(connection) }
 
         let scope = try #require(Self.makeScope(connection, database: "orders"))
+        let pooled = try await Self.seedPooledDriver(connection, scope: scope)
         try await DatabaseManager.shared.executeSchemaChanges(
             tableName: "orders",
             changes: [Self.makeAddColumnChange()],
@@ -222,20 +294,22 @@ struct DatabaseManagerSchemaChangeRoutingTests {
         )
 
         #expect(driver.switchedDatabases.isEmpty)
-        #expect(driver.executedQueries.count == 1)
+        #expect(driver.executedQueries.isEmpty)
+        #expect(pooled.executedQueries.count == 1)
     }
 
-    @Test("A schema-grouped engine keeps the edited table's schema across the database pin")
+    @Test("A schema-grouped engine qualifies the DDL with the edited table's schema")
     func schemaGroupedEngineKeepsTableSchema() async throws {
         let (connection, driver) = Self.makeSession(
             type: .mssql,
             savedDatabase: "orders",
             browseDatabase: "inventory",
-            browseSchema: "sales"
+            browseSchema: "dbo"
         )
-        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        defer { Self.tearDown(connection) }
 
         let scope = try #require(Self.makeScope(connection, database: "orders", schema: "sales"))
+        let pooled = try await Self.seedPooledDriver(connection, scope: scope)
         try await DatabaseManager.shared.executeSchemaChanges(
             tableName: "orders",
             changes: [Self.makeAddColumnChange()],
@@ -243,10 +317,9 @@ struct DatabaseManagerSchemaChangeRoutingTests {
             scope: scope
         )
 
-        #expect(!driver.switchedDatabases.isEmpty)
-        #expect(driver.switchedDatabases.allSatisfy { $0 == "orders" })
-        #expect(driver.currentSchema == "sales")
-        #expect(driver.executedQueries.first?.contains("`sales`.`orders`") == true)
+        #expect(pooled.executedQueries.first?.contains("`sales`.`orders`") == true)
+        #expect(driver.currentSchema == "dbo")
+        #expect(driver.executedQueries.isEmpty)
     }
 
     @Test("A save broadcasts a refresh scoped to the edited tab, not to the browse cursor")
@@ -255,7 +328,7 @@ struct DatabaseManagerSchemaChangeRoutingTests {
             savedDatabase: "analytics",
             browseDatabase: "inventory"
         )
-        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        defer { Self.tearDown(connection) }
 
         let recorder = RefreshRequestRecorder()
         let cancellable = AppCommands.shared.refreshData.sink { request in
@@ -264,6 +337,7 @@ struct DatabaseManagerSchemaChangeRoutingTests {
         defer { cancellable.cancel() }
 
         let scope = try #require(Self.makeScope(connection, database: "orders"))
+        _ = try await Self.seedPooledDriver(connection, scope: scope)
         try await DatabaseManager.shared.executeSchemaChanges(
             tableName: "orders",
             changes: [Self.makeAddColumnChange()],

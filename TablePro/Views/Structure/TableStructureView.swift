@@ -410,6 +410,7 @@ struct TableStructureView: View {
         case .triggers:
             TriggerDetailView(
                 triggers: triggers,
+                scope: scope,
                 connection: connection,
                 tableName: tableName,
                 isLoading: !tabData.hasData(.triggers),

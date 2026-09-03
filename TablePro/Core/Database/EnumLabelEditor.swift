@@ -83,15 +83,14 @@ struct EnumLabelEditor {
             throw EnumLabelEditingError.denied(decision.deniedReason ?? String(localized: "Operation not permitted"))
         }
 
-        /// Not the session driver: that one holds whatever transaction the user opened in a query
-        /// tab, and a label added inside it is unusable until the commit and gone on a rollback,
-        /// while the listing reloads over other connections and cannot see it at all. The
-        /// metadata route is a dedicated autocommit connection wherever the engine can pool one.
+        /// A label added inside a query tab's open transaction is unusable until the commit and
+        /// gone on a rollback, while the listing reloads over other connections and cannot see
+        /// it at all; the schema change route keeps the statement off that transaction.
         let startedAt = Date()
         let scope = scope
         try await DatabaseManager.shared.withScopedDriver(
             scope: scope,
-            route: DatabaseManager.shared.metadataRoute(for: scope),
+            route: DatabaseManager.shared.schemaChangeRoute(for: scope),
             cancellation: .protectedWrite
         ) { driver in
             _ = try await driver.execute(query: sql)

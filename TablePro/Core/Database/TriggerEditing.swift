@@ -43,7 +43,11 @@ enum TriggerApplyStrategy: Equatable {
 enum TriggerEditing {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "TriggerEditing")
 
+    /// Runs on the schema change route, never on the session driver: the trigger's own BEGIN
+    /// would join a transaction a query tab left open, and its COMMIT or ROLLBACK would take
+    /// that tab's uncommitted work with it.
     static func apply(
+        scope: DatabaseScope,
         connection: DatabaseConnection,
         tableName: String,
         sql: String,
@@ -51,10 +55,6 @@ enum TriggerEditing {
         originalName: String?,
         originalDefinition: String?
     ) async throws {
-        guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
-            throw TriggerEditingError.notConnected
-        }
-
         let decision = await ExecutionGateProvider.shared.authorize(
             OperationRequest(
                 connectionId: connection.id,
@@ -72,29 +72,30 @@ enum TriggerEditing {
             throw TriggerEditingError.denied(decision.deniedReason ?? String(localized: "Operation not permitted"))
         }
 
-        let strategy = TriggerApplyStrategy.resolve(
-            isEdit: isEdit,
-            usesReplace: driver.triggerEditUsesReplace,
-            transactionalDDL: driver.supportsTransactionalDDL
-        )
-        let dropSQL = originalName.flatMap { driver.generateDropTriggerSQL(name: $0, table: tableName) }
-
         let startedAt = Date()
-        switch strategy {
-        case let .transactional(dropFirst):
-            try await runInTransaction(driver: driver, dropSQL: dropFirst ? dropSQL : nil, sql: sql)
-        case .dropThenCreate:
-            guard let dropSQL else { throw TriggerEditingError.dropUnavailable }
-            try await runDropThenCreate(driver: driver, dropSQL: dropSQL, sql: sql, rollback: originalDefinition)
-        case .direct:
-            _ = try await driver.execute(query: sql)
+        try await withSchemaChangeDriver(scope: scope) { driver in
+            let strategy = TriggerApplyStrategy.resolve(
+                isEdit: isEdit,
+                usesReplace: driver.triggerEditUsesReplace,
+                transactionalDDL: driver.supportsTransactionalDDL
+            )
+            let dropSQL = originalName.flatMap { driver.generateDropTriggerSQL(name: $0, table: tableName) }
+            switch strategy {
+            case let .transactional(dropFirst):
+                try await runInTransaction(driver: driver, dropSQL: dropFirst ? dropSQL : nil, sql: sql)
+            case .dropThenCreate:
+                guard let dropSQL else { throw TriggerEditingError.dropUnavailable }
+                try await runDropThenCreate(driver: driver, dropSQL: dropSQL, sql: sql, rollback: originalDefinition)
+            case .direct:
+                _ = try await driver.execute(query: sql)
+            }
         }
 
-        await recordHistory(sql, connection: connection, executionTime: Date().timeIntervalSince(startedAt))
-        AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
+        await recordHistory(sql, scope: scope, connection: connection, executionTime: Date().timeIntervalSince(startedAt))
+        AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id, scope: scope))
     }
 
-    static func drop(connection: DatabaseConnection, tableName: String, name: String) async throws {
+    static func drop(scope: DatabaseScope, connection: DatabaseConnection, tableName: String, name: String) async throws {
         guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
             throw TriggerEditingError.notConnected
         }
@@ -118,9 +119,23 @@ enum TriggerEditing {
         }
 
         let startedAt = Date()
-        _ = try await driver.execute(query: dropSQL)
-        await recordHistory(dropSQL, connection: connection, executionTime: Date().timeIntervalSince(startedAt))
-        AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
+        try await withSchemaChangeDriver(scope: scope) { driver in
+            _ = try await driver.execute(query: dropSQL)
+        }
+        await recordHistory(dropSQL, scope: scope, connection: connection, executionTime: Date().timeIntervalSince(startedAt))
+        AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id, scope: scope))
+    }
+
+    private static func withSchemaChangeDriver(
+        scope: DatabaseScope,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> Void
+    ) async throws {
+        try await DatabaseManager.shared.withScopedDriver(
+            scope: scope,
+            route: DatabaseManager.shared.schemaChangeRoute(for: scope),
+            cancellation: .protectedWrite,
+            body
+        )
     }
 
     static func runInTransaction(driver: DatabaseDriver, dropSQL: String?, sql: String) async throws {
@@ -152,13 +167,19 @@ enum TriggerEditing {
         }
     }
 
-    private static func recordHistory(_ sql: String, connection: DatabaseConnection, executionTime: TimeInterval) async {
+    private static func recordHistory(
+        _ sql: String,
+        scope: DatabaseScope,
+        connection: DatabaseConnection,
+        executionTime: TimeInterval
+    ) async {
         await DatabaseManager.shared.historyRecorder.record(
             QueryHistoryRecordRequest(
                 query: sql,
                 connectionId: connection.id,
-                databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
+                databaseName: scope.database,
                 databaseType: connection.type,
+                schemaName: scope.schema,
                 source: .structureDDL,
                 executionTime: executionTime,
                 rowCount: -1,

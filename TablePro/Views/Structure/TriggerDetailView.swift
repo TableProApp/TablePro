@@ -43,6 +43,7 @@ private struct TriggerEditorSheetItem: Identifiable {
 
 struct TriggerDetailView: View {
     let triggers: [TriggerInfo]
+    let scope: DatabaseScope
     let connection: DatabaseConnection
     let tableName: String
     let isLoading: Bool
@@ -122,6 +123,7 @@ struct TriggerDetailView: View {
 
     private func makeEditorSheet(for item: TriggerEditorSheetItem) -> some View {
         TriggerEditorView(
+            scope: scope,
             connection: connection,
             tableName: tableName,
             mode: item.mode,
@@ -139,8 +141,12 @@ struct TriggerDetailView: View {
 
     private func editTrigger(_ trigger: TriggerInfo) {
         Task {
-            let driver = DatabaseManager.shared.driver(for: connection.id)
-            let fetched = try? await driver?.fetchTriggerDefinition(name: trigger.name, table: tableName)
+            let scope = scope
+            let tableName = tableName
+            let name = trigger.name
+            let fetched = try? await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+                try await driver.fetchTriggerDefinition(name: name, table: tableName)
+            }
             let sql = (fetched ?? nil) ?? trigger.statement
             editorSheet = TriggerEditorSheetItem(
                 mode: .edit(originalName: trigger.name, originalDefinition: trigger.statement),
@@ -152,7 +158,12 @@ struct TriggerDetailView: View {
     private func performDelete(_ trigger: TriggerInfo) {
         Task {
             do {
-                try await TriggerEditing.drop(connection: connection, tableName: tableName, name: trigger.name)
+                try await TriggerEditing.drop(
+                    scope: scope,
+                    connection: connection,
+                    tableName: tableName,
+                    name: trigger.name
+                )
             } catch {
                 actionError = error.localizedDescription
             }

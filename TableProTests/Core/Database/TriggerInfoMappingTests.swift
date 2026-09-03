@@ -241,4 +241,42 @@ struct TriggerApplyExecutionTests {
         }
         #expect(stub.executedQueries == ["DROP TRIGGER t", "CREATE TRIGGER t", "RESTORE t"])
     }
+
+    /// The session driver holds whatever transaction a query tab left open, so a trigger edit
+    /// with a BEGIN of its own ran inside it and committed or rolled back the tab's work.
+    @Test("Apply and drop run on the pooled connection and leave the session driver alone")
+    func applyAndDropRunOnThePooledConnection() async throws {
+        let connection = TestFixtures.makeConnection(database: "app", type: .postgresql)
+        let sessionStub = StubTriggerDriver()
+        sessionStub.dropToReturn = "DROP TRIGGER t"
+        let session = ConnectionSession(
+            connection: connection,
+            driver: PluginDriverAdapter(connection: connection, pluginDriver: sessionStub)
+        )
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        let scope = DatabaseScope(connectionId: connection.id, database: "app", schema: "public")
+        let pooledStub = StubTriggerDriver()
+        pooledStub.transactionalDDL = true
+        let pooledAdapter = PluginDriverAdapter(connection: connection, pluginDriver: pooledStub)
+        try await pooledAdapter.connect()
+        MetadataConnectionPool.shared.injectEntry(pooledAdapter, scope: scope)
+        defer {
+            MetadataConnectionPool.shared.closeAll(connectionId: connection.id)
+            DatabaseManager.shared.removeSession(for: connection.id)
+        }
+
+        try await TriggerEditing.apply(
+            scope: scope,
+            connection: connection,
+            tableName: "orders",
+            sql: "CREATE TRIGGER t",
+            isEdit: false,
+            originalName: nil,
+            originalDefinition: nil
+        )
+        try await TriggerEditing.drop(scope: scope, connection: connection, tableName: "orders", name: "t")
+
+        #expect(pooledStub.executedQueries == ["BEGIN", "CREATE TRIGGER t", "COMMIT", "DROP TRIGGER t"])
+        #expect(sessionStub.executedQueries.isEmpty)
+    }
 }
