@@ -145,7 +145,7 @@ struct SchemaServiceUserDefinedTypesTests {
 
         let status = UserDefinedTypeInfo(name: "status", kind: .domain, schema: "public", baseType: "text")
         driver.typesToReturn = [mood, status]
-        let reloaded = await service.reloadUserDefinedTypes(connectionId: connectionId, driver: driver)
+        let reloaded = await service.reloadUserDefinedTypes(connectionId: connectionId, driver: driver, scope: nil)
 
         #expect(reloaded)
         #expect(service.userDefinedTypes(for: connectionId).map(\.name) == ["mood", "status"])
@@ -162,7 +162,7 @@ struct SchemaServiceUserDefinedTypesTests {
         await service.load(connectionId: connectionId, driver: driver, connection: connection)
 
         driver.typesShouldFail = true
-        let reloaded = await service.reloadUserDefinedTypes(connectionId: connectionId, driver: driver)
+        let reloaded = await service.reloadUserDefinedTypes(connectionId: connectionId, driver: driver, scope: nil)
 
         #expect(!reloaded)
         #expect(service.userDefinedTypes(for: connectionId) == [mood])

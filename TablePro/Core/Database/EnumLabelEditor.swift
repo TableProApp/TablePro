@@ -127,9 +127,14 @@ struct EnumLabelEditor {
             database: objectRef.database,
             schema: objectRef.schema
         )
+        let scope = DatabaseManager.shared.browseScope(for: connectionId)
         do {
             try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connectionId) { driver in
-                await SchemaService.shared.reloadUserDefinedTypes(connectionId: connectionId, driver: driver)
+                await SchemaService.shared.reloadUserDefinedTypes(
+                    connectionId: connectionId,
+                    driver: driver,
+                    scope: scope
+                )
             }
         } catch {
             Self.logger.warning("type listing refresh failed: \(error.localizedDescription, privacy: .public)")

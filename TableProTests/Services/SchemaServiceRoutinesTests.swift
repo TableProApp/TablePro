@@ -187,6 +187,7 @@ private final class BlockingAuxiliaryDriver: DatabaseDriver, @unchecked Sendable
     var proceduresToReturn: [RoutineInfo] = []
     var functionsToReturn: [RoutineInfo] = []
     var schemasToReturn: [String] = []
+    var routinesCallCount = 0
 
     let tablesGate = AsyncGate()
     let routinesGate = AsyncGate()
@@ -253,6 +254,7 @@ private final class BlockingAuxiliaryDriver: DatabaseDriver, @unchecked Sendable
     func rollbackTransaction() async throws {}
 
     func fetchRoutines(schema: String?) async throws -> [RoutineInfo] {
+        routinesCallCount += 1
         await routinesGate.wait()
         return proceduresToReturn + functionsToReturn
     }
@@ -410,11 +412,54 @@ struct SchemaServiceRoutinesTests {
         #expect(service.schemas(for: connectionId) == ["public"])
     }
 
+    /// The tables fetch was keyed by scope and the routine fetch by connection alone, so a load
+    /// for the database being entered joined the in-flight routine fetch of the one being left
+    /// and committed that database's routines under the new scope.
+    @Test("A load for another scope never joins the routine fetch of the scope being left")
+    func scopeChangeDoesNotJoinInFlightRoutineFetch() async {
+        let service = SchemaService()
+        let connectionId = UUID()
+        let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
+        let driver = BlockingAuxiliaryDriver(connection: connection)
+        driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "users")]
+        driver.proceduresToReturn = [RoutineInfo(name: "add_user", kind: .procedure, schema: "public")]
+        driver.schemasToReturn = ["public"]
+        let primary = DatabaseScope(connectionId: connectionId, database: "primary", schema: "public")
+        let analytics = DatabaseScope(connectionId: connectionId, database: "analytics", schema: "public")
+
+        let primaryLoad = Task {
+            await service.load(connectionId: connectionId, driver: driver, connection: connection, scope: primary)
+        }
+        await driver.tablesGate.open()
+        await waitForLoadedState(service, connectionId: connectionId)
+        await waitUntil { driver.routinesCallCount == 1 }
+
+        let analyticsLoad = Task {
+            await service.load(connectionId: connectionId, driver: driver, connection: connection, scope: analytics)
+        }
+        await waitUntil { driver.routinesCallCount == 2 }
+        #expect(driver.routinesCallCount == 2)
+
+        await driver.routinesGate.open()
+        await driver.schemasGate.open()
+        await primaryLoad.value
+        await analyticsLoad.value
+
+        #expect(service.loadedScope(for: connectionId) == analytics)
+        #expect(service.procedures(for: connectionId).map(\.name) == ["add_user"])
+    }
+
     private func waitForLoadedState(_ service: SchemaService, connectionId: UUID) async {
         while true {
             if case .loaded = service.state(for: connectionId) {
                 return
             }
+            await Task.yield()
+        }
+    }
+
+    private func waitUntil(_ condition: () -> Bool) async {
+        for _ in 0..<10_000 where !condition() {
             await Task.yield()
         }
     }
@@ -437,7 +482,7 @@ struct SchemaServiceRoutinesTests {
             RoutineInfo(name: "p2", kind: .procedure)
         ]
         driver.functionsToReturn = [RoutineInfo(name: "f2", kind: .function)]
-        await service.reloadRoutines(connectionId: connectionId, driver: driver)
+        await service.reloadRoutines(connectionId: connectionId, driver: driver, scope: nil)
 
         #expect(driver.proceduresCallCount == firstCount + 1)
         #expect(service.procedures(for: connectionId).map(\.name) == ["p1", "p2"])
