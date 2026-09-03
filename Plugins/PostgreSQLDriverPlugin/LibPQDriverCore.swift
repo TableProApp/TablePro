@@ -177,8 +177,8 @@ final class LibPQDriverCore: @unchecked Sendable {
         libpqConnection?.setPostgisOidMap(map)
     }
 
-    func setEnumOidMap(_ map: [UInt32: String]) {
-        libpqConnection?.setEnumOidMap(map)
+    func mergeCatalogTypeNames(_ names: [UInt32: String]) {
+        libpqConnection?.mergeCatalogTypeNames(names)
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {

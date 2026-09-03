@@ -47,7 +47,7 @@ struct LibPQPluginQueryResult {
 
 // MARK: - Type Mapping
 
-private func pgOidToTypeName(_ oid: UInt32) -> String {
+private func pgOidToTypeName(_ oid: UInt32) -> String? {
     switch oid {
     case 16: return "boolean"
     case 17: return "bytea"
@@ -103,7 +103,7 @@ private func pgOidToTypeName(_ oid: UInt32) -> String {
     case 1_700: return "numeric"
     case 2_950: return "uuid"
     case 3_802: return "jsonb"
-    default: return "unknown"
+    default: return nil
     }
 }
 
@@ -133,7 +133,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private var _cachedServerVersionNumber: Int32 = 0
     private var _isConnectCancelled: Bool = false
     private var _postgisOidMap: [UInt32: String] = [:]
-    private var _enumOidMap: [UInt32: String] = [:]
+    private var _catalogTypeNames: [UInt32: String] = [:]
 
     var isConnected: Bool {
         stateLock.lock()
@@ -403,17 +403,89 @@ final class LibPQPluginConnection: @unchecked Sendable {
         return _postgisOidMap
     }
 
-    func setEnumOidMap(_ map: [UInt32: String]) {
+    func mergeCatalogTypeNames(_ names: [UInt32: String]) {
         stateLock.lock()
-        _enumOidMap = map
+        _catalogTypeNames.merge(names) { _, learned in learned }
         stateLock.unlock()
     }
 
     private func resolveTypeName(_ oid: UInt32) -> String {
         stateLock.lock()
-        let mapped = _enumOidMap[oid]
+        let mapped = _catalogTypeNames[oid]
         stateLock.unlock()
-        return mapped ?? pgOidToTypeName(oid)
+        return mapped ?? pgOidToTypeName(oid) ?? PostgreSQLCatalogTypeNames.unresolved
+    }
+
+    private func unresolvedOids(in oids: [UInt32]) -> [UInt32] {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return oids.filter { _catalogTypeNames[$0] == nil && pgOidToTypeName($0) == nil }
+    }
+
+    /// A type created after connect has an oid the connect-time probe never saw, so its columns
+    /// came back as text until the next reconnect. The oids a result leaves unresolved are looked
+    /// up on the same connection once the result is fully read, which is the only moment libpq
+    /// allows another statement, and remembered for every later result. An oid the catalog does
+    /// not know is remembered as unresolved for the same reason. A lookup that fails inside an
+    /// aborted transaction remembers nothing, because it will succeed after the rollback.
+    private func learnTypeNames(for oids: [UInt32], conn: OpaquePointer) {
+        guard let query = PostgreSQLCatalogTypeNames.lookupQuery(oids: oids) else { return }
+        let result: OpaquePointer? = query.withCString { PQexec(conn, $0) }
+        guard let result else { return }
+        defer { PQclear(result) }
+
+        guard PQresultStatus(result) == PGRES_TUPLES_OK else {
+            guard getResultError(from: result).sqlState != Self.transactionAbortedSQLState else { return }
+            mergeCatalogTypeNames(PostgreSQLCatalogTypeNames.names(for: oids, rows: []))
+            return
+        }
+        mergeCatalogTypeNames(PostgreSQLCatalogTypeNames.names(for: oids, rows: Self.textRows(from: result)))
+    }
+
+    /// A streaming result sends its header with the first row, before anything could be looked
+    /// up, so a `SELECT` run right after a `CREATE TYPE` in the same tab would still read the new
+    /// enum as text once. The statement's own command tag says a type was just created, and one
+    /// enum probe there puts the oid in place before the next statement is sent.
+    private func noteCommandTag(_ tag: String?, conn: OpaquePointer) {
+        guard tag == Self.createTypeCommandTag else { return }
+        let query = PostgreSQLSchemaQueries.enumTypeOidQuery
+        let result: OpaquePointer? = query.withCString { PQexec(conn, $0) }
+        guard let result else { return }
+        defer { PQclear(result) }
+        guard PQresultStatus(result) == PGRES_TUPLES_OK else { return }
+        mergeCatalogTypeNames(PostgreSQLCatalogTypeNames.enumProbeNames(rows: Self.textRows(from: result)))
+    }
+
+    private static func textRows(from result: OpaquePointer) -> [[String?]] {
+        let numRows = Int(PQntuples(result))
+        let numFields = Int(PQnfields(result))
+        var rows: [[String?]] = []
+        rows.reserveCapacity(numRows)
+        for rowIndex in 0..<numRows {
+            rows.append((0..<numFields).map { fieldIndex in
+                guard PQgetisnull(result, Int32(rowIndex), Int32(fieldIndex)) == 0,
+                      let valuePtr = PQgetvalue(result, Int32(rowIndex), Int32(fieldIndex)) else { return nil }
+                return String(cString: valuePtr)
+            })
+        }
+        return rows
+    }
+
+    private static let transactionAbortedSQLState = "25P02"
+    private static let createTypeCommandTag = "CREATE TYPE"
+
+    private func resolvingUnknownTypes(
+        _ metadata: ColumnMetadata,
+        conn: OpaquePointer
+    ) -> ColumnMetadata {
+        let missing = unresolvedOids(in: metadata.columnOids)
+        guard !missing.isEmpty else { return metadata }
+        learnTypeNames(for: missing, conn: conn)
+        return ColumnMetadata(
+            columns: metadata.columns,
+            columnOids: metadata.columnOids,
+            columnTypeNames: metadata.columnOids.map(resolveTypeName)
+        )
     }
 
     // MARK: - Query Cancellation
@@ -509,6 +581,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
             let affected = getAffectedRows(from: result)
             let cmdTag = getCommandTag(from: result)
             PQclear(result)
+            noteCommandTag(cmdTag, conn: conn)
             return LibPQPluginQueryResult(
                 columns: [],
                 columnOids: [],
@@ -521,7 +594,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         case PGRES_TUPLES_OK:
             defer { PQclear(result) }
-            return try fetchResults(from: result, generation: generation)
+            return try fetchResults(from: result, conn: conn, generation: generation)
 
         default:
             let error = getResultError(from: result)
@@ -646,10 +719,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         if truncated { rows.removeLast() }
 
+        noteCommandTag(commandTag, conn: conn)
+        let resolvedMetadata = metadata.map { resolvingUnknownTypes($0, conn: conn) }
         let bounded = LibPQPluginQueryResult(
-            columns: metadata?.columns ?? [],
-            columnOids: metadata?.columnOids ?? [],
-            columnTypeNames: metadata?.columnTypeNames ?? [],
+            columns: resolvedMetadata?.columns ?? [],
+            columnOids: resolvedMetadata?.columnOids ?? [],
+            columnTypeNames: resolvedMetadata?.columnTypeNames ?? [],
             rows: rows,
             affectedRows: affectedRows,
             commandTag: commandTag,
@@ -744,6 +819,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
             let affected = getAffectedRows(from: result)
             let cmdTag = getCommandTag(from: result)
             PQclear(result)
+            noteCommandTag(cmdTag, conn: conn)
             return LibPQPluginQueryResult(
                 columns: [],
                 columnOids: [],
@@ -756,7 +832,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         case PGRES_TUPLES_OK:
             defer { PQclear(result) }
-            return try fetchResults(from: result, generation: generation)
+            return try fetchResults(from: result, conn: conn, generation: generation)
 
         default:
             let error = getResultError(from: result)
@@ -832,6 +908,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
                 var headerSent = false
                 var columnOids: [UInt32] = []
+                var lastCommandTag: String?
                 let batchSize = 5_000
                 var batch: [PluginRow] = []
                 batch.reserveCapacity(batchSize)
@@ -899,6 +976,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                         PQclear(result)
                         break
                     } else if status == PGRES_COMMAND_OK {
+                        lastCommandTag = getCommandTag(from: result)
                         PQclear(result)
                         break
                     } else {
@@ -919,6 +997,13 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 }
 
                 while let res = PQgetResult(conn) { PQclear(res) }
+                /// The header went out with the first row, so this stream keeps what it said;
+                /// the lookup is for the results that follow.
+                let missing = unresolvedOids(in: columnOids)
+                if !missing.isEmpty {
+                    learnTypeNames(for: missing, conn: conn)
+                }
+                noteCommandTag(lastCommandTag, conn: conn)
                 continuation.finish()
             }
         }
@@ -926,8 +1011,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     // MARK: - Result Parsing
 
-    private func fetchResults(from result: OpaquePointer, generation: Int) throws -> LibPQPluginQueryResult {
-        let metadata = readColumnMetadata(from: result)
+    private func fetchResults(
+        from result: OpaquePointer,
+        conn: OpaquePointer,
+        generation: Int
+    ) throws -> LibPQPluginQueryResult {
+        let metadata = resolvingUnknownTypes(readColumnMetadata(from: result), conn: conn)
         let parsed = try parseRows(
             from: result,
             columns: metadata.columns,
