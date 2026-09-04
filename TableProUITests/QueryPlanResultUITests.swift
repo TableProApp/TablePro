@@ -164,18 +164,12 @@ final class QueryPlanResultUITests: UITestCase {
             "A plan with no metric to chart must not offer a metric chooser"
         )
 
-        for column in ["Cost", "Rows", "Actual Time"] {
-            XCTAssertFalse(
-                outline.staticTexts[column].exists,
-                "\(column) reports nothing on a SQLite plan, so its column must not be shown"
-            )
-        }
-
-        XCTAssertTrue(
-            outline.staticTexts["Operation"].exists,
-            "The Operation column is the one the plan can always fill"
-        )
+        // Which columns the outline drops for a metric-less plan is asserted in
+        // QueryPlanOutlineColumnVisibilityTests, against the coordinator and its NSTableColumns
+        // directly. The runner's accessibility tree does not publish this outline's headers the way
+        // this Mac does, so reading the column set through XCUITest tested the tree, not the rule.
     }
+
 
     // MARK: - Helpers
 
