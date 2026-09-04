@@ -292,6 +292,8 @@ internal final class ThemeEngine {
         let numberAttr = EditorTheme.Attribute(color: srgb(c.number))
         let variableAttr = EditorTheme.Attribute(color: srgb(c.null))
         let typeAttr = EditorTheme.Attribute(color: srgb(c.type))
+        let operatorAttr = EditorTheme.Attribute(color: srgb(c.operator))
+        let functionAttr = EditorTheme.Attribute(color: srgb(c.function))
 
         let lineHighlight: NSColor = highlightCurrentLine ? c.currentLineHighlight : .clear
         let statementHighlight: NSColor = highlightCurrentStatement ? resolvedStatementHighlight(c) : .clear
@@ -313,7 +315,9 @@ internal final class ThemeEngine {
             numbers: numberAttr,
             strings: stringAttr,
             characters: stringAttr,
-            comments: commentAttr
+            comments: commentAttr,
+            operators: operatorAttr,
+            functions: functionAttr
         )
     }
 

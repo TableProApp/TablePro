@@ -45,6 +45,8 @@ public struct EditorTheme: Equatable {
     public var strings: Attribute
     public var characters: Attribute
     public var comments: Attribute
+    public var operators: Attribute
+    public var functions: Attribute
 
     public init(
         text: Attribute,
@@ -63,7 +65,9 @@ public struct EditorTheme: Equatable {
         numbers: Attribute,
         strings: Attribute,
         characters: Attribute,
-        comments: Attribute
+        comments: Attribute,
+        operators: Attribute,
+        functions: Attribute
     ) {
         self.text = text
         self.insertionPoint = insertionPoint
@@ -82,6 +86,8 @@ public struct EditorTheme: Equatable {
         self.strings = strings
         self.characters = characters
         self.comments = comments
+        self.operators = operators
+        self.functions = functions
     }
 
     /// Maps a capture type to the attributes for that capture determined by the theme.
@@ -94,12 +100,14 @@ public struct EditorTheme: Equatable {
             return keywords
         case .comment: return comments
         case .variable, .property: return variables
-        case .function, .method: return variables
+        case .function, .method: return functions
         case .number, .float: return numbers
         case .string: return strings
         case .type: return types
         case .parameter: return variables
         case .typeAlternate: return attributes
+        case .operator: return operators
+        case .constant: return values
         default: return text
         }
     }
@@ -108,7 +116,7 @@ public struct EditorTheme: Equatable {
     /// - Parameter capture: The capture name
     /// - Returns: A `NSColor`
     func colorFor(_ capture: CaptureName?) -> NSColor {
-        return mapCapture(capture).color
+        mapCapture(capture).color
     }
 
     /// Returns the correct font with attributes (bold and italics) for a given capture name.

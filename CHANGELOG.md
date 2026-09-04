@@ -46,6 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SQL `IN`, `AND`, `OR`, `NOT`, `BY` and `ON` in the editor's plain text colour. (#2634)
+- SQL built-in type names, `ASC`, `DESC` and function calls unhighlighted in the editor.
+- SQL numbers, `TRUE`, `FALSE` and `NULL` in the string colour.
+- No syntax highlighting at all in the MongoDB and Elasticsearch query editors.
+- JSON `true`, `false` and `null` unhighlighted in the row inspector and the JSON viewer.
+- Operator and Function theme colours with no effect on the editor.
 - Restore Dump overwriting a database with no confirmation.
 - Stopping an import applying at once, while stopping an export or a backup asks first.
 - Progress bar stuck at zero and an "N/0 rows" label for the whole of a streaming query export.
