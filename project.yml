@@ -418,6 +418,7 @@ targets:
       - Plugins/MongoDBDriverPlugin/MongoDBJsonNumber.swift
       - Plugins/MongoDBDriverPlugin/MongoDBNameValidator.swift
       - Plugins/MongoDBDriverPlugin/MongoDBQueryBuilder.swift
+      - Plugins/MongoDBDriverPlugin/MongoDBRawFilterNormalizer.swift
       - Plugins/MongoDBDriverPlugin/MongoDBSSLMapping.swift
       - Plugins/MongoDBDriverPlugin/MongoDBStatementGenerator.swift
       - Plugins/MongoDBDriverPlugin/MongoDBTimeoutPolicy.swift

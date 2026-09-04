@@ -115,4 +115,31 @@ struct ColumnTypeSQLQuotingTests {
         #expect(lookup["id"] == .integer(rawType: "INT"))
         #expect(lookup["code"] == nil)
     }
+
+    @Test("Character types are told apart from the other types the classifier files under text")
+    func characterTypeDetection() {
+        let character = [
+            "VARCHAR(255)", "character varying", "text", "bpchar", "nvarchar2", "CLOB", "citext", "name", "String"
+        ]
+        for rawType in character {
+            #expect(ColumnTypeSQLQuoting.isCharacterType(.text(rawType: rawType)), "\(rawType)")
+        }
+        for rawType in ["uuid", "inet", "tsvector", "interval", "money", "unknown", "xml"] {
+            #expect(!ColumnTypeSQLQuoting.isCharacterType(.text(rawType: rawType)), "\(rawType)")
+        }
+        #expect(ColumnTypeSQLQuoting.isCharacterType(.text(rawType: nil)))
+        #expect(!ColumnTypeSQLQuoting.isCharacterType(.text(rawType: "")))
+        #expect(!ColumnTypeSQLQuoting.isCharacterType(.integer(rawType: "int")))
+        #expect(!ColumnTypeSQLQuoting.isCharacterType(.enumType(rawType: "ENUM(mood)", values: nil)))
+        #expect(!ColumnTypeSQLQuoting.isCharacterType(nil))
+    }
+
+    @Test("An array column is not text-like")
+    func arrayIsNotTextLike() {
+        let array = ColumnType.array(rawType: "text[]", element: .text(rawType: "text"))
+        #expect(!ColumnTypeSQLQuoting.isKnownTextLike(array))
+        #expect(!ColumnTypeSQLQuoting.supportsEmptyStringComparison(array))
+        #expect(ColumnTypeSQLQuoting.isKnownTextLike(.text(rawType: "text")))
+        #expect(ColumnTypeSQLQuoting.isKnownTextLike(.set(rawType: "SET", values: nil)))
+    }
 }

@@ -75,26 +75,8 @@ struct SQLExportForeignKeyOrderTests {
         tables: [PluginExportTable],
         dataSource: StubExportDataSource
     ) async throws -> (dump: String, result: ExportFormatResult) {
-        let plugin = SQLExportPlugin()
-        /// The plugin loads its settings from the app's own defaults, so a developer who has
-        /// turned gzip on would otherwise get a compressed file the assertions cannot read.
-        let storedSettings = plugin.settings
-        plugin.settings = SQLExportOptions()
-        let destination = FileManager.default.temporaryDirectory
-            .appendingPathComponent("\(UUID().uuidString).sql")
-        defer {
-            plugin.settings = storedSettings
-            try? FileManager.default.removeItem(at: destination)
-        }
-
-        let result = try await plugin.export(
-            tables: tables,
-            dataSource: dataSource,
-            destination: destination,
-            progress: PluginExportProgress(progress: Progress(totalUnitCount: 1))
-        )
-        let dump = try String(contentsOf: destination, encoding: .utf8)
-        return (dump, result)
+        let output = try await SQLExportHarness.shared.dump(tables: tables, dataSource: dataSource)
+        return (output.text, output.result)
     }
 
     private func createOrder(in dump: String, of tables: [String]) -> [String] {

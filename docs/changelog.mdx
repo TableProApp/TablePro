@@ -4,6 +4,60 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="v0.72.0" description="September 4, 2026">
+  ### New Features
+
+  - **Backup and restore**: Back up a database with its own engine's tools and restore it again. TablePro drives `pg_dump` and `pg_restore` on PostgreSQL and Redshift, `mysqldump` on MySQL and MariaDB, `mongodump` on MongoDB, `sqlite3` on SQLite and libSQL, and `sqlpackage` on SQL Server ([#2618](https://github.com/TableProApp/TablePro/issues/2618))
+  - **Export any object, not just tables**: The export tree lists views, routines, triggers, user-defined types, privileges, MySQL events and PostgreSQL sequences, grouped by kind. Each table can carry its own `WHERE`, row limit and column subset ([#2618](https://github.com/TableProApp/TablePro/issues/2618))
+  - **Transfer To**: Copy table rows straight into another open connection, with no file in between ([#2618](https://github.com/TableProApp/TablePro/issues/2618))
+  - **Markdown, HTML, XML and Parquet export**: Parquet installs from Settings > Plugins. JSON export can also write NDJSON, one row per line ([#2618](https://github.com/TableProApp/TablePro/issues/2618))
+  - **XLSX import**: Read the first worksheet of a workbook ([#2618](https://github.com/TableProApp/TablePro/issues/2618))
+  - **Server-Side Export**: Oracle, Snowflake and BigQuery unload to a server directory, a stage or a bucket instead of streaming through your Mac ([#2618](https://github.com/TableProApp/TablePro/issues/2618))
+  - **PostgreSQL types**: A Types section in the sidebar for enums, composites, domains and ranges, with a definition tab, enum label editing, and the types offered in the structure editor's type picker ([#2484](https://github.com/TableProApp/TablePro/issues/2484))
+  - **Foreign key value picker**: Pick a value on a foreign key cell from the rows of the referenced table, with a label beside the key ([#2511](https://github.com/TableProApp/TablePro/issues/2511))
+  - **AppleScript dictionary**: Script connections, tabs, results and the grid selection. The history drawer filters on AppleScript source and carries its own notification toggle ([#2512](https://github.com/TableProApp/TablePro/issues/2512))
+  - **Connection groups in Switch Connection**: `Cmd`-click a saved connection to open it in a new window ([#1311](https://github.com/TableProApp/TablePro/issues/1311))
+  - **Jump to Column**: Fuzzy search over a result's columns, with each column's type and position ([#2495](https://github.com/TableProApp/TablePro/issues/2495))
+  - **Query time breakdown**: The toolbar's duration readout splits into server, first row and transfer ([#2503](https://github.com/TableProApp/TablePro/issues/2503))
+  - **Saved export selections**: Reapply a selection from the export tree's bookmark menu ([#2618](https://github.com/TableProApp/TablePro/issues/2618))
+  - `list_types` MCP tool
+
+  ### Improvements
+
+  - SQL exports can skip, replace or update rows that already exist, split into numbered parts at a size you choose, and read every table at one snapshot ([#2618](https://github.com/TableProApp/TablePro/issues/2618))
+  - Exclude the AUTO_INCREMENT counter and Exclude DEFINER clauses in the SQL export, both on by default ([#2516](https://github.com/TableProApp/TablePro/issues/2516))
+  - Save Report on an import that skipped rows, listing each one's line and error as CSV ([#2618](https://github.com/TableProApp/TablePro/issues/2618))
+  - Query Insights ranks on the time the database spent rather than on elapsed time ([#2503](https://github.com/TableProApp/TablePro/issues/2503))
+  - The export summary reports the warnings an export produced, instead of a bare "Export completed" ([#2517](https://github.com/TableProApp/TablePro/issues/2517))
+  - The Export, Transfer and Server-Side Export sheets resize, and the object tree takes the extra room. Cancel sits beside the action button in all three footers ([#2618](https://github.com/TableProApp/TablePro/issues/2618))
+
+  ### Bug Fixes
+
+  - A SQL export of query results used PostgreSQL's identifier quoting whatever engine the results came from ([#2630](https://github.com/TableProApp/TablePro/issues/2630))
+  - Backslashes were left unescaped in a SQL export of query results, silently altering the values, and `DROP ... CASCADE` was written for engines that reject it, SQLite and SQL Server among them
+  - Snowflake string literals were escaped without their backslashes, in the editor and in exports
+  - Restore Dump overwrote a database with no confirmation, and a failed restore left a partly-restored database without saying so
+  - Stopping an import applied at once, while stopping an export or a backup asked first
+  - A streaming query export showed a progress bar stuck at zero and an "N/0 rows" label for its whole run
+  - Checkboxes, pickers and text fields across the import and export sheets were unnamed to VoiceOver
+  - Oracle server-side export was reported as written when the Data Pump job had only been started
+  - An import stuck on a file that will not parse showed the parser's message as placeholder text
+  - DuckDB aggregate, JSON and Parquet functions failed on a Mac that cannot reach `extensions.duckdb.org` ([#2626](https://github.com/TableProApp/TablePro/issues/2626))
+  - Structure and trigger edits committed or rolled back a transaction left open in a query tab on the same connection
+  - Composite, range and extension-typed PostgreSQL columns were labelled `ENUM(…)` in the structure editor, and columns of an enum created during the session showed as text until the next reconnect
+  - The sidebar showed routines, triggers and types from the previous database after switching while it was still loading
+  - Foreign keys were declared twice in a SQL export, or written as an `ALTER TABLE` the engine rejects, and were missing from Redshift's reconstructed `CREATE TABLE` ([#2517](https://github.com/TableProApp/TablePro/issues/2517))
+  - A Contains, Starts with, Ends with or Regex filter on a PostgreSQL uuid, enum, number, date or json column failed with "Operator does not exist", and an ignore-case filter on a non-text column with "Function lower does not exist"
+  - A MongoDB collection named like a `db` method, such as `stats` or `version`, failed to open, save or export
+  - Connections, groups and tags from another device were dropped for good when the store could not be written ([#1311](https://github.com/TableProApp/TablePro/issues/1311))
+  - Every saved group or tag was lost when one unreadable entry stopped the list decoding, and opening the connection list crashed after two Macs moved two groups inside each other ([#1311](https://github.com/TableProApp/TablePro/issues/1311))
+  - Two Macs re-uploaded the whole group and tag lists to each other after a single change ([#1311](https://github.com/TableProApp/TablePro/issues/1311))
+
+  <Note>
+    This release moves TablePro's plugin ABI to version 21. The change is additive, so plugins you already have keep working. Reinstall the DuckDB, MSSQL, Snowflake, libSQL or Cloudflare D1 driver from Settings > Plugins to pick up the foreign key export fix.
+  </Note>
+</Update>
+
 <Update label="v0.71.0" description="September 2, 2026">
   ### New Features
 

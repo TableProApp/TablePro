@@ -122,4 +122,12 @@ struct MQLExportHelpersTests {
         #expect(MQLExportHelpers.mqlTextValue(for: "007", columnTypeName: "VARCHAR") == "\"007\"")
         #expect(MQLExportHelpers.mqlTextValue(for: "1.2.3", columnTypeName: "VARCHAR") == "\"1.2.3\"")
     }
+
+    @Test("A collection is addressed as db.<name> only when mongosh would resolve that to it")
+    func collectionAccessorAvoidsShadowedNames() {
+        #expect(MQLExportHelpers.collectionAccessor(for: "users") == "db.users")
+        #expect(MQLExportHelpers.collectionAccessor(for: "stats") == "db.getCollection(\"stats\")")
+        #expect(MQLExportHelpers.collectionAccessor(for: "my.data") == "db.getCollection(\"my.data\")")
+        #expect(MQLExportHelpers.collectionAccessor(for: "2024") == "db.getCollection(\"2024\")")
+    }
 }

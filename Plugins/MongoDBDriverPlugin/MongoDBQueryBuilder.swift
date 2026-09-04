@@ -21,8 +21,16 @@ struct MongoDBQueryBuilder {
 
     let columnKinds: [String: BsonValueKind]
 
-    init(columnKinds: [String: BsonValueKind] = [:]) {
+    /// Rewrites a raw filter row into canonical Extended JSON, so `find` and `countDocuments`
+    /// receive the same document. Without one the row's text is used as typed.
+    let rawFilterNormalizer: (@Sendable (String) -> String?)?
+
+    init(
+        columnKinds: [String: BsonValueKind] = [:],
+        rawFilterNormalizer: (@Sendable (String) -> String?)? = nil
+    ) {
         self.columnKinds = columnKinds
+        self.rawFilterNormalizer = rawFilterNormalizer
     }
 
     // MARK: - Base Query
@@ -155,7 +163,8 @@ struct MongoDBQueryBuilder {
         guard filter.column == Self.rawFilterColumn else { return nil }
         let trimmed = filter.value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasPrefix("{"), trimmed.hasSuffix("}") else { return nil }
-        return MongoDBFilterClause(key: "$and", body: "[\(trimmed)]")
+        let document = rawFilterNormalizer?(trimmed) ?? trimmed
+        return MongoDBFilterClause(key: "$and", body: "[\(document)]")
     }
 
     /// One `$elemMatch` per array prefix. Every condition is re-keyed to its path relative to the
@@ -194,12 +203,7 @@ struct MongoDBQueryBuilder {
     }
 
     private static func mongoCollectionAccessor(_ name: String) -> String {
-        guard let firstChar = name.first,
-              !firstChar.isNumber,
-              name.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) else {
-            return "db[\"\(escapeJsonString(name))\"]"
-        }
-        return "db.\(name)"
+        MongoCollectionAccessor.expression(for: name)
     }
 
     private func buildClause(for filter: PluginQueryFilter, field rawField: String) -> MongoDBFilterClause? {

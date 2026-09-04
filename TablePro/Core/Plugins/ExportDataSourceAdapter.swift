@@ -15,7 +15,15 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ExportDataSourceAdapter")
 
+    /// The same capability the sidebar's drop prompt reads, so the engines whose dumps carry a
+    /// `CASCADE` are exactly the engines that offer the user a Cascade checkbox. Resolved once at
+    /// construction, on the main actor, because the registry lives there and this is asked for from
+    /// the export plugin's own thread.
+    let supportsCascadeDrop: Bool
+
     init(driver: DatabaseDriver, databaseType: DatabaseType) {
+        self.supportsCascadeDrop = PluginMetadataRegistry.shared
+            .snapshot(for: databaseType)?.capabilities.supportsCascadeDrop ?? false
         self.driver = driver
         self.dbType = databaseType
         self.databaseTypeId = databaseType.rawValue
