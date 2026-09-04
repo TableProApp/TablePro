@@ -13,7 +13,8 @@ enum PostgreSQLDialect {
         likeEscapeStyle: .explicit,
         paginationStyle: .limit,
         caseSensitivityStyle: .ilikeOperator,
-        operators: operators
+        operators: operators,
+        textCastTypeName: "TEXT"
     )
 
     static let keywords: Set<String> = reservedKeywords

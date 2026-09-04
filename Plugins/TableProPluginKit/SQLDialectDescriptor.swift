@@ -84,6 +84,12 @@ public struct SQLDialectDescriptor: Sendable {
     public let caseSensitivityStyle: CaseSensitivityStyle
     public let caseFoldFunction: String
 
+    // Pattern matching on a non-character column
+    /// The type a column that is not character data is cast to before `LIKE`, a regex or a case
+    /// fold. `nil` means the engine coerces the operand itself. PostgreSQL does not: `uuid ~~ unknown`
+    /// and `lower(integer)` are both "operator does not exist".
+    public let textCastTypeName: String?
+
     // Authoring
     public let operators: [SQLOperatorDescriptor]
 
@@ -191,6 +197,7 @@ public struct SQLDialectDescriptor: Sendable {
         )
     }
 
+    @_disfavoredOverload
     public init(
         identifierQuote: String,
         keywords: Set<String>,
@@ -208,6 +215,44 @@ public struct SQLDialectDescriptor: Sendable {
         caseFoldFunction: String = SQLDialectDescriptor.defaultCaseFoldFunction,
         operators: [SQLOperatorDescriptor] = []
     ) {
+        self.init(
+            identifierQuote: identifierQuote,
+            keywords: keywords,
+            functions: functions,
+            dataTypes: dataTypes,
+            tableOptions: tableOptions,
+            regexSyntax: regexSyntax,
+            booleanLiteralStyle: booleanLiteralStyle,
+            likeEscapeStyle: likeEscapeStyle,
+            paginationStyle: paginationStyle,
+            offsetFetchOrderBy: offsetFetchOrderBy,
+            requiresBackslashEscaping: requiresBackslashEscaping,
+            autoLimitStyle: autoLimitStyle,
+            caseSensitivityStyle: caseSensitivityStyle,
+            caseFoldFunction: caseFoldFunction,
+            operators: operators,
+            textCastTypeName: nil
+        )
+    }
+
+    public init(
+        identifierQuote: String,
+        keywords: Set<String>,
+        functions: Set<String>,
+        dataTypes: Set<String>,
+        tableOptions: [String] = [],
+        regexSyntax: RegexSyntax = .unsupported,
+        booleanLiteralStyle: BooleanLiteralStyle = .numeric,
+        likeEscapeStyle: LikeEscapeStyle = .explicit,
+        paginationStyle: PaginationStyle = .limit,
+        offsetFetchOrderBy: String = "ORDER BY (SELECT NULL)",
+        requiresBackslashEscaping: Bool = false,
+        autoLimitStyle: AutoLimitStyle = .limit,
+        caseSensitivityStyle: CaseSensitivityStyle = .unsupported,
+        caseFoldFunction: String = SQLDialectDescriptor.defaultCaseFoldFunction,
+        operators: [SQLOperatorDescriptor] = [],
+        textCastTypeName: String?
+    ) {
         self.identifierQuote = identifierQuote
         self.keywords = keywords
         self.functions = functions
@@ -223,6 +268,7 @@ public struct SQLDialectDescriptor: Sendable {
         self.caseSensitivityStyle = caseSensitivityStyle
         self.caseFoldFunction = caseFoldFunction
         self.operators = operators
+        self.textCastTypeName = textCastTypeName
     }
 
     public static let defaultCaseFoldFunction = "LOWER"
@@ -246,7 +292,8 @@ public struct SQLDialectDescriptor: Sendable {
             autoLimitStyle: autoLimitStyle,
             caseSensitivityStyle: style,
             caseFoldFunction: caseFoldFunction,
-            operators: operators
+            operators: operators,
+            textCastTypeName: textCastTypeName
         )
     }
 }

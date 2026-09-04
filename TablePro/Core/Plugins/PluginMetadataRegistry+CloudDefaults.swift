@@ -482,6 +482,7 @@ extension PluginMetadataRegistry {
                         booleanLiteralStyle: .truefalse,
                         likeEscapeStyle: .explicit,
                         paginationStyle: .limit,
+                        requiresBackslashEscaping: true,
                         caseSensitivityStyle: .ilikeOperator
                     ),
                     statementCompletions: [

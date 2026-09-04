@@ -80,16 +80,16 @@ struct MongoDBQueryBuilderTests {
         #expect(!query.contains(".sort("))
     }
 
-    @Test("Collection with special characters uses bracket notation")
+    @Test("Collection with special characters goes through getCollection")
     func collectionWithSpecialChars() {
         let query = builder.buildBaseQuery(collection: "my.collection")
-        #expect(query.hasPrefix("db[\"my.collection\"]"))
+        #expect(query.hasPrefix("db.getCollection(\"my.collection\")"))
     }
 
-    @Test("Collection starting with number uses bracket notation")
+    @Test("Collection starting with number goes through getCollection")
     func collectionStartingWithNumber() {
         let query = builder.buildBaseQuery(collection: "123abc")
-        #expect(query.hasPrefix("db[\"123abc\"]"))
+        #expect(query.hasPrefix("db.getCollection(\"123abc\")"))
     }
 
     @Test("Collection with simple name uses dot notation")
@@ -495,7 +495,7 @@ struct MongoDBQueryBuilderTests {
     @Test("Count query with special collection name")
     func countQuerySpecialCollection() {
         let query = builder.buildCountQuery(collection: "my.data")
-        #expect(query.hasPrefix("db[\"my.data\"]"))
+        #expect(query.hasPrefix("db.getCollection(\"my.data\")"))
         #expect(query.contains(".countDocuments({})"))
     }
 
@@ -507,16 +507,16 @@ struct MongoDBQueryBuilderTests {
         #expect(query == "db.users.find({})")
     }
 
-    @Test("Export query brackets a dotted collection name")
+    @Test("Export query reaches a dotted collection through getCollection")
     func exportQueryDottedCollection() {
         let query = builder.buildExportQuery(collection: "logs.2024.06")
-        #expect(query == "db[\"logs.2024.06\"].find({})")
+        #expect(query == "db.getCollection(\"logs.2024.06\").find({})")
     }
 
     @Test("Export query escapes quotes and backslashes in the collection name")
     func exportQueryEscapesCollectionName() {
         let query = builder.buildExportQuery(collection: "say\"hi\\bye")
-        #expect(query == "db[\"say\\\"hi\\\\bye\"].find({})")
+        #expect(query == "db.getCollection(\"say\\\"hi\\\\bye\").find({})")
     }
 
     @Test("Export query parses back to a find on the same collection")
@@ -832,4 +832,78 @@ struct MongoDBQueryBuilderTests {
         #expect(!doc.contains("$binary"))
     }
 
+    // MARK: - Collection accessor
+
+    @Test("A collection named after a db method is reached through getCollection")
+    func shadowedCollectionNamesUseGetCollection() {
+        for name in ["stats", "version", "toString", "constructor", "valueOf", "getName", "__proto__"] {
+            let query = builder.buildBaseQuery(collection: name)
+            #expect(query == "db.getCollection(\"\(name)\").find({}).limit(200)", "collection \(name)")
+        }
+    }
+
+    @Test("A shadowed collection name parses back to a find on that collection")
+    func shadowedCollectionNameRoundTripsThroughTheParser() throws {
+        let operation = try MongoShellParser.parse(builder.buildBaseQuery(collection: "stats"))
+        guard case .find(let collection, _, _) = operation else {
+            Issue.record("Expected .find operation")
+            return
+        }
+        #expect(collection == "stats")
+    }
+
+    @Test("Every method the shell puts on db is a name the accessor refuses to spell as db.<name>")
+    func accessorCoversEveryDatabaseMethodOfTheShell() throws {
+        let regex = try NSRegularExpression(pattern: #"DB\.prototype\.([A-Za-z_][A-Za-z0-9_]*)\s*="#)
+        let source = MongoScriptPrelude.source
+        let matches = regex.matches(in: source, range: NSRange(source.startIndex..., in: source))
+        let members = matches.compactMap { Range($0.range(at: 1), in: source).map { String(source[$0]) } }
+        #expect(members.count > 10)
+        for member in members {
+            #expect(MongoCollectionAccessor.isShadowedByDatabaseMember(member), "db.\(member) is a method")
+        }
+    }
+
+    // MARK: - Raw filter normalization
+
+    private static let normalizer = MongoDBRawFilterNormalizer()
+
+    private var normalizingBuilder: MongoDBQueryBuilder {
+        MongoDBQueryBuilder(rawFilterNormalizer: { Self.normalizer.normalize($0) })
+    }
+
+    @Test("A raw filter in shell syntax is rewritten to Extended JSON for find and count alike")
+    func rawFilterInShellSyntaxBecomesExtendedJSON() throws {
+        let raw = PluginQueryFilter(
+            column: MongoDBQueryBuilder.rawFilterColumn, op: "RAW",
+            value: "{status: 'active', _id: ObjectId(\"507f1f77bcf86cd799439011\"), n: 3}"
+        )
+        let doc = normalizingBuilder.buildFilterDocument(from: [raw])
+        let expected = "{\"$and\": [{\"status\":\"active\","
+            + "\"_id\":{\"$oid\":\"507f1f77bcf86cd799439011\"},\"n\":{\"$numberInt\":\"3\"}}]}"
+        #expect(doc == expected)
+        let parsed = try JSONSerialization.jsonObject(with: Data(doc.utf8)) as? [String: Any]
+        #expect((parsed?["$and"] as? [[String: Any]])?.count == 1)
+        let find = normalizingBuilder.buildFilteredQuery(collection: "users", queryFilters: [raw])
+        #expect(find == "db.users.find(\(expected)).limit(200)")
+    }
+
+    @Test("A raw filter the shell cannot evaluate is kept as typed")
+    func rawFilterThatFailsToEvaluateIsKeptVerbatim() {
+        let raw = PluginQueryFilter(
+            column: MongoDBQueryBuilder.rawFilterColumn, op: "RAW", value: "{status: }"
+        )
+        let doc = normalizingBuilder.buildFilterDocument(from: [raw])
+        #expect(doc == "{\"$and\": [{status: }]}")
+    }
+
+    @Test("The normalizer serializes dates and regex literals the way the shell does")
+    func normalizerSerializesShellValues() {
+        let normalized = Self.normalizer.normalize("{at: ISODate(\"2024-01-02T00:00:00Z\"), name: /^bo/i}")
+        let expected = "{\"at\":{\"$date\":{\"$numberLong\":\"1704153600000\"}},"
+            + "\"name\":{\"$regularExpression\":{\"pattern\":\"^bo\",\"options\":\"i\"}}}"
+        #expect(normalized == expected)
+        #expect(Self.normalizer.normalize("{}") == "{}")
+        #expect(Self.normalizer.normalize("{_id: ObjectId()}") == nil)
+    }
 }

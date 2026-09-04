@@ -236,4 +236,136 @@ struct FilterSQLGeneratorColumnTypeTests {
         #expect(contains == "`id` LIKE '%68%'")
         #expect(startsWith == "`code` LIKE '68%'")
     }
+
+    // MARK: - Text cast for pattern matching
+
+    private static let castingPostgres = SQLDialectDescriptor(
+        identifierQuote: "\"", keywords: [], functions: [], dataTypes: [],
+        regexSyntax: .tilde, booleanLiteralStyle: .truefalse,
+        likeEscapeStyle: .explicit, paginationStyle: .limit,
+        caseSensitivityStyle: .ilikeOperator, textCastTypeName: "TEXT"
+    )
+
+    private static func castingCondition(
+        column: String,
+        type: ColumnType?,
+        op: FilterOperator,
+        value: String,
+        isCaseSensitive: Bool? = nil
+    ) -> String? {
+        let generator = FilterSQLGenerator(
+            dialect: castingPostgres,
+            columns: type == nil ? [] : [column],
+            columnTypes: type.map { [$0] } ?? []
+        )
+        let filter = TableFilter(
+            columnName: column, filterOperator: op, value: value, isCaseSensitive: isCaseSensitive
+        )
+        return generator.generateCondition(from: filter)
+    }
+
+    @Test("Contains on a uuid column is cast to text before ILIKE")
+    func uuidContainsIsCastToText() {
+        let result = Self.castingCondition(
+            column: "id", type: .text(rawType: "uuid"), op: .contains, value: "ab"
+        )
+        #expect(result == "CAST(\"id\" AS TEXT) ILIKE '%ab%' ESCAPE '!'")
+    }
+
+    @Test("Contains on a character column is not cast")
+    func varcharContainsKeepsTheColumn() {
+        for rawType in ["varchar", "character varying(255)", "text", "bpchar", "citext", "name"] {
+            let result = Self.castingCondition(
+                column: "name", type: .text(rawType: rawType), op: .contains, value: "ab"
+            )
+            #expect(result == "\"name\" ILIKE '%ab%' ESCAPE '!'", "\(rawType)")
+        }
+    }
+
+    @Test("Starts with on an integer column is cast to text")
+    func integerStartsWithIsCastToText() {
+        let result = Self.castingCondition(
+            column: "id", type: .integer(rawType: "integer"), op: .startsWith, value: "68"
+        )
+        #expect(result == "CAST(\"id\" AS TEXT) ILIKE '68%' ESCAPE '!'")
+    }
+
+    @Test("Ignoring case on an enum folds the cast, matching case keeps the enum comparison")
+    func enumEqualsFoldsOnlyTheCast() {
+        let folded = Self.castingCondition(
+            column: "status", type: .enumType(rawType: "ENUM(mood)", values: nil),
+            op: .equal, value: "happy", isCaseSensitive: false
+        )
+        let exact = Self.castingCondition(
+            column: "status", type: .enumType(rawType: "ENUM(mood)", values: nil),
+            op: .equal, value: "happy"
+        )
+        #expect(folded == "LOWER(CAST(\"status\" AS TEXT)) = LOWER('happy')")
+        #expect(exact == "\"status\" = 'happy'")
+    }
+
+    @Test("Regex on a timestamp column is cast to text")
+    func timestampRegexIsCastToText() {
+        let result = Self.castingCondition(
+            column: "created_at", type: .timestamp(rawType: "timestamptz"), op: .regex, value: "^2024"
+        )
+        #expect(result == "CAST(\"created_at\" AS TEXT) ~ '^2024'")
+    }
+
+    @Test("Is empty on a uuid column compares the cast, on an array only null")
+    func isEmptyCastsOrFallsBackToNull() {
+        let uuid = Self.castingCondition(
+            column: "id", type: .text(rawType: "uuid"), op: .isEmpty, value: ""
+        )
+        let array = Self.castingCondition(
+            column: "tags", type: .array(rawType: "text[]", element: .text(rawType: "text")),
+            op: .isEmpty, value: ""
+        )
+        #expect(uuid == "(\"id\" IS NULL OR CAST(\"id\" AS TEXT) = '')")
+        #expect(array == "\"tags\" IS NULL")
+    }
+
+    @Test("Contains on an array column searches its text form")
+    func arrayContainsIsCastToText() {
+        let result = Self.castingCondition(
+            column: "tags", type: .array(rawType: "text[]", element: .text(rawType: "text")),
+            op: .contains, value: "red"
+        )
+        #expect(result == "CAST(\"tags\" AS TEXT) ILIKE '%red%' ESCAPE '!'")
+    }
+
+    @Test("In list ignoring case on a uuid column folds the cast")
+    func uuidInListIgnoringCaseFoldsTheCast() {
+        let result = Self.castingCondition(
+            column: "id", type: .text(rawType: "uuid"), op: .inList, value: "a, b", isCaseSensitive: false
+        )
+        #expect(result == "LOWER(CAST(\"id\" AS TEXT)) IN (LOWER('a'), LOWER('b'))")
+    }
+
+    @Test("A column of unknown type is cast, because a cast is valid on every column")
+    func unknownColumnTypeIsCast() {
+        let result = Self.castingCondition(column: "id", type: nil, op: .contains, value: "ab")
+        #expect(result == "CAST(\"id\" AS TEXT) ILIKE '%ab%' ESCAPE '!'")
+    }
+
+    @Test("In list ignoring case on an integer column keeps the numbers unfolded")
+    func integerInListIgnoringCaseIsNotFolded() {
+        let result = Self.castingCondition(
+            column: "id", type: .integer(rawType: "integer"), op: .inList, value: "1, 2", isCaseSensitive: false
+        )
+        let mixed = Self.castingCondition(
+            column: "id", type: .integer(rawType: "integer"), op: .inList, value: "1, x", isCaseSensitive: false
+        )
+        #expect(result == "\"id\" IN (1, 2)")
+        #expect(mixed == "\"id\" IN (1, 'x')")
+    }
+
+    @Test("A dialect without a text cast type leaves a non-text column alone")
+    func dialectWithoutCastTypeDoesNotCast() {
+        let result = Self.condition(
+            column: "id", type: .text(rawType: "uuid"), op: .contains, value: "ab",
+            dialect: Self.postgresqlDialect
+        )
+        #expect(result == "\"id\" LIKE '%ab%' ESCAPE '!'")
+    }
 }

@@ -1100,7 +1100,10 @@ struct ExportDialog: View {
                     try await runStreamingExport(on: driver, query: query, to: url)
                 }
             case .queryResults(_, let tableRows, _):
-                let service = ExportService(databaseType: connection.type)
+                let service = ExportService(
+                    queryResultsDriver: DatabaseManager.shared.driver(for: connection.id),
+                    databaseType: connection.type
+                )
                 exportService = service
                 try await service.exportQueryResults(tableRows: tableRows, config: config, to: url)
             default:

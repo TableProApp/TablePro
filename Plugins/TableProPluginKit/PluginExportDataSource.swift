@@ -26,6 +26,12 @@ public protocol PluginExportDataSource: AnyObject, Sendable {
     /// that share a name. Empty on an engine with no principal management.
     func fetchGrantStatements(principal: String, host: String?) async throws -> [String]
 
+    /// Whether this engine accepts a `CASCADE` clause on a `DROP`. PostgreSQL takes it and drops
+    /// dependent objects with it; SQLite, SQL Server, ClickHouse and Trino have no such clause and
+    /// reject the statement outright; MySQL parses it and does nothing. Defaults to false, which is
+    /// the answer that is never a syntax error.
+    var supportsCascadeDrop: Bool { get }
+
     /// The engine's own DROP for an object. Only the driver knows that PostgreSQL's `DROP TRIGGER`
     /// takes an `ON <table>` clause and MySQL's does not, or that MySQL has no `DROP ROUTINE` at
     /// all. Nil means the caller should fall back to its own generic shape.
@@ -54,6 +60,8 @@ public extension PluginExportDataSource {
     }
 
     func fetchGrantStatements(principal: String, host: String?) async throws -> [String] { [] }
+
+    var supportsCascadeDrop: Bool { false }
 
     func dropStatement(for object: PluginExportTable) -> String? { nil }
 

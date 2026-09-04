@@ -50,6 +50,16 @@ struct QueryExecutorTests {
         #expect(name == "user logs")
     }
 
+    @Test("extractTableName parses MQL getCollection notation")
+    func extractTableNameMQLGetCollection() {
+        let plain = QuerySqlParser.extractTableName(from: #"db.getCollection("user logs").find({})"#)
+        let escaped = QuerySqlParser.extractTableName(from: #"db.getCollection("say\"hi").find({})"#)
+        let shadowed = QuerySqlParser.extractTableName(from: #"db.getCollection("stats").countDocuments({})"#)
+        #expect(plain == "user logs")
+        #expect(escaped == "say\"hi")
+        #expect(shadowed == "stats")
+    }
+
     @Test("extractTableName returns nil when no FROM clause")
     func extractTableNameNoMatch() {
         #expect(QuerySqlParser.extractTableName(from: "SHOW TABLES") == nil)

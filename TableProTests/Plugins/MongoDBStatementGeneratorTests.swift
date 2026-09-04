@@ -772,7 +772,7 @@ struct MongoDBStatementGeneratorTests {
 
     // MARK: - Collection Accessor
 
-    @Test("Collection with dots uses bracket notation")
+    @Test("Collection with dots goes through getCollection")
     func collectionBracketNotation() {
         let gen = MongoDBStatementGenerator(
             collectionName: "my.collection",
@@ -794,7 +794,7 @@ struct MongoDBStatementGeneratorTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement.contains("db[\"my.collection\"]"))
+        #expect(results[0].statement.contains("db.getCollection(\"my.collection\")"))
     }
 
     // MARK: - Value Type Detection
@@ -1046,7 +1046,7 @@ struct MongoDBStatementGeneratorTests {
 
         #expect(statements?.count == 1)
         let statement = statements?.first?.statement ?? ""
-        #expect(statement.hasPrefix("db[\"users\"].insertOne("))
+        #expect(statement.hasPrefix("db.users.insertOne("))
         let document = firstArgumentObject(in: statement)
         #expect((document?["_id"] as? [String: Any])?["$oid"] as? String == "507f1f77bcf86cd799439011")
         #expect(document?["name"] as? String == "Alice")

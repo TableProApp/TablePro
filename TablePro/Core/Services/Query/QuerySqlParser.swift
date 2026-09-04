@@ -12,6 +12,11 @@ enum QuerySqlParser {
         options: []
     )
 
+    private static let mongoGetCollectionRegex = try? NSRegularExpression(
+        pattern: #"^\s*db\.getCollection\(\s*"((?:[^"\\]|\\.)*)"\s*\)"#,
+        options: []
+    )
+
     /// The table a result grid may be edited through, or `nil` when the statement reads from
     /// anything other than exactly one table.
     ///
@@ -32,6 +37,12 @@ enum QuerySqlParser {
         }
 
         let nsRange = NSRange(sql.startIndex..., in: sql)
+
+        if let regex = mongoGetCollectionRegex,
+           let match = regex.firstMatch(in: sql, options: [], range: nsRange),
+           let range = Range(match.range(at: 1), in: sql) {
+            return MongoCollectionAccessor.unescape(String(sql[range]))
+        }
 
         if let regex = mongoBracketCollectionRegex,
            let match = regex.firstMatch(in: sql, options: [], range: nsRange),

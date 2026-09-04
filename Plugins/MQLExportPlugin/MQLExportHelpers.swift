@@ -8,21 +8,8 @@ import TableProNumberFormatting
 import TableProPluginKit
 
 enum MQLExportHelpers {
-    static func escapeJSIdentifier(_ name: String) -> String {
-        guard let firstChar = name.first,
-              !firstChar.isNumber,
-              name.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) else {
-            return "[\"\(PluginExportUtilities.escapeJSONString(name))\"]"
-        }
-        return name
-    }
-
     static func collectionAccessor(for name: String) -> String {
-        let escaped = escapeJSIdentifier(name)
-        if escaped.hasPrefix("[") {
-            return "db\(escaped)"
-        }
-        return "db.\(escaped)"
+        MongoCollectionAccessor.expression(for: name)
     }
 
     static func mqlBinaryValue(for data: Data, subtype: UInt8) -> String {

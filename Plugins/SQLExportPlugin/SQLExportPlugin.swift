@@ -358,6 +358,12 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         try writer.write("\n")
     }
 
+    /// `CASCADE` is not portable: PostgreSQL drops dependent objects with it, SQLite and SQL Server
+    /// have no such clause and reject the statement, and MySQL parses it and does nothing.
+    private func cascadeClause(_ dataSource: any PluginExportDataSource) -> String {
+        dataSource.supportsCascadeDrop ? " CASCADE" : ""
+    }
+
     /// The engine spells its own DROP for the kinds where dialects disagree: PostgreSQL's
     /// `DROP TRIGGER` takes an `ON <table>` clause where MySQL's does not, and MySQL has no
     /// `DROP ROUTINE` at all. Only the table-shaped kinds, which every SQL engine spells the same
@@ -377,7 +383,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         case .trigger, .event, .routine:
             return "\(keyword) IF EXISTS \(dataSource.quoteIdentifier(object.name));"
         default:
-            return "\(keyword) IF EXISTS \(ref) CASCADE;"
+            return "\(keyword) IF EXISTS \(ref)\(cascadeClause(dataSource));"
         }
     }
 
@@ -396,7 +402,8 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                 for seq in sequences where !emittedSequenceNames.contains(seq.name) {
                     emittedSequenceNames.insert(seq.name)
                     let quotedName = "\"\(seq.name.replacingOccurrences(of: "\"", with: "\"\""))\""
-                    try writer.write("DROP SEQUENCE IF EXISTS \(quotedName) CASCADE;\n")
+                    try writer.write(
+                        "DROP SEQUENCE IF EXISTS \(quotedName)\(cascadeClause(dataSource));\n")
                     try writer.write("\(seq.ddl)\n\n")
                 }
             } catch {
@@ -409,7 +416,8 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                 for enumType in enumTypes where !emittedTypeNames.contains(enumType.name) {
                     emittedTypeNames.insert(enumType.name)
                     let quotedName = "\"\(enumType.name.replacingOccurrences(of: "\"", with: "\"\""))\""
-                    try writer.write("DROP TYPE IF EXISTS \(quotedName) CASCADE;\n")
+                    try writer.write(
+                        "DROP TYPE IF EXISTS \(quotedName)\(cascadeClause(dataSource));\n")
                     let quotedLabels = enumType.labels.map { "'\(dataSource.escapeStringLiteral($0))'" }
                     try writer.write("CREATE TYPE \(quotedName) AS ENUM (\(quotedLabels.joined(separator: ", ")));\n\n")
                 }
