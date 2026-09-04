@@ -377,7 +377,7 @@ internal enum DatabaseTreeMenuSpec {
             .submenu(title: FavoriteDatabaseMenu.submenuTitle(for: state), items: environmentItems)
         ]
         if state.hasFavorite {
-            items.append(.destructive(FavoriteDatabaseMenu.removeTitle, .removeFavoriteDatabases(databases)))
+            items.append(.command(FavoriteDatabaseMenu.removeTitle, .removeFavoriteDatabases(databases)))
         }
         return items
     }
