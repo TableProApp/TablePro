@@ -47,6 +47,7 @@ internal struct CopyObjectsReviewView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 rowPlan(plan)
+                conversions(plan)
                 notes(plan)
                 skipped(plan)
             }
@@ -104,6 +105,52 @@ internal struct CopyObjectsReviewView: View {
             ? String(localized: "about %@ row")
             : String(localized: "about %@ rows")
         return String(format: template, rows.formatted(.number.grouping(.automatic)))
+    }
+
+    /// What the crossing between two engines changed, one row per column or index.
+    ///
+    /// Listed rather than summarised, because "some types were converted" is not something a user
+    /// can act on and "amount: DECIMAL(19,4) → NUMBER(19,4)" is. A row that loses something carries
+    /// the same warning triangle the copy's own caveats use; a widening reads as ordinary text,
+    /// because every value still fits and there is nothing to decide.
+    @ViewBuilder
+    private func conversions(_ plan: ObjectCopyPlan) -> some View {
+        let notes = plan.reviewedConversionNotes()
+        if !notes.shown.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Type changes")
+                    .font(.subheadline.weight(.medium))
+                ForEach(notes.shown) { note in
+                    conversion(note)
+                }
+                if notes.hidden > 0 {
+                    Text(String(
+                        format: String(localized: "%@ more, in the script beside this"),
+                        notes.hidden.formatted(.number.grouping(.automatic))
+                    ))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func conversion(_ note: CrossEngineConversionNote) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Label {
+                Text(note.summary)
+            } icon: {
+                Image(systemName: note.isLossy ? "exclamationmark.triangle" : "arrow.right.circle")
+            }
+            .font(.callout)
+            .foregroundStyle(note.isLossy ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+            Text(note.reason)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder

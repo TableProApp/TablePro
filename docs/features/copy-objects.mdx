@@ -1,6 +1,6 @@
 ---
 title: Copy and duplicate
-description: Copy tables and databases to another database or another connection, structure, data, or both
+description: Copy tables and databases to another database, another connection, or another engine, structure, data, or both
 ---
 
 Right-click what you want and pick where it goes. Rows stream from one connection to the other in
@@ -25,6 +25,9 @@ written until you have read the script.
   <Step title="Choose what travels">
     Structure only, data only, or both. Tick the objects taking part. The count under the list
     counts the whole selection, not the part the search is showing.
+
+    The funnel beside a table narrows the rows it contributes. See
+    [Copying part of a table](#copying-part-of-a-table).
   </Step>
   <Step title="Read the script, then copy">
     **Continue** reads both databases and shows the DDL that will run, the rows each table expects,
@@ -44,8 +47,9 @@ written until you have read the script.
 A data-only copy leaves views, routines and triggers out and says so in the review step: they hold
 no rows.
 
-Generated and computed columns are dropped from the write. The server recomputes them, and every
-engine that has them rejects an `INSERT` that names one.
+Within one engine, generated and computed columns are dropped from the write. The server recomputes
+them, and every engine that has them rejects an `INSERT` that names one. Crossing to another engine
+they arrive as ordinary columns carrying the values they held on the source.
 
 ## When the target already has the object
 
@@ -63,11 +67,66 @@ the target does not have is not written; one the source does not have keeps its 
 Pick **Skip it** unless you are refreshing a copy you made earlier. It is the only one of the three
 that cannot lose anything already in the target.
 
-## One engine, and the namespace rule
+## Copying part of a table
 
-A copy stays inside one engine. Column data types are the driver's own strings and the row writer
-emits that driver's own SQL, so neither structure nor data crosses from MySQL to PostgreSQL. The
-sheet refuses before it reads anything. MySQL and MariaDB count as one engine.
+The funnel beside a table in the object list opens a `WHERE` and a row limit for that table alone.
+Both narrow what the copy reads; neither changes the structure it writes, so a copy set to carry
+structure and data still creates every column.
+
+Write the filter in the source engine's own dialect, without the keyword: `status = 'active'`,
+`created_at > '2026-01-01'`. It is one expression. A semicolon means a second statement, and **Copy**
+stays disabled until it is gone.
+
+A filtered table shows `Unknown` for its row count in the review step. A row limit on its own shows
+a number, since it is a ceiling the copy will not pass.
+
+**Replace it** still empties the whole target table, filter or no filter. Pair a filter with **Add
+rows to it** when you mean to top up a table rather than rebuild it.
+
+## Crossing engines
+
+A table crosses. MySQL to PostgreSQL, SQL Server to MySQL, Oracle to SQLite: its columns, keys and
+indexes are said again in the target's own types before any DDL is generated, and its rows are
+reshaped where the source and the target spell a value differently. `TINYINT(1)` arrives as `BOOLEAN`,
+`LONGTEXT` as `text`, `INT UNSIGNED` as `BIGINT`, and a PostgreSQL `t` arrives in a MySQL
+`TINYINT(1)` as `1`.
+
+Nothing is dropped for want of a type. A type the target does not have becomes its widest text
+column, so the values arrive as text rather than the column going missing.
+
+The review step lists every column and index the crossing changed, one line each. It is the only
+place those conversions appear, and it is shown before **Copy** does anything.
+
+| Line | Means | What to do |
+|---|---|---|
+| An arrow, in grey | Widened. `uuid` to `CHAR(36)`, `INT UNSIGNED` to `BIGINT`. Every source value still fits | Nothing |
+| A triangle, in orange | Approximated. A time zone dropped, an `ENUM` become text, an index left out | Read it. This is where a copy loses something |
+
+Views, materialized views, procedures, functions and triggers do not cross. Their definitions are
+the source engine's own SQL, unparsed and uncorrected, so each is listed under **Left out** and the
+tables beside it copy anyway.
+
+Character sets, collations, storage engines and `ON UPDATE CURRENT_TIMESTAMP` are dropped; each
+names something only the source engine has. A MySQL `0000-00-00` is written as `NULL`, the only
+value the rest accept for it.
+
+MySQL and MariaDB count as one engine, and so do PostgreSQL, Redshift, CockroachDB and PGlite. A copy
+between two of those runs unchanged and reports no conversions.
+
+## When both sides are one connection
+
+A copy whose source and target are the same connection is done by the server: one
+`INSERT INTO … SELECT` per table, shown in the review step in place of the query it would otherwise
+have walked. The rows never reach the app, which on a large table is the difference between minutes
+and seconds.
+
+Two things go with it. There is no row-by-row progress, and **Stop** cannot interrupt a statement the
+server has already started. The plan says so above the script.
+
+PostgreSQL takes this path only between two schemas of one database. MySQL, MariaDB, SQL Server and
+ClickHouse take it across databases too. Everything else streams through the app as before.
+
+## The namespace rule
 
 A database-level copy covers every schema. Each schema's objects are read and written in their own
 scope, and a duplicate recreates each of them under the same name in the new database. A new
@@ -124,7 +183,17 @@ have none, so the command does not appear on them.
 ## Limitations
 
 Copying is SQL only. MongoDB, Redis, DynamoDB, Elasticsearch, Kafka, etcd and SurrealDB have no
-`CREATE TABLE` and no row writer to copy through, so neither command appears on them.
+`CREATE TABLE` and no row writer to copy through, so neither command appears on them, and neither
+end of a copy may be one of them.
+
+A crossing translates types, defaults and indexes, and nothing else. Check constraints, partitioning,
+table options and anything the source expressed as an expression stay behind. A copied table is a
+table with the same columns and the same rows, not a replica of the original.
+
+Redshift takes PostgreSQL's type names and not all of PostgreSQL's types. A copy from PostgreSQL
+into it is treated as one engine and passes its types through, so a `jsonb`, `uuid` or array column
+is refused by the server with its own error. Change those columns to `varchar` on the source, or
+create the target table first and use **Add rows to it**.
 
 Duplicate Database needs a driver that creates one. Where it does not, the command still appears and
 the sheet names the engine that cannot rather than failing part way in.
@@ -134,8 +203,10 @@ declared `GENERATED ALWAYS AS IDENTITY`, the server refuses an explicit value an
 appears in the result. Copy the structure, then the data with the identity column removed from the
 target, or use **Add rows to it** against a table whose key is plain.
 
-PostgreSQL columns declared `SERIAL` carry a default that names a sequence. The sequence is not
-copied, so those tables need theirs created first.
+A PostgreSQL `SERIAL` column's default names a sequence. Within PostgreSQL the sequence is copied
+ahead of the table. Crossing to another engine there is no sequence to copy, so the column is created
+with that engine's own auto-increment and the counter starts where the target starts it, not where
+the source left off.
 
 Two databases on one connection can be copied between only where the driver opens a second
 connection of its own. DuckDB and PGlite hold their database inside the driver instance, so the

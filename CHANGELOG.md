@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Copy To across database engines, with every type approximation listed before the copy runs. (#1491)
+- Per-table `WHERE` and row limit in Copy To. (#1491)
+- Server-side `INSERT … SELECT` when a copy's two sides are one connection. (#1491)
+
 ### Fixed
 
 - SQL `IN`, `AND`, `OR`, `NOT`, `BY` and `ON` in the editor's plain text colour. (#2634)

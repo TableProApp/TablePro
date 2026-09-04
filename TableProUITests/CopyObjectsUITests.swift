@@ -84,7 +84,92 @@ final class CopyObjectsUITests: UITestCase {
         )
     }
 
+    /// A filter narrows one table's rows without leaving the object list, and the row has to say so
+    /// afterwards: a filter that is set and invisible is a copy that quietly carries less than the
+    /// user thinks it does.
+    func testAPerTableFilterIsSetFromTheObjectListAndShownOnTheRow() throws {
+        let app = try launchWithSampleDatabase()
+        let window = try readyWindow(of: app)
+        try openCopyToSheet(onRow: "Album", in: window, of: app)
+
+        let funnel = window.descendants(matching: .any)
+            .matching(identifier: "copy-objects-row-filter-Album").firstMatch
+        XCTAssertTrue(funnel.waitToExist(timeout: 20), "A table row must offer a row filter")
+        XCTAssertTrue(waitUntilHittable(funnel, timeout: 20))
+        funnel.click()
+
+        let field = app.descendants(matching: .any).matching(identifier: "row-scope-filter").firstMatch
+        XCTAssertTrue(field.waitToExist(timeout: 20), "The filter popover must offer a WHERE field")
+        XCTAssertTrue(waitUntilHittable(field, timeout: 20))
+        field.click()
+        app.typeText("AlbumId > 10")
+
+        let done = app.buttons["Done"].firstMatch
+        XCTAssertTrue(done.waitToExist(timeout: 10))
+        done.click()
+
+        let summary = window.descendants(matching: .any)
+            .matching(identifier: "copy-objects-row-scope-Album").firstMatch
+        XCTAssertTrue(
+            waitForPredicate(timeout: 20) { summary.exists },
+            "The row must show the filter it now carries"
+        )
+        let spoken = [summary.label, (summary.value as? String) ?? ""].joined(separator: " ")
+        XCTAssertTrue(
+            spoken.contains("AlbumId"),
+            "The summary must name the filter. label=\(summary.label) value=\(String(describing: summary.value))"
+        )
+
+        app.typeKey(.escape, modifierFlags: [])
+    }
+
+    /// A filter is one expression. Text carrying a second statement is refused rather than spliced
+    /// into the `SELECT` the copy runs, and Continue stays out of reach until it is gone.
+    func testAFilterCarryingASecondStatementBlocksContinue() throws {
+        let app = try launchWithSampleDatabase()
+        let window = try readyWindow(of: app)
+        try openCopyToSheet(onRow: "Album", in: window, of: app)
+
+        let funnel = window.descendants(matching: .any)
+            .matching(identifier: "copy-objects-row-filter-Album").firstMatch
+        XCTAssertTrue(funnel.waitToExist(timeout: 20))
+        XCTAssertTrue(waitUntilHittable(funnel, timeout: 20))
+        funnel.click()
+
+        let field = app.descendants(matching: .any).matching(identifier: "row-scope-filter").firstMatch
+        XCTAssertTrue(field.waitToExist(timeout: 20))
+        XCTAssertTrue(waitUntilHittable(field, timeout: 20))
+        field.click()
+        app.typeText("1=1; DROP TABLE Album")
+
+        let done = app.buttons["Done"].firstMatch
+        XCTAssertTrue(done.waitToExist(timeout: 10))
+        done.click()
+
+        let cont = window.buttons["Continue"].firstMatch
+        XCTAssertTrue(
+            waitForPredicate(timeout: 20) { cont.exists && !cont.isEnabled },
+            "Continue must stay unavailable while a filter holds a second statement"
+        )
+
+        app.typeKey(.escape, modifierFlags: [])
+    }
+
     // MARK: - Helpers
+
+    private func openCopyToSheet(
+        onRow name: String,
+        in window: XCUIElement,
+        of app: XCUIApplication
+    ) throws {
+        openContextMenu(onRow: name, in: window, of: app)
+        let item = contextMenuItem(copyToTitle, in: app)
+        XCTAssertTrue(item.waitToExist(timeout: 10))
+        item.click()
+        let list = window.descendants(matching: .any)
+            .matching(identifier: "copy-objects-list").firstMatch
+        XCTAssertTrue(list.waitToExist(timeout: 20), "Copy To must open its object list")
+    }
 
     private func readyWindow(of app: XCUIApplication) throws -> XCUIElement {
         let window = app.windows.firstMatch

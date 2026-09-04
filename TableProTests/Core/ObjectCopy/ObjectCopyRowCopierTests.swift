@@ -75,7 +75,10 @@ private final class CopyDriver: PluginDatabaseDriver, @unchecked Sendable {
 final class ObjectCopyRowCopierTests: XCTestCase {
     private func step(
         columns: [String] = ["id", "name"],
-        schema: String? = "public"
+        schema: String? = "public",
+        coercer: CrossEngineValueCoercer? = nil,
+        serverSideInsert: SyncStatement? = nil,
+        estimatedRows: Int? = nil
     ) -> ObjectCopyTableStep {
         ObjectCopyTableStep(
             selection: ObjectCopySelection(kind: .table, name: "orders", schema: schema),
@@ -88,9 +91,11 @@ final class ObjectCopyRowCopierTests: XCTestCase {
             sourceQuery: "SELECT `id`, `name` FROM `public`.`orders`",
             targetTable: "orders",
             targetSchema: schema,
-            estimatedRows: nil,
+            estimatedRows: estimatedRows,
             copiesData: true,
             copiesIdentityColumn: false,
+            coercer: coercer,
+            serverSideInsert: serverSideInsert,
             note: nil
         )
     }
@@ -250,6 +255,67 @@ final class ObjectCopyRowCopierTests: XCTestCase {
         )
 
         XCTAssertEqual(ObjectCopyRowCopier.batchSize(columnCount: 5_000, generator: mssql), 1)
+    }
+
+    // MARK: - Crossing engines
+
+    /// A `t` from PostgreSQL bound into a MySQL `TINYINT(1)` is 0 outside strict mode, so every
+    /// `true` in the table would arrive as `false` with nothing reported.
+    func testValuesAreReshapedForTheTarget() async throws {
+        let source = CopyDriver()
+        source.streamed = [[.text("1"), .text("t")]]
+        let target = CopyDriver()
+        let coercer = CrossEngineValueCoercer(
+            pairs: [
+                .init(source: .integer(bytes: 4), target: .integer(bytes: 4)),
+                .init(source: .boolean, target: .boolean)
+            ],
+            from: .postgres
+        )
+
+        _ = try await ObjectCopyRowCopier(
+            step: step(columns: ["id", "live"], coercer: coercer), targetDatabaseType: .mysql
+        ).copy(from: source, to: target) { _ in }
+
+        XCTAssertEqual(target.executedParameters.first?.map(\.sortKey), ["1", "1"])
+    }
+
+    // MARK: - The server-side path
+
+    /// One statement instead of a stream, and the source driver is never read from at all.
+    func testAServerSideCopyRunsOneStatementAndReadsNothing() async throws {
+        let source = CopyDriver()
+        source.streamed = rows(5)
+        let target = CopyDriver()
+        let statement = SyncStatement(
+            sql: "INSERT INTO `orders` (`id`) SELECT `id` FROM `shop`.`orders`;",
+            objectName: "orders",
+            summary: "server side"
+        )
+
+        let outcome = try await ObjectCopyRowCopier(
+            step: step(serverSideInsert: statement, estimatedRows: 5), targetDatabaseType: .mysql
+        ).copy(from: source, to: target) { _ in }
+
+        XCTAssertEqual(target.executedQueries, [statement.sql])
+        XCTAssertTrue(target.executedParameters.isEmpty)
+        XCTAssertFalse(outcome.cancelled)
+    }
+
+    /// The server's own count and never the plan's estimate. `rowsAffected` cannot tell "the driver
+    /// reported nothing" from "the statement matched nothing", so standing the estimate in for zero
+    /// told the user a copy of an empty table had written however many rows a stale table statistic
+    /// had guessed at.
+    func testTheServerCountIsReportedRatherThanTheEstimate() async throws {
+        let outcome = try await ObjectCopyRowCopier(
+            step: step(
+                serverSideInsert: SyncStatement(sql: "INSERT INTO x SELECT 1;", objectName: "x", summary: ""),
+                estimatedRows: 42
+            ),
+            targetDatabaseType: .mysql
+        ).copy(from: CopyDriver(), to: CopyDriver()) { _ in }
+
+        XCTAssertEqual(outcome.inserted, 0)
     }
 }
 
