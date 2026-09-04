@@ -189,10 +189,26 @@ struct MySQLJsonPlanParser: QueryPlanParser {
         )
     }
 
+    /// MariaDB reports one `cost` per table, and those sum to the block's own `cost` (measured on
+    /// MariaDB 12.3: 0.0923548 + 0.9166336 against a block cost of 1.0089884). MySQL splits the
+    /// same quantity into `read_cost`, for fetching the rows, and `eval_cost`, for testing the
+    /// conditions on them. Taking `read_cost` alone left every table short by its `eval_cost`, and
+    /// the wrapper `Query Block` node absorbed the whole difference as exclusive cost, which made
+    /// the one node that does no work the reddest in the plan.
+    ///
+    /// `eval_cost` is only added when the plan reports it, so a plan without it is read exactly as
+    /// before. Not measured against a real MySQL server, which was not available: MySQL publishes
+    /// no `cost_info` example either, so this follows its documented cost model.
+    private static func tableCost(_ table: [String: Any]) -> Double? {
+        if let mariaDBCost = table["cost"] as? Double { return mariaDBCost }
+        guard let costInfo = table["cost_info"] as? [String: Any] else { return nil }
+        guard let readCost = costInfo["read_cost"].flatMap({ Double("\($0)") }) else { return nil }
+        let evalCost = costInfo["eval_cost"].flatMap { Double("\($0)") } ?? 0
+        return readCost + evalCost
+    }
+
     private func parseTable(_ table: [String: Any]) -> QueryPlanNode {
-        // MariaDB uses "cost" directly, MySQL uses "cost_info.read_cost"
-        let cost = table["cost"] as? Double
-            ?? (table["cost_info"] as? [String: Any])?["read_cost"].flatMap { Double("\($0)") }
+        let cost = Self.tableCost(table)
         let rows = table["rows"] as? Int
             ?? table["rows_examined_per_scan"] as? Int
             ?? table["rows_produced_per_join"] as? Int

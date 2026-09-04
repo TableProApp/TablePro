@@ -10,6 +10,7 @@ import SwiftUI
 
 struct QueryPlanTreeView: View {
     let plan: QueryPlan
+    let metric: QueryPlanBarMetric?
     @Binding var selectedNodeId: UUID?
 
     var body: some View {
@@ -19,7 +20,7 @@ struct QueryPlanTreeView: View {
             primaryMinimum: 160,
             secondaryMinimum: 120
         ) {
-            QueryPlanOutlineView(plan: plan, selectedNodeId: $selectedNodeId)
+            QueryPlanOutlineView(plan: plan, metric: metric, selectedNodeId: $selectedNodeId)
         } secondary: {
             QueryPlanDetailPane(node: selectedNode)
         }

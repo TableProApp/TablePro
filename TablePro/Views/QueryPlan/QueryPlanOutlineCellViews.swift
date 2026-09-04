@@ -14,9 +14,13 @@ struct QueryPlanOperationCellView: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: node.severity.symbolName)
+            // Hidden rather than absent when the plan reported no cost for this node, so the
+            // operation text keeps one left edge down the column. A plan can report a cost for
+            // some nodes and not others: MySQL prices a "never executed" branch at nothing.
+            Image(systemName: node.severity?.symbolName ?? QueryPlanSeverity.low.symbolName)
                 .font(.system(size: 8))
-                .foregroundStyle(node.severity.tint(differentiateWithoutColor: differentiateWithoutColor))
+                .foregroundStyle(tint)
+                .opacity(node.severity == nil ? 0 : 1)
                 .accessibilityHidden(true)
 
             Text(node.operation)
@@ -48,6 +52,10 @@ struct QueryPlanOperationCellView: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(QueryPlanNodeSummary.accessibilityLabel(for: node))
+    }
+
+    private var tint: Color {
+        node.severity?.tint(differentiateWithoutColor: differentiateWithoutColor) ?? .secondary
     }
 }
 

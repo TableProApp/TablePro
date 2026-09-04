@@ -14,17 +14,23 @@ enum QueryPlanSeverity: CaseIterable {
     case high
     case critical
 
-    static func forCostFraction(_ fraction: Double) -> QueryPlanSeverity {
-        guard fraction.isFinite else { return .low }
-        if fraction > 0.5 { return .critical }
-        if fraction > 0.2 { return .high }
-        if fraction > 0.05 { return .moderate }
+    /// `share` is a node's part of a plan-wide total, so it belongs in 0...1. A value outside that
+    /// range means the caller divided by the wrong thing, and the clamp keeps the badge readable
+    /// rather than pinning every node to `.critical`.
+    static func forShare(_ share: Double) -> QueryPlanSeverity {
+        guard share.isFinite else { return .low }
+        let bounded = min(max(share, 0), 1)
+        if bounded > 0.5 { return .critical }
+        if bounded > 0.2 { return .high }
+        if bounded > 0.05 { return .moderate }
         return .low
     }
 }
 
 extension QueryPlanNode {
-    var severity: QueryPlanSeverity {
-        QueryPlanSeverity.forCostFraction(costFraction)
+    /// Nil when the plan reported no cost at all. Four of the seven plan formats the app parses
+    /// report none, and calling those nodes "low cost" claims a measurement nobody made.
+    var severity: QueryPlanSeverity? {
+        costFraction.map(QueryPlanSeverity.forShare)
     }
 }
