@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Empty Cost, Rows and Actual Time columns in the EXPLAIN tree for engines that report none of them. (#2633)
 - `Workers Launched: 0` missing from a plan node's details while `Workers Planned` was shown. (#2633)
 - MySQL plans pricing the wrapper query block above every table it contains. (#2633)
+- SQL `IN`, `AND`, `OR`, `NOT`, `BY` and `ON` in the editor's plain text colour. (#2634)
+- SQL built-in type names, `ASC`, `DESC` and function calls unhighlighted in the editor.
+- SQL numbers, `TRUE`, `FALSE` and `NULL` in the string colour.
+- No syntax highlighting at all in the MongoDB and Elasticsearch query editors.
+- JavaScript `locals` and `tags` queries that no longer compiled against the bundled parser.
+- JSON `true`, `false` and `null` unhighlighted in the row inspector and the JSON viewer.
+- Operator and Function theme colours with no effect on the editor.
 
 ## [0.72.0] - 2026-09-04
 

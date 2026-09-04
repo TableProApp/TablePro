@@ -97,7 +97,9 @@ enum Mock {
             numbers: EditorTheme.Attribute(color: .systemYellow),
             strings: EditorTheme.Attribute(color: .systemRed),
             characters: EditorTheme.Attribute(color: .systemRed),
-            comments: EditorTheme.Attribute(color: .systemGreen)
+            comments: EditorTheme.Attribute(color: .systemGreen),
+            operators: EditorTheme.Attribute(color: .systemBrown),
+            functions: EditorTheme.Attribute(color: .systemIndigo)
         )
     }
 

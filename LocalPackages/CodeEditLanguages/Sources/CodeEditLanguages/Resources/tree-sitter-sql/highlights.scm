@@ -1,9 +1,9 @@
-(object_reference
-  name: (identifier) @type)
-
 (invocation
   (object_reference
     name: (identifier) @function.call))
+
+(object_reference
+  name: (identifier) @type)
 
 [
   (keyword_gist)
@@ -30,22 +30,23 @@
     name: (keyword_cast) @function.call
     parameter: [(literal)]?)))
 
-(literal) @string
-(comment) @comment @spell
-(marginalia) @comment
-
 ((literal) @number
-   (#match? @number "^[-+]?%d+$"))
+   (#match? @number "^[-+]?\\d+$"))
 
 ((literal) @float
-  (#match? @float "^[-+]?%d*\.%d*$"))
-
-(parameter) @parameter
+  (#match? @float "^[-+]?\\d*\\.\\d*$"))
 
 [
  (keyword_true)
  (keyword_false)
-] @boolean
+ (keyword_null)
+] @constant.builtin
+
+(literal) @string
+(comment) @comment @spell
+(marginalia) @comment
+
+(parameter) @parameter
 
 [
  (keyword_asc)
@@ -350,7 +351,6 @@
 
 [
   (keyword_int)
-  (keyword_null)
   (keyword_boolean)
   (keyword_binary)
   (keyword_varbinary)
