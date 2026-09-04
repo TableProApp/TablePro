@@ -82,6 +82,11 @@ struct PluginMetadataSnapshot: Sendable {
 
         var supportsSOCKSProxy: Bool { supportsSSH }
 
+        /// A tunnel command forwards a loopback port to the server the connection names, so it
+        /// applies wherever an SSH tunnel would. Computed for the same reason `supportsSOCKSProxy`
+        /// is: a stored flag would need an opt-out line in every hand-written snapshot.
+        var supportsTunnelCommand: Bool { supportsSSH }
+
         /// Whether this type may point at a file on an SSH server instead of a local one.
         ///
         /// Deliberately not derived from `localFilePathField`. Beancount opens a local file and must

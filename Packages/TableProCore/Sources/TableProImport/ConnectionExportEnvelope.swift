@@ -93,6 +93,7 @@ public struct ExportableConnection: Codable, Sendable {
     public let redisDatabase: Int?
     public let startupCommands: String?
     public let localOnly: Bool?
+    public let tunnelCommand: ExportableTunnelCommand?
 
     public init(
         name: String,
@@ -113,7 +114,8 @@ public struct ExportableConnection: Codable, Sendable {
         additionalFields: [String: String]?,
         redisDatabase: Int?,
         startupCommands: String?,
-        localOnly: Bool?
+        localOnly: Bool?,
+        tunnelCommand: ExportableTunnelCommand? = nil
     ) {
         self.name = name
         self.host = host
@@ -134,6 +136,7 @@ public struct ExportableConnection: Codable, Sendable {
         self.redisDatabase = redisDatabase
         self.startupCommands = startupCommands
         self.localOnly = localOnly
+        self.tunnelCommand = tunnelCommand
     }
 
     public func renamed(to newName: String) -> ExportableConnection {
@@ -144,8 +147,49 @@ public struct ExportableConnection: Codable, Sendable {
             groupName: groupName, sshProfileId: sshProfileId,
             safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
             additionalFields: additionalFields, redisDatabase: redisDatabase,
-            startupCommands: startupCommands, localOnly: localOnly
+            startupCommands: startupCommands, localOnly: localOnly,
+            tunnelCommand: tunnelCommand
         )
+    }
+}
+
+/// A forwarding command carried by an exported connection.
+///
+/// It holds no secret, which is why it can travel at all, and it is the only exported field that
+/// describes a process TablePro would start. Import keeps it only behind an explicit confirmation,
+/// and the routes that are a click rather than a decision, a deeplink and the team library, drop it
+/// before anyone is asked.
+public struct ExportableTunnelCommand: Codable, Sendable, Equatable {
+    public let method: String
+    public let command: String?
+    public let executablePath: String?
+    public let kubernetesNamespace: String?
+    public let kubernetesResource: String?
+    public let kubernetesContext: String?
+    public let awsTarget: String?
+    public let awsProfile: String?
+    public let awsRegion: String?
+
+    public init(
+        method: String,
+        command: String?,
+        executablePath: String?,
+        kubernetesNamespace: String?,
+        kubernetesResource: String?,
+        kubernetesContext: String?,
+        awsTarget: String?,
+        awsProfile: String?,
+        awsRegion: String?
+    ) {
+        self.method = method
+        self.command = command
+        self.executablePath = executablePath
+        self.kubernetesNamespace = kubernetesNamespace
+        self.kubernetesResource = kubernetesResource
+        self.kubernetesContext = kubernetesContext
+        self.awsTarget = awsTarget
+        self.awsProfile = awsProfile
+        self.awsRegion = awsRegion
     }
 }
 
@@ -176,7 +220,24 @@ public extension ExportableConnection {
             groupName: groupName, sshProfileId: sshProfileId,
             safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
             additionalFields: additionalFields, redisDatabase: redisDatabase,
-            startupCommands: nil, localOnly: localOnly
+            startupCommands: nil, localOnly: localOnly,
+            tunnelCommand: tunnelCommand
+        )
+    }
+
+    var carriesTunnelCommand: Bool { tunnelCommand != nil }
+
+    func withoutTunnelCommand() -> ExportableConnection {
+        guard tunnelCommand != nil else { return self }
+        return ExportableConnection(
+            name: name, host: host, port: port, database: database,
+            username: username, type: type, sshConfig: sshConfig,
+            sslConfig: sslConfig, color: color, tagName: tagName, tagNames: tagNames,
+            groupName: groupName, sshProfileId: sshProfileId,
+            safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
+            additionalFields: additionalFields, redisDatabase: redisDatabase,
+            startupCommands: startupCommands, localOnly: localOnly,
+            tunnelCommand: nil
         )
     }
 
@@ -191,7 +252,8 @@ public extension ExportableConnection {
             groupName: groupName, sshProfileId: sshProfileId,
             safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
             additionalFields: allowed.isEmpty ? nil : allowed, redisDatabase: redisDatabase,
-            startupCommands: startupCommands, localOnly: localOnly
+            startupCommands: startupCommands, localOnly: localOnly,
+            tunnelCommand: tunnelCommand
         )
     }
 }

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Tunnel Command pane, with presets for `kubectl port-forward` and `aws ssm start-session` and a custom command line. (#2520)
+
 ### Fixed
 
 - SQL `IN`, `AND`, `OR`, `NOT`, `BY` and `ON` in the editor's plain text colour. (#2634)

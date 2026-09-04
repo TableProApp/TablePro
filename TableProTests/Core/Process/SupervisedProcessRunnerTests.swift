@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import Darwin
 import Foundation
 import Testing
 
@@ -97,5 +98,48 @@ struct SupervisedProcessRunnerTests {
         }
 
         #expect(lines == ["no trailing newline"])
+    }
+
+    private func isAlive(_ pid: pid_t) -> Bool { kill(pid, 0) == 0 }
+
+    private func waitUntilGone(_ pid: pid_t, within seconds: Double) async -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        while Date() < deadline {
+            if !isAlive(pid) { return true }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        return !isAlive(pid)
+    }
+
+    /// The whole reason `stop()` may signal a negated pid: Foundation puts every child in a process
+    /// group of its own. If a toolchain stopped doing that, the same call would signal this
+    /// process's own group instead.
+    @Test("A launched process leads its own process group")
+    func processLeadsItsOwnGroup() async throws {
+        let runner = try runner(script: "sleep 30")
+        let pid = try #require(runner.processIdentifier)
+
+        #expect(getpgid(pid) == pid)
+        #expect(getpgid(pid) != getpgid(0))
+
+        runner.stop()
+        _ = await runner.termination
+    }
+
+    @Test("Stopping takes down a helper the command spawned for itself")
+    func stopTakesDownDescendants() async throws {
+        let runner = try runner(script: "sleep 40 & echo $! >&2; wait")
+
+        var helperPid: pid_t?
+        for await line in runner.stderrLines {
+            helperPid = pid_t(line.trimmingCharacters(in: .whitespacesAndNewlines))
+            break
+        }
+        let helper = try #require(helperPid)
+        #expect(isAlive(helper))
+
+        runner.stop()
+
+        #expect(await waitUntilGone(helper, within: 5))
     }
 }
