@@ -149,9 +149,11 @@ private struct QueryPlanDiagramNodeView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 4) {
-                Image(systemName: node.severity.symbolName)
-                    .font(.system(size: 7))
-                    .foregroundStyle(tint)
+                if let severity = node.severity {
+                    Image(systemName: severity.symbolName)
+                        .font(.system(size: 7))
+                        .foregroundStyle(tint)
+                }
                 Text(node.operation)
                     .font(.system(.callout, weight: .semibold))
                     .lineLimit(1)
@@ -205,6 +207,6 @@ private struct QueryPlanDiagramNodeView: View {
     }
 
     private var tint: Color {
-        node.severity.tint(differentiateWithoutColor: differentiateWithoutColor)
+        node.severity?.tint(differentiateWithoutColor: differentiateWithoutColor) ?? .secondary
     }
 }

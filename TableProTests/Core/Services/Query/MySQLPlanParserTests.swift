@@ -59,6 +59,60 @@ struct MySQLPlanParserTests {
         #expect(plan.rootNode.properties["Details"]?.contains("created_at > 1") == true)
     }
 
+    /// MySQL splits a table's cost into the read and the condition-evaluation halves. Charging the
+    /// table only the read half left the difference on the wrapper block, which does no work of its
+    /// own, so it came out as the most expensive node in every MySQL plan.
+    @Test("A MySQL table is charged both halves of its cost")
+    func addsEvalCostToReadCost() throws {
+        let output = """
+        {
+          "query_block": {
+            "select_id": 1,
+            "cost_info": { "query_cost": "3.50" },
+            "table": {
+              "table_name": "orders",
+              "access_type": "ALL",
+              "rows_examined_per_scan": 10,
+              "cost_info": {
+                "read_cost": "2.25",
+                "eval_cost": "1.25",
+                "prefix_cost": "3.50",
+                "data_read_per_join": "1K"
+              }
+            }
+          }
+        }
+        """
+
+        let plan = try #require(MySQLJsonPlanParser().parse(rawText: output))
+        let table = try #require(plan.rootNode.children.first)
+
+        #expect(table.estimatedTotalCost == 3.50)
+        // The wrapper priced itself out of the plan once the table carries its whole cost.
+        #expect(plan.rootNode.exclusiveCost == 0)
+        #expect(table.costFraction == 1)
+    }
+
+    @Test("A plan reporting only a read cost is read exactly as before")
+    func keepsReadCostWhenEvalIsAbsent() throws {
+        let output = """
+        {
+          "query_block": {
+            "cost_info": { "query_cost": "9.00" },
+            "table": {
+              "table_name": "users",
+              "access_type": "ALL",
+              "rows_examined_per_scan": 10,
+              "cost_info": { "read_cost": "4.00" }
+            }
+          }
+        }
+        """
+
+        let plan = try #require(MySQLJsonPlanParser().parse(rawText: output))
+        #expect(plan.rootNode.children.first?.estimatedTotalCost == 4.00)
+    }
+
     @Test("Accepts engineering notation and averages across loops")
     func acceptsEngineeringNotation() throws {
         let output = """

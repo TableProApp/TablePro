@@ -25,8 +25,9 @@ struct QueryPlanNode: Identifiable, Sendable {
     let properties: [String: String]
     var children: [QueryPlanNode]
 
-    /// Fraction of total plan cost (0.0-1.0), set after tree is built.
-    var costFraction: Double = 0
+    /// This node's share of the plan's total work (0.0-1.0), set after the tree is built.
+    /// Absent when the plan reports no cost anywhere, which is not the same as a share of zero.
+    var costFraction: Double?
 
     /// Exclusive cost (this node only, excluding children).
     var exclusiveCost: Double {
@@ -50,11 +51,35 @@ struct QueryPlan: Sendable {
     let executionTime: Double?
     let rawText: String
 
-    /// Compute cost fractions relative to root total cost. A plan whose root reports no cost
-    /// keeps every fraction at zero rather than dividing by a made-up total.
+    /// Compute each node's share of the plan's total work.
+    ///
+    /// The denominator is the sum of every node's exclusive cost, not the root's total cost. The
+    /// root's total is not an upper bound on the work below it: PostgreSQL prices a `Limit` far
+    /// below its child on purpose, so dividing by it produced shares above 1 (measured at 5.6 on a
+    /// plain `ORDER BY ... LIMIT 2` and 11.8 under a merge join) and `QueryPlanSeverity` has no arm
+    /// above `.critical` to catch them. Exclusive costs sum to the real total, so a share of it is
+    /// bounded and adds up to 1, and it is identical to the old value wherever that was already
+    /// in range.
+    ///
+    /// A plan that reports no cost anywhere leaves every fraction nil, so "nothing was reported"
+    /// stays distinguishable from "this node is free".
     mutating func computeCostFractions() {
-        guard let totalCost = rootNode.estimatedTotalCost, totalCost > 0 else { return }
-        assignFractions(node: &rootNode, totalCost: totalCost)
+        let total = Self.totalExclusiveCost(of: rootNode)
+        guard total > 0 else { return }
+        assignFractions(node: &rootNode, totalCost: total)
+    }
+
+    private static func totalExclusiveCost(of node: QueryPlanNode) -> Double {
+        node.children.reduce(node.exclusiveCost) { $0 + totalExclusiveCost(of: $1) }
+    }
+
+    /// Whether any node in the plan satisfies a predicate, for deciding what there is to show.
+    func contains(where predicate: (QueryPlanNode) -> Bool) -> Bool {
+        Self.contains(node: rootNode, where: predicate)
+    }
+
+    private static func contains(node: QueryPlanNode, where predicate: (QueryPlanNode) -> Bool) -> Bool {
+        predicate(node) || node.children.contains { contains(node: $0, where: predicate) }
     }
 
     private func assignFractions(node: inout QueryPlanNode, totalCost: Double) {

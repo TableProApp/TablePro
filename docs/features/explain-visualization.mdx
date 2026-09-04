@@ -31,7 +31,7 @@ Every node carries a badge for its own share of the plan's total cost, taken aft
 | Orange triangle | over 20% |
 | Red warning triangle | over 50% |
 
-Shape escalates alongside color, so the badge still reads with the system **Differentiate Without Color** setting on.
+Shape escalates alongside color, so the badge still reads with the system **Differentiate Without Color** setting on. A plan that reports no cost at all, which is every SQLite, ClickHouse, DuckDB and Dameng plan, carries no badge rather than a green one.
 
 Then compare estimate against measurement. A node whose **Rows** estimate is orders of magnitude from its **Actual Rows** is why the planner chose that shape, so refresh the table's statistics before rewriting the query. On PostgreSQL a **Loops** value above 1 means the node ran once per row of its parent, which makes **Actual Time** the per-loop figure rather than the total.
 
@@ -71,7 +71,21 @@ Boxes joined by arrows, top to bottom. Zoom with a trackpad pinch, a two-finger 
 
 ### Tree
 
-An expandable outline with **Operation**, **Cost**, **Rows**, and **Actual Time** columns. Drag a column edge to resize it and the width is remembered. Clicking a header sorts the steps under each parent without flattening the plan. Arrow keys move between steps, right-click copies one, and the divider resizes the detail panel.
+An expandable outline with a chart column beside **Operation**, **Cost**, **Rows**, and **Actual Time**. Drag a column edge to resize it and the width is remembered. Clicking a header sorts the steps under each parent without flattening the plan. Arrow keys move between steps, right-click copies one, and the divider resizes the detail panel.
+
+Only the columns the plan can fill are shown. A SQLite plan reports no cost, rows or timing, so it lists its steps and nothing else.
+
+Each row draws a bar for the metric in the **Metric** menu, so the expensive steps stand out without reading the digits. The longest bar is the largest step in the plan and every other bar is drawn against it. Cost and time bars take the badge's colors, because a step's share of the plan is what those bands measure. Row bars are drawn in the accent color: a row count is not a share of anything, and a plan that passes the same rows through every step would otherwise come out red from top to bottom.
+
+| Metric | What it measures |
+|---|---|
+| **Self Cost** | The node's own estimated cost, with its children's subtracted |
+| **Self Time** | The measured time spent in the node itself, multiplied by **Loops** and divided across parallel workers |
+| **Estimated Rows**, **Actual Rows** | Rows out of the node, with **Actual Rows** multiplied by **Loops** |
+
+The menu offers only the metrics the plan reports, and the chart column sorts by the metric it shows. Measured plans open on **Self Time** and estimated ones on **Self Cost**.
+
+**Self Time** is the total work in a node, so it differs from the **Actual Time** column, which is the per-loop figure the database prints. A node with `loops=500` at 0.4ms each shows 0.4ms in the column and 200ms in the chart.
 
 ### Raw
 

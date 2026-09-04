@@ -140,6 +140,43 @@ final class QueryPlanResultUITests: UITestCase {
         app.typeKey(.escape, modifierFlags: [])
     }
 
+    /// SQLite's `EXPLAIN QUERY PLAN` reports no cost, no rows and no timing, so the tree has
+    /// nothing to chart. The columns that would be blank are not shown at all, and the metric
+    /// chooser that would have nothing to choose from is absent.
+    ///
+    /// This is the branch worth pinning here: the sample database is the only deterministic plan
+    /// available without a server, and it is exactly the case where a column-hiding bug would ship
+    /// an outline of empty columns beside a bar track that never fills.
+    func testAMetriclessPlanShowsNoEmptyColumnsAndNoMetricChooser() throws {
+        let app = try launchWithSampleDatabase()
+        runQuery("EXPLAIN QUERY PLAN SELECT * FROM Track;", in: app)
+
+        let modePicker = app.radioGroups["query-plan-mode-picker"].firstMatch
+        XCTAssertTrue(modePicker.waitToExist(timeout: 20), "The plan must parse into a tree")
+        modePicker.radioButtons["Tree"].click()
+
+        let outline = app.outlines["query-plan-outline"].firstMatch
+        XCTAssertTrue(outline.waitToExist(timeout: 10), "Tree mode must show the plan outline")
+        XCTAssertGreaterThan(outline.outlineRows.count, 0, "The outline must list the plan's steps")
+
+        XCTAssertFalse(
+            app.popUpButtons["query-plan-metric-picker"].firstMatch.exists,
+            "A plan with no metric to chart must not offer a metric chooser"
+        )
+
+        for column in ["Cost", "Rows", "Actual Time"] {
+            XCTAssertFalse(
+                outline.staticTexts[column].exists,
+                "\(column) reports nothing on a SQLite plan, so its column must not be shown"
+            )
+        }
+
+        XCTAssertTrue(
+            outline.staticTexts["Operation"].exists,
+            "The Operation column is the one the plan can always fill"
+        )
+    }
+
     // MARK: - Helpers
 
     private func runQuery(_ sql: String, in app: XCUIApplication) {

@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connection groups in Switch Connection, with `Cmd`-click to open a saved connection in a new window. (#1311)
 - AppleScript dictionary for connections, tabs, results and the grid selection. (#2512)
 - AppleScript source in the history drawer's filter and its own notification toggle. (#2512)
+- Bar chart column in the EXPLAIN tree, with a Metric menu for self cost, self time and row counts. (#2633)
 
 ### Changed
 
@@ -78,6 +79,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connections, groups and tags from another device silently dropped when the store could not be written, and never sent again.
 - Two Macs re-uploading the whole group list to each other after a single group changed. (#1311)
 - Deleting a group that a broken sync left in a loop also deleting the group it pointed at. (#1311)
+- Cost badge on every plan node of a query ending in `LIMIT`, where the share it reads could exceed 100%. (#2633)
+- Green "low cost" badge on plans that report no cost at all, such as SQLite and ClickHouse. (#2633)
+- Empty Cost, Rows and Actual Time columns in the EXPLAIN tree for engines that report none of them. (#2633)
+- `Workers Launched: 0` missing from a plan node's details while `Workers Planned` was shown. (#2633)
+- MySQL plans pricing the wrapper query block above every table it contains. (#2633)
 
 ## [0.71.0] - 2026-09-02
 

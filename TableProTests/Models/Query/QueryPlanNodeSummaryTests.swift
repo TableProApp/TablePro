@@ -66,11 +66,30 @@ struct QueryPlanNodeSummaryTests {
 
     @Test("The spoken label names the operation, the relation and the severity")
     func buildsAccessibilityLabel() {
-        let label = QueryPlanNodeSummary.accessibilityLabel(for: makeNode())
+        var plan = QueryPlan(
+            rootNode: makeNode(),
+            planningTime: nil,
+            executionTime: nil,
+            rawText: ""
+        )
+        plan.computeCostFractions()
+        let label = QueryPlanNodeSummary.accessibilityLabel(for: plan.rootNode)
 
         #expect(label.hasPrefix("Seq Scan"))
         #expect(label.contains("orders"))
-        #expect(label.contains(QueryPlanSeverity.low.accessibilityLabel))
+        #expect(label.contains(QueryPlanSeverity.critical.accessibilityLabel))
+    }
+
+    /// A node the plan reported no cost for has no share to speak, so VoiceOver says nothing about
+    /// severity rather than calling an unmeasured node cheap.
+    @Test("A node with no cost share is not described as cheap")
+    func omitsSeverityWithoutAShare() {
+        let label = QueryPlanNodeSummary.accessibilityLabel(for: makeNode(totalCost: nil))
+
+        #expect(label.hasPrefix("Seq Scan"))
+        for severity in QueryPlanSeverity.allCases {
+            #expect(!label.contains(severity.accessibilityLabel))
+        }
     }
 
     @Test("Actual timing appears in both renderings when present")
