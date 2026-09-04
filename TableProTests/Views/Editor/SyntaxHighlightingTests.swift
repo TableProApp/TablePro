@@ -11,6 +11,7 @@ import AppKit
 import CodeEditLanguages
 @testable import CodeEditSourceEditor
 import Foundation
+import SwiftTreeSitter
 @testable import TablePro
 import Testing
 
@@ -48,6 +49,18 @@ struct SyntaxHighlightingTests {
         let language = try #require(Self.language(named: name))
         let query = TreeSitterModel.shared.query(for: language.id)
         #expect(query != nil, "\(name) has no usable highlight query, so that editor shows no highlighting at all")
+    }
+
+    @Test("Every query file a bundled grammar ships compiles", arguments: bundledLanguageNames)
+    func everyShippedQueryFileCompiles(name: String) throws {
+        let language = try #require(Self.language(named: name))
+        let parserLanguage = try #require(language.language)
+
+        for url in try Self.shippedQueryURLs(for: language) {
+            #expect(throws: Never.self, "\(name)/\(url.lastPathComponent) does not compile") {
+                try parserLanguage.query(contentsOf: url)
+            }
+        }
     }
 
     @Test("Every capture a bundled highlights query emits carries a colour or is deliberately unstyled")
@@ -244,6 +257,12 @@ struct SyntaxHighlightingTests {
         let expression = try NSRegularExpression(pattern: pattern)
         let match = expression.firstMatch(in: source, range: NSRange(location: 0, length: (source as NSString).length))
         return try #require(match?.range, "\(word) does not appear in the sample")
+    }
+
+    private static func shippedQueryURLs(for language: CodeLanguage) throws -> [URL] {
+        let directory = try #require(language.queryURL).deletingLastPathComponent()
+        let contents = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        return contents.filter { $0.pathExtension == "scm" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
     private static func highlightQueryURLs(for language: CodeLanguage) throws -> [URL] {
