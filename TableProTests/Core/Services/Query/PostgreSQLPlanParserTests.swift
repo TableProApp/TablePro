@@ -77,13 +77,17 @@ struct PostgreSQLPlanParserTests {
         #expect(plan.rootNode.properties["Total Cost"] == nil)
     }
 
-    @Test("Cost fractions are relative to the root total")
+    @Test("Cost fractions are a node's share of the plan's total work")
     func computesCostFractions() throws {
         let plan = try #require(parser.parse(rawText: estimatedPlan))
 
-        #expect(plan.rootNode.costFraction > 0)
-        #expect(plan.rootNode.children.allSatisfy { $0.costFraction >= 0 })
-        #expect(plan.rootNode.children[0].costFraction > plan.rootNode.children[1].costFraction)
+        let root = try #require(plan.rootNode.costFraction)
+        #expect(root > 0)
+        #expect(plan.rootNode.children.allSatisfy { ($0.costFraction ?? -1) >= 0 })
+        #expect((plan.rootNode.children[0].costFraction ?? 0) > (plan.rootNode.children[1].costFraction ?? 0))
+
+        let total = ([plan.rootNode] + plan.rootNode.children).compactMap(\.costFraction).reduce(0, +)
+        #expect(abs(total - 1) < 0.0001)
     }
 
     @Test("Reads planning and execution time from an ANALYZE plan")

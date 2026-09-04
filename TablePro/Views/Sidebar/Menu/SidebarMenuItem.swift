@@ -21,32 +21,30 @@ internal enum SidebarMenuItem<Command: Equatable>: Equatable {
     case submenu(title: String, items: [SidebarMenuItem<Command>])
 }
 
+/// No destructive flag. AppKit gives `NSMenuItem` no destructive role, on any SDK up to macOS 26,
+/// and Apple's own menus do not colour one: Finder's Move to Trash and Mail's Delete are ordinary
+/// items. Hand-rolling red through `attributedTitle` would invent a convention the platform does not
+/// have. A destructive item is set apart by sitting last in its group, behind a separator, which is
+/// what every spec here already does.
 internal struct SidebarMenuEntry<Command: Equatable>: Equatable {
     internal let title: String
     internal let command: Command
     internal var isOn: Bool?
-    internal var isDestructive: Bool
 
     internal init(
         title: String,
         command: Command,
-        isOn: Bool? = nil,
-        isDestructive: Bool = false
+        isOn: Bool? = nil
     ) {
         self.title = title
         self.command = command
         self.isOn = isOn
-        self.isDestructive = isDestructive
     }
 }
 
 internal extension SidebarMenuItem {
     static func command(_ title: String, _ command: Command) -> SidebarMenuItem<Command> {
         .command(SidebarMenuEntry(title: title, command: command))
-    }
-
-    static func destructive(_ title: String, _ command: Command) -> SidebarMenuItem<Command> {
-        .command(SidebarMenuEntry(title: title, command: command, isDestructive: true))
     }
 
     /// A menu is assembled by appending groups, so a group that turns out to be empty leaves a

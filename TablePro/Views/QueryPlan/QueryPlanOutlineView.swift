@@ -11,6 +11,7 @@ import SwiftUI
 
 struct QueryPlanOutlineView: NSViewRepresentable {
     let plan: QueryPlan
+    let metric: QueryPlanBarMetric?
     @Binding var selectedNodeId: UUID?
 
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
@@ -32,7 +33,11 @@ struct QueryPlanOutlineView: NSViewRepresentable {
         outlineView.usesAlternatingRowBackgroundColors = true
         outlineView.headerView = NSTableHeaderView()
         outlineView.allowsColumnResizing = true
-        outlineView.autosaveName = "com.TablePro.queryPlanOutline"
+        // Bumped when the magnitude column landed. Measured: with a saved layout from the
+        // four-column era, AppKit restores the known columns in their saved order and appends
+        // anything it has never seen, so the bar would have arrived stranded past Actual Time for
+        // everyone who had ever resized a plan column. A new name starts from the declared order.
+        outlineView.autosaveName = "com.TablePro.queryPlanOutline.v2"
         outlineView.autosaveTableColumns = true
 
         // Every EXPLAIN run mints fresh node identities, so persisted expansion would key off
@@ -47,7 +52,9 @@ struct QueryPlanOutlineView: NSViewRepresentable {
         outlineView.menu = makeMenu(coordinator: context.coordinator)
 
         context.coordinator.onSelect = { selectedNodeId = $0 }
-        context.coordinator.update(plan: plan, differentiateWithoutColor: differentiateWithoutColor)
+        context.coordinator.update(
+            plan: plan, metric: metric, differentiateWithoutColor: differentiateWithoutColor
+        )
 
         let scrollView = NSScrollView()
         scrollView.documentView = outlineView
@@ -60,7 +67,9 @@ struct QueryPlanOutlineView: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         context.coordinator.onSelect = { selectedNodeId = $0 }
-        context.coordinator.update(plan: plan, differentiateWithoutColor: differentiateWithoutColor)
+        context.coordinator.update(
+            plan: plan, metric: metric, differentiateWithoutColor: differentiateWithoutColor
+        )
         context.coordinator.select(nodeId: selectedNodeId)
     }
 

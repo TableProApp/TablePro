@@ -39,7 +39,8 @@ final class QueryPlanOutlineNode: NSObject {
 enum QueryPlanOutlineSort {
     static func comparator(
         key: QueryPlanOutlineColumn,
-        ascending: Bool
+        ascending: Bool,
+        metrics: QueryPlanMetricIndex? = nil
     ) -> (QueryPlanNode, QueryPlanNode) -> Bool {
         { lhs, rhs in
             let result: Bool
@@ -52,6 +53,8 @@ enum QueryPlanOutlineSort {
                 result = (lhs.estimatedRows ?? -1) < (rhs.estimatedRows ?? -1)
             case .actualTime:
                 result = (lhs.actualTotalTime ?? -1) < (rhs.actualTotalTime ?? -1)
+            case .magnitude:
+                result = (metrics?.value(for: lhs) ?? -1) < (metrics?.value(for: rhs) ?? -1)
             }
             return ascending ? result : !result
         }
@@ -65,13 +68,17 @@ enum QueryPlanOutlineSort {
 
 enum QueryPlanOutlineColumn: String, CaseIterable {
     case operation
+    case magnitude
     case cost
     case rows
     case actualTime
 
-    var title: String {
+    /// The magnitude column is titled by whichever metric it is charting, so the header says what
+    /// the bars mean without the reader having to look back at the toolbar.
+    func title(metric: QueryPlanBarMetric?) -> String {
         switch self {
         case .operation: return QueryPlanLabels.operation
+        case .magnitude: return metric?.title ?? QueryPlanLabels.magnitude
         case .cost: return QueryPlanLabels.cost
         case .rows: return QueryPlanLabels.rows
         case .actualTime: return QueryPlanLabels.actualTime
@@ -81,6 +88,7 @@ enum QueryPlanOutlineColumn: String, CaseIterable {
     var width: CGFloat {
         switch self {
         case .operation: return 320
+        case .magnitude: return 180
         case .cost: return 110
         case .rows: return 90
         case .actualTime: return 100
@@ -90,9 +98,23 @@ enum QueryPlanOutlineColumn: String, CaseIterable {
     var minimumWidth: CGFloat {
         switch self {
         case .operation: return 160
+        case .magnitude: return 120
         case .cost: return 80
         case .rows: return 70
         case .actualTime: return 80
+        }
+    }
+
+    /// Which values have to be present for the column to say anything. A plan that reports none of
+    /// them shows no column rather than a blank one, and four of the seven formats the app parses
+    /// report none at all.
+    func hasContent(in plan: QueryPlan, metrics: QueryPlanMetricIndex?) -> Bool {
+        switch self {
+        case .operation: return true
+        case .magnitude: return metrics != nil
+        case .cost: return plan.contains { $0.estimatedTotalCost != nil }
+        case .rows: return plan.contains { $0.estimatedRows != nil }
+        case .actualTime: return plan.contains { $0.actualTotalTime != nil }
         }
     }
 }

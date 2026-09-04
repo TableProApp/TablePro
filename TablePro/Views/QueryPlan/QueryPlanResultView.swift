@@ -70,6 +70,7 @@ struct QueryPlanResultView: View {
     let planContext: QueryPlanContext?
 
     @AppStorage(PreferenceKeys.queryPlanRawFontSize.name) private var fontSize: Double = 13
+    @AppStorage(PreferenceKeys.queryPlanBarMetric.name) private var storedBarMetric: String = ""
     @State private var showCopyConfirmation = false
     @State private var copyResetTask: Task<Void, Never>?
     @State private var viewMode: QueryPlanViewMode = .diagram
@@ -77,6 +78,11 @@ struct QueryPlanResultView: View {
 
     /// Shared by the diagram and the outline, so switching view mode keeps the selected step.
     @State private var selectedNodeId: UUID?
+
+    /// Resolved once per plan rather than per body evaluation. Working it out costs a walk of the
+    /// whole tree for each metric, and the toolbar asks for it several times per render, which a
+    /// ten-thousand-node MySQL tree plan would feel.
+    @State private var availableMetrics: [QueryPlanBarMetric] = []
 
     private var presentation: QueryPlanPresentation {
         QueryPlanPresentation.resolve(plan: plan, rawText: rawText)
@@ -112,6 +118,9 @@ struct QueryPlanResultView: View {
             guard let planContext else { return }
             comparison.activate(context: planContext, plan: plan, rawText: rawText)
         }
+        .task(id: plan?.rootNode.id) {
+            availableMetrics = plan.map(QueryPlanMetricIndex.availableMetrics) ?? []
+        }
         .onChange(of: availableModes) { _, modes in
             guard !modes.contains(viewMode) else { return }
             viewMode = .diagram
@@ -140,7 +149,7 @@ struct QueryPlanResultView: View {
             case .diagram:
                 QueryPlanDiagramView(plan: plan, selectedNodeId: $selectedNodeId)
             case .tree:
-                QueryPlanTreeView(plan: plan, selectedNodeId: $selectedNodeId)
+                QueryPlanTreeView(plan: plan, metric: barMetric, selectedNodeId: $selectedNodeId)
             case .raw:
                 DDLTextView(ddl: rawText, fontSize: $fontSize)
             case .compare:
@@ -182,6 +191,10 @@ struct QueryPlanResultView: View {
 
             if viewMode == .compare {
                 baselinePicker
+            }
+
+            if viewMode == .tree {
+                metricPicker
             }
 
             if viewMode == .raw || presentation.plan == nil {
@@ -253,6 +266,35 @@ struct QueryPlanResultView: View {
                 .accessibilityIdentifier("query-plan-baseline-pin")
             }
         }
+    }
+
+    /// Which metric the tree charts. The stored choice is only honoured when this plan reports it,
+    /// and a plan that does not is answered with a sensible default rather than by overwriting the
+    /// preference: opening one SQLite plan should not lose the metric chosen for PostgreSQL.
+    private var barMetric: QueryPlanBarMetric? {
+        if let stored = QueryPlanBarMetric(rawValue: storedBarMetric), availableMetrics.contains(stored) {
+            return stored
+        }
+        return QueryPlanMetricIndex.defaultMetric(among: availableMetrics)
+    }
+
+    /// Absent when the plan reports nothing to chart, which is four of the seven plan formats.
+    @ViewBuilder
+    private var metricPicker: some View {
+        if availableMetrics.count > 1, let selected = barMetric {
+            Picker(QueryPlanLabels.metric, selection: metricBinding(selected: selected)) {
+                ForEach(availableMetrics) { metric in
+                    Text(metric.title).tag(metric)
+                }
+            }
+            .controlSize(.small)
+            .fixedSize()
+            .accessibilityIdentifier("query-plan-metric-picker")
+        }
+    }
+
+    private func metricBinding(selected: QueryPlanBarMetric) -> Binding<QueryPlanBarMetric> {
+        Binding(get: { selected }, set: { storedBarMetric = $0.rawValue })
     }
 
     private func baselineLabel(_ baseline: QueryPlanSnapshotSummary) -> String {

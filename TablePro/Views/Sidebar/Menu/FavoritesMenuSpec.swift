@@ -75,7 +75,7 @@ internal enum FavoritesMenuSpec {
             }
         ))
         items.append(.separator)
-        items.append(.destructive(FavoriteDatabaseMenu.removeTitle, .removeDatabaseFavorite(entry)))
+        items.append(.command(FavoriteDatabaseMenu.removeTitle, .removeDatabaseFavorite(entry)))
         return items
     }
 
@@ -84,7 +84,7 @@ internal enum FavoritesMenuSpec {
             .command(String(localized: "Open Table"), .openTable(table)),
             .command(String(localized: "Show ER Diagram"), .showERDiagram),
             .separator,
-            .destructive(String(localized: "Remove from Favorites"), .removeTableFavorite(table))
+            .command(String(localized: "Remove from Favorites"), .removeTableFavorite(table))
         ]
     }
 
@@ -123,7 +123,7 @@ internal enum FavoritesMenuSpec {
             items.append(moveTo)
         }
         items.append(.separator)
-        items.append(.destructive(String(localized: "Delete"), .deleteFavorite(favorite)))
+        items.append(.command(String(localized: "Delete"), .deleteFavorite(favorite)))
         return items
     }
 
@@ -156,7 +156,7 @@ internal enum FavoritesMenuSpec {
             .command(String(localized: "Copy Query"), .copyLinkedFavoriteQuery(favorite)),
             .command(String(localized: "Show in Finder"), .revealLinkedFavorite(favorite)),
             .separator,
-            .destructive(String(localized: "Move File to Trash"), .trashLinkedFavorite(favorite))
+            .command(String(localized: "Move File to Trash"), .trashLinkedFavorite(favorite))
         ]
     }
 
@@ -173,7 +173,7 @@ internal enum FavoritesMenuSpec {
             .separator,
             .command(String(localized: "Add Another SQL Folder…"), .addLinkedFolder),
             .separator,
-            .destructive(String(localized: "Remove from Sidebar"), .removeLinkedFolder(folder))
+            .command(String(localized: "Remove from Sidebar"), .removeLinkedFolder(folder))
         ]
     }
 
@@ -183,7 +183,7 @@ internal enum FavoritesMenuSpec {
             .command(String(localized: "New Favorite…"), .newFavorite(folderId: folder.id)),
             .command(String(localized: "New Subfolder"), .newFolder(parentId: folder.id)),
             .separator,
-            .destructive(String(localized: "Delete Folder"), .deleteFolder(folder))
+            .command(String(localized: "Delete Folder"), .deleteFolder(folder))
         ]
     }
 

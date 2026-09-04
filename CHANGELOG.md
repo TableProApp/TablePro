@@ -12,9 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copy To across database engines, with every type approximation listed before the copy runs. (#1491)
 - Per-table `WHERE` and row limit in Copy To. (#1491)
 - Server-side `INSERT … SELECT` when a copy's two sides are one connection. (#1491)
+- Bar chart column in the EXPLAIN tree, with a Metric menu for self cost, self time and row counts. (#2633)
 
 ### Fixed
 
+- Cost badge on every plan node of a query ending in `LIMIT`, where the share it reads could exceed 100%. (#2633)
+- Green "low cost" badge on plans that report no cost at all, such as SQLite and ClickHouse. (#2633)
+- Empty Cost, Rows and Actual Time columns in the EXPLAIN tree for engines that report none of them. (#2633)
+- `Workers Launched: 0` missing from a plan node's details while `Workers Planned` was shown. (#2633)
+- MySQL plans pricing the wrapper query block above every table it contains. (#2633)
 - SQL `IN`, `AND`, `OR`, `NOT`, `BY` and `ON` in the editor's plain text colour. (#2634)
 - SQL built-in type names, `ASC`, `DESC` and function calls unhighlighted in the editor.
 - SQL numbers, `TRUE`, `FALSE` and `NULL` in the string colour.
