@@ -60,13 +60,17 @@ Conversations save themselves and take their title from your first message. The 
 
 Paste or drag images into the composer on any provider that takes them, which is all of them except GitHub Copilot, Cursor, ChatGPT, and Claude Agent.
 
+The panel also fills the middle column of [Assistant mode](/features/assistant-mode), which gives one session the whole window.
+
+Several sessions run at once, one conversation each. The [Assistant mode](/features/assistant-mode#sessions) sessions column is where their state is visible, and one session streams per provider at a time.
+
 ### Chat modes
 
 The mode picker in the composer footer controls which tools the AI can call. It is an app-level setting that survives restarts, and a fresh install starts in **Ask**.
 
 | Mode | Tools available | When to use |
 |------|----------------|-------------|
-| **Ask** | Read-only schema lookups: `list_connections`, `get_connection_status`, `list_databases`, `list_schemas`, `list_tables`, `describe_table`, `get_table_ddl`. | Questions, exploration, drafting queries you run yourself. |
+| **Ask** | Read-only schema lookups: `list_connections`, `get_connection_status`, `list_databases`, `list_schemas`, `list_tables`, `describe_table`, `get_table_ddl`, and `explain_query` for a query plan. | Questions, exploration, drafting queries you run yourself. |
 | **Edit** | All Ask tools, plus `execute_query` for `SELECT`, `INSERT`, `UPDATE`, `DELETE`. Destructive DDL (`DROP`, `TRUNCATE`, `ALTER…DROP`) stays blocked. | Letting the AI run the queries it proposes. |
 | **Agent** | All tools, plus `confirm_destructive_operation` for destructive DDL. Runs tools in a loop. | Multi-step migrations and schema changes. |
 
@@ -81,9 +85,19 @@ In Edit and Agent modes each tool call appears as a card in the reply. Read-only
   <img className="hidden dark:block" src="/images/ai-chat-tool-approval-dark.png" alt="Per-card tool approval" />
 </Frame>
 
-Safe Mode **Silent** auto-approves write tools and **Read-Only** auto-denies them. Destructive operations are the exception: `confirm_destructive_operation` always needs a click, Silent does not auto-approve it, **Always for this connection** is refused for it, and the model must pass the verbatim phrase `I understand this is irreversible`.
+Safe Mode **Silent** auto-approves write tools in the inspector panel and **Read-Only** auto-denies them. In [Assistant mode](/features/assistant-mode) a **Silent** connection is held at **Alert** instead, so its write tools wait for a click. Destructive operations are the exception: `confirm_destructive_operation` always needs a click, Silent does not auto-approve it, **Always for this connection** is refused for it, and the model must pass the verbatim phrase `I understand this is irreversible`.
 
-Every provider except Cursor can call tools. Claude Agent reaches them through the MCP server, so that has to be on, and local models depend on the model.
+Where a provider's tool calls are approved depends on how they reach the database.
+
+| Provider | How tools reach the database | What approves them |
+| --- | --- | --- |
+| Anthropic, OpenAI, Gemini, xAI, ChatGPT Codex, OpenAI-compatible | Through TablePro | Per card, plus the Assistant mode write floor |
+| GitHub Copilot | Through TablePro | Per card, plus the Assistant mode write floor |
+| Claude Agent | Through the `claude` command, against the MCP server, which has to be on | A read-only token the app issues for 15 minutes, which reaches every connection. No per-card approval and no write floor |
+| Cursor | No database access | Nothing to approve |
+| Local models | Through TablePro when the model calls tools at all | Per card, plus the Assistant mode write floor |
+
+Use an API-key provider for a session that writes.
 
 A reply pauses after 25 tool calls, keeps everything it has done, and offers **Continue** for a fresh budget or **Adjust Limit** to change the number, 5 to 200, under **Agent** in **Settings > AI**. Every call is another request with the schema attached, so a higher limit costs tokens.
 
@@ -94,6 +108,12 @@ Type `@` in the composer to open a picker at the caret: **Schema**, a specific *
 ### Slash commands
 
 Type `/` for **`/explain`**, **`/optimize`**, and **`/fix`**, which act on the active query, or **`/help`** for the list. Add your own under **Settings > AI > Custom Slash Commands**: a template substitutes `{{query}}`, `{{schema}}`, `{{database}}`, and `{{body}}`, the text typed after the command, at send time.
+
+### Explain in a session
+
+`/explain` and the **Query** menu items open a walkthrough. A session in [Assistant mode](/features/assistant-mode) instead asks for the query plan as a tool call, and the plan lands in the result pane's **Results** view next to the rows and the duration.
+
+`explain_query` never runs the statement it explains. A statement whose real cost matters has to be run through `execute_query`, which is gated.
 
 ### Model picker
 
@@ -127,5 +147,7 @@ Every message carries a system prompt built from **Settings > AI > Context**, so
 | Max schema tables | 20 | |
 
 Ollama, llama.cpp, and MLX run on your own machine, so nothing reaches a third party. Every other provider is a network call to that vendor under the terms of your account with them.
+
+A session can also reach an MCP server that is not TablePro. What that sends, and the allowlist that decides which connections may use it, is under [MCP](/features/mcp#calling-an-outside-server).
 
 Per connection, the **Advanced** pane of the connection form sets an AI policy: **Use Default**, **Always Allow**, **Ask Each Time**, or **Never**. The app-wide default is **Ask Each Time**, and **Never** also blocks external AI tool calls against that connection. External clients such as Raycast and Claude Desktop reach the same tools through the [External API](/external-api), bounded by the connection's **External Clients** level and the token's scope.

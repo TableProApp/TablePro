@@ -42,7 +42,7 @@ struct UnifiedRightPanelView: View {
             isPresented: $showClearConfirmation
         ) {
             Button(String(localized: "Clear"), role: .destructive) {
-                state.aiViewModel.clearConversation()
+                state.session?.viewModel.clearConversation()
             }
             Button(String(localized: "Cancel"), role: .cancel) {}
         } message: {
@@ -108,7 +108,7 @@ struct UnifiedRightPanelView: View {
 
     private var newConversationButton: some View {
         Button {
-            state.aiViewModel.startNewConversation()
+            state.startSession()?.viewModel.startNewConversation()
         } label: {
             inspectorIcon("square.and.pencil")
         }
@@ -120,8 +120,8 @@ struct UnifiedRightPanelView: View {
 
     private var historyMenu: some View {
         Menu {
-            let viewModel = state.aiViewModel
-            if !viewModel.conversations.isEmpty {
+            let viewModel = state.session?.viewModel
+            if let viewModel, !viewModel.conversations.isEmpty {
                 Section(String(localized: "Recent Conversations")) {
                     ForEach(viewModel.conversations) { conversation in
                         Button {
@@ -145,7 +145,7 @@ struct UnifiedRightPanelView: View {
             } label: {
                 Label(String(localized: "Clear Recents"), systemImage: "trash")
             }
-            .disabled(viewModel.conversations.isEmpty)
+            .disabled(viewModel?.conversations.isEmpty ?? true)
         } label: {
             inspectorIcon("clock")
         }
@@ -188,13 +188,29 @@ struct UnifiedRightPanelView: View {
         )
     }
 
+    /// Choosing this tab is what starts the session, and it starts it from `.task` rather than from
+    /// the body: creating one while SwiftUI is evaluating a view mutates the registry's observed
+    /// array mid-update, and every connection window would mint a session it never used.
+    ///
+    /// The empty arm lasts one layout pass. The registry write invalidates this body, so a spinner
+    /// would only flash.
+    @ViewBuilder
     private var aiChatView: some View {
         let ctx = state.inspectorContext
-        return AIChatPanelView(
-            connection: connection,
-            currentQuery: ctx.currentQuery,
-            queryResults: ctx.queryResults,
-            viewModel: state.aiViewModel
-        )
+        Group {
+            if let viewModel = state.session?.viewModel {
+                AIChatPanelView(
+                    connection: connection,
+                    currentQuery: ctx.currentQuery,
+                    queryResults: ctx.queryResults,
+                    viewModel: viewModel
+                )
+            } else {
+                Color.clear
+            }
+        }
+        .task(id: connection.id) {
+            state.startSession()
+        }
     }
 }

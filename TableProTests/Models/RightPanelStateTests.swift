@@ -20,17 +20,75 @@ struct RightPanelStateTests {
         state.teardown()
     }
 
-    @Test("teardown clears aiViewModel session data")
     @MainActor
-    func teardown_clearsAIViewModelSession() {
-        let state = RightPanelState()
-        state.aiViewModel.connection = TestFixtures.makeConnection(type: .mysql)
-        #expect(state.aiViewModel.connection != nil)
+    private func makeRegistry() -> (AgentSessionRegistry, URL) {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("right-panel-state-\(UUID().uuidString)", isDirectory: true)
+        let registry = AgentSessionRegistry(
+            services: TestFixtures.makeServices(aiChatStorage: AIChatStorage(directory: directory)),
+            store: AgentSessionStore(fileURL: directory.appendingPathComponent("agent_sessions.json")),
+            approvals: ToolApprovalCenter(),
+            connectionLookup: { _ in nil }
+        )
+        return (registry, directory)
+    }
+
+    @Test("reading the panel's session never creates one")
+    @MainActor
+    func sessionReadDoesNotCreate() {
+        let (registry, directory) = makeRegistry()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connection = TestFixtures.makeConnection(type: .mysql)
+        let state = RightPanelState(
+            connectionId: connection.id,
+            connection: connection,
+            registry: registry
+        )
+
+        #expect(state.session == nil)
+        #expect(state.aiViewModel == nil)
+        #expect(registry.sessions.isEmpty)
+    }
+
+    @Test("starting the session is idempotent")
+    @MainActor
+    func startSessionReusesTheExistingOne() {
+        let (registry, directory) = makeRegistry()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connection = TestFixtures.makeConnection(type: .mysql)
+        let state = RightPanelState(
+            connectionId: connection.id,
+            connection: connection,
+            registry: registry
+        )
+
+        let first = state.startSession()
+        let second = state.startSession()
+
+        #expect(first?.id == second?.id)
+        #expect(registry.sessions.count == 1)
+        #expect(state.session?.id == first?.id)
+    }
+
+    @Test("teardown stops the session and keeps its transcript")
+    @MainActor
+    func teardown_stopsSessionWithoutClearingIt() {
+        let (registry, directory) = makeRegistry()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connection = TestFixtures.makeConnection(type: .mysql)
+        let state = RightPanelState(
+            connectionId: connection.id,
+            connection: connection,
+            registry: registry
+        )
+        let session = state.startSession()
+        session?.viewModel.messages.append(ChatTurn(role: .user, blocks: [.text("keep me")]))
 
         state.teardown()
 
-        #expect(state.aiViewModel.connection == nil)
-        #expect(state.aiViewModel.messages.isEmpty)
+        #expect(session?.status == .stopped)
+        #expect(session?.viewModel.messages.count == 1)
+        #expect(session?.viewModel.connection != nil)
     }
 
     @Test("teardown nils onSave closure")

@@ -137,6 +137,40 @@ struct MainSplitViewControllerPaneSynchronizationTests {
         #expect(workspace.panes.renderedKey?.pane == .content)
     }
 
+    @Test("A content mode change is a different render key")
+    func contentModeChangeInvalidatesTheRenderKey() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+
+        let before = harness.foreground.paneRenderKey
+        harness.foreground.contentMode = .assistant
+
+        #expect(harness.foreground.paneRenderKey != before)
+        #expect(harness.foreground.paneRenderKey.contentMode == .assistant)
+    }
+
+    /// A background workspace repainted over and over stays unmounted, which is what keeps it
+    /// unactivated. Forcing the layout of a detached pane mounts it, and mounting `MainContentView`
+    /// runs `markActivated()` and `setupCommandActions()` from its `onAppear`, so a background
+    /// connection that only finished connecting would retain a schema provider, start periodic
+    /// saves and report itself activated for a window nobody has looked at.
+    @Test("Repainting a background workspace never activates it")
+    func repeatedBackgroundRefreshesLeaveItUnactivated() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+
+        harness.injectSession(status: .connected, driver: true)
+        harness.controller.refreshFromActiveSessions()
+        let coordinator = try #require(harness.background.sessionState?.coordinator)
+
+        for _ in 0..<3 {
+            harness.controller.refreshPanes(of: harness.background)
+        }
+
+        #expect(!coordinator.isActivated)
+        #expect(coordinator.commandActions == nil)
+    }
+
     /// One window hosting two connections, with the second one in the background. Every case here
     /// asks what that background workspace's panes hold, which is the state the window shows the
     /// moment the user switches to it.

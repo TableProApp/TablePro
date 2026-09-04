@@ -16,6 +16,7 @@ struct AdvancedPaneView: View {
             aiPolicy: $coordinator.advanced.aiPolicy,
             externalAccess: $coordinator.advanced.externalAccess,
             localOnly: $coordinator.advanced.localOnly,
+            connectionId: coordinator.connectionId,
             databaseType: coordinator.network.type,
             additionalConnectionFields: coordinator.advanced.advancedFields,
             visibilityValues: coordinator.allAdditionalFieldValues

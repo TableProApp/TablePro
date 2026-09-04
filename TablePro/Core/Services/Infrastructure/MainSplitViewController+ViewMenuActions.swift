@@ -28,6 +28,18 @@ extension MainSplitViewController {
         commandActions?.setResultsViewMode(mode)
     }
 
+    /// The mode's menu equivalent. Until these, the toolbar's segmented control was the only way to
+    /// switch a window between Browse and Assistant: there was no menu item and no shortcut, so a
+    /// user whose window was narrow enough to push the control into the overflow, or who works from
+    /// the keyboard, had no route the HIG expects every command to have.
+    @objc func useBrowseMode(_ sender: Any?) {
+        setContentMode(.browse)
+    }
+
+    @objc func useAssistantMode(_ sender: Any?) {
+        setContentMode(.assistant)
+    }
+
     @objc func useFlatSidebarLayout(_ sender: Any?) {
         commandActions?.setSidebarLayout(.flat)
     }

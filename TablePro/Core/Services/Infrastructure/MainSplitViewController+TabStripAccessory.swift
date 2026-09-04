@@ -39,7 +39,11 @@ internal extension MainSplitViewController {
     func applyTabStripVisibility() {
         let tabCount = workspaces.selected?.sessionState?.tabManager.tabs.count ?? 0
         tabStripAccessory.setBandVisible(
-            ConnectionWindowPaneResolver.showsTabStrip(for: currentPane, tabCount: tabCount)
+            ConnectionWindowPaneResolver.showsTabStrip(
+                for: currentPane,
+                tabCount: tabCount,
+                mode: contentMode
+            )
         )
         armTabStripObservation()
     }

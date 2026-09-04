@@ -13,6 +13,12 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
+# Several patterns are bracket expressions over non-ASCII characters, and under a
+# C locale grep matches their individual bytes instead. Every glyph checked here
+# starts 0xE2, so "modifier glyph" then reports every ellipsis in the corpus. A
+# shell with no LANG set is enough to trigger it.
+export LC_ALL=${LC_ALL:-en_US.UTF-8}
+
 fail=0
 
 check() {

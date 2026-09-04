@@ -299,7 +299,6 @@ struct MainContentView: View {
                 setupCommandActions()
                 updateToolbarPendingState()
                 updateInspectorContext()
-                coordinator.aiViewModel = rightPanelState.aiViewModel
                 coordinator.rightPanelState = rightPanelState
 
                 Self.lifecycleLogger.info(

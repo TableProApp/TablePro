@@ -18,7 +18,7 @@ Six levels, one per connection, set in the **Customization** pane of its edit fo
 
 New connections start at **Silent**, which is the right choice for a local database you own. Move a shared staging connection to **Alert** and anything with real customer data in it to **Safe Mode** or **Read-Only**.
 
-Four things the table cannot carry. The confirmation dialog previews the SQL it is about to run. Touch ID falls back to your macOS password on a Mac without it. **Silent** is not a free pass: `DROP`, `TRUNCATE`, and a `DELETE` with no `WHERE` still raise the built-in dangerous query warning even there. And **Read-Only** goes past queries to the interface itself, disabling inline cell editing, adding, deleting and duplicating rows, table truncate and drop, and import.
+Four things the table cannot carry. The confirmation dialog previews the SQL it is about to run. Touch ID falls back to your macOS password on a Mac without it. **Silent** is not a free pass: `DROP`, `TRUNCATE`, and a `DELETE` with no `WHERE` still raise the built-in dangerous query warning even there. And **Read-Only** goes past queries to the interface itself, disabling inline cell editing, adding, deleting and duplicating rows, table truncate and drop, and import. A connection in [Assistant mode](/features/assistant-mode) is held at **Alert** or higher for as long as the mode is on, so a **Silent** connection still confirms the writes an AI session proposes.
 
 ## What the level gates
 
@@ -29,6 +29,8 @@ It does not sit in front of reading metadata. Loading the sidebar, opening a tab
 ## Drivers without read-only support
 
 The Redis, MongoDB, and etcd drivers cannot open a read-only session, so Safe Mode treats every query on those connections as a write: the Alert and Safe Mode levels confirm everything, and Read-Only blocks everything. Every other driver classifies reads and writes normally.
+
+A window in Assistant mode raises the level rather than replacing it. **Alert**, **Safe Mode**, and **Read-Only** connections keep the level you set, and leaving the mode returns a **Silent** connection to **Silent** without writing to the connection or reaching your other Macs.
 
 ## Toolbar badge
 

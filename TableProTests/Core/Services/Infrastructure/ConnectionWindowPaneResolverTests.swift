@@ -62,6 +62,76 @@ struct ConnectionWindowPaneResolverTests {
         }
     }
 
+    @Test("Assistant mode keeps its detail pane while connecting and after a failure")
+    func assistantModeKeepsChromeDecisionForPreConnect() {
+        #expect(!ConnectionWindowPaneResolver.hidesChrome(for: .connecting, mode: .assistant))
+        #expect(!ConnectionWindowPaneResolver.hidesChrome(for: .unavailable(.failed(Self.failure)), mode: .assistant))
+        #expect(!ConnectionWindowPaneResolver.hidesChrome(for: .content, mode: .assistant))
+        #expect(ConnectionWindowPaneResolver.hidesChrome(for: .empty, mode: .assistant))
+    }
+
+    @Test("Browse mode's chrome decision is unchanged by the mode argument")
+    func browseModeChromeDecisionUnchanged() {
+        #expect(ConnectionWindowPaneResolver.hidesChrome(for: .connecting, mode: .browse))
+        #expect(ConnectionWindowPaneResolver.hidesChrome(for: .unavailable(.cancelled), mode: .browse))
+        #expect(ConnectionWindowPaneResolver.hidesChrome(for: .empty, mode: .browse))
+        #expect(!ConnectionWindowPaneResolver.hidesChrome(for: .content, mode: .browse))
+    }
+
+    @Test("Only assistant mode mounts a pre-connect surface, and never over content")
+    func preConnectSurfaceMatrix() {
+        #expect(ConnectionWindowPaneResolver.showsPreConnectAssistant(for: .connecting, mode: .assistant))
+        #expect(ConnectionWindowPaneResolver.showsPreConnectAssistant(
+            for: .unavailable(.failed(Self.failure)),
+            mode: .assistant
+        ))
+        #expect(!ConnectionWindowPaneResolver.showsPreConnectAssistant(for: .content, mode: .assistant))
+        #expect(!ConnectionWindowPaneResolver.showsPreConnectAssistant(for: .empty, mode: .assistant))
+        #expect(!ConnectionWindowPaneResolver.showsPreConnectAssistant(for: .connecting, mode: .browse))
+        #expect(!ConnectionWindowPaneResolver.showsPreConnectAssistant(
+            for: .unavailable(.cancelled),
+            mode: .browse
+        ))
+    }
+
+    /// The grace keeps a progress indicator off screen for a wait too short to report. The assistant
+    /// surface is not one: it carries the prompt the user typed, so withholding it draws nothing for
+    /// the grace and then flashes the conversation in.
+    @Test("A sub-grace connect still mounts the assistant surface, and still draws nothing in browse")
+    func preparingMountsTheAssistantSurface() {
+        #expect(ConnectionWindowPaneResolver.showsPreConnectAssistant(for: .preparing, mode: .assistant))
+        #expect(!ConnectionWindowPaneResolver.showsPreConnectAssistant(for: .preparing, mode: .browse))
+        #expect(!ConnectionWindowPaneResolver.hidesChrome(for: .preparing, mode: .assistant))
+        #expect(!ConnectionWindowPaneResolver.hidesChrome(for: .preparing, mode: .browse))
+    }
+
+    @Test("Assistant mode reveals the sidebar while connecting so the session rail is not clamped away")
+    func assistantModeRevealsSidebarDuringPreConnect() {
+        #expect(
+            ConnectionWindowPaneResolver.sidebarChromeMode(for: .connecting, hasRail: true, mode: .assistant)
+                == .revealed
+        )
+        #expect(
+            ConnectionWindowPaneResolver.sidebarChromeMode(for: .connecting, hasRail: false, mode: .assistant)
+                == .revealed
+        )
+        #expect(
+            ConnectionWindowPaneResolver.sidebarChromeMode(
+                for: .unavailable(.failed(Self.failure)),
+                hasRail: true,
+                mode: .assistant
+            ) == .revealed
+        )
+        #expect(
+            ConnectionWindowPaneResolver.sidebarChromeMode(for: .empty, hasRail: true, mode: .assistant)
+                == .railOnly
+        )
+        #expect(
+            ConnectionWindowPaneResolver.sidebarChromeMode(for: .empty, hasRail: false, mode: .assistant)
+                == .hidden
+        )
+    }
+
     @Test("A window hosting a rail keeps it when its own connection has nothing to show")
     func railSurvivesEveryNonContentPane() {
         let reasons: [ConnectionUnavailableReason] = [
@@ -439,5 +509,26 @@ struct ConnectionWindowPaneResolverTests {
         ] {
             #expect(!ConnectionWindowPaneResolver.showsTabStrip(for: pane, tabCount: 5))
         }
+    }
+
+    @Test("Assistant mode hides the editor tab strip however many tabs the connection has open")
+    func tabStripBandHiddenInAssistantMode() {
+        for tabCount in [0, 1, 2, 9] {
+            #expect(
+                !ConnectionWindowPaneResolver.showsTabStrip(
+                    for: .content,
+                    tabCount: tabCount,
+                    mode: .assistant
+                ),
+                "assistant mode must hide the strip at \(tabCount) tabs"
+            )
+        }
+    }
+
+    @Test("Browse mode is unchanged by the mode argument")
+    func tabStripBandUnchangedInBrowseMode() {
+        #expect(ConnectionWindowPaneResolver.showsTabStrip(for: .content, tabCount: 2, mode: .browse))
+        #expect(!ConnectionWindowPaneResolver.showsTabStrip(for: .content, tabCount: 1, mode: .browse))
+        #expect(!ConnectionWindowPaneResolver.showsTabStrip(for: .connecting, tabCount: 5, mode: .browse))
     }
 }

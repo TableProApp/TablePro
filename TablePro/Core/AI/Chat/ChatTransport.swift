@@ -24,13 +24,23 @@ struct ChatTransportOptions: Sendable {
     var tools: [ChatToolSpec]
     var reasoningEffort: ReasoningEffort?
 
+    /// Which chat session this turn belongs to.
+    ///
+    /// Stateless providers ignore it: a request carries its own history and the server keeps
+    /// nothing between calls. A provider that holds a conversation of its own needs it, because one
+    /// provider instance is shared by every session on that configuration and the conversation has
+    /// to belong to the session rather than to the instance. Nil for the callers that have no
+    /// session at all, such as a connection test or an inline suggestion.
+    var sessionId: UUID?
+
     init(
         model: String,
         systemPrompt: String? = nil,
         maxOutputTokens: Int? = nil,
         temperature: Double? = nil,
         tools: [ChatToolSpec] = [],
-        reasoningEffort: ReasoningEffort? = nil
+        reasoningEffort: ReasoningEffort? = nil,
+        sessionId: UUID? = nil
     ) {
         self.model = model
         self.systemPrompt = systemPrompt
@@ -38,6 +48,7 @@ struct ChatTransportOptions: Sendable {
         self.temperature = temperature
         self.tools = tools
         self.reasoningEffort = reasoningEffort
+        self.sessionId = sessionId
     }
 }
 

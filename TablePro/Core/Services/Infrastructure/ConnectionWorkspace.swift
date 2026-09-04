@@ -39,6 +39,21 @@ internal final class ConnectionWorkspace {
     internal var attemptToken: UUID?
     internal var phase: ConnectionWindowPhase
 
+    /// Which of this connection's sessions the assistant surface is showing. Held per workspace, so
+    /// switching connection and back returns to the session the user was reading rather than to
+    /// whichever one the registry touched last. Nil falls back to the connection's default session.
+    internal var selectedSessionId: UUID?
+
+    /// Which surface this connection shows. Orthogonal to `phase`: that one answers connection
+    /// health, this one answers what the window puts in its three columns. Persisted on write so
+    /// the choice survives a relaunch.
+    internal var contentMode: ConnectionWorkspaceContentMode {
+        didSet {
+            guard contentMode != oldValue else { return }
+            WorkspaceContentModeStore.shared.setMode(contentMode, connectionId: connectionId)
+        }
+    }
+
     /// Each workspace owns its undo stack. Routing through `NSWindow.undoManager` was correct
     /// while a window meant one connection; sharing one window between several would let an
     /// undo in one connection roll back an edit made in another.
@@ -98,6 +113,7 @@ internal final class ConnectionWorkspace {
         self.sessionState = sessionState
         self.rightPanelState = rightPanelState
         self.phase = phase
+        self.contentMode = WorkspaceContentModeStore.shared.mode(connectionId: connectionId)
         self.undoManager = UndoManager()
         observeBrowsedContainer()
         recordBrowsedContainer()
@@ -250,7 +266,8 @@ internal final class ConnectionWorkspace {
         WorkspacePaneRenderKey(
             pane: resolvedPane,
             connection: connection,
-            sessionRevision: sessionRevision
+            sessionRevision: sessionRevision,
+            contentMode: contentMode
         )
     }
 

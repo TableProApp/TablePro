@@ -23,7 +23,9 @@ final class AIChatViewModel {
 
     var messages: [ChatTurn] = []
     var inputText: String = ""
-    var streamingState: StreamingState = .idle
+    var streamingState: StreamingState = .idle {
+        didSet { session?.refreshFromEngine() }
+    }
     var errorMessage: String?
     var conversations: [AIConversation] = []
     var activeConversationID: UUID?
@@ -36,6 +38,30 @@ final class AIChatViewModel {
     var savedQueries: [SQLFavorite] = []
 
     var connection: DatabaseConnection?
+
+    /// Why this session is not streaming yet, when another session holds the provider it needs.
+    /// The composer shows it and the session rail reads it as the `queued` status's detail line, so
+    /// a queued session reads as waiting rather than as a hang.
+    var providerWaitReason: String? {
+        didSet { session?.refreshFromEngine() }
+    }
+
+    /// The registry entry this engine belongs to, if it has one. Weak, and the session owns the
+    /// engine: a strong reference here would keep every session the user ever stopped alive.
+    ///
+    /// Nil for an engine nobody registered, which is what the tests build and what the inspector
+    /// chat used to be. Every status update goes through here, so a nil session simply means nothing
+    /// is listening.
+    @ObservationIgnored internal weak var session: AgentSession?
+
+    /// This session's tool mode. Seeded from the app setting, which stays the default for sessions
+    /// created later, so two sessions can hold different modes at once.
+    var chatMode: AIChatMode
+
+    /// Which surface each connection is on, for the Assistant mode Safe Mode floor. Injectable for
+    /// the same reason `streamFlushClock` is: the alternative is a test that writes the app's real
+    /// UserDefaults to arrange a floor.
+    @ObservationIgnored var contentModeStore: WorkspaceContentModeStore = .shared
 
     @ObservationIgnored var streamFlushClock: StreamFlushClock = ContinuousStreamFlushClock()
     @ObservationIgnored var streamFlushInterval: Duration = .milliseconds(50)
@@ -87,6 +113,11 @@ final class AIChatViewModel {
     @ObservationIgnored nonisolated(unsafe) var streamingTask: Task<Void, Never>?
     @ObservationIgnored var prepTask: Task<Void, Never>?
 
+    /// This session's identity, for anything that must not reach another session: its pending
+    /// approvals above all, which used to be keyed by the provider's own tool-use string and so
+    /// could be resolved by a decision made somewhere else entirely.
+    @ObservationIgnored let sessionId = UUID()
+
     @ObservationIgnored let services: AppServices
     var chatStorage: AIChatStorage { services.aiChatStorage }
     var sessionApprovedConnections: Set<UUID> = []
@@ -94,9 +125,10 @@ final class AIChatViewModel {
 
     static let maxMessageCount = 200
 
-    init(services: AppServices = .live) {
+    init(services: AppServices = .live, connection: DatabaseConnection? = nil) {
         self.services = services
-        loadConversations()
+        self.connection = connection
+        chatMode = services.appSettings.ai.chatMode
     }
 
     deinit {
@@ -182,13 +214,28 @@ final class AIChatViewModel {
         messages.first { $0.id == id }
     }
 
+    /// The first tool call still waiting for a decision, in transcript order. Only that row's Run
+    /// takes `Return`; several rows carrying the default action at once meant `Return` fired
+    /// whichever button AppKit reached first.
+    var firstPendingToolUseId: String? {
+        for turn in messages {
+            for block in turn.blocks {
+                guard case .toolUse(let use) = block.kind, case .pending = use.approvalState else { continue }
+                return use.id
+            }
+        }
+        return nil
+    }
+
     func cancelStream() {
         pendingWalkthroughBeforeSQL = nil
         prepTask?.cancel()
         prepTask = nil
         streamingTask?.cancel()
         streamingTask = nil
-        ToolApprovalCenter.shared.cancelAll()
+        ToolApprovalCenter.shared.cancelAll(sessionId: sessionId)
+        ProviderStreamLease.shared.releaseAll(sessionId: sessionId)
+        providerWaitReason = nil
 
         if case .streaming(let assistantID) = streamingState,
            let idx = messages.firstIndex(where: { $0.id == assistantID }) {
@@ -221,7 +268,7 @@ final class AIChatViewModel {
               let lastAssistantIndex = messages.lastIndex(where: { $0.role == .assistant })
         else { return }
 
-        AIProviderFactory.copilotDeleteLastTurn()
+        deleteLastProviderTurn()
         messages.remove(at: lastAssistantIndex)
         clearError()
         startStreaming()
@@ -235,7 +282,7 @@ final class AIChatViewModel {
     }
 
     func startNewConversation() {
-        AIProviderFactory.resetCopilotConversation()
+        resetProviderConversation()
         cancelStream()
         persistCurrentConversation()
         messages.removeAll()
@@ -245,7 +292,7 @@ final class AIChatViewModel {
 
     func switchConversation(to id: UUID) {
         guard let conversation = conversations.first(where: { $0.id == id }) else { return }
-        AIProviderFactory.resetCopilotConversation()
+        resetProviderConversation()
         cancelStream()
         persistCurrentConversation()
         messages = conversation.messages.map { ChatTurn(wire: $0) }
@@ -253,14 +300,17 @@ final class AIChatViewModel {
         clearError()
     }
 
-    func clearSessionData() {
-        AIProviderFactory.resetCopilotConversation()
+    /// Drops the derived context a stopped session no longer needs, and keeps everything it would
+    /// need to carry on: the transcript, the conversation id, and the connection.
+    ///
+    /// This replaces a `clearSessionData()` that emptied `messages`, `connection` and
+    /// `activeConversationID` as well. It ran on window close, disconnect and session loss, so a
+    /// transcript the user never asked to lose was gone from three ordinary paths. What is released
+    /// here is only what a reopened session rebuilds on its own: the schema maps, the tab's current
+    /// query and result text, and any fetch still in flight.
+    func releaseDerivedContext() {
         prepTask?.cancel()
         prepTask = nil
-        streamingTask?.cancel()
-        streamingTask = nil
-        AIProviderFactory.invalidateCache()
-        connection = nil
         columnsByTable = [:]
         foreignKeysByTable = [:]
         inFlightColumnFetches.values.forEach { $0.cancel() }
@@ -270,17 +320,20 @@ final class AIChatViewModel {
         currentQuery = nil
         queryResults = nil
         pendingWalkthroughBeforeSQL = nil
-        messages = []
-        errorMessage = nil
-        activeConversationID = nil
         sessionApprovedConnections = []
-        streamingState = .idle
+    }
+
+    /// Deletes the cache files behind images that were attached but never sent. Only a session being
+    /// removed reaches this: a stopped session can be reopened, and its composer is still holding
+    /// those attachments.
+    func releaseUnsentAttachments() {
         for image in attachedImages {
             if case .cacheFile(let filename, _) = image.source {
                 AIImageCache.shared.delete(filename: filename)
             }
         }
         attachedImages = []
+        attachedContext = []
     }
 
     func handleFixError(query: String, error: String) {
@@ -347,6 +400,40 @@ final class AIChatViewModel {
         savedQueries = favorites
         for favorite in favorites {
             cachedSavedQueries[favorite.id] = favorite
+        }
+    }
+
+    /// The provider configuration this session streams on. Resolved the same way the stream itself
+    /// resolves it, because a stale `selectedProviderId` naming a deleted provider falls back to the
+    /// active one: recomputing the choice here instead would reset a configuration nobody is using
+    /// and leave the real conversation running.
+    var activeProviderConfigId: UUID? {
+        AIProviderFactory.resolveConfig(
+            settings: services.appSettings.ai,
+            overrideProviderId: selectedProviderId
+        )?.id
+    }
+
+    /// Detaches this session from its provider-side conversation, waiting for any other session
+    /// streaming on the same configuration rather than skipping. Skipping was silent, and a reset
+    /// that does not happen leaves the next turn appended to the conversation the user just left.
+    func resetProviderConversation() {
+        guard let configId = activeProviderConfigId else { return }
+        let session = sessionId
+        Task { @MainActor in
+            await ProviderStreamLease.shared.withLease(configId: configId, sessionId: session) {
+                AIProviderFactory.resetCopilotConversation(configId: configId, sessionId: session)
+            }
+        }
+    }
+
+    func deleteLastProviderTurn() {
+        guard let configId = activeProviderConfigId else { return }
+        let session = sessionId
+        Task { @MainActor in
+            await ProviderStreamLease.shared.withLease(configId: configId, sessionId: session) {
+                AIProviderFactory.copilotDeleteLastTurn(configId: configId, sessionId: session)
+            }
         }
     }
 

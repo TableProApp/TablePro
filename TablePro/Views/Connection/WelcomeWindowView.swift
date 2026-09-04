@@ -237,6 +237,7 @@ struct WelcomeWindowView: View {
                     connectionList
                 }
             }
+            agentPanel
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .controlBackgroundColor))
@@ -483,6 +484,37 @@ struct WelcomeWindowView: View {
         .tag(linked.id)
         .contentShape(Rectangle())
         .listRowSeparator(.hidden)
+    }
+
+    /// The second way in, under the list. Assistant mode is reached per connection, so the panel
+    /// speaks about the one selected and leaves **Browse database** as what `Return` and a double
+    /// click still do.
+    @ViewBuilder
+    private var agentPanel: some View {
+        if AppSettingsManager.shared.ai.enabled {
+            WelcomeAgentPanel(
+                registry: .shared,
+                selectedConnection: singleSelectedConnection,
+                onBrowse: { vm.connectToDatabase($0) },
+                onAsk: { connection, prompt in
+                    AgentSessionLauncher.launch(
+                        AgentLaunchRequest(connectionId: connection.id, prompt: prompt)
+                    )
+                },
+                onOpenSession: { session in
+                    AgentSessionLauncher.launch(
+                        AgentLaunchRequest(connectionId: session.connectionId, sessionId: session.id)
+                    )
+                }
+            )
+        }
+    }
+
+    /// Nil for a multi-selection. A prompt names one database, and asking which of three it meant is
+    /// a worse answer than offering the action only when the question has one.
+    private var singleSelectedConnection: DatabaseConnection? {
+        guard vm.selectedConnectionIds.count == 1, let id = vm.selectedConnectionIds.first else { return nil }
+        return vm.connections.first { $0.id == id }
     }
 
     func primaryAction(for ids: Set<UUID>) {

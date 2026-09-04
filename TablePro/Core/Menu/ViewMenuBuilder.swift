@@ -31,6 +31,7 @@ enum ViewMenuBuilder {
                 keyboard: keyboard
             ),
             MenuItemFactory.separator,
+            contentModeSubmenu(),
             sidebarLayoutSubmenu(),
             MenuItemFactory.item(
                 String(localized: "Focus Sidebar Filter"),
@@ -163,6 +164,24 @@ enum ViewMenuBuilder {
     }
 
     private static let allModes: [ResultsViewMode] = [.data, .structure, .json, .chart]
+
+    /// Browse and Assistant, one of N, the same shape as Sidebar Layout below.
+    ///
+    /// No key equivalent. The View menu's own shortcuts are already spoken for, and a duplicate one
+    /// blanks the loser rather than reporting a conflict, so a mode nobody asked to have a shortcut
+    /// for does not get one at the cost of an existing command.
+    private static func contentModeSubmenu() -> NSMenuItem {
+        MenuItemFactory.submenu(String(localized: "Mode"), items: [
+            MenuItemFactory.item(
+                String(localized: "Browse"),
+                action: #selector(MainSplitViewController.useBrowseMode(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Assistant"),
+                action: #selector(MainSplitViewController.useAssistantMode(_:))
+            )
+        ])
+    }
 
     private static func sidebarLayoutSubmenu() -> NSMenuItem {
         MenuItemFactory.submenu(String(localized: "Sidebar Layout"), items: [

@@ -17,6 +17,10 @@ struct ConnectionAdvancedView: View {
     @Binding var externalAccess: ExternalAccessLevel
     @Binding var localOnly: Bool
 
+    /// Nil for a connection the form has not saved yet. The outside-MCP allowlist is keyed by
+    /// connection id, so it appears once there is one.
+    let connectionId: UUID?
+
     let databaseType: DatabaseType
     let additionalConnectionFields: [ConnectionField]
     /// Values from every pane, not just this one, so a rule can point at a field in another
@@ -100,6 +104,10 @@ struct ConnectionAdvancedView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            }
+
+            if AppSettingsManager.shared.ai.enabled, let connectionId {
+                ConnectionMCPServersView(connectionId: connectionId)
             }
 
             if AppSettingsManager.shared.sync.enabled {

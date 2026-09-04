@@ -195,10 +195,16 @@ final class MainContentCoordinator {
     /// Bumped whenever a published schema row changes, so the inspector re-reads it.
     var inspectorRowSourceRevision: Int = 0
 
-    /// Direct reference to AI chat viewmodel — eliminates notification broadcasts
-    weak var aiViewModel: AIChatViewModel?
-
     weak var rightPanelState: RightPanelState?
+
+    /// The session engine the editor's AI actions talk to, resolved on demand and started if the
+    /// connection has none.
+    ///
+    /// This used to be a weak reference assigned once in `MainContentView.onAppear`. Now that a
+    /// session is created rather than conjured by the first read, that snapshot would be nil for the
+    /// whole life of a window whose user had not opened the chat yet, so Explain and Fix Error would
+    /// do nothing. Every caller is a menu item or a button, never a view body.
+    var aiViewModel: AIChatViewModel? { rightPanelState?.startSession()?.viewModel }
 
     /// Direct reference to the data tab grid delegate — enables row mutation operations to
     /// Observable mirror of the grid's display revision, so views outside the grid re-render when

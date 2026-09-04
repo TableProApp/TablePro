@@ -242,6 +242,12 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.canNavigateForward
         case #selector(useFlatSidebarLayout(_:)), #selector(useTreeSidebarLayout(_:)):
             return context.canSwitchSidebarLayout
+        /// The mode is a property of the workspace, not of the connection's health: assistant mode
+        /// is reachable while a connection is still dialling or has failed, which is the whole point
+        /// of its pre-connect surface. `isConnected` would disable the command exactly where the
+        /// mode matters most.
+        case #selector(useBrowseMode(_:)), #selector(useAssistantMode(_:)):
+            return context.hasSelectedWorkspace
         case #selector(toggleWorkspaceRail(_:)),
              #selector(showPreviousWorkspace(_:)),
              #selector(showNextWorkspace(_:)):
@@ -368,6 +374,10 @@ extension MainSplitViewController: NSMenuItemValidation {
             )
         case #selector(setResultView(_:)):
             setState(isCurrentResultView(menuItem) ? .on : .off, on: menuItem)
+        case #selector(useBrowseMode(_:)):
+            setState(contentMode == .browse ? .on : .off, on: menuItem)
+        case #selector(useAssistantMode(_:)):
+            setState(contentMode == .assistant ? .on : .off, on: menuItem)
         case #selector(useFlatSidebarLayout(_:)):
             setState(commandActions?.sidebarLayout == .flat ? .on : .off, on: menuItem)
         case #selector(useTreeSidebarLayout(_:)):

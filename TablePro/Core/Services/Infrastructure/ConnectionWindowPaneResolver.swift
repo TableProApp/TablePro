@@ -88,12 +88,42 @@ internal enum ConnectionWindowPaneResolver {
     /// stays: on the happy path nothing collapses, nothing is put back, and the panes are built
     /// once. Collapsing for 40ms costs `splitView.autosaveName`, both split items and a
     /// `recalculateKeyViewLoop()` in each direction, all of it to show an empty column briefly.
-    internal static func hidesChrome(for pane: ConnectionWindowPane) -> Bool {
+    ///
+    /// Assistant mode is the other exception, and it holds for a wait the user can see too. A
+    /// prompt typed at Welcome lives on the session, not on the window, so there is content to show
+    /// before any database answers: the transcript, the session rail and the result pane.
+    internal static func hidesChrome(
+        for pane: ConnectionWindowPane,
+        mode: ConnectionWorkspaceContentMode = .browse
+    ) -> Bool {
         switch pane {
         case .content, .preparing:
             return false
-        case .connecting, .unavailable, .empty:
+        case .connecting, .unavailable:
+            return mode != .assistant
+        case .empty:
             return true
+        }
+    }
+
+    /// Whether the detail pane carries the pre-connect assistant surface rather than the connecting
+    /// or failure view. Read by the pane builder, so the two decisions cannot drift: a mode that
+    /// keeps its chrome hidden and mounts no content would leave the window blank.
+    ///
+    /// `.preparing` takes it too. The grace exists to keep a progress indicator off screen for a
+    /// wait too short to report, and the assistant surface is not one: it carries the prompt the
+    /// user typed at Welcome, which is theirs to see whether or not a database has answered.
+    /// Withholding it would draw nothing for the grace and then flash the conversation in.
+    internal static func showsPreConnectAssistant(
+        for pane: ConnectionWindowPane,
+        mode: ConnectionWorkspaceContentMode
+    ) -> Bool {
+        guard mode == .assistant else { return false }
+        switch pane {
+        case .preparing, .connecting, .unavailable:
+            return true
+        case .content, .empty:
+            return false
         }
     }
 
@@ -104,19 +134,32 @@ internal enum ConnectionWindowPaneResolver {
     /// them. They share a split item because AppKit grants full-height sidebar layout to exactly one
     /// leading sidebar, so collapsing for an empty object browser took the switcher with it and left
     /// the window's other connections with no way in.
+    ///
+    /// Assistant mode during connect or failure is not that case: the session rail is the sidebar,
+    /// so clamping to the workspace rail would hide the conversation's own list of sessions.
     internal static func sidebarChromeMode(
         for pane: ConnectionWindowPane,
-        hasRail: Bool
+        hasRail: Bool,
+        mode: ConnectionWorkspaceContentMode = .browse
     ) -> SidebarChromeMode {
-        guard hidesChrome(for: pane) else { return .revealed }
+        guard hidesChrome(for: pane, mode: mode) else { return .revealed }
         return hasRail ? .railOnly : .hidden
     }
 
     /// The tab strip's band is a list of tabs, so it appears only when there is a list worth
     /// showing: content behind it, and more than one tab in it. A window with a single tab keeps
     /// the chrome it always had, which is what the system does too.
-    internal static func showsTabStrip(for pane: ConnectionWindowPane, tabCount: Int) -> Bool {
-        pane == .content && tabCount > 1
+    ///
+    /// Assistant mode shows no editor tabs at all, so the band stays down however many the
+    /// connection has open. They are not closed, and returning to browse mode brings them back
+    /// along with the strip.
+    internal static func showsTabStrip(
+        for pane: ConnectionWindowPane,
+        tabCount: Int,
+        mode: ConnectionWorkspaceContentMode = .browse
+    ) -> Bool {
+        guard mode == .browse else { return false }
+        return pane == .content && tabCount > 1
     }
 
     /// Whether the connections strip stands, given the preference that normally governs it.
@@ -134,6 +177,10 @@ internal enum ConnectionWindowPaneResolver {
     /// with no renderable session behind it, so `empty` cannot be asked which of those it is.
     /// Laying a switcher over a window that is going away and stranding a window that is not are
     /// the same mistake read from the same value.
+    ///
+    /// The browse-mode chrome decision is the one that answers this. Assistant mode keeps its own
+    /// sidebar during connect, but a window with several connections still needs the strip when
+    /// browse chrome would have gone, because that strip is how the user reaches the others.
     internal static func showsWorkspaceRail(
         preferenceEnabled: Bool,
         workspaceCount: Int,

@@ -30,4 +30,11 @@ internal extension XCUIElement {
     func waitToExist(timeout: TimeInterval) -> Bool {
         UITestPoll.until(timeout: timeout) { self.exists }
     }
+
+    /// Existence is not clickability. An element mid-animation, behind a sheet, or scrolled out of
+    /// its container exists and hit-tests to nothing, so a click on it lands somewhere else or is
+    /// swallowed. Wait on this before clicking anything the app has just revealed.
+    func waitToBeHittable(timeout: TimeInterval) -> Bool {
+        UITestPoll.until(timeout: timeout) { self.exists && self.isHittable }
+    }
 }

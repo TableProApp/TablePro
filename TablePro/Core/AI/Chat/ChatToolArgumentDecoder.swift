@@ -59,11 +59,26 @@ enum ChatToolArgumentDecoder {
 
 enum ChatToolArgumentError: Error, LocalizedError {
     case missingOrInvalid(key: String, expected: String)
+    /// The model named a connection this session does not own, or named one when the session owns
+    /// none. Both are refused rather than resolved, because a session's connection is what every
+    /// approval and Safe Mode check downstream is evaluated against.
+    case connectionOutsideSession(requested: UUID, session: UUID?)
 
     var errorDescription: String? {
         switch self {
         case .missingOrInvalid(let key, let expected):
             return "Argument '\(key)' is missing or not a \(expected)"
+        case .connectionOutsideSession(let requested, let session):
+            guard let session else {
+                return """
+                Connection '\(requested)' cannot be used: this chat session is not attached to a \
+                connection. Open the connection and start a session there.
+                """
+            }
+            return """
+            Connection '\(requested)' is not this session's connection. Use '\(session)', or start \
+            a separate session on the other connection.
+            """
         }
     }
 }

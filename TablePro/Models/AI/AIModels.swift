@@ -211,11 +211,18 @@ enum AIChatMode: String, Codable, CaseIterable, Identifiable, Sendable {
     var systemPromptNote: String {
         switch self {
         case .ask:
-            return "You are in Ask mode. Tools are read-only: schema lookups only. You cannot run queries or modify data."
+            return "You are in Ask mode. Tools are read-only: schema lookups and explain_query for query plans. You cannot run queries or modify data."
         case .edit:
-            return "You are in Edit mode. You can read schema and run SELECT/INSERT/UPDATE/DELETE via execute_query. Destructive DDL is blocked."
+            return """
+                You are in Edit mode. You can read schema, ask explain_query for a query plan, and \
+                run SELECT/INSERT/UPDATE/DELETE via execute_query. Destructive DDL is blocked.
+                """
         case .agent:
-            return "You are in Agent mode. All tools are available, including destructive DDL via confirm_destructive_operation. Safe mode policy still gates execution."
+            return """
+                You are in Agent mode. All tools are available, including destructive DDL via \
+                confirm_destructive_operation. Call explain_query when a statement's cost matters. \
+                Safe mode policy still gates execution.
+                """
         }
     }
 }

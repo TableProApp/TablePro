@@ -15,12 +15,14 @@ import SwiftUI
 /// each switch and give back exactly the work `WorkspacePanes` exists to avoid.
 ///
 /// It carries the connection record because a rename changes what the panes draw without changing
-/// which pane they draw, and a session revision rather than the session itself because a session
-/// holds the driver: keeping one here would hold a released driver alive for as long as the record.
+/// which pane they draw, a session revision rather than the session itself because a session
+/// holds the driver: keeping one here would hold a released driver alive for as long as the record,
+/// and the content mode because assistant and browse mount different views into the same hosts.
 internal struct WorkspacePaneRenderKey: Equatable {
     internal let pane: ConnectionWindowPane
     internal let connection: DatabaseConnection?
     internal let sessionRevision: Int
+    internal let contentMode: ConnectionWorkspaceContentMode
 }
 
 /// One connection's three panes, kept alive for as long as the window hosts that connection.
@@ -82,6 +84,17 @@ internal final class WorkspacePanes {
     /// built them, which is no longer the one hosting it.
     internal func invalidate() {
         renderedKey = nil
+    }
+
+    /// Forces the reconcile a `rootView` write books for the next layout pass. A detached pane
+    /// never gets one, because nothing asks a view with no superview to lay out, so a background
+    /// connection's rebuild would sit unapplied until the user switched to it. That is fine while
+    /// only the data changes, and wrong as soon as the write changes which view is mounted: the
+    /// pane would come back on screen still showing the surface the connection has left.
+    internal func layoutUnparented() {
+        for pane in panes where pane.view.superview == nil {
+            pane.view.layoutSubtreeIfNeeded()
+        }
     }
 
     /// Empties every pane and unparents it. A hosting controller retains its SwiftUI tree, which

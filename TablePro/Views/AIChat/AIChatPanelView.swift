@@ -43,17 +43,20 @@ struct AIChatPanelView: View {
                 inputArea
             }
         }
-        .onAppear {
-            viewModel.connection = connection
-        }
-        .onChange(of: connection.id) {
-            viewModel.connection = connection
-        }
+        .environment(\.chatSessionId, viewModel.sessionId)
+        .environment(\.chatWriteFloorActive, viewModel.floorRaisedSafeModeLevel(for: connection))
+        .environment(\.chatPrimaryPendingToolUseId, viewModel.firstPendingToolUseId)
         .task(id: settingsManager.ai.providers.map(\.id)) {
             await viewModel.loadAvailableModels()
         }
         .task(id: connection.id) {
             await viewModel.loadSavedQueries()
+        }
+        /// The history menu's list, loaded by whoever puts the conversation on screen. It used to be
+        /// loaded in the view model's initializer, which made restoring N sessions at launch N full
+        /// scans of the conversation directory for a list only the visible session ever shows.
+        .task(id: connection.id) {
+            viewModel.loadConversations()
         }
         .alert(
             String(localized: "Allow AI Access"),
@@ -210,6 +213,10 @@ struct AIChatPanelView: View {
         VStack(spacing: 0) {
             Divider()
             VStack(alignment: .leading, spacing: 6) {
+                if let waitReason = viewModel.providerWaitReason {
+                    providerWaitNotice(waitReason)
+                }
+
                 AIChatContextChipStrip(
                     items: viewModel.attachedContext,
                     onRemove: { viewModel.detach($0) }
@@ -253,6 +260,8 @@ struct AIChatPanelView: View {
                     modelPicker
                     sendOrStopButton
                 }
+
+                AssistantFloorNoticeView(connectionId: connection.id)
             }
             .padding(8)
         }
@@ -271,10 +280,24 @@ struct AIChatPanelView: View {
         }
     }
 
+    private func providerWaitNotice(_ reason: String) -> some View {
+        HStack(spacing: 6) {
+            ProgressView()
+                .controlSize(.small)
+            Text(reason)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(reason)
+    }
+
     private var modeMenu: some View {
         let binding = Binding<AIChatMode>(
-            get: { settingsManager.ai.chatMode },
+            get: { viewModel.chatMode },
             set: { newValue in
+                viewModel.chatMode = newValue
                 var settings = settingsManager.ai
                 settings.chatMode = newValue
                 settingsManager.ai = settings
@@ -291,8 +314,8 @@ struct AIChatPanelView: View {
             .labelsHidden()
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: settingsManager.ai.chatMode.symbolName)
-                Text(settingsManager.ai.chatMode.displayName)
+                Image(systemName: viewModel.chatMode.symbolName)
+                Text(viewModel.chatMode.displayName)
                     .lineLimit(1)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.caption2)
@@ -302,7 +325,7 @@ struct AIChatPanelView: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help(settingsManager.ai.chatMode.helpText)
+        .help(viewModel.chatMode.helpText)
     }
 
     @ViewBuilder

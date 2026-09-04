@@ -1,0 +1,92 @@
+---
+title: Assistant mode
+description: Hand the whole window to one AI session, with its steps, its SQL, and the rows it read side by side
+---
+
+Click **Assistant** in the toolbar, choose **View > Mode > Assistant**, or type a request under the connection list in the [welcome window](#starting-from-the-welcome-window). The object browser and the editor tab strip go, and the window becomes three columns: the sessions you have open, the conversation, and what the session produced. Click **Browse** to come back to the tables. The choice is per connection, so one connection can sit in Assistant mode while another stays on a table.
+
+The narrow [connections strip](/features/workspace-rail) stays where it is, and no tab is closed by the switch. Everything in the browse window is where you left it.
+
+## The three columns
+
+| Column | Holds |
+|--------|-------|
+| Sessions | One row per session, current connection first, each row naming its connection and state |
+| Conversation | The same chat as the [inspector](/features/ai-assistant#chat), at full width |
+| Result pane | What this session proposed, ran, and changed |
+
+The result pane opens with the window and collapses like the inspector does. Drag either divider to resize.
+
+## Writes wait for you
+
+Assistant mode holds the connection at [Safe Mode](/features/safe-mode) **Alert** for as long as the mode is on, whatever the connection's own level says. Every `INSERT`, `UPDATE`, and `DELETE` the AI proposes waits on its card in the conversation for **Run** or **Cancel** before it reaches the server.
+
+A connection already at **Alert** or higher keeps its own level. **Read-Only** stays read-only. Leaving Assistant mode restores the level you set, and nothing is written to the connection.
+
+**Always for this connection** is unavailable while the floor is in force. Each write is confirmed on its own, and a grant made at the connection's own level takes effect again once you switch back to Browse.
+
+A session works on one connection. A statement aimed at a different connection is refused, and the message names this session's connection, so a job spanning two databases needs a session in each.
+
+Destructive statements are unchanged: `DROP`, `TRUNCATE`, and `ALTER…DROP` still need the separate confirmation described under [tool calling](/features/ai-assistant#tool-calling), and no floor and no approval covers them.
+
+## Sessions
+
+A session belongs to one connection and holds one conversation. Switching to Assistant mode starts the first one. **New Session** at the foot of the sessions column starts another on the same connection.
+
+| State | Meaning |
+|-------|---------|
+| **Working** | Streaming a reply or executing a tool |
+| **Waiting on you** | Holding a statement that needs **Run** or **Cancel** |
+| **Queued** | Another session is streaming on the same provider |
+| **Ready** | Waiting for your next message |
+| **Stopped** | Its window was closed. The transcript is intact |
+| **Failed** | The provider returned an error, or the app quit mid-reply |
+
+Clicking a row swaps the two columns to its right. A row on another connection switches the window to that connection first. Nothing in any other session stops or changes.
+
+Closing a window stops the sessions on that connection and keeps their transcripts. Open one again from the sessions column and it reconnects where it stopped. Nothing is replayed: a statement that was waiting for approval when the window closed is still waiting, not run.
+
+**Close Session** in a row's context menu ends one session and keeps its transcript in the conversation history.
+
+## The result pane
+
+Four views of one session. A view with nothing in it says what would appear there.
+
+| View | Shows |
+|------|-------|
+| **SQL** | Every statement the session proposed, in order, with its state and its target connection |
+| **Plan** | The steps the session has taken, what is in flight, and what waits on you |
+| **Results** | Rows, row count, and duration for each query it ran, plus the query plan when it asked for one |
+| **Schema** | Columns, indexes, and constraints a `CREATE` or `ALTER` would add or remove, destructive lines marked |
+
+Right-click any statement, schema change, or result in the pane for **Copy**, which puts its SQL on the clipboard.
+
+**Run** and **Reject** in the SQL view and the buttons on the conversation card are the same decision: acting in one updates the other. Review statements in any order; the reply resumes once each has a decision. `Return` acts on the first statement still waiting.
+
+A rejected statement stays in the list with its state, and the model is told it was rejected, so it can propose something else.
+
+**Results** shows the first 100 rows of each result and says how many there are. **Open as Query** puts the statement in a normal query tab for the whole set.
+
+The **Schema** view reads `CREATE`, `ALTER … ADD`, `ALTER … DROP`, `DROP`, and `TRUNCATE`. A statement it cannot read shows its own SQL instead of a list of changes. The preview never decides whether a statement runs: that is the approval card, and for `DROP`, `TRUNCATE`, and `ALTER…DROP` the separate destructive confirmation.
+
+## Starting from the welcome window
+
+Select a connection and the panel under the list offers both ways in. **Browse database** opens the tables and is what `Return` and a double click still do. Typing a request and pressing `Return` in the field opens the connection in Assistant mode and sends the request once connected.
+
+The conversation and the request appear while the connection is still opening. The request stays editable, so a typo noticed during a slow connect can be fixed before it goes. A connect that fails shows the driver's error there with **Try Again**, and the request is still waiting when it succeeds.
+
+Sessions already open are listed above the field with their connection and state, so a session whose window is closed is reachable without opening anything first. Clicking one focuses the window already hosting its connection rather than opening a second.
+
+## Limitations
+
+Provider tool calls that run outside the app are not covered by the floor. **Claude Agent** passes tools to the `claude` command, which approves them on its own terms, so the **Alert** floor and the per-statement **Run** and **Reject** do not apply to it. Use an API-key provider for a session that writes.
+
+Two sessions cannot send to one provider at the same time. The second waits for the first to finish its reply, and its composer names the provider it is waiting on. Point the second session at another provider in **Settings > AI** to run both at once.
+
+Sessions stay on this Mac. Conversations sync with [iCloud Sync](/features/icloud-sync) as they always have, but which sessions are open and what they are waiting on does not.
+
+## Related
+
+- [AI assistant](/features/ai-assistant) for providers, keys, chat modes, and what leaves your Mac
+- [Safe Mode](/features/safe-mode) for the six levels and what each one gates
+- [MCP server](/features/mcp) for reaching TablePro from Claude Code, Cursor, and Zed

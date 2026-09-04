@@ -52,6 +52,10 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// so without this its view orphans and the toolbar item collapses to zero width.
     internal var hostingControllers: [NSToolbarItem.Identifier: NSHostingController<AnyView>] = [:]
     private(set) var sidebarGroup: NSToolbarItemGroup?
+    /// Not `private(set)`: the factory that claims the slot lives in
+    /// `MainWindowToolbar+ContentMode.swift`, and a `private` setter is scoped to the declaring
+    /// file, not to the type.
+    var contentModeGroup: NSToolbarItemGroup?
 
     override internal convenience init() {
         self.init(managedToolbar: NSToolbar(identifier: Self.toolbarIdentifier))
@@ -140,6 +144,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         observePendingChangeState()
         refreshConnectionScopedItems()
         syncSidebarSelection()
+        syncContentModeSelection()
         managedToolbar.validateVisibleItems()
     }
 
@@ -151,6 +156,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         subject.windowController?.switcherPresenter.dismiss()
         pendingChangeObservationGeneration += 1
         sidebarGroup = nil
+        contentModeGroup = nil
         hostingControllers.removeAll()
         subject.coordinator = nil
     }
@@ -234,6 +240,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     static let restorePreviousValues = NSToolbarItem.Identifier("com.TablePro.toolbar.restorePreviousValues")
     static let exportImportGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.exportImportGroup")
     static let sidebarToggle = NSToolbarItem.Identifier("com.TablePro.toolbar.sidebarToggle")
+    static let contentMode = NSToolbarItem.Identifier("com.TablePro.toolbar.contentMode")
     static let backForwardGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.backForwardGroup")
     static let navigateBack = NSToolbarItem.Identifier("com.TablePro.toolbar.navigateBack")
     static let navigateForward = NSToolbarItem.Identifier("com.TablePro.toolbar.navigateForward")
@@ -255,6 +262,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         .sidebarTrackingSeparator,
         backForwardGroup,
         connectionGroup,
+        contentMode,
         principal,
         .flexibleSpace,
         refreshSaveGroup,
@@ -287,6 +295,22 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 extension MainWindowToolbar {
     private static let sidebarSegmentTabs: [SidebarTab] = [.tables, .favorites]
 
+    /// One name per tab, read by the control, its overflow menu and each image's accessibility
+    /// description, so the three cannot drift apart.
+    internal static func sidebarSegmentLabel(_ tab: SidebarTab) -> String {
+        switch tab {
+        case .tables: return String(localized: "Tables")
+        case .favorites: return String(localized: "Favorites")
+        }
+    }
+
+    private static func sidebarSegmentSymbol(_ tab: SidebarTab) -> String {
+        switch tab {
+        case .tables: return "list.bullet"
+        case .favorites: return "star"
+        }
+    }
+
     /// A one-of-N segmented toolbar control is `NSToolbarItemGroup` with `.selectOne`.
     /// Hand-building two `NSButton`s meant faking selection with border tricks and a
     /// deprecated bezel, and polling `@Observable` state to keep them in sync.
@@ -297,14 +321,21 @@ extension MainWindowToolbar {
     /// `defaultItemIdentifiers` listed it. Without the flag it lays out in the sidebar's own
     /// titlebar strip, and follows the divider when the sidebar collapses.
     internal static func makeSidebarSegmentGroup(target: AnyObject?, action: Selector) -> NSToolbarItemGroup {
-        let images = ["list.bullet", "star"].compactMap {
-            NSImage(systemSymbolName: $0, accessibilityDescription: nil)
+        /// The label goes on the image, not only in `labels`. An expanded group builds its own
+        /// segmented control and takes each segment's accessibility name from the image's
+        /// `accessibilityDescription`, so the nil ones here left VoiceOver announcing this control
+        /// as "List" and "favorite", which are the SF Symbol names.
+        let images = sidebarSegmentTabs.compactMap {
+            NSImage(
+                systemSymbolName: sidebarSegmentSymbol($0),
+                accessibilityDescription: sidebarSegmentLabel($0)
+            )
         }
         let group = NSToolbarItemGroup(
             itemIdentifier: sidebarToggle,
             images: images,
             selectionMode: .selectOne,
-            labels: [String(localized: "Tables"), String(localized: "Favorites")],
+            labels: sidebarSegmentTabs.map(sidebarSegmentLabel),
             target: target,
             action: action
         )
@@ -320,6 +351,7 @@ extension MainWindowToolbar {
     /// stopped following the sidebar until the window was reopened.
     internal func makeSidebarToggleItem(claimsSlot: Bool) -> NSToolbarItem {
         let group = Self.makeSidebarSegmentGroup(target: self, action: #selector(sidebarSegmentChanged(_:)))
+        group.menuFormRepresentation = makeSidebarMenuForm()
         bindMenuForm(action: #selector(sidebarSegmentChanged(_:)), to: Self.sidebarToggle)
         guard claimsSlot else { return group }
         sidebarGroup = group
@@ -327,12 +359,45 @@ extension MainWindowToolbar {
         return group
     }
 
+    /// What the overflow menu offers when the window is too narrow to draw the control.
+    ///
+    /// Built explicitly rather than left to AppKit. A group's default menu form sends the group's
+    /// action with the `NSMenuItem` as the sender, and only the sender says which segment was
+    /// chosen, so an action that could read a selection off a group alone dropped every press made
+    /// from that menu: Tables and Favorites did nothing there at all. Each item carries its segment
+    /// in `tag`, which is what makes both senders answerable.
+    private func makeSidebarMenuForm() -> NSMenuItem {
+        let root = NSMenuItem(title: String(localized: "Sidebar"), action: nil, keyEquivalent: "")
+        let submenu = NSMenu(title: root.title)
+        for (index, tab) in Self.sidebarSegmentTabs.enumerated() {
+            let item = NSMenuItem(
+                title: Self.sidebarSegmentLabel(tab),
+                action: #selector(sidebarSegmentChanged(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.tag = index
+            submenu.addItem(item)
+        }
+        root.submenu = submenu
+        return root
+    }
+
     /// `@objc` does not type-check the sender, and this action is reachable from the overflow menu
     /// as well as from the control, where AppKit sends an `NSMenuItem`. A typed parameter would
     /// read `selectedIndex` off it and trap on `doesNotRecognizeSelector`.
+    /// The group reports its choice as `selectedIndex` and a menu item as its `tag`; both resolve to
+    /// the same segment index.
     @objc fileprivate func sidebarSegmentChanged(_ sender: Any?) {
-        guard let group = sender as? NSToolbarItemGroup else { return }
-        let index = group.selectedIndex
+        let index: Int
+        switch sender {
+        case let group as NSToolbarItemGroup:
+            index = group.selectedIndex
+        case let menuItem as NSMenuItem:
+            index = menuItem.tag
+        default:
+            return
+        }
         guard Self.sidebarSegmentTabs.indices.contains(index) else { return }
         coordinator?.splitViewController?.setSidebarTab(Self.sidebarSegmentTabs[index])
     }
@@ -343,9 +408,15 @@ extension MainWindowToolbar {
         guard let group = sidebarGroup, let coordinator else { return }
         let sidebarState = SharedSidebarState.forConnection(coordinator.connectionId)
         let sidebarVisible = !(coordinator.splitViewController?.isSidebarCollapsed ?? true)
-        group.selectedIndex = sidebarVisible
+        let index = sidebarVisible
             ? (Self.sidebarSegmentTabs.firstIndex(of: sidebarState.selectedSidebarTab) ?? -1)
             : -1
+        group.selectedIndex = index
+        /// The overflow menu's tick follows the same pass. A collapsed sidebar selects no segment,
+        /// so `-1` matches no tag and every item reads unticked, which is what the control shows.
+        for item in group.menuFormRepresentation?.submenu?.items ?? [] {
+            item.state = item.tag == index ? .on : .off
+        }
         managedToolbar.validateVisibleItems()
     }
 }

@@ -3,7 +3,7 @@ title: MCP Server
 description: Built-in Model Context Protocol server that lets AI clients query your databases through TablePro
 ---
 
-The [MCP](https://modelcontextprotocol.io) server binds `127.0.0.1` and nothing else: no remote mode, no TLS certificate, no setting that opens it to your network. Claude Desktop, Claude Code, Cursor, and Zed reach your databases through the connections you already saved, and never see a password.
+[MCP](https://modelcontextprotocol.io) runs both ways here. The server binds `127.0.0.1` and nothing else, with no remote mode, no TLS certificate, and no setting that opens it to your network: Claude Desktop, Claude Code, Cursor, and Zed reach your databases through the connections you already saved, and never see a password. In the other direction an [Assistant mode](/features/assistant-mode) session calls out to an MCP server you add, under the rules in [Calling an outside server](#calling-an-outside-server).
 
 This page covers the **Settings > Integrations** pane. The protocol itself, the tool catalog, the prompts and the token model live in the [External API](/external-api) section.
 
@@ -39,6 +39,32 @@ A tool can ask for fewer rows or a shorter timeout, never for more than the maxi
 Click **Connect a Client…** and pick **Claude Code**, **Claude Desktop**, **Cursor**, or **Zed**. Each shows numbered steps and a copyable snippet pointing at the bundled bridge. Paste it into the client's own config; TablePro does not write to other apps' files.
 
 For VS Code, Cline, Continue, Windsurf, Antigravity, Goose, the HTTP transport, and a client that connects but lists no tools, see [MCP Clients](/external-api/mcp-clients).
+
+## Calling an outside server
+
+Add a server under **Settings > Integrations**: a name, its URL, and its bearer token, which goes to the Keychain. **Test** lists the tools it offers. A URL that is not on this Mac has to be `https`.
+
+A server reaches nothing until a connection allowlists it. Open the connection's edit form, pick **Advanced**, and tick the servers this connection's sessions may use. A connection with none ticked has no outside tools.
+
+Every outside tool waits for a click, in every [chat mode](/features/ai-assistant#chat-modes). **Always for this connection** does not apply to one, and neither does a read-only claim: read-only is what the server says about itself, so it is not a reason to skip the approval.
+
+### What an outside server sees
+
+Whatever the session hands it, which is the arguments the model fills in. That can include table and column names and the rows of a result.
+
+Each call is recorded before the request leaves, in the audit log under **Settings > Integrations**: the server, the tool, the connection, the session, and the size of what was sent. The contents are not recorded.
+
+A reply from an outside server is text in the conversation and nothing more. Text in it that reads as an instruction, asking to approve a statement or to add a server, does not act.
+
+### Limitations
+
+Outside servers are reached over HTTP. A server that runs as a local command is not supported: add one that listens on a URL, or run it behind a local HTTP wrapper.
+
+An outside tool cannot be granted standing approval. Every call needs a click, including a repeat of a call approved a minute earlier.
+
+A call that gets no answer within 30 seconds fails with a timeout the model can work around, and the session stays usable.
+
+A server's tools disappear from a session when the last connection that allowlisted it has no session left. An in-flight call finishes.
 
 ## Authentication
 

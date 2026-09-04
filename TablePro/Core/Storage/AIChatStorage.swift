@@ -30,9 +30,14 @@ actor AIChatStorage {
     }()
 
     private init() {
-        let dir = AppStorageEnvironment.shared.applicationSupportRoot
+        self.init(directory: AppStorageEnvironment.shared.applicationSupportRoot
             .appendingPathComponent("TablePro", isDirectory: true)
-            .appendingPathComponent("ai_chats", isDirectory: true)
+            .appendingPathComponent("ai_chats", isDirectory: true))
+    }
+
+    /// Injectable so a test can scope reads against a throwaway directory instead of the chat
+    /// history of whoever is running it.
+    internal init(directory dir: URL) {
         directory = dir
 
         // Create directory inline since actor init is nonisolated
@@ -84,6 +89,20 @@ actor AIChatStorage {
         }
     }
 
+    /// Quit only. `applicationWillTerminate` has no time for an actor hop that may never be
+    /// scheduled before the process exits, so the terminate path writes on the calling thread. The
+    /// trimming above is skipped: the caller is already out of time, and a turn on disk that is
+    /// larger than the cap is still readable, while no turn on disk is the bug this exists to fix.
+    nonisolated func saveSync(_ conversation: AIConversation) {
+        let fileURL = directory.appendingPathComponent("\(conversation.id.uuidString).json")
+        do {
+            let data = try Self.encoder.encode(conversation)
+            try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        } catch {
+            Self.logger.error("Failed to save conversation \(conversation.id) at terminate: \(error.localizedDescription)")
+        }
+    }
+
     /// Load all conversations, sorted by updatedAt descending
     func loadAll() -> [AIConversation] {
         do {
@@ -110,6 +129,24 @@ actor AIChatStorage {
             Self.logger.error("Failed to list conversations: \(error.localizedDescription)")
             return []
         }
+    }
+
+    /// Load one conversation by ID
+    func load(id: UUID) -> AIConversation? {
+        let fileURL = directory.appendingPathComponent("\(id.uuidString).json")
+        do {
+            let data = try Data(contentsOf: fileURL)
+            return try Self.decoder.decode(AIConversation.self, from: data)
+        } catch {
+            Self.logger.error("Failed to load conversation \(id): \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// Conversations a session may list: its own connection's, plus the orphans left by records
+    /// written before the connection id existed. A nil id lists the orphans alone.
+    func loadAll(connectionId: UUID?) -> [AIConversation] {
+        loadAll().filter { $0.connectionId == connectionId || $0.isOrphan }
     }
 
     /// Delete a conversation by ID

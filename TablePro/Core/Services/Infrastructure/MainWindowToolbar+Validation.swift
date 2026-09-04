@@ -51,7 +51,7 @@ extension MainWindowToolbar: NSToolbarItemValidation {
             return true
         case Self.database:
             return context.connected && !context.fileBased && context.supportsContainerSwitching
-        case Self.refresh, Self.quickSwitcher, Self.newTab, Self.exportTables:
+        case Self.refresh, Self.quickSwitcher, Self.newTab, Self.exportTables, Self.contentMode:
             return context.connected
         case Self.sidebarToggle:
             return context.connected && context.showsObjectBrowser

@@ -104,7 +104,7 @@ struct ImportFromAppSourcePicker: View {
         if let appURL = importer.installedAppURL() {
             Image(nsImage: NSWorkspace.shared.icon(forFile: appURL.path))
                 .resizable()
-                .aspectRatio(contentMode: .fit)
+                .scaledToFit()
         } else {
             Image(systemName: importer.symbolName)
                 .font(.title2)

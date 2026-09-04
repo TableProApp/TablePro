@@ -283,6 +283,44 @@ enum MCPAuditLogger {
         return "ip=\(ip) \(extra)"
     }
 
+    /// Records a call to an outside MCP server, before the request leaves.
+    ///
+    /// Written ahead of the call on purpose: a server that never answers has still been sent
+    /// something, and an entry written on completion would miss exactly the calls worth auditing.
+    /// The payload itself is not stored, only its SHA-256 and its byte count, following the same
+    /// reasoning as `messageExcerptLimit`: production rows pass through these calls and the log is
+    /// plain SQLite with 90-day retention.
+    static func logOutboundToolCall(
+        serverId: UUID,
+        serverName: String,
+        sessionId: UUID,
+        connectionId: UUID?,
+        toolName: String,
+        payload: Data
+    ) {
+        serverTool.info(
+            """
+            Outbound MCP tool call: server=\(serverId.uuidString, privacy: .public) \
+            tool=\(toolName, privacy: .public) bytes=\(payload.count, privacy: .public)
+            """
+        )
+        record(
+            category: .tool,
+            connectionId: connectionId,
+            action: "mcp.outbound.toolCall",
+            outcome: .success,
+            details: nil,
+            outbound: AuditOutboundDetail(
+                serverId: serverId,
+                serverName: serverName,
+                sessionId: sessionId,
+                target: toolName,
+                payloadSHA256: SHA256.hash(data: payload).hexEncoded,
+                payloadBytes: payload.count
+            )
+        )
+    }
+
     private static func record(
         category: AuditCategory,
         tokenId: UUID? = nil,
@@ -290,7 +328,8 @@ enum MCPAuditLogger {
         connectionId: UUID? = nil,
         action: String,
         outcome: AuditOutcome,
-        details: String? = nil
+        details: String? = nil,
+        outbound: AuditOutboundDetail? = nil
     ) {
         let entry = AuditEntry(
             category: category,
@@ -299,7 +338,8 @@ enum MCPAuditLogger {
             connectionId: connectionId,
             action: action,
             outcome: outcome,
-            details: details
+            details: details,
+            outbound: outbound
         )
         MCPAuditWriteQueue.shared.enqueue(entry, into: MCPAuditLogStorage.shared)
     }
