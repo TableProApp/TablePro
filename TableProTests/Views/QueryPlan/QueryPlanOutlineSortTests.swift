@@ -111,9 +111,61 @@ struct QueryPlanOutlineSortTests {
     @Test("Every column has a localized title and a usable width")
     func describesColumns() {
         for column in QueryPlanOutlineColumn.allCases {
-            #expect(!column.title.isEmpty)
+            #expect(!column.title(metric: nil).isEmpty)
+            #expect(!column.title(metric: .selfCost).isEmpty)
             #expect(column.minimumWidth > 0)
             #expect(column.width >= column.minimumWidth)
         }
+    }
+
+    // MARK: - Magnitude
+
+    private func costPlan() -> QueryPlan {
+        QueryPlan(rootNode: makeTree(), planningTime: nil, executionTime: nil, rawText: "")
+    }
+
+    @Test("The magnitude column sorts by the metric it charts")
+    func sortsByTheChartedMetric() throws {
+        let plan = costPlan()
+        let metrics = try #require(QueryPlanMetricIndex(metric: .selfCost, plan: plan))
+        let root = QueryPlanOutlineNode(plan.rootNode)
+
+        let descending = root.sorted(
+            by: QueryPlanOutlineSort.comparator(key: .magnitude, ascending: false, metrics: metrics)
+        )
+        let ordered = descending.children.map { metrics.value(for: $0.source) ?? -1 }
+        #expect(ordered == ordered.sorted(by: >))
+    }
+
+    @Test("Ascending and descending are mirror images on the magnitude column too")
+    func mirrorsMagnitudeDirection() throws {
+        let plan = costPlan()
+        let metrics = try #require(QueryPlanMetricIndex(metric: .selfCost, plan: plan))
+        let root = QueryPlanOutlineNode(plan.rootNode)
+
+        let ascending = root.sorted(
+            by: QueryPlanOutlineSort.comparator(key: .magnitude, ascending: true, metrics: metrics)
+        )
+        let descending = root.sorted(
+            by: QueryPlanOutlineSort.comparator(key: .magnitude, ascending: false, metrics: metrics)
+        )
+
+        #expect(ascending.children.map { $0.source.operation }.reversed()
+            == descending.children.map { $0.source.operation })
+    }
+
+    /// Sorting a column the plan cannot fill must not reorder anything into a false ranking.
+    @Test("The magnitude column sorts inertly without a metric index")
+    func toleratesAMissingIndex() {
+        let root = QueryPlanOutlineNode(makeTree())
+        let sorted = root.sorted(
+            by: QueryPlanOutlineSort.comparator(key: .magnitude, ascending: true, metrics: nil)
+        )
+        #expect(sorted.children.count == root.children.count)
+    }
+
+    @Test("Numbers read worst first, including the magnitude column")
+    func defaultsMagnitudeToDescending() {
+        #expect(!QueryPlanOutlineSort.defaultAscending(for: .magnitude))
     }
 }

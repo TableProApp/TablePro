@@ -15,22 +15,44 @@ final class QueryPlanOutlineCoordinator: NSObject, NSOutlineViewDataSource, NSOu
     weak var outlineView: NSOutlineView?
 
     private(set) var root: QueryPlanOutlineNode?
+    private(set) var metrics: QueryPlanMetricIndex?
     private var planId: UUID?
+    private var metric: QueryPlanBarMetric?
     private var differentiateWithoutColor = false
 
     // MARK: - Content
 
-    func update(plan: QueryPlan, differentiateWithoutColor: Bool) {
+    /// Changing the metric repaints without rebuilding, because the rows are the same rows. The
+    /// early return has to know about it: it used to guard on the plan's identity alone, so
+    /// choosing a different metric would have moved the toolbar control and redrawn nothing.
+    func update(plan: QueryPlan, metric: QueryPlanBarMetric?, differentiateWithoutColor: Bool) {
         let colorChanged = self.differentiateWithoutColor != differentiateWithoutColor
+        let metricChanged = self.metric != metric
         self.differentiateWithoutColor = differentiateWithoutColor
+        self.metric = metric
+
+        if metricChanged {
+            metrics = metric.flatMap { QueryPlanMetricIndex(metric: $0, plan: plan) }
+        }
 
         guard planId != plan.rootNode.id else {
-            if colorChanged { outlineView?.reloadData() }
+            if colorChanged || metricChanged {
+                if metricChanged {
+                    applyColumnAvailability(plan: plan)
+                    // The chart column sorts by whatever it charts, so a new metric makes the rows
+                    // an order the header's indicator no longer describes. Re-sorting is what keeps
+                    // the arrow honest, the same reason a new plan clears the descriptor outright.
+                    resortForCurrentDescriptor()
+                }
+                outlineView?.reloadData()
+            }
             return
         }
 
         planId = plan.rootNode.id
+        metrics = metric.flatMap { QueryPlanMetricIndex(metric: $0, plan: plan) }
         root = QueryPlanOutlineNode(plan.rootNode)
+        applyColumnAvailability(plan: plan)
 
         // The rebuilt tree is in parse order, so a sort indicator left over from the previous
         // plan would advertise an order the rows are not in.
@@ -38,6 +60,23 @@ final class QueryPlanOutlineCoordinator: NSObject, NSOutlineViewDataSource, NSOu
         outlineView?.reloadData()
         expandAll()
         selectRootRow()
+    }
+
+    /// A column the plan has no values for is hidden rather than left blank, and un-hidden the
+    /// moment a plan does report it. Both directions are written every time: `isHidden` is
+    /// persisted by the column autosave, so a column hidden once and never explicitly shown again
+    /// would stay hidden for every later plan.
+    ///
+    /// `isHidden` rather than removing the column, measured: `removeTableColumn` followed by
+    /// `addTableColumn` strands the column at the end of the header and resets the width the user
+    /// chose, while hiding preserves both.
+    private func applyColumnAvailability(plan: QueryPlan) {
+        guard let outlineView else { return }
+        for tableColumn in outlineView.tableColumns {
+            guard let column = QueryPlanOutlineColumn(rawValue: tableColumn.identifier.rawValue) else { continue }
+            tableColumn.title = column.title(metric: metric)
+            tableColumn.isHidden = !column.hasContent(in: plan, metrics: metrics)
+        }
     }
 
     /// Only ever drives the selection forward. A nil never clears the row, because the parent's
@@ -68,7 +107,7 @@ final class QueryPlanOutlineCoordinator: NSObject, NSOutlineViewDataSource, NSOu
 
         for column in QueryPlanOutlineColumn.allCases {
             let tableColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(column.rawValue))
-            tableColumn.title = column.title
+            tableColumn.title = column.title(metric: metric)
             tableColumn.width = column.width
             tableColumn.minWidth = column.minimumWidth
             tableColumn.sortDescriptorPrototype = NSSortDescriptor(
@@ -95,19 +134,37 @@ final class QueryPlanOutlineCoordinator: NSObject, NSOutlineViewDataSource, NSOu
     }
 
     func outlineView(_ outlineView: NSOutlineView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
-        guard let descriptor = outlineView.sortDescriptors.first,
+        guard applyCurrentSort() else { return }
+        outlineView.reloadData()
+        expandAll()
+    }
+
+    /// Reorders the tree by whatever the header currently advertises, keeping the selection. False
+    /// when there is nothing to sort by, which leaves the rows in parse order.
+    @discardableResult
+    private func applyCurrentSort() -> Bool {
+        guard let outlineView,
+              let descriptor = outlineView.sortDescriptors.first,
               let key = descriptor.key,
               let column = QueryPlanOutlineColumn(rawValue: key),
               let root
-        else { return }
+        else { return false }
 
         let selected = selectedNodeId
         self.root = root.sorted(
-            by: QueryPlanOutlineSort.comparator(key: column, ascending: descriptor.ascending)
+            by: QueryPlanOutlineSort.comparator(
+                key: column, ascending: descriptor.ascending, metrics: metrics
+            )
         )
-        outlineView.reloadData()
-        expandAll()
         select(nodeId: selected)
+        return true
+    }
+
+    /// Only the chart column's order depends on the metric; the others sort on fields the metric
+    /// does not touch, so re-sorting them would be churn.
+    private func resortForCurrentDescriptor() {
+        guard outlineView?.sortDescriptors.first?.key == QueryPlanOutlineColumn.magnitude.rawValue else { return }
+        applyCurrentSort()
     }
 
     private func children(of item: Any?) -> [QueryPlanOutlineNode] {
@@ -159,6 +216,8 @@ final class QueryPlanOutlineCoordinator: NSObject, NSOutlineViewDataSource, NSOu
                     label: QueryPlanLabels.actualTime
                 )
             )
+        case .magnitude:
+            content = AnyView(magnitudeCell(for: node.source))
         }
 
         return hostingCell(identifier: identifier, outlineView: outlineView, content: content)
@@ -201,6 +260,21 @@ final class QueryPlanOutlineCoordinator: NSObject, NSOutlineViewDataSource, NSOu
             if let found = find(id, in: child) { return found }
         }
         return nil
+    }
+
+    private func magnitudeCell(for node: QueryPlanNode) -> QueryPlanMagnitudeCellView {
+        let value = metrics?.value(for: node)
+        let emphasis = metrics?.emphasis(for: node)
+        return QueryPlanMagnitudeCellView(
+            fraction: metrics?.fraction(for: node),
+            valueText: value.map { QueryPlanValueFormatter.compact($0, unit: metric?.unit ?? .cost) },
+            severity: metrics?.severity(for: node),
+            metric: metric ?? .selfCost,
+            emphasisText: emphasis.map {
+                $0.formatted(.percent.precision(.fractionLength(0 ... 1)))
+            },
+            differentiateWithoutColor: differentiateWithoutColor
+        )
     }
 
     private func hostingCell(

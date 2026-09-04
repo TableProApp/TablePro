@@ -36,7 +36,9 @@ enum QueryPlanNodeSummary {
         if let relation = node.relation {
             parts.append(String(format: String(localized: "on %@"), relation))
         }
-        parts.append(node.severity.accessibilityLabel)
+        if let severity = node.severity {
+            parts.append(severity.accessibilityLabel)
+        }
         if let cost = node.costRangeText(fractionDigits: 2) {
             parts.append("\(QueryPlanLabels.cost) \(cost)")
         }
