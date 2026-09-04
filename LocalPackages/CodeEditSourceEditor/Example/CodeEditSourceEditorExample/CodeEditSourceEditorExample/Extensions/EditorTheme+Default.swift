@@ -27,7 +27,9 @@ extension EditorTheme {
             numbers: Attribute(color: NSColor(hex: "1C00CF")),
             strings: Attribute(color: NSColor(hex: "C41A16")),
             characters: Attribute(color: NSColor(hex: "1C00CF")),
-            comments: Attribute(color: NSColor(hex: "267507"))
+            comments: Attribute(color: NSColor(hex: "267507")),
+            operators: Attribute(color: NSColor(hex: "000000")),
+            functions: Attribute(color: NSColor(hex: "3900A0"))
         )
     }
     static var dark: EditorTheme {
@@ -47,7 +49,9 @@ extension EditorTheme {
             numbers: Attribute(color: NSColor(hex: "D9C97C")),
             strings: Attribute(color: NSColor(hex: "FF8170")),
             characters: Attribute(color: NSColor(hex: "D9C97C")),
-            comments: Attribute(color: NSColor(hex: "7F8C98"))
+            comments: Attribute(color: NSColor(hex: "7F8C98")),
+            operators: Attribute(color: NSColor(hex: "FFFFFF")),
+            functions: Attribute(color: NSColor(hex: "D0A8FF"))
         )
     }
 }
