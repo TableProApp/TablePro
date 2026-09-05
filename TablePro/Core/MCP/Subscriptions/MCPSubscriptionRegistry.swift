@@ -235,7 +235,7 @@ public enum MCPSubscriptionVisibility {
         for connection in ConnectionStorage.shared.loadConnections() {
             guard connection.externalAccess != .blocked else { continue }
             guard (connection.aiPolicy ?? defaultPolicy) != .never else { continue }
-            guard sessions[connection.id]?.status.isConnected == true else { continue }
+            guard sessions[connection.id]?.reportedStatus.isConnected == true else { continue }
             visible.insert(connection.id)
         }
         return visible

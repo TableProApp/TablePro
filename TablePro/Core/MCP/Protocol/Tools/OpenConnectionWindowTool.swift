@@ -70,7 +70,7 @@ public struct OpenConnectionWindowTool: MCPToolImplementation {
         }
 
         let isConnected = await MainActor.run {
-            DatabaseManager.shared.activeSessions[connectionId]?.status.isConnected ?? false
+            DatabaseManager.shared.activeSessions[connectionId]?.reportedStatus.isConnected ?? false
         }
 
         var fields: [String: JsonValue] = [
