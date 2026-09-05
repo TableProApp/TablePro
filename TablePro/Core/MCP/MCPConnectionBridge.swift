@@ -48,7 +48,7 @@ public actor MCPConnectionBridge {
                     "host": .string(conn.host),
                     "port": .int(conn.port),
                     "database": .string(session?.resolvedBrowseDatabase ?? conn.database),
-                    "is_connected": .bool(session?.status.isConnected ?? false),
+                    "is_connected": .bool(session?.reportedStatus.isConnected ?? false),
                     "ai_policy": .string(policy.rawValue),
                     "external_access": .string(conn.externalAccess.rawValue),
                     "safe_mode": .string(conn.safeModeLevel.rawValue)
