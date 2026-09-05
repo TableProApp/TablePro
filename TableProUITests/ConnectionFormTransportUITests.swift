@@ -13,7 +13,7 @@ final class ConnectionFormTransportUITests: UITestCase {
         XCTAssertTrue(app.windows.firstMatch.waitToExist(timeout: 10))
 
         let form = try openConnectionForm(for: "PostgreSQL", in: app)
-        selectTab("Network", in: form)
+        selectTab("network", in: form)
 
         let picker = form.popUpButtons[transportPicker]
         XCTAssertTrue(picker.waitToExist(timeout: 10), "The Network tab should offer a Connect via picker")
@@ -71,24 +71,22 @@ final class ConnectionFormTransportUITests: UITestCase {
 
     // MARK: - Helpers
 
-    /// The tab bar is a `.segmented` `Picker`, so AppKit builds an `NSSegmentedControl` and each
-    /// segment publishes as a radio button. Some runners report the segments as plain buttons
-    /// instead, so both are tried. Neither matching is a product failure and fails the test: a tab
-    /// bar the accessibility tree cannot see is a tab bar VoiceOver cannot drive.
-    private func selectTab(_ title: String, in form: XCUIElement) {
-        let radio = form.radioButtons[title]
-        if radio.waitToExist(timeout: 5) {
-            XCTAssertTrue(waitUntilHittable(radio, timeout: 5))
-            radio.click()
-            return
-        }
-        let button = form.buttons[title]
+    /// The sections are a `NavigationSplitView` sidebar, so each row publishes as an outline row
+    /// rather than the radio button an `NSSegmentedControl` gave. Reached by the row's own
+    /// identifier, because a sidebar row's label is nested and does not answer a subscript by title.
+    ///
+    /// Not finding the row fails the test rather than skipping it: a section list the accessibility
+    /// tree cannot see is a section list VoiceOver cannot drive.
+    private func selectTab(_ tab: String, in form: XCUIElement) {
+        let row = form.descendants(matching: .any)
+            .matching(identifier: "connection-form-section-\(tab)")
+            .firstMatch
         XCTAssertTrue(
-            button.waitToExist(timeout: 5),
-            "No tab control named \(title) in the accessibility tree"
+            row.waitToExist(timeout: 10),
+            "No sidebar row identified connection-form-section-\(tab)"
         )
-        XCTAssertTrue(waitUntilHittable(button, timeout: 5))
-        button.click()
+        XCTAssertTrue(waitUntilHittable(row, timeout: 10))
+        row.click()
     }
 
     private func openConnectionForm(for type: String, in app: XCUIApplication) throws -> XCUIElement {

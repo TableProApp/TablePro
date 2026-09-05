@@ -52,25 +52,37 @@ private struct ConnectionFormContent: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            tabPicker
+            NavigationSplitView {
+                ConnectionFormSidebar(coordinator: coordinator)
+            } detail: {
+                selectedPane
+                    /// On the detail pane rather than beside the diagnostic sheet below: two
+                    /// `.sheet` modifiers on one view resolve to a single presenter on macOS, so
+                    /// whichever lost would keep its binding true with nothing on screen, and
+                    /// Change… would go dead.
+                    .sheet(isPresented: $coordinator.isChoosingType) {
+                        DatabaseTypeChooserSheet(
+                            initialType: coordinator.network.type,
+                            onSelected: { coordinator.changeType(to: $0) },
+                            onCancel: { coordinator.isChoosingType = false }
+                        )
+                    }
+            }
+            /// The four sections are the window's only navigation and the set never changes, so
+            /// there is nothing for a collapse to reveal, and a collapsed sidebar would persist
+            /// through the window's frame autosave and reopen the editor with no way to move.
+            .toolbar(removing: .sidebarToggle)
+
             Divider()
-            selectedPane
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                /// On the pane rather than beside the diagnostic sheet below: two `.sheet`
-                /// modifiers on one view resolve to a single presenter on macOS, so whichever lost
-                /// would keep its binding true with nothing on screen, and Change… would go dead.
-                .sheet(isPresented: $coordinator.isChoosingType) {
-                    DatabaseTypeChooserSheet(
-                        initialType: coordinator.network.type,
-                        onSelected: { coordinator.changeType(to: $0) },
-                        onCancel: { coordinator.isChoosingType = false }
-                    )
-                }
-            Divider()
+
+            /// The bar is wrapped around the split view rather than applied as a
+            /// `.safeAreaInset(edge: .bottom)`. Measured on a 620pt window: wrapping leaves the
+            /// split 571pt and puts the bar under both columns, while the inset leaves the split
+            /// its full 620 and pushes the bar inside them.
             ConnectionFormActionBar(coordinator: coordinator)
         }
-        .frame(minWidth: 640, idealWidth: 720)
-        .frame(minHeight: 560, idealHeight: 640)
+        .frame(minWidth: 720, idealWidth: 820)
+        .frame(minHeight: 560, idealHeight: 620)
         .navigationTitle(windowTitle)
         .sheet(item: $coordinator.pluginDiagnostic) { item in
             PluginDiagnosticSheet(item: item) {
@@ -94,24 +106,6 @@ private struct ConnectionFormContent: View {
         } message: { error in
             Text(error)
         }
-    }
-
-    /// `NSSegmentedControl` rather than a `TabView`. SwiftUI's macOS tab bar was redesigned in
-    /// macOS 26 and renders `.tabItem { Text }` as a collapsed stub here, and a segmented control
-    /// is what AppKit puts above the content of a window that edits one object anyway.
-    private var tabPicker: some View {
-        Picker(String(localized: "Section"), selection: $coordinator.selectedTab) {
-            ForEach(coordinator.visibleTabs) { tab in
-                Text(tab.title).tag(tab)
-            }
-        }
-        /// No `accessibilityIdentifier` here: on a container it replaces the identifier of every
-        /// segment inside it, and the segments are reached by their own titles.
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .fixedSize()
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder

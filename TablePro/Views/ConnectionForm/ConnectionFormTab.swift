@@ -27,6 +27,19 @@ enum ConnectionFormTab: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
+    /// One glyph per section, all four distinct at a glance.
+    ///
+    /// The eleven-pane sidebar this replaced ran two clouds and two locks against each other, so
+    /// the icons said less than the labels did.
+    var systemImage: String {
+        switch self {
+        case .general: return "info.circle"
+        case .network: return "network"
+        case .options: return "slider.horizontal.3"
+        case .appearance: return "paintpalette"
+        }
+    }
+
     /// What is stopping this tab from being savable, in the words the user needs to fix it.
     ///
     /// These strings were computed and thrown away before: the form showed a warning triangle
