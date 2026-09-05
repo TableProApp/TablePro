@@ -48,7 +48,13 @@ internal final class ConnectionFormWindowController: NSWindowController, NSWindo
 
         let window = NSWindow.titled(Self.initialTitle(for: request), contentViewController: hosting)
         window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.connectionForm)
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        /// `.fullSizeContentView` with a transparent titlebar is what lets the sidebar run the
+        /// window's full height and carry the traffic lights, the way System Settings and this
+        /// app's own main window do. Without it the titlebar is an opaque band across the top and
+        /// the sidebar starts underneath it, which is the part that reads as a custom control.
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        window.titlebarAppearsTransparent = true
+        window.toolbarStyle = .unified
         window.isRestorable = false
         window.setContentSize(NSSize(width: 820, height: 620))
         window.setFrameAutosaveName(WindowIdentifier.connectionForm)
