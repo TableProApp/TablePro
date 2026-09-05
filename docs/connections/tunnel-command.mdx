@@ -6,15 +6,15 @@ description: Reach a database through kubectl port-forward, an AWS SSM session, 
 A `kubectl port-forward` running in a terminal is a window you cannot close for as long as you need the database, and a tab you have to notice when it dies. Move it into the connection and it starts on connect, stops on disconnect, and comes back on its own.
 
 <Frame caption="The kubectl preset, with the argument list it will run underneath it">
-  <img className="block dark:hidden" src="/images/tunnel-command-pane.png" alt="Tunnel Command pane showing the kubectl method with namespace, resource and a Will Run section" />
-  <img className="hidden dark:block" src="/images/tunnel-command-pane-dark.png" alt="Tunnel Command pane showing the kubectl method with namespace, resource and a Will Run section" />
+  <img className="block dark:hidden" src="/images/tunnel-command-pane.png" alt="Tunnel Command selected, with the kubectl method, namespace, resource and a Will Run section" />
+  <img className="hidden dark:block" src="/images/tunnel-command-pane-dark.png" alt="Tunnel Command selected, with the kubectl method, namespace, resource and a Will Run section" />
 </Frame>
 
 ## Setting up
 
 <Steps>
-  <Step title="Enable the pane">
-    Select **Tunnel Command** and turn **Enable Tunnel Command** on. One method per connection: anything else already enabled has a button here to switch it off.
+  <Step title="Choose the transport">
+    On the **Network** tab, set **Connect via** to **Tunnel Command**. A connection uses one transport, so choosing this one switches off whichever was selected before.
   </Step>
   <Step title="Pick a method">
     **kubectl port-forward** and **AWS SSM Session** ask for the two or three things that vary. **Custom Command** takes a command line.
@@ -27,7 +27,7 @@ A `kubectl port-forward` running in a terminal is a window you cannot close for 
   </Step>
 </Steps>
 
-The **Host** and **Port** on the General pane stay the database's own. They are what the forward points at, so a kubectl forward reads the port from there and an SSM session forwards to that host and port from the target instance.
+The **Host** and **Port** on the General tab stay the database's own. They are what the forward points at, so a kubectl forward reads the port from there and an SSM session forwards to that host and port from the target instance.
 
 ## Methods
 
@@ -52,8 +52,8 @@ Three placeholders are substituted before the command runs:
 | Placeholder | Value |
 |---|---|
 | `{port}` | The loopback port allocated for this connection. Required |
-| `{host}` | The **Host** field on the General pane |
-| `{remotePort}` | The **Port** field on the General pane |
+| `{host}` | The **Host** field on the General tab |
+| `{remotePort}` | The **Port** field on the General tab |
 
 ```bash
 ssh -N -L {port}:{host}:{remotePort} bastion.example.com

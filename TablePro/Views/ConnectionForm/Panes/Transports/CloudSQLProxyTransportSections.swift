@@ -1,37 +1,22 @@
 //
-//  CloudSQLProxyPaneView.swift
+//  CloudSQLProxyTransportSections.swift
 //  TablePro
 //
 
 import AppKit
 import SwiftUI
 
-struct CloudSQLProxyPaneView: View {
+struct CloudSQLProxyTransportSections: View {
     @Bindable var coordinator: ConnectionFormCoordinator
 
     private var viewModel: CloudSQLProxyPaneViewModel { coordinator.cloudSQLProxy }
 
     var body: some View {
-        Form {
-            Section {
-                Toggle(String(localized: "Enable Cloud SQL Auth Proxy"), isOn: $coordinator.cloudSQLProxy.state.enabled)
-            } footer: {
-                Text("Starts and stops the Cloud SQL Auth Proxy with this connection and routes it through a local port.")
-            }
-
-            if coordinator.cloudSQLProxy.state.enabled {
-                if !coordinator.otherEnabledTunnels(excluding: .cloudSQLProxy).isEmpty {
-                    TunnelExclusivityBanner(coordinator: coordinator, currentKind: .cloudSQLProxy)
-                }
-                instanceSection
-                authenticationSection
-                networkSection
-                listenerSection
-                binarySection
-            }
-        }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
+        instanceSection
+        authenticationSection
+        networkSection
+        listenerSection
+        binarySection
     }
 
     // MARK: - Sections

@@ -4,11 +4,14 @@
 //
 
 import AppKit
-import Network
 import SwiftUI
 import TableProPluginKit
 import UniformTypeIdentifiers
 
+/// What a connection is: its name, its type, where it lives, and who it signs in as.
+///
+/// Everything about how the bytes get there belongs to `NetworkPaneView`, so a connection that
+/// needs no tunnel and no TLS never sees a control about either.
 struct GeneralPaneView: View {
     @Bindable var coordinator: ConnectionFormCoordinator
     @FocusState private var nameFocused: Bool
@@ -35,34 +38,46 @@ struct GeneralPaneView: View {
                 }
             }
 
-            Section {
-                TextField(
-                    String(localized: "Name"),
-                    text: $coordinator.network.name,
-                    prompt: Text(String(localized: "Connection name"))
-                )
-                .focused($nameFocused)
-                .accessibilityIdentifier("connection-form-name")
-            }
-
+            identitySection
             connectionSection
             authenticationSection
-            testConnectionSection
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
         .defaultFocus($nameFocused, true)
     }
 
-    @ViewBuilder
-    private var testConnectionSection: some View {
+    // MARK: - Identity
+
+    private var identitySection: some View {
         Section {
-            LabeledContent {
-                TestConnectionStatusButton(coordinator: coordinator)
-            } label: {
-                Text(String(localized: "Status"))
+            TextField(
+                String(localized: "Name"),
+                text: $coordinator.network.name,
+                prompt: Text(String(localized: "Connection name"))
+            )
+            .focused($nameFocused)
+            .accessibilityIdentifier("connection-form-name")
+
+            LabeledContent(String(localized: "Type")) {
+                HStack(spacing: 8) {
+                    type.iconImage
+                        .renderingMode(.template)
+                        .foregroundStyle(type.themeColor)
+                        .frame(width: 16, height: 16)
+                    Text(type.rawValue)
+                    Spacer(minLength: 8)
+                    Button(String(localized: "Change…")) {
+                        coordinator.isChoosingType = true
+                    }
+                    .controlSize(.small)
+                    .accessibilityIdentifier("connection-form-change-type")
+                }
             }
         }
     }
+
+    // MARK: - Connection
 
     @ViewBuilder
     private var connectionSection: some View {
@@ -91,11 +106,9 @@ struct GeneralPaneView: View {
                         prompt: Text(containerEntityPlaceholder)
                     )
                 }
-            } else {
-                EmptyView()
             }
         case .network:
-            Section(String(localized: "Connection")) {
+            Section {
                 hostFieldsView
                 if showsBuiltInDatabaseField {
                     TextField(
@@ -104,19 +117,16 @@ struct GeneralPaneView: View {
                         prompt: Text(containerEntityPlaceholder)
                     )
                 }
-            }
-
-            if coordinator.ssh.state.enabled && coordinator.network.hasHostListField {
-                let hostsValue = firstHostListValue
-                if hostsValue.contains(",") {
-                    Section {
-                        Label(
-                            String(localized: "Over an SSH tunnel, TablePro connects directly to the first host. Replica set failover is not available."),
-                            systemImage: "exclamationmark.triangle"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    }
+            } header: {
+                Text(String(localized: "Connection"))
+            } footer: {
+                if usesForwardSocket {
+                    Text(String(localized: """
+                    Host and Port are unused. The SSH tunnel forwards to the socket path set \
+                    on the Network tab.
+                    """))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
             }
         }
@@ -161,9 +171,6 @@ struct GeneralPaneView: View {
             .accessibilityIdentifier("connection-form-port")
             .disabled(usesForwardSocket)
         }
-        if coordinator.ssh.state.enabled {
-            sshForwardSocketField
-        }
         ForEach(connectionFields, id: \.id) { field in
             if !isHostListField(field) && coordinator.network.isFieldVisible(field) {
                 ConnectionFieldRow(
@@ -178,63 +185,14 @@ struct GeneralPaneView: View {
         coordinator.ssh.state.enabled && coordinator.network.forwardsToUnixSocket
     }
 
-    @ViewBuilder
-    private var sshForwardSocketField: some View {
-        TextField(
-            String(localized: "Socket Path"),
-            text: $coordinator.network.sshForwardUnixSocketPath,
-            prompt: Text(verbatim: coordinator.network.socketPathPrompt)
-        )
-        switch coordinator.network.socketPathIssue {
-        case .notAbsolute:
-            socketPathCaption(
-                String(localized: "Enter an absolute path, as it appears on the SSH server."),
-                systemImage: "exclamationmark.triangle",
-                tint: .orange
-            )
-        case .looksLikeDirectory:
-            socketPathCaption(
-                String(localized: "Point at the socket file itself, not the directory holding it."),
-                systemImage: "exclamationmark.triangle",
-                tint: .orange
-            )
-        case .none:
-            if usesForwardSocket {
-                socketPathCaption(
-                    String(localized: """
-                    The SSH server connects to this socket instead of Host and Port. \
-                    A database on a socket cannot negotiate TLS, so TablePro turns it off; \
-                    the SSH tunnel still encrypts the whole path.
-                    """),
-                    systemImage: "info.circle",
-                    tint: .secondary
-                )
-            } else {
-                socketPathCaption(
-                    String(localized: "Optional. Set this to reach a database that only listens on a Unix socket."),
-                    systemImage: "info.circle",
-                    tint: .secondary
-                )
-            }
-        }
-    }
-
-    private func socketPathCaption(
-        _ message: String,
-        systemImage: String,
-        tint: Color
-    ) -> some View {
-        Label(message, systemImage: systemImage)
-            .font(.caption)
-            .foregroundStyle(tint)
-    }
+    // MARK: - Authentication
 
     @ViewBuilder
     private var authenticationSection: some View {
         if connectionMode != .fileBased {
             let authFields = coordinator.auth.authFields.splitCredentialControllers()
             Section(String(localized: "Authentication")) {
-                ForEach(authFields.controllers, id: \.id) { field in
+                ForEach(authFields.usernameControllers, id: \.id) { field in
                     authFieldRow(field)
                 }
                 if connectionMode == .network && !coordinator.auth.hidesUsername {
@@ -242,6 +200,10 @@ struct GeneralPaneView: View {
                         String(localized: "Username"),
                         text: $coordinator.auth.username
                     )
+                    .accessibilityIdentifier("connection-form-username")
+                }
+                ForEach(authFields.passwordControllers, id: \.id) { field in
+                    authFieldRow(field)
                 }
                 if !coordinator.auth.hidesPassword {
                     PasswordPromptToggle(
@@ -338,20 +300,14 @@ struct GeneralPaneView: View {
     }
 
     private var hostIsIPAddress: Bool {
-        let host = coordinator.network.resolvedHost.trimmingCharacters(in: .whitespaces)
-        return IPv4Address(host) != nil || IPv6Address(host) != nil
+        coordinator.network.resolvedHostIsIPAddress
     }
+
+    // MARK: - Helpers
 
     private func isHostListField(_ field: ConnectionField) -> Bool {
         if case .hostList = field.fieldType { return true }
         return false
-    }
-
-    private var firstHostListValue: String {
-        let fieldId = coordinator.network.connectionFields
-            .first { isHostListField($0) && coordinator.network.isFieldVisible($0) }?.id
-        guard let fieldId else { return "" }
-        return coordinator.network.additionalFieldValues[fieldId] ?? ""
     }
 
     private func networkFieldBinding(for field: ConnectionField) -> Binding<String> {

@@ -1,36 +1,21 @@
 //
-//  CloudflareTunnelPaneView.swift
+//  CloudflareTransportSections.swift
 //  TablePro
 //
 
 import AppKit
 import SwiftUI
 
-struct CloudflareTunnelPaneView: View {
+struct CloudflareTransportSections: View {
     @Bindable var coordinator: ConnectionFormCoordinator
 
     private var viewModel: CloudflareTunnelPaneViewModel { coordinator.cloudflareTunnel }
 
     var body: some View {
-        Form {
-            Section {
-                Toggle(String(localized: "Enable Cloudflare Tunnel"), isOn: $coordinator.cloudflareTunnel.state.enabled)
-            } footer: {
-                Text("Starts and stops `cloudflared access tcp` with this connection and routes it through a local port.")
-            }
-
-            if coordinator.cloudflareTunnel.state.enabled {
-                if !coordinator.otherEnabledTunnels(excluding: .cloudflare).isEmpty {
-                    TunnelExclusivityBanner(coordinator: coordinator, currentKind: .cloudflare)
-                }
-                hostnameSection
-                authenticationSection
-                listenerSection
-                binarySection
-            }
-        }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
+        hostnameSection
+        authenticationSection
+        listenerSection
+        binarySection
     }
 
     // MARK: - Sections

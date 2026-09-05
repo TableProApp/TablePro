@@ -1,54 +1,35 @@
 //
-//  ConnectionSSHTunnelView.swift
+//  SSHServerSections.swift
 //  TablePro
-//
-//  Created by Ngo Quoc Dat on 31/3/26.
 //
 
 import SwiftUI
 
-struct ConnectionSSHTunnelView: View {
+/// Which SSH server to reach, and how to sign in to it.
+///
+/// Sections rather than a `Form`, because the Network tab is the form. It used to wrap itself in
+/// one and be embedded inside another by the Remote File pane, which is a grouped form nested in a
+/// grouped form and inset twice.
+struct SSHServerSections: View {
     @Binding var sshState: SSHTunnelFormState
 
-    let databaseType: DatabaseType
-    var coordinator: ConnectionFormCoordinator?
-
     var body: some View {
-        Form {
+        sshProfileSection
+
+        if sshState.selectedProfile == nil, sshState.profileId != nil {
             Section {
-                Toggle(String(localized: "Enable SSH Tunnel"), isOn: $sshState.enabled)
-                    .onChange(of: sshState.enabled) {
-                        if !sshState.enabled {
-                            sshState.disable()
-                        }
-                    }
-            }
-
-            if sshState.enabled {
-                if let coordinator, !coordinator.otherEnabledTunnels(excluding: .ssh).isEmpty {
-                    TunnelExclusivityBanner(coordinator: coordinator, currentKind: .ssh)
-                }
-
-                sshProfileSection
-
-                if sshState.selectedProfile == nil, sshState.profileId != nil {
-                    Section {
-                        HStack {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.yellow)
-                            Text("Selected SSH profile no longer exists.")
-                        }
-                        Button("Switch to Inline Configuration") {
-                            sshState.profileId = nil
-                        }
-                    }
-                } else if sshState.selectedProfile == nil {
-                    sshInlineFields
+                Label(
+                    String(localized: "Selected SSH profile no longer exists."),
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .foregroundStyle(.yellow)
+                Button(String(localized: "Switch to Inline Configuration")) {
+                    sshState.profileId = nil
                 }
             }
+        } else if sshState.selectedProfile == nil {
+            sshInlineFields
         }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
     }
 
     // MARK: - SSH Profile Section
@@ -173,6 +154,7 @@ struct ConnectionSSHTunnelView: View {
                 }
                 if sshState.selectedConfigHost.isEmpty || sshState.configEntries.isEmpty {
                     TextField(String(localized: "SSH Host"), text: $sshState.host, prompt: Text("ssh.example.com"))
+                        .accessibilityIdentifier("connection-form-ssh-host")
                 }
                 TextField(String(localized: "SSH Port"), text: $sshState.port, prompt: Text("22"))
                 TextField(String(localized: "SSH User"), text: $sshState.username, prompt: Text("username"))

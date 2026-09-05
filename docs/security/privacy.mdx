@@ -59,7 +59,7 @@ A chat turn carries:
 
 In Edit and Agent modes the model calls `execute_query` itself, and the rows it gets back become part of the conversation, so they go to the provider on the next turn. Those results are capped by the row limits in **Settings > Integrations**: 500 rows by default, 10,000 at most.
 
-Per connection, the **AI Policy** picker in the connection form's Advanced pane takes **Use Default**, **Always Allow**, **Ask Each Time**, or **Never**. The app-wide default is **Ask Each Time**, which asks once per connection per chat session before the first send. **Never** blocks the chat panel and external AI tool calls against that connection.
+Per connection, the **AI Policy** picker in the connection form's Options tab takes **Use Default**, **Always Allow**, **Ask Each Time**, or **Never**. The app-wide default is **Ask Each Time**, which asks once per connection per chat session before the first send. **Never** blocks the chat panel and external AI tool calls against that connection.
 
 <Warning>
 **Ask Each Time** gates the chat panel only. Inline suggestions check the policy for **Never** and nothing else, so with **Enable inline suggestions while typing** on, the text before your cursor, the whole query, and the schema go to the provider after every typing pause with no prompt. That toggle is off by default.

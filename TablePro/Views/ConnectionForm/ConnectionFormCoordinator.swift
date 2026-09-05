@@ -40,7 +40,7 @@ final class ConnectionFormCoordinator {
     var advanced: AdvancedPaneViewModel
     var aiRules: AIRulesPaneViewModel
 
-    var selectedPane: ConnectionFormPane = .general
+    var selectedTab: ConnectionFormTab = .general
     var hasLoadedData: Bool = false
 
     var isTesting: Bool = false
@@ -57,6 +57,8 @@ final class ConnectionFormCoordinator {
     var clipboardCandidate: ParsedConnection?
     var clipboardBannerDismissed: Bool = false
 
+    var isChoosingType: Bool = false
+
 
     private var temporaryTestIds: Set<UUID> = []
 
@@ -66,47 +68,35 @@ final class ConnectionFormCoordinator {
 
     var isNew: Bool { connectionId == nil }
 
-    var visiblePanes: [ConnectionFormPane] {
-        var panes: [ConnectionFormPane] = [.general]
-        if services.pluginManager.supportsSSH(for: network.type) {
-            panes.append(.ssh)
-        }
-        if services.pluginManager.supportsRemoteDatabaseFile(for: network.type) {
-            panes.append(.remoteFile)
-        }
-        if services.pluginManager.supportsCloudflareTunnel(for: network.type) {
-            panes.append(.cloudflareTunnel)
-        }
-        if network.type.supportsCloudSQLProxy {
-            panes.append(.cloudSQLProxy)
-        }
-        if services.pluginManager.supportsSOCKSProxy(for: network.type) {
-            panes.append(.socksProxy)
-        }
-        if services.pluginManager.supportsTunnelCommand(for: network.type) {
-            panes.append(.tunnelCommand)
-        }
-        if services.pluginManager.supportsSSL(for: network.type) {
-            panes.append(.ssl)
-        }
-        panes.append(.customization)
-        panes.append(.advanced)
-        panes.append(.aiRules)
-        return panes
+    /// Filtered from `allCases` rather than assembled by hand, so the compiler makes every case
+    /// answer the visibility question. A tab left out of a hand-written list would vanish from the
+    /// picker *and* have its issues dropped from `validationIssues`, which is a disabled Save with
+    /// nothing to fix.
+    var visibleTabs: [ConnectionFormTab] {
+        ConnectionFormTab.allCases.filter { isVisible($0) }
     }
 
-    var isFormValid: Bool {
-        network.validationIssues.isEmpty
-            && auth.validationIssues.isEmpty
-            && ssh.validationIssues.isEmpty
-            && remoteFile.validationIssues.isEmpty
-            && cloudflareTunnel.validationIssues.isEmpty
-            && cloudSQLProxy.validationIssues.isEmpty
-            && socksProxy.validationIssues.isEmpty
-            && tunnelCommand.validationIssues.isEmpty
-            && ssl.validationIssues.isEmpty
-            && customization.validationIssues.isEmpty
-            && advanced.validationIssues.isEmpty
+    private func isVisible(_ tab: ConnectionFormTab) -> Bool {
+        switch tab {
+        case .general, .options, .appearance:
+            return true
+        case .network:
+            return availableTransports.count > 1 || supportsSSL
+        }
+    }
+
+    /// Every issue the form knows about, tab by tab, in tab order.
+    ///
+    /// `isFormValid` reads this rather than repeating the list, so a validation rule cannot
+    /// disable Save while no tab claims it and leave the user with nothing to fix.
+    var validationIssues: [String] {
+        visibleTabs.flatMap { $0.validationIssues(for: self) }
+    }
+
+    var isFormValid: Bool { validationIssues.isEmpty }
+
+    var firstTabWithIssue: ConnectionFormTab? {
+        visibleTabs.first { !$0.validationIssues(for: self).isEmpty }
     }
 
     private let pendingInitialType: DatabaseType?
@@ -168,6 +158,11 @@ final class ConnectionFormCoordinator {
         if let parsed = pendingInitialParsedURL {
             applyParsed(parsed)
         }
+
+        /// After the URL too, not only after a stored connection: a URL naming an SSH server for a
+        /// driver that cannot tunnel would otherwise leave a transport enabled that no tab offers
+        /// and no validation counts.
+        normalizeTransport()
     }
 
     // MARK: - Lifecycle
@@ -196,6 +191,7 @@ final class ConnectionFormCoordinator {
             customization.load(from: existing)
             advanced.load(from: existing)
             aiRules.load(from: existing)
+            normalizeTransport()
         }
         hasLoadedData = true
     }
@@ -214,6 +210,13 @@ final class ConnectionFormCoordinator {
 
     // MARK: - Type change
 
+    /// Retypes the connection in place. `NetworkPaneViewModel.setType` had no caller, so picking
+    /// the wrong database meant cancelling the window and starting the form again.
+    func changeType(to newType: DatabaseType) {
+        isChoosingType = false
+        network.setType(newType)
+    }
+
     func didChangeType(_ newType: DatabaseType) {
         testSucceeded = false
         if hasLoadedData {
@@ -221,8 +224,13 @@ final class ConnectionFormCoordinator {
             auth.resetForType(newType)
             advanced.resetForType(newType)
         }
-        if !visiblePanes.contains(selectedPane) {
-            selectedPane = .general
+        /// Not `normalizeTransport()`: which transports exist and what they mean both change with
+        /// the type, and keeping the selection would turn a MySQL port forward into SQLite's
+        /// read-only file copy without saying so. The fields each transport holds are kept, so
+        /// re-picking costs nothing.
+        transport = nil
+        if !visibleTabs.contains(selectedTab) {
+            selectedTab = .general
         }
         isInstallingPlugin = false
         pluginInstallError = nil
@@ -241,7 +249,9 @@ final class ConnectionFormCoordinator {
         saveConnection(connect: false)
     }
 
-    func saveAndConnect() {
+    /// The window's default action. A new connection is opened once it is stored; an existing one
+    /// is only saved, because the window it is already open in is the one the user came from.
+    func commit() {
         saveConnection(connect: isNew)
     }
 
@@ -302,6 +312,33 @@ final class ConnectionFormCoordinator {
         )
     }
 
+    /// The secure fields of the type being saved **and** of the type the connection started as.
+    ///
+    /// Retyping used to be impossible, so a save only ever had one type's secure fields to write.
+    /// Now that Change… exists, a SQL Server connection retyped to MySQL would leave its Kerberos
+    /// password in the Keychain under the same connection id, invisible to the form that owns it.
+    /// This mirrors what `ownedAdditionalFieldIDs()` already does for the plain fields.
+    internal func secureFieldsOwnedByForm() -> [ConnectionField] {
+        Self.secureFieldsOwnedByForm(
+            currentType: network.type,
+            originalType: originalConnection?.type,
+            pluginManager: services.pluginManager
+        )
+    }
+
+    internal static func secureFieldsOwnedByForm(
+        currentType: DatabaseType,
+        originalType: DatabaseType?,
+        pluginManager: PluginManager
+    ) -> [ConnectionField] {
+        var fields = pluginManager.additionalConnectionFields(for: currentType).filter(\.isSecure)
+        guard let originalType, originalType != currentType else { return fields }
+        let known = Set(fields.map(\.id))
+        fields += pluginManager.additionalConnectionFields(for: originalType)
+            .filter { $0.isSecure && !known.contains($0.id) }
+        return fields
+    }
+
     private func ownedAdditionalFieldIDs() -> Set<String> {
         var ids = ConnectionFormEdits.appManagedAdditionalFieldIDs
         for field in services.pluginManager.additionalConnectionFields(for: network.type) {
@@ -329,9 +366,7 @@ final class ConnectionFormCoordinator {
         var edits = buildEdits()
         edits.additionalFields["promptForPassword"] = auth.effectivePromptForPassword ? "true" : nil
 
-        let secureFields = services.pluginManager.additionalConnectionFields(for: network.type)
-            .filter(\.isSecure)
-        for field in secureFields {
+        for field in secureFieldsOwnedByForm() {
             if let value = edits.additionalFields[field.id], !value.isEmpty {
                 storage.savePluginSecureField(value, fieldId: field.id, for: finalId)
             } else {
@@ -749,7 +784,9 @@ final class ConnectionFormCoordinator {
         ssl.mode = parsed.sslMode ?? parsed.type.defaultSSLMode
 
         if let sshHostValue = parsed.sshHost {
-            ssh.state.enabled = true
+            /// Through the transport setter rather than the flag, so a URL naming an SSH server
+            /// can never leave a second transport enabled beside it.
+            transport = .ssh
             ssh.state.host = sshHostValue
             ssh.state.port = parsed.sshPort.map(String.init) ?? ""
             ssh.state.username = parsed.sshUsername ?? ""
