@@ -34,6 +34,7 @@ final class ConnectionFormCoordinator {
     var cloudflareTunnel: CloudflareTunnelPaneViewModel
     var cloudSQLProxy: CloudSQLProxyPaneViewModel
     var socksProxy: SOCKSProxyPaneViewModel
+    var tunnelCommand: TunnelCommandPaneViewModel
     var ssl: SSLPaneViewModel
     var customization: CustomizationPaneViewModel
     var advanced: AdvancedPaneViewModel
@@ -82,6 +83,9 @@ final class ConnectionFormCoordinator {
         if services.pluginManager.supportsSOCKSProxy(for: network.type) {
             panes.append(.socksProxy)
         }
+        if services.pluginManager.supportsTunnelCommand(for: network.type) {
+            panes.append(.tunnelCommand)
+        }
         if services.pluginManager.supportsSSL(for: network.type) {
             panes.append(.ssl)
         }
@@ -99,6 +103,7 @@ final class ConnectionFormCoordinator {
             && cloudflareTunnel.validationIssues.isEmpty
             && cloudSQLProxy.validationIssues.isEmpty
             && socksProxy.validationIssues.isEmpty
+            && tunnelCommand.validationIssues.isEmpty
             && ssl.validationIssues.isEmpty
             && customization.validationIssues.isEmpty
             && advanced.validationIssues.isEmpty
@@ -124,6 +129,7 @@ final class ConnectionFormCoordinator {
         self.cloudflareTunnel = CloudflareTunnelPaneViewModel()
         self.cloudSQLProxy = CloudSQLProxyPaneViewModel()
         self.socksProxy = SOCKSProxyPaneViewModel()
+        self.tunnelCommand = TunnelCommandPaneViewModel()
         self.ssl = SSLPaneViewModel()
         self.customization = CustomizationPaneViewModel()
         self.advanced = AdvancedPaneViewModel()
@@ -137,6 +143,7 @@ final class ConnectionFormCoordinator {
         cloudflareTunnel.coordinator = ref
         cloudSQLProxy.coordinator = ref
         socksProxy.coordinator = ref
+        tunnelCommand.coordinator = ref
         ssl.coordinator = ref
         customization.coordinator = ref
         advanced.coordinator = ref
@@ -184,6 +191,7 @@ final class ConnectionFormCoordinator {
             cloudflareTunnel.load(from: existing, storage: storage)
             cloudSQLProxy.load(from: existing, storage: storage)
             socksProxy.load(from: existing, storage: storage)
+            tunnelCommand.load(from: existing)
             ssl.load(from: existing)
             customization.load(from: existing)
             advanced.load(from: existing)
@@ -280,6 +288,7 @@ final class ConnectionFormCoordinator {
             cloudflareTunnelMode: cloudflareTunnel.state.buildTunnelMode(),
             cloudSQLProxyMode: cloudSQLProxy.state.buildTunnelMode(),
             socksProxyMode: socksProxy.state.buildTunnelMode(),
+            tunnelCommandMode: tunnelCommand.state.buildTunnelMode(),
             safeModeLevel: customization.safeModeLevel,
             aiPolicy: advanced.aiPolicy,
             aiRules: aiRules.trimmedRules,
@@ -467,7 +476,8 @@ final class ConnectionFormCoordinator {
             ssh: ssh.state,
             cloudflare: cloudflareTunnel.state,
             cloudSQLProxy: cloudSQLProxy.state,
-            socksProxy: socksProxy.state
+            socksProxy: socksProxy.state,
+            tunnelCommand: tunnelCommand.state
         )
         let sslClientKeyPassphrase = ssl.clientKeyPassphrase
         let sslClientKeyPath = ssl.clientKeyPath
@@ -579,6 +589,7 @@ final class ConnectionFormCoordinator {
         let cloudflare: CloudflareTunnelFormState
         let cloudSQLProxy: CloudSQLProxyFormState
         let socksProxy: SOCKSProxyFormState
+        let tunnelCommand: TunnelCommandFormState
     }
 
     private func persistTestSecrets(

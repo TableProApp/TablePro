@@ -12,6 +12,7 @@ enum ConnectionFormPane: String, CaseIterable, Identifiable, Hashable {
     case cloudflareTunnel
     case cloudSQLProxy
     case socksProxy
+    case tunnelCommand
     case ssl
     case customization
     case advanced
@@ -27,6 +28,7 @@ enum ConnectionFormPane: String, CaseIterable, Identifiable, Hashable {
         case .cloudflareTunnel: return String(localized: "Cloudflare Tunnel")
         case .cloudSQLProxy: return String(localized: "Cloud SQL Auth Proxy")
         case .socksProxy: return String(localized: "SOCKS Proxy")
+        case .tunnelCommand: return String(localized: "Tunnel Command")
         case .ssl: return String(localized: "SSL/TLS")
         case .customization: return String(localized: "Customization")
         case .advanced: return String(localized: "Advanced")
@@ -42,6 +44,7 @@ enum ConnectionFormPane: String, CaseIterable, Identifiable, Hashable {
         case .cloudflareTunnel: return "cloud"
         case .cloudSQLProxy: return "cloud.fill"
         case .socksProxy: return "arrow.triangle.swap"
+        case .tunnelCommand: return "terminal"
         case .ssl: return "lock.fill"
         case .customization: return "paintbrush"
         case .advanced: return "gearshape.2"
@@ -65,6 +68,8 @@ enum ConnectionFormPane: String, CaseIterable, Identifiable, Hashable {
             issues = coordinator.cloudSQLProxy.validationIssues
         case .socksProxy:
             issues = coordinator.socksProxy.validationIssues
+        case .tunnelCommand:
+            issues = coordinator.tunnelCommand.validationIssues
         case .ssl:
             issues = coordinator.ssl.validationIssues
         case .customization:

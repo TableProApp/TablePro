@@ -32,6 +32,7 @@ struct PluginManagerVariantAccessorTests {
         #expect(manager.supportsSSL(for: .pglite) == false)
         #expect(manager.supportsCloudflareTunnel(for: .pglite) == false)
         #expect(manager.supportsSOCKSProxy(for: .pglite) == false)
+        #expect(manager.supportsTunnelCommand(for: .pglite) == false)
     }
 
     @Test("PostgreSQL keeps the transports PGlite declines, so the two are genuinely distinguished")

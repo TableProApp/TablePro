@@ -140,7 +140,8 @@ enum ConnectionExportService {
                 additionalFields: additionalFields,
                 redisDatabase: connection.redisDatabase,
                 startupCommands: connection.startupCommands,
-                localOnly: connection.localOnly ? true : nil
+                localOnly: connection.localOnly ? true : nil,
+                tunnelCommand: connection.resolvedTunnelCommandConfig.map(ExportableTunnelCommand.init)
             )
 
             exportableConnections.append(exportable)
@@ -366,7 +367,8 @@ enum ConnectionExportService {
     @discardableResult
     static func performImport(
         _ preview: ConnectionImportPreview,
-        resolutions: [UUID: ImportResolution]
+        resolutions: [UUID: ImportResolution],
+        keepTunnelCommands: Bool = false
     ) -> ImportResult {
         if let envelopeGroups = preview.envelope.groups {
             for exportGroup in envelopeGroups {
@@ -413,18 +415,23 @@ enum ConnectionExportService {
             resolutions: resolutions,
             existingNames: ConnectionStorage.shared.loadConnections().map(\.name),
             tagIdsByName: tagIdsByName(),
-            groupIdsByName: groupIdsByName()
+            groupIdsByName: groupIdsByName(),
+            keepTunnelCommands: keepTunnelCommands
         )
 
         return performPreparedImport(prepared)
     }
 
+    /// `keepTunnelCommands` defaults to false so a route that has not asked the user cannot carry
+    /// one in by omission. Only the file import sheet, which shows the command and takes an answer,
+    /// passes true.
     static func prepareImport(
         _ preview: ConnectionImportPreview,
         resolutions: [UUID: ImportResolution],
         existingNames: [String] = [],
         tagIdsByName: [String: UUID],
-        groupIdsByName: [String: UUID]
+        groupIdsByName: [String: UUID],
+        keepTunnelCommands: Bool = false
     ) -> PreparedConnectionImport {
         var operations: [PreparedImportOperation] = []
         var connectionIdMap: [Int: UUID] = [:]
@@ -438,6 +445,7 @@ enum ConnectionExportService {
         for item in preview.items {
             let resolution = resolutions[item.id] ?? .skip
             guard let envelopeIndex = itemIndexMap[item.id] else { continue }
+            let exportable = keepTunnelCommands ? item.connection : item.connection.withoutTunnelCommand()
 
             switch resolution {
             case .skip:
@@ -447,14 +455,14 @@ enum ConnectionExportService {
                 let connectionId = UUID()
                 let name: String
                 if resolution == .importAsCopy {
-                    name = uniqueCopyName(for: item.connection.name, taken: takenNames)
+                    name = uniqueCopyName(for: exportable.name, taken: takenNames)
                 } else {
-                    name = item.connection.name
+                    name = exportable.name
                 }
                 takenNames.insert(normalizedLookupKey(name))
                 let connection = buildDatabaseConnection(
                     id: connectionId,
-                    from: item.connection,
+                    from: exportable,
                     name: name,
                     tagIdsByName: tagIdsByName,
                     groupIdsByName: groupIdsByName
@@ -466,8 +474,8 @@ enum ConnectionExportService {
             case .replace(let existingId):
                 let connection = buildDatabaseConnection(
                     id: existingId,
-                    from: item.connection,
-                    name: item.connection.name,
+                    from: exportable,
+                    name: exportable.name,
                     tagIdsByName: tagIdsByName,
                     groupIdsByName: groupIdsByName
                 )
@@ -712,6 +720,7 @@ enum ConnectionExportService {
             tagIds: tagIds,
             groupId: groupId,
             sshProfileId: parsedSSHProfileId,
+            tunnelCommandMode: exportable.tunnelCommand.map { .inline(TunnelCommandConfiguration($0)) } ?? .disabled,
             safeModeLevel: exportable.safeModeLevel.flatMap { SafeModeLevel(rawValue: $0) } ?? .silent,
             aiPolicy: exportable.aiPolicy.flatMap { AIConnectionPolicy(rawValue: $0) },
             redisDatabase: exportable.redisDatabase,

@@ -366,6 +366,7 @@ final class ConnectionStorage {
             cloudflareTunnelMode: connection.cloudflareTunnelMode,
             cloudSQLProxyMode: connection.cloudSQLProxyMode,
             socksProxyMode: connection.socksProxyMode,
+            tunnelCommandMode: connection.tunnelCommandMode,
             safeModeLevel: connection.safeModeLevel,
             aiPolicy: connection.aiPolicy,
             aiRules: connection.aiRules,

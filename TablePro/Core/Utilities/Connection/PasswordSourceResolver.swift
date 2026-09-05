@@ -153,7 +153,7 @@ enum PasswordSourceResolver {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/bash")
             process.arguments = ["-c", shell]
-            process.environment = augmentedEnvironment()
+            process.environment = CLIToolEnvironment.augmented()
             process.standardInput = FileHandle.nullDevice
 
             let stdoutPipe = Pipe()
@@ -239,17 +239,6 @@ enum PasswordSourceResolver {
                 }
             }
         }
-    }
-
-    private static func augmentedEnvironment() -> [String: String] {
-        var environment = ProcessInfo.processInfo.environment
-        let toolPaths = ["/usr/local/bin", "/opt/homebrew/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
-        var pathComponents = (environment["PATH"] ?? "").split(separator: ":").map(String.init)
-        for toolPath in toolPaths where !pathComponents.contains(toolPath) {
-            pathComponents.append(toolPath)
-        }
-        environment["PATH"] = pathComponents.joined(separator: ":")
-        return environment
     }
 
     private static func warnIfPermissionsInsecure(path: String) {

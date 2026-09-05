@@ -22,6 +22,7 @@ struct ConnectionFormEdits: Equatable {
     var cloudflareTunnelMode: CloudflareTunnelMode
     var cloudSQLProxyMode: CloudSQLProxyMode
     var socksProxyMode: SOCKSProxyMode
+    var tunnelCommandMode: TunnelCommandMode
     var safeModeLevel: SafeModeLevel
     var aiPolicy: AIConnectionPolicy?
     var aiRules: String?
@@ -56,6 +57,7 @@ struct ConnectionFormEdits: Equatable {
         result.cloudflareTunnelMode = cloudflareTunnelMode
         result.cloudSQLProxyMode = cloudSQLProxyMode
         result.socksProxyMode = socksProxyMode
+        result.tunnelCommandMode = tunnelCommandMode
         result.safeModeLevel = safeModeLevel
         result.aiPolicy = aiPolicy
         result.aiRules = aiRules

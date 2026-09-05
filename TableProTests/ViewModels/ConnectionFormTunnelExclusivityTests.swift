@@ -17,6 +17,7 @@ struct ConnectionFormTunnelExclusivityTests {
         coordinator.cloudflareTunnel.state.enabled = enabled.contains(.cloudflare)
         coordinator.cloudSQLProxy.state.enabled = enabled.contains(.cloudSQLProxy)
         coordinator.socksProxy.state.enabled = enabled.contains(.socksProxy)
+        coordinator.tunnelCommand.state.enabled = enabled.contains(.tunnelCommand)
         return coordinator
     }
 
@@ -41,13 +42,13 @@ struct ConnectionFormTunnelExclusivityTests {
         }
     }
 
-    @Test("all four enabled reports the three others per kind")
+    @Test("every toggleable tunnel enabled reports all the others per kind")
     func allEnabled() {
         let coordinator = coordinator(enabled: Set(ConnectionTunnelKind.formToggleable))
-        #expect(coordinator.enabledTunnels.count == 4)
+        #expect(coordinator.enabledTunnels.count == ConnectionTunnelKind.formToggleable.count)
         for kind in ConnectionTunnelKind.formToggleable {
             let others = coordinator.otherEnabledTunnels(excluding: kind)
-            #expect(others.count == 3)
+            #expect(others.count == ConnectionTunnelKind.formToggleable.count - 1)
             #expect(!others.map(\.kind).contains(kind))
         }
     }
@@ -64,15 +65,18 @@ struct ConnectionFormTunnelExclusivityTests {
 
     @Test("each pane view model reports cross-tunnel conflicts")
     func paneViewModelsReportConflicts() {
-        let coordinator = coordinator(enabled: [.ssh, .cloudflare, .cloudSQLProxy, .socksProxy])
+        let coordinator = coordinator(enabled: Set(ConnectionTunnelKind.formToggleable))
         coordinator.socksProxy.state.host = "proxy.example.com"
         coordinator.cloudflareTunnel.state.accessHostname = "db.example.com"
         coordinator.cloudSQLProxy.state.instanceConnectionName = "p:r:i"
         coordinator.ssh.state.host = "bastion.example.com"
+        coordinator.tunnelCommand.state.config.kubernetesResource = "service/postgres"
 
-        #expect(coordinator.ssh.validationIssues.count >= 3)
-        #expect(coordinator.cloudflareTunnel.validationIssues.count >= 3)
-        #expect(coordinator.cloudSQLProxy.validationIssues.count >= 3)
-        #expect(coordinator.socksProxy.validationIssues.count >= 3)
+        let others = ConnectionTunnelKind.formToggleable.count - 1
+        #expect(coordinator.ssh.validationIssues.count >= others)
+        #expect(coordinator.cloudflareTunnel.validationIssues.count >= others)
+        #expect(coordinator.cloudSQLProxy.validationIssues.count >= others)
+        #expect(coordinator.socksProxy.validationIssues.count >= others)
+        #expect(coordinator.tunnelCommand.validationIssues.count >= others)
     }
 }

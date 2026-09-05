@@ -531,6 +531,11 @@ extension PluginManager {
             .capabilities.supportsSOCKSProxy ?? true
     }
 
+    func supportsTunnelCommand(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsTunnelCommand ?? true
+    }
+
     func columnReorderSupport(for databaseType: DatabaseType) -> ColumnReorderSupport {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .columnReorder ?? .unsupported

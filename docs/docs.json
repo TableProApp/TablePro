@@ -131,6 +131,7 @@
               "connections/cloudflare-tunnel",
               "connections/cloud-sql-proxy",
               "connections/socks-proxy",
+              "connections/tunnel-command",
               "connections/aws-iam",
               "connections/ssl",
               "features/connection-sharing",
