@@ -59,6 +59,9 @@ internal struct ObjectCopyRowCopier: Sendable {
         to targetDriver: any PluginDatabaseDriver,
         onProgress: @Sendable (Int) -> Void
     ) async throws -> Outcome {
+        if let statement = step.serverSideInsert {
+            return try await copyOnServer(statement, using: targetDriver, onProgress: onProgress)
+        }
         let generator = try makeGenerator(targetDriver: targetDriver)
         let batchSize = Self.batchSize(columnCount: step.columns.count, generator: generator)
         var stream = sourceDriver.streamRows(query: step.sourceQuery).makeAsyncIterator()
@@ -88,6 +91,34 @@ internal struct ObjectCopyRowCopier: Sendable {
             onProgress(inserted)
         }
         return Outcome(inserted: inserted, cancelled: Task.isCancelled)
+    }
+
+    // MARK: - Server side
+
+    /// One statement, run on the target driver, which for this path is also the source's.
+    ///
+    /// Cancellation is checked before it is sent and not after: a statement the server has already
+    /// been given runs to completion whatever the app does next, and reporting it as stopped would
+    /// leave the sheet claiming nothing was written over rows that were. The plan warns about that
+    /// before the user presses Copy.
+    private func copyOnServer(
+        _ statement: SyncStatement,
+        using driver: any PluginDatabaseDriver,
+        onProgress: @Sendable (Int) -> Void
+    ) async throws -> Outcome {
+        if Task.isCancelled { return Outcome(inserted: 0, cancelled: true) }
+        let result = try await driver.execute(query: statement.sql)
+        /// The server's own count, never the plan's estimate. `rowsAffected` is not optional, so a
+        /// driver that reports nothing and a table that held nothing both come back as zero, and
+        /// standing the estimate in for that told the user a copy of an empty table had written
+        /// however many rows a stale table statistic guessed at. Under-reporting a count is a
+        /// worse-looking number; over-reporting one is a false claim about their data.
+        let inserted = result.rowsAffected
+        onProgress(inserted)
+        /// `committed` is left at zero, as the streamed path leaves it: whether these rows survive
+        /// is the caller's transaction to decide, and it is the caller that fills it in when there
+        /// is no transaction to roll back.
+        return Outcome(inserted: inserted, cancelled: false)
     }
 
     // MARK: - Statements
@@ -131,6 +162,10 @@ internal struct ObjectCopyRowCopier: Sendable {
     /// The SELECT names its columns, so a row that arrives with a different width means the source
     /// answered a different question from the one the plan asked. Writing it would put values in
     /// the wrong columns, so it stops the table instead.
+    ///
+    /// The width is checked before the coercion rather than after, because the coercion is
+    /// positional: a short row would have every value past the gap reshaped against the wrong
+    /// column's type.
     private func aligned(_ row: [PluginCellValue]) throws -> [PluginCellValue] {
         guard row.count == step.columns.count else {
             throw ObjectCopyError.refused(String(
@@ -138,7 +173,8 @@ internal struct ObjectCopyRowCopier: Sendable {
                 step.selection.qualifiedName, row.count, step.columns.count
             ))
         }
-        return row
+        guard let coercer = step.coercer else { return row }
+        return coercer.coerce(row)
     }
 
     /// Every value in the batch is one bind parameter, and each engine has its own ceiling on how

@@ -40,6 +40,7 @@ internal struct ExportRowScopeEditor: View {
                     .textFieldStyle(.roundedBorder)
                     .lineLimit(2 ... 4)
                     .font(ThemeEngine.shared.valueFontSwiftUI)
+                    .accessibilityIdentifier("row-scope-filter")
                 if hasRejectedFilter {
                     Text("A filter is one expression. Remove the semicolon.")
                         .font(.caption)

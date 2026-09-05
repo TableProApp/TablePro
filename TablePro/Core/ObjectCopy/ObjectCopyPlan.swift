@@ -47,9 +47,58 @@ internal struct ObjectCopyTableStep: Identifiable, Sendable {
     internal let copiesData: Bool
     /// True when a column this step writes is one the server may insist on generating itself.
     internal let copiesIdentityColumn: Bool
+    /// What the crossing changed about this table's structure, listed before anything runs. Empty
+    /// within one type family, and empty for a step that writes no structure.
+    internal let conversionNotes: [CrossEngineConversionNote]
+    /// Reshapes the values whose spelling the two engines disagree about. Nil where they agree.
+    internal let coercer: CrossEngineValueCoercer?
+    /// The one statement that copies this table's rows without them leaving the server. Set only
+    /// when both sides are the same connection; nil means the rows are streamed through the app.
+    internal let serverSideInsert: SyncStatement?
     /// Set when this table is in the plan but part of it cannot run, so the sheet can say why
     /// before the user presses Copy.
     internal let note: String?
+
+    /// Spelled out rather than left to the memberwise init so the three fields a same-engine copy
+    /// never sets can default. Every one of them describes something only a crossing or a
+    /// same-connection copy produces, and a caller that has neither should not have to say so.
+    internal init(
+        selection: ObjectCopySelection,
+        dropStatements: [SyncStatement],
+        sequenceStatements: [SyncStatement],
+        createStatements: [SyncStatement],
+        truncateStatements: [SyncStatement],
+        columns: [String],
+        primaryKeyColumns: [String],
+        sourceQuery: String,
+        targetTable: String,
+        targetSchema: String?,
+        estimatedRows: Int?,
+        copiesData: Bool,
+        copiesIdentityColumn: Bool,
+        conversionNotes: [CrossEngineConversionNote] = [],
+        coercer: CrossEngineValueCoercer? = nil,
+        serverSideInsert: SyncStatement? = nil,
+        note: String?
+    ) {
+        self.selection = selection
+        self.dropStatements = dropStatements
+        self.sequenceStatements = sequenceStatements
+        self.createStatements = createStatements
+        self.truncateStatements = truncateStatements
+        self.columns = columns
+        self.primaryKeyColumns = primaryKeyColumns
+        self.sourceQuery = sourceQuery
+        self.targetTable = targetTable
+        self.targetSchema = targetSchema
+        self.estimatedRows = estimatedRows
+        self.copiesData = copiesData
+        self.copiesIdentityColumn = copiesIdentityColumn
+        self.conversionNotes = conversionNotes
+        self.coercer = coercer
+        self.serverSideInsert = serverSideInsert
+        self.note = note
+    }
 
     internal var id: String { selection.id }
 
@@ -133,14 +182,54 @@ internal struct ObjectCopyPlan: Sendable {
         self.skipped = skipped
     }
 
-    /// Shown above the script. The engine cannot differ any more, so the one caveat left is the
-    /// one the copy cannot do anything about: a key column the server insists on generating
-    /// refuses the value the source holds, and the table's own error is the first the user sees.
+    /// Shown above the script, for the caveats the copy cannot do anything about: a key column the
+    /// server insists on generating refuses the value the source holds, and the table's own error
+    /// is the first the user sees.
+    ///
+    /// A crossing between engines is named here as well as itemised below, because the itemised
+    /// list is per column and the fact that the types were rewritten at all is per copy.
     internal var warnings: [String] {
-        guard dataSteps.contains(where: \.copiesIdentityColumn) else { return [] }
-        return [String(
+        var warnings: [String] = []
+        /// Asked of the steps rather than of `conversionNotes`, which flattens and sorts every
+        /// note in the plan. This is read from a view body on every redraw, and a copy of a
+        /// hundred tables has thousands of them.
+        if tableSteps.contains(where: { !$0.conversionNotes.isEmpty }) {
+            warnings.append(String(
+                format: String(
+                    localized: "%1$@ and %2$@ do not share a type system, so the structure below was rewritten. Check it before copying."
+                ),
+                request.source.databaseType.rawValue, request.target.databaseType.rawValue
+            ))
+        }
+        if dataSteps.contains(where: { $0.serverSideInsert != nil }) {
+            warnings.append(String(
+                localized: "Both sides are one connection, so the server copies the rows itself. There is no row-by-row progress, and Stop cannot interrupt it."
+            ))
+        }
+        guard dataSteps.contains(where: \.copiesIdentityColumn) else { return warnings }
+        warnings.append(String(
             localized: "Identity and auto-increment values are written as they are. A column the server generates always may refuse them."
-        )]
+        ))
+        return warnings
+    }
+
+    /// Every type, default and index the crossing changed, worst first.
+    internal var conversionNotes: [CrossEngineConversionNote] {
+        tableSteps.flatMap(\.conversionNotes).orderedForReview
+    }
+
+    /// What the review step lists, and how many it could not.
+    ///
+    /// A whole-database crossing produces a note per converted column, which on a hundred tables is
+    /// thousands of them. The list is inside a `ScrollView` rather than a `List`, so SwiftUI builds
+    /// every row it is given whether or not any of them is on screen. The worst are first, so a cap
+    /// keeps exactly the ones worth reading.
+    internal func reviewedConversionNotes(
+        limit: Int = 200
+    ) -> (shown: [CrossEngineConversionNote], hidden: Int) {
+        let ordered = conversionNotes
+        guard ordered.count > limit else { return (ordered, 0) }
+        return (Array(ordered.prefix(limit)), ordered.count - limit)
     }
 
     /// Emptiness is about work, not about steps. A data-only copy into a table the target does not
@@ -240,7 +329,10 @@ internal struct ObjectCopyPlan: Sendable {
         for step in dataSteps {
             lines.append("")
             lines.append(String(format: String(localized: "-- Copy rows into %@"), step.qualifiedTargetName))
-            lines.append(step.sourceQuery + ";")
+            /// The statement itself where the server runs it, because that one is real SQL the
+            /// user is about to approve. The streamed path has no statement to show: its INSERTs
+            /// do not exist yet and never all exist at once, so the query it walks stands in.
+            lines.append(step.serverSideInsert?.sql ?? step.sourceQuery + ";")
         }
         guard !afterDataStatements.isEmpty else { return lines.joined(separator: "\n") }
         lines.append("")

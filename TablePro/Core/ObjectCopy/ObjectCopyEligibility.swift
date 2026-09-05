@@ -47,17 +47,67 @@ internal enum ObjectCopyEligibility {
         target.ineligibleAsTargetReason
     }
 
-    /// A copy stays inside one engine, whatever half of an object it carries.
+    /// A copy stays inside SQL, and inside SQL it may cross engines.
     ///
-    /// Structure cannot cross because column data types are driver-native strings. Data cannot
-    /// cross either, and the first version let it: the row writer emits `INSERT … VALUES` and a
-    /// MongoDB or Elasticsearch target parses neither, while a SQL Server `dbo` source handed a
-    /// MySQL target a schema that engine does not have. Comparing the two remains available in
-    /// Compare & Sync, which reads rather than writes.
-    internal static func engineRefusal(from source: DatabaseType, to target: DatabaseType) -> String? {
-        guard !CompareSyncEngineFamily.canGenerateStructureScript(from: source, to: target) else { return nil }
+    /// It could not before, because a column's data type is the source driver's own string and
+    /// handing it to another engine's `CREATE TABLE` produced DDL that engine rejects.
+    /// `CrossEngineStructureTranslator` is what removed that reason: the types, defaults and
+    /// indexes are said in the target's own words before the target driver ever sees them, and
+    /// every approximation is listed in the review step.
+    ///
+    /// What has not changed is the floor. The row writer emits `INSERT … VALUES` and the structure
+    /// writer emits `CREATE TABLE`, so an engine whose query language is not SQL parses neither.
+    /// Comparing the two remains available in Compare & Sync, which reads rather than writes.
+    internal static func engineRefusal(
+        from source: DatabaseType,
+        to target: DatabaseType,
+        sourceLanguage: EditorLanguage,
+        targetLanguage: EditorLanguage
+    ) -> String? {
+        guard supportsCopying(editorLanguage: sourceLanguage),
+              supportsCopying(editorLanguage: targetLanguage) else {
+            return String(
+                format: String(localized: "%1$@ cannot be copied to %2$@. Choose a target that speaks SQL."),
+                source.rawValue, target.rawValue
+            )
+        }
+        return crossEngineRefusal(from: source, to: target)
+    }
+
+    /// The second half of the gate, and the one the editor language cannot answer.
+    ///
+    /// `.sql` is what DynamoDB declares for PartiQL and Cassandra for CQL, so the language alone
+    /// lets a MySQL to DynamoDB copy through to a planner that can only fail. A crossing is offered
+    /// where both engines have a type system `SQLTypeFamily` names, which is the same set the
+    /// translation was written and tested against. Within one engine nothing is translated, so an
+    /// engine no family names still copies to itself.
+    private static func crossEngineRefusal(from source: DatabaseType, to target: DatabaseType) -> String? {
+        guard SQLTypeFamily.needsTranslation(from: source, to: target) else { return nil }
+        let unnamed = [source, target].filter { SQLTypeFamily.of($0) == .generic }
+        guard let first = unnamed.first else { return nil }
         return String(
-            format: String(localized: "%1$@ cannot be copied to %2$@. Choose a target of the same type."),
+            format: String(
+                localized: "A copy to another engine needs a type system TablePro can translate, and %@ has none it knows. Copy to a target of the same type."
+            ),
+            first.rawValue
+        )
+    }
+
+    /// Why a view, routine or trigger cannot cross to another engine.
+    ///
+    /// Its definition is the source's own SQL text and nothing here parses it, so a MySQL view's
+    /// backtick quoting, a PostgreSQL function's `$$` body and a SQL Server trigger's `inserted`
+    /// pseudo-table all arrive verbatim at an engine that has none of them. A table has a
+    /// structure the translator can restate; a definition has only text.
+    internal static func definitionEngineRefusal(
+        from source: DatabaseType,
+        to target: DatabaseType
+    ) -> String? {
+        guard SQLTypeFamily.needsTranslation(from: source, to: target) else { return nil }
+        return String(
+            format: String(
+                localized: "Its definition is written in %1$@'s own SQL, which %2$@ does not parse."
+            ),
             source.rawValue, target.rawValue
         )
     }

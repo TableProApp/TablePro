@@ -17,6 +17,7 @@ private final class QuotingDriver: PluginDatabaseDriver, @unchecked Sendable {
         PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
     }
     func quoteIdentifier(_ name: String) -> String { "\"\(name)\"" }
+    func injectRowLimit(_ query: String, limit: Int) -> String? { "\(query) LIMIT \(limit)" }
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
@@ -65,5 +66,72 @@ final class ObjectCopySelectQueryTests: XCTestCase {
             ObjectCopySelectQuery.build(columns: [], table: "orders", schema: nil, driver: driver),
             "SELECT * FROM \"orders\""
         )
+    }
+
+    // MARK: - Row scope
+
+    func testAFilterBecomesAWhereClause() {
+        XCTAssertEqual(
+            ObjectCopySelectQuery.build(
+                columns: ["id"], table: "orders", schema: nil, driver: driver,
+                scope: PluginExportRowScope(filter: "total > 10")
+            ),
+            "SELECT \"id\" FROM \"orders\" WHERE total > 10"
+        )
+    }
+
+    /// Through the driver's own injection, because `LIMIT` is not the spelling on SQL Server or on
+    /// Oracle before 12c.
+    func testARowLimitGoesThroughTheDriver() {
+        XCTAssertEqual(
+            ObjectCopySelectQuery.build(
+                columns: ["id"], table: "orders", schema: nil, driver: driver,
+                scope: PluginExportRowScope(filter: "total > 10", rowLimit: 50)
+            ),
+            "SELECT \"id\" FROM \"orders\" WHERE total > 10 LIMIT 50"
+        )
+    }
+
+    /// The text is spliced into this statement, so the rule that a filter is one expression is what
+    /// stops a second statement riding in with it.
+    func testAFilterCarryingASecondStatementIsRefused() {
+        XCTAssertEqual(
+            ObjectCopySelectQuery.build(
+                columns: ["id"], table: "orders", schema: nil, driver: driver,
+                scope: PluginExportRowScope(filter: "1=1; DROP TABLE orders")
+            ),
+            "SELECT \"id\" FROM \"orders\""
+        )
+    }
+
+    func testATrailingSemicolonIsATypingHabitRatherThanARefusal() {
+        XCTAssertEqual(
+            ObjectCopySelectQuery.build(
+                columns: ["id"], table: "orders", schema: nil, driver: driver,
+                scope: PluginExportRowScope(filter: "total > 10;")
+            ),
+            "SELECT \"id\" FROM \"orders\" WHERE total > 10"
+        )
+    }
+
+    // MARK: - Estimates
+
+    /// The driver counts the whole table, so a filtered step would show a bar running to a total it
+    /// can never reach.
+    func testAFilteredTableReportsNoEstimate() {
+        XCTAssertNil(ObjectCopyPlanner.estimate(
+            5_000, scope: PluginExportRowScope(filter: "total > 10")
+        ))
+        XCTAssertEqual(
+            ObjectCopyPlanner.estimate(5_000, scope: PluginExportRowScope(filter: "total > 10", rowLimit: 20)),
+            20
+        )
+    }
+
+    func testARowLimitIsACeilingOnTheEstimate() {
+        XCTAssertEqual(ObjectCopyPlanner.estimate(5_000, scope: PluginExportRowScope(rowLimit: 20)), 20)
+        XCTAssertEqual(ObjectCopyPlanner.estimate(10, scope: PluginExportRowScope(rowLimit: 20)), 10)
+        XCTAssertEqual(ObjectCopyPlanner.estimate(nil, scope: PluginExportRowScope(rowLimit: 20)), 20)
+        XCTAssertEqual(ObjectCopyPlanner.estimate(5_000, scope: nil), 5_000)
     }
 }

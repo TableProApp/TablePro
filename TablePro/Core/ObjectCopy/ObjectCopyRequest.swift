@@ -136,6 +136,16 @@ internal struct ObjectCopyRequest: Sendable {
     internal let existingPolicy: ObjectCopyExistingPolicy
     internal let errorHandling: ImportErrorHandling
     internal let wrapEachTableInTransaction: Bool
+    /// A `WHERE` and a row limit per table, keyed by `ObjectCopySelection.id`.
+    ///
+    /// The same type the export tree narrows a table with, so the rule that a filter is one
+    /// expression is written once. That rule is not cosmetic: the text is spliced into a `SELECT`,
+    /// and `sanitizedFilter` is what stops a second statement riding in with it.
+    ///
+    /// It narrows the rows only. A copy that also wrote the structure would otherwise create a
+    /// table whose columns and whose `INSERT` disagreed, so `PluginExportRowScope.columns` is
+    /// deliberately not carried.
+    internal let rowScopes: [String: PluginExportRowScope]
 
     internal init(
         source: DatabaseEndpoint,
@@ -144,7 +154,8 @@ internal struct ObjectCopyRequest: Sendable {
         content: ObjectCopyContent,
         existingPolicy: ObjectCopyExistingPolicy,
         errorHandling: ImportErrorHandling = .stopAndRollback,
-        wrapEachTableInTransaction: Bool = true
+        wrapEachTableInTransaction: Bool = true,
+        rowScopes: [String: PluginExportRowScope] = [:]
     ) {
         self.source = source
         self.destination = destination
@@ -153,6 +164,14 @@ internal struct ObjectCopyRequest: Sendable {
         self.existingPolicy = existingPolicy
         self.errorHandling = errorHandling
         self.wrapEachTableInTransaction = wrapEachTableInTransaction
+        self.rowScopes = rowScopes
+    }
+
+    /// The rows this table contributes, with the column subset dropped so the scope can only ever
+    /// narrow rows.
+    internal func rowScope(for selection: ObjectCopySelection) -> PluginExportRowScope? {
+        guard let scope = rowScopes[selection.id], !scope.isUnrestricted else { return nil }
+        return PluginExportRowScope(filter: scope.filter, rowLimit: scope.rowLimit)
     }
 
     internal var target: DatabaseEndpoint { destination.endpoint }

@@ -65,6 +65,14 @@ internal final class ObjectCopySession {
     internal var existingPolicy: ObjectCopyExistingPolicy = .skip
     internal var errorHandling: ImportErrorHandling = .stopAndRollback
     internal var searchText = ""
+    /// A `WHERE` and a row limit per table, keyed by the selection's own id so two overloads or two
+    /// same-named triggers cannot share one. Absent means every row, which is what a copy did
+    /// before this existed.
+    internal var rowScopes: [String: PluginExportRowScope] = [:]
+    /// The table whose filter popover is open, if any. Held here rather than in the row, because a
+    /// row is rebuilt whenever the search text changes and a popover anchored to `@State` inside
+    /// one closes as soon as the list diffs under a keystroke.
+    internal var rowFilterObjectId: String?
 
     // MARK: - Catalog
 
@@ -158,6 +166,12 @@ internal final class ObjectCopySession {
         if selectedObjectIds.isEmpty {
             return String(localized: "Choose at least one object to copy.")
         }
+        if let object = rejectedFilterObject {
+            return String(
+                format: String(localized: "The filter on %@ is not one expression. Remove the semicolon."),
+                object.displayName
+            )
+        }
         switch mode {
         case .copyTo:
             guard let target else { return String(localized: "Choose where to copy to.") }
@@ -166,7 +180,10 @@ internal final class ObjectCopySession {
                 return reason
             }
             if let reason = ObjectCopyEligibility.engineRefusal(
-                from: source.databaseType, to: target.databaseType
+                from: source.databaseType,
+                to: target.databaseType,
+                sourceLanguage: PluginManager.shared.editorLanguage(for: source.databaseType),
+                targetLanguage: PluginManager.shared.editorLanguage(for: target.databaseType)
             ) {
                 return reason
             }
@@ -218,8 +235,70 @@ internal final class ObjectCopySession {
             content: content,
             existingPolicy: existingPolicy,
             errorHandling: errorHandling,
-            wrapEachTableInTransaction: true
+            wrapEachTableInTransaction: true,
+            rowScopes: activeRowScopes
         )
+    }
+
+    // MARK: - Row filters
+
+    /// A filter narrows the rows a table contributes, so it means nothing for an object that has
+    /// none and nothing for a copy that is not carrying rows.
+    internal func allowsRowFilter(for object: ObjectCopySelection) -> Bool {
+        object.kind.carriesRows && content.includesData
+    }
+
+    internal func rowScope(for object: ObjectCopySelection) -> PluginExportRowScope {
+        rowScopes[object.id] ?? .unrestricted
+    }
+
+    /// Kept when it narrows something, and kept when it is refused.
+    ///
+    /// `isUnrestricted` answers yes to a filter the sanitizer threw out, because `sanitizedFilter`
+    /// is empty for text holding a second statement. Dropping the scope on that answer discarded
+    /// the very thing `rejectedFilterObject` exists to catch, so the copy went ahead over every row
+    /// of a table the user had tried to narrow.
+    internal func setRowScope(_ scope: PluginExportRowScope, for object: ObjectCopySelection) {
+        guard isNarrowing(scope) else {
+            rowScopes.removeValue(forKey: object.id)
+            return
+        }
+        rowScopes[object.id] = scope
+    }
+
+    /// Whether this table's rows are narrowed, or an attempt at narrowing them is outstanding.
+    /// What the funnel is drawn from, so a refused filter is still findable.
+    internal func hasRowFilter(for object: ObjectCopySelection) -> Bool {
+        isNarrowing(rowScope(for: object))
+    }
+
+    private func isNarrowing(_ scope: PluginExportRowScope) -> Bool {
+        !scope.isUnrestricted || scope.hasRejectedFilter
+    }
+
+    /// Only the filters that belong to an object still selected, and only while rows are being
+    /// copied. A filter left behind by a deselected table would otherwise reach the planner, which
+    /// keys them by id and would silently narrow a different copy if that table were ticked again.
+    private var activeRowScopes: [String: PluginExportRowScope] {
+        guard content.includesData else { return [:] }
+        var active: [String: PluginExportRowScope] = [:]
+        for object in selectedObjects where object.kind.carriesRows {
+            guard let scope = rowScopes[object.id], !scope.isUnrestricted else { continue }
+            active[object.id] = scope
+        }
+        return active
+    }
+
+    /// A filter the sanitizer refused, which is the one case the copy must not run: the text holds
+    /// a second statement, and dropping it silently would copy every row of a table the user meant
+    /// to narrow.
+    ///
+    /// Only while rows are being copied. A filter left behind by a switch to structure only reaches
+    /// no query, so holding Continue over it would be a dead button with no way to clear it: the
+    /// funnel that set it is not offered in that mode either.
+    internal var rejectedFilterObject: ObjectCopySelection? {
+        guard content.includesData else { return nil }
+        return selectedObjects.first { rowScopes[$0.id]?.hasRejectedFilter == true }
     }
 
     // MARK: - Catalog

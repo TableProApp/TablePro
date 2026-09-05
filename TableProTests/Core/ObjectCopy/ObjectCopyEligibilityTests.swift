@@ -31,14 +31,57 @@ final class ObjectCopyEligibilityTests: XCTestCase {
         XCTAssertNil(ObjectCopyEligibility.targetRefusal(endpoint("app")))
     }
 
-    /// Both halves of a copy are refused across engines, not only structure. The row writer emits
-    /// `INSERT … VALUES`, which a MongoDB target cannot parse, and a SQL Server `dbo` source hands
-    /// a MySQL target a schema that engine does not have.
-    func testACopyStaysInsideOneEngine() {
-        XCTAssertNotNil(ObjectCopyEligibility.engineRefusal(from: .mysql, to: .postgresql))
-        XCTAssertNotNil(ObjectCopyEligibility.engineRefusal(from: .mssql, to: .mysql))
-        XCTAssertNil(ObjectCopyEligibility.engineRefusal(from: .mysql, to: .mysql))
-        XCTAssertNil(ObjectCopyEligibility.engineRefusal(from: .mysql, to: .mariadb))
+    /// A copy stays inside SQL and may cross engines within it. The types are translated before
+    /// the target driver writes any DDL, so the refusal that is left is the one nothing can
+    /// translate: an engine whose query language is not SQL parses neither `CREATE TABLE` nor
+    /// `INSERT … VALUES`.
+    func testACopyCrossesEnginesButNotLanguages() {
+        XCTAssertNil(ObjectCopyEligibility.engineRefusal(
+            from: .mysql, to: .postgresql, sourceLanguage: .sql, targetLanguage: .sql
+        ))
+        XCTAssertNil(ObjectCopyEligibility.engineRefusal(
+            from: .mssql, to: .mysql, sourceLanguage: .sql, targetLanguage: .sql
+        ))
+        XCTAssertNil(ObjectCopyEligibility.engineRefusal(
+            from: .mysql, to: .mariadb, sourceLanguage: .sql, targetLanguage: .sql
+        ))
+        XCTAssertNotNil(ObjectCopyEligibility.engineRefusal(
+            from: .mysql, to: .mongodb, sourceLanguage: .sql, targetLanguage: .javascript
+        ))
+        XCTAssertNotNil(ObjectCopyEligibility.engineRefusal(
+            from: .mongodb, to: .mysql, sourceLanguage: .javascript, targetLanguage: .sql
+        ))
+    }
+
+    /// DynamoDB declares `.sql` for PartiQL and Cassandra for CQL, so the editor language alone
+    /// let a MySQL to DynamoDB copy through to a planner that could only fail. A crossing needs a
+    /// type system the translator knows on both sides.
+    func testACrossingNeedsATypeSystemOnBothSides() {
+        XCTAssertNotNil(ObjectCopyEligibility.engineRefusal(
+            from: .mysql, to: .dynamodb, sourceLanguage: .sql, targetLanguage: .sql
+        ))
+        XCTAssertNotNil(ObjectCopyEligibility.engineRefusal(
+            from: .cassandra, to: .postgresql, sourceLanguage: .sql, targetLanguage: .sql
+        ))
+    }
+
+    /// Nothing is translated within one engine, so an engine no family names still copies to
+    /// itself. That is the path every registry-only driver already used.
+    func testAnEngineWithNoNamedFamilyStillCopiesToItself() {
+        XCTAssertNil(ObjectCopyEligibility.engineRefusal(
+            from: .dynamodb, to: .dynamodb, sourceLanguage: .sql, targetLanguage: .sql
+        ))
+        XCTAssertNil(ObjectCopyEligibility.engineRefusal(
+            from: .cassandra, to: .cassandra, sourceLanguage: .sql, targetLanguage: .sql
+        ))
+    }
+
+    /// A view, routine or trigger is its definition, and the definition is the source engine's own
+    /// SQL text. Nothing here parses it, so it cannot cross even where the tables beside it can.
+    func testADefinitionDoesNotCrossEngines() {
+        XCTAssertNotNil(ObjectCopyEligibility.definitionEngineRefusal(from: .mysql, to: .postgresql))
+        XCTAssertNil(ObjectCopyEligibility.definitionEngineRefusal(from: .mysql, to: .mariadb))
+        XCTAssertNil(ObjectCopyEligibility.definitionEngineRefusal(from: .postgresql, to: .postgresql))
     }
 
     /// Copying a database onto itself either drops the rows it is about to read or doubles them.

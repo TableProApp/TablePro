@@ -92,18 +92,71 @@ final class ObjectCopySessionTests: XCTestCase {
         XCTAssertEqual(subject.request?.target.database, "shop_copy")
     }
 
-    /// Neither half crosses engines. The row writer emits `INSERT … VALUES`, which a target of
-    /// another engine either cannot parse or reads against a namespace it does not have, so a
-    /// data-only copy is refused just as a structural one is.
-    func testNeitherHalfCrossesEngines() {
+    /// Both halves cross engines. The types are said in the target's own words before any DDL is
+    /// generated and the values are reshaped on the way in, so what is left to refuse is a target
+    /// that does not speak SQL at all.
+    func testBothHalvesCrossEngines() {
         let subject = session()
         subject.target = endpoint("analytics", type: .postgresql, connectionId: UUID())
 
         subject.content = .structureAndData
-        XCTAssertNotNil(subject.reviewDisabledReason)
+        XCTAssertNil(subject.reviewDisabledReason)
 
         subject.content = .data
+        XCTAssertNil(subject.reviewDisabledReason)
+    }
+
+    /// A filter is one expression. Text carrying a second statement is refused rather than spliced
+    /// into the `SELECT` the copy runs.
+    func testAFilterCarryingASecondStatementHoldsTheCopy() {
+        let subject = session()
+        subject.target = endpoint("shop_copy")
+        guard let table = subject.availableObjects.first(where: { $0.kind.carriesRows }) else {
+            return XCTFail("The catalog must offer a table to filter")
+        }
+
+        /// `isUnrestricted` answers yes to a refused filter, so a scope that drops itself on that
+        /// answer would throw away exactly what the refusal is for.
+        subject.setRowScope(PluginExportRowScope(filter: "1=1; DROP TABLE orders"), for: table)
+        XCTAssertTrue(subject.hasRowFilter(for: table))
         XCTAssertNotNil(subject.reviewDisabledReason)
+
+        subject.setRowScope(PluginExportRowScope(filter: "total > 10"), for: table)
+        XCTAssertNil(subject.reviewDisabledReason)
+        XCTAssertEqual(subject.request?.rowScopes[table.id]?.sanitizedFilter, "total > 10")
+    }
+
+    /// A filter set and then deselected, or left behind by a switch to structure only, reaches no
+    /// query: the planner keys them by id and one carried through would narrow a copy the user did
+    /// not narrow.
+    func testOnlyTheFiltersThatStillApplyReachTheRequest() {
+        let subject = session()
+        subject.target = endpoint("shop_copy")
+        guard let table = subject.availableObjects.first(where: { $0.kind.carriesRows }) else {
+            return XCTFail("The catalog must offer a table to filter")
+        }
+
+        subject.setRowScope(PluginExportRowScope(filter: "total > 10"), for: table)
+        subject.content = .structure
+        XCTAssertTrue(subject.request?.rowScopes.isEmpty ?? false)
+
+        subject.content = .structureAndData
+        subject.setSelected(table, false)
+        XCTAssertTrue(subject.request?.rowScopes.isEmpty ?? false)
+    }
+
+    /// Clearing a filter removes it rather than storing an empty one, so nothing downstream has to
+    /// tell "no filter" from "a filter that narrows nothing".
+    func testClearingAFilterRemovesIt() {
+        let subject = session()
+        guard let table = subject.availableObjects.first(where: { $0.kind.carriesRows }) else {
+            return XCTFail("The catalog must offer a table to filter")
+        }
+
+        subject.setRowScope(PluginExportRowScope(filter: "total > 10"), for: table)
+        subject.setRowScope(.unrestricted, for: table)
+        XCTAssertTrue(subject.rowScopes.isEmpty)
+        XCTAssertTrue(subject.rowScope(for: table).isUnrestricted)
     }
 
     // MARK: - Duplicate

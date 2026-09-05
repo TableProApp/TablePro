@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Copy To across database engines, with every type approximation listed before the copy runs. (#1491)
+- Per-table `WHERE` and row limit in Copy To. (#1491)
+- Server-side `INSERT … SELECT` when a copy's two sides are one connection. (#1491)
 - Tunnel Command pane, with presets for `kubectl port-forward` and `aws ssm start-session` and a custom command line. (#2520)
 - Bar chart column in the EXPLAIN tree, with a Metric menu for self cost, self time and row counts. (#2633)
 

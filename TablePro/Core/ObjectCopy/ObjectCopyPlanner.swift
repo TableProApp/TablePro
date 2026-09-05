@@ -198,7 +198,10 @@ internal struct ObjectCopyPlanner {
             throw ObjectCopyError.refused(reason)
         }
         if let reason = ObjectCopyEligibility.engineRefusal(
-            from: request.source.databaseType, to: request.target.databaseType
+            from: request.source.databaseType,
+            to: request.target.databaseType,
+            sourceLanguage: PluginManager.shared.editorLanguage(for: request.source.databaseType),
+            targetLanguage: PluginManager.shared.editorLanguage(for: request.target.databaseType)
         ) {
             throw ObjectCopyError.refused(reason)
         }
@@ -335,6 +338,9 @@ internal struct ObjectCopyPlanner {
             sourceNamespace: sourceNamespace,
             targetNamespace: targetNamespace
         )
+        let serverSide = try await buildServerSideInserts(
+            drafts, request: request, sourceEndpoint: sourceEndpoint, targetEndpoint: targetEndpoint
+        )
         return drafts.map { draft in
             let parts = sourceParts[draft.selection.id]
             let statements = ddl[draft.selection.id] ?? ObjectCopyTableDDL()
@@ -342,7 +348,7 @@ internal struct ObjectCopyPlanner {
                 selection: draft.selection,
                 dropStatements: statements.drop,
                 sequenceStatements: Self.sequenceStatements(
-                    parts?.sequences ?? [], table: draft.targetTable
+                    draft.isCrossEngine ? [] : (parts?.sequences ?? []), table: draft.targetTable
                 ),
                 createStatements: statements.create,
                 truncateStatements: statements.truncate,
@@ -354,6 +360,9 @@ internal struct ObjectCopyPlanner {
                 estimatedRows: parts?.estimatedRows,
                 copiesData: draft.copiesData,
                 copiesIdentityColumn: draft.copiesIdentityColumn,
+                conversionNotes: draft.conversionNotes,
+                coercer: draft.coercer,
+                serverSideInsert: draft.copiesData ? serverSide[draft.selection.id] : nil,
                 note: draft.note
             )
         }
@@ -363,6 +372,62 @@ internal struct ObjectCopyPlanner {
         let query: String
         let estimatedRows: Int?
         let sequences: [String]
+    }
+
+    /// One `INSERT … SELECT` per table the server can copy on its own.
+    ///
+    /// Built with the target driver's quoting, which is also the source's: the fast path only
+    /// exists when both endpoints are the same connection. Nothing is opened at all unless a table
+    /// qualifies, so a copy between two connections pays nothing for this.
+    private func buildServerSideInserts(
+        _ drafts: [ObjectCopyTableDraft],
+        request: ObjectCopyRequest,
+        sourceEndpoint: DatabaseEndpoint,
+        targetEndpoint: DatabaseEndpoint
+    ) async throws -> [String: SyncStatement] {
+        guard ObjectCopyServerSideInsert.isEligible(source: sourceEndpoint, target: targetEndpoint) else {
+            return [:]
+        }
+        let inputs = drafts.filter(\.copiesData).map { draft in
+            (
+                id: draft.selection.id,
+                table: draft.targetTable,
+                input: ObjectCopyServerSideInsert.Input(
+                    source: sourceEndpoint,
+                    target: targetEndpoint,
+                    sourceTable: draft.snapshot.name,
+                    sourceSchema: draft.sourceSchema,
+                    targetTable: draft.targetTable,
+                    targetSchema: draft.targetSchema,
+                    sourceColumns: draft.sourceColumns,
+                    targetColumns: draft.targetColumns,
+                    scope: draft.rowScope
+                )
+            )
+        }
+        guard !inputs.isEmpty else { return [:] }
+
+        return try await manager.withMetadataDriver(
+            scope: targetScope(request, endpoint: targetEndpoint)
+        ) { driver in
+            guard let plugin = CompareMetadataService.pluginDriver(from: driver) else {
+                throw ObjectCopyError.refused(Self.noTargetDriver)
+            }
+            var statements: [String: SyncStatement] = [:]
+            for input in inputs {
+                guard let sql = ObjectCopyServerSideInsert.statement(input.input, driver: plugin) else {
+                    continue
+                }
+                statements[input.id] = SyncStatement(
+                    sql: sql,
+                    objectName: input.table,
+                    summary: String(
+                        format: String(localized: "Copy rows into %@ on the server"), input.table
+                    )
+                )
+            }
+            return statements
+        }
     }
 
     /// One scoped call for every table, because each `withMetadataDriver` either leases a pooled
@@ -381,7 +446,11 @@ internal struct ObjectCopyPlanner {
                 schema: $0.sourceSchema,
                 columns: $0.sourceColumns,
                 copiesData: $0.copiesData,
-                writesStructure: $0.writesStructure
+                /// A sequence is read only where its `CREATE SEQUENCE` could run. Across engines it
+                /// is the source's own DDL, and the column that defaulted from it already carries
+                /// the target's own generated-key attribute instead.
+                writesStructure: $0.writesStructure && !$0.isCrossEngine,
+                scope: $0.rowScope
             )
         }
         guard inputs.contains(where: { $0.copiesData || $0.writesStructure }) else { return [:] }
@@ -402,11 +471,19 @@ internal struct ObjectCopyPlanner {
                 /// structure-only copy scan every table it named.
                 if input.copiesData {
                     query = ObjectCopySelectQuery.build(
-                        columns: input.columns, table: input.table, schema: input.schema, driver: plugin
+                        columns: input.columns, table: input.table, schema: input.schema,
+                        driver: plugin, scope: input.scope
                     )
-                    estimatedRows = (try? await plugin.fetchApproximateRowCount(
+                    let counted = (try? await plugin.fetchApproximateRowCount(
                         table: input.table, schema: input.schema
                     )) ?? nil
+                    /// The driver counts the whole table, so a filtered step would show a bar
+                    /// running to a total it can never reach. A limit is a ceiling the copy will
+                    /// not pass; a `WHERE` has no knowable count without running it, so the
+                    /// estimate is withheld and the review says Unknown.
+                    estimatedRows = Self.estimate(
+                        counted, scope: input.scope
+                    )
                 }
                 var sequences: [String] = []
                 if input.writesStructure {
@@ -424,6 +501,16 @@ internal struct ObjectCopyPlanner {
             }
             return parts
         }
+    }
+
+    /// What the progress bar counts this table against. Nil for a filtered table, because the only
+    /// count the driver has is of every row, and a bar that can never fill reads as a stall.
+    nonisolated internal static func estimate(_ counted: Int?, scope: PluginExportRowScope?) -> Int? {
+        guard let scope else { return counted }
+        guard scope.sanitizedFilter.isEmpty else { return scope.rowLimit }
+        guard let limit = scope.rowLimit else { return counted }
+        guard let counted else { return limit }
+        return min(counted, limit)
     }
 
     /// A copied table's default names its sequence, so the sequence has to be there before the
@@ -456,8 +543,10 @@ internal struct ObjectCopyPlanner {
         let inputs = drafts.map {
             ObjectCopyDDLInput(
                 id: $0.selection.id,
+                /// The translated structure, so the `CREATE TABLE` the target driver writes names
+                /// types that engine has. Identical to the source's within one type family.
                 snapshot: Self.retargeted(
-                    $0.snapshot, from: sourceNamespace, to: targetNamespace, schema: $0.targetSchema
+                    $0.targetStructure, from: sourceNamespace, to: targetNamespace, schema: $0.targetSchema
                 ),
                 targetSchema: $0.targetSchema,
                 writesStructure: $0.writesStructure,
@@ -633,6 +722,16 @@ internal struct ObjectCopyPlanner {
         let targetSchema = targetEndpoint.schema
         let sourceNamespace = ObjectCopyNamespace.name(for: sourceEndpoint)
         let targetNamespace = ObjectCopyNamespace.name(for: targetEndpoint)
+
+        /// Asked before the namespace question and for the same reason: it depends on the two
+        /// engines alone, so one skip per object here costs nothing while reading every body first
+        /// and discarding all of them costs a round trip per object.
+        if let reason = ObjectCopyEligibility.definitionEngineRefusal(
+            from: request.source.databaseType, to: request.target.databaseType
+        ) {
+            skipped += selections.map { ObjectCopySkip(selection: $0, reason: reason) }
+            return []
+        }
 
         /// Asked once for the whole scope, and before anything is read. It depends only on the two
         /// namespaces, so a cross-namespace copy rejected every object anyway: asking per object
@@ -897,173 +996,4 @@ internal struct ObjectCopyPlanner {
         localized: "The target driver cannot generate statements."
     )
     nonisolated private static let noSourceDriver = String(localized: "The source driver cannot be read.")
-}
-
-// MARK: - Drafts
-
-/// One table's decisions, made before any driver is opened so the two scoped calls that follow can
-/// each run over the whole list.
-private struct ObjectCopyTableDraft {
-    let selection: ObjectCopySelection
-    let snapshot: TableStructureSnapshot
-    let sourceSchema: String?
-    let targetSchema: String?
-    let targetTable: String
-    /// Read with these, written with those. A case-insensitive match pairs two spellings of one
-    /// column, and each side has to be quoted the way its own server spells it.
-    let sourceColumns: [String]
-    let targetColumns: [String]
-    let writesStructure: Bool
-    let dropsFirst: Bool
-    let emptiesFirst: Bool
-    let copiesData: Bool
-    let copiesIdentityColumn: Bool
-    let note: String?
-
-    init(
-        selection: ObjectCopySelection,
-        read: TableStructureRead,
-        snapshot: TableStructureSnapshot,
-        targetSnapshot: TableStructureSnapshot?,
-        existsInTarget: Bool,
-        sourceSchema: String?,
-        targetSchema: String?,
-        request: ObjectCopyRequest
-    ) {
-        self.selection = selection
-        self.snapshot = snapshot
-        self.sourceSchema = sourceSchema
-        /// Never the source's. A target endpoint that names no schema means the target driver's
-        /// own current scope, and inheriting the source's put a SQL Server `dbo` into a MySQL
-        /// INSERT, naming a database that engine does not have.
-        self.targetSchema = targetSchema
-
-        let keepsTargetStructure = existsInTarget && request.existingPolicy != .replace
-        let writesStructure = request.content.includesStructure && !keepsTargetStructure
-        self.writesStructure = writesStructure
-        self.dropsFirst = writesStructure && existsInTarget
-
-        /// The target's own name when it already has the table, because a case-insensitive match
-        /// pairs `Orders` with `orders` and the INSERT has to quote the one that exists.
-        self.targetTable = (writesStructure ? nil : targetSnapshot?.name) ?? snapshot.name
-
-        /// Read from the driver's own columns rather than from the snapshot. SQL Server computed
-        /// columns and ClickHouse ALIAS columns set `isGenerated` with no expression, and
-        /// PostgreSQL reports identity through `identityKind`; the snapshot conversion keeps
-        /// neither, so those columns looked ordinary and writable.
-        let pairs = Self.writableColumnPairs(
-            columns: read.columns,
-            snapshot: snapshot,
-            targetSnapshot: writesStructure ? nil : targetSnapshot
-        )
-        self.sourceColumns = pairs.map(\.source)
-        self.targetColumns = pairs.map(\.target)
-        let copiesData = request.content.includesData && !pairs.isEmpty && (writesStructure || existsInTarget)
-        self.copiesData = copiesData
-
-        /// A data-only replace has no DROP and CREATE to clear the table, so it is emptied instead,
-        /// and only where rows are going back into it. Emptying without that condition deleted
-        /// every row of a table whose columns the target does not share, and then wrote nothing:
-        /// the step was dropped from the data phase for having no writable column while its DELETE
-        /// stayed in the clear phase, and the review said only that the two sides shared no column.
-        self.emptiesFirst = copiesData
-            && existsInTarget
-            && request.existingPolicy == .replace
-            && !writesStructure
-
-        let written = Set(pairs.map { $0.source.lowercased() })
-        self.copiesIdentityColumn = request.content.includesData && read.columns.contains {
-            written.contains($0.name.lowercased()) && ($0.isIdentity || $0.extra?.lowercased().contains("auto_increment") == true)
-        }
-
-        if request.content.includesData, !writesStructure, !existsInTarget {
-            self.note = String(
-                localized: "The target has no table of this name, so the rows have nowhere to go."
-            )
-        } else if request.content.includesData, pairs.isEmpty {
-            self.note = String(localized: "The source and the target share no writable column.")
-        } else {
-            self.note = nil
-        }
-    }
-
-    /// The columns the copy writes, paired source spelling to target spelling.
-    ///
-    /// The source's own order, without the ones the server computes: an `INSERT` into a generated
-    /// column is rejected by every engine that has them. When the target's structure is not being
-    /// written the answer narrows to what both sides have, matched without regard to case, because
-    /// a column the target lacks cannot be written to and one it has that the source lacks keeps
-    /// its default.
-    static func writableColumnPairs(
-        columns: [PluginColumnInfo],
-        snapshot: TableStructureSnapshot,
-        targetSnapshot: TableStructureSnapshot?
-    ) -> [(source: String, target: String)] {
-        let generated = Set(columns.filter(\.isGenerated).map { $0.name.lowercased() })
-        let sourceColumns = snapshot.columns
-            .filter { $0.generationExpression == nil && !generated.contains($0.name.lowercased()) }
-            .map(\.name)
-        guard let targetSnapshot else { return sourceColumns.map { ($0, $0) } }
-
-        /// Exact spellings first. PostgreSQL allows quoted `Orders` and `orders` in one schema, so
-        /// folding case unconditionally resolved either to whichever row came back first.
-        var exact: [String: String] = [:]
-        var folded: [String: [String]] = [:]
-        for column in targetSnapshot.columns where column.generationExpression == nil {
-            exact[column.name] = column.name
-            folded[column.name.lowercased(), default: []].append(column.name)
-        }
-        return sourceColumns.compactMap { name in
-            if let target = exact[name] { return (name, target) }
-            guard let candidates = folded[name.lowercased()], candidates.count == 1 else { return nil }
-            return (name, candidates[0])
-        }
-    }
-}
-
-private struct ObjectCopyDDLInput: Sendable {
-    let id: String
-    let snapshot: TableStructureSnapshot
-    let targetSchema: String?
-    let writesStructure: Bool
-    let dropsFirst: Bool
-    let emptiesFirst: Bool
-    let clearsWithDelete: Bool
-}
-
-private struct ObjectCopyTableDDL: Sendable {
-    var drop: [SyncStatement] = []
-    var create: [SyncStatement] = []
-    var truncate: [SyncStatement] = []
-}
-
-internal enum ObjectCopyError: LocalizedError {
-    case refused(String)
-
-    internal var errorDescription: String? {
-        switch self {
-        case .refused(let message): return message
-        }
-    }
-}
-
-/// The read side of a table copy: the exact columns that will be written, in the order they will be
-/// written, so the stream and the INSERT cannot drift apart.
-internal enum ObjectCopySelectQuery {
-    internal static func build(
-        columns: [String],
-        table: String,
-        schema: String?,
-        driver: any PluginDatabaseDriver
-    ) -> String {
-        let list = columns.isEmpty
-            ? "*"
-            : columns.map { driver.quoteIdentifier($0) }.joined(separator: ", ")
-        return "SELECT \(list) FROM \(qualified(table, schema, driver))"
-    }
-
-    private static func qualified(_ table: String, _ schema: String?, _ driver: any PluginDatabaseDriver) -> String {
-        guard let schema, !schema.isEmpty else { return driver.quoteIdentifier(table) }
-        return "\(driver.quoteIdentifier(schema)).\(driver.quoteIdentifier(table))"
-    }
 }
