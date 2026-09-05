@@ -28,7 +28,7 @@ struct MCPIdentityLedgerTests {
 
     @Test("An approval is scoped to the token that earned it")
     func approvalDoesNotLeakAcrossTokens() async {
-        let ledger = MCPApprovalLedger(clock: MCPTestClock())
+        let ledger = MCPApprovalLedger(clock: MCPTestClock(), store: MCPInMemoryApprovalStore())
         let connectionId = UUID()
         let first = principal(tokenId: UUID(), fingerprint: "first")
         let second = principal(tokenId: UUID(), fingerprint: "second")
@@ -41,7 +41,7 @@ struct MCPIdentityLedgerTests {
 
     @Test("An approval is scoped to the connection it was given for")
     func approvalDoesNotLeakAcrossConnections() async {
-        let ledger = MCPApprovalLedger(clock: MCPTestClock())
+        let ledger = MCPApprovalLedger(clock: MCPTestClock(), store: MCPInMemoryApprovalStore())
         let approved = UUID()
         let other = UUID()
         let subject = principal(tokenId: UUID())
@@ -53,12 +53,12 @@ struct MCPIdentityLedgerTests {
         #expect(await ledger.approvedConnectionIds(principal: subject) == [approved])
     }
 
-    @Test("An approval expires once its lifetime elapses")
-    func approvalExpires() async {
+    @Test("An anonymous caller's approval expires once its lifetime elapses")
+    func anonymousApprovalExpires() async {
         let clock = MCPTestClock()
-        let ledger = MCPApprovalLedger(ttl: .seconds(60), clock: clock)
+        let ledger = MCPApprovalLedger(ttl: .seconds(60), clock: clock, store: MCPInMemoryApprovalStore())
         let connectionId = UUID()
-        let subject = principal(tokenId: UUID())
+        let subject = principal(tokenId: nil, fingerprint: "anon")
 
         await ledger.record(principal: subject, connectionId: connectionId, approved: true)
         await clock.advance(by: .seconds(59))
@@ -69,12 +69,12 @@ struct MCPIdentityLedgerTests {
         #expect(await ledger.approvedConnectionIds(principal: subject).isEmpty)
     }
 
-    @Test("The default approval lifetime is half an hour")
-    func defaultApprovalLifetime() async {
+    @Test("The default lifetime of an anonymous approval is half an hour")
+    func defaultAnonymousApprovalLifetime() async {
         let clock = MCPTestClock()
-        let ledger = MCPApprovalLedger(clock: clock)
+        let ledger = MCPApprovalLedger(clock: clock, store: MCPInMemoryApprovalStore())
         let connectionId = UUID()
-        let subject = principal(tokenId: UUID())
+        let subject = principal(tokenId: nil, fingerprint: "anon")
 
         await ledger.record(principal: subject, connectionId: connectionId, approved: true)
         await clock.advance(by: .seconds(1_799))
@@ -84,9 +84,34 @@ struct MCPIdentityLedgerTests {
         #expect(await ledger.isApproved(principal: subject, connectionId: connectionId) == false)
     }
 
+    @Test("An issued token's grant does not expire on a timer")
+    func issuedTokenGrantDoesNotExpire() async {
+        let clock = MCPTestClock()
+        let ledger = MCPApprovalLedger(ttl: .seconds(60), clock: clock, store: MCPInMemoryApprovalStore())
+        let connectionId = UUID()
+        let subject = principal(tokenId: UUID())
+
+        await ledger.record(principal: subject, connectionId: connectionId, approved: true)
+        await clock.advance(by: .seconds(100_000))
+
+        #expect(await ledger.isApproved(principal: subject, connectionId: connectionId) == true)
+        #expect(await ledger.approvedConnectionIds(principal: subject) == [connectionId])
+    }
+
+    @Test("A grant is not remembered when the caller asked for it not to be")
+    func recordWithoutRememberingIsNotKept() async {
+        let ledger = MCPApprovalLedger(clock: MCPTestClock(), store: MCPInMemoryApprovalStore())
+        let connectionId = UUID()
+        let subject = principal(tokenId: UUID())
+
+        await ledger.record(principal: subject, connectionId: connectionId, approved: true, remember: false)
+
+        #expect(await ledger.isApproved(principal: subject, connectionId: connectionId) == false)
+    }
+
     @Test("Revoking a token drops only that token's approvals")
     func clearByTokenId() async {
-        let ledger = MCPApprovalLedger(clock: MCPTestClock())
+        let ledger = MCPApprovalLedger(clock: MCPTestClock(), store: MCPInMemoryApprovalStore())
         let connectionId = UUID()
         let revokedId = UUID()
         let revoked = principal(tokenId: revokedId, fingerprint: "revoked")
@@ -94,7 +119,7 @@ struct MCPIdentityLedgerTests {
 
         await ledger.record(principal: revoked, connectionId: connectionId, approved: true)
         await ledger.record(principal: survivor, connectionId: connectionId, approved: true)
-        await ledger.clear(tokenId: revokedId)
+        await ledger.clear(subject: .token(revokedId))
 
         #expect(await ledger.isApproved(principal: revoked, connectionId: connectionId) == false)
         #expect(await ledger.isApproved(principal: survivor, connectionId: connectionId) == true)
@@ -102,14 +127,14 @@ struct MCPIdentityLedgerTests {
 
     @Test("Clearing with no token id drops the anonymous approvals and leaves the issued ones")
     func clearWithoutTokenIdDropsAnonymousApprovals() async {
-        let ledger = MCPApprovalLedger(clock: MCPTestClock())
+        let ledger = MCPApprovalLedger(clock: MCPTestClock(), store: MCPInMemoryApprovalStore())
         let connectionId = UUID()
         let anonymous = principal(tokenId: nil, fingerprint: MCPPrincipal.anonymousFingerprint)
         let issued = principal(tokenId: UUID(), fingerprint: "issued")
 
         await ledger.record(principal: anonymous, connectionId: connectionId, approved: true)
         await ledger.record(principal: issued, connectionId: connectionId, approved: true)
-        await ledger.clear(tokenId: nil)
+        await ledger.clear(subject: nil)
 
         #expect(await ledger.isApproved(principal: anonymous, connectionId: connectionId) == false)
         #expect(await ledger.isApproved(principal: issued, connectionId: connectionId) == true)
@@ -117,7 +142,7 @@ struct MCPIdentityLedgerTests {
 
     @Test("Two anonymous callers are two callers")
     func anonymousPrincipalsAreKeyedByFingerprint() async {
-        let ledger = MCPApprovalLedger(clock: MCPTestClock())
+        let ledger = MCPApprovalLedger(clock: MCPTestClock(), store: MCPInMemoryApprovalStore())
         let connectionId = UUID()
         let first = principal(tokenId: nil, fingerprint: "first")
         let second = principal(tokenId: nil, fingerprint: "second")
@@ -131,7 +156,7 @@ struct MCPIdentityLedgerTests {
 
     @Test("A denial removes any standing approval")
     func denialRemovesApproval() async {
-        let ledger = MCPApprovalLedger(clock: MCPTestClock())
+        let ledger = MCPApprovalLedger(clock: MCPTestClock(), store: MCPInMemoryApprovalStore())
         let connectionId = UUID()
         let subject = principal(tokenId: UUID())
 
@@ -143,14 +168,14 @@ struct MCPIdentityLedgerTests {
 
     @Test("Clearing everything leaves no approval standing")
     func clearAllDropsEveryApproval() async {
-        let ledger = MCPApprovalLedger(clock: MCPTestClock())
+        let ledger = MCPApprovalLedger(clock: MCPTestClock(), store: MCPInMemoryApprovalStore())
         let connectionId = UUID()
         let anonymous = principal(tokenId: nil, fingerprint: "anon")
         let issued = principal(tokenId: UUID())
 
         await ledger.record(principal: anonymous, connectionId: connectionId, approved: true)
         await ledger.record(principal: issued, connectionId: connectionId, approved: true)
-        await ledger.clearAll()
+        await ledger.forgetEveryGrant()
 
         #expect(await ledger.isApproved(principal: anonymous, connectionId: connectionId) == false)
         #expect(await ledger.isApproved(principal: issued, connectionId: connectionId) == false)

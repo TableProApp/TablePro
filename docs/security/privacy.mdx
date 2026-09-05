@@ -94,7 +94,7 @@ It is off by default, but it starts on demand: the bundled bridge and the pairin
 1. **Require authentication**, on by default. With it on, a request that arrives without an `Authorization` header is refused. Turn it off and a loopback caller with no header is allowed instead, capped at `tools:read` and `resources:read` however much it asks for.
 2. The token's scope and its connection allowlist.
 3. The connection's **External Clients** level: **Blocked**, **Read Only** (the default for a new connection), or **Read & Write**. The effective permission is the lower of that and the token's scope.
-4. The connection's **AI Policy** and its [Safe Mode](/features/safe-mode) level, which still apply to statements a client sends.
+4. The connection's **AI Policy** of **Never**, its [Safe Mode](/features/safe-mode) level, and the **Approval** setting under **Settings > Integrations**, which decides how often a client is asked before it reaches a connection.
 
 Loopback-only describes where the server binds, not everything that can reach it. The server returns CORS headers for two remote origins, `claude.ai` and `app.cursor.com`, so a page you have open there can call your local server from your own browser. The four gates above are what stands between such a call and your data, which is the reason to leave **Require authentication** on.
 

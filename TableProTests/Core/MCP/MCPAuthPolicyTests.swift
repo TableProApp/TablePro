@@ -34,13 +34,17 @@ struct MCPAuthPolicyTests {
 
     private func makePolicy(
         _ snapshot: MCPConnectionAuthSnapshot?,
-        ledger: MCPApprovalLedger = MCPApprovalLedger(clock: MCPTestClock()),
-        connectionIds: Set<UUID> = []
+        ledger: MCPApprovalLedger = MCPApprovalLedger(clock: MCPTestClock(), store: MCPInMemoryApprovalStore()),
+        connectionIds: Set<UUID> = [],
+        approval: MCPConnectionApproval = .oncePerConnection,
+        presenter: any MCPApprovalPresenting = RecordingApprovalPresenter(answer: false)
     ) -> MCPAuthPolicy {
         MCPAuthPolicy(
             connectionResolver: { _ in snapshot },
             connectionIdsProvider: { connectionIds },
-            approvalLedger: ledger
+            approvalLedger: ledger,
+            approvalSetting: MCPFixedApprovalReader(approval),
+            presenter: presenter
         )
     }
 
@@ -51,7 +55,7 @@ struct MCPAuthPolicyTests {
         MCPAuthPolicy(
             connectionResolver: resolver,
             connectionIdsProvider: { connectionIds },
-            approvalLedger: MCPApprovalLedger(clock: MCPTestClock())
+            approvalLedger: MCPApprovalLedger(clock: MCPTestClock(), store: MCPInMemoryApprovalStore())
         )
     }
 
@@ -362,7 +366,7 @@ struct MCPAuthPolicyTests {
 
     @Test("Revoking a token clears the approvals it was carrying and leaves the others alone")
     func clearingApprovalsFollowsTheToken() async throws {
-        let ledger = MCPApprovalLedger(clock: MCPTestClock())
+        let ledger = MCPApprovalLedger(clock: MCPTestClock(), store: MCPInMemoryApprovalStore())
         let policy = makePolicy(makeSnapshot(policy: .askEachTime), ledger: ledger)
         let revoked = makePrincipal(fingerprint: "revoked")
         let survivor = makePrincipal(fingerprint: "survivor")
@@ -392,12 +396,12 @@ struct MCPAuthPolicyTests {
         }
     }
 
-    @Test("An approval expires on its own")
-    func approvalExpires() async throws {
+    @Test("A token's approval stands until it is revoked, not until a timer runs out")
+    func approvalDoesNotExpireOnATimer() async throws {
         let clock = MCPTestClock()
         let policy = makePolicy(
             makeSnapshot(policy: .askEachTime),
-            ledger: MCPApprovalLedger(ttl: .seconds(1_800), clock: clock)
+            ledger: MCPApprovalLedger(ttl: .seconds(1_800), clock: clock, store: MCPInMemoryApprovalStore())
         )
         let principal = makePrincipal()
         await policy.recordApproval(principal: principal, connectionId: connectionA)
@@ -410,19 +414,19 @@ struct MCPAuthPolicyTests {
             connectionId: connectionA
         )
 
-        guard case .requiresUserApproval = decision else {
-            Issue.record("Expected an expired approval to be asked again, got \(decision)")
+        guard case .allowed = decision else {
+            Issue.record("Expected a granted connection to stay granted, got \(decision)")
             return
         }
     }
 
-    @Test("Clearing every approval asks each token again")
-    func clearingAllApprovals() async throws {
+    @Test("Forgetting every grant asks each token again")
+    func forgettingEveryGrant() async throws {
         let policy = makePolicy(makeSnapshot(policy: .askEachTime))
         let principal = makePrincipal()
         await policy.recordApproval(principal: principal, connectionId: connectionA)
 
-        await policy.clearAllApprovals()
+        await policy.forgetEveryGrant()
 
         let decision = try await policy.authorize(
             principal: principal,

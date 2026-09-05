@@ -163,7 +163,8 @@ final class MCPPairingService {
             name: request.clientName,
             permissions: approval.grantedPermissions,
             connectionAccess: connectionAccess,
-            expiresAt: approval.expiresAt
+            expiresAt: approval.expiresAt,
+            isBridgeCredential: false
         )
 
         let code = UUID().uuidString

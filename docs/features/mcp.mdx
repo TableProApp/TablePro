@@ -40,6 +40,33 @@ Click **Connect a Client…** and pick **Claude Code**, **Claude Desktop**, **Cu
 
 For VS Code, Cline, Continue, Windsurf, Antigravity, Goose, the HTTP transport, and a client that connects but lists no tools, see [MCP Clients](/external-api/mcp-clients).
 
+## Connection access
+
+The first time a client reaches one of your connections, TablePro asks. **Approval** under
+**Connection Access** decides how often it asks after that.
+
+| Approval | What happens |
+|---|---|
+| **Ask Every Time** | Every call that names a connection asks first |
+| **Ask Once for Each Connection** | The first call asks, and the answer is kept until you revoke it. The default |
+| **Never Ask** | Connections are reached without asking |
+
+Leave it at **Ask Once for Each Connection** unless a client runs unattended, in which case **Never
+Ask** stops the prompt from waiting for someone who is not there. Approvals already given are listed
+underneath, each with **Forget**.
+
+Approval decides only whether you are asked. It grants nothing: a connection **Blocked** for
+external clients stays blocked, a **Read Only** one stays read only, a connection whose AI policy is
+**Never** is refused, and [Safe Mode](/features/safe-mode#external-clients) still confirms
+destructive statements. **Never Ask** is not a way to skip any of those.
+
+The question always arrives as a dialog on your Mac, never through the client. A client that could
+answer it in its own interface could also answer it without asking you, and this is the gate that
+decides whether it reaches the connection at all.
+
+Nothing here times out. Whoever sent the request decides how long to wait for you, and an answer
+counts whenever you give it.
+
 ## Authentication
 
 **Require authentication** is on by default. Turning it on for the first time with no tokens yet generates a full-access "Default token" and shows the plaintext once, so copy it then. Create, scope, allowlist, expire and revoke tokens in the same section, described in [Tokens](/external-api/tokens).
