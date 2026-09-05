@@ -166,7 +166,7 @@ extension TableStructureView {
     private func copyDDL() {
         ClipboardService.shared.writeText(ddlStatement)
 
-        withAnimation {
+        withMotion {
             showCopyConfirmation = true
         }
 
@@ -174,7 +174,7 @@ extension TableStructureView {
         copyResetTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(1_500))
             guard !Task.isCancelled else { return }
-            withAnimation {
+            withMotion {
                 showCopyConfirmation = false
             }
         }

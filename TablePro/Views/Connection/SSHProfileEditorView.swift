@@ -282,7 +282,7 @@ struct SSHProfileEditorView: View {
                             Spacer()
                             Button {
                                 let idToRemove = jumpHost.id
-                                withAnimation { jumpHosts.removeAll { $0.id == idToRemove } }
+                                withMotion { jumpHosts.removeAll { $0.id == idToRemove } }
                             } label: {
                                 Image(systemName: "minus.circle.fill")
                                     .frame(width: 24, height: 24)
