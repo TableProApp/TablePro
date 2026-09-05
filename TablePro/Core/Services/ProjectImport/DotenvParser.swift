@@ -5,10 +5,12 @@
 
 import Foundation
 
+/// No quoting flag. Single quotes decide one thing, that the value is taken literally, and `resolve`
+/// answers that from the assignment's own quoting before an entry exists. Carrying it here as well
+/// would be a second copy of a question already settled.
 struct DotenvEntry: Sendable {
     let key: String
     let value: String
-    let isSingleQuoted: Bool
     let hasUnresolvedReference: Bool
 }
 
