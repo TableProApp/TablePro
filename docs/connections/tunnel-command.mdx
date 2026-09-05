@@ -27,7 +27,7 @@ A `kubectl port-forward` running in a terminal is a window you cannot close for 
   </Step>
 </Steps>
 
-The **Host** and **Port** on the General tab stay the database's own. They are what the forward points at, so a kubectl forward reads the port from there and an SSM session forwards to that host and port from the target instance.
+The **Host** and **Port** on the General section stay the database's own. They are what the forward points at, so a kubectl forward reads the port from there and an SSM session forwards to that host and port from the target instance.
 
 ## Methods
 
@@ -52,8 +52,8 @@ Three placeholders are substituted before the command runs:
 | Placeholder | Value |
 |---|---|
 | `{port}` | The loopback port allocated for this connection. Required |
-| `{host}` | The **Host** field on the General tab |
-| `{remotePort}` | The **Port** field on the General tab |
+| `{host}` | The **Host** field on the General section |
+| `{remotePort}` | The **Port** field on the General section |
 
 ```bash
 ssh -N -L {port}:{host}:{remotePort} bastion.example.com

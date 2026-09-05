@@ -3,7 +3,7 @@ title: SSH Tunneling
 description: Route database connections through an SSH tunnel to reach servers in private networks
 ---
 
-The database **Host** on the General tab is resolved from the SSH server, not from your Mac. A database on the SSH server itself is therefore `localhost`, not the server's public name, and a database elsewhere on the private network is whatever the SSH server calls it (an RDS endpoint, for instance).
+The database **Host** on the General section is resolved from the SSH server, not from your Mac. A database on the SSH server itself is therefore `localhost`, not the server's public name, and a database elsewhere on the private network is whatever the SSH server calls it (an RDS endpoint, for instance).
 
 ```mermaid
 flowchart LR
@@ -33,8 +33,8 @@ flowchart LR
 To share one SSH config across connections, save it with **Save Current as Profile…** or pick an existing one from the **Profile** picker; see [SSH Profiles](/connections/ssh-profiles). To fill the fields from a string instead, paste a `scheme+ssh://` URL into the [Import from URL…](/connections/urls#ssh-tunnel-format) sheet.
 
 <Frame caption="Reusing a saved SSH profile">
-  <img className="block dark:hidden" src="/images/ssh-tunnel-config.png" alt="Network tab with SSH Tunnel selected and a saved profile in the Profile picker" />
-  <img className="hidden dark:block" src="/images/ssh-tunnel-config-dark.png" alt="Network tab with SSH Tunnel selected and a saved profile in the Profile picker" />
+  <img className="block dark:hidden" src="/images/ssh-tunnel-config.png" alt="Network section with SSH Tunnel selected and a saved profile in the Profile picker" />
+  <img className="hidden dark:block" src="/images/ssh-tunnel-config-dark.png" alt="Network section with SSH Tunnel selected and a saved profile in the Profile picker" />
 </Frame>
 
 **SSH Tunnel** is not offered on SQLite, PGlite, libSQL, Beancount, BigQuery, Cloudflare D1, DynamoDB, Elasticsearch, or Snowflake: each is reached over a local file, a loopback socket, or a vendor HTTP API.

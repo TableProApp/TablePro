@@ -1,16 +1,16 @@
 ---
 title: Connection form
-description: The four tabs of the connection editor and the fields each driver adds
+description: The four sections of the connection editor and the fields each driver adds
 ---
 
-The editor has the same four tabs whatever the driver. Only Network is ever absent, and only for a driver that connects directly and cannot negotiate TLS.
+The editor's sidebar lists the same four sections whatever the driver. Only Network is ever absent, and only for a driver that connects directly and cannot negotiate TLS.
 
 <Frame caption="A PostgreSQL connection on the General tab">
-  <img className="block dark:hidden" src="/images/connection-form-fields.png" alt="Connection editor showing Name, Type, host fields and credentials, with a tab bar above and Test, Cancel and Save below" />
-  <img className="hidden dark:block" src="/images/connection-form-fields-dark.png" alt="Connection editor showing Name, Type, host fields and credentials, with a tab bar above and Test, Cancel and Save below" />
+  <img className="block dark:hidden" src="/images/connection-form-fields.png" alt="Connection editor with a General, Network, Options and Appearance sidebar, credential fields filling the pane, and Test, Cancel and Save along the bottom" />
+  <img className="hidden dark:block" src="/images/connection-form-fields-dark.png" alt="Connection editor with a General, Network, Options and Appearance sidebar, credential fields filling the pane, and Test, Cancel and Save along the bottom" />
 </Frame>
 
-| Tab | Contents |
+| Section | Contents |
 |------|----------|
 | **General** | Name, database type, host, port, database, credentials |
 | **Network** | How the connection reaches the server, and how it is encrypted |
