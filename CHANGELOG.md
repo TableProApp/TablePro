@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Connection with two transports enabled reaching the database directly, with neither transport applied.
+- Delete Connection missing from the connection editor since 0.39.0.
+- Continue dimmed after filtering the database chooser down to one driver.
+- Down arrow not reaching the list from the database chooser's search field.
+- VoiceOver reading a database chooser row's icon before the driver's name.
 - Cost badge on every plan node of a query ending in `LIMIT`, where the share it reads could exceed 100%. (#2633)
 - Green "low cost" badge on plans that report no cost at all, such as SQLite and ClickHouse. (#2633)
 - Empty Cost, Rows and Actual Time columns in the EXPLAIN tree for engines that report none of them. (#2633)

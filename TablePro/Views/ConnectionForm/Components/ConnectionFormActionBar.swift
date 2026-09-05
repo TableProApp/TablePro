@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import AppKit
 import SwiftUI
 
 /// The window's commit actions, and the reason they are unavailable.
@@ -23,6 +24,7 @@ struct ConnectionFormActionBar: View {
         let canCommit = issues.isEmpty && !coordinator.isInstallingPlugin
 
         return HStack(spacing: 12) {
+            deleteButton
             validationMessage(issues)
             Spacer(minLength: 12)
             TestConnectionStatusButton(coordinator: coordinator)
@@ -45,6 +47,36 @@ struct ConnectionFormActionBar: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
+    }
+
+    /// Restores the Delete the editor shipped through 0.38.0.
+    ///
+    /// It sat at `ToolbarItemPlacement.destructiveAction` until #995 rebuilt the form and dropped
+    /// the button while porting its body into `ConnectionFormCoordinator.deleteCurrent()`, which
+    /// has had no caller since. The window has no toolbar now, so it takes the bottom bar's leading
+    /// edge, which is where `SSHProfileEditorView` already puts the same action.
+    @ViewBuilder
+    private var deleteButton: some View {
+        if !coordinator.isNew {
+            Button(String(localized: "Delete"), role: .destructive) {
+                confirmDelete()
+            }
+            .accessibilityIdentifier("connection-form-delete")
+        }
+    }
+
+    private func confirmDelete() {
+        Task {
+            let confirmed = await AlertHelper.confirmDestructive(
+                title: String(localized: "Delete Connection"),
+                message: String(localized: "Are you sure you want to delete this connection? This cannot be undone."),
+                confirmButton: String(localized: "Delete"),
+                window: NSApp.keyWindow
+            )
+            if confirmed {
+                coordinator.deleteCurrent()
+            }
+        }
     }
 
     private var defaultActionTitle: String {

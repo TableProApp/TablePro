@@ -65,16 +65,28 @@ final class RedisConnectionModeUITests: UITestCase {
         XCTAssertTrue(newConnection.waitToExist(timeout: 10))
         newConnection.click()
 
-        let chooser = app.windows.firstMatch
-        let search = chooser.searchFields.firstMatch
-        XCTAssertTrue(search.waitToExist(timeout: 10), "The chooser should offer its search field")
-        search.click()
-        app.typeText("Redis")
+        /// Scoped to the sheet, not the window: the chooser is a `.sheet` on the welcome window, so
+        /// a window-scoped `searchFields.firstMatch` sees the welcome list's own filter first, and
+        /// both carry the identifier `sidebar-filter`. The driver name then goes into the
+        /// connection filter and the chooser list is never filtered.
+        let sheet = app.sheets.firstMatch
+        XCTAssertTrue(sheet.waitToExist(timeout: 10), "New Connection… should open the chooser sheet")
 
-        let redis = chooser.outlines.firstMatch.staticTexts
+        let search = sheet.searchFields.firstMatch
+        XCTAssertTrue(search.waitToExist(timeout: 10), "The chooser should offer its search field")
+        XCTAssertTrue(waitUntilHittable(search, timeout: 10))
+        search.click()
+        search.typeText("Redis")
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { (search.value as? String) == "Redis" },
+            "Typing should reach the chooser's search field"
+        )
+
+        let redis = sheet.outlines.firstMatch.staticTexts
             .matching(NSPredicate(format: "value == %@", "Redis"))
             .firstMatch
         XCTAssertTrue(redis.waitToExist(timeout: 10), "The chooser should list Redis")
+        XCTAssertTrue(waitUntilHittable(redis, timeout: 10))
         redis.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).doubleClick()
 
         let form = app.windows["connection-form"]
