@@ -4,11 +4,13 @@ public struct MCPPrincipalMetadata: Sendable, Equatable {
     public let label: String?
     public let issuedAt: Date
     public let expiresAt: Date?
+    public let isBridgeCredential: Bool
 
-    public init(label: String?, issuedAt: Date, expiresAt: Date?) {
+    public init(label: String?, issuedAt: Date, expiresAt: Date?, isBridgeCredential: Bool = false) {
         self.label = label
         self.issuedAt = issuedAt
         self.expiresAt = expiresAt
+        self.isBridgeCredential = isBridgeCredential
     }
 }
 

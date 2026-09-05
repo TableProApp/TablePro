@@ -55,14 +55,33 @@ struct MCPSection: View {
 
         if settings.enabled {
             configurationSection
+            connectionAccessSection
             authenticationSection
             helpSection
+        }
+    }
 
-            Section {
-                Text(String(localized: "AI access policies are configured per-connection in each connection's settings."))
-                    .foregroundStyle(.secondary)
-                    .font(.callout)
+    private var connectionAccessSection: some View {
+        Section {
+            Picker(String(localized: "Approval"), selection: $settings.connectionApproval) {
+                ForEach(MCPConnectionApproval.allCases) { approval in
+                    Text(approval.displayName).tag(approval)
+                }
             }
+            .pickerStyle(.menu)
+
+            Text(settings.connectionApproval.explanation)
+                .foregroundStyle(.secondary)
+                .font(.callout)
+
+            MCPGrantListView()
+        } header: {
+            Text("Connection Access")
+        } footer: {
+            // swiftlint:disable:next line_length
+            Text("Approval is separate from what a client may reach. A connection blocked for external clients stays blocked, a read-only one stays read only, and Safe Mode still confirms destructive statements.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -150,7 +169,8 @@ struct MCPSection: View {
                 name: name,
                 permissions: permissions,
                 connectionAccess: access,
-                expiresAt: expiresAt
+                expiresAt: expiresAt,
+                isBridgeCredential: false
             ) else { return }
             revealedToken = result.token
             revealedPlaintext = result.plaintext
@@ -162,7 +182,7 @@ struct MCPSection: View {
 
     private func refreshTokens() async {
         guard let store = MCPServerManager.shared.tokenStore else { return }
-        tokenList = await store.list().filter { $0.name != MCPTokenStore.stdioBridgeTokenName }
+        tokenList = await store.list().filter { !$0.isBridgeCredential }
     }
 }
 

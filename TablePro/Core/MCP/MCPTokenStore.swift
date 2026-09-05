@@ -48,6 +48,9 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
     var lastUsedAt: Date?
     let expiresAt: Date?
     var isActive: Bool
+    /// Set only by the bundled bridge's own mint. Never derived from the token's name, which a
+    /// pairing request supplies and could therefore claim.
+    let isBridgeCredential: Bool
 
     var isExpired: Bool {
         guard let expiresAt else { return false }
@@ -67,7 +70,8 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         createdAt: Date,
         lastUsedAt: Date?,
         expiresAt: Date?,
-        isActive: Bool
+        isActive: Bool,
+        isBridgeCredential: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -80,6 +84,7 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         self.lastUsedAt = lastUsedAt
         self.expiresAt = expiresAt
         self.isActive = isActive
+        self.isBridgeCredential = isBridgeCredential
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -94,6 +99,7 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         case lastUsedAt
         case expiresAt
         case isActive
+        case isBridgeCredential
     }
 
     init(from decoder: Decoder) throws {
@@ -109,6 +115,7 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         self.expiresAt = try container.decodeIfPresent(Date.self, forKey: .expiresAt)
         self.isActive = try container.decode(Bool.self, forKey: .isActive)
         self.connectionAccess = try container.decodeIfPresent(ConnectionAccess.self, forKey: .connectionAccess) ?? .all
+        self.isBridgeCredential = try container.decodeIfPresent(Bool.self, forKey: .isBridgeCredential) ?? false
     }
 
     func encode(to encoder: Encoder) throws {
@@ -123,6 +130,7 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
         try container.encode(createdAt, forKey: .createdAt)
         try container.encodeIfPresent(lastUsedAt, forKey: .lastUsedAt)
         try container.encodeIfPresent(expiresAt, forKey: .expiresAt)
+        try container.encode(isBridgeCredential, forKey: .isBridgeCredential)
         try container.encode(isActive, forKey: .isActive)
     }
 }
@@ -170,7 +178,7 @@ actor MCPTokenStore {
     private var lastSavedAt: ContinuousClock.Instant = .now
     private static let saveCooldown: Duration = .seconds(60)
 
-    private var revocationObservers: [UUID: @Sendable (String) async -> Void] = [:]
+    private var revocationObservers: [UUID: @Sendable (String, Bool) async -> Void] = [:]
 
     init(credentialStore: any MCPTokenCredentialStoring = MCPTokenKeychainStore()) {
         self.credentialStore = credentialStore
@@ -179,7 +187,7 @@ actor MCPTokenStore {
     }
 
     @discardableResult
-    func addRevocationObserver(_ handler: @escaping @Sendable (String) async -> Void) -> UUID {
+    func addRevocationObserver(_ handler: @escaping @Sendable (String, Bool) async -> Void) -> UUID {
         let id = UUID()
         revocationObservers[id] = handler
         return id
@@ -189,12 +197,19 @@ actor MCPTokenStore {
         revocationObservers.removeValue(forKey: id)
     }
 
+    /// The bridge's reserved name carries no privilege, and nothing but the bridge's own mint may
+    /// claim it: a pairing request supplies its client name, so a caller could otherwise ask to be
+    /// called the bridge and inherit every grant the bridge had earned.
     func generate(
         name: String,
         permissions: TokenPermissions,
         connectionAccess: ConnectionAccess,
-        expiresAt: Date?
+        expiresAt: Date?,
+        isBridgeCredential: Bool
     ) throws -> (token: MCPAuthToken, plaintext: String) {
+        let name = (!isBridgeCredential && name == Self.stdioBridgeTokenName)
+            ? name + " (client)"
+            : name
         let plaintext = "tp_" + Self.base64UrlEncode(try Self.randomBytes(count: 32))
         let saltBase64 = try Self.randomBytes(count: 16).base64EncodedString()
         let hash = Self.computeHash(salt: saltBase64, plaintext: plaintext)
@@ -210,7 +225,8 @@ actor MCPTokenStore {
             createdAt: Date.now,
             lastUsedAt: nil,
             expiresAt: expiresAt,
-            isActive: true
+            isActive: true,
+            isBridgeCredential: isBridgeCredential
         )
 
         tokens.append(token)
@@ -243,8 +259,9 @@ actor MCPTokenStore {
 
         tokens[index].isActive = false
         let revokedName = tokens[index].name
+        let wasBridge = tokens[index].isBridgeCredential
         save()
-        notifyRevocationObservers(tokenId: tokenId)
+        notifyRevocationObservers(tokenId: tokenId, wasBridgeCredential: wasBridge)
 
         Self.logger.info("Revoked MCP token '\(revokedName, privacy: .public)'")
         MCPAuditLogger.logTokenRevoked(tokenId: tokenId, tokenName: revokedName)
@@ -257,18 +274,19 @@ actor MCPTokenStore {
         }
 
         let name = tokens[index].name
+        let wasBridge = tokens[index].isBridgeCredential
         tokens.remove(at: index)
         save()
-        notifyRevocationObservers(tokenId: tokenId)
+        notifyRevocationObservers(tokenId: tokenId, wasBridgeCredential: wasBridge)
 
         Self.logger.info("Deleted MCP token '\(name, privacy: .public)'")
     }
 
-    private func notifyRevocationObservers(tokenId: UUID) {
+    private func notifyRevocationObservers(tokenId: UUID, wasBridgeCredential: Bool) {
         let observers = Array(revocationObservers.values)
         let key = tokenId.uuidString
         for observer in observers {
-            Task { await observer(key) }
+            Task { await observer(key, wasBridgeCredential) }
         }
     }
 
@@ -287,9 +305,12 @@ actor MCPTokenStore {
     func loadFromDisk() {
         tokens = readCredentialStore() ?? migrateLegacyFileIfPresent()
 
-        let staleCount = tokens.filter { $0.name == Self.stdioBridgeTokenName }.count
+        let isStaleBridge: (MCPAuthToken) -> Bool = {
+            $0.isBridgeCredential || $0.name == Self.stdioBridgeTokenName
+        }
+        let staleCount = tokens.filter(isStaleBridge).count
         guard staleCount > 0 else { return }
-        tokens.removeAll { $0.name == Self.stdioBridgeTokenName }
+        tokens.removeAll(where: isStaleBridge)
         save()
         Self.logger.info("Cleaned up \(staleCount) stale bridge token(s)")
     }

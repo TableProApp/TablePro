@@ -112,6 +112,24 @@ internal final class MCPServerManager {
         }
     }
 
+    /// Grants outlive the composition that recorded them, so the settings pane reads them through a
+    /// policy built on demand when the server is not running.
+    internal func connectionGrants() async -> [MCPConnectionGrant] {
+        await approvalPolicy().grants()
+    }
+
+    internal func forgetGrant(subject: String, connectionId: UUID) async {
+        await approvalPolicy().revokeGrant(subject: subject, connectionId: connectionId)
+    }
+
+    internal func forgetEveryGrant() async {
+        await approvalPolicy().forgetEveryGrant()
+    }
+
+    private func approvalPolicy() -> MCPAuthPolicy {
+        composition?.authPolicy ?? MCPAuthPolicy()
+    }
+
     internal func disconnectClient(_ clientId: String) async {
         guard let composition else { return }
         let entries = await composition.activityLedger.snapshot(now: Date())
@@ -248,7 +266,8 @@ internal final class MCPServerManager {
                 name: MCPTokenStore.stdioBridgeTokenName,
                 permissions: MCPTokenStore.bridgeTokenPermissions,
                 connectionAccess: .all,
-                expiresAt: expiresAt
+                expiresAt: expiresAt,
+                isBridgeCredential: true
             )
             return BridgeCredential(
                 tokenId: generated.token.id,
@@ -347,20 +366,29 @@ internal final class MCPServerManager {
         store: MCPTokenStore,
         generation: Int
     ) async {
-        revocationObserverId = await store.addRevocationObserver { [weak self] rawTokenId in
+        revocationObserverId = await store.addRevocationObserver { [weak self] rawTokenId, wasBridge in
             guard let tokenId = UUID(uuidString: rawTokenId), let self else { return }
-            await self.handleTokenRevoked(tokenId: tokenId, dispatcher: built.dispatcher, generation: generation)
+            await self.handleTokenRevoked(
+                tokenId: tokenId,
+                wasBridgeCredential: wasBridge,
+                dispatcher: built.dispatcher,
+                generation: generation
+            )
         }
     }
 
     private func handleTokenRevoked(
         tokenId: UUID,
+        wasBridgeCredential: Bool,
         dispatcher: MCPProtocolDispatcher,
         generation: Int
     ) async {
         guard isCurrent(generation) else { return }
         let cancelled = await dispatcher.cancelInflight(matchingTokenId: tokenId)
-        await composition?.authPolicy.clearApprovals(tokenId: tokenId)
+        await composition?.authPolicy.clearApprovals(
+            tokenId: tokenId,
+            wasBridgeCredential: wasBridgeCredential
+        )
         guard cancelled > 0 else { return }
         Self.logger.info(
             "Token \(tokenId.uuidString, privacy: .public) revoked: cancelled \(cancelled, privacy: .public) request(s)"

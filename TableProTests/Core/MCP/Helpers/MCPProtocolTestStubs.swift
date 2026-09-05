@@ -257,6 +257,7 @@ enum StubHandlerBehavior: Sendable {
     case waitForCancellation
     case blockUntilReleased(ReleaseGate)
     case emitProgressThenComplete(Double)
+    case requiringInput(MCPInputRequired)
 }
 
 protocol StubHandlerIdentity: Sendable {
@@ -334,6 +335,8 @@ struct StubHandler<Identity: StubHandlerIdentity>: MCPMethodHandler {
         case .emitProgressThenComplete(let progress):
             await context.progress.emit(progress: progress)
             return .complete(["ok": .bool(true)])
+        case .requiringInput(let signal):
+            throw signal
         }
     }
 }

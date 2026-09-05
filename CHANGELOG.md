@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Server-side `INSERT … SELECT` when a copy's two sides are one connection. (#1491)
 - Tunnel Command pane, with presets for `kubectl port-forward` and `aws ssm start-session` and a custom command line. (#2520)
 - Bar chart column in the EXPLAIN tree, with a Metric menu for self cost, self time and row counts. (#2633)
+- Approval setting for MCP connection access, with the list of approved connections and a Forget action. (#2640)
 
 ### Fixed
 
@@ -32,6 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - JavaScript `locals` and `tags` queries that no longer compiled against the bundled parser.
 - JSON `true`, `false` and `null` unhighlighted in the row inspector and the JSON viewer.
 - Operator and Function theme colours with no effect on the editor.
+- MCP access prompt with no setting to turn it off, reachable only from the AI tab and hidden entirely with AI features off. (#2640)
+- MCP access prompt discarding an answer given more than 30 seconds after it appeared. (#2640)
+- MCP access prompt returning every 30 minutes, and after each rotation of the bundled bridge's credential. (#2640)
+- Repeated MCP access prompts when a client retried a call the user had just denied. (#2640)
+- Destructive-operation consent reaching an elicitation-capable MCP client as an internal error instead of a prompt.
+- `ai_policy` in `list_connections` reporting `askEachTime` whatever the app-wide default was.
 
 ## [0.72.0] - 2026-09-04
 

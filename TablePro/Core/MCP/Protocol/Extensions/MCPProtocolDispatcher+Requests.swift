@@ -200,6 +200,8 @@ extension MCPProtocolDispatcher {
             let outcome: MCPHandlerOutcome
             do {
                 outcome = .success(try await handler.handle(params: params, context: context))
+            } catch let signal as MCPInputRequired where signal.isValid {
+                outcome = .success(signal.asResult)
             } catch let error as MCPProtocolError {
                 outcome = .failure(error)
             } catch is CancellationError {

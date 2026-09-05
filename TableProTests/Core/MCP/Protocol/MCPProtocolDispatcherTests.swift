@@ -533,6 +533,32 @@ final class MCPProtocolDispatcherTests: XCTestCase {
         _ = await run
     }
 
+    func testAnInputRequiredSignalReachesTheClientAsAnInputRequiredResult() async throws {
+        let signal = MCPInputRequired(
+            inputRequests: [
+                MCPElicitationRequest.approval(
+                    key: "approve_connection",
+                    message: "Allow this client to access 'Sales' (PostgreSQL)?",
+                    detail: "PostgreSQL"
+                )
+            ],
+            requestState: "sealed-state"
+        )
+        let sink = try await dispatch(
+            MCPProtocolTestSupport.makeModernRequest(method: StubToolsCallHandler.method),
+            handlers: [StubToolsCallHandler(behavior: .requiringInput(signal))]
+        )
+
+        let envelope = try await sink.errorEnvelope()
+        XCTAssertNil(envelope, "A consent question is not a failure")
+
+        let resultValue = try await sink.successResult()
+        let result = try XCTUnwrap(resultValue)
+        XCTAssertEqual(result["resultType"]?.stringValue, "input_required")
+        XCTAssertEqual(result["requestState"]?.stringValue, "sealed-state")
+        XCTAssertNotNil(result["inputRequests"]?["approve_connection"])
+    }
+
     private func dispatch(
         _ message: JsonRpcMessage,
         handlers: [any MCPMethodHandler],

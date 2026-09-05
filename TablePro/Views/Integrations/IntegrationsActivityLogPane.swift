@@ -213,7 +213,7 @@ struct IntegrationsActivityLogPane: View {
         }
 
         if let store = MCPServerManager.shared.tokenStore {
-            tokens = await store.list().filter { $0.name != MCPTokenStore.stdioBridgeTokenName }
+            tokens = await store.list().filter { !$0.isBridgeCredential }
         }
         connections = ConnectionStorage.shared.loadConnections()
 
