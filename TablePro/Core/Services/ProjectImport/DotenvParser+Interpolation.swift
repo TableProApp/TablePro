@@ -20,7 +20,6 @@ extension DotenvParser {
             return DotenvEntry(
                 key: assignment.key,
                 value: assignment.rawValue,
-                isSingleQuoted: true,
                 hasUnresolvedReference: false
             )
         }
@@ -54,7 +53,6 @@ extension DotenvParser {
         return DotenvEntry(
             key: assignment.key,
             value: value,
-            isSingleQuoted: false,
             hasUnresolvedReference: unresolved
         )
     }
