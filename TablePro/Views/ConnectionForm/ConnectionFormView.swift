@@ -77,12 +77,6 @@ private struct ConnectionFormContent: View {
                 coordinator.pluginDiagnostic = nil
             }
         }
-        .sheet(isPresented: $coordinator.isChoosingType) {
-            DatabaseTypeChooserSheet(
-                initialType: coordinator.network.type,
-                onSelected: { coordinator.changeType(to: $0) }
-            )
-        }
         .pluginInstallPrompt(connection: $coordinator.pluginInstallConnection) { connection in
             coordinator.connectAfterInstall(connection)
         }
