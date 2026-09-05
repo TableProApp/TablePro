@@ -111,6 +111,8 @@ private struct CalendarMonthView: View {
                 Image(systemName: "chevron.left")
             }
             .buttonStyle(.borderless)
+            .accessibilityLabel(String(localized: "Previous Month"))
+            .help(String(localized: "Previous Month"))
 
             Spacer()
 
@@ -123,6 +125,8 @@ private struct CalendarMonthView: View {
                 Image(systemName: "chevron.right")
             }
             .buttonStyle(.borderless)
+            .accessibilityLabel(String(localized: "Next Month"))
+            .help(String(localized: "Next Month"))
         }
     }
 

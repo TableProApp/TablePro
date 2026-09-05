@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Animations that played through the Reduce Motion setting when removing a jump host or copying DDL or a query plan.
+- Icon-only controls with no VoiceOver name or tooltip in the date picker, row inspector and slash command settings.
 - Cost badge on every plan node of a query ending in `LIMIT`, where the share it reads could exceed 100%. (#2633)
 - Green "low cost" badge on plans that report no cost at all, such as SQLite and ClickHouse. (#2633)
 - Empty Cost, Rows and Actual Time columns in the EXPLAIN tree for engines that report none of them. (#2633)

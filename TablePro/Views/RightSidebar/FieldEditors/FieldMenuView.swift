@@ -107,5 +107,7 @@ internal struct FieldMenuView: View {
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
+        .accessibilityLabel(String(localized: "Value Options"))
+        .help(String(localized: "Value Options"))
     }
 }
