@@ -34,6 +34,11 @@ extension ConnectionFormCoordinator {
                 self?.socksProxy.state.enabled = false
             })
         }
+        if tunnelCommand.state.enabled {
+            tunnels.append(EnabledTunnel(kind: .tunnelCommand) { [weak self] in
+                self?.tunnelCommand.state.enabled = false
+            })
+        }
         return tunnels
     }
 

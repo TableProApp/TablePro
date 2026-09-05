@@ -104,6 +104,8 @@ private struct ConnectionFormDetail: View {
                 CloudSQLProxyPaneView(coordinator: coordinator)
             case .socksProxy:
                 SOCKSProxyPaneView(coordinator: coordinator)
+            case .tunnelCommand:
+                TunnelCommandPaneView(coordinator: coordinator)
             case .ssl:
                 SSLPaneView(coordinator: coordinator)
             case .customization:

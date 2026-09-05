@@ -10,6 +10,7 @@ enum ConnectionTunnelKind: String, CaseIterable, Sendable {
     case cloudflare
     case cloudSQLProxy
     case socksProxy
+    case tunnelCommand
 
     /// A database file fetched from an SSH server over SFTP rather than a port forwarded from it.
     ///
@@ -25,7 +26,7 @@ enum ConnectionTunnelKind: String, CaseIterable, Sendable {
     /// `.ssh` and can never be turned on without it. Anything reasoning about which controls
     /// conflict wants this list; anything reasoning about which transport will run wants
     /// `allCases`.
-    static let formToggleable: [ConnectionTunnelKind] = [.ssh, .cloudflare, .cloudSQLProxy, .socksProxy]
+    static let formToggleable: [ConnectionTunnelKind] = [.ssh, .cloudflare, .cloudSQLProxy, .socksProxy, .tunnelCommand]
 
     var displayName: String {
         switch self {
@@ -33,6 +34,7 @@ enum ConnectionTunnelKind: String, CaseIterable, Sendable {
         case .cloudflare: return String(localized: "Cloudflare Tunnel")
         case .cloudSQLProxy: return String(localized: "Cloud SQL Auth Proxy")
         case .socksProxy: return String(localized: "SOCKS Proxy")
+        case .tunnelCommand: return String(localized: "Tunnel Command")
         case .remoteFile: return String(localized: "Remote Database File")
         }
     }
@@ -67,6 +69,7 @@ extension DatabaseConnection {
         if isCloudflareEnabled { kinds.append(.cloudflare) }
         if isCloudSQLProxyEnabled { kinds.append(.cloudSQLProxy) }
         if isSOCKSProxyEnabled { kinds.append(.socksProxy) }
+        if isTunnelCommandEnabled { kinds.append(.tunnelCommand) }
         return kinds
     }
 

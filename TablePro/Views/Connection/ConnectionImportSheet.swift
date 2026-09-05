@@ -5,6 +5,7 @@
 //  Sheet for previewing and importing connections from a .tablepro file.
 //
 
+import AppKit
 import SwiftUI
 import TableProImport
 import UniformTypeIdentifiers
@@ -271,7 +272,71 @@ struct ConnectionImportSheet: View {
             }
         }
 
-        let result = ConnectionExportService.performImport(preview, resolutions: resolutions)
+        let commanded = preview.items.filter {
+            $0.connection.carriesTunnelCommand && resolutions[$0.id] != .skip
+        }
+        guard !commanded.isEmpty else {
+            runImport(preview, resolutions: resolutions, keepTunnelCommands: false)
+            return
+        }
+
+        Task { @MainActor in
+            let choice = await AlertHelper.confirmThreeWay(
+                title: String(localized: "Import Tunnel Commands?"),
+                message: tunnelCommandConfirmation(for: commanded),
+                first: String(localized: "Import Without Commands"),
+                second: String(localized: "Import Commands"),
+                third: String(localized: "Cancel"),
+                window: NSApp.keyWindow
+            )
+            switch choice {
+            case 0:
+                runImport(preview, resolutions: resolutions, keepTunnelCommands: false)
+            case 1:
+                runImport(preview, resolutions: resolutions, keepTunnelCommands: true)
+            default:
+                break
+            }
+        }
+    }
+
+    /// Names every command the file would store, in full. A tunnel command starts a process on
+    /// this Mac every time the connection opens, so the answer has to be given against the actual
+    /// text rather than against the fact that one exists.
+    private func tunnelCommandConfirmation(for items: [ImportItem]) -> String {
+        let lines = items.map { item -> String in
+            let described = item.connection.tunnelCommand
+                .map { TunnelCommandConfiguration($0) }
+                .flatMap {
+                    TunnelCommandBuilder.previewCommand(
+                        for: $0,
+                        remoteHost: item.connection.host.isEmpty ? "localhost" : item.connection.host,
+                        remotePort: item.connection.port
+                    )
+                }
+            return "\(item.connection.name)\n\(described ?? "")"
+        }
+        return String(
+            format: String(localized: """
+                These connections open their tunnel by running a command on this Mac, every time \
+                they connect:
+
+                %@
+                """),
+            lines.joined(separator: "\n\n")
+        )
+    }
+
+    private func runImport(
+        _ preview: ConnectionImportPreview,
+        resolutions: [UUID: ImportResolution],
+        keepTunnelCommands: Bool
+    ) {
+        let result = ConnectionExportService.performImport(
+            preview,
+            resolutions: resolutions,
+            keepTunnelCommands: keepTunnelCommands
+        )
 
         // Only restore credentials from verified encrypted imports (not plaintext files)
         if wasEncryptedImport, preview.envelope.credentials != nil {

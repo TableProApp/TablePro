@@ -1,0 +1,107 @@
+---
+title: Tunnel Command
+description: Reach a database through kubectl port-forward, an AWS SSM session, or any command that opens a local port
+---
+
+A `kubectl port-forward` running in a terminal is a window you cannot close for as long as you need the database, and a tab you have to notice when it dies. Move it into the connection and it starts on connect, stops on disconnect, and comes back on its own.
+
+<Frame caption="The kubectl preset, with the argument list it will run underneath it">
+  <img className="block dark:hidden" src="/images/tunnel-command-pane.png" alt="Tunnel Command pane showing the kubectl method with namespace, resource and a Will Run section" />
+  <img className="hidden dark:block" src="/images/tunnel-command-pane-dark.png" alt="Tunnel Command pane showing the kubectl method with namespace, resource and a Will Run section" />
+</Frame>
+
+## Setting up
+
+<Steps>
+  <Step title="Enable the pane">
+    Select **Tunnel Command** and turn **Enable Tunnel Command** on. One method per connection: anything else already enabled has a button here to switch it off.
+  </Step>
+  <Step title="Pick a method">
+    **kubectl port-forward** and **AWS SSM Session** ask for the two or three things that vary. **Custom Command** takes a command line.
+  </Step>
+  <Step title="Read the Will Run section">
+    It shows the exact argument list, with `{port}` standing in for the port that gets allocated on connect.
+  </Step>
+  <Step title="Test it">
+    On **General**, click **Test Connection**.
+  </Step>
+</Steps>
+
+The **Host** and **Port** on the General pane stay the database's own. They are what the forward points at, so a kubectl forward reads the port from there and an SSM session forwards to that host and port from the target instance.
+
+## Methods
+
+| Method | Asks for | Runs |
+|---|---|---|
+| **kubectl port-forward** | Resource, namespace, context | `kubectl port-forward` against the resource, on `127.0.0.1` |
+| **AWS SSM Session** | Target instance, profile, region | `aws ssm start-session` with the `AWS-StartPortForwardingSessionToRemoteHost` document |
+| **Custom Command** | A command line | Whatever you wrote |
+
+Pick a preset if one fits. A preset takes named values rather than a command line, so nothing typed into it can turn into an extra argument, and the values travel between machines that have the same tools installed.
+
+### Where the tool comes from
+
+Both presets look the tool up on `PATH`, with `/usr/local/bin` and `/opt/homebrew/bin` added, because an app started from the Dock inherits a minimal `PATH` rather than your shell's. **Executable path** overrides that with a full path.
+
+An SSM session also needs the [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html), which the AWS CLI finds the same way.
+
+### Custom commands
+
+Three placeholders are substituted before the command runs:
+
+| Placeholder | Value |
+|---|---|
+| `{port}` | The loopback port allocated for this connection. Required |
+| `{host}` | The **Host** field on the General pane |
+| `{remotePort}` | The **Port** field on the General pane |
+
+```bash
+ssh -N -L {port}:{host}:{remotePort} bastion.example.com
+```
+
+The command is split into arguments the way a shell would split it, quoting included, and then run directly. Nothing is expanded: `$HOME` stays four characters and `*` stays one. For environment variables, start the command with `/usr/bin/env`:
+
+```bash
+/usr/bin/env KUBECONFIG=~/.kube/staging kubectl port-forward -n prod service/pg {port}:5432
+```
+
+Substitution happens after the split, so a value carrying a space stays a single argument.
+
+## While the connection is open
+
+The process is held for the life of the connection and killed with its whole process group on disconnect, which is what takes an `aws ssm` session's helper down with it. If it exits on its own while the connection is still open, the connection reconnects and starts it again, up to ten attempts with a widening delay. That covers an SSM session hitting its idle timeout and a `kubectl port-forward` losing its pod.
+
+The local port gets 30 seconds to answer. Past that the connect fails, and the error carries the last lines the command printed to standard error, which is usually where the real reason is.
+
+[SSL/TLS](/connections/ssl) still applies, with one unavoidable adjustment: the driver dials a loopback port that no server certificate names, so **Verify CA** and **Verify Identity** fall back to **Required** and certificate paths are dropped.
+
+## Sharing a connection that has one
+
+A tunnel command travels under tighter rules than the rest of a connection.
+
+| Route | What happens |
+|---|---|
+| iCloud sync | Never carried. The command names tools on one Mac |
+| `tablepro://` link, team library | Stripped before the connection is offered |
+| `.tablepro` file | Offered, and importing prints every command and asks. **Import Without Commands** is the default |
+| Duplicating a connection | Copied, like every other setting |
+
+Editing `connections.json` by hand is detected, and a connection whose command arrived that way refuses to run it until you open the connection in TablePro and save it again.
+
+## Troubleshooting
+
+### kubectl was not found
+
+The tool is not on the `PATH` an app inherits. Run `which kubectl` in a terminal and put the answer in **Executable path**.
+
+### The tunnel command exited before the port was open
+
+The command failed on its own terms and its output follows the message. A wrong namespace, an expired credential, and a resource that does not exist all land here. Run the same command in a terminal to confirm.
+
+### The tunnel command did not open its local port in time
+
+Thirty seconds passed with the process still running and nothing listening. An SSM session waiting on a target that is not registered with Systems Manager behaves this way, as does a `kubectl` context pointing at an unreachable cluster.
+
+### The connection keeps reconnecting
+
+The command is exiting shortly after it starts. An SSM idle timeout is the common cause: raise it in the session preferences for the account, or expect a reconnect on the first query after a quiet period.

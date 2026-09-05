@@ -32,6 +32,7 @@ struct ConnectionFormEditsTests {
             cloudflareTunnelMode: .disabled,
             cloudSQLProxyMode: .disabled,
             socksProxyMode: .disabled,
+            tunnelCommandMode: .disabled,
             safeModeLevel: .silent,
             aiPolicy: nil,
             aiRules: nil,

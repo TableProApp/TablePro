@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Tunnel Command pane, with presets for `kubectl port-forward` and `aws ssm start-session` and a custom command line. (#2520)
 - Bar chart column in the EXPLAIN tree, with a Metric menu for self cost, self time and row counts. (#2633)
 
 ### Fixed

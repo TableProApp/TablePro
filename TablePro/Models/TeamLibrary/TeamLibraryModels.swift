@@ -114,7 +114,7 @@ struct TeamLibraryPullResponse: Codable {
                 Connection(
                     id: $0.id,
                     sourceConnectionId: $0.sourceConnectionId,
-                    payload: $0.payload.sanitizedForImport().withoutStartupCommands(),
+                    payload: $0.payload.sanitizedForImport().withoutStartupCommands().withoutTunnelCommand(),
                     publishedBy: $0.publishedBy,
                     publishedAt: $0.publishedAt
                 )

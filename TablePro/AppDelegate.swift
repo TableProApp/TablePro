@@ -100,6 +100,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         /// the main actor, so starting them here costs the first frame nothing.
         Task { await CloudflareTunnelManager.shared.sweepStalePidsIfNeeded() }
         Task { await CloudSQLProxyManager.shared.sweepStalePidsIfNeeded() }
+        Task { await TunnelCommandManager.shared.sweepStalePidsIfNeeded() }
 
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(handleSystemDidWake),
@@ -193,6 +194,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         SSHTunnelManager.shared.terminateAllProcessesSync()
         CloudflareTunnelManager.shared.terminateAllProcessesSync()
         CloudSQLProxyManager.shared.terminateAllProcessesSync()
+        TunnelCommandManager.shared.terminateAllProcessesSync()
     }
 
     private func persistOpenConnectionsForRecovery() {
