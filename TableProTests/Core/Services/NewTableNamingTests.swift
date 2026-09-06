@@ -196,19 +196,19 @@ struct NewTableNamingTests {
 
     @Test("An empty or whitespace name is blank")
     func blankNameIsReported() {
-        #expect(NewTableNaming.problem(with: "", existingNames: []) == .blank)
-        #expect(NewTableNaming.problem(with: "   ", existingNames: []) == .blank)
+        #expect(NewTableNaming.problem(with: "", style: postgres, existingNames: []) == .blank)
+        #expect(NewTableNaming.problem(with: "   ", style: postgres, existingNames: []) == .blank)
     }
 
     @Test("A free name has no problem")
     func freeNameHasNoProblem() {
-        #expect(NewTableNaming.problem(with: "orders", existingNames: ["users"]) == nil)
+        #expect(NewTableNaming.problem(with: "orders", style: postgres, existingNames: ["users"]) == nil)
     }
 
     @Test("A taken name is reported, whatever its case")
     func takenNameIsReported() {
-        #expect(NewTableNaming.problem(with: "users", existingNames: ["users"]) == .nameTaken)
-        #expect(NewTableNaming.problem(with: " Users ", existingNames: ["users"]) == .nameTaken)
+        #expect(NewTableNaming.problem(with: "users", style: postgres, existingNames: ["users"]) == .nameTaken)
+        #expect(NewTableNaming.problem(with: " Users ", style: postgres, existingNames: ["users"]) == .nameTaken)
     }
 
     /// The whole point of the optional: an unreachable catalog is an empty list, and calling every
@@ -216,7 +216,38 @@ struct NewTableNamingTests {
     /// not call a name taken either, which would block an import the engine would have accepted.
     @Test("An unknown catalog reports no collision and still catches a blank name")
     func unknownCatalogReportsNoCollision() {
-        #expect(NewTableNaming.problem(with: "users", existingNames: nil) == nil)
-        #expect(NewTableNaming.problem(with: "", existingNames: nil) == .blank)
+        #expect(NewTableNaming.problem(with: "users", style: postgres, existingNames: nil) == nil)
+        #expect(NewTableNaming.problem(with: "", style: postgres, existingNames: nil) == .blank)
+    }
+
+    /// The engine's rules bind whatever the user types, not just what was proposed. A name typed
+    /// over the proposal used to reach `CREATE TABLE` unchecked and fail there.
+    @Test("A typed name carrying the reserved prefix is refused")
+    func typedReservedPrefixIsRefused() {
+        let sqlite = NewTableNameStyle.forDatabaseType(.sqlite)
+        #expect(
+            NewTableNaming.problem(with: "sqlite_master", style: sqlite, existingNames: [])
+                == .reservedPrefix("sqlite_")
+        )
+        #expect(NewTableNaming.problem(with: "sqlite_master", style: postgres, existingNames: []) == nil)
+    }
+
+    @Test("A typed name past the engine's limit is refused")
+    func typedOverlongNameIsRefused() {
+        let oracle = NewTableNameStyle.forDatabaseType(.oracle)
+        let name = String(repeating: "a", count: 31)
+        #expect(NewTableNaming.problem(with: name, style: oracle, existingNames: []) == .tooLong(maximumBytes: 30))
+        #expect(NewTableNaming.problem(with: name, style: postgres, existingNames: []) == nil)
+    }
+
+    /// The limits are in bytes, so a multi-byte name hits them sooner than its character count says.
+    @Test("Length is judged in bytes, not characters")
+    func lengthIsJudgedInBytes() {
+        let oracle = NewTableNameStyle.forDatabaseType(.oracle)
+        #expect(
+            NewTableNaming.problem(with: String(repeating: "销", count: 11), style: oracle, existingNames: [])
+                == .tooLong(maximumBytes: 30)
+        )
+        #expect(NewTableNaming.problem(with: String(repeating: "销", count: 10), style: oracle, existingNames: []) == nil)
     }
 }
