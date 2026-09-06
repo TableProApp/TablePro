@@ -68,9 +68,9 @@ A cell whose content is an image opens on the drawing, with its stored form one 
 
 Detection reads the value, not the column, since the same PNG turns up in `BLOB`, `BYTEA` and `VARBINARY`, and SVG arrives as often in a text column as a binary one. PNG, JPEG, JPEG 2000, GIF, TIFF, BMP, ICO, WebP, HEIC, HEIF and AVIF are identified from their header; SVG from its root element, behind any byte order mark, XML declaration, comment or doctype. A PDF, a Photoshop file and a camera raw file are left as hex, since a database client that opened them as "the image in this cell" would be guessing. **Display As > Raw Value** on the column turns detection off.
 
-<Frame caption="An SVG logo in a text column, with its markup a segment away">
-  <img className="block dark:hidden" src="/images/cell-image-viewer.png" alt="Popover showing a rendered SVG logo above a checkerboard, with Image and Source segments" />
-  <img className="hidden dark:block" src="/images/cell-image-viewer-dark.png" alt="Popover showing a rendered SVG logo above a checkerboard, with Image and Source segments" />
+<Frame caption="One value, drawn in the popover and again in the row inspector">
+  <img className="block dark:hidden" src="/images/cell-image-viewer.png" alt="A cell popover and the row inspector each drawing an SVG logo on a transparency checkerboard, both showing Image and Source segments" />
+  <img className="hidden dark:block" src="/images/cell-image-viewer-dark.png" alt="A cell popover and the row inspector each drawing an SVG logo on a transparency checkerboard, both showing Image and Source segments" />
 </Frame>
 
 Transparency draws on a checkerboard. The footer names the format and, for a raster image, the stored pixel size, which is what the file holds rather than what fits the pane. **Copy Image** puts the drawing on the clipboard as an image; **Copy** on the cell itself still copies the stored value. The pop-out button opens a resizable window, read-only there.
