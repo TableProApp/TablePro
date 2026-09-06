@@ -41,24 +41,6 @@ internal struct RowInspectorContext: Equatable {
     /// The table a structure row's type picker offers user-defined types for. Nil outside one.
     internal let userDefinedTypeScope: DatabaseScope?
 
-    internal init(
-        subject: InspectorSubject,
-        hasRow: Bool,
-        isEditable: Bool,
-        isRowDeleted: Bool,
-        tableMetadata: TableMetadata?,
-        jsonRow: JSONRowSnapshot?,
-        userDefinedTypeScope: DatabaseScope?
-    ) {
-        self.subject = subject
-        self.hasRow = hasRow
-        self.isEditable = isEditable
-        self.isRowDeleted = isRowDeleted
-        self.tableMetadata = tableMetadata
-        self.jsonRow = jsonRow
-        self.userDefinedTypeScope = userDefinedTypeScope
-    }
-
     internal static let empty = RowInspectorContext(
         subject: .empty,
         hasRow: false,
@@ -77,11 +59,6 @@ internal struct RowInspectorContext: Equatable {
 internal struct AssistantContext: Equatable {
     internal let currentQuery: String?
     internal let queryResults: String?
-
-    internal init(currentQuery: String?, queryResults: String?) {
-        self.currentQuery = currentQuery
-        self.queryResults = queryResults
-    }
 
     internal static let empty = AssistantContext(currentQuery: nil, queryResults: nil)
 }

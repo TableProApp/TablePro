@@ -14,8 +14,7 @@ struct ChromePaneLayoutTests {
     func capturesAHiddenSidebar() {
         let captured = ChromePaneLayout(
             isSidebarCollapsed: true,
-            isTrailingPaneCollapsed: true,
-            trailingSurface: .inspector
+            isTrailingPaneCollapsed: true
         )
 
         #expect(captured.isSidebarCollapsed)
@@ -26,8 +25,7 @@ struct ChromePaneLayoutTests {
     func capturesAnOpenInspector() {
         let captured = ChromePaneLayout(
             isSidebarCollapsed: false,
-            isTrailingPaneCollapsed: false,
-            trailingSurface: .inspector
+            isTrailingPaneCollapsed: false
         )
 
         #expect(captured.isSidebarCollapsed == false)
@@ -39,31 +37,17 @@ struct ChromePaneLayoutTests {
     @Test("Two identical layouts compare equal")
     func layoutsAreComparable() {
         let first = ChromePaneLayout(
-            isSidebarCollapsed: false, isTrailingPaneCollapsed: true, trailingSurface: .inspector
+            isSidebarCollapsed: false, isTrailingPaneCollapsed: true
         )
         let second = ChromePaneLayout(
-            isSidebarCollapsed: false, isTrailingPaneCollapsed: true, trailingSurface: .inspector
+            isSidebarCollapsed: false, isTrailingPaneCollapsed: true
         )
         let different = ChromePaneLayout(
-            isSidebarCollapsed: true, isTrailingPaneCollapsed: true, trailingSurface: .inspector
+            isSidebarCollapsed: true, isTrailingPaneCollapsed: true
         )
 
         #expect(first == second)
         #expect(first != different)
     }
 
-    /// One split item hosts both surfaces, so recording only that the pane was open would reveal
-    /// the inspector over a user who had the assistant up.
-    @Test("Two layouts that differ only by surface are not equal")
-    func surfaceIsPartOfTheLayout() {
-        let inspector = ChromePaneLayout(
-            isSidebarCollapsed: false, isTrailingPaneCollapsed: false, trailingSurface: .inspector
-        )
-        let assistant = ChromePaneLayout(
-            isSidebarCollapsed: false, isTrailingPaneCollapsed: false, trailingSurface: .assistant
-        )
-
-        #expect(inspector != assistant)
-        #expect(assistant.trailingSurface == .assistant)
-    }
 }

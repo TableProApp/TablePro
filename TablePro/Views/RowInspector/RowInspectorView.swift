@@ -46,6 +46,11 @@ internal struct RowInspectorView: View {
                 fieldsMode
                     .opacity(showsFields ? 1 : 0)
                     .allowsHitTesting(showsFields)
+                    /// Neither opacity nor hit-testing stops the keyboard. Without this a field
+                    /// still holding first responder when the mode changed goes on accepting text
+                    /// and the list's Ctrl-Option-N and Ctrl-Option-D behind the JSON view, and
+                    /// each of those stages a real cell change that Save later commits unseen.
+                    .disabled(!showsFields)
                     .accessibilityHidden(!showsFields)
 
                 if !showsFields {

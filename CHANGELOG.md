@@ -69,6 +69,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Animations that played through the Reduce Motion setting when removing a jump host or copying DDL or a query plan.
 - Icon-only controls with no VoiceOver name or tooltip in the date picker, row inspector and slash command settings.
 - Inspector picker reading NULL after setting a value on a NULL column, including on every new row.
+- Edits typed into a hidden inspector field while the JSON view is showing, committed by a later save.
+- Set NULL, Set DEFAULT, Set EMPTY and SQL functions offered on a PHP-serialized field they cannot round-trip.
+- Reconnecting or switching connection replacing a connection's remembered Inspector or Assistant choice.
+- Assistant staying on screen and usable after AI features are turned off.
+- Inspector opening in place of a remembered Assistant when a connection restores its session.
+- Auto-show inspector on row select closing the Assistant on every grid click.
+- Explain with AI and Optimize with AI enabled, and doing nothing, with AI features off.
+- Tab trapped inside the inspector's field list with no way back to the search field.
+- Column type missing from inline inspector rows on a read-only result.
 - Inspector picker reading NULL for a multi-row selection whose values differ.
 - Structure inspector drawing the Name and Type fields in two different fonts.
 - Primary key, foreign key and edited markers silent to VoiceOver in the inspector.
