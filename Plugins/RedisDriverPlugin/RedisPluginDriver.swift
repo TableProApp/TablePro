@@ -147,11 +147,23 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         redisConnection = nil
     }
 
+    /// The health monitor asks this every 30 seconds, and a reconnect is what it does with a no.
+    /// So the only answer worth failing on is the one a reconnect fixes: the session no longer
+    /// holds an identity. Any reply at all, an error included, is the server answering on a live
+    /// socket, and reconnecting cannot talk a restricted user into `+ping` or hurry a busy script
+    /// along. A lost socket does not reach here; it throws out of `executeCommand`.
     func ping() async throws {
         guard let conn = redisConnection else {
             throw RedisPluginError.notConnected
         }
-        try await conn.run(["PING"])
+        let reply = try await conn.executeCommand(RedisConnectProbe.command)
+        if RedisConnectProbe.outcome(errorMessage: reply.errorMessage) == .unauthenticated {
+            throw RedisPluginError(
+                code: 3,
+                message: RedisConnectProbe.unauthenticatedMessage,
+                detail: RedisConnectProbe.unauthenticatedHint
+            )
+        }
         try await conn.verifyStillPrimary()
     }
 
@@ -369,12 +381,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func switchDatabase(to database: String) async throws {
         guard let conn = redisConnection else { throw RedisPluginError.notConnected }
-        let dbIndex: Int
-        if let idx = Int(database) {
-            dbIndex = idx
-        } else if database.lowercased().hasPrefix("db"), let idx = Int(database.dropFirst(2)) {
-            dbIndex = idx
-        } else {
+        guard let dbIndex = RedisDatabaseIndex.parse(database) else {
             let template = String(localized: "%@ is not a Redis database index.")
             throw RedisPluginError(code: 0, message: String(format: template, database))
         }

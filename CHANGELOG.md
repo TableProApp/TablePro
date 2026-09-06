@@ -94,6 +94,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cancel doing nothing while a backup's size estimate ran. (#2485)
 - Backup size estimate queueing behind a query tab's own work and joining its open transaction. (#2485)
 - A narrowed PostgreSQL dump matching nothing when a table name held a capital, a dot or a wildcard. (#2485)
+- Redis and Valkey ACL users without permission to run `PING` refused at connect and dropped by the health check.
+- Redis database index ignoring the `dbN` spelling the driver itself publishes.
+- A Sentinel that rejected the credentials reported as unreachable.
+- A Redis reconnect that failed leaving the connection marked live, so every later command reported it as not connected.
+
+### Security
+
+- Redis and Valkey connections signing in as the default user when a username was typed with an empty password.
+- Redis connections on iOS reported as successful without a single command reaching the server.
 
 ## [0.72.0] - 2026-09-04
 

@@ -539,6 +539,7 @@ targets:
       - Plugins/RedisDriverPlugin/RedisClusterTopology.swift
       - Plugins/RedisDriverPlugin/RedisCommandParser.swift
       - Plugins/RedisDriverPlugin/RedisCommandRouting.swift
+      - Plugins/RedisDriverPlugin/RedisConnectProbe.swift
       - Plugins/RedisDriverPlugin/RedisConnectionMode.swift
       - Plugins/RedisDriverPlugin/RedisDatabaseIndex.swift
       - Plugins/RedisDriverPlugin/RedisKeySlot.swift

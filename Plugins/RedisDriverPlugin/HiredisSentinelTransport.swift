@@ -56,7 +56,12 @@ struct HiredisSentinelTransport: RedisSentinelTransport {
             sslConfig: sslConfig,
             connectTimeout: connectTimeout
         )
-        try await connection.connect()
+        do {
+            try await connection.connect()
+        } catch let error as RedisPluginError where error.refusedByServer {
+            logger.debug("Sentinel \(sentinel.identifier, privacy: .public) refused: \(error.message, privacy: .public)")
+            throw RedisSentinelError.refused(sentinel, detail: error.message)
+        }
         defer { connection.disconnect() }
 
         let reply = try await connection.executeCommand(command)

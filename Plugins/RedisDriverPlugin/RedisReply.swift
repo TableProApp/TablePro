@@ -73,6 +73,17 @@ enum RedisReply {
 struct RedisPluginError: Error {
     let code: Int
     let message: String
+    let detail: String?
+    /// True when the server answered and said no. A node that rejects credentials is a
+    /// configuration problem, and reporting it as unreachable sends the user to the wrong field.
+    let refusedByServer: Bool
+
+    init(code: Int, message: String, detail: String? = nil, refusedByServer: Bool = false) {
+        self.code = code
+        self.message = message
+        self.detail = detail
+        self.refusedByServer = refusedByServer
+    }
 
     static let notConnected = RedisPluginError(code: 0, message: String(localized: "Not connected to Redis"))
     static let connectionFailed = RedisPluginError(code: 0, message: String(localized: "Failed to establish connection"))
@@ -85,6 +96,7 @@ struct RedisPluginError: Error {
 extension RedisPluginError: PluginDriverError {
     var pluginErrorMessage: String { message }
     var pluginErrorCode: Int? { code }
+    var pluginErrorDetail: String? { detail }
 }
 
 /// A connection-level failure that records which side of the exchange it happened on.
