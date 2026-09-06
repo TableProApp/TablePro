@@ -83,9 +83,13 @@ final class CellImageViewerUITests: UITestCase {
 
     /// A segmented control publishes its segments as radio buttons, and the CI runner has been seen
     /// publishing the same controls as plain buttons, so both are asked.
+    ///
+    /// `firstMatch` on both, because a SwiftUI segmented `Picker` publishes more than one element
+    /// carrying the segment's title. `exists` tolerates that; resolving a coordinate to click does
+    /// not, and fails the whole case with "Multiple matching elements found".
     private func segment(_ title: String, in window: XCUIElement) -> XCUIElement {
-        let radio = window.radioButtons[title]
-        return radio.exists ? radio : window.buttons[title]
+        let radio = window.radioButtons.matching(identifier: title).firstMatch
+        return radio.exists ? radio : window.buttons.matching(identifier: title).firstMatch
     }
 
     private func markupIsVisible(in window: XCUIElement) -> Bool {
