@@ -3,7 +3,7 @@ query carrying its own `LIMIT`, `FETCH FIRST` or `TOP` is never touched, and `EX
 writes and DDL are never capped. The read itself stops at the cap on MySQL, MariaDB, PostgreSQL,
 CockroachDB, Redshift, SQLite, MSSQL, Oracle, Cassandra, Redis, DynamoDB, BigQuery, Snowflake, Trino,
 ClickHouse and MongoDB, so the rest of the result never crosses the network. Cloudflare D1, LibSQL,
-Etcd, DuckDB, Elasticsearch, SurrealDB, Beancount and Dameng still read the whole result and keep the
+Etcd, DuckDB, Elasticsearch, Typesense, SurrealDB, Beancount and Dameng still read the whole result and keep the
 first rows. A plan that has to finish before it can return a first row, a sort with no index or a
 `GROUP BY`, runs to completion on the server either way. Both numbers are in **Settings > Data**
 ([Data settings](/customization/data-settings)).

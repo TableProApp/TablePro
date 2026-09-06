@@ -170,7 +170,8 @@
               "databases/sqlite",
               "databases/surrealdb",
               "databases/teradata",
-              "databases/trino"
+              "databases/trino",
+              "databases/typesense"
             ]
           },
           {

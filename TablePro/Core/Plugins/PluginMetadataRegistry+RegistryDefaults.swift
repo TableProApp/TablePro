@@ -1137,7 +1137,7 @@ extension PluginMetadataRegistry {
         ] + tursoPluginDefaults(dialect: d1Dialect, columnTypes: d1ColumnTypes)
             + duckdbPluginDefaults(dialect: duckdbDialect, columnTypes: duckdbColumnTypes)
             + cloudPluginDefaults() + elasticsearchPluginDefaults() + surrealDBPluginDefaults()
-            + kafkaPluginDefaults()
+            + kafkaPluginDefaults() + typesensePluginDefaults()
     }
     // swiftlint:enable function_body_length
 }

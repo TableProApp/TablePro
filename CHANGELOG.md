@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Database type change from inside the connection editor.
 - The reason Save is unavailable, next to the Save button in the connection editor.
 - Approval setting for MCP connection access, with the list of approved connections and a Forget action. (#2640)
+- Typesense driver plugin, with collection browsing, document editing and a REST request console. (#2629)
+- Export, Delete and Empty for a Typesense collection. (#2629)
+- Typesense API keys in Users & Roles, with the collections and actions each key holds. (#2629)
+- Server Dashboard metrics for Typesense, from `/metrics.json` and `/stats.json`. (#2629)
 - Image preview beside the source for a cell holding SVG or a raster image. (#2535)
 
 ### Changed

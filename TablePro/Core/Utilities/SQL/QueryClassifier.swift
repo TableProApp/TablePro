@@ -524,6 +524,8 @@ private extension QueryClassifier {
             return etcdClassification(trimmed)
         case .elasticsearch:
             return elasticsearchClassification(trimmed)
+        case .typesense:
+            return typesenseClassification(trimmed)
         default:
             return nil
         }
@@ -641,6 +643,47 @@ private extension QueryClassifier {
             return QueryClassification(tier: .safe, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
         }
         if verb == "POST", elasticsearchReadPaths.contains(where: { upper.contains($0) }) {
+            return QueryClassification(tier: .safe, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
+        }
+        if verb == "DELETE" {
+            return QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
+        }
+        return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
+    }
+
+    static let typesenseReadPaths: [String] = ["/MULTI_SEARCH", "/DOCUMENTS/SEARCH", "/DOCUMENTS/EXPORT"]
+
+    /// `/operations/snapshot` writes the whole dataset to a server path the request names, and
+    /// `/keys` mints API keys, so both widen reach beyond the data the request touches.
+    static let typesenseUnsafePaths: [String] = ["/OPERATIONS/SNAPSHOT", "/KEYS"]
+
+    /// The verb and the path, and nothing else. A Typesense console request is one header line
+    /// followed by a JSON body, and the body is the caller's data: scanning the whole statement
+    /// let `POST /collections/c/documents/import` carrying `"note": "/multi_search"` in a field
+    /// read as a search, which is a read-only mode and MCP gate bypass.
+    static func typesenseRequestLine(_ trimmed: String) -> (verb: String, path: String) {
+        let header = trimmed.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? ""
+        let parts = header.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+        guard let verb = parts.first else { return ("", "/") }
+        guard parts.count == 2 else { return (String(verb).uppercased(), "/") }
+
+        var path = parts[1].trimmingCharacters(in: .whitespaces)
+        for marker in ["?", "#"] {
+            if let stop = path.range(of: marker) {
+                path = String(path[..<stop.lowerBound])
+            }
+        }
+        if !path.hasPrefix("/") { path = "/" + path }
+        return (String(verb).uppercased(), path.uppercased())
+    }
+
+    static func typesenseClassification(_ trimmed: String) -> QueryClassification {
+        let (verb, path) = typesenseRequestLine(trimmed)
+        let touchesUnsafeSurface = typesenseUnsafePaths.contains { path == $0 || path.hasPrefix("\($0)/") }
+        if verb == "GET" || verb == "HEAD" {
+            return QueryClassification(tier: .safe, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
+        }
+        if verb == "POST", typesenseReadPaths.contains(where: { path == $0 || path.hasSuffix($0) }) {
             return QueryClassification(tier: .safe, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
         }
         if verb == "DELETE" {
