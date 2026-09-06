@@ -23,8 +23,8 @@ The sidebar splits keys into folders at every `:`, and each key gets a grid row 
 | **Connection Mode** | `Standalone` | `Sentinel` for a Sentinel-managed primary, `Cluster` for a sharded cluster |
 | **Host** | `localhost` | Standalone only |
 | **Port** | `6379` | Standalone only |
-| **Username** | - | Redis 6 ACL user, sent as `AUTH username password`. Leave empty for `requirepass` auth |
-| **Password** | - | Leave empty for local dev |
+| **Username** | - | Redis 6 ACL user, sent as `AUTH username password`. Empty signs in as `default` |
+| **Password** | - | Empty for a server with no `requirepass`, and for a `nopass` ACL user |
 | **Database Index** | `0` | 0-15 stepper, in the Advanced section |
 | **Key Separator** | `:` | What the sidebar splits key names on (Advanced) |
 
@@ -40,6 +40,14 @@ rediss://:password@host:6380/0
 ```
 
 `rediss://` connects with TLS. See [Connection URL Reference](/connections/urls).
+
+## Authentication
+
+The Username field selects a Redis 6 ACL user. Empty signs in as `default`, the identity a bare `requirepass` password belongs to.
+
+A username is sent as `AUTH username password` even when Password is empty, which is the form a `nopass` ACL user needs. Every other user rejects that form, so the connection either holds the identity typed into the form or fails.
+
+A `nopass` user accepts any password, so a leftover value in Password still signs in as that user.
 
 ## Connection modes
 
@@ -145,14 +153,32 @@ New connections default to **Disabled**. SNI is sent in every TLS mode.
 
 ## Troubleshooting
 
-**Connection refused**: check Redis is running (`brew services start redis`), the port matches `redis.conf`, and the `bind` directive covers the address you are using.
+### Connection refused
 
-**WRONGPASS invalid username-password pair or user is disabled.**: with Username empty, `AUTH password` is checked against the `default` user, and an ACL user's password fails that. Fill in Username to authenticate as that user.
+The server is not listening where the connection points. Check Redis is running (`brew services start redis`), the port matches `redis.conf`, and the `bind` directive covers the address you are using.
+
+### WRONGPASS invalid username-password pair or user is disabled.
+
+The server rejected the pair. With Username empty, `AUTH password` is checked against the `default` user, and an ACL user's password fails that: fill in Username to authenticate as that user. With Username filled and Password empty, the named user has a password and needs it, or the name does not exist on this server.
 
 One ACL trap produces the same error: `>password` sets a password, `#hash` sets a SHA-256 hash, and a 64-character hex string is valid for both, so `ACL SETUSER myuser on #<64-hex>` is accepted where `>` was meant. `ACL LIST` prints passwords as hashes, so a value copied from there is a hash, not a password.
 
-**Timeout**: verify host and port, check the network and firewall, and allow your IP on a cloud-hosted Redis.
+### This server requires authentication.
 
-**Sentinel or Cluster over SSH**: a tunnel forwards one local port to one remote address, and the addresses Sentinel and Cluster hand back are the server's own. Over a tunnel only the first host in the list is used, as a standalone node, so failover and shard routing are unavailable.
+The server answered `NOAUTH` to the first command, so the connection carries no identity. Check `requirepass` in `redis.conf` and whether the `default` user is `off` in `ACL LIST`. Fill in Password, and Username as well when the account is an ACL user.
 
-**Slow key list**: `KEYS` blocks the server on a large keyspace. Browse by namespace instead, and use `SCAN` in the CLI when you need a pattern. Check memory pressure with `INFO memory`.
+### ERR wrong number of arguments for 'auth' command
+
+The server predates Redis 6 and takes a password alone. Check its version with `INFO server`. Clear Username.
+
+### Timeout
+
+Nothing answered in time. Verify host and port, check the network and firewall, and allow your IP on a cloud-hosted Redis.
+
+### Sentinel or cluster mode over SSH
+
+A tunnel forwards one local port to one remote address, and the addresses Sentinel and Cluster hand back are the server's own. Over a tunnel only the first host in the list is used, as a standalone node, so failover and shard routing are unavailable.
+
+### Slow key list
+
+`KEYS` blocks the server on a large keyspace. Browse by namespace instead, and use `SCAN` in the CLI when you need a pattern. Check memory pressure with `INFO memory`.

@@ -351,6 +351,11 @@ nonisolated private enum RedisReplyValue: Sendable {
         case .array(let items): return "[\(items.compactMap(\.stringRepresentation).joined(separator: ", "))]"
         }
     }
+
+    var errorMessage: String? {
+        guard case .error(let message) = self else { return nil }
+        return message
+    }
 }
 
 nonisolated private func withOptionalCString<R>(_ string: String?, _ body: (UnsafePointer<CChar>?) throws -> R) rethrows -> R {
@@ -434,9 +439,16 @@ private actor RedisActor {
                         serverMessage: msg,
                         failure: RedisAuthCommand.failure(
                             serverError: msg,
-                            hadUsername: !(username ?? "").isEmpty
+                            hadUsername: !(username ?? "").isEmpty,
+                            hadPassword: !(password ?? "").isEmpty
                         )
                     )
+                }
+            } else {
+                let probe = try executeCommand(RedisConnectProbe.command)
+                let outcome = RedisConnectProbe.outcome(errorMessage: probe.errorMessage)
+                if outcome != .established {
+                    throw RedisError.sessionUnverified(outcome)
                 }
             }
 
@@ -581,6 +593,7 @@ private actor RedisActor {
 nonisolated enum RedisError: Error, LocalizedError {
     case connectionFailed(String)
     case authenticationFailed(serverMessage: String, failure: RedisAuthCommand.Failure)
+    case sessionUnverified(RedisConnectProbe.Outcome)
     case notConnected
     case queryFailed(String)
     case unsupported(String)
@@ -589,7 +602,7 @@ nonisolated enum RedisError: Error, LocalizedError {
         switch self {
         case .connectionFailed(let msg): return "Redis connection failed: \(msg)"
         case .authenticationFailed(let serverMessage, let failure):
-            guard let hint = Self.hint(for: failure) else {
+            guard let hint = RedisAuthCommand.hint(for: failure) else {
                 return String(format: String(localized: "Redis authentication failed: %@"), serverMessage)
             }
             return String(
@@ -597,22 +610,13 @@ nonisolated enum RedisError: Error, LocalizedError {
                 serverMessage,
                 hint
             )
+        case .sessionUnverified(let outcome):
+            let message = outcome.failureMessage ?? String(localized: "Redis connection failed")
+            guard let hint = outcome.failureHint else { return message }
+            return "\(message) \(hint)"
         case .notConnected: return "Not connected to Redis"
         case .queryFailed(let msg): return "Redis command failed: \(msg)"
         case .unsupported(let msg): return msg
-        }
-    }
-
-    private static func hint(for failure: RedisAuthCommand.Failure) -> String? {
-        switch failure {
-        case .rejectedWithoutUsername:
-            return String(localized: "If this server uses Redis 6 or later ACL users, fill in the Username field.")
-        case .serverHasNoPassword:
-            return String(localized: "This server has no password set for the default user. Clear the Password field.")
-        case .usernameUnsupported:
-            return String(localized: "This server predates Redis 6 and takes no username. Clear the Username field.")
-        case .rejectedCredentials, .unrecognized:
-            return nil
         }
     }
 }

@@ -138,17 +138,6 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
 
             try openContextSync(selectDatabase: database, reportingStage: report)
 
-            report(.preparingSession)
-            do {
-                let pingReply = try executeCommandSync(["PING"])
-                if case .error(let msg) = pingReply {
-                    throw RedisPluginError(code: 3, message: "PING failed: \(msg)")
-                }
-            } catch {
-                freeContextSync()
-                throw error
-            }
-
             let versionString = fetchServerVersionSync()
 
             stateLock.lock()
@@ -398,10 +387,10 @@ private extension RedisPluginConnection {
                 report(.negotiatingEncryption)
                 try connectSSL(ctx)
             }
-            if let password, !password.isEmpty {
-                report(.authenticating)
+            if !(try authenticateSync(reportingStage: report)) {
+                report(.preparingSession)
+                try probeSessionSync()
             }
-            try authenticateSync()
             if dbIndex != 0 {
                 let reply = try executeCommandSync(["SELECT", String(dbIndex)])
                 if case .error(let msg) = reply {
@@ -414,20 +403,55 @@ private extension RedisPluginConnection {
         }
     }
 
-    func authenticateSync() throws {
-        guard let authArgs = RedisAuthCommand.arguments(username: username, password: password) else { return }
+    /// Reports whether credentials were sent, which decides whether the session still needs
+    /// proving. A `+OK` to AUTH is the server naming the identity it bound and answering a round
+    /// trip in the same breath, so nothing more is needed. Sending nothing proves nothing, and
+    /// only a reply separates an open server from one that will refuse every command.
+    @discardableResult
+    func authenticateSync(reportingStage report: ConnectionStageReporter = { _ in }) throws -> Bool {
+        guard let authArgs = RedisAuthCommand.arguments(username: username, password: password) else { return false }
+        report(.authenticating)
         let reply = try executeCommandSync(authArgs)
-        if case .error(let msg) = reply {
-            throw RedisPluginError(code: 1, message: "AUTH failed: \(msg)")
-        }
+        guard case .error(let msg) = reply else { return true }
+        let failure = RedisAuthCommand.failure(
+            serverError: msg,
+            hadUsername: !(username ?? "").isEmpty,
+            hadPassword: !(password ?? "").isEmpty
+        )
+        throw RedisPluginError(
+            code: 1,
+            message: String(format: String(localized: "AUTH failed: %@"), msg),
+            detail: RedisAuthCommand.hint(for: failure),
+            refusedByServer: true
+        )
     }
 
+    /// Asks the server whether this connection holds any identity, for the case where nothing was
+    /// sent to give it one. Runs on every path that makes a connection usable, `reconnectSync`
+    /// included, so an unauthenticated session is never declared live.
+    func probeSessionSync() throws {
+        let reply = try executeCommandSync(RedisConnectProbe.command)
+        let outcome = RedisConnectProbe.outcome(errorMessage: reply.errorMessage)
+        guard let message = outcome.failureMessage else { return }
+        throw RedisPluginError(
+            code: 3,
+            message: message,
+            detail: outcome.failureHint,
+            refusedByServer: true
+        )
+    }
+
+    /// Freeing the context is what makes the connection unusable, so the flag that reports it
+    /// usable goes with it. A reconnect that frees the old context and then fails to open a new
+    /// one used to leave `isConnected` true over a nil context, and the cluster channel went on
+    /// handing that object out until the health monitor replaced it.
     func freeContextSync() {
         stateLock.lock()
         let handle = context
         let ssl = sslContext
         context = nil
         sslContext = nil
+        _isConnected = false
         stateLock.unlock()
         if let handle { redisFree(handle) }
         if let ssl { redisFreeSSLContext(ssl) }
