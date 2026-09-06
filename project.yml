@@ -365,6 +365,10 @@ targets:
       - Plugins/BigQueryDriverPlugin/BigQueryQueryBuilder.swift
       - Plugins/BigQueryDriverPlugin/BigQueryStatementGenerator.swift
       - Plugins/BigQueryDriverPlugin/BigQueryTypeMapper.swift
+      - Plugins/CSVExportPlugin/CSVEncodingReport.swift
+      - Plugins/CSVExportPlugin/CSVExportModels.swift
+      - Plugins/CSVExportPlugin/CSVExportOptionsView.swift
+      - Plugins/CSVExportPlugin/CSVExportPlugin.swift
       - Plugins/CSVImportPlugin/CSVImportOptions.swift
       - Plugins/CSVImportPlugin/CSVImportParsing.swift
       - Plugins/CSVInspectorPlugin/CSVDocument.swift

@@ -104,6 +104,74 @@
         }
       }
     },
+    "%1$@ could not represent %2$@ and other characters. Each was written as \"?\"." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%1$@에서 %2$@ 및 기타 문자를 표현할 수 없어 각각 \"?\"로 기록했습니다.",
+            "state" : "translated"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "value" : "%1$@ şunları ve diğer karakterleri temsil edemedi: %2$@. Her biri \"?\" olarak yazıldı.",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "%1$@ không thể biểu diễn %2$@ và các ký tự khác. Mỗi ký tự được ghi thành \"?\".",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "%1$@ 无法表示 %2$@ 及其他字符。每个字符均写为 \"?\"。",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "%1$@ 無法表示 %2$@ 及其他字元。每個字元均寫為 \"?\"。",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "%1$@ could not represent %2$@. Each was written as \"?\"." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "%1$@에서 %2$@을(를) 표현할 수 없어 각각 \"?\"로 기록했습니다.",
+            "state" : "translated"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "value" : "%1$@ şunları temsil edemedi: %2$@. Her biri \"?\" olarak yazıldı.",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "%1$@ không thể biểu diễn %2$@. Mỗi ký tự được ghi thành \"?\".",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "%1$@ 无法表示 %2$@。每个字符均写为 \"?\"。",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "%1$@ 無法表示 %2$@。每個字元均寫為 \"?\"。",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "--" : {
       "localizations" : {
         "ko" : {
@@ -274,6 +342,74 @@
         }
       }
     },
+    "Could not write this text as %@." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "이 텍스트를 %@(으)로 기록할 수 없습니다.",
+            "state" : "translated"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Bu metin %@ olarak yazılamadı.",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Không thể ghi văn bản này ở dạng %@.",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "无法以 %@ 写入此文本。",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "無法以 %@ 寫入此文字。",
+            "state" : "translated"
+          }
+        }
+      }
+    },
+    "Excel on Windows needs this to read UTF-8. Other readers show it as part of the first value." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "Windows의 Excel은 UTF-8을 읽으려면 이것이 필요합니다. 다른 리더는 첫 번째 값의 일부로 표시합니다.",
+            "state" : "translated"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Windows'taki Excel, UTF-8 okumak için buna ihtiyaç duyar. Diğer okuyucular bunu ilk değerin parçası olarak gösterir.",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Excel trên Windows cần dấu này để đọc UTF-8. Các trình đọc khác hiển thị nó như một phần của giá trị đầu tiên.",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "Windows 版 Excel 需要它才能读取 UTF-8。其他阅读器会将它显示为第一个值的一部分。",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "Windows 版 Excel 需要它才能讀取 UTF-8。其他讀取器會將它顯示為第一個值的一部分。",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Exclude the AUTO_INCREMENT counter" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -408,6 +544,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "群組最多巢狀 %lld 層。"
+          }
+        }
+      }
+    },
+    "Include byte order mark" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "value" : "바이트 순서 표시 포함",
+            "state" : "translated"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "value" : "Bayt sırası işaretini ekle",
+            "state" : "translated"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Bao gồm dấu thứ tự byte",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "包含字节顺序标记",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "包含位元組順序記號",
+            "state" : "translated"
           }
         }
       }

@@ -82,8 +82,14 @@ As SQL, a results export writes `INSERT` statements only. A result set is the ou
     | Line ending (LF, CRLF, CR) | LF |
     | Decimal separator (period, comma) | Period |
     | Sanitize formula-like values | Yes |
+    | Encoding (UTF-8, ISO Latin 1, Windows-1252) | UTF-8 |
+    | Include byte order mark | No |
 
     Sanitizing prefixes a value starting with `=`, `+`, `-`, or `@` with a single quote, so a spreadsheet treats it as text.
+
+    Excel on Windows needs the byte order mark to read a UTF-8 file. Readers that do not expect one read it as part of the first column name. Only UTF-8 carries a mark, so the checkbox dims for the other two encodings.
+
+    ISO Latin 1 and Windows-1252 cover fewer characters than the data might hold. A character neither can represent is written as `?`, and the export finishes with a warning listing the characters that were dropped.
   </Tab>
   <Tab title="JSON">
     One object per table, each holding an array of rows.

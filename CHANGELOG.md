@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Export, Delete and Empty for a Typesense collection. (#2629)
 - Typesense API keys in Users & Roles, with the collections and actions each key holds. (#2629)
 - Server Dashboard metrics for Typesense, from `/metrics.json` and `/stats.json`. (#2629)
+- Encoding and byte order mark options for CSV export, with a warning naming what the encoding dropped. (#2534)
 
 ### Changed
 
@@ -58,6 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Repeated MCP access prompts when a client retried a call the user had just denied. (#2640)
 - Destructive-operation consent reaching an elicitation-capable MCP client as an internal error instead of a prompt.
 - `ai_policy` in `list_connections` reporting `askEachTime` whatever the app-wide default was.
+- Quote menu in the CSV export options untranslated in every localized build. (#2534)
+- Line feed instead of the chosen line ending on the table comment of a multi-table CSV export. (#2534)
 
 ## [0.72.0] - 2026-09-04
 
