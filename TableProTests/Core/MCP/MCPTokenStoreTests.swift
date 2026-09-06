@@ -126,7 +126,8 @@ struct MCPTokenStoreTests {
             name: "scoped",
             permissions: .readOnly,
             connectionAccess: .limited(allowed),
-            expiresAt: expiry
+            expiresAt: expiry,
+            isBridgeCredential: false
         )
 
         #expect(result.token.connectionAccess == .limited(allowed))
@@ -152,8 +153,10 @@ struct MCPTokenStoreTests {
 
         #expect(signature.contains("connectionAccess: ConnectionAccess"))
         #expect(signature.contains("expiresAt: Date?"))
+        #expect(signature.contains("isBridgeCredential: Bool"))
         #expect(signature.contains("connectionAccess: ConnectionAccess = ") == false)
         #expect(signature.contains("expiresAt: Date? = ") == false)
+        #expect(signature.contains("isBridgeCredential: Bool = ") == false)
         #expect(signature.contains("=") == false)
     }
 
@@ -165,13 +168,15 @@ struct MCPTokenStoreTests {
             name: "token-1",
             permissions: .readOnly,
             connectionAccess: .all,
-            expiresAt: nil
+            expiresAt: nil,
+            isBridgeCredential: false
         )
         let second = try await store.generate(
             name: "token-2",
             permissions: .readOnly,
             connectionAccess: .all,
-            expiresAt: nil
+            expiresAt: nil,
+            isBridgeCredential: false
         )
 
         #expect(first.plaintext != second.plaintext)
@@ -189,7 +194,8 @@ struct MCPTokenStoreTests {
             name: "persisted",
             permissions: .readOnly,
             connectionAccess: .all,
-            expiresAt: nil
+            expiresAt: nil,
+            isBridgeCredential: false
         )
 
         let text = credentials.storedText
@@ -205,7 +211,8 @@ struct MCPTokenStoreTests {
             name: "valid",
             permissions: .readOnly,
             connectionAccess: .all,
-            expiresAt: nil
+            expiresAt: nil,
+            isBridgeCredential: false
         )
 
         #expect(await store.validate(bearerToken: result.plaintext)?.id == result.token.id)
@@ -220,7 +227,8 @@ struct MCPTokenStoreTests {
             name: "expired",
             permissions: .readOnly,
             connectionAccess: .all,
-            expiresAt: Date.now.addingTimeInterval(-1)
+            expiresAt: Date.now.addingTimeInterval(-1),
+            isBridgeCredential: false
         )
 
         #expect(await store.validate(bearerToken: result.plaintext) == nil)
@@ -234,7 +242,8 @@ struct MCPTokenStoreTests {
             name: "revoked",
             permissions: .readWrite,
             connectionAccess: .all,
-            expiresAt: nil
+            expiresAt: nil,
+            isBridgeCredential: false
         )
 
         await store.revoke(tokenId: result.token.id)
@@ -251,7 +260,8 @@ struct MCPTokenStoreTests {
             name: "used",
             permissions: .readOnly,
             connectionAccess: .all,
-            expiresAt: nil
+            expiresAt: nil,
+            isBridgeCredential: false
         )
 
         _ = await store.validate(bearerToken: result.plaintext)
@@ -266,10 +276,11 @@ struct MCPTokenStoreTests {
             name: "observed",
             permissions: .readOnly,
             connectionAccess: .all,
-            expiresAt: nil
+            expiresAt: nil,
+            isBridgeCredential: false
         )
         let recorder = RevocationRecorder()
-        await store.addRevocationObserver { key in
+        await store.addRevocationObserver { key, _ in
             await recorder.append(key)
         }
 
@@ -286,7 +297,8 @@ struct MCPTokenStoreTests {
             name: "temporary",
             permissions: .readOnly,
             connectionAccess: .all,
-            expiresAt: nil
+            expiresAt: nil,
+            isBridgeCredential: false
         )
 
         await store.delete(tokenId: result.token.id)
@@ -302,14 +314,16 @@ struct MCPTokenStoreTests {
             name: "Claude",
             permissions: .readWrite,
             connectionAccess: .all,
-            expiresAt: nil
+            expiresAt: nil,
+            isBridgeCredential: false
         )
 
         let impostor = try await store.generate(
             name: "Claude",
             permissions: .readOnly,
             connectionAccess: .all,
-            expiresAt: nil
+            expiresAt: nil,
+            isBridgeCredential: false
         )
 
         #expect(impostor.token.id != standing.token.id)
@@ -326,7 +340,8 @@ struct MCPTokenStoreTests {
             name: "persisted",
             permissions: .fullAccess,
             connectionAccess: .limited([UUID()]),
-            expiresAt: nil
+            expiresAt: nil,
+            isBridgeCredential: false
         )
 
         let reader = makeStore(credentials)
@@ -347,13 +362,15 @@ struct MCPTokenStoreTests {
             name: MCPTokenStore.stdioBridgeTokenName,
             permissions: MCPTokenStore.bridgeTokenPermissions,
             connectionAccess: .all,
-            expiresAt: Date.now.addingTimeInterval(3_600)
+            expiresAt: Date.now.addingTimeInterval(3_600),
+            isBridgeCredential: true
         )
         let survivor = try await writer.generate(
             name: "user token",
             permissions: .readOnly,
             connectionAccess: .all,
-            expiresAt: nil
+            expiresAt: nil,
+            isBridgeCredential: false
         )
 
         let reader = makeStore(credentials)

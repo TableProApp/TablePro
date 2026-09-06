@@ -320,7 +320,7 @@ struct SSHServerSections: View {
                                 Spacer()
                                 Button {
                                     let idToRemove = jumpHost.id
-                                    withAnimation { sshState.jumpHosts.removeAll { $0.id == idToRemove } }
+                                    withMotion { sshState.jumpHosts.removeAll { $0.id == idToRemove } }
                                 } label: {
                                     Image(systemName: "minus.circle.fill")
                                         .frame(width: 24, height: 24)

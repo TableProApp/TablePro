@@ -33,6 +33,8 @@ public actor MCPAuthPolicy {
     private let connectionIdsProvider: MCPConnectionIdsProvider
     private let approvalLedger: MCPApprovalLedger
     private let historyRecorder: QueryHistoryRecording
+    private let approvalSetting: MCPConnectionApprovalReading
+    private let presenter: any MCPApprovalPresenting
     private let approvalDedup = OnceTask<ApprovalKey, Bool>()
 
     public init() {
@@ -43,12 +45,16 @@ public actor MCPAuthPolicy {
         connectionResolver: @escaping MCPConnectionSnapshotResolver,
         connectionIdsProvider: @escaping MCPConnectionIdsProvider = MCPAuthPolicy.defaultConnectionIdsProvider,
         approvalLedger: MCPApprovalLedger = MCPApprovalLedger(),
-        historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared
+        historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared,
+        approvalSetting: MCPConnectionApprovalReading = MCPSettingsApprovalReader(),
+        presenter: any MCPApprovalPresenting = MCPApprovalAlertPresenter()
     ) {
         self.connectionResolver = connectionResolver
         self.connectionIdsProvider = connectionIdsProvider
         self.approvalLedger = approvalLedger
         self.historyRecorder = historyRecorder
+        self.approvalSetting = approvalSetting
+        self.presenter = presenter
     }
 
     private struct ApprovalKey: Hashable, Sendable {
@@ -104,12 +110,18 @@ public actor MCPAuthPolicy {
             return .denied(reason: writeReason)
         }
 
-        guard snapshot.policy == .askEachTime else { return .allowed }
-        let alreadyApproved = await approvalLedger.isApproved(
-            principal: principal,
-            connectionId: connectionId
-        )
-        guard !alreadyApproved else { return .allowed }
+        guard snapshot.policy != .alwaysAllow else { return .allowed }
+
+        let approval = await approvalSetting.connectionApproval()
+        guard approval.asksBeforeReachingAConnection else { return .allowed }
+
+        if approval.remembersAnswer {
+            let alreadyApproved = await approvalLedger.isApproved(
+                principal: principal,
+                connectionId: connectionId
+            )
+            guard !alreadyApproved else { return .allowed }
+        }
 
         return .requiresUserApproval(
             reason: String(
@@ -168,34 +180,97 @@ public actor MCPAuthPolicy {
             guard let connectionId else {
                 throw DatabaseAccessError.forbidden(reason)
             }
-            let approved = try await runApprovalDedup(
-                principal: principal,
-                connectionId: connectionId,
-                reason: reason
-            )
-            await approvalLedger.record(
-                principal: principal,
-                connectionId: connectionId,
-                approved: approved
-            )
-            guard approved else {
-                throw DatabaseAccessError.forbidden(
-                    String(localized: "User denied MCP access to this connection")
-                )
-            }
+            try await requireApproval(principal: principal, connectionId: connectionId)
         }
+    }
+
+    /// A refusal stands for a cool-off period. Without one a model that retries a refused call, or
+    /// that had several calls planned against the same connection, raises a fresh focus-stealing
+    /// alert for each attempt with nothing remembering that the user just said no.
+    private func requireApproval(principal: MCPPrincipal, connectionId: UUID) async throws {
+        if await approvalLedger.denialExpiry(principal: principal, connectionId: connectionId) != nil {
+            throw DatabaseAccessError.forbidden(
+                String(localized: "User denied MCP access to this connection")
+            )
+        }
+
+        guard let snapshot = await connectionResolver(connectionId) else {
+            throw DatabaseAccessError.forbidden(String(localized: "Connection not found"))
+        }
+
+        let approved = await collectApproval(
+            principal: principal,
+            connectionId: connectionId,
+            snapshot: snapshot
+        )
+
+        await approvalLedger.record(
+            principal: principal,
+            connectionId: connectionId,
+            approved: approved,
+            remember: await approvalSetting.connectionApproval().remembersAnswer
+        )
+        guard approved else {
+            throw DatabaseAccessError.forbidden(
+                String(localized: "User denied MCP access to this connection")
+            )
+        }
+    }
+
+    /// Whether a client may reach a connection at all is the one question the client may not answer
+    /// about itself, so this never routes through elicitation. A client declares `elicitation` in
+    /// its own `_meta` on every request, so a caller that wanted the gate open would simply claim
+    /// the capability and post its own acceptance, and under the remembering level that self-answer
+    /// would become a durable grant. Statement consent can be elicited because Safe Mode still
+    /// strips `confirmationPreCleared` from anything but an admin-scoped token; there is no second
+    /// gate behind this one.
+    private func collectApproval(
+        principal: MCPPrincipal,
+        connectionId: UUID,
+        snapshot: MCPConnectionAuthSnapshot
+    ) async -> Bool {
+        let approval = await approvalSetting.connectionApproval()
+
+        return await runApprovalDedup(
+            principal: principal,
+            connectionId: connectionId,
+            request: MCPApprovalRequest(
+                connectionName: snapshot.name,
+                databaseType: snapshot.databaseType,
+                clientLabel: principal.auditLabel,
+                memory: Self.memory(of: approval, for: principal)
+            )
+        )
     }
 
     func recordApproval(principal: MCPPrincipal, connectionId: UUID) async {
         await approvalLedger.record(principal: principal, connectionId: connectionId, approved: true)
     }
 
-    func clearApprovals(tokenId: UUID?) async {
-        await approvalLedger.clear(tokenId: tokenId)
+    /// Called when a token is revoked. The bundled bridge re-mints its credential roughly every
+    /// 45 minutes and deletes the one it replaces, which reaches here as a revocation; treating that
+    /// as the user withdrawing consent is what made the prompt come back all day, so the caller
+    /// passes the token's name and the bridge's own rotation is skipped.
+    func clearApprovals(tokenId: UUID?, wasBridgeCredential: Bool = false) async {
+        guard !wasBridgeCredential else { return }
+        await approvalLedger.clear(subject: tokenId.map { .token($0) })
     }
 
+    /// Ends this session's approvals. A grant the user chose to remember is not one of them.
     func clearAllApprovals() async {
-        await approvalLedger.clearAll()
+        await approvalLedger.clearSessionApprovals()
+    }
+
+    func forgetEveryGrant() async {
+        await approvalLedger.forgetEveryGrant()
+    }
+
+    func revokeGrant(subject: String, connectionId: UUID) async {
+        await approvalLedger.revoke(subject: subject, connectionId: connectionId)
+    }
+
+    func grants() async -> [MCPConnectionGrant] {
+        await approvalLedger.grants()
     }
 
     /// The MCP surface never pre-clears Safe Mode on the client's word alone. `confirmationPreCleared`
@@ -292,6 +367,16 @@ public actor MCPAuthPolicy {
         )
     }
 
+    /// A caller with no durable identity keeps its answer only for this session, so the prompt says
+    /// that rather than promising a grant the ledger will not file.
+    private static func memory(
+        of approval: MCPConnectionApproval,
+        for principal: MCPPrincipal
+    ) -> MCPApprovalMemory {
+        guard approval.remembersAnswer else { return .thisRequestOnly }
+        return principal.grantSubject == nil ? .thisSession : .untilRevoked
+    }
+
     private static func adminScopeDenial(principal: MCPPrincipal, tool: MCPToolName) -> AuthDecision? {
         guard MCPToolName.requiresAdminScope.contains(tool) else { return nil }
         guard !principal.has(.admin) || principal.isAnonymous else { return nil }
@@ -321,36 +406,14 @@ public actor MCPAuthPolicy {
     private func runApprovalDedup(
         principal: MCPPrincipal,
         connectionId: UUID,
-        reason: String
-    ) async throws -> Bool {
+        request: MCPApprovalRequest
+    ) async -> Bool {
         let key = ApprovalKey(principalKey: principal.ledgerKey, connectionId: connectionId)
-        return try await approvalDedup.execute(key: key) {
-            try await Self.promptApproval(reason: reason)
+        let presenter = presenter
+        let approved = try? await approvalDedup.execute(key: key) {
+            await presenter.requestApproval(request)
         }
-    }
-
-    private static func promptApproval(reason: String) async throws -> Bool {
-        try await withThrowingTaskGroup(of: Bool.self) { group in
-            defer { group.cancelAll() }
-            group.addTask {
-                await AlertHelper.runApprovalModal(
-                    title: String(localized: "MCP Access Request"),
-                    message: reason,
-                    confirm: String(localized: "Allow"),
-                    cancel: String(localized: "Deny")
-                )
-            }
-            group.addTask {
-                try await Task.sleep(for: .seconds(30))
-                throw DatabaseAccessError.timeout(
-                    String(localized: "User approval timed out after 30 seconds")
-                )
-            }
-            guard let result = try await group.next() else {
-                throw DatabaseAccessError.dataSourceError("No result from approval prompt")
-            }
-            return result
-        }
+        return approved ?? false
     }
 
     private func denialForWriteIntent(

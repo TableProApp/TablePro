@@ -16,10 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bar chart column in the EXPLAIN tree, with a Metric menu for self cost, self time and row counts. (#2633)
 - Database type change from inside the connection editor.
 - The reason Save is unavailable, next to the Save button in the connection editor.
+- Approval setting for MCP connection access, with the list of approved connections and a Forget action. (#2640)
 
 ### Changed
 
-- Connection editor rebuilt as four tabs, General, Network, Options and Appearance, in place of up to eleven sidebar panes.
+- Connection editor rebuilt around a sidebar of four sections, General, Network, Options and Appearance, in place of up to eleven panes.
 - One Connect via picker for SSH, Cloudflare, Cloud SQL Auth Proxy, SOCKS and Tunnel Command, in place of five Enable switches.
 - Save, Cancel and Test Connection on a bottom action bar instead of the titlebar.
 - `Use ~/.pgpass` below Username rather than above it.
@@ -32,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Continue dimmed after filtering the database chooser down to one driver.
 - Down arrow not reaching the list from the database chooser's search field.
 - VoiceOver reading a database chooser row's icon before the driver's name.
+- Animations that played through the Reduce Motion setting when removing a jump host or copying DDL or a query plan.
+- Icon-only controls with no VoiceOver name or tooltip in the date picker, row inspector and slash command settings.
+- `is_connected` reported as true over MCP for a connection that had stopped answering.
 - Cost badge on every plan node of a query ending in `LIMIT`, where the share it reads could exceed 100%. (#2633)
 - Green "low cost" badge on plans that report no cost at all, such as SQLite and ClickHouse. (#2633)
 - Empty Cost, Rows and Actual Time columns in the EXPLAIN tree for engines that report none of them. (#2633)
@@ -44,6 +48,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - JavaScript `locals` and `tags` queries that no longer compiled against the bundled parser.
 - JSON `true`, `false` and `null` unhighlighted in the row inspector and the JSON viewer.
 - Operator and Function theme colours with no effect on the editor.
+- MCP access prompt with no setting to turn it off, reachable only from the AI tab and hidden entirely with AI features off. (#2640)
+- MCP access prompt discarding an answer given more than 30 seconds after it appeared. (#2640)
+- MCP access prompt returning every 30 minutes, and after each rotation of the bundled bridge's credential. (#2640)
+- Repeated MCP access prompts when a client retried a call the user had just denied. (#2640)
+- Destructive-operation consent reaching an elicitation-capable MCP client as an internal error instead of a prompt.
+- `ai_policy` in `list_connections` reporting `askEachTime` whatever the app-wide default was.
 
 ## [0.72.0] - 2026-09-04
 

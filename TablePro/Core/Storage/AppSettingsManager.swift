@@ -181,7 +181,7 @@ final class AppSettingsManager {
         if mcpServerManager.tokenStore == nil {
             await tokenStore.loadFromDisk()
         }
-        let existing = await tokenStore.list().filter { $0.name != MCPTokenStore.stdioBridgeTokenName }
+        let existing = await tokenStore.list().filter { !$0.isBridgeCredential }
         guard existing.isEmpty else {
             mcp.requireAuthentication = value
             return nil
@@ -192,7 +192,8 @@ final class AppSettingsManager {
             name: defaultName,
             permissions: .readWrite,
             connectionAccess: .all,
-            expiresAt: nil
+            expiresAt: nil,
+            isBridgeCredential: false
         )
         mcp.requireAuthentication = value
         return result

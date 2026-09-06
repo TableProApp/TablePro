@@ -36,7 +36,7 @@ Fourteen tools need `tools:write`: `connect`, `disconnect`, `switch_database`, `
 Past the scope, a call clears three more gates:
 
 1. **Connection allowlist.** A token limited to named connections gets `-33007` for anything else.
-2. **Connection policy.** **External Clients** set to **Blocked** hides the connection: `list_connections` omits it and any tool that names it is refused. An AI policy of **Never** does the same. **Ask Each Time** shows an approval dialog on the first call that touches the connection, and the answer is remembered for that token until it is revoked.
+2. **Connection policy.** **External Clients** set to **Blocked** hides the connection: `list_connections` omits it and any tool that names it is refused. An AI policy of **Never** does the same. Otherwise the first call that touches a connection asks the user, as often as **Settings > Integrations > Approval** says. That question is always a dialog on the user's Mac, never an elicitation: a client that could answer it could also grant itself the connection. It has no deadline, so the client owns the timeout, and a refusal stands for 60 seconds before the question can be put again.
 3. **Safe Mode.** A write goes through the connection's Safe Mode, which may ask the user to confirm it or to authenticate. See [Approvals](/external-api/mcp-protocol#approvals-and-input-required).
 
 `confirm_destructive_operation` needs `admin` as well, so it takes a Full Access token, and **Read Only** refuses it outright whatever the token carries. No token skips the user's approval.
@@ -47,7 +47,7 @@ Statements that read or write files, or that run server-side code, are refused o
 
 | Tool | Arguments | Returns |
 |------|-----------|---------|
-| `list_connections` | none | `connections[]` with `id`, `name`, `type`, `host`, `port`, `database`, `is_connected`, `ai_policy`, `external_access`, `safe_mode` |
+| `list_connections` | none | `connections[]` with `id`, `name`, `type`, `host`, `port`, `database`, `is_connected`, `ai_policy`, `external_access`, `safe_mode`. `is_connected` is false once a connection stops answering, before it is disconnected |
 | `connect` | `connection_id` | `status` (`connected`), `connection_id`, `current_database`, plus `current_schema` and `server_version` when known. Returns once the driver is up |
 | `disconnect` | `connection_id` | `status` (`disconnected`), `connection_id` |
 | `get_connection_status` | `connection_id` | `status` (`connected`, `connecting`, `disconnected`, `error`), `connection_id`, `current_database`, plus `current_schema`, `server_version`, `connected_at`, `last_active_at` and `error` when they apply |

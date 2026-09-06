@@ -46,7 +46,8 @@ struct MCPSettingsTests {
             "maxRowLimit",
             "queryTimeoutSeconds",
             "logQueriesInHistory",
-            "requireAuthentication"
+            "requireAuthentication",
+            "connectionApproval"
         ])
         #expect(decoded == MCPSettings.default)
     }
@@ -59,6 +60,42 @@ struct MCPSettingsTests {
         for banned in ["allowRemoteConnections", "host", "bindAddress", "tls", "useTLS", "certificatePath"] {
             #expect(fields[banned] == nil)
         }
+    }
+
+    @Test("Connection approval defaults to asking once for each connection")
+    func defaultApprovalAsksOnce() throws {
+        #expect(MCPSettings.default.connectionApproval == .oncePerConnection)
+        #expect(MCPSettings().connectionApproval == .oncePerConnection)
+        let decoded = try JSONDecoder().decode(MCPSettings.self, from: Data("{}".utf8))
+        #expect(decoded.connectionApproval == .oncePerConnection)
+    }
+
+    @Test("A settings blob written before the approval setting existed keeps asking")
+    func decodesLegacyBlobAsAsking() throws {
+        let json = Data(#"{"enabled": true, "requireAuthentication": true}"#.utf8)
+        let decoded = try JSONDecoder().decode(MCPSettings.self, from: json)
+        #expect(decoded.connectionApproval == .oncePerConnection)
+        #expect(decoded.connectionApproval.asksBeforeReachingAConnection)
+    }
+
+    @Test("Each stored approval level round trips")
+    func decodesEachApprovalLevel() throws {
+        for level in MCPConnectionApproval.allCases {
+            let json = Data(#"{"connectionApproval": "\#(level.rawValue)"}"#.utf8)
+            let decoded = try JSONDecoder().decode(MCPSettings.self, from: json)
+            #expect(decoded.connectionApproval == level)
+        }
+    }
+
+    @Test("Only the permissive level stops asking, and only it forgets the answer")
+    func approvalLevelSemantics() {
+        #expect(MCPConnectionApproval.everyTime.asksBeforeReachingAConnection)
+        #expect(MCPConnectionApproval.oncePerConnection.asksBeforeReachingAConnection)
+        #expect(!MCPConnectionApproval.alwaysApprove.asksBeforeReachingAConnection)
+
+        #expect(!MCPConnectionApproval.everyTime.remembersAnswer)
+        #expect(MCPConnectionApproval.oncePerConnection.remembersAnswer)
+        #expect(!MCPConnectionApproval.alwaysApprove.remembersAnswer)
     }
 
     @Test("A stored port outside the valid range falls back to the default")

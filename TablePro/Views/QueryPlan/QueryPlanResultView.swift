@@ -345,12 +345,12 @@ struct QueryPlanResultView: View {
 
     private func copyText() {
         ClipboardService.shared.writeText(rawText)
-        withAnimation { showCopyConfirmation = true }
+        withMotion { showCopyConfirmation = true }
         copyResetTask?.cancel()
         copyResetTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(1_500))
             guard !Task.isCancelled else { return }
-            withAnimation { showCopyConfirmation = false }
+            withMotion { showCopyConfirmation = false }
         }
     }
 

@@ -23,13 +23,13 @@ public actor MCPConnectionBridge {
     }
 
     private func listConnections(access: ConnectionAccess) async -> JsonValue {
-        let (connections, activeSessions) = await MainActor.run {
+        let (connections, activeSessions, defaultPolicy) = await MainActor.run {
             let defaultPolicy = AppSettingsManager.shared.ai.defaultConnectionPolicy
             let conns = ConnectionStorage.shared.loadConnections()
                 .filter { $0.externalAccess != .blocked }
                 .filter { ($0.aiPolicy ?? defaultPolicy) != .never }
                 .filter { access.allows($0.id) }
-            return (conns, DatabaseManager.shared.activeSessions)
+            return (conns, DatabaseManager.shared.activeSessions, defaultPolicy)
         }
 
         let items: [JsonValue] = connections
@@ -40,7 +40,7 @@ public actor MCPConnectionBridge {
             }
             .map { conn in
                 let session = activeSessions[conn.id]
-                let policy = conn.aiPolicy ?? AIConnectionPolicy.askEachTime
+                let policy = conn.aiPolicy ?? defaultPolicy
                 return .object([
                     "id": .string(conn.id.uuidString),
                     "name": .string(conn.name),
@@ -48,7 +48,7 @@ public actor MCPConnectionBridge {
                     "host": .string(conn.host),
                     "port": .int(conn.port),
                     "database": .string(session?.resolvedBrowseDatabase ?? conn.database),
-                    "is_connected": .bool(session?.status.isConnected ?? false),
+                    "is_connected": .bool(session?.reportedStatus.isConnected ?? false),
                     "ai_policy": .string(policy.rawValue),
                     "external_access": .string(conn.externalAccess.rawValue),
                     "safe_mode": .string(conn.safeModeLevel.rawValue)
