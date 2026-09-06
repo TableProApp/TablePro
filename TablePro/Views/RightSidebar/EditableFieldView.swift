@@ -131,7 +131,7 @@ internal struct FieldDetailView: View {
     /// ambient font to inherit. Each names the value font on its own value text instead.
     private func inheritedValueFont(for kind: FieldEditorKind) -> Font? {
         switch kind {
-        case .json, .phpSerialized:
+        case .json, .phpSerialized, .image:
             return nil
         default:
             return ThemeEngine.shared.valueFontSwiftUI
@@ -144,6 +144,8 @@ internal struct FieldDetailView: View {
             return context.isReadOnly ? 60 : 80
         case .phpSerialized:
             return 80
+        case .image:
+            return 200
         case .blobHex:
             return 60
         case .multiLine:
@@ -168,6 +170,8 @@ internal struct FieldDetailView: View {
             JsonEditorView(context: context, onExpand: onExpand, onPopOut: onPopOut)
         case .phpSerialized:
             PhpSerializedFieldView(context: context, onExpand: onExpand, onPopOut: onPopOut)
+        case .image(let format):
+            ImageFieldView(context: context, format: format)
         case .blobHex:
             BlobHexEditorView(context: context)
         case .boolean:

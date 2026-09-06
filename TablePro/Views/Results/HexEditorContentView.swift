@@ -2,13 +2,30 @@
 //  HexEditorContentView.swift
 //  TablePro
 //
-//  SwiftUI popover content for viewing and editing BLOB column values as hex.
+//  The hex dump and editor a binary cell's popover shows, unframed so a viewer that puts it
+//  behind a tab sizes the popover once.
 //
 
 import AppKit
 import SwiftUI
 
-struct HexEditorContentView: View {
+@MainActor
+internal enum HexEditorMetrics {
+    /// A dump line is a fixed count of monospaced characters, so the popover is only as wide as
+    /// that count in the value font. Fixing the width instead wraps every line and breaks the
+    /// column alignment the dump exists for.
+    static var popoverWidth: CGFloat {
+        let line = ThemeEngine.shared.dataGridFonts.monoCharWidth
+            * CGFloat(HexDumpLayout.lineWidthInCharacters)
+        return line + textViewChromeWidth
+    }
+
+    /// The text container's own inset on both edges, the layout manager's line fragment padding,
+    /// and room for the vertical scroller.
+    private static let textViewChromeWidth: CGFloat = 42
+}
+
+struct HexEditorBody: View {
     let initialValue: String?
     let isEditable: Bool
     let onCommit: (String) -> Void
@@ -114,24 +131,10 @@ struct HexEditorContentView: View {
                 .padding(.vertical, 8)
             }
         }
-        .frame(width: Self.popoverWidth, height: isEditable ? 400 : 280)
         .onChange(of: editableHex) { _, newValue in
             scheduleValidation(newValue)
         }
     }
-
-    /// A dump line is a fixed count of monospaced characters, so the popover is only as wide as
-    /// that count in the value font. Fixing the width instead wraps every line and breaks the
-    /// column alignment the dump exists for.
-    private static var popoverWidth: CGFloat {
-        let line = ThemeEngine.shared.dataGridFonts.monoCharWidth
-            * CGFloat(HexDumpLayout.lineWidthInCharacters)
-        return line + textViewChromeWidth
-    }
-
-    /// The text container's own inset on both edges, the layout manager's line fragment padding,
-    /// and room for the vertical scroller.
-    private static let textViewChromeWidth: CGFloat = 42
 
     // MARK: - Actions
 

@@ -18,6 +18,7 @@ protocol ClipboardProvider {
     func readGridRows() -> GridRowsClipboardPayload?
     func writeText(_ text: String)
     func writeCsv(_ csv: String)
+    func writeImage(_ image: NSImage)
     func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload)
     var hasText: Bool { get }
     var hasGridRows: Bool { get }
@@ -72,6 +73,14 @@ struct NSPasteboardClipboardProvider: ClipboardProvider {
         pb.setString(csv, forType: .string)
         pb.setString(csv, forType: NSPasteboard.PasteboardType(UTType.utf8PlainText.identifier))
         pb.setString(csv, forType: Self.csvType)
+    }
+
+    /// An image goes on the pasteboard as an image, so it pastes into a document rather than
+    /// arriving as the hex or the markup a plain copy of the same cell would give.
+    func writeImage(_ image: NSImage) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.writeObjects([image])
     }
 
     func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload) {

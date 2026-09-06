@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import AppKit
 import Foundation
 @testable import TablePro
 import Testing
@@ -193,5 +194,84 @@ struct FieldEditorResolverTests {
             originalValue: "short"
         )
         #expect(kind == .singleLine)
+    }
+}
+
+@MainActor
+@Suite("FieldEditorResolver image content")
+struct FieldEditorResolverImageTests {
+    private func encodedPng() -> Data {
+        guard let representation = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: 4,
+            pixelsHigh: 4,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else { return Data() }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: representation)
+        NSColor.systemGreen.setFill()
+        NSRect(x: 0, y: 0, width: 4, height: 4).fill()
+        NSGraphicsContext.restoreGraphicsState()
+        return representation.representation(using: .png, properties: [:]) ?? Data()
+    }
+
+    @Test("SVG markup in a text column resolves to the image editor")
+    func svgTextResolvesToImage() {
+        let kind = FieldEditorResolver.resolve(
+            for: .text(rawType: "TEXT"),
+            isLongText: true,
+            originalValue: "<svg><rect/></svg>"
+        )
+        #expect(kind == .image(.svg))
+    }
+
+    /// The image branch runs before the blob branch, or a PNG in a BLOB column would only ever be
+    /// a hex dump in the inspector while the grid popover drew it.
+    @Test("PNG bytes in a blob column resolve to the image editor")
+    func pngBlobResolvesToImage() throws {
+        let value = try #require(String(data: encodedPng(), encoding: .isoLatin1))
+        let kind = FieldEditorResolver.resolve(
+            for: .blob(rawType: "BLOB"),
+            isLongText: false,
+            originalValue: value
+        )
+        #expect(kind == .image(.raster("public.png")))
+    }
+
+    @Test("binary that is not an image still resolves to the hex editor")
+    func nonImageBlobStaysHex() {
+        let kind = FieldEditorResolver.resolve(
+            for: .blob(rawType: "BLOB"),
+            isLongText: false,
+            originalValue: "\u{0}\u{1}\u{2}\u{3}"
+        )
+        #expect(kind == .blobHex)
+    }
+
+    @Test("Raw Value suppresses image detection the way it suppresses JSON")
+    func rawOverrideSuppressesImage() {
+        let kind = FieldEditorResolver.resolve(
+            for: .text(rawType: "TEXT"),
+            isLongText: true,
+            originalValue: "<svg><rect/></svg>",
+            displayFormatOverride: .raw
+        )
+        #expect(kind == .multiLine)
+    }
+
+    @Test("JSON still wins over image detection")
+    func jsonWinsOverImage() {
+        let kind = FieldEditorResolver.resolve(
+            for: .text(rawType: "TEXT"),
+            isLongText: false,
+            originalValue: #"{"a":1}"#
+        )
+        #expect(kind == .json)
     }
 }

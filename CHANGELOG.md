@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Export, Delete and Empty for a Typesense collection. (#2629)
 - Typesense API keys in Users & Roles, with the collections and actions each key holds. (#2629)
 - Server Dashboard metrics for Typesense, from `/metrics.json` and `/stats.json`. (#2629)
+- Image preview beside the source for a cell holding SVG or a raster image. (#2535)
 - DuckDB backup and restore, as one `.duckdb` file or a folder of Parquet. (#2485)
 - Table picker in Backup Dump, everything selected by default. (#2485)
 - Backup of several databases into one folder, one file each. (#2485)

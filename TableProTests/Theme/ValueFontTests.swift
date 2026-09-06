@@ -84,7 +84,10 @@ struct ValueFontTests {
         let source = try source(of: "TablePro/Views/RightSidebar/EditableFieldView.swift")
         #expect(source.contains(".font(inheritedValueFont(for: kind))"))
         #expect(source.contains("ThemeEngine.shared.valueFontSwiftUI"))
-        #expect(source.contains("case .json, .phpSerialized:"))
+        /// The opt-out list, spelled out so a kind cannot join it silently. Every member carries its
+        /// own toolbar and presents in a pop-out window too, so each names the value font on its own
+        /// value text; `standaloneValueViewsResolveTheValueFont` is what holds them to that.
+        #expect(source.contains("case .json, .phpSerialized, .image:"))
     }
 
     /// Everything outside the inspector has no shared root to inherit from: a popover, a pop-out window
@@ -100,6 +103,9 @@ struct ValueFontTests {
             "TablePro/Views/Results/CellOverlayViewer.swift",
             "TablePro/Views/Results/TextViewerWindowController.swift",
             "TablePro/Views/Results/HexEditorContentView.swift",
+            "TablePro/Views/Results/SvgViewerContentView.swift",
+            "TablePro/Views/Results/CellImageWindowController.swift",
+            "TablePro/Views/RightSidebar/FieldEditors/ImageFieldView.swift",
             "TablePro/Views/Results/ForeignKeyPreviewView.swift",
             "TablePro/Views/Results/ArrayValueEditorView.swift",
             "TablePro/Views/Results/SetPopoverContentView.swift",
