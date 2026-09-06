@@ -8,6 +8,57 @@ import Foundation
 import TableProPluginKit
 import Testing
 
+/// The bundle manifest, read from the repository rather than from a loaded bundle.
+///
+/// `PluginManifest` reads `TableProProvidesDatabaseTypeIds` from a plugin's Info.plist without
+/// loading its code, and `isDriverInstalled` answers from that. Without the key the driver is
+/// eagerly loaded (which the app logs as "declared no TableProProvides* capability keys ...;
+/// eager loading will block startup") and its type never reaches `lazyDriverURLs`, so picking
+/// Typesense in the connection form offers to download a plugin that is already installed.
+@Suite("Typesense plugin manifest")
+struct TypesensePluginManifestTests {
+    private static let infoPlist: URL = {
+        var url = URL(fileURLWithPath: #filePath)
+        for _ in 0 ..< 3 {
+            url.deleteLastPathComponent()
+        }
+        return url
+            .appendingPathComponent("Plugins/TypesenseDriverPlugin/Info.plist")
+    }()
+
+    private func manifest() throws -> [String: Any] {
+        let data = try Data(contentsOf: Self.infoPlist)
+        let plist = try PropertyListSerialization.propertyList(from: data, format: nil)
+        return (plist as? [String: Any]) ?? [:]
+    }
+
+    @Test("The bundle declares the database type it provides, so the app can register it lazily")
+    func declaresProvidedDatabaseTypeIds() throws {
+        let plist = try manifest()
+        let ids = try #require(plist["TableProProvidesDatabaseTypeIds"] as? [String])
+        #expect(ids == ["Typesense"])
+    }
+
+    /// The id in the manifest is what `isDriverInstalled` looks up, so it has to be the same
+    /// string the registry snapshot and `DatabaseType.typesense` use.
+    @Test("The declared id matches the registered database type")
+    @MainActor
+    func declaredIdMatchesTheRegisteredType() throws {
+        let plist = try manifest()
+        let ids = try #require(plist["TableProProvidesDatabaseTypeIds"] as? [String])
+        #expect(ids.contains(DatabaseType.typesense.rawValue))
+        let defaults = PluginMetadataRegistry.shared.registryPluginDefaults()
+        #expect(defaults.contains { $0.typeId == DatabaseType.typesense.rawValue })
+    }
+
+    @Test("The bundle pins the PluginKit ABI and the release it ships in")
+    func declaresVersionGates() throws {
+        let plist = try manifest()
+        #expect(plist["TableProPluginKitVersion"] as? Int == 21)
+        #expect(plist["TableProMinAppVersion"] as? String == "0.73.0")
+    }
+}
+
 @Suite("Typesense connection fields")
 struct TypesenseConnectionFieldsTests {
     private func typesenseFields() throws -> [ConnectionField] {
