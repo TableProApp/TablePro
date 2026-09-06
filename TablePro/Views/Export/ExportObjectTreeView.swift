@@ -27,7 +27,7 @@ internal struct ExportObjectTreeView: NSViewRepresentable {
     }
 
     internal func makeNSView(context: Context) -> NSScrollView {
-        let outlineView = ExportOutlineView()
+        let outlineView = CheckboxOutlineView()
         outlineView.headerView = nil
         outlineView.style = .plain
         outlineView.rowSizeStyle = .custom
@@ -262,8 +262,8 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
     ) -> NSView? {
         guard let node = item as? ExportOutlineNode else { return nil }
         let identifier = NSUserInterfaceItemIdentifier("ExportObjectRow")
-        let cell = outlineView.makeView(withIdentifier: identifier, owner: self) as? ExportObjectCellView
-            ?? ExportObjectCellView(identifier: identifier)
+        let cell = outlineView.makeView(withIdentifier: identifier, owner: self) as? HostingTableCellView
+            ?? HostingTableCellView(identifier: identifier)
         cell.configure(with: rowContent(for: node))
         return cell
     }
@@ -450,49 +450,5 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
         databases = updated
         markForReload(objectIDs: ids)
         owner.databaseItems = updated
-    }
-}
-
-/// Adds the one key an `NSOutlineView` of checkboxes needs and does not get for free. Arrow keys,
-/// Left and Right to collapse and expand, Home and End and type-select are all AppKit's own once
-/// the rows are selectable.
-internal final class ExportOutlineView: NSOutlineView {
-    internal var toggleSelectedRows: (() -> Void)?
-
-    override internal func keyDown(with event: NSEvent) {
-        guard event.charactersIgnoringModifiers == " ", !selectedRowIndexes.isEmpty else {
-            super.keyDown(with: event)
-            return
-        }
-        toggleSelectedRows?()
-    }
-}
-
-/// The cell keeps one hosting view for the life of the row and only swaps its root, because
-/// rebuilding the host on every reload loses the SwiftUI state the checkboxes animate from.
-internal final class ExportObjectCellView: NSTableCellView {
-    private let hosting: NSHostingView<AnyView>
-
-    internal init(identifier: NSUserInterfaceItemIdentifier) {
-        hosting = NSHostingView(rootView: AnyView(EmptyView()))
-        super.init(frame: .zero)
-        self.identifier = identifier
-        hosting.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(hosting)
-        NSLayoutConstraint.activate([
-            hosting.leadingAnchor.constraint(equalTo: leadingAnchor),
-            hosting.trailingAnchor.constraint(equalTo: trailingAnchor),
-            hosting.topAnchor.constraint(equalTo: topAnchor),
-            hosting.bottomAnchor.constraint(equalTo: bottomAnchor)
-        ])
-    }
-
-    @available(*, unavailable)
-    internal required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    internal func configure(with content: AnyView) {
-        hosting.rootView = content
     }
 }

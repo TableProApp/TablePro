@@ -14,6 +14,7 @@ enum PreferenceKeys {
     static let workspaceRailOrder = DefaultsKey<[WorkspaceID]>("com.TablePro.workspaceRail.order")
     static let queryPlanRawFontSize = DefaultsKey<Double>("com.TablePro.queryPlan.rawFontSize")
     static let queryPlanBarMetric = DefaultsKey<String>("com.TablePro.queryPlan.barMetric")
+    static let lastBackupDirectory = DefaultsKey<String>("com.TablePro.backup.lastDirectory")
 
     static let registeredKeyNames: [String] = [
         linkedFolders.name,
@@ -24,6 +25,7 @@ enum PreferenceKeys {
         workspaceRailOrder.name,
         queryPlanRawFontSize.name,
         queryPlanBarMetric.name,
+        lastBackupDirectory.name,
     ]
 
     static func columnDisplayFormats(_ scope: TableScope) -> DefaultsKey<[String: ValueDisplayFormat]> {

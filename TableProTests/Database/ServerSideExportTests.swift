@@ -217,15 +217,17 @@ struct SQLServerDumpTests {
             username: username, type: .mssql,
             sshConfig: SSHConfiguration(), sslConfig: sslConfig
         )
-        let descriptor = try #require(NativeDumpRegistry.descriptor(for: .mssql))
+        let tool = try #require(NativeDumpRegistry.descriptor(for: .mssql)?.commandLineTool)
         return try NativeDumpService.buildCommand(
             kind: kind,
-            descriptor: descriptor,
+            tool: tool,
             executable: URL(fileURLWithPath: "/usr/local/bin/sqlpackage"),
-            effective: connection,
-            database: "sales",
-            fileURL: URL(fileURLWithPath: "/tmp/sales.bacpac"),
-            password: "s3cret"
+            request: NativeDumpDescriptor.Request(
+                connection: connection,
+                database: "sales",
+                fileURL: URL(fileURLWithPath: "/tmp/sales.bacpac"),
+                password: "s3cret"
+            )
         )
     }
 
@@ -244,7 +246,7 @@ struct SQLServerDumpTests {
     func archiveShape() throws {
         let descriptor = try #require(NativeDumpRegistry.descriptor(for: .mssql))
         #expect(descriptor.archiveFormat.fileExtension == "bacpac")
-        #expect(descriptor.backupDelivery == .toolWritesFile)
+        #expect(descriptor.commandLineTool?.backupDelivery == .toolWritesFile)
         #expect(try command(kind: .backup).redirectedFileURL == nil)
     }
 

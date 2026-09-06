@@ -1,3 +1,8 @@
+//
+//  RestoreDatabaseFlow.swift
+//  TablePro
+//
+
 import AppKit
 import SwiftUI
 
@@ -8,10 +13,11 @@ struct RestoreDatabaseFlow: View {
     let sourceURL: URL
 
     @State private var service = NativeDumpService(kind: .restore)
-    @State private var phase: Phase = .pickDatabase
+    @State private var phase: Phase = .resolvingTarget
     @State private var hostWindow: NSWindow?
 
     private enum Phase: Equatable {
+        case resolvingTarget
         case pickDatabase
         case running(database: String)
         case finished(database: String)
@@ -22,6 +28,8 @@ struct RestoreDatabaseFlow: View {
     var body: some View {
         Group {
             switch phase {
+            case .resolvingTarget:
+                resolvingView
             case .pickDatabase:
                 pickerView
             case .running(let database):
@@ -63,6 +71,32 @@ struct RestoreDatabaseFlow: View {
         .onChange(of: serviceState) { _, newState in
             handleServiceStateChange(newState)
         }
+        .task { await resolveTarget() }
+    }
+
+    private var resolvingView: some View {
+        VStack(spacing: 12) {
+            ProgressView().controlSize(.small)
+            Text("Preparing\u{2026}")
+                .foregroundStyle(.secondary)
+        }
+        .frame(width: 480, height: 200)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    /// An engine that reaches one database is not asked which one.
+    ///
+    /// SQLite reports an empty database list, so the picker rendered its empty state with a
+    /// permanently dimmed Restore button and no way forward but Cancel. DuckDB is the same shape.
+    @MainActor
+    private func resolveTarget() async {
+        guard phase == .resolvingTarget else { return }
+        let databases = await BackupScopeLoader.databases(for: connection)
+        guard databases.count > 1 else {
+            await startRestore(database: databases.first?.name ?? initialDatabase)
+            return
+        }
+        phase = .pickDatabase
     }
 
     private var pickerView: some View {
@@ -104,6 +138,16 @@ struct RestoreDatabaseFlow: View {
 
     private var serviceState: NativeDumpState { service.state }
 
+    /// Which of an engine's formats this file is. DuckDB writes either one `.duckdb` file or a
+    /// folder of Parquet, and only the file system says which one the user picked.
+    private var formatId: String? {
+        let formats = NativeDumpRegistry.formats(for: connection.type)
+        guard formats.count > 1 else { return formats.first?.id }
+        var isDirectory: ObjCBool = false
+        FileManager.default.fileExists(atPath: sourceURL.path, isDirectory: &isDirectory)
+        return formats.first { $0.producesDirectory == isDirectory.boolValue }?.id ?? formats[0].id
+    }
+
     private func handleServiceStateChange(_ state: NativeDumpState) {
         switch state {
         case .running(let database, _, _, _):
@@ -133,12 +177,17 @@ struct RestoreDatabaseFlow: View {
             confirmButton: String(localized: "Restore"),
             window: hostWindow
         ) else {
-            phase = .pickDatabase
+            isPresented = false
             return
         }
         phase = .running(database: database)
         do {
-            try await service.start(connection: connection, database: database, fileURL: sourceURL)
+            try await service.start(
+                connection: connection,
+                database: database,
+                fileURL: sourceURL,
+                formatId: formatId
+            )
         } catch {
             phase = .failed(message: error.localizedDescription, targetMayBeModified: false)
         }

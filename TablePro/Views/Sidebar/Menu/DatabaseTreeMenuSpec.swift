@@ -45,6 +45,10 @@ internal struct DatabaseTreeMenuContext {
     internal var canCopyObjects: Bool = false
     /// Duplicating means creating a database, which is the same test the New Database command uses.
     internal var canDuplicateDatabase: Bool = false
+
+    /// Whether this connection has a dump tool at all. Backing up writes nothing to the database,
+    /// so safe mode does not gate it, which is the same rule File > Backup Dump follows.
+    internal var canBackUp: Bool = false
     /// Whether the driver can offer a CREATE TYPE template. Read-only mode still hides the item.
     internal var canCreateType: Bool = false
 }
@@ -343,6 +347,14 @@ internal enum DatabaseTreeMenuSpec {
             items.append(.separator)
             items.append(.command(String(localized: "Export…"), .exportContainers(targets)))
         }
+
+        /// Offered on a multi-selection where Export is not: `ExportPreselection.canPreselect`
+        /// requires every container to share one database, and backing several databases up into
+        /// one folder is the whole point of the command.
+        let backupDatabases = targets.filter { $0.kind == .database }.compactMap(\.database)
+        if context.canBackUp, !backupDatabases.isEmpty {
+            items.append(.command(backUpTitle(count: backupDatabases.count), .backUpContainers(backupDatabases)))
+        }
         /// Both act on one container: a copy names one source and one target, and a duplicate
         /// names one new database. A multi-selection would need a target per container.
         if targets.count == 1 {
@@ -358,6 +370,12 @@ internal enum DatabaseTreeMenuSpec {
             items.append(.command(dropTitle(for: droppable, context: context), .dropContainers(droppable)))
         }
         return items
+    }
+
+    private static func backUpTitle(count: Int) -> String {
+        count == 1
+            ? String(localized: "Back Up\u{2026}")
+            : String(format: String(localized: "Back Up %lld Databases\u{2026}"), Int64(count))
     }
 
     private static func favoriteDatabaseItems(

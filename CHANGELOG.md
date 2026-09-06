@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Export, Delete and Empty for a Typesense collection. (#2629)
 - Typesense API keys in Users & Roles, with the collections and actions each key holds. (#2629)
 - Server Dashboard metrics for Typesense, from `/metrics.json` and `/stats.json`. (#2629)
+- DuckDB backup and restore, as one `.duckdb` file or a folder of Parquet. (#2485)
+- Table picker in Backup Dump, everything selected by default. (#2485)
+- Backup of several databases into one folder, one file each. (#2485)
+- Back Up… on a database selection in the connection tree. (#2485)
 
 ### Changed
 
@@ -29,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Save, Cancel and Test Connection on a bottom action bar instead of the titlebar.
 - `Use ~/.pgpass` below Username rather than above it.
 - Tab moves focus out of Startup Commands and Pre-Connect Script instead of inserting a tab.
+- Backup Dump as one sheet with scope, format and destination, in place of a picker with a save panel over it. (#2485)
 
 ### Fixed
 
@@ -58,6 +63,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Repeated MCP access prompts when a client retried a call the user had just denied. (#2640)
 - Destructive-operation consent reaching an elicitation-capable MCP client as an internal error instead of a prompt.
 - `ai_policy` in `list_connections` reporting `askEachTime` whatever the app-wide default was.
+- Backup Dump and Restore Dump unusable on SQLite, with an empty database list and a dimmed confirm button. (#2485)
+- libSQL backup writing an empty 52-byte file and reporting success. (#2485)
+- Restore Dump asking every engine for a file `pg_dump` wrote. (#2485)
+- Cancel doing nothing while a backup's size estimate ran. (#2485)
+- Backup size estimate queueing behind a query tab's own work and joining its open transaction. (#2485)
+- A narrowed PostgreSQL dump matching nothing when a table name held a capital, a dot or a wildcard. (#2485)
 
 ## [0.72.0] - 2026-09-04
 
