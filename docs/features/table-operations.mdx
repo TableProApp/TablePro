@@ -62,7 +62,7 @@ The statement runs at once instead of joining the drop and truncate queue, so **
 | Teradata | Yes | No | No |
 | MongoDB | Yes | No | No |
 
-No other engine has a rename, so the item never appears on Cassandra, DynamoDB, Elasticsearch, etcd, Kafka, Redis, SurrealDB or Beancount. What resembles one there is a copy followed by a delete, and it changes record identity.
+No other engine has a rename, so the item never appears on Cassandra, DynamoDB, Elasticsearch, etcd, Kafka, Redis, SurrealDB, Typesense or Beancount. What resembles one there is a copy followed by a delete, and it changes record identity.
 
 **Rename Database** and **Rename Schema** are absent on the container the connection is browsing. Switch to another one first, then rename the one you left.
 

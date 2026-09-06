@@ -36,7 +36,7 @@ Icons, comments, and row size are also under **View Options** in the sidebar's r
 
 How many seconds a query runs before it is cancelled. The default is 60; the picker offers 10 to 600 seconds and **No limit**. The value is read when a connection opens, so a change reaches an open connection only after you reconnect.
 
-Where the engine can enforce it, the timeout becomes a server-side setting: `statement_timeout` on PostgreSQL, `max_execution_time` on MySQL and ClickHouse, `max_statement_time` on MariaDB. On SQLite it bounds how long a statement waits for a locked database instead. Drivers that talk HTTP (BigQuery, Cloudflare D1, LibSQL, Etcd, DynamoDB, Elasticsearch, and ClickHouse) bound the request at the timeout plus 30 seconds, and Oracle enforces it in the client: the connection is closed to unblock the call, and the next query reconnects and restores your current schema.
+Where the engine can enforce it, the timeout becomes a server-side setting: `statement_timeout` on PostgreSQL, `max_execution_time` on MySQL and ClickHouse, `max_statement_time` on MariaDB. On SQLite it bounds how long a statement waits for a locked database instead. Drivers that talk HTTP (BigQuery, Cloudflare D1, LibSQL, Etcd, DynamoDB, Elasticsearch, Typesense, and ClickHouse) bound the request at the timeout plus 30 seconds, and Oracle enforces it in the client: the connection is closed to unblock the call, and the next query reconnects and restores your current schema.
 
 **No limit** still caps an HTTP request at one hour, because the transport needs a ceiling.
 

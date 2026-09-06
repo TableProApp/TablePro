@@ -373,6 +373,20 @@
       "category": "database-driver",
       "homepage": "https://docs.tablepro.app/databases/trino"
     },
+    "typesense": {
+      "target": "TypesenseDriverPlugin",
+      "bundleName": "TypesenseDriverPlugin",
+      "bundleId": "com.TablePro.TypesenseDriverPlugin",
+      "bundled": false,
+      "displayName": "Typesense Driver",
+      "summary": "Typesense driver over the REST API with a request console",
+      "databaseTypeIds": [
+        "Typesense"
+      ],
+      "icon": "typesense-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/typesense"
+    },
     "xlsx": {
       "target": "XLSXExport",
       "bundleName": "XLSXExport",

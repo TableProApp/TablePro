@@ -20,6 +20,8 @@ enum ServerDashboardQueryProviderFactory {
             return DuckDBDashboardProvider()
         case .sqlite:
             return SQLiteDashboardProvider()
+        case .typesense:
+            return TypesenseDashboardProvider()
         default:
             return nil
         }
