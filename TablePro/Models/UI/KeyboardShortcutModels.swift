@@ -127,6 +127,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case quickSwitcher
     case toggleTableBrowser
     case toggleInspector
+    case toggleAssistant
     case toggleFilters
     case toggleHistory
     case toggleResults
@@ -161,7 +162,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .navigateBack, .navigateForward,
              .newTab, .closeTab, .closeOtherTabs, .closeTabsForOtherDatabases, .closeAllTabs,
              .reopenClosedTab, .quickSwitcher, .toggleTableBrowser,
-             .toggleInspector, .toggleFilters, .toggleHistory, .toggleResults, .previousResultTab,
+             .toggleInspector, .toggleAssistant, .toggleFilters, .toggleHistory, .toggleResults,
+             .previousResultTab,
              .nextResultTab, .pinResultTab, .closeResultTab, .focusSidebarSearch,
              .showPreviousTab, .showNextTab,
              .toggleWorkspaceRail, .showPreviousWorkspace, .showNextWorkspace:
@@ -260,6 +262,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .saveAsFavorite: return String(localized: "Save as Favorite")
         case .toggleTableBrowser: return String(localized: "Toggle Table Browser")
         case .toggleInspector: return String(localized: "Toggle Inspector")
+        case .toggleAssistant: return String(localized: "Toggle Assistant")
         case .toggleFilters: return String(localized: "Toggle Filters")
         case .toggleHistory: return String(localized: "Toggle History")
         case .toggleResults: return String(localized: "Toggle Results")
@@ -580,6 +583,7 @@ struct KeyboardSettings: Codable, Equatable {
         .quickSwitcher: .character("o", command: true, shift: true),
         .toggleTableBrowser: .character("0", command: true),
         .toggleInspector: .character("i", command: true, option: true),
+        .toggleAssistant: .character("a", command: true, option: true),
         .toggleFilters: .character("f", command: true, option: true),
         .toggleHistory: .character("y", command: true),
         .toggleResults: .character("r", command: true, option: true),

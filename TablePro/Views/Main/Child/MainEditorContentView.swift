@@ -459,11 +459,11 @@ struct MainEditorContentView: View {
                         isExecuting: coordinator.tabExecution.isExecuting(tab.id),
                         onExplain: { variant in coordinator.runExplain(variant: variant) },
                         onAIExplain: { text in
-                            coordinator.showAIChatPanel()
+                            coordinator.showAssistant()
                             coordinator.aiViewModel?.handleExplainSelection(text)
                         },
                         onAIOptimize: { text in
-                            coordinator.showAIChatPanel()
+                            coordinator.showAssistant()
                             coordinator.aiViewModel?.handleOptimizeSelection(text)
                         },
                         onSaveAsFavorite: { text in

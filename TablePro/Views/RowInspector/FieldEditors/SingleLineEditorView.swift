@@ -8,8 +8,6 @@ import SwiftUI
 internal struct SingleLineEditorView: View {
     let context: FieldEditorContext
 
-    @FocusState private var isFocused: Bool
-
     var body: some View {
         if context.isReadOnly {
             readOnlyValue
@@ -17,7 +15,6 @@ internal struct SingleLineEditorView: View {
             TextField(context.placeholderText, text: context.value)
                 .textFieldStyle(.roundedBorder)
                 .autocorrectionDisabled(true)
-                .focused($isFocused)
         }
     }
 

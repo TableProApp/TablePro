@@ -28,70 +28,71 @@ extension MainContentView {
         return coordinator.inspectorRowSource?.inspectorRow(atDisplayRow: displayRow)
     }
 
-    // MARK: - Selected Row Data for Sidebar
+    // MARK: - Inspector Subject
 
-    /// Compute selected row data for right sidebar display
-    var selectedRowDataForSidebar: [(column: String, value: String?, type: String)]? {
-        if gridSelectionOwner == .schemaGrid {
-            guard let row = selectedInspectorRow else { return nil }
-            return row.fields.map { (column: $0.name, value: $0.value, type: "string") }
+    /// Whether anything is selected for the inspector to show.
+    var hasInspectableRow: Bool {
+        switch gridSelectionOwner {
+        case .schemaGrid: return selectedInspectorRow != nil
+        case .dataGrid: return !coordinator.selectionState.indices.isEmpty
+        case .none: return false
         }
-        guard gridSelectionOwner == .dataGrid,
-              let tab = coordinator.tabManager.selectedTab,
-              !coordinator.selectionState.indices.isEmpty,
-              let firstDisplayIndex = coordinator.selectionState.indices.min() else { return nil }
-        let tableRows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
-        guard let row = DisplayRowMapping.row(
-            forDisplay: firstDisplayIndex,
-            displayIDs: coordinator.activeGridDisplayIDs,
-            in: tableRows
-        )?.values else { return nil }
-        var data: [(column: String, value: String?, type: String)] = []
+    }
 
-        let service = ValueDisplayFormatService.shared
-        let connId = coordinator.connection.id
-        let scope = tab.tableContext.scope(connectionId: connId)
-        let storageKeys = ValueDisplayFormatColumnKey.storageKeys(for: tableRows.columns)
-        let activeFormats = InspectorValueDisplayFormatResolver.activeFormats(
-            from: coordinator.dataTabDelegate?.tableViewCoordinator,
-            matching: tableRows.columns
-        )
-        let storedFormats = activeFormats == nil
-            ? storageKeys.map { service.effectiveFormat(columnKey: $0, scope: scope) }
-            : []
-
-        for (i, col) in tableRows.columns.enumerated() {
-            var value: String?
-            let columnType = i < tableRows.columnTypes.count ? tableRows.columnTypes[i] : nil
-            let format = InspectorValueDisplayFormatResolver.resolve(
-                columnIndex: i,
-                activeFormats: activeFormats,
-                storedFormat: storedFormats.indices.contains(i) ? storedFormats[i] : .raw,
-                columnType: columnType,
-                databaseType: coordinator.connection.type
-            )
-            if i < row.count {
-                switch row[i] {
-                case .null:
-                    value = nil
-                case .text(let s):
-                    value = format == .raw
-                        ? s
-                        : ValueDisplayFormatService.applyFormat(s, format: format, columnType: columnType) ?? s
-                case .bytes(let bytes):
-                    value = format.isApplicable(
-                        to: columnType,
-                        databaseType: coordinator.connection.type
-                    ) ? ValueDisplayFormatService.applyFormat(bytes, format: format, columnType: columnType) : nil
-                    value = value ?? BlobFormattingService.shared.format(bytes, for: .copy)
-                }
+    /// What the inspector's header names.
+    ///
+    /// A schema grid's selection is a column definition, not a row of a result: it has no position
+    /// and no identity, so it gets its own case rather than being rendered as "Row 0 of 0".
+    var inspectorSubject: InspectorSubject {
+        switch gridSelectionOwner {
+        case .schemaGrid:
+            guard let row = selectedInspectorRow else {
+                guard let table = currentTab?.tableContext.tableName else { return .empty }
+                return .tableOnly(table: table)
             }
-            let type = columnType?.displayName ?? "string"
-
-            data.append((column: col, value: value, type: type))
+            let name = row.fields.first?.value ?? ""
+            return .columnDefinition(
+                column: name.isEmpty ? String(localized: "Column") : name,
+                table: currentTab?.tableContext.tableName
+            )
+        case .dataGrid:
+            guard let table = qualifiedTableName else {
+                return dataRowSubject(table: String(localized: "Result")) ?? .empty
+            }
+            return dataRowSubject(table: table) ?? .tableOnly(table: table)
+        case .none:
+            /// A chart, a dashboard or an ER diagram owns no grid, so there is no row to name. The
+            /// table still is the subject when the tab has one, which is what the table statistics
+            /// are shown under.
+            guard let table = qualifiedTableName else { return .empty }
+            return .tableOnly(table: table)
         }
+    }
 
-        return data
+    private func dataRowSubject(table: String) -> InspectorSubject? {
+        let indices = coordinator.selectionState.indices
+        guard !indices.isEmpty else { return nil }
+        if indices.count > 1 {
+            return .multipleRows(table: table, count: indices.count)
+        }
+        guard let tab = coordinator.tabManager.selectedTab, let first = indices.min() else {
+            return .tableRow(table: table, position: nil)
+        }
+        let total = coordinator.activeGridDisplayIDs?.count
+            ?? coordinator.tabSessionRegistry.tableRows(for: tab.id).count
+        guard total > 0 else { return .tableRow(table: table, position: nil) }
+        return .tableRow(
+            table: table,
+            position: InspectorSubject.RowPosition(index: first + 1, total: total)
+        )
+    }
+
+    /// Schema-qualified where the engine has schemas, so two tables of the same name in different
+    /// schemas do not read identically in the header.
+    private var qualifiedTableName: String? {
+        guard let table = currentTab?.tableContext.tableName else { return nil }
+        guard let schema = currentTab?.tableContext.schemaName, !schema.isEmpty else { return table }
+        return "\(schema).\(table)"
     }
 
     // MARK: - Selected Row for the JSON Tab

@@ -70,7 +70,7 @@ A column of a foreign key that spans several columns keeps the text editor. The 
   <img className="hidden dark:block" src="/images/fk-value-picker-dark.png" alt="Foreign key value picker over a data grid cell" />
 </Frame>
 
-The inspector's **JSON** tab follows a key without leaving the row: see [Row as JSON](/features/json-viewer#row-as-json).
+The inspector's **JSON** view follows a key without leaving the row: see [Row as JSON](/features/json-viewer#row-as-json).
 
 Step back with the Back and Forward buttons at the leading edge of the toolbar, or **View > Back** (`Ctrl+Cmd+[`) and **View > Forward** (`Ctrl+Cmd+]`). Back restores the table you came from as you left it: same filters, sort, page, and selected row. Each tab keeps its own history, Back never closes a tab, and it is unavailable while a tab holds unsaved edits.
 
@@ -81,11 +81,15 @@ Step back with the Back and Forward buttons at the leading edge of the toolbar, 
 
 ## Inspector
 
-`Cmd+Option+I`, or the button at the trailing end of the toolbar, opens the inspector beside the grid. With a row selected it lists every column with an editor matched to the value; with no row selected it shows the table's statistics. [Cell and Row Viewers](/features/json-viewer) covers both. **Auto-show inspector on row select** in [Settings > Data](/customization/data-settings) opens it whenever you pick a row.
+Press `Cmd+Option+I`, or click the button at the trailing end of the toolbar, to open the inspector beside the grid. Its header names the table and which row of how many is selected, and a **Fields** / **JSON** control switches between two renderings of that row. [Cell and Row Viewers](/features/json-viewer) covers both. Turn on **Auto-show inspector on row select** in [Settings > Data](/customization/data-settings) to open it whenever a row is picked, in a query result as well as a table.
 
-<Frame caption="Row inspector">
-  <img className="block dark:hidden" src="/images/cell-inspector.png" alt="Row inspector" />
-  <img className="hidden dark:block" src="/images/cell-inspector-dark.png" alt="Row inspector" />
+Short values sit on one line, label leading and value trailing. Long text, JSON, PHP, binary and images take the full width and can be dragged taller. `Tab` and `Shift+Tab` move between fields; the menu at the trailing edge of each field carries **Set NULL**, **Set DEFAULT**, **Set EMPTY** and **SQL Functions**, with `Ctrl+Option+N` and `Ctrl+Option+D` as shortcuts for the first two. Search filters the list by column name or value, and the pencil button narrows it to fields already edited.
+
+With no row selected and a table open, the inspector shows that table's size, row count, engine, collation and timestamps, as far as the database reports them.
+
+<Frame caption="A Track row with its scalar columns on one line each">
+  <img className="block dark:hidden" src="/images/cell-inspector.png" alt="Inspector listing a row's columns beside a data grid" />
+  <img className="hidden dark:block" src="/images/cell-inspector-dark.png" alt="Inspector listing a row's columns beside a data grid" />
 </Frame>
 
 ## Find in the loaded rows

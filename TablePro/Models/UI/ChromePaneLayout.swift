@@ -17,5 +17,9 @@ import Foundation
 /// layout put them, so the reveal leaves them alone rather than restoring a default over them.
 internal struct ChromePaneLayout: Equatable {
     internal let isSidebarCollapsed: Bool
-    internal let isInspectorCollapsed: Bool
+    internal let isTrailingPaneCollapsed: Bool
+
+    /// Which surface the trailing pane was showing. One split item hosts two of them, so recording
+    /// only that the pane was open would reveal the inspector over a user who had the assistant up.
+    internal let trailingSurface: TrailingPaneSurface
 }

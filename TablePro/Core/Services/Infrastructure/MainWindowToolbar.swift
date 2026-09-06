@@ -226,6 +226,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     static let previewSQL = NSToolbarItem.Identifier("com.TablePro.toolbar.previewSQL")
     static let results = NSToolbarItem.Identifier("com.TablePro.toolbar.results")
     static let inspector = NSToolbarItem.Identifier.toggleInspector
+    static let assistant = NSToolbarItem.Identifier("com.TablePro.toolbar.assistant")
     static let dashboard = NSToolbarItem.Identifier("com.TablePro.toolbar.dashboard")
     static let history = NSToolbarItem.Identifier("com.TablePro.toolbar.history")
     static let exportTables = NSToolbarItem.Identifier("com.TablePro.toolbar.export")
@@ -263,6 +264,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         previewSQL,
         .inspectorTrackingSeparator,
         .flexibleSpace,
+        assistant,
         inspector,
     ]
 

@@ -36,7 +36,7 @@ struct MainContentView: View {
     @Binding var pendingTruncates: Set<DatabaseTreeTableRef>
     @Binding var pendingDeletes: Set<DatabaseTreeTableRef>
     @Binding var tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions]
-    var rightPanelState: RightPanelState
+    var trailingPaneState: TrailingPaneState
 
     var tables: [TableInfo] {
         schemaService.tables(for: connection.id)
@@ -74,7 +74,7 @@ struct MainContentView: View {
         pendingTruncates: Binding<Set<DatabaseTreeTableRef>>,
         pendingDeletes: Binding<Set<DatabaseTreeTableRef>>,
         tableOperationOptions: Binding<[DatabaseTreeTableRef: TableOperationOptions]>,
-        rightPanelState: RightPanelState,
+        trailingPaneState: TrailingPaneState,
         tabManager: QueryTabManager,
         changeManager: DataChangeManager,
         toolbarState: ConnectionToolbarState,
@@ -88,7 +88,7 @@ struct MainContentView: View {
         self._pendingTruncates = pendingTruncates
         self._pendingDeletes = pendingDeletes
         self._tableOperationOptions = tableOperationOptions
-        self.rightPanelState = rightPanelState
+        self.trailingPaneState = trailingPaneState
         self.tabManager = tabManager
         self.changeManager = changeManager
         self.toolbarState = toolbarState
@@ -299,8 +299,7 @@ struct MainContentView: View {
                 setupCommandActions()
                 updateToolbarPendingState()
                 updateInspectorContext()
-                coordinator.aiViewModel = rightPanelState.aiViewModel
-                coordinator.rightPanelState = rightPanelState
+                coordinator.trailingPaneState = trailingPaneState
 
                 Self.lifecycleLogger.info(
                     "[open] MainContentView.onAppear done windowId=\(windowId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
@@ -398,11 +397,12 @@ struct MainContentView: View {
                 coordinator.undoInsertRow(at: rowIndex)
             },
             onSelectionChange: { newIndices in
-                if !newIndices.isEmpty,
-                    AppSettingsManager.shared.dataGrid.autoShowInspector,
-                    tabManager.selectedTab?.tabType == .table
-                {
-                    coordinator.inspectorProxy?.showInspector()
+                /// Any grid selection counts, not just a table tab's. The setting is called
+                /// "Auto-show inspector on row select" and both docs pages describe it that way,
+                /// but it was gated on `tabType == .table`, so picking a row in a query result did
+                /// nothing and the setting read as intermittently broken rather than scoped.
+                if !newIndices.isEmpty, AppSettingsManager.shared.dataGrid.autoShowInspector {
+                    coordinator.trailingPaneProxy?.showInspector()
                 }
                 scheduleInspectorUpdate()
             },

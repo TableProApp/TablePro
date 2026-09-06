@@ -44,6 +44,15 @@ internal struct WorkspacePaneRenderKey: Equatable {
 internal final class WorkspacePanes {
     internal let detail: NSHostingController<AnyView>
     internal let inspector: NSHostingController<AnyView>
+
+    /// The assistant is a pane like the others rather than a branch inside the inspector's tree.
+    ///
+    /// The two share one split item, so only one of them is parented at a time, but they are not
+    /// two states of one view: giving the assistant its own controller is what keeps a chat's
+    /// scroll position and an in-flight stream alive while the user looks at a row, and it is the
+    /// only way it gets the `sizingOptions` firewall below, which is applied here and nowhere else.
+    internal let assistant: NSHostingController<AnyView>
+
     internal let sidebar: NSHostingController<AnyView>
     /// The editor tab strip. It is a pane like the other three, built and kept alive per
     /// connection, even though the window shows it in the titlebar accessory rather than in a
@@ -62,6 +71,7 @@ internal final class WorkspacePanes {
     internal init() {
         detail = NSHostingController(rootView: AnyView(Color.clear))
         inspector = NSHostingController(rootView: AnyView(Color.clear))
+        assistant = NSHostingController(rootView: AnyView(Color.clear))
         sidebar = NSHostingController(rootView: AnyView(Color.clear))
         tabStrip = EditorTabStripPaneController()
         for pane in panes {
@@ -70,7 +80,16 @@ internal final class WorkspacePanes {
     }
 
     private var panes: [NSHostingController<AnyView>] {
-        [detail, inspector, sidebar]
+        [detail, inspector, assistant, sidebar]
+    }
+
+    /// The controller a trailing surface is drawn by. One split item hosts whichever of these the
+    /// workspace's surface names.
+    internal func trailingPane(for surface: TrailingPaneSurface) -> NSHostingController<AnyView> {
+        switch surface {
+        case .inspector: inspector
+        case .assistant: assistant
+        }
     }
 
     internal func markRendered(_ key: WorkspacePaneRenderKey) {

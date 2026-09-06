@@ -47,11 +47,13 @@ The `claude` tool runs headless here. Claude Code is built for you to use direct
 
 ## Chat
 
-Open the inspector (`Cmd+Option+I`) and switch the segmented control at its top from **Details** to **AI Chat**. There is no dedicated chat shortcut or menu item.
+Press `Cmd+Option+A`, or choose **View > Show Assistant**, to open the assistant in the window's trailing pane. It shares that pane with the inspector: opening one puts the other away, and the same shortcut closes it again. The toolbar button ships in the default set, so a toolbar customized before this release needs it added from **View > Customize Toolbar…**.
 
-<Frame caption="AI chat panel">
-  <img className="block dark:hidden" src="/images/ai-chat-panel.png" alt="AI chat panel" />
-  <img className="hidden dark:block" src="/images/ai-chat-panel-dark.png" alt="AI chat panel" />
+With AI features off in **Settings > AI**, the command and the button are dimmed.
+
+<Frame caption="A schema question answered against the connected database">
+  <img className="block dark:hidden" src="/images/ai-chat-panel.png" alt="Assistant pane holding a chat thread beside a data grid" />
+  <img className="hidden dark:block" src="/images/ai-chat-panel-dark.png" alt="Assistant pane holding a chat thread beside a data grid" />
 </Frame>
 
 Type a question and press Return. Code blocks carry **Copy** and **Insert**, and Insert fills the current query tab when it is empty and opens a new one otherwise. A token count sits under each response, a failed one offers **Retry**, a finished one **Regenerate**, and **Stop Generating** cancels a reply mid-stream.

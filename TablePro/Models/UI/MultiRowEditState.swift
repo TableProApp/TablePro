@@ -93,7 +93,8 @@ final class MultiRowEditState {
         externallyModifiedColumns: Set<Int> = [],
         primaryKeyColumns: Set<String> = [],
         foreignKeyColumns: Set<String> = [],
-        serverOwnedColumns: Set<String> = []
+        serverOwnedColumns: Set<String> = [],
+        displayFormats: [ValueDisplayFormat] = []
     ) {
         // Check if the underlying data has changed (not just edits)
         let columnsChanged = self.columns != columns
@@ -168,10 +169,15 @@ final class MultiRowEditState {
             if let preservedId {
                 newField.id = preservedId
             }
+            /// The column's display format decides the editor here exactly as it does in the grid.
+            /// Without it the inspector resolved from the raw value alone, so a column the user had
+            /// set to JSON or PHP-serialized opened a plain text field in the inspector while the
+            /// grid rendered it structured.
             newField.resolvedEditor = FieldEditorResolver.resolve(
                 for: columnTypeEnum,
                 isLongText: isLongText,
-                originalValue: originalValue
+                originalValue: originalValue,
+                displayFormatOverride: colIndex < displayFormats.count ? displayFormats[colIndex] : nil
             )
             newFields.append(newField)
         }

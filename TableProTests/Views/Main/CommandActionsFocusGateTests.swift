@@ -35,7 +35,7 @@ struct CommandActionsFocusGateTests {
                 get: { tableOperationOptions },
                 set: { tableOperationOptions = $0 }
             ),
-            rightPanelState: RightPanelState()
+            trailingPaneState: TrailingPaneState()
         )
     }
 

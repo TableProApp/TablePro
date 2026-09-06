@@ -198,9 +198,12 @@ final class MainContentCoordinator {
     var inspectorRowSourceRevision: Int = 0
 
     /// Direct reference to AI chat viewmodel — eliminates notification broadcasts
-    weak var aiViewModel: AIChatViewModel?
+    /// The assistant's view model, and only if something has already brought one into existence.
+    /// Reading this never builds one: an editor command that wants to talk to the assistant reveals
+    /// it first, and revealing is what activates it.
+    var aiViewModel: AIChatViewModel? { trailingPaneState?.assistant.viewModelIfActivated }
 
-    weak var rightPanelState: RightPanelState?
+    weak var trailingPaneState: TrailingPaneState?
 
     /// Direct reference to the data tab grid delegate — enables row mutation operations to
     /// Observable mirror of the grid's display revision, so views outside the grid re-render when
@@ -221,7 +224,7 @@ final class MainContentCoordinator {
     @ObservationIgnored var pendingGridFocusOnOpen = false
 
     /// Proxy for toggling the inspector NSSplitViewItem from coordinator code
-    @ObservationIgnored weak var inspectorProxy: InspectorVisibilityProxy?
+    @ObservationIgnored weak var trailingPaneProxy: TrailingPaneProxy?
 
     /// Direct reference to split view controller for sidebar toggle
     @ObservationIgnored weak var splitViewController: MainSplitViewController?
@@ -769,14 +772,19 @@ final class MainContentCoordinator {
         fileWatcher = watcher
     }
 
-    func showAIChatPanel() {
-        inspectorProxy?.showInspector()
-        rightPanelState?.activeTab = .aiChat
+    /// Reveals the assistant, building its view model if this is the first time anything asked for
+    /// one. Activation happens here rather than at window open, which is what keeps a window that
+    /// never opens the assistant from reading the whole conversation history off disk.
+    func showAssistant() {
+        trailingPaneState?.assistant.activate()
+        trailingPaneProxy?.showAssistant()
     }
 
-    func showJSONPanel() {
-        inspectorProxy?.showInspector()
-        rightPanelState?.activeTab = .json
+    /// Reveals the inspector on its JSON rendering. The view mode is part of the inspector's own
+    /// state, so "show the row as JSON" is two facts: which surface, and which rendering.
+    func showRowAsJSON() {
+        trailingPaneState?.inspector.viewMode = .json
+        trailingPaneProxy?.showInspector()
     }
 
     /// Set up the plugin driver for query building dispatch on the query builder and change manager.

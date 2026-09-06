@@ -49,6 +49,8 @@ extension MainWindowToolbar: NSToolbarItemValidation {
         switch itemIdentifier {
         case Self.connection, Self.history:
             return true
+        case Self.assistant:
+            return AppSettingsManager.shared.ai.enabled
         case Self.database:
             return context.connected && !context.fileBased && context.supportsContainerSwitching
         case Self.refresh, Self.quickSwitcher, Self.newTab, Self.exportTables:
