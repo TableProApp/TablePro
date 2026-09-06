@@ -120,8 +120,13 @@ struct RowImportSheet: View {
     /// the catalog is.
     private var newTableNameProblem: NewTableNameProblem? {
         let trimmed = newTableName.trimmingCharacters(in: .whitespaces)
-        guard createdTables[trimmed] == nil else { return nil }
-        return NewTableNaming.problem(with: newTableName, existingNames: catalogNameKeys)
+        let problem = NewTableNaming.problem(
+            with: newTableName,
+            style: NewTableNameStyle.forDatabaseType(connection.type),
+            existingNames: catalogNameKeys
+        )
+        guard problem == .nameTaken, createdTables[trimmed] != nil else { return problem }
+        return nil
     }
 
     var body: some View {
@@ -580,6 +585,16 @@ struct RowImportSheet: View {
                     return String(
                         format: String(localized: "A table named %@ already exists."),
                         newTableName.trimmingCharacters(in: .whitespaces)
+                    )
+                case .reservedPrefix(let prefix):
+                    return String(
+                        format: String(localized: "This database keeps names beginning with %@ for itself."),
+                        prefix
+                    )
+                case .tooLong(let maximumBytes):
+                    return String(
+                        format: String(localized: "This database allows at most %lld bytes in a table name."),
+                        Int64(maximumBytes)
                     )
                 }
             }
