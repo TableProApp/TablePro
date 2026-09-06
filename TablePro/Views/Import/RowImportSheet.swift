@@ -46,15 +46,41 @@ struct RowImportSheet: View {
     }
 
     @State private var destination: Destination = .existingTable
-    @State private var availableTables: [TableInfo] = []
+
+    /// Every object the connection holds, not just the tables the destination picker offers. A
+    /// `CREATE TABLE` collides with a view, a materialized view or a foreign table under the same
+    /// name as surely as with a table, so the name check has to see all of them.
+    @State private var databaseObjects: [TableInfo] = []
+
+    /// Those names folded for comparison, and `nil` while the catalog is unknown. A read that
+    /// failed leaves an empty list, and taking that for "nothing is in the way" would propose a
+    /// name that already exists and then report it as free. Stored rather than computed because the
+    /// name check runs on every keystroke, and `body` would otherwise rebuild the set each time.
+    @State private var catalogNameKeys: Set<String>?
+    @State private var tableListError: String?
+
+    /// `loadTables()` is `@MainActor` but reentrant across its `await`, so two Try Again presses
+    /// would interleave and a late failure could clear the keys while the picker kept its rows.
+    /// Concurrent callers wait for the one in flight, per the schema-loading invariant.
+    @State private var isLoadingTables = false
     @State private var selectedTargetTable: String?
     @State private var targetColumns: [String] = []
     @State private var mappings: [FieldMapping] = []
     @State private var newTableName: String = ""
+
+    /// The last name this sheet proposed, so a second pass can tell its own guess from what
+    /// the user typed over it.
+    @State private var proposedTableName: String = ""
     @State private var newColumns: [NewColumn] = []
     @State private var newColumnsLoaded = false
     @State private var isLoadingContext = false
     @State private var loadError: String?
+
+    /// Moving focus here also selects the whole proposed name, measured rather than assumed:
+    /// SwiftUI hands the field editor a full selection when `@FocusState` lands on text already in
+    /// place, both on appear and when the field is revealed by the destination picker. So the first
+    /// keystroke replaces the proposal instead of appending to it, and no AppKit detour is needed.
+    @FocusState private var newTableNameFocused: Bool
 
     /// The plugin's own options are persistent and shared, and this sheet edits them in place.
     /// Without a snapshot, Cancel kept every change, so `Delete existing rows` stayed armed for
@@ -79,6 +105,24 @@ struct RowImportSheet: View {
     /// Avoids `NSApp.keyWindow`, which when a result is presented is the progress sheet being
     /// torn down in the same transaction, and AppKit ends a sheet's children with it (#2314).
     @State private var hostWindow: NSWindow?
+
+    // MARK: - Derived catalog state
+
+    /// Tables alone, because they are the only objects the existing-table branch can insert into.
+    private var availableTables: [TableInfo] {
+        databaseObjects.filter { $0.type == .table }
+    }
+
+    /// A table this sheet created is not in the way of this sheet: a failed import leaves its table
+    /// behind, and `NewTableImportPlanner` exists to reuse that one on the retry, so reporting the
+    /// name as taken would block the very attempt that mechanism exists to allow. Checked against
+    /// `createdTables` by key rather than folded into `catalogNameKeys`, which is rebuilt only when
+    /// the catalog is.
+    private var newTableNameProblem: NewTableNameProblem? {
+        let trimmed = newTableName.trimmingCharacters(in: .whitespaces)
+        guard createdTables[trimmed] == nil else { return nil }
+        return NewTableNaming.problem(with: newTableName, existingNames: catalogNameKeys)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -112,8 +156,14 @@ struct RowImportSheet: View {
         .task {
             settingsSnapshot = PluginSettingsSnapshot(
                 plugins: [currentPlugin as? any SettablePluginDiscoverable].compactMap { $0 })
+            suggestNewTableName()
             await loadTables()
             await loadNewColumns()
+        }
+        .onChange(of: destination) { _, newValue in
+            guard newValue == .newTable else { return }
+            suggestNewTableName()
+            newTableNameFocused = true
         }
         .onChange(of: selectedTargetTable) { _, newValue in
             mappings = []
@@ -208,8 +258,37 @@ struct RowImportSheet: View {
                     Text("New table:")
                     TextField("", text: $newTableName, prompt: Text("table_name"))
                         .frame(maxWidth: 280)
+                        .focused($newTableNameFocused)
                 }
             }
+
+            if let tableListError {
+                GridRow {
+                    tableListErrorRow(tableListError)
+                        .gridCellColumns(2)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The list is what both destinations are chosen against, so a failure to read it is worth
+    /// saying and worth being able to retry without losing the options already set in this sheet.
+    private func tableListErrorRow(_ message: String) -> some View {
+        HStack(spacing: 6) {
+            Label(
+                String(format: String(localized: "Could not read the table list. %@"), message),
+                systemImage: "exclamationmark.triangle"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+            Button(String(localized: "Try Again")) {
+                Task { await loadTables() }
+            }
+            .buttonStyle(.link)
+            .font(.caption)
+            .disabled(isLoadingTables)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -493,6 +572,17 @@ struct RowImportSheet: View {
             }
             return nil
         case .newTable:
+            if let problem = newTableNameProblem {
+                switch problem {
+                case .blank:
+                    return String(localized: "Enter a name for the new table.")
+                case .nameTaken:
+                    return String(
+                        format: String(localized: "A table named %@ already exists."),
+                        newTableName.trimmingCharacters(in: .whitespaces)
+                    )
+                }
+            }
             let names = newColumns
                 .filter { $0.include }
                 .map { $0.name.trimmingCharacters(in: .whitespaces).lowercased() }
@@ -551,14 +641,50 @@ struct RowImportSheet: View {
 
     // MARK: - Loading
 
+    /// Both failures used to leave an empty list and say nothing, so the destination picker offered
+    /// "Select a table…" and nothing else with no way to tell an empty database from an unreachable
+    /// one, and no way to ask again.
     @MainActor
     private func loadTables() async {
-        guard let driver = DatabaseManager.shared.driver(for: connection.id) else { return }
+        guard !isLoadingTables else { return }
+        isLoadingTables = true
+        defer { isLoadingTables = false }
+        guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
+            catalogNameKeys = nil
+            tableListError = String(localized: "This connection is not open.")
+            return
+        }
         do {
-            availableTables = try await driver.fetchTables().filter { $0.type == .table }
+            databaseObjects = try await driver.fetchTables()
+            catalogNameKeys = NewTableNaming.comparisonKeys(for: databaseObjects.map(\.name))
+            tableListError = nil
+            suggestNewTableName()
         } catch {
+            catalogNameKeys = nil
+            tableListError = error.localizedDescription
             Self.logger.warning("Failed to load tables: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    /// Proposes a name straight away and again once the catalog arrives, because only the part that
+    /// avoids a name already in use needs the catalog. Waiting for it would leave the field empty
+    /// under a "name this table" warning while the list loaded, and empty for good if it failed.
+    ///
+    /// The second pass replaces this sheet's own earlier guess and nothing else: anything the user
+    /// typed differs from `proposedTableName` and is left alone. A table this sheet already created
+    /// is left out of the avoid-set for the same reason it is left out of the name check: a retry
+    /// is meant to land back on it, and stepping the name to `_2` would strand the first one.
+    @MainActor
+    private func suggestNewTableName() {
+        guard newTableName.isEmpty || newTableName == proposedTableName else { return }
+        let ours = NewTableNaming.comparisonKeys(for: createdTables.keys)
+        let suggestion = NewTableNaming.suggestion(
+            forFileNamed: fileURL.lastPathComponent,
+            style: NewTableNameStyle.forDatabaseType(connection.type),
+            avoiding: (catalogNameKeys ?? []).subtracting(ours)
+        )
+        proposedTableName = suggestion
+        newTableName = suggestion
     }
 
     /// `detectSourceFields` is synchronous and reads the file: the XLSX plugin materialises the
@@ -776,27 +902,40 @@ struct RowImportSheet: View {
             primaryKeyColumns: [],
             databaseType: connection.type
         )
-        _ = try await driver.execute(query: generator.deleteAllRowsStatement())
+        let sql = generator.deleteAllRowsStatement()
+        try await authorize(
+            sql: sql, kind: .destructiveQuery, description: String(localized: "Clear Table")
+        )
+        _ = try await driver.execute(query: sql)
     }
 
     private func createTable(sql: String) async throws {
         guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
             throw DatabaseError.notConnected
         }
+        try await authorize(
+            sql: sql, kind: .schemaMutation, description: String(localized: "Create Table")
+        )
+        _ = try await driver.execute(query: sql)
+    }
+
+    /// Every statement this sheet issues on its own account goes through the gate. The retry path's
+    /// `DELETE FROM` used to skip it while the `CREATE TABLE` beside it did not, so a connection
+    /// set to confirm destructive statements emptied a table without asking.
+    private func authorize(sql: String, kind: OperationKind, description: String) async throws {
         let decision = await ExecutionGateProvider.shared.authorize(
             OperationRequest(
                 connectionId: connection.id,
                 databaseType: connection.type,
                 sql: sql,
-                kind: .schemaMutation,
+                kind: kind,
                 caller: .userInterface,
                 capabilities: .interactiveUser,
-                operationDescription: String(localized: "Create Table")
+                operationDescription: description
             )
         )
         guard case .authorized = decision else {
             throw PluginImportError.importFailed(decision.deniedReason ?? String(localized: "Operation not permitted"))
         }
-        _ = try await driver.execute(query: sql)
     }
 }

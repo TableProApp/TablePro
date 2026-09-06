@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Table name proposed from the file name when an import creates the table, with a warning when the name is taken.
 - Copy To across database engines, with every type approximation listed before the copy runs. (#1491)
 - Per-table `WHERE` and row limit in Copy To. (#1491)
 - Server-side `INSERT … SELECT` when a copy's two sides are one connection. (#1491)
@@ -41,6 +42,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Import sheet clearing a table without confirmation on a connection set to confirm destructive statements.
+- Empty destination table picker in the import sheet, with no message and no retry, when the table list could not be read.
 - Connection with two transports enabled reaching the database directly, with neither transport applied.
 - Delete Connection missing from the connection editor since 0.39.0.
 - Continue dimmed after filtering the database chooser down to one driver.

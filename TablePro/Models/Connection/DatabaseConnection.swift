@@ -36,6 +36,7 @@ extension DatabaseType {
     static let redis = DatabaseType(rawValue: "Redis")
     static let mssql = DatabaseType(rawValue: "SQL Server")
     static let oracle = DatabaseType(rawValue: "Oracle")
+    static let snowflake = DatabaseType(rawValue: "Snowflake")
     static let dameng = DatabaseType(rawValue: "Dameng")
     static let clickhouse = DatabaseType(rawValue: "ClickHouse")
     static let duckdb = DatabaseType(rawValue: "DuckDB")
