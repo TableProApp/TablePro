@@ -68,31 +68,31 @@ struct SidebarContextMenuLogicTests {
     @Test("Truncate visible for table")
     func truncateVisibleForTable() {
         let table = TestFixtures.makeTableInfo(name: "t", type: .table)
-        #expect(SidebarContextMenuLogic.truncateVisible(clickedTable: table))
+        #expect(SidebarContextMenuLogic.truncateVisible(targets: [Self.ref(table)]))
     }
 
     @Test("Truncate hidden for view")
     func truncateHiddenForView() {
         let view = TestFixtures.makeTableInfo(name: "v", type: .view)
-        #expect(!SidebarContextMenuLogic.truncateVisible(clickedTable: view))
+        #expect(!SidebarContextMenuLogic.truncateVisible(targets: [Self.ref(view)]))
     }
 
     @Test("Truncate hidden for materialized view")
     func truncateHiddenForMaterializedView() {
         let mv = TestFixtures.makeTableInfo(name: "mv", type: .materializedView)
-        #expect(!SidebarContextMenuLogic.truncateVisible(clickedTable: mv))
+        #expect(!SidebarContextMenuLogic.truncateVisible(targets: [Self.ref(mv)]))
     }
 
     @Test("Truncate hidden for foreign table")
     func truncateHiddenForForeignTable() {
         let ft = TestFixtures.makeTableInfo(name: "ft", type: .foreignTable)
-        #expect(!SidebarContextMenuLogic.truncateVisible(clickedTable: ft))
+        #expect(!SidebarContextMenuLogic.truncateVisible(targets: [Self.ref(ft)]))
     }
 
     @Test("Truncate hidden for system table")
     func truncateHiddenForSystemTable() {
         let sys = TestFixtures.makeTableInfo(name: "s", type: .systemTable)
-        #expect(!SidebarContextMenuLogic.truncateVisible(clickedTable: sys))
+        #expect(!SidebarContextMenuLogic.truncateVisible(targets: [Self.ref(sys)]))
     }
 
     // MARK: - Delete Label per Kind
@@ -176,7 +176,7 @@ struct SidebarContextMenuLogicTests {
     @Test("Truncate is hidden for an external table")
     func truncateHiddenForExternalTable() {
         let table = TableInfo(name: "customers", type: .externalTable, rowCount: nil)
-        #expect(!SidebarContextMenuLogic.truncateVisible(clickedTable: table))
+        #expect(!SidebarContextMenuLogic.truncateVisible(targets: [Self.ref(table)]))
     }
 
     @Test("External table drop label names the object kind")
@@ -184,4 +184,20 @@ struct SidebarContextMenuLogicTests {
         #expect(SidebarContextMenuLogic.deleteLabel(for: .externalTable) == "Drop External Table")
     }
 
+    /// The predicate now answers for every row a Truncate would act on, so the tests build refs.
+    private static func ref(_ table: TableInfo) -> DatabaseTreeTableRef {
+        DatabaseTreeTableRef(database: "app", schema: "public", table: table)
+    }
+
+    @Test("Truncate is hidden when a selection mixes a table with a view")
+    func truncateHiddenForMixedSelection() {
+        let table = TableInfo(name: "orders", type: .table, rowCount: nil)
+        let view = TableInfo(name: "summary", type: .view, rowCount: nil)
+        #expect(!SidebarContextMenuLogic.truncateVisible(targets: [Self.ref(table), Self.ref(view)]))
+    }
+
+    @Test("Truncate is hidden for an empty selection")
+    func truncateHiddenForEmptySelection() {
+        #expect(!SidebarContextMenuLogic.truncateVisible(targets: [DatabaseTreeTableRef]()))
+    }
 }

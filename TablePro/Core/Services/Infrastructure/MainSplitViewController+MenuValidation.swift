@@ -40,6 +40,9 @@ struct MenuValidationContext: Equatable {
     /// grid's selection specifically, not the structure grid's.
     var hasDataGridRowSelection = false
     var hasTableSelection = false
+    /// Whether every selected object is one the engine can truncate. Separate from
+    /// `hasTableSelection` because a view is a perfectly good selection and a hopeless truncate.
+    var canTruncateSelectedTables = false
     /// Whether the window-level `paste:` fallback would actually paste. AppKit hands a disabled
     /// item its key equivalent regardless, so an item enabled over a handler that returns at its
     /// first guard swallows Command+V with no feedback.
@@ -178,7 +181,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(restorePreviousValues(_:)):
             return context.isConnected && context.canRestorePreviousValues && !context.isReadOnly
         case #selector(truncateTable(_:)):
-            return context.isConnected && context.hasTableSelection && !context.isReadOnly
+            return context.isConnected && context.canTruncateSelectedTables && !context.isReadOnly
         case #selector(performFind(_:)):
             return context.hasEditorForFind || (context.isConnected && context.canUseGridFindCommands)
         case #selector(findNext(_:)), #selector(findPrevious(_:)):
@@ -281,6 +284,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             hasRowSelection: actions.hasRowSelection,
             hasDataGridRowSelection: actions.hasDataGridRowSelection,
             hasTableSelection: actions.hasTableSelection,
+            canTruncateSelectedTables: actions.canTruncateSelectedTables,
             canPasteRows: actions.canPasteRows,
             canCloseOtherTabs: actions.canCloseOtherTabs,
             canCloseTabsForOtherDatabases: actions.canCloseTabsForOtherDatabases,

@@ -4,10 +4,12 @@
 //
 
 import Observation
+import os
 import SwiftUI
 
 @MainActor @Observable
 final class SidebarViewModel {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "SidebarViewModel")
     private static var registry: [UUID: SidebarViewModel] = [:]
     private static let searchDebounceNanoseconds: UInt64 = 150_000_000
 
@@ -278,6 +280,12 @@ final class SidebarViewModel {
     func batchToggleTruncate(refs: [DatabaseTreeTableRef]? = nil) {
         let targets = refs ?? Array(selectedTables)
         guard !targets.isEmpty else { return }
+        /// The last gate before the queue, refusing the whole batch the way both menus now do
+        /// rather than truncating the part of a selection that happens to qualify.
+        guard TableOperationEligibility.canTruncate(targets) else {
+            Self.logger.warning("Refused to stage a truncate against an object that holds no rows of its own")
+            return
+        }
 
         guard !targets.allSatisfy({ pendingTruncates.contains($0) }) else {
             unstage(targets, from: &pendingTruncatesBinding.wrappedValue)

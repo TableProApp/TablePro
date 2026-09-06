@@ -88,7 +88,7 @@ struct ExportDialog: View {
         if case .tables(_, let preselection) = mode {
             return preselection
         }
-        return .tables([])
+        return .tables(names: [], scope: nil)
     }
 
     // MARK: - Body
@@ -652,6 +652,11 @@ struct ExportDialog: View {
         /// failed load would leave them on screen looking like that database's contents.
         guard preselection.scopedDatabase == nil else { return }
         let dbName = connection.database
+        /// The preload can only build a database-shaped container, so a preselection scoped to a
+        /// schema is evaluated against the wrong one here and records every row unselected. The
+        /// snapshot it leaves is keyed by bare container name, so a database and a schema that
+        /// share one, `app` and `app`, then restore that stale answer over the real preselection.
+        guard preselection.scope(covers: .database(dbName)) else { return }
         let objectItems = sidebarTables.map { table in
             let kind = PluginExportObjectKind.from(tableType: table.type.rawValue)
             return ExportObjectItem(
@@ -734,7 +739,13 @@ struct ExportDialog: View {
                         items.append(ExportDatabaseItem(
                             name: schema,
                             objects: objectItems,
-                            isExpanded: isDefaultSchema || preselection.containerNames.contains(schema)
+                            /// The preselected table's own schema opens too. `isDefaultSchema` cannot
+                            /// carry that: it is "" on the five engines that hang tables off schemas,
+                            /// so every section stayed shut and a correctly ticked row read as nothing
+                            /// selected.
+                            isExpanded: isDefaultSchema
+                                || preselection.containerNames.contains(schema)
+                                || preselection.scopedSchema == schema
                         ))
                     }
                 }
@@ -1150,6 +1161,6 @@ struct ExportDialog: View {
 
     return ExportDialog(
         isPresented: .constant(true),
-        mode: .tables(connection: connection, preselection: .tables(["users"]))
+        mode: .tables(connection: connection, preselection: .tables(names: ["users"], scope: nil))
     )
 }

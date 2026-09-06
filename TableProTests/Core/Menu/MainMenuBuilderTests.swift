@@ -370,10 +370,25 @@ struct MainMenuValidationTests {
         context.isCurrentTabEditable = true
         context.isCurrentTabSchemaResolved = true
         context.hasTableSelection = true
+        context.canTruncateSelectedTables = true
         context.isReadOnly = true
         #expect(!enabled(#selector(MainSplitViewController.addRow(_:)), context))
         #expect(!enabled(#selector(MainSplitViewController.truncateTable(_:)), context))
         #expect(!enabled(#selector(MainSplitViewController.createNewTable(_:)), context))
+    }
+
+    /// A view is a valid selection and a hopeless truncate. The menu bar used to ask only whether
+    /// anything was selected, so it offered Truncate Table for one and the server refused the save.
+    @Test("Truncate Table is disabled for a selection holding nothing truncatable")
+    func truncateNeedsATruncatableSelection() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        context.hasTableSelection = true
+        context.canTruncateSelectedTables = false
+        #expect(!enabled(#selector(MainSplitViewController.truncateTable(_:)), context))
+
+        context.canTruncateSelectedTables = true
+        #expect(enabled(#selector(MainSplitViewController.truncateTable(_:)), context))
     }
 
     @Test("Cancel Query tracks execution, not connection")
@@ -433,6 +448,7 @@ struct MainMenuValidationTests {
         context.isCurrentTabEditable = true
         context.isCurrentTabSchemaResolved = true
         context.hasTableSelection = true
+        context.canTruncateSelectedTables = true
         context.canShowTableStructure = true
         context.canEditViewDefinition = true
         context.hasMaintenanceOperations = true

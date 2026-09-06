@@ -234,22 +234,10 @@ final class MainContentCommandActions {
         if !indices.isEmpty {
             coordinator?.deleteSelectedRows(indices: indices)
         } else if !fromDataGrid, !selectedTables.wrappedValue.isEmpty {
-            // Only toggle table deletion when the call did NOT originate from
-            // the data grid (e.g., from the app menu Cmd+Delete with no rows selected)
-            var updatedDeletes = pendingDeletes.wrappedValue
-            var updatedTruncates = pendingTruncates.wrappedValue
-
-            for ref in selectedTables.wrappedValue {
-                updatedTruncates.remove(ref)
-                if updatedDeletes.contains(ref) {
-                    updatedDeletes.remove(ref)
-                } else {
-                    updatedDeletes.insert(ref)
-                }
-            }
-
-            pendingTruncates.wrappedValue = updatedTruncates
-            pendingDeletes.wrappedValue = updatedDeletes
+            /// Through the sidebar's own path rather than a second copy of it. Staging the queue
+            /// here directly skipped the confirmation `batchToggleDelete` raises, so Delete from
+            /// the menu bar queued a drop with no dialog while the sidebar's Delete asked first.
+            coordinator?.sidebarViewModel?.batchToggleDelete(refs: Array(selectedTables.wrappedValue))
         }
     }
 
@@ -493,6 +481,12 @@ final class MainContentCommandActions {
 
     var hasTableSelection: Bool {
         !selectedTables.wrappedValue.isEmpty
+    }
+
+    /// A selection can be perfectly valid and still hold nothing truncatable, so the menu bar asks
+    /// this rather than `hasTableSelection`, which is what let it stage a `TRUNCATE` on a view.
+    var canTruncateSelectedTables: Bool {
+        TableOperationEligibility.canTruncate(selectedTables.wrappedValue)
     }
 
     /// The one selected object, or nil when the selection is empty or spans several.
@@ -871,7 +865,7 @@ final class MainContentCommandActions {
     }
 
     func truncateTables() {
-        guard !(selectedTables.wrappedValue.isEmpty) else { return }
+        guard canTruncateSelectedTables else { return }
         coordinator?.sidebarViewModel?.batchToggleTruncate()
     }
 

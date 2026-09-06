@@ -11,8 +11,38 @@ import TableProPluginKit
 /// What the export dialog starts with selected: named tables inside the current
 /// container, or every table of whole databases or schemas.
 enum ExportPreselection: Equatable {
-    case tables(Set<String>)
+    /// `scope` is the container the named tables live in, carried because a bare name does not
+    /// identify a table: `orders` exists in every schema and every database on the server.
+    /// Nil where no single container holds them all, which falls back to the current one.
+    case tables(names: Set<String>, scope: DatabaseContainerRef?)
     case containers([DatabaseContainerRef])
+
+    /// The container the export dialog will list this row under. An engine that groups by database
+    /// draws no schema rows at all, and several of those still report a schema per table, so a
+    /// schema-shaped scope would match nothing there.
+    static func scope(
+        for ref: DatabaseTreeTableRef,
+        grouping: GroupingStrategy
+    ) -> DatabaseContainerRef? {
+        guard grouping != .byDatabase, let schema = ref.qualifyingSchema else {
+            return ref.database.map { .database($0) }
+        }
+        return .schema(database: ref.database, schema: schema)
+    }
+
+    /// Carries a scope only when every row agrees on one, the same unanimity rule `scopedDatabase`
+    /// applies to a container preselection.
+    static func tables(
+        fromSidebarSelection refs: Set<DatabaseTreeTableRef>,
+        grouping: GroupingStrategy
+    ) -> ExportPreselection {
+        let names = Set(refs.map(\.table.name))
+        let scopes = refs.map { scope(for: $0, grouping: grouping) }
+        guard let first = scopes.first, scopes.allSatisfy({ $0 == first }) else {
+            return .tables(names: names, scope: nil)
+        }
+        return .tables(names: names, scope: first)
+    }
 
     /// `container` is the ref the dialog is listing, not its bare name. Matching on the name alone
     /// compared a database name against schema names, so a preselected database selected nothing on
@@ -27,19 +57,38 @@ enum ExportPreselection: Equatable {
         isCurrentContainer: Bool
     ) -> Bool {
         switch self {
-        case .tables(let names):
+        case .tables(let names, let scope):
             guard kind == .table || kind == .view || kind == .materializedView || kind == .foreignTable else {
                 return false
             }
-            return isCurrentContainer && names.contains(object)
+            guard names.contains(object) else { return false }
+            /// A named scope answers for itself. `isCurrentContainer` cannot: it is computed from
+            /// the engine's static default schema name, which is "" on the five engines that hang
+            /// tables off schemas, so it is false for every section on those.
+            guard let scope else { return isCurrentContainer }
+            return scope.covers(container)
         case .containers(let refs):
             return refs.contains { $0.covers(container) }
         }
     }
 
     var singleTableName: String? {
-        guard case .tables(let names) = self, names.count == 1 else { return nil }
+        guard case .tables(let names, _) = self, names.count == 1 else { return nil }
         return names.first
+    }
+
+    /// Whether a table preselection's scope reaches the given container. An unscoped preselection
+    /// reaches everything, which is the behaviour it had before it carried one.
+    func scope(covers container: DatabaseContainerRef) -> Bool {
+        guard case .tables(_, let scope) = self, let scope else { return true }
+        return scope.covers(container)
+    }
+
+    /// The schema the dialog should open expanded, so the section holding a preselected table is
+    /// the one on screen. Ticking the right row inside a collapsed section reads as nothing selected.
+    var scopedSchema: String? {
+        guard case .tables(_, let scope) = self, scope?.kind == .schema else { return nil }
+        return scope?.schema
     }
 
     var containerNames: [String] {

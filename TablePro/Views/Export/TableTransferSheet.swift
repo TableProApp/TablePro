@@ -19,6 +19,9 @@ struct TableTransferSheet: View {
     @Binding var isPresented: Bool
     let sourceConnection: DatabaseConnection
     let preselectedTables: Set<String>
+    /// The schema the preselected rows came from. Without it the sheet listed whichever schema the
+    /// session happened to be browsing and matched the bare names against that one instead.
+    var preselectedSchema: String?
 
     @State private var service = TableTransferService()
     @State private var destinationConnectionId: UUID?
@@ -393,10 +396,16 @@ struct TableTransferSheet: View {
         }
     }
 
+    /// An explicit schema wins over the session's current one in `resolvedScope`, which is what
+    /// makes the sheet list the rows the user actually right-clicked.
     private var sourceScope: DatabaseScope {
         DatabaseManager.shared.resolvedScope(
-            database: sourceConnection.database, schema: nil, for: sourceConnection.id
-        ) ?? DatabaseScope(connectionId: sourceConnection.id, database: sourceConnection.database, schema: nil)
+            database: sourceConnection.database, schema: preselectedSchema, for: sourceConnection.id
+        ) ?? DatabaseScope(
+            connectionId: sourceConnection.id,
+            database: sourceConnection.database,
+            schema: preselectedSchema
+        )
     }
 
     /// The database the user picked, not wherever the destination connection was last parked. Both

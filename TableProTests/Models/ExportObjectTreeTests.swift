@@ -242,7 +242,7 @@ struct ExportPreselectionKindTests {
     /// the kind check, selecting the `users` table would also tick a `users()` function.
     @Test("A table preselection never selects a routine of the same name")
     func tablePreselectionIgnoresRoutines() {
-        let preselection = ExportPreselection.tables(["users"])
+        let preselection = ExportPreselection.tables(names: ["users"], scope: nil)
         #expect(preselection.selects(
             object: "users", kind: .table, inContainer: .database("app"), isCurrentContainer: true))
         #expect(!preselection.selects(
@@ -253,7 +253,7 @@ struct ExportPreselectionKindTests {
 
     @Test("A table preselection covers views and foreign tables")
     func tablePreselectionCoversViewShapes() {
-        let preselection = ExportPreselection.tables(["users"])
+        let preselection = ExportPreselection.tables(names: ["users"], scope: nil)
         #expect(preselection.selects(
             object: "users", kind: .view, inContainer: .database("app"), isCurrentContainer: true))
         #expect(preselection.selects(

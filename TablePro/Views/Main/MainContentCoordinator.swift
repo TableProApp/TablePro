@@ -53,7 +53,7 @@ enum ActiveSheet: Identifiable {
     case exportQueryResults
     /// The tables the user right-clicked travel with the request, because the object browser may be
     /// pointed somewhere else by the time the sheet appears.
-    case transferTables(tables: Set<String>)
+    case transferTables(tables: Set<String>, schema: String?)
     /// The databases the user right-clicked travel with the request, so the sheet opens on them
     /// rather than on wherever the object browser happens to point. Empty means the browse database.
     case backupDatabase(databases: Set<String>)
@@ -81,7 +81,8 @@ enum ActiveSheet: Identifiable {
         case .importDialog(let formatId): "importDialog-\(formatId)"
         case .rowImport(let formatId): "rowImport-\(formatId)"
         case .exportQueryResults: "exportQueryResults"
-        case .transferTables(let tables): "transferTables-\(tables.sorted().joined(separator: ","))"
+        case .transferTables(let tables, let schema):
+            "transferTables-\(schema ?? "")-\(tables.sorted().joined(separator: ","))"
         case .backupDatabase: "backupDatabase"
         case .restoreDatabase(let fileURL): "restoreDatabase-\(fileURL.path)"
         case .serverSideExport(let table): "serverSideExport-\(table ?? "")"

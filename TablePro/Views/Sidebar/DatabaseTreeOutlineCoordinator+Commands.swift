@@ -47,11 +47,18 @@ extension DatabaseTreeOutlineCoordinator {
             ClipboardService.shared.writeText(names.joined(separator: ","))
         case .exportTables(let names, let ref):
             activateThen(ref) { [weak self] in
-                self?.mainCoordinator?.openExportDialog(preselectedTableNames: names)
+                guard let self else { return }
+                self.mainCoordinator?.openExportDialog(
+                    preselectedTableNames: names,
+                    scope: self.exportScope(for: ref)
+                )
             }
         case .transferTables(let names, let ref):
             activateThen(ref) { [weak self] in
-                self?.mainCoordinator?.openTableTransferSheet(preselectedTableNames: names)
+                self?.mainCoordinator?.openTableTransferSheet(
+                    preselectedTableNames: names,
+                    schema: ref.qualifyingSchema
+                )
             }
         case .importTables(let formatId, let ref):
             activateThen(ref) { [weak self] in
@@ -152,6 +159,13 @@ extension DatabaseTreeOutlineCoordinator {
         case .toggleObjectIcons, .toggleObjectComments, .setRowSize:
             _ = SidebarViewOptionsMenu.apply(command)
         }
+    }
+
+    private func exportScope(for ref: DatabaseTreeTableRef) -> DatabaseContainerRef? {
+        ExportPreselection.scope(
+            for: ref,
+            grouping: PluginManager.shared.databaseGroupingStrategy(for: databaseType)
+        )
     }
 
     /// A command that opens or edits an object has to reach the database that object lives in

@@ -116,7 +116,11 @@ internal enum DatabaseTreeMenuSpec {
         targets: [DatabaseTreeTableRef],
         context: DatabaseTreeMenuContext
     ) -> [DatabaseTreeMenuItem] {
-        let names = Set(targets.map(\.table.name))
+        /// Narrowed to the clicked row's own schema as well as its database, which is what Copy To
+        /// already did alone. A bare name does not identify a table, so a selection spanning two
+        /// schemas handed the dialog names it resolved against one of them.
+        let sameScope = targets.filter { $0.qualifyingSchema == ref.qualifyingSchema }
+        let names = Set(sameScope.map(\.table.name))
         var items: [DatabaseTreeMenuItem] = [
             .command(String(localized: "Export…"), .exportTables(names: names, ref: ref))
         ]
@@ -126,10 +130,6 @@ internal enum DatabaseTreeMenuSpec {
         }
         items.append(.command(String(localized: "Transfer To…"), .transferTables(names: names, ref: ref)))
         if context.canCopyObjects {
-            /// Narrowed to the clicked row's own schema as well as its database. A copy names one
-            /// source scope, so a selection spanning two schemas would read one of them and either
-            /// drop the other's tables from the plan or map a same-named one to the wrong table.
-            let sameScope = targets.filter { $0.qualifyingSchema == ref.qualifyingSchema }
             items.append(.command(
                 String(localized: "Copy To…"),
                 .copyObjectsTo(objects: copySelections(for: sameScope), ref: ref)
@@ -163,7 +163,7 @@ internal enum DatabaseTreeMenuSpec {
         if ObjectRenameEligibility.canRename(table: ref.table, context: context.renameEligibility) {
             items.append(.command(String(localized: "Rename"), .beginRenameTable(ref: ref, isRecentRow: isRecentRow)))
         }
-        if SidebarContextMenuLogic.truncateVisible(clickedTable: ref.table) {
+        if SidebarContextMenuLogic.truncateVisible(targets: targets) {
             items.append(.command(String(localized: "Truncate"), .truncateTables(targets: targets, ref: ref)))
         }
         items.append(.command(

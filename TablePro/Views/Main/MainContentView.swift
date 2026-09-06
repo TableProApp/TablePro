@@ -162,11 +162,12 @@ struct MainContentView: View {
     /// The transfer sheet is built here rather than inline, because `sheetContent(for:)` is one
     /// switch over every sheet the window can present and is already at the function length limit.
     @ViewBuilder
-    func transferSheet(tables: Set<String>, dismiss: Binding<Bool>) -> some View {
+    func transferSheet(tables: Set<String>, schema: String?, dismiss: Binding<Bool>) -> some View {
         TableTransferSheet(
             isPresented: dismiss,
             sourceConnection: connectionWithCurrentDatabase,
-            preselectedTables: tables
+            preselectedTables: tables,
+            preselectedSchema: schema
         )
     }
 
