@@ -156,6 +156,61 @@ internal final class TypesenseConnection: NSObject, @unchecked Sendable {
         return results
     }
 
+    /// Streams a collection through `GET /collections/:c/documents/export`, which answers JSONL:
+    /// one document per line, for the whole collection, without the 250-hit search ceiling.
+    ///
+    /// The lines arrive as they are read rather than after the whole body, so exporting a large
+    /// collection never holds it in memory.
+    func streamExport(
+        collection: String,
+        onDocument: @escaping ([String: Any]) -> Bool
+    ) async throws {
+        let session: URLSession = try lock.withLock {
+            guard let session = _session else { throw TypesenseError.notConnected }
+            return session
+        }
+        let path = TypesenseOperations.exportPath(collection: collection)
+        guard let url = TypesensePathEncoding.resolve(path, against: baseURL) else {
+            throw TypesenseError.invalidResponse(
+                String(format: String(localized: "Not a path on this server: %@"), path)
+            )
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(apiKey, forHTTPHeaderField: Self.apiKeyHeader)
+        request.timeoutInterval = queryTimeout.requestTimeoutInterval
+
+        let (bytes, response) = try await session.bytes(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw TypesenseError.invalidResponse("Not an HTTP response")
+        }
+        guard (200 ..< 300).contains(http.statusCode) else {
+            var body = ""
+            for try await line in bytes.lines where body.count < 2_000 {
+                body += line
+            }
+            throw mapError(
+                TypesenseResponse(
+                    statusCode: http.statusCode,
+                    json: body.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) },
+                    rawText: body
+                ),
+                fallback: "Export failed"
+            )
+        }
+
+        for try await line in bytes.lines {
+            try Task.checkCancellation()
+            guard !line.isEmpty,
+                  let data = line.data(using: .utf8),
+                  let document = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { continue }
+            if !onDocument(document) { return }
+        }
+    }
+
     // MARK: - Raw Request
 
     @discardableResult

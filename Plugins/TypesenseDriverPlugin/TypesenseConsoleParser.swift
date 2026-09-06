@@ -29,8 +29,18 @@ enum TypesenseConsoleParser {
         guard supportedMethods.contains(method) else { return nil }
 
         let path = parts.count == 2 ? normalizePath(String(parts[1]).trimmingCharacters(in: .whitespaces)) : "/"
+        guard isPathLike(path) else { return nil }
+
         let body = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         return TypesenseConsoleRequest(method: method, path: path, body: body.isEmpty ? nil : body)
+    }
+
+    /// `DELETE FROM books` shares its first word with an HTTP verb, so without this the parser
+    /// read `FROM books` as a path and the driver sent a real `DELETE` to `/FROM books`. A URL
+    /// path holds no raw space; a query string may, so only the part before `?` is checked.
+    static func isPathLike(_ path: String) -> Bool {
+        let pathOnly = path.split(separator: "?", maxSplits: 1).first.map(String.init) ?? path
+        return !pathOnly.contains { $0.isWhitespace }
     }
 
     static func normalizePath(_ path: String) -> String {

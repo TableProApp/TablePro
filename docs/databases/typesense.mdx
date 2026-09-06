@@ -79,6 +79,25 @@ Saving grid edits sends REST calls keyed by `id`.
 
 Values are typed from the schema on the way out: an `int32` field is sent as a number, a `bool` as `true` or `false`, and an array or object field as parsed JSON.
 
+## Collection operations
+
+| Action | Request |
+|--------|---------|
+| **Export** | `GET /collections/:name/documents/export`, read as JSONL a line at a time, so a collection larger than memory still exports and the 250-hit search ceiling does not apply |
+| **Delete** a collection | `DELETE /collections/:name` |
+| **Empty** a collection | `DELETE /collections/:name/documents?truncate=true`, which keeps the schema and the fields it has learned |
+| **Compact** the database | `POST /operations/db/compact`, from the console. It is not in the Maintenance menu, which acts on the selected collection, while compaction acts on the whole database |
+
+## Users & roles
+
+Typesense has no user accounts, so **Database > Users & Roles** lists API keys instead. Each key shows the collections it reaches and the actions it holds, and a key scoped to `*` reads as server-wide.
+
+A key is immutable once created: Typesense has no endpoint that changes one, and the key's value is returned exactly once, when it is created. So a key can be added and deleted here, and editing one is unavailable rather than being carried out as a delete and a recreate, which would rotate the value every client is already using.
+
+## Server metrics
+
+**Database > Server Dashboard** reads `/metrics.json` and `/stats.json`: process and system memory, memory fragmentation, disk use, requests per second, search and write latency, pending write batches and the cache hit ratio. There are no sessions to list and no slow query log, so those panels stay empty.
+
 ## Request console
 
 The editor takes a method, a path and an optional JSON body, the way the Typesense docs write their curl examples.
@@ -106,7 +125,7 @@ POST /collections/books/documents
 
 A response carrying `hits` renders as a grid of documents, and so does a `multi_search` holding a single search. A JSON array renders as a grid of objects and `GET /collections/:name/documents/export` renders its JSONL the same way. Anything else, a `multi_search` batch included, comes back as pretty-printed JSON in a single cell.
 
-Creating and dropping collections happens here too, with `POST /collections` and `DELETE /collections/:name`. The structure editor does not write schema changes.
+Creating a collection happens here, with `POST /collections`. The structure editor does not write schema changes.
 
 ## SSL/TLS
 
@@ -121,6 +140,7 @@ The connection's SSL mode picks the scheme: **Disabled** talks HTTP, anything el
 - **IS NULL**, **IS NOT NULL**, **IS EMPTY**, **IS NOT EMPTY**, **REGEX** and **ENDS WITH** are refused in the filter bar. **ENDS WITH** needs a field created with `infix: true`, which the filter bar cannot reach.
 - A filter value containing a backtick is refused. Match on a value without one, or write the filter in the **Raw SQL** column.
 - No [SSH tunnel](/connections/ssh-tunneling), Cloudflare Tunnel, SOCKS proxy or tunnel command. Reach a private node through a reverse proxy.
+- The console takes a method and a path, not SQL. `DELETE FROM books` looks like an HTTP verb and a path, so it is refused rather than sent.
 
 ## Troubleshooting
 

@@ -99,6 +99,63 @@ extension TypesensePluginDriver {
         return documents
     }
 
+    // MARK: - Streaming Export
+
+    /// Export reads the collection's JSONL endpoint a line at a time, so a collection larger than
+    /// memory still exports and the 250-hit search ceiling never applies. Anything that is not an
+    /// export tag runs as an ordinary query and is handed over in one batch.
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+            let task = Task {
+                do {
+                    try await self.performStreamRows(query: query, continuation: continuation)
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
+        }
+    }
+
+    private func performStreamRows(
+        query: String,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        guard let collection = TypesenseOperations.decodeExport(query) else {
+            let result = try await execute(query: query)
+            continuation.yield(.header(PluginStreamHeader(
+                columns: result.columns,
+                columnTypeNames: result.columnTypeNames,
+                estimatedRowCount: nil
+            )))
+            if !result.rows.isEmpty { continuation.yield(.rows(result.rows)) }
+            continuation.finish()
+            return
+        }
+
+        let connection = try requireConnection()
+        let schema = try await cachedCollection(collection)
+        let columns = schema.columns
+        continuation.yield(.header(PluginStreamHeader(
+            columns: columns,
+            columnTypeNames: TypesenseSchema.typeNames(for: columns, fields: schema.fieldsByName),
+            estimatedRowCount: schema.numDocuments
+        )))
+
+        var batch: [[String: Any]] = []
+        try await connection.streamExport(collection: collection) { document in
+            batch.append(document)
+            guard batch.count >= Self.exportBatchSize else { return true }
+            continuation.yield(.rows(TypesenseSchema.rows(for: batch, columns: columns)))
+            batch.removeAll(keepingCapacity: true)
+            return true
+        }
+        if !batch.isEmpty {
+            continuation.yield(.rows(TypesenseSchema.rows(for: batch, columns: columns)))
+        }
+        continuation.finish()
+    }
+
     // MARK: - Write
 
     private func executeWrite(

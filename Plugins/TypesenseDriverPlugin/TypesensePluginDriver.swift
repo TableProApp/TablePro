@@ -17,13 +17,18 @@ internal final class TypesensePluginDriver: PluginDatabaseDriver, @unchecked Sen
 
     static let logger = Logger(subsystem: "com.TablePro", category: "TypesensePluginDriver")
 
+    /// How many exported documents are turned into rows before they are handed on. The JSONL
+    /// endpoint has no page size of its own, so this only bounds how much is held at once.
+    static let exportBatchSize = 500
+
     var connection: TypesenseConnection? { lock.withLock { _connection } }
 
     var serverVersion: String? { connection?.serverVersion }
 
     var supportsTransactions: Bool { false }
 
-    var capabilities: PluginCapabilities { [.cancelQuery] }
+    /// `.userManagement` is what enables Database > Users & Roles, which lists Typesense API keys.
+    var capabilities: PluginCapabilities { [.cancelQuery, .userManagement] }
 
     init(config: DriverConnectionConfig) {
         self.config = config
@@ -195,6 +200,24 @@ internal final class TypesensePluginDriver: PluginDatabaseDriver, @unchecked Sen
             filters: TypesenseFilterBuilder.specs(from: filters),
             logicMode: logicMode
         )
+    }
+
+    // MARK: - Collection Operations
+
+    /// Without these the app falls back to SQL it composes itself, and Typesense answers none of
+    /// it: exporting a collection sent `SELECT * FROM c`, dropping one sent `DROP TABLE c`, and
+    /// truncating sent `DELETE FROM c`. All three failed while the UI offered them.
+    func defaultExportQuery(table: String, schema: String?) -> String? {
+        TypesenseOperations.encodeExport(collection: table)
+    }
+
+    func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
+        TypesenseOperations.dropCollection(named: name, objectType: objectType)
+            .map(TypesenseStatementGenerator.encode)
+    }
+
+    func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? {
+        [TypesenseStatementGenerator.encode(TypesenseOperations.truncateCollection(named: table))]
     }
 
     // MARK: - Statement Generation

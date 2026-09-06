@@ -59,6 +59,22 @@ struct TypesenseConsoleParserTests {
         #expect(TypesenseConsoleParser.parse("FETCH /collections") == nil)
         #expect(TypesenseConsoleParser.parse("") == nil)
     }
+
+    /// `DELETE FROM books` shares its first word with an HTTP verb. Measured before the guard: the
+    /// parser read `FROM books` as a path and the driver sent a real `DELETE` to `/FROM books`.
+    @Test("SQL that starts with an HTTP verb is not read as a request")
+    func rejectsSQLWearingAVerb() {
+        #expect(TypesenseConsoleParser.parse("DELETE FROM books") == nil)
+        #expect(TypesenseConsoleParser.parse("DELETE FROM books WHERE id = 1") == nil)
+        #expect(TypesenseConsoleParser.parse("GET rows FROM books") == nil)
+    }
+
+    /// A query string may hold a space, so the guard only looks at the path.
+    @Test("A space inside the query string is still accepted")
+    func keepsSpacesInQueryStrings() {
+        let request = TypesenseConsoleParser.parse("GET /collections/books/documents/search?q=hello world")
+        #expect(request?.path == "/collections/books/documents/search?q=hello world")
+    }
 }
 
 @Suite("Typesense - Schema")
@@ -525,6 +541,134 @@ struct TypesenseQueryBuilderTests {
         let body = TypesenseQueryBuilder.countBody(collection: "books", filterBy: nil)
         #expect(body["per_page"] as? Int == 0)
         #expect(body["filter_by"] == nil)
+    }
+}
+
+@Suite("Typesense - Collection Operations")
+struct TypesenseOperationsTests {
+    /// Without these the app composes its own SQL and sends it to `execute`. Measured before the
+    /// fix: exporting sent `SELECT * FROM c`, dropping sent `DROP TABLE c` and truncating sent
+    /// `DELETE FROM c`; the first two were refused by the console parser and the third reached the
+    /// server as a real HTTP `DELETE /FROM c`.
+    @Test("An export query round-trips the collection name")
+    func exportRoundTrips() throws {
+        let query = TypesenseOperations.encodeExport(collection: "books")
+        #expect(query.hasPrefix(TypesenseOperations.exportTag))
+        #expect(TypesenseOperations.decodeExport(query) == "books")
+        #expect(TypesenseOperations.decodeExport("GET /collections") == nil)
+        #expect(TypesenseOperations.decodeExport(TypesenseOperations.exportTag) == nil)
+    }
+
+    @Test("A collection name with a slash stays one segment in the export path")
+    func exportPathEncodesTheName() {
+        #expect(TypesenseOperations.exportPath(collection: "a/b") == "/collections/a%2Fb/documents/export")
+    }
+
+    @Test("Dropping a collection is a DELETE on the collection itself")
+    func dropsACollection() throws {
+        let request = try #require(TypesenseOperations.dropCollection(named: "books", objectType: "TABLE"))
+        #expect(request.method == "DELETE")
+        #expect(request.path == "/collections/books")
+        #expect(request.body == nil)
+    }
+
+    /// Typesense has no databases, views or schemas, so there is no request to send for one and
+    /// the app keeps whatever fallback it had.
+    @Test("Only a collection can be dropped")
+    func refusesToDropOtherObjects() {
+        #expect(TypesenseOperations.dropCollection(named: "x", objectType: "VIEW") == nil)
+        #expect(TypesenseOperations.dropCollection(named: "x", objectType: "DATABASE") == nil)
+        #expect(TypesenseOperations.dropCollection(named: "x", objectType: "COLLECTION") != nil)
+    }
+
+    /// `truncate=true` keeps the schema. Deleting by a match-everything filter would take the
+    /// learned fields with it.
+    @Test("Truncating empties the documents and keeps the collection")
+    func truncatesWithTheTruncateFlag() {
+        let request = TypesenseOperations.truncateCollection(named: "books")
+        #expect(request.method == "DELETE")
+        #expect(request.path == "/collections/books/documents?truncate=true")
+    }
+
+    @Test("Compact maps to its endpoint, and an operation from another engine is refused")
+    func mapsMaintenanceOperations() throws {
+        let request = try #require(TypesenseOperations.maintenance("Compact Database"))
+        #expect(request.method == "POST")
+        #expect(request.path == "/operations/db/compact")
+        #expect(TypesenseOperations.maintenance("VACUUM") == nil)
+        #expect(TypesenseOperations.maintenance("compact database") != nil)
+    }
+}
+
+@Suite("Typesense - API Keys")
+struct TypesenseApiKeysTests {
+    private let payload: [String: Any] = [
+        "keys": [
+            [
+                "id": 0,
+                "description": "Search-only key",
+                "actions": ["documents:search"],
+                "collections": ["books"],
+                "value_prefix": "JrJX",
+            ],
+            ["id": 7, "description": "", "actions": ["*"], "collections": ["*"]],
+        ],
+    ]
+
+    @Test("Keys decode, and a key with no description still gets a name")
+    func decodesKeys() throws {
+        let keys = TypesenseApiKeys.keys(from: payload)
+        #expect(keys.count == 2)
+        #expect(keys[0].displayName == "Search-only key (#0)")
+        #expect(keys[1].displayName == "Key #7")
+        #expect(keys[0].valuePrefix == "JrJX")
+    }
+
+    /// `PluginPrincipalRef` carries only a name, so the key id has to survive inside it.
+    @Test("The key id survives the round trip through the principal name")
+    func idRoundTripsThroughTheName() {
+        let keys = TypesenseApiKeys.keys(from: payload)
+        for key in keys {
+            #expect(TypesenseApiKeys.id(fromDisplayName: key.displayName) == key.id)
+        }
+        #expect(TypesenseApiKeys.id(fromDisplayName: "nonsense") == nil)
+    }
+
+    @Test("A key's actions and collections become one grant per pair")
+    func projectsGrants() {
+        let keys = TypesenseApiKeys.keys(from: payload)
+        let scoped = TypesenseApiKeys.grants(for: keys[0], database: "default")
+        #expect(scoped.count == 1)
+        #expect(scoped[0].privilege == "documents:search")
+        #expect(scoped[0].scope == .table(database: "default", schema: nil, table: "books"))
+
+        let wildcard = TypesenseApiKeys.grants(for: keys[1], database: "default")
+        #expect(wildcard.map(\.scope) == [.server])
+    }
+
+    @Test("A create request carries the description, actions and collections")
+    func buildsACreateRequest() throws {
+        let request = try #require(TypesenseApiKeys.createRequest(
+            description: "Reader", actions: ["documents:search"], collections: ["books"]
+        ))
+        #expect(request.method == "POST")
+        #expect(request.path == "/keys")
+        #expect(request.body == #"{"actions":["documents:search"],"collections":["books"],"description":"Reader"}"#)
+    }
+
+    @Test("An empty collection list means every collection")
+    func defaultsToEveryCollection() throws {
+        let request = try #require(TypesenseApiKeys.createRequest(
+            description: "R", actions: [], collections: []
+        ))
+        #expect(request.body?.contains(#""collections":["*"]"#) == true)
+    }
+
+    @Test("Deleting a key addresses it by id")
+    func buildsADeleteRequest() {
+        let request = TypesenseApiKeys.deleteRequest(id: 7)
+        #expect(request.method == "DELETE")
+        #expect(request.path == "/keys/7")
     }
 }
 

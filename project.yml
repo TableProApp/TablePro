@@ -395,8 +395,10 @@ targets:
       - Plugins/EtcdDriverPlugin/EtcdCommandParser.swift
       - Plugins/EtcdDriverPlugin/EtcdQueryBuilder.swift
       - Plugins/EtcdDriverPlugin/EtcdStatementGenerator.swift
+      - Plugins/TypesenseDriverPlugin/TypesenseApiKeys.swift
       - Plugins/TypesenseDriverPlugin/TypesenseConsoleParser.swift
       - Plugins/TypesenseDriverPlugin/TypesenseFilterBuilder.swift
+      - Plugins/TypesenseDriverPlugin/TypesenseOperations.swift
       - Plugins/TypesenseDriverPlugin/TypesenseQueryBuilder.swift
       - Plugins/TypesenseDriverPlugin/TypesenseSchema.swift
       - Plugins/TypesenseDriverPlugin/TypesenseStatementGenerator.swift
