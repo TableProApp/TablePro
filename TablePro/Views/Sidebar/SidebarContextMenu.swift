@@ -7,20 +7,8 @@ import SwiftUI
 import TableProPluginKit
 
 enum SidebarContextMenuLogic {
-    static func hasSelection(selectedTables: Set<TableInfo>, clickedTable: TableInfo?) -> Bool {
-        !selectedTables.isEmpty || clickedTable != nil
-    }
-
     static func isView(clickedTable: TableInfo?) -> Bool {
         clickedTable?.type == .view
-    }
-
-    /// AppKit's rule for a contextual menu over a list: a click inside the selection acts on the
-    /// whole selection, a click outside it acts on the row under the pointer and nothing else.
-    static func contextTargets(clickedTable: TableInfo?, selectedTables: Set<TableInfo>) -> [String] {
-        guard let clickedTable else { return selectedTables.map(\.name).sorted() }
-        guard selectedTables.contains(clickedTable) else { return [clickedTable.name] }
-        return selectedTables.map(\.name).sorted()
     }
 
     static func isReadOnlyKind(_ type: TableInfo.TableType?) -> Bool {

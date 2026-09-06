@@ -290,13 +290,16 @@ A server that rejects the statement stops the import with that error, so clear t
 The sheet accepts an array of objects `[{…}, {…}]`, newline-delimited JSON streamed a line at a time, and TablePro's own export shape `{ "table": [ {…} ] }`, so an export round-trips. Then choose a destination:
 
 - **Existing table**: map each JSON field to a column. Fields auto-match by name; switch one off to skip it. A column with no matching field keeps its default or NULL.
-- **New table**: name it and review the columns TablePro infers. Name, type, primary key, nullable flag, and default are all editable before the table is created.
+- **New table**: the name field opens on a name derived from the file, already selected, so one keystroke replaces it. Review the inferred columns underneath. Name, type, primary key, nullable flag, and default are all editable before the table is created.
+
+The proposed name drops the extension, turns spaces and punctuation into underscores, and lowercases the result. Letters from any script are kept as they are. On Oracle the name comes through in upper case instead, and is cut to 30 bytes rather than 63. A name an existing table or view already holds gains a numeric suffix, so re-importing `users.csv` next to a `users` table proposes `users_2`. Whatever you type over it is held to the same rules: a name already taken, one longer than the engine allows, or one starting with a prefix the engine keeps for itself is reported in the sheet, with **Import** off until it changes.
 
 Rows insert through parameterized statements, so a JSON value is never concatenated into SQL. Nested objects and arrays are stored as JSON text.
 
 ### Import XLSX
 
-Reads the first worksheet of an `.xlsx` workbook.
+Reads the first worksheet of an `.xlsx` workbook. The destinations and the proposed new-table name
+behave as they do for JSON.
 
 | Option | Default |
 |--------|---------|

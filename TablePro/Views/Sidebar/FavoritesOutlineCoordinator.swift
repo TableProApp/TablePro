@@ -328,7 +328,7 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
         )
         SidebarMenuBuilder.fill(
             menu,
-            with: FavoritesMenuSpec.items(for: context),
+            with: FavoritesMenuSpec.sections(for: context),
             target: self,
             action: #selector(performFavoritesMenuCommand(_:))
         )

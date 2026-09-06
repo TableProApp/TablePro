@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Table name proposed from the file name when an import creates the table, with a warning when the name is taken.
 - Copy To across database engines, with every type approximation listed before the copy runs. (#1491)
 - Per-table `WHERE` and row limit in Copy To. (#1491)
 - Server-side `INSERT … SELECT` when a copy's two sides are one connection. (#1491)
@@ -46,10 +47,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Backup Dump as one sheet with scope, format and destination, in place of a picker with a save panel over it. (#2485)
 - Inspector shows the selected row as Fields or JSON, with AI Chat moved out of its tab strip.
 - Structured inspector values expand in place instead of replacing the whole pane.
+- Object tree context menu regrouped into four groups by intent, with the connection-wide commands off object rows.
+- View Options as a control in the sidebar's filter row, in place of an entry on every context menu.
+- View ER Diagram and New View on the object tree's empty-area menu only.
+- Keyboard shortcuts shown on sidebar context menu items that have a menu bar equivalent.
 
 ### Fixed
 
+- Import sheet clearing a table without confirmation on a connection set to confirm destructive statements.
+- Empty destination table picker in the import sheet, with no message and no retry, when the table list could not be read.
 - Connection with two transports enabled reaching the database directly, with neither transport applied.
+- Object list unchanged after toggling Show object icons or Show object comments in Settings.
 - Delete Connection missing from the connection editor since 0.39.0.
 - Continue dimmed after filtering the database chooser down to one driver.
 - Down arrow not reaching the list from the database chooser's search field.
