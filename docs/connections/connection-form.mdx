@@ -1,36 +1,30 @@
 ---
 title: Connection form
-description: The nine panes of the connection editor, the fields on each, and which drivers get which
+description: The four sections of the connection editor and the fields each driver adds
 ---
 
-A driver only ever gets the panes it can use, so this form's sidebar is four items long for SQLite and nine for PostgreSQL. A warning triangle on one of them means a required field on that pane is empty.
+The editor's sidebar lists the same four sections whatever the driver. Only Network is ever absent, and only for a driver that connects directly and cannot negotiate TLS.
 
-<Frame caption="Connection form with sidebar navigation">
-  <img className="block dark:hidden" src="/images/connection-form-fields.png" alt="Connection form" />
-  <img className="hidden dark:block" src="/images/connection-form-fields-dark.png" alt="Connection form" />
+<Frame caption="A PostgreSQL connection on the General tab">
+  <img className="block dark:hidden" src="/images/connection-form-fields.png" alt="Connection editor with a General, Network, Options and Appearance sidebar, credential fields filling the pane, and Test, Cancel and Save along the bottom" />
+  <img className="hidden dark:block" src="/images/connection-form-fields-dark.png" alt="Connection editor with a General, Network, Options and Appearance sidebar, credential fields filling the pane, and Test, Cancel and Save along the bottom" />
 </Frame>
 
-| Pane | Contents |
+| Section | Contents |
 |------|----------|
-| **General** | Name, host, port, database, credentials, Test Connection |
-| **SSH Tunnel** | Reach a database behind a bastion host. See [SSH Tunneling](/connections/ssh-tunneling) |
-| **Remote File** | For SQLite: open a database that lives on an SSH server, read-only. See [Remote Database Files](/connections/remote-database-files) |
-| **Cloudflare Tunnel** | Connect through `cloudflared`. See [Cloudflare Tunnel](/connections/cloudflare-tunnel) |
-| **Cloud SQL Auth Proxy** | Google Cloud SQL, for MySQL, PostgreSQL, and SQL Server only. See [Cloud SQL Auth Proxy](/connections/cloud-sql-proxy) |
-| **SOCKS Proxy** | Route through a SOCKS5 proxy. See [SOCKS Proxy](/connections/socks-proxy) |
-| **Tunnel Command** | Hold a `kubectl port-forward`, an AWS SSM session, or a command of your own. See [Tunnel Command](/connections/tunnel-command) |
-| **SSL/TLS** | Encryption mode and certificates. See [SSL/TLS](/connections/ssl) |
-| **Customization** | Color, tags, group, Safe Mode |
-| **Advanced** | Startup commands, pre-connect script, external access, plugin fields |
-| **AI Rules** | Per-connection guidance the AI assistant sees on every chat turn. See [AI Assistant](/features/ai-assistant) |
+| **General** | Name, database type, host, port, database, credentials |
+| **Network** | How the connection reaches the server, and how it is encrypted |
+| **Options** | Driver options, startup SQL, Safe Mode, external and AI access, iCloud |
+| **Appearance** | Color, tags, group |
 
-Only one of SSH Tunnel, Cloudflare Tunnel, Cloud SQL Auth Proxy, SOCKS Proxy, and Tunnel Command can be on at a time. Turning on a second offers a button to switch off the first.
+The bar along the bottom carries **Test Connection**, **Cancel** and **Save**. When **Save** is dimmed, the reason sits to its left, prefixed with the tab that holds the empty field.
 
 ## General
 
 | Field | Description |
 |-------|-------------|
 | **Name** | Display name in the connection list |
+| **Type** | The database type. **Change…** retypes the connection and resets the fields the old type owned |
 | **Host** | Empty falls back to the driver's own default, usually `localhost` |
 | **Port** | Pre-filled from the database type |
 | **Database** | Optional on drivers that browse every database from one session. PostgreSQL and Redshift do not connect without one |
@@ -38,22 +32,47 @@ Only one of SSH Tunnel, Cloudflare Tunnel, Cloud SQL Auth Proxy, SOCKS Proxy, an
 | **Password** | Stored in the macOS Keychain |
 | **Prompt for password** | Stores nothing, asks on every connect. Reads **Prompt for API token** on API-only drivers |
 | **Use Password File** | PostgreSQL, Redshift, and CockroachDB. Reads `~/.pgpass`, and reports underneath whether the file exists, has `chmod 0600`, and holds a matching line |
-| **Socket Path** | Optional, and only with an SSH tunnel on. Forwards to a unix socket instead of Host and Port, which are then ignored. See [Forwarding to a unix socket](/connections/ssh-tunneling#forwarding-to-a-unix-socket) |
 
-SQLite, DuckDB, and Beancount replace the host section with a file path picker.
+SQLite, DuckDB, and Beancount replace the host fields with a file path picker.
 
-## Advanced
+## Network
+
+**Connect via** is a single choice, and the fields under it belong to whichever transport is selected. A connection uses one transport or none.
+
+| Choice | What it does |
+|--------|--------------|
+| **Direct** | Connects straight to the host and port on General |
+| **SSH Tunnel** | Forwards a local port through an SSH server. See [SSH Tunneling](/connections/ssh-tunneling) |
+| **Remote Database File** | SQLite only. Copies the file from an SSH server and opens the copy read-only. See [Remote Database Files](/connections/remote-database-files) |
+| **Cloudflare Tunnel** | Runs `cloudflared access tcp`. See [Cloudflare Tunnel](/connections/cloudflare-tunnel) |
+| **Cloud SQL Auth Proxy** | MySQL, PostgreSQL, and SQL Server. See [Cloud SQL Auth Proxy](/connections/cloud-sql-proxy) |
+| **SOCKS Proxy** | Routes through a SOCKS5 proxy, which also resolves the hostname. See [SOCKS Proxy](/connections/socks-proxy) |
+| **Tunnel Command** | Holds a `kubectl port-forward`, an AWS SSM session, or a command of your own. See [Tunnel Command](/connections/tunnel-command) |
+
+Leave it on **Direct** unless the database is unreachable from this Mac. Switching to another transport keeps what you typed into the previous one, so switching back costs nothing.
+
+**Socket Path**, under **SSH Tunnel**, forwards to a unix socket instead of Host and Port, which are then unused. See [Forwarding to a unix socket](/connections/ssh-tunneling#forwarding-to-a-unix-socket).
+
+Encryption sits below the transport. [SSL/TLS](/connections/ssl) covers the modes and the certificate fields.
+
+## Options
 
 | Field | Description |
 |-------|-------------|
 | **Startup Commands** | SQL to run after every connect. See [Startup commands](#startup-commands) |
 | **Pre-Connect Script** | Shell script run before connecting. A non-zero exit aborts the connect |
+| **Safe Mode** | Confirmation prompts before writes. See [Safe Mode](/features/safe-mode) |
 | **AI Policy** | Per-connection override for the in-app AI agents. **Never** also refuses external clients |
+| **AI Rules** | Guidance the AI reads on every chat turn for this connection: table conventions, columns to avoid, join hints. See [AI Assistant](/features/ai-assistant) |
 | **External Clients** | **Blocked**, **Read Only** (the default), or **Read & Write** for MCP clients such as Raycast, Cursor, and Claude Desktop, and for [AppleScript](/external-api/applescript). A token's own scope cannot raise it. See [External API](/external-api) |
 | **Local only** | Keeps this connection off iCloud Sync. See [iCloud Sync](/features/icloud-sync) |
 | Plugin fields | Driver-specific options, such as MongoDB's `replicaSet` |
 
 A pre-connect script never runs unprompted. A **Pre-Connect Script** alert shows the script itself and waits for **Run Script**, every time. At launch it is not prompted for at all: a restored window whose connection carries a script waits with a **Connect** button.
+
+## Appearance
+
+**Color** marks the connection in the connection list and its window. **Tags** and **Group** decide where it sits in the welcome window's tree.
 
 ## Startup commands
 
@@ -78,7 +97,7 @@ Every active connection is pinged every 30 seconds, skipping the ping while one 
 
 SQLite, DuckDB, Beancount, Snowflake, and Teradata are not monitored.
 
-## Which drivers get which panes
+## Which drivers get which transports
 
 | Database | Default port | SSH tunnel | SSL/TLS | Cloudflare Tunnel | Cloud SQL Proxy | SOCKS Proxy | Tunnel Command |
 |----------|-------------|-----------|---------|-------------------|-----------------|-------------|----------------|
@@ -109,4 +128,4 @@ SQLite, DuckDB, Beancount, Snowflake, and Teradata are not monitored.
 | [Cloudflare D1](/databases/cloudflare-d1) | Cloud API | No | No | No | No | No | No |
 | [libSQL / Turso](/databases/libsql) | URL | No | No | No | No | No | No |
 
-A driver with no SSL/TLS pane is either a local file or an HTTPS API that manages its own encryption. [SSL/TLS](/connections/ssl) has the per-driver defaults.
+SQLite is the one driver offering **Remote Database File**; it reaches an SSH server without forwarding a port. A driver with no SSL/TLS column is either a local file or an HTTPS API that manages its own encryption. [SSL/TLS](/connections/ssl) has the per-driver defaults.

@@ -1,31 +1,16 @@
 //
-//  SOCKSProxyPaneView.swift
+//  SOCKSProxyTransportSections.swift
 //  TablePro
 //
 
 import SwiftUI
 
-struct SOCKSProxyPaneView: View {
+struct SOCKSProxyTransportSections: View {
     @Bindable var coordinator: ConnectionFormCoordinator
 
     var body: some View {
-        Form {
-            Section {
-                Toggle(String(localized: "Enable SOCKS Proxy"), isOn: $coordinator.socksProxy.state.enabled)
-            } footer: {
-                Text("Routes this connection through a SOCKS5 proxy. The database hostname is resolved by the proxy, so names that only resolve behind it still work.")
-            }
-
-            if coordinator.socksProxy.state.enabled {
-                if !coordinator.otherEnabledTunnels(excluding: .socksProxy).isEmpty {
-                    TunnelExclusivityBanner(coordinator: coordinator, currentKind: .socksProxy)
-                }
-                serverSection
-                credentialsSection
-            }
-        }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
+        serverSection
+        credentialsSection
     }
 
     private var serverSection: some View {
@@ -36,6 +21,7 @@ struct SOCKSProxyPaneView: View {
                 prompt: Text(verbatim: "proxy.example.com")
             )
             .autocorrectionDisabled()
+            .accessibilityIdentifier("connection-form-socks-host")
             TextField(
                 String(localized: "Port"),
                 text: $coordinator.socksProxy.state.port,

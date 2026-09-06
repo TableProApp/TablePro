@@ -3,7 +3,7 @@ title: SSH Tunneling
 description: Route database connections through an SSH tunnel to reach servers in private networks
 ---
 
-The database **Host** on the General pane is resolved from the SSH server, not from your Mac. A database on the SSH server itself is therefore `localhost`, not the server's public name, and a database elsewhere on the private network is whatever the SSH server calls it (an RDS endpoint, for instance).
+The database **Host** on the General section is resolved from the SSH server, not from your Mac. A database on the SSH server itself is therefore `localhost`, not the server's public name, and a database elsewhere on the private network is whatever the SSH server calls it (an RDS endpoint, for instance).
 
 ```mermaid
 flowchart LR
@@ -14,7 +14,7 @@ flowchart LR
 
 <Steps>
   <Step title="Turn the tunnel on">
-    In the connection form, open the **SSH Tunnel** pane and switch on **Enable SSH Tunnel**. A connection uses one transport at a time; if a Cloudflare tunnel, Cloud SQL Auth Proxy, or SOCKS proxy is already on, the pane offers a button to switch it off.
+    In the connection form, open the **Network** tab and set **Connect via** to **SSH Tunnel**. A connection uses one transport, so choosing this one switches off whichever was selected before.
   </Step>
   <Step title="Name the SSH server">
     Fill in **SSH Host**, **SSH Port** (22 by default), and **SSH User**. With `~/.ssh/config` entries present, a **Config Host** picker appears above the host field instead.
@@ -30,14 +30,14 @@ flowchart LR
   </Step>
 </Steps>
 
-To share one SSH config across connections, save it with **Save Current as Profile…** or pick an existing one from the **Profile** picker; see [SSH Profiles](/connections/ssh-profiles). To fill the whole pane from a string instead, paste a `scheme+ssh://` URL into the [Import from URL…](/connections/urls#ssh-tunnel-format) sheet.
+To share one SSH config across connections, save it with **Save Current as Profile…** or pick an existing one from the **Profile** picker; see [SSH Profiles](/connections/ssh-profiles). To fill the fields from a string instead, paste a `scheme+ssh://` URL into the [Import from URL…](/connections/urls#ssh-tunnel-format) sheet.
 
 <Frame caption="Reusing a saved SSH profile">
-  <img className="block dark:hidden" src="/images/ssh-tunnel-config.png" alt="SSH Tunnel pane with a saved profile selected" />
-  <img className="hidden dark:block" src="/images/ssh-tunnel-config-dark.png" alt="SSH Tunnel pane with a saved profile selected" />
+  <img className="block dark:hidden" src="/images/ssh-tunnel-config.png" alt="Network section with SSH Tunnel selected and a saved profile in the Profile picker" />
+  <img className="hidden dark:block" src="/images/ssh-tunnel-config-dark.png" alt="Network section with SSH Tunnel selected and a saved profile in the Profile picker" />
 </Frame>
 
-There is no **SSH Tunnel** pane on SQLite, PGlite, libSQL, Beancount, BigQuery, Cloudflare D1, DynamoDB, Elasticsearch, or Snowflake: each is reached over a local file, a loopback socket, or a vendor HTTP API.
+**SSH Tunnel** is not offered on SQLite, PGlite, libSQL, Beancount, BigQuery, Cloudflare D1, DynamoDB, Elasticsearch, or Snowflake: each is reached over a local file, a loopback socket, or a vendor HTTP API.
 
 ## Authentication methods
 
@@ -90,7 +90,7 @@ With the list left empty and an SSH host that matches a config entry carrying `P
 
 ## Forwarding to a unix socket
 
-Some servers listen on a unix socket with no TCP port open at all, a PostgreSQL box set up for `local` connections in `pg_hba.conf` being the usual case. Fill in **Socket Path** on the General pane and the forward targets that socket, the same thing `ssh -L 5434:/var/run/postgresql/.s.PGSQL.5432 server` does by hand. **Host** and **Port** are ignored while a socket path is set. Jump hosts still apply: the hops reach the SSH server, and the socket opens from there.
+Some servers listen on a unix socket with no TCP port open at all, a PostgreSQL box set up for `local` connections in `pg_hba.conf` being the usual case. Fill in **Socket Path** under **SSH Tunnel** and the forward targets that socket, the same thing `ssh -L 5434:/var/run/postgresql/.s.PGSQL.5432 server` does by hand. **Host** and **Port** are ignored while a socket path is set. Jump hosts still apply: the hops reach the SSH server, and the socket opens from there.
 
 Point at the socket file, not the directory holding it:
 
@@ -126,7 +126,7 @@ The socket path does not exist on the server, or `sshd_config` sets `AllowStream
 
 ### "No SSH agent answered on the socket from …"
 
-Nothing is listening where that socket points, and the message names which of the three set it: **Agent Socket** on the SSH Tunnel pane, an `IdentityAgent` line for the host in `~/.ssh/config`, or `SSH_AUTH_SOCK`. Change it in the place the message names.
+Nothing is listening where that socket points, and the message names which of the three set it: **Agent Socket** under **SSH Tunnel**, an `IdentityAgent` line for the host in `~/.ssh/config`, or `SSH_AUTH_SOCK`. Change it in the place the message names.
 
 `SSH_AUTH_SOCK` is the one that catches people out. An app launched from Finder gets it from launchd, which means the `ssh-agent` macOS runs, whatever a shell profile exports. 1Password and Secretive are reached by naming their own socket: switch **Agent Socket** to **1Password**, or to **Custom Path**.
 

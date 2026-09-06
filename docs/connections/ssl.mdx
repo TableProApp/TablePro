@@ -15,7 +15,7 @@ Managed databases require TLS, every one of them, from RDS and Cloud SQL to Supa
 | Verify CA | TLS, and the certificate is validated against the trust store. The hostname is not checked |
 | Verify Identity | TLS, certificate validated, and the hostname must match the certificate subject |
 
-<Frame caption="SSL/TLS pane in the connection form">
+<Frame caption="SSL mode and certificates below the transport picker">
   <img className="block dark:hidden" src="/images/connection-ssl-settings.png" alt="SSL mode and certificate settings in the connection form" />
   <img className="hidden dark:block" src="/images/connection-ssl-settings-dark.png" alt="SSL mode and certificate settings in the connection form" />
 </Frame>
@@ -35,7 +35,7 @@ SQL Server shows no certificate fields at all. FreeTDS takes no per-connection p
 
 ## Per-driver defaults
 
-A new connection starts on the mode that matches the driver's own default, and the pane prints that driver's guidance under the picker where there is any.
+A new connection starts on the mode that matches the driver's own default, and the driver's own guidance prints under the picker where there is any.
 
 | Driver | Default | What Preferred does |
 |---|---|---|
@@ -44,11 +44,11 @@ A new connection starts on the mode that matches the driver's own default, and t
 | SQL Server | Preferred | FreeTDS `encryption=request`, falls back to plain |
 | Teradata | Disabled | Opens a TLS transport, retries on a plain socket if it fails to come up |
 | MongoDB, Redis, Cassandra, ClickHouse, Elasticsearch, SurrealDB | Disabled | Nothing. No fallback exists, so Preferred forces TLS exactly like Required |
-| etcd | Disabled | Nothing. The driver never reads this pane. Set **TLS Mode** in the Advanced fields instead, and see [etcd](/databases/etcd) |
+| etcd | Disabled | Nothing. The driver never reads these fields. Set **TLS Mode** on the Options section instead, and see [etcd](/databases/etcd) |
 | Trino | Disabled | Sends every request over HTTPS with no fallback, again like Required |
-| Oracle | Disabled | Connects in plain TCP, so it behaves like Disabled. The pane shows a red warning; use Required to enforce TCPS |
-| Snowflake, BigQuery, DynamoDB, Cloudflare D1, libSQL / Turso | Always encrypted | These drivers are HTTPS and manage TLS themselves. No SSL/TLS pane |
-| SQLite, DuckDB, Beancount, PGlite | None | Local files or an in-process engine. No SSL/TLS pane |
+| Oracle | Disabled | Connects in plain TCP, so it behaves like Disabled. A red warning appears under the picker; use Required to enforce TCPS |
+| Snowflake, BigQuery, DynamoDB, Cloudflare D1, libSQL / Turso | Always encrypted | These drivers are HTTPS and manage TLS themselves. No SSL/TLS section |
+| SQLite, DuckDB, Beancount, PGlite | None | Local files or an in-process engine. No SSL/TLS section |
 
 ## Behind a tunnel
 

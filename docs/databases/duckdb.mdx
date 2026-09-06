@@ -90,7 +90,7 @@ SELECT * FROM read_parquet('analytics.parquet');
 - A DuckDB file takes one writer at a time. A connect against a file another process holds fails, naming that process. Quit the `duckdb` CLI, the Python process or the other TablePro window first.
 - A data file opened through **Browse…** is read-only, and the file on disk is left byte for byte identical. To change its contents, open a `.duckdb` database and run `CREATE TABLE t AS SELECT * FROM 'data.parquet'`.
 - Remote (Quack) lists no tables in the sidebar. Write them out by name through the alias.
-- No SSL/TLS pane and no SSH tunnel. The engine is in-process; see [SSL/TLS](/connections/ssl).
+- No SSL/TLS section and no SSH tunnel. The engine is in-process; see [SSL/TLS](/connections/ssl).
 - No creating or dropping a database. `ATTACH` is the way to reach a second file.
 
 ## Troubleshooting

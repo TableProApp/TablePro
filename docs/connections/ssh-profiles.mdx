@@ -8,7 +8,7 @@ One bastion, many connections. A profile holds the server (host, port, username)
 ## Create a profile
 
 <Steps>
-  <Step title="Open any connection's SSH Tunnel pane">
+  <Step title="Select SSH Tunnel on any connection">
     **Create New Profile…** sits beside the **Profile** picker.
   </Step>
   <Step title="Fill in the server and authentication fields">
@@ -34,7 +34,7 @@ One bastion, many connections. A profile holds the server (host, port, username)
 
 **Edit Profile…** opens the selected profile, and **Delete Profile** is at the bottom of that editor. The password, key passphrase, and TOTP secret are read from the profile at connect time, so correcting one there reaches every connection using it.
 
-Deleting a profile leaves the connections that used it pointing at nothing. Each shows **Selected SSH profile no longer exists.** on its SSH Tunnel pane, with a **Switch to Inline Configuration** button, until it is given a tunnel config again.
+Deleting a profile leaves the connections that used it pointing at nothing. Each shows **Selected SSH profile no longer exists.** under **SSH Tunnel**, with a **Switch to Inline Configuration** button, until it is given a tunnel config again.
 
 ## iCloud Sync
 

@@ -1,16 +1,17 @@
 //
-//  CustomizationPaneView.swift
+//  AppearancePaneView.swift
 //  TablePro
 //
 
 import SwiftUI
 
-struct CustomizationPaneView: View {
+/// How this connection is recognised in the connection list and the window chrome.
+struct AppearancePaneView: View {
     @Bindable var coordinator: ConnectionFormCoordinator
 
     var body: some View {
         Form {
-            Section(String(localized: "Appearance")) {
+            Section {
                 LabeledContent(String(localized: "Color")) {
                     ConnectionColorPicker(selectedColor: $coordinator.customization.color)
                 }
@@ -20,14 +21,10 @@ struct CustomizationPaneView: View {
                 LabeledContent(String(localized: "Group")) {
                     ConnectionGroupPicker(selectedGroupId: $coordinator.customization.groupId)
                 }
-            }
-
-            Section(String(localized: "Query Behavior")) {
-                Picker(String(localized: "Safe Mode"), selection: $coordinator.customization.safeModeLevel) {
-                    ForEach(SafeModeLevel.allCases) { level in
-                        Text(level.displayName).tag(level)
-                    }
-                }
+            } footer: {
+                Text(String(localized: "The color marks this connection in the connection list and its window."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

@@ -12,12 +12,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copy To across database engines, with every type approximation listed before the copy runs. (#1491)
 - Per-table `WHERE` and row limit in Copy To. (#1491)
 - Server-side `INSERT … SELECT` when a copy's two sides are one connection. (#1491)
-- Tunnel Command pane, with presets for `kubectl port-forward` and `aws ssm start-session` and a custom command line. (#2520)
+- Tunnel Command transport, with presets for `kubectl port-forward` and `aws ssm start-session` and a custom command line. (#2520)
 - Bar chart column in the EXPLAIN tree, with a Metric menu for self cost, self time and row counts. (#2633)
+- Database type change from inside the connection editor.
+- The reason Save is unavailable, next to the Save button in the connection editor.
 - Approval setting for MCP connection access, with the list of approved connections and a Forget action. (#2640)
+
+### Changed
+
+- Connection editor rebuilt around a sidebar of four sections, General, Network, Options and Appearance, in place of up to eleven panes.
+- One Connect via picker for SSH, Cloudflare, Cloud SQL Auth Proxy, SOCKS and Tunnel Command, in place of five Enable switches.
+- Save, Cancel and Test Connection on a bottom action bar instead of the titlebar.
+- `Use ~/.pgpass` below Username rather than above it.
+- Tab moves focus out of Startup Commands and Pre-Connect Script instead of inserting a tab.
 
 ### Fixed
 
+- Connection with two transports enabled reaching the database directly, with neither transport applied.
+- Delete Connection missing from the connection editor since 0.39.0.
+- Continue dimmed after filtering the database chooser down to one driver.
+- Down arrow not reaching the list from the database chooser's search field.
+- VoiceOver reading a database chooser row's icon before the driver's name.
 - Animations that played through the Reduce Motion setting when removing a jump host or copying DDL or a query plan.
 - Icon-only controls with no VoiceOver name or tooltip in the date picker, row inspector and slash command settings.
 - `is_connected` reported as true over MCP for a connection that had stopped answering.
