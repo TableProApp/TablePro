@@ -37,6 +37,18 @@ internal struct FieldEditorContent: View {
         }
     }
 
+    /// Which fields the expand control belongs on. A blob or an image editor draws at a fixed size
+    /// and ignores `isExpanded`, so offering the control there flipped an icon and resized nothing;
+    /// a field showing a pending NULL or DEFAULT pill has no editor on screen to grow either.
+    internal static func canExpand(kind: FieldEditorKind, state: FieldValueState) -> Bool {
+        guard !state.isPending else { return false }
+        switch kind {
+        case .json, .phpSerialized, .multiLine: return true
+        case .image, .blobHex, .boolean, .enumPicker, .setPicker, .typePicker, .schemaText, .singleLine:
+            return false
+        }
+    }
+
     /// Only the pill takes a height from here. Every editor owns its own, and forcing one on the
     /// resizable ones from outside would stop the drag handle shrinking them past this floor.
     private static func pillHeight(for kind: FieldEditorKind) -> CGFloat? {

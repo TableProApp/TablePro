@@ -56,14 +56,15 @@ final class InspectorFieldAffordanceUITests: UITestCase {
 
     /// A row is as wide as the grid and a column is published as its sibling, so XCUITest reads
     /// every row and cell as obscured and refuses to click either. A point offset from the grid is
-    /// the way in, and `dy` has to clear the 42pt header or the click opens the column menu.
+    /// the way in. `gridPoint` is what keeps that point clear of the object browser, which overlaps
+    /// the grid on the 1024x768 runner, and `dy` clears the 42pt header so the click does not open
+    /// the column menu. The row is selected before the inspector opens, so the reveal cannot move
+    /// the grid out from under the coordinate.
     private func openFirstTableRow(in app: XCUIApplication, window: XCUIElement) throws -> XCUIElement {
         let grid = window.tables.matching(identifier: "data-grid").firstMatch
         XCTAssertTrue(grid.waitToExist(timeout: 30), "The sample table must produce a grid")
+        gridPoint(in: grid, of: window, dy: 70).click()
         showInspector(in: app)
-        grid.coordinate(withNormalizedOffset: .zero)
-            .withOffset(CGVector(dx: 60, dy: 70))
-            .click()
         return grid
     }
 

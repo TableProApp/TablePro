@@ -274,7 +274,7 @@ extension MainContentView {
         for tab: QueryTab,
         columns: [String],
         types: [ColumnType?]
-    ) -> [ValueDisplayFormat] {
+    ) -> [ValueDisplayFormat?] {
         let service = ValueDisplayFormatService.shared
         let scope = tab.tableContext.scope(connectionId: coordinator.connection.id)
         let storageKeys = ValueDisplayFormatColumnKey.storageKeys(for: columns)
@@ -286,13 +286,18 @@ extension MainContentView {
             ? storageKeys.map { service.effectiveFormat(columnKey: $0, scope: scope) }
             : []
         return columns.indices.map { index in
-            InspectorValueDisplayFormatResolver.resolve(
+            let resolved = InspectorValueDisplayFormatResolver.resolve(
                 columnIndex: index,
                 activeFormats: activeFormats,
                 storedFormat: storedFormats.indices.contains(index) ? storedFormats[index] : .raw,
                 columnType: index < types.count ? types[index] : nil,
                 databaseType: coordinator.connection.type
             )
+            /// `.raw` is what the resolver returns for "nobody chose a format", and it is also what
+            /// `FieldEditorResolver` reads as "skip JSON, PHP and image detection". Forwarding it
+            /// would take the content-driven editors away from every column that has no override,
+            /// which is nearly all of them, so absence stays nil.
+            return resolved == .raw ? nil : resolved
         }
     }
 

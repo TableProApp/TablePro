@@ -63,10 +63,17 @@ internal struct InspectorFieldListView: View {
             .toggleStyle(.button)
             .controlSize(.small)
             .help(String(localized: "Show edited fields only"))
-            .disabled(!editState.hasEdits && !showsModifiedOnly)
+            .disabled(!hasAnyModification && !showsModifiedOnly)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
+    }
+
+    /// A structure row's edits are recorded by its own grid, so `hasEdits` stays false while
+    /// `hasCommittedEdit` is true. Gating on pending edits alone left the filter permanently
+    /// unusable on exactly the rows it lists as modified.
+    private var hasAnyModification: Bool {
+        editState.fields.contains { $0.hasEdit || $0.hasCommittedEdit }
     }
 
     private var visibleFields: [FieldEditState] {
@@ -128,7 +135,7 @@ internal struct InspectorFieldListView: View {
             onSetDefault: { editState.setFieldToDefault(at: field.columnIndex) },
             onSetEmpty: { editState.setFieldToEmpty(at: field.columnIndex) },
             onSetFunction: { editState.setFieldToFunction(at: field.columnIndex, function: $0) },
-            onToggleExpand: InspectorFieldLayout.resolve(for: kind) == .stacked
+            onToggleExpand: FieldEditorContent.canExpand(kind: kind, state: FieldValueState.resolve(field))
                 ? { expandedFieldID = expandedFieldID == field.id ? nil : field.id }
                 : nil,
             onPopOut: { onPopOut?(field, $0, kind) },

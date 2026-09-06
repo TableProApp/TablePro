@@ -20,8 +20,11 @@ internal struct ResizableEditorContainer<Content: View>: View {
     @State private var isHandleHovered = false
 
     private var resolvedHeight: Double {
-        if let expandedHeight { return expandedHeight }
-        return ResizableFieldMetrics.resolve(base: height, delta: liveDelta, range: range)
+        let dragged = ResizableFieldMetrics.resolve(base: height, delta: liveDelta, range: range)
+        /// Never below what the user already dragged. The allowed ranges reach 600, so a field
+        /// enlarged past the expanded height would otherwise shrink when asked to expand.
+        if let expandedHeight { return max(expandedHeight, dragged) }
+        return dragged
     }
 
     var body: some View {

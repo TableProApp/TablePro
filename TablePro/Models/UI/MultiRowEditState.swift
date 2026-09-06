@@ -94,7 +94,7 @@ final class MultiRowEditState {
         primaryKeyColumns: Set<String> = [],
         foreignKeyColumns: Set<String> = [],
         serverOwnedColumns: Set<String> = [],
-        displayFormats: [ValueDisplayFormat] = []
+        displayFormats: [ValueDisplayFormat?] = []
     ) {
         // Check if the underlying data has changed (not just edits)
         let columnsChanged = self.columns != columns

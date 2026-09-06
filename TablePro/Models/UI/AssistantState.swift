@@ -18,11 +18,13 @@ import Foundation
 
     @ObservationIgnored private var activatedViewModel: AIChatViewModel?
 
+    /// Observable, unlike the view model itself, so the window can seed the assistant's context the
+    /// moment it comes into existence. The last context update ran before it did and skipped it.
+    internal private(set) var isActivated = false
+
     /// Nil until something actually needs the assistant. Readers that only want to talk to a live
     /// assistant take this and do nothing when it is nil, rather than bringing one into existence.
     internal var viewModelIfActivated: AIChatViewModel? { activatedViewModel }
-
-    internal var isActivated: Bool { activatedViewModel != nil }
 
     /// Builds the view model on first call and returns the same one afterwards.
     @discardableResult
@@ -30,6 +32,7 @@ import Foundation
         if let activatedViewModel { return activatedViewModel }
         let viewModel = AIChatViewModel()
         activatedViewModel = viewModel
+        isActivated = true
         return viewModel
     }
 

@@ -32,18 +32,37 @@ internal struct RowInspectorView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
+    /// The field list stays mounted and is hidden rather than rebuilt.
+    ///
+    /// It owns its search term, its edited-only setting, which field is expanded, which field has
+    /// focus and the `List`'s scroll position, and none of that survives leaving the hierarchy.
+    /// Rebuilding it also rebuilds a row per column, which is what scales on a wide table. The JSON
+    /// rendering is cheap to rebuild and keeps its own reader state in `jsonViewModel`, so it stays
+    /// conditional.
     @ViewBuilder
     private var content: some View {
         if context.hasRow {
-            switch state.viewMode {
-            case .fields: fieldsMode
-            case .json: jsonMode
+            ZStack(alignment: .topLeading) {
+                fieldsMode
+                    .opacity(showsFields ? 1 : 0)
+                    .allowsHitTesting(showsFields)
+                    .accessibilityHidden(!showsFields)
+
+                if !showsFields {
+                    jsonMode
+                }
             }
         } else if let metadata = context.tableMetadata {
             TableInfoView(metadata: metadata)
         } else {
             emptyState
         }
+    }
+
+    /// The JSON rendering only exists for a data-grid row, because a schema grid's selection is a
+    /// column definition with no types and no foreign keys to follow.
+    private var showsFields: Bool {
+        state.viewMode == .fields || context.jsonRow == nil
     }
 
     private var fieldsMode: some View {
@@ -56,21 +75,14 @@ internal struct RowInspectorView: View {
         )
     }
 
-    /// The JSON rendering only exists for a data-grid row, because a schema grid's selection is a
-    /// column definition with no types and no foreign keys to follow.
-    @ViewBuilder
     private var jsonMode: some View {
-        if context.jsonRow != nil {
-            JSONRowInspectorView(
-                viewModel: state.jsonViewModel,
-                snapshot: context.jsonRow,
-                onOpenReferencedTable: { reference, value in
-                    commandActions?.openForeignKeyTable(reference: reference, value: value)
-                }
-            )
-        } else {
-            fieldsMode
-        }
+        JSONRowInspectorView(
+            viewModel: state.jsonViewModel,
+            snapshot: context.jsonRow,
+            onOpenReferencedTable: { reference, value in
+                commandActions?.openForeignKeyTable(reference: reference, value: value)
+            }
+        )
     }
 
     private var emptyState: some View {

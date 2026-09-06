@@ -50,7 +50,10 @@ extension MainWindowToolbar: NSToolbarItemValidation {
         case Self.connection, Self.history:
             return true
         case Self.assistant:
-            return AppSettingsManager.shared.ai.enabled
+            /// The View menu command already gates on the window showing content. Without the same
+            /// gate here the button stays live over a disconnected session and uncollapses the
+            /// assistant beside a connection that cannot answer.
+            return context.connected && AppSettingsManager.shared.ai.enabled
         case Self.database:
             return context.connected && !context.fileBased && context.supportsContainerSwitching
         case Self.refresh, Self.quickSwitcher, Self.newTab, Self.exportTables:

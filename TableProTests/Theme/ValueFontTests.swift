@@ -81,8 +81,8 @@ struct ValueFontTests {
     /// their own toolbar and placeholders and present the same way in a pop-out window.
     @Test("The inspector sets the value font on its editor subtree")
     func inspectorSetsTheValueFontOnce() throws {
-        let source = try source(of: "TablePro/Views/RightSidebar/EditableFieldView.swift")
-        #expect(source.contains(".font(inheritedValueFont(for: kind))"))
+        let source = try source(of: "TablePro/Views/RowInspector/InspectorFieldRow.swift")
+        #expect(source.contains(".font(Self.valueFont(for: kind))"))
         #expect(source.contains("ThemeEngine.shared.valueFontSwiftUI"))
         /// The opt-out list, spelled out so a kind cannot join it silently. Every member carries its
         /// own toolbar and presents in a pop-out window too, so each names the value font on its own
@@ -96,16 +96,16 @@ struct ValueFontTests {
     @Test("Every value view outside the inspector resolves the value font")
     func standaloneValueViewsResolveTheValueFont() throws {
         let paths = [
-            "TablePro/Views/RightSidebar/FieldEditors/MultiLineEditorView.swift",
-            "TablePro/Views/RightSidebar/FieldEditors/PendingStateOverlay.swift",
-            "TablePro/Views/RightSidebar/FieldEditors/SetPickerView.swift",
+            "TablePro/Views/RowInspector/FieldEditors/MultiLineEditorView.swift",
+            "TablePro/Views/RowInspector/FieldEditors/FieldEditorContent.swift",
+            "TablePro/Views/RowInspector/FieldEditors/SetPickerView.swift",
             "TablePro/Views/Results/CellOverlayEditor.swift",
             "TablePro/Views/Results/CellOverlayViewer.swift",
             "TablePro/Views/Results/TextViewerWindowController.swift",
             "TablePro/Views/Results/HexEditorContentView.swift",
             "TablePro/Views/Results/SvgViewerContentView.swift",
             "TablePro/Views/Results/CellImageWindowController.swift",
-            "TablePro/Views/RightSidebar/FieldEditors/ImageFieldView.swift",
+            "TablePro/Views/RowInspector/FieldEditors/ImageFieldView.swift",
             "TablePro/Views/Results/ForeignKeyPreviewView.swift",
             "TablePro/Views/Results/ArrayValueEditorView.swift",
             "TablePro/Views/Results/SetPopoverContentView.swift",
@@ -134,7 +134,7 @@ struct ValueFontTests {
     func fieldEditorsNameNoSystemTextStyle() throws {
         let banned = [".font(.subheadline)", "preferredFont(forTextStyle:", ".font(.system("]
         let directory = Self.repositoryRoot
-            .appendingPathComponent("TablePro/Views/RightSidebar/FieldEditors")
+            .appendingPathComponent("TablePro/Views/RowInspector/FieldEditors")
         let contents = try FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: nil

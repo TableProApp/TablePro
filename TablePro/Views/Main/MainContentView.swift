@@ -305,6 +305,9 @@ struct MainContentView: View {
                     "[open] MainContentView.onAppear done windowId=\(windowId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
                 )
             }
+            .onChange(of: trailingPaneState.assistant.isActivated) {
+                updateAssistantContext()
+            }
             .onChange(of: pendingChangeTrigger) {
                 updateToolbarPendingState()
             }
