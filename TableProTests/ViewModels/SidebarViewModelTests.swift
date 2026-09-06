@@ -5,6 +5,7 @@
 //  Tests for SidebarViewModel — the extracted business logic from SidebarView.
 //
 
+import AppKit
 import Foundation
 import SwiftUI
 import Testing
@@ -17,6 +18,12 @@ private final class SidebarMockClipboard: ClipboardProvider {
     func readGridRows() -> GridRowsClipboardPayload? { nil }
     func writeText(_ text: String) { lastWrittenText = text }
     func writeCsv(_ csv: String) { lastWrittenText = csv }
+
+    var copiedImages: [NSImage] = []
+
+    func writeImage(_ image: NSImage) {
+        copiedImages.append(image)
+    }
     func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload) { lastWrittenText = tsv }
     var hasText: Bool { lastWrittenText != nil }
     var hasGridRows: Bool { false }

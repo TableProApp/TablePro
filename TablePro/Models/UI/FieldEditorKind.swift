@@ -8,6 +8,7 @@ import Foundation
 internal enum FieldEditorKind: Equatable {
     case json
     case phpSerialized
+    case image(CellImageFormat)
     case blobHex
     case boolean
     case enumPicker(values: [String])

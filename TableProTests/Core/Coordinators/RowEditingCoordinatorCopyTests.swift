@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import AppKit
 import Foundation
 import SwiftUI
 import TableProPluginKit
@@ -19,6 +20,12 @@ private final class RowEditingCopyClipboard: ClipboardProvider {
     func readGridRows() -> GridRowsClipboardPayload? { nil }
     func writeText(_ text: String) { self.text = text; hasGridRowsValue = false }
     func writeCsv(_ csv: String) { text = csv; hasGridRowsValue = false }
+
+    var copiedImages: [NSImage] = []
+
+    func writeImage(_ image: NSImage) {
+        copiedImages.append(image)
+    }
     func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload) { text = tsv; hasGridRowsValue = true }
     var hasText: Bool { text != nil }
     var hasGridRows: Bool { hasGridRowsValue }

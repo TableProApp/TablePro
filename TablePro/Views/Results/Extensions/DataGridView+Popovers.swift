@@ -151,6 +151,8 @@ extension TableViewCoordinator {
 
     func showBlobEditorPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         let currentValue = blobStringValue(at: row, columnIndex: columnIndex)
+        let columnName = columnName(at: columnIndex)
+        let image = blobImage(at: row, columnIndex: columnIndex)
 
         guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
@@ -159,10 +161,13 @@ extension TableViewCoordinator {
         activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,
             of: tableView,
-            contentSize: NSSize(width: 520, height: 400)
+            contentSize: nil
         ) { [weak self] dismiss in
-            HexEditorContentView(
+            BlobPopoverContentView(
                 initialValue: currentValue,
+                image: image,
+                columnName: columnName,
+                isEditable: true,
                 onCommit: { newValue in
                     self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
                 },
@@ -505,6 +510,8 @@ extension TableViewCoordinator {
 
     func showBlobViewerPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         let currentValue = blobStringValue(at: row, columnIndex: columnIndex)
+        let columnName = columnName(at: columnIndex)
+        let image = blobImage(at: row, columnIndex: columnIndex)
 
         guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
@@ -514,11 +521,79 @@ extension TableViewCoordinator {
             of: tableView,
             contentSize: nil
         ) { dismiss in
-            HexEditorContentView(
+            BlobPopoverContentView(
                 initialValue: currentValue,
+                image: image,
+                columnName: columnName,
                 isEditable: false,
                 onDismiss: dismiss
             )
+        }
+    }
+
+    func showSvgViewerPopover(
+        tableView: NSTableView,
+        row: Int,
+        column: Int,
+        columnIndex: Int,
+        isEditable: Bool
+    ) {
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
+        let columnName = columnName(at: columnIndex)
+        let value = cellValue(at: row, column: columnIndex) ?? ""
+
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        dismissActiveCellEditorPopover()
+        activeCellEditorPopover = PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView,
+            contentSize: nil
+        ) { [weak self] dismiss in
+            SvgViewerContentView(
+                initialValue: value,
+                isEditable: isEditable,
+                onDismiss: dismiss,
+                onCommit: isEditable ? { newValue in
+                    self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
+                } : nil,
+                onPopOut: { currentText in
+                    dismiss()
+                    CellImageWindowController.open(
+                        data: Data(currentText.utf8),
+                        format: .svg,
+                        sourceKind: .markup,
+                        columnName: columnName
+                    )
+                }
+            )
+        }
+    }
+
+    private func displayFormatOverride(at columnIndex: Int) -> ValueDisplayFormat? {
+        guard columnIndex >= 0, columnIndex < columnDisplayFormats.count else { return nil }
+        return columnDisplayFormats[columnIndex]
+    }
+
+    private func columnName(at columnIndex: Int) -> String? {
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return nil }
+        return tableRows.columns[columnIndex]
+    }
+
+    /// The cell's stored bytes paired with what they turned out to be, or nil when they are not an
+    /// image or the column asked for its value raw.
+    private func blobImage(at row: Int, columnIndex: Int) -> CellImageValue? {
+        guard displayFormatOverride(at: columnIndex) != .raw else { return nil }
+        let value = cellTypedValue(at: row, column: columnIndex)
+        switch value {
+        case .null:
+            return nil
+        case .bytes(let bytes):
+            guard let format = CellImageSniffer.format(of: bytes) else { return nil }
+            return CellImageValue(data: bytes, format: format)
+        case .text(let text):
+            guard let format = CellImageSniffer.format(ofText: text) else { return nil }
+            return CellImageValue(data: text.storedBytes, format: format)
         }
     }
 

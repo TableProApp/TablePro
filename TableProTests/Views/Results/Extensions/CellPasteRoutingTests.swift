@@ -31,6 +31,12 @@ private final class StubClipboard: ClipboardProvider {
     func readGridRows() -> GridRowsClipboardPayload? { nil }
     func writeText(_ text: String) { self.text = text; hasGridRowsValue = false }
     func writeCsv(_ csv: String) { self.text = csv; hasGridRowsValue = false }
+
+    var copiedImages: [NSImage] = []
+
+    func writeImage(_ image: NSImage) {
+        copiedImages.append(image)
+    }
     func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload) {
         self.text = tsv
         hasGridRowsValue = true

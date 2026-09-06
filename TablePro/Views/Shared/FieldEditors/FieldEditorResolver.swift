@@ -53,8 +53,13 @@ internal enum FieldEditorResolver {
             if type.isJsonType || (originalValue ?? "").looksLikeJson {
                 return .json
             }
-            if CellValueContentDetector.detect(originalValue ?? "") == .phpSerialized {
+            switch CellValueContentDetector.detect(originalValue ?? "") {
+            case .phpSerialized:
                 return .phpSerialized
+            case .image(let format):
+                return .image(format)
+            case .json, .plain:
+                break
             }
         }
         if type.isEnumType, let values = type.enumValues, !values.isEmpty {
