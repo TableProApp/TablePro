@@ -22,7 +22,7 @@ There is no Database field. One connection reaches one cluster and its collectio
 | **Host** | Node hostname. `localhost` for a local server, `xxx.a1.typesense.net` for Typesense Cloud |
 | **Port** | `8108` by default. Typesense Cloud answers on `443` |
 | **API Key** | Sent as `X-TYPESENSE-API-KEY` on every request. Stored in the Keychain |
-| **Skip TLS Verification** | Advanced section. Trusts any certificate, even under **Verify CA** or **Verify Identity** |
+| **Skip TLS Verification** | Options tab. Trusts any certificate, even under **Verify CA** or **Verify Identity** |
 
 ## Connection URL
 
@@ -49,13 +49,13 @@ A page is read in requests of 250 documents, the most Typesense returns at once,
 Column filters become a `filter_by` expression.
 
 | Operator | Sent as |
-|----------|---------|
-| **=** / **!=** | ``field:=`value` `` and ``field:!=`value` ``. Numbers and booleans go unquoted |
-| **>**, **>=**, **<**, **<=** | `field:>value`. Numeric fields only |
-| **BETWEEN** | `field:[low..high]`, inclusive at both ends |
-| **IN** / **NOT IN** | ``field:=[`a`,`b`]`` and ``field:!=[`a`,`b`]`` |
-| **CONTAINS** / **NOT CONTAINS** | ``field:`word` `` and ``field:!`word` ``, matched a whole word at a time |
-| **STARTS WITH** | ``field:`val`* `` |
+|---|---|
+| equals, not equals | ``field:=`value` ``, ``field:!=`value` ``. Numbers and booleans go unquoted |
+| greater than, greater or equal, less than, less or equal | `field:>value`, `field:>=value`, `field:<value`, `field:<=value`. Numeric fields only |
+| between | `field:[low..high]`, inclusive at both ends |
+| in list, not in list | ``field:=[`a`,`b`]``, ``field:!=[`a`,`b`]`` |
+| contains, not contains | ``field:`word` ``, ``field:!`word` ``, matched a whole word at a time |
+| starts with | ``field:`val`* `` |
 
 Rows join with `&&` or `||` to match the filter bar's **All** and **Any**.
 
@@ -63,7 +63,7 @@ The **Raw SQL** filter column is the exception: its text is sent as `filter_by` 
 
 String matching in Typesense always ignores case. The filter bar's case control is dimmed, and reads **Not supported by this database**.
 
-Six operators have no `filter_by` equivalent and are refused with a message rather than silently matching the wrong rows: **IS NULL**, **IS NOT NULL**, **IS EMPTY**, **IS NOT EMPTY**, **REGEX** and **ENDS WITH**. Use **CONTAINS** or a raw filter instead.
+Six operators have no `filter_by` equivalent and are refused with a message rather than silently matching the wrong rows: is NULL, is not NULL, is empty, is not empty, matches regex and ends with. Use contains or a raw filter instead.
 
 A filter value containing a backtick is refused for the same reason. Backticks are the only way Typesense quotes a value and it offers no escape for one inside it, so the rest of such a value would be read as filter syntax.
 
@@ -129,7 +129,7 @@ Creating a collection happens here, with `POST /collections`. The structure edit
 
 ## SSL/TLS
 
-The connection's SSL mode picks the scheme: **Disabled** talks HTTP, anything else talks HTTPS. Typesense Cloud is HTTPS on port 443. **Skip TLS Verification** in the Advanced section accepts any certificate, which covers a self-signed proxy in front of a local node. See [SSL/TLS](/connections/ssl) for the concepts.
+The connection's SSL mode picks the scheme: **Disabled** talks HTTP, anything else talks HTTPS. Typesense Cloud is HTTPS on port 443. **Skip TLS Verification** on the Options tab accepts any certificate, which covers a self-signed proxy in front of a local node. See [SSL/TLS](/connections/ssl) for the concepts.
 
 ## Limitations
 
@@ -137,7 +137,7 @@ The connection's SSL mode picks the scheme: **Disabled** talks HTTP, anything el
 - No views, no triggers, no routines, and no foreign keys. Typesense has none of them.
 - The structure editor is read-only. Change a schema with `POST /collections` and the collection alias endpoints in the console.
 - No import. Load documents with `POST /collections/:name/documents/import` in the console.
-- **IS NULL**, **IS NOT NULL**, **IS EMPTY**, **IS NOT EMPTY**, **REGEX** and **ENDS WITH** are refused in the filter bar. **ENDS WITH** needs a field created with `infix: true`, which the filter bar cannot reach.
+- is NULL, is not NULL, is empty, is not empty, matches regex and ends with are refused in the filter bar. Ends with needs a field created with `infix: true`, which the filter bar cannot reach.
 - A filter value containing a backtick is refused. Match on a value without one, or write the filter in the **Raw SQL** column.
 - No [SSH tunnel](/connections/ssh-tunneling), Cloudflare Tunnel, SOCKS proxy or tunnel command. Reach a private node through a reverse proxy.
 - The console takes a method and a path, not SQL. `DELETE FROM books` looks like an HTTP verb and a path, so it is refused rather than sent.

@@ -26,8 +26,8 @@ Click **Create Connection…**, select **Teradata**, enter the host, username, a
 | **Port** | Plain gateway port, default `1025` |
 | **Database** | Default database after logon. Optional; empty uses your account's default |
 | **Username / Password** | Teradata credentials |
-| **Logon Mechanism** | Advanced pane. `TD2` or `TDNEGO`, uppercase. Default `TD2` |
-| **Transaction Mode** | Advanced pane. `DEFAULT`, `ANSI`, or `TERA`, uppercase |
+| **Logon Mechanism** | Options section. `TD2` or `TDNEGO`, uppercase. Default `TD2` |
+| **Transaction Mode** | Options section. `DEFAULT`, `ANSI`, or `TERA`, uppercase |
 | **SSL Mode** | **SSL/TLS** pane. **Disabled** by default |
 
 Leave **Transaction Mode** on `DEFAULT`, which takes whatever the system is configured for, unless a script needs `ANSI` or `TERA` case sensitivity and commit rules on the session. A system reachable only through a bastion works over an [SSH tunnel](/connections/ssh-tunneling).

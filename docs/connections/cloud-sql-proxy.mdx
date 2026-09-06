@@ -7,9 +7,9 @@ import HelperPort from "/snippets/helper-port.mdx";
 
 One field carries the whole setup: the instance connection name, `project:region:instance`, which is on the instance's overview page in the Google Cloud console. The proxy itself runs as a child process, started on connect and killed on disconnect.
 
-<Frame caption="The Cloud SQL Auth Proxy pane in the connection form">
-  <img className="block dark:hidden" src="/images/cloud-sql-proxy-pane.png" alt="Cloud SQL Auth Proxy pane" />
-  <img className="hidden dark:block" src="/images/cloud-sql-proxy-pane-dark.png" alt="Cloud SQL Auth Proxy pane" />
+<Frame caption="Cloud SQL Auth Proxy selected on the Network tab">
+  <img className="block dark:hidden" src="/images/cloud-sql-proxy-pane.png" alt="Instance connection name, authentication and local listener fields" />
+  <img className="hidden dark:block" src="/images/cloud-sql-proxy-pane-dark.png" alt="Instance connection name, authentication and local listener fields" />
 </Frame>
 
 ## Before you start
@@ -32,7 +32,7 @@ Auto-detection covers your `PATH`, `/opt/homebrew/bin`, `/usr/local/bin`, and `~
 
 <Steps>
   <Step title="Enable the pane">
-    Select **Cloud SQL Auth Proxy** and turn **Enable Cloud SQL Auth Proxy** on. A connection carries one method at a time, so an SSH tunnel or SOCKS proxy already enabled has to be switched off here first.
+    On the **Network** tab, set **Connect via** to **Cloud SQL Auth Proxy**. A connection uses one transport, so choosing this one switches off whichever was selected before.
   </Step>
   <Step title="Name the instance and pick credentials">
     Enter the **Instance connection name**, then choose **Application Default Credentials** or **Service Account Key**.

@@ -41,14 +41,6 @@ final class CloudSQLProxyPaneViewModel {
             issues.append(String(localized: "A service account key is required"))
         }
 
-        for other in coordinator?.value?.otherEnabledTunnels(excluding: .cloudSQLProxy) ?? [] {
-            issues.append(String(
-                format: String(localized: "Cannot use %@ and %@ at the same time"),
-                other.kind.displayName,
-                ConnectionTunnelKind.cloudSQLProxy.displayName
-            ))
-        }
-
         return issues
     }
 

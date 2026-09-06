@@ -1,40 +1,19 @@
 //
-//  TunnelCommandPaneView.swift
+//  TunnelCommandTransportSections.swift
 //  TablePro
 //
 
 import SwiftUI
 
-struct TunnelCommandPaneView: View {
+struct TunnelCommandTransportSections: View {
     @Bindable var coordinator: ConnectionFormCoordinator
 
     private var viewModel: TunnelCommandPaneViewModel { coordinator.tunnelCommand }
 
     var body: some View {
-        Form {
-            Section {
-                Toggle(String(localized: "Enable Tunnel Command"), isOn: $coordinator.tunnelCommand.state.enabled)
-            } footer: {
-                Text(
-                    """
-                    Runs a command that forwards a local port to this database, and holds it for \
-                    as long as the connection is open. The local port is picked here, and the \
-                    command is started again if it stops.
-                    """
-                )
-            }
-
-            if coordinator.tunnelCommand.state.enabled {
-                if !coordinator.otherEnabledTunnels(excluding: .tunnelCommand).isEmpty {
-                    TunnelExclusivityBanner(coordinator: coordinator, currentKind: .tunnelCommand)
-                }
-                methodSection
-                methodFieldsSection
-                previewSection
-            }
-        }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
+        methodSection
+        methodFieldsSection
+        previewSection
     }
 
     // MARK: - Sections

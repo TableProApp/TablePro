@@ -43,14 +43,6 @@ final class CloudflareTunnelPaneViewModel {
             }
         }
 
-        for other in coordinator?.value?.otherEnabledTunnels(excluding: .cloudflare) ?? [] {
-            issues.append(String(
-                format: String(localized: "Cannot use %@ and %@ at the same time"),
-                other.kind.displayName,
-                ConnectionTunnelKind.cloudflare.displayName
-            ))
-        }
-
         return issues
     }
 

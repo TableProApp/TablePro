@@ -14,17 +14,7 @@ final class TunnelCommandPaneViewModel {
 
     var validationIssues: [String] {
         guard state.enabled else { return [] }
-        var issues = TunnelCommandBuilder.validationIssues(for: state.buildConfig())
-
-        for other in coordinator?.value?.otherEnabledTunnels(excluding: .tunnelCommand) ?? [] {
-            issues.append(String(
-                format: String(localized: "Cannot use %@ and %@ at the same time"),
-                other.kind.displayName,
-                ConnectionTunnelKind.tunnelCommand.displayName
-            ))
-        }
-
-        return issues
+        return TunnelCommandBuilder.validationIssues(for: state.buildConfig())
     }
 
     func previewCommand(remoteHost: String, remotePort: Int) -> String? {

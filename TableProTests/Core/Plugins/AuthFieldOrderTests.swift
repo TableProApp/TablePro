@@ -2,8 +2,9 @@
 //  AuthFieldOrderTests.swift
 //  TableProTests
 //
-//  The connection form renders credential controllers above the built-in Username and
-//  Password so the selector does not shift position when its own selection hides them.
+//  The connection form renders every credential controller above what it controls, and no
+//  further up than that, so the selector does not shift position when its own selection hides
+//  its dependents and a password-only toggle does not push Username down the section.
 //
 
 import Foundation
@@ -51,11 +52,12 @@ struct AuthFieldOrderTests {
 
         let split = fields.splitCredentialControllers()
 
-        #expect(split.controllers.map(\.id) == ["mssqlAuthMethod"])
+        #expect(split.usernameControllers.map(\.id) == ["mssqlAuthMethod"])
+        #expect(split.passwordControllers.isEmpty)
         #expect(split.rest.map(\.id) == ["kerberosPrincipal", "kerberosPassword", "mssqlSchema"])
     }
 
-    @Test("A selector that hides the password itself is pulled above the credentials too")
+    @Test("A selector that hides only the password sits above Password, below Username")
     func selfHidingControllerIsSplitOut() {
         let fields = [
             selector("esAuthMethod", hidesPassword: true),
@@ -64,7 +66,8 @@ struct AuthFieldOrderTests {
 
         let split = fields.splitCredentialControllers()
 
-        #expect(split.controllers.map(\.id) == ["esAuthMethod"])
+        #expect(split.usernameControllers.isEmpty)
+        #expect(split.passwordControllers.map(\.id) == ["esAuthMethod"])
         #expect(split.rest.map(\.id) == ["esApiKey"])
     }
 
@@ -77,7 +80,8 @@ struct AuthFieldOrderTests {
 
         let split = fields.splitCredentialControllers()
 
-        #expect(split.controllers.isEmpty)
+        #expect(split.usernameControllers.isEmpty)
+        #expect(split.passwordControllers.isEmpty)
         #expect(split.rest.map(\.id) == ["warehouse", "role"])
     }
 
@@ -98,7 +102,8 @@ struct AuthFieldOrderTests {
 
         let split = fields.splitCredentialControllers()
 
-        #expect(split.controllers.map(\.id) == ["usePgpass", "awsAuth"])
+        #expect(split.usernameControllers.isEmpty)
+        #expect(split.passwordControllers.map(\.id) == ["usePgpass", "awsAuth"])
         #expect(split.rest.map(\.id) == ["awsRegion"])
     }
 
@@ -111,7 +116,8 @@ struct AuthFieldOrderTests {
 
         let split = fields.splitCredentialControllers()
 
-        #expect(split.controllers.map(\.id) == ["authLevel"])
+        #expect(split.usernameControllers.isEmpty)
+        #expect(split.passwordControllers.map(\.id) == ["authLevel"])
         #expect(split.rest.map(\.id) == ["token"])
     }
 }

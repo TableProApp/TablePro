@@ -52,8 +52,19 @@ struct DatabaseTypeChooserSheet: View {
 
             Spacer()
 
-            NativeSearchField(text: $model.searchText, placeholder: String(localized: "Search"))
-                .frame(width: 180)
+            /// Arrow keys are handed over by the search field's own `NSSearchFieldDelegate`, which
+            /// is the only route: a focused field editor consumes them as `doCommandBySelector:`
+            /// before `onMoveCommand` or `onKeyPress` can see them, and `searchFocused` is
+            /// macOS 15. `onSubmit` stays unwired, or Return would commit through both the field
+            /// editor and Continue's `.defaultAction`.
+            NativeSearchField(
+                text: $model.searchText,
+                placeholder: String(localized: "Search"),
+                onMoveUp: { model.moveHighlight(by: -1) },
+                onMoveDown: { model.moveHighlight(by: 1) },
+                accessibilityIdentifier: "database-type-chooser-search"
+            )
+            .frame(width: 180)
         }
         .padding(20)
     }
@@ -93,6 +104,10 @@ struct DatabaseTypeChooserSheet: View {
                     if let initialType {
                         proxy.scrollTo(initialType, anchor: .center)
                     }
+                }
+                .onChange(of: model.highlightedType) { _, highlighted in
+                    guard let highlighted else { return }
+                    proxy.scrollTo(highlighted)
                 }
             }
         }
@@ -142,10 +157,15 @@ private struct DatabaseTypeChooserRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
+            /// The row's icon is decoration the name already carries, and left unhidden it
+            /// publishes its own element, so VoiceOver reads "Cylinder Shape, Filled" ahead of the
+            /// driver. `Image(decorative:)` cannot cover it, because `DatabaseType.iconImage` also
+            /// returns an SF Symbol.
             type.iconImage
                 .renderingMode(.template)
                 .foregroundStyle(type.themeColor)
                 .frame(width: 26, height: 26)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(type.rawValue)

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import Network
 import TableProPluginKit
 
 @Observable
@@ -44,6 +45,15 @@ final class NetworkPaneViewModel {
         return port == 0 ? "" : String(port)
     }
 
+    var firstHostListValue: String {
+        let fieldId = connectionFields.first { field in
+            guard case .hostList = field.fieldType else { return false }
+            return isFieldVisible(field)
+        }?.id
+        guard let fieldId else { return "" }
+        return additionalFieldValues[fieldId] ?? ""
+    }
+
     var socketPathPrompt: String {
         PluginManager.shared.defaultUnixSocketPath(for: type) ?? "/path/to/database.sock"
     }
@@ -54,6 +64,13 @@ final class NetworkPaneViewModel {
 
     var resolvedPort: Int {
         Int(port) ?? type.defaultPort
+    }
+
+    /// Kerberos service principals are not registered against IP addresses, so SQL Server's
+    /// Windows Authentication warns when the host is one.
+    var resolvedHostIsIPAddress: Bool {
+        let host = resolvedHost.trimmingCharacters(in: .whitespaces)
+        return IPv4Address(host) != nil || IPv6Address(host) != nil
     }
 
     var hidesBuiltInDatabase: Bool {

@@ -7,9 +7,9 @@ import HelperPort from "/snippets/helper-port.mdx";
 
 The Access application is yours to create, in the Cloudflare dashboard. This pane takes the hostname of one that already fronts the database, and runs `cloudflared` against it for the life of the connection.
 
-<Frame caption="The Cloudflare Tunnel pane in the connection form">
-  <img className="block dark:hidden" src="/images/cloudflare-tunnel-pane.png" alt="Cloudflare Tunnel pane" />
-  <img className="hidden dark:block" src="/images/cloudflare-tunnel-pane-dark.png" alt="Cloudflare Tunnel pane" />
+<Frame caption="Cloudflare Tunnel selected on the Network tab">
+  <img className="block dark:hidden" src="/images/cloudflare-tunnel-pane.png" alt="Access hostname, authentication method and local listener fields" />
+  <img className="hidden dark:block" src="/images/cloudflare-tunnel-pane-dark.png" alt="Access hostname, authentication method and local listener fields" />
 </Frame>
 
 ## Before you start
@@ -26,7 +26,7 @@ The pane looks on your `PATH` and in `/opt/homebrew/bin` and `/usr/local/bin`, a
 
 <Steps>
   <Step title="Enable the pane">
-    Select **Cloudflare Tunnel** and turn **Enable Cloudflare Tunnel** on. One method per connection: any other tunnel or proxy already enabled gets a button to disable it.
+    On the **Network** tab, set **Connect via** to **Cloudflare Tunnel**. A connection uses one transport, so choosing this one switches off whichever was selected before.
   </Step>
   <Step title="Enter the hostname and sign in">
     **Hostname** is the Access application's public hostname, `db.example.com` in the example. With **Browser Sign-In** chosen, click **Sign In with Browser…** so the first connect does not stop to ask.

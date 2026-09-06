@@ -3,11 +3,11 @@ title: SOCKS Proxy
 description: Route a database connection through a SOCKS5 proxy, with remote DNS (socks5h) so the proxy resolves the database hostname
 ---
 
-Leave the database's **Host** and **Port** on the General pane exactly as they are. The proxy resolves that name and dials it from its own side. A hostname that exists only inside the private network works, and no DNS query for the database leaves your Mac.
+Leave the database's **Host** and **Port** on the General section exactly as they are. The proxy resolves that name and dials it from its own side. A hostname that exists only inside the private network works, and no DNS query for the database leaves your Mac.
 
-<Frame caption="The SOCKS Proxy pane in the connection form">
-  <img className="block dark:hidden" src="/images/socks-proxy-pane.png" alt="SOCKS Proxy pane" />
-  <img className="hidden dark:block" src="/images/socks-proxy-pane-dark.png" alt="SOCKS Proxy pane" />
+<Frame caption="SOCKS Proxy selected on the Network section">
+  <img className="block dark:hidden" src="/images/socks-proxy-pane.png" alt="Proxy server host and port with a username and password below" />
+  <img className="hidden dark:block" src="/images/socks-proxy-pane-dark.png" alt="Proxy server host and port with a username and password below" />
 </Frame>
 
 ## How it works
@@ -35,8 +35,8 @@ No helper binary is involved: the relay is part of the app. It listens on a free
 ## Setting up
 
 <Steps>
-  <Step title="Enable the pane">
-    Select **SOCKS Proxy** and turn **Enable SOCKS Proxy** on. Only one method at a time: anything else already enabled has a button here to switch it off.
+  <Step title="Choose the transport">
+    On the **Network** tab, set **Connect via** to **SOCKS Proxy**. A connection uses one transport, so choosing this one switches off whichever was selected before.
   </Step>
   <Step title="Enter the proxy address">
     **Host** and **Port** under **Proxy Server**, plus **Username** and **Password** if the proxy authenticates.
@@ -46,7 +46,7 @@ No helper binary is involved: the relay is part of the app. It listens on a free
   </Step>
 </Steps>
 
-The pane appears for the drivers that support SSH tunneling; the [transport matrix](/connections/connection-form#which-drivers-get-which-panes) says which.
+It is offered for the drivers that support SSH tunneling; the [transport matrix](/connections/connection-form#which-drivers-get-which-transports) says which.
 
 ## Options
 

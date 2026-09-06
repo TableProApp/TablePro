@@ -1,15 +1,18 @@
 //
-//  ConnectionSSLView.swift
+//  SSLSections.swift
 //  TablePro
-//
-//  Created by Ngo Quoc Dat on 31/3/26.
 //
 
 import SwiftUI
 import TableProPluginKit
 import UniformTypeIdentifiers
 
-struct ConnectionSSLView: View {
+/// Transport encryption, as sections of the Network tab's form.
+///
+/// It sits under the transport picker because it answers the same question: how the bytes get
+/// there. As its own sidebar pane it was one more destination to visit for a setting most
+/// connections leave alone.
+struct SSLSections: View {
     let databaseType: DatabaseType
     @Binding var sslMode: SSLMode
     @Binding var sslCaCertPath: String
@@ -27,7 +30,7 @@ struct ConnectionSSLView: View {
     }
 
     var body: some View {
-        Form {
+        Group {
             Section {
                 Picker(String(localized: "SSL Mode"), selection: $sslMode) {
                     ForEach(SSLMode.allCases) { mode in
@@ -122,8 +125,6 @@ struct ConnectionSSLView: View {
                 }
             }
         }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
     }
 
     private func browseForCertificate(binding: Binding<String>) {
