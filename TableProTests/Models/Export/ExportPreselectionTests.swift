@@ -13,10 +13,77 @@ import Testing
 struct ExportPreselectionTests {
     @Test("Named tables only select inside the current container")
     func namedTablesStayInCurrentContainer() {
-        let preselection = ExportPreselection.tables(["users"])
+        let preselection = ExportPreselection.tables(names: ["users"], schema: nil)
 
         #expect(preselection.selects(object: "users", kind: .table, inContainer: .database("sales"), isCurrentContainer: true))
         #expect(!preselection.selects(object: "users", kind: .table, inContainer: .database("analytics"), isCurrentContainer: false))
+    }
+
+    /// The reported bug: `orders` in both `public` and `reporting`, exporting the `reporting` one.
+    /// Before this, the dialog matched the bare name against whichever schema it called current.
+    @Test("A schema-scoped table preselection selects only its own schema")
+    func schemaScopedTablesStayInTheirSchema() {
+        let preselection = ExportPreselection.tables(names: ["orders"], schema: "reporting")
+
+        #expect(preselection.selects(
+            object: "orders", kind: .table,
+            inContainer: .schema(database: "app", schema: "reporting"), isCurrentContainer: false
+        ))
+        #expect(!preselection.selects(
+            object: "orders", kind: .table,
+            inContainer: .schema(database: "app", schema: "public"), isCurrentContainer: true
+        ))
+    }
+
+    /// `isCurrentContainer` is computed from the engine's static default schema name, which is ""
+    /// on the five engines that hang tables off schemas, so it answers false everywhere on those.
+    /// A named schema is what makes the preselection reachable there at all.
+    @Test("A named schema selects even where nothing is the current container")
+    func namedSchemaWorksWithoutACurrentContainer() {
+        let preselection = ExportPreselection.tables(names: ["orders"], schema: "SALES")
+
+        #expect(preselection.selects(
+            object: "orders", kind: .table,
+            inContainer: .schema(database: "app", schema: "SALES"), isCurrentContainer: false
+        ))
+    }
+
+    @Test("A table preselection with no schema keeps the old current-container rule")
+    func unscopedTablesFallBackToCurrentContainer() {
+        let preselection = ExportPreselection.tables(names: ["users"], schema: nil)
+
+        #expect(preselection.selects(
+            object: "users", kind: .table,
+            inContainer: .schema(database: "app", schema: "public"), isCurrentContainer: true
+        ))
+    }
+
+    @Test("A sidebar selection carries its schema only when every row agrees")
+    func sidebarSelectionCarriesAgreedSchema() {
+        #expect(ExportPreselection.tables(fromSidebarSelection: [
+            Self.ref("orders", schema: "reporting"),
+            Self.ref("totals", schema: "reporting"),
+        ]).scopedSchema == "reporting")
+
+        #expect(ExportPreselection.tables(fromSidebarSelection: [
+            Self.ref("orders", schema: "reporting"),
+            Self.ref("users", schema: "public"),
+        ]).scopedSchema == nil)
+    }
+
+    /// The section holding the preselected table opens, or a correctly ticked row sits inside a
+    /// collapsed section and reads as nothing selected.
+    @Test("A container preselection exposes no schema scope")
+    func containerPreselectionHasNoSchemaScope() {
+        #expect(ExportPreselection.containers([.database("sales")]).scopedSchema == nil)
+    }
+
+    private static func ref(_ name: String, schema: String?) -> DatabaseTreeTableRef {
+        DatabaseTreeTableRef(
+            database: "app",
+            schema: schema,
+            table: TableInfo(name: name, type: .table, rowCount: nil, schema: schema)
+        )
     }
 
     @Test("A container preselection selects every table it holds")
@@ -44,8 +111,8 @@ struct ExportPreselectionTests {
 
     @Test("A single table names the export file")
     func singleTableNamesTheFile() {
-        #expect(ExportPreselection.tables(["users"]).singleTableName == "users")
-        #expect(ExportPreselection.tables(["users", "orders"]).singleTableName == nil)
+        #expect(ExportPreselection.tables(names: ["users"], schema: nil).singleTableName == "users")
+        #expect(ExportPreselection.tables(names: ["users", "orders"], schema: nil).singleTableName == nil)
         #expect(ExportPreselection.containers([.database("sales")]).singleTableName == nil)
     }
 
@@ -139,7 +206,7 @@ struct ExportPreselectionTests {
         #expect(ExportPreselection.containers([
             .database("app"), .database("analytics"),
         ]).scopedDatabase == nil)
-        #expect(ExportPreselection.tables(["users"]).scopedDatabase == nil)
+        #expect(ExportPreselection.tables(names: ["users"], schema: nil).scopedDatabase == nil)
     }
 
     @Test("Container names are exposed for expansion and file naming")
@@ -147,6 +214,6 @@ struct ExportPreselectionTests {
         let preselection = ExportPreselection.containers([.database("sales"), .database("analytics")])
 
         #expect(preselection.containerNames == ["sales", "analytics"])
-        #expect(ExportPreselection.tables(["users"]).containerNames.isEmpty)
+        #expect(ExportPreselection.tables(names: ["users"], schema: nil).containerNames.isEmpty)
     }
 }

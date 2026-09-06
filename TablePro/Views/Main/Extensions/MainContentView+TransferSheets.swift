@@ -19,7 +19,7 @@ extension MainContentView {
                 mode: .tables(
                     connection: exportConnection,
                     preselection: coordinator.exportPreselection
-                        ?? .tables(Set(coordinator.windowSidebarState.selectedTables.map(\.table.name)))
+                        ?? .tables(fromSidebarSelection: coordinator.windowSidebarState.selectedTables)
                 ),
                 sidebarTables: tables
             )
@@ -78,8 +78,8 @@ extension MainContentView {
                     formatId: formatId
                 )
             }
-        case .transferTables(let tables):
-            transferSheet(tables: tables, dismiss: dismissBinding)
+        case .transferTables(let tables, let schema):
+            transferSheet(tables: tables, schema: schema, dismiss: dismissBinding)
         case .backupDatabase(let databases):
             BackupDatabaseFlow(
                 isPresented: dismissBinding,

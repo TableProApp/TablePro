@@ -47,11 +47,17 @@ extension DatabaseTreeOutlineCoordinator {
             ClipboardService.shared.writeText(names.joined(separator: ","))
         case .exportTables(let names, let ref):
             activateThen(ref) { [weak self] in
-                self?.mainCoordinator?.openExportDialog(preselectedTableNames: names)
+                self?.mainCoordinator?.openExportDialog(
+                    preselectedTableNames: names,
+                    schema: ref.qualifyingSchema
+                )
             }
         case .transferTables(let names, let ref):
             activateThen(ref) { [weak self] in
-                self?.mainCoordinator?.openTableTransferSheet(preselectedTableNames: names)
+                self?.mainCoordinator?.openTableTransferSheet(
+                    preselectedTableNames: names,
+                    schema: ref.qualifyingSchema
+                )
             }
         case .importTables(let formatId, let ref):
             activateThen(ref) { [weak self] in

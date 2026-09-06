@@ -557,6 +557,44 @@ struct DatabaseTreeMenuSpecTests {
         #expect(commands(sections[sections.count - 1].items) == [.removeRecent(ref), .clearRecents])
     }
 
+    /// A bare name does not identify a table: `orders` exists in every schema. Export and Transfer
+    /// used to hand the dialog every same-database name, which it then resolved against whichever
+    /// schema it considered current, so exporting `reporting.orders` ticked `public.orders`.
+    @Test("Export and Transfer carry only the clicked row's schema")
+    func exportAndTransferStayInTheClickedSchema() {
+        let clicked = DatabaseTreeTableRef(
+            database: "app", schema: "reporting",
+            table: TableInfo(name: "orders", type: .table, rowCount: nil, schema: "reporting")
+        )
+        let elsewhere = DatabaseTreeTableRef(
+            database: "app", schema: "public",
+            table: TableInfo(name: "users", type: .table, rowCount: nil, schema: "public")
+        )
+        let issued = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: .table(clicked), selectedTables: [clicked, elsewhere])
+        ))
+
+        #expect(issued.contains(.exportTables(names: ["orders"], ref: clicked)))
+        #expect(issued.contains(.transferTables(names: ["orders"], ref: clicked)))
+        #expect(!issued.contains { command in
+            if case .exportTables(let names, _) = command { return names.contains("users") }
+            return false
+        })
+    }
+
+    /// Truncate is offered from the whole target list, not the clicked row alone, so a selection
+    /// that also holds a view withdraws it rather than staging a TRUNCATE the server refuses.
+    @Test("Truncate is withheld when the selection also holds a view")
+    func truncateWithheldForMixedSelection() {
+        let table = tableRef("orders")
+        let view = tableRef("summary", type: .view)
+        let issued = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: .table(table), selectedTables: [table, view])
+        ))
+
+        #expect(!issued.contains { if case .truncateTables = $0 { return true } else { return false } })
+    }
+
     /// The HIG asks for about three groups. A table row carried five, one of them seven unrelated
     /// commands, because a flat item list gave the spec no reason to count.
     @Test("No menu carries more than four groups")

@@ -46,6 +46,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Export and Transfer To preselecting a same-named table from another schema, or nothing at all.
+- Delete queuing a table drop from the menu bar with none of the confirmation the sidebar asks for.
+- Truncate Table offered from the menu bar for a view, which the server then refuses.
+- Truncate offered on a sidebar selection that mixes a table with a view.
 - Import sheet clearing a table without confirmation on a connection set to confirm destructive statements.
 - Empty destination table picker in the import sheet, with no message and no retry, when the table list could not be read.
 - Connection with two transports enabled reaching the database directly, with neither transport applied.

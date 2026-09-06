@@ -165,8 +165,10 @@ extension MainContentCoordinator {
 
     // MARK: - Export/Import
 
-    func openExportDialog(preselectedTableNames: Set<String>? = nil) {
-        exportPreselection = preselectedTableNames.map { .tables($0) }
+    /// The schema travels with the names because a bare name does not identify a table. Without it
+    /// the dialog resolved `orders` against whichever schema it considered current.
+    func openExportDialog(preselectedTableNames: Set<String>? = nil, schema: String? = nil) {
+        exportPreselection = preselectedTableNames.map { .tables(names: $0, schema: schema) }
         activeSheet = .exportDialog
     }
 
@@ -179,8 +181,8 @@ extension MainContentCoordinator {
     /// Copies rows into another open connection. The tables the user right-clicked travel with the
     /// request rather than being read back from the object browser, which may have moved on by the
     /// time the sheet appears.
-    func openTableTransferSheet(preselectedTableNames: Set<String> = []) {
-        activeSheet = .transferTables(tables: preselectedTableNames)
+    func openTableTransferSheet(preselectedTableNames: Set<String> = [], schema: String? = nil) {
+        activeSheet = .transferTables(tables: preselectedTableNames, schema: schema)
     }
 
     func openExportQueryResultsDialog() {

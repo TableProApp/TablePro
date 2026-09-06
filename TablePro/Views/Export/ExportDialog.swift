@@ -88,7 +88,7 @@ struct ExportDialog: View {
         if case .tables(_, let preselection) = mode {
             return preselection
         }
-        return .tables([])
+        return .tables(names: [], schema: nil)
     }
 
     // MARK: - Body
@@ -734,7 +734,13 @@ struct ExportDialog: View {
                         items.append(ExportDatabaseItem(
                             name: schema,
                             objects: objectItems,
-                            isExpanded: isDefaultSchema || preselection.containerNames.contains(schema)
+                            /// The preselected table's own schema opens too. `isDefaultSchema` cannot
+                            /// carry that: it is "" on the five engines that hang tables off schemas,
+                            /// so every section stayed shut and a correctly ticked row read as nothing
+                            /// selected.
+                            isExpanded: isDefaultSchema
+                                || preselection.containerNames.contains(schema)
+                                || preselection.scopedSchema == schema
                         ))
                     }
                 }
@@ -1150,6 +1156,6 @@ struct ExportDialog: View {
 
     return ExportDialog(
         isPresented: .constant(true),
-        mode: .tables(connection: connection, preselection: .tables(["users"]))
+        mode: .tables(connection: connection, preselection: .tables(names: ["users"], schema: nil))
     )
 }
