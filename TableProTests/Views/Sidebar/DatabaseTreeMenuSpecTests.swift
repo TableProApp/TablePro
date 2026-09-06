@@ -108,11 +108,6 @@ struct DatabaseTreeMenuSpecTests {
         }
     }
 
-    /// The items a user actually sees at the top level of one menu, submenu contents excluded.
-    private func topLevelTitles(_ sections: [DatabaseTreeMenuSection]) -> [String] {
-        titles(sections.flatMap(\.items))
-    }
-
     // MARK: - The empty area
 
     /// A right-click below the last row used to produce nothing at all, which also made View

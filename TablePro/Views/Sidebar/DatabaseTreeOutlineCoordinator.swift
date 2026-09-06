@@ -64,6 +64,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     private var favoriteTables: Set<FavoriteTablesStorage.FavoriteEntry> = []
     private var favoriteDatabases: Set<FavoriteDatabaseEntry> = []
     private let favoritesObservers = OSAllocatedUnfairLock<[any NSObjectProtocol]>(uncheckedState: [])
+    private var observedAppearance = DatabaseTreeOutlineCoordinator.objectListAppearance()
 
     init(
         favoriteTablesStorage: FavoriteTablesStorage = .shared,
@@ -116,17 +117,38 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     /// nothing, because only the contextual menu's own handler called `refreshVisibleRows`.
     ///
     /// Re-arms itself, because `withObservationTracking` fires once per registration.
+    ///
+    /// The macro registers access on the stored `general` property rather than on the two fields
+    /// read inside it, so this wakes on every `GeneralSettings` write, the query timeout and the
+    /// sync write-back included. `refreshVisibleRows` reconfigures every row of every open window,
+    /// so the two values are compared before it runs.
     private func observeObjectListAppearance() {
         withObservationTracking {
-            _ = AppSettingsManager.shared.general.showObjectIcons
-            _ = AppSettingsManager.shared.general.showObjectComments
+            _ = AppSettingsManager.shared.general
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
-                self.refreshVisibleRows()
+                let appearance = Self.objectListAppearance()
+                if appearance != self.observedAppearance {
+                    self.observedAppearance = appearance
+                    self.refreshVisibleRows()
+                }
                 self.observeObjectListAppearance()
             }
         }
+    }
+
+    private static func objectListAppearance() -> ObjectListAppearance {
+        let settings = AppSettingsManager.shared.general
+        return ObjectListAppearance(
+            showsIcons: settings.showObjectIcons,
+            showsComments: settings.showObjectComments
+        )
+    }
+
+    internal struct ObjectListAppearance: Equatable {
+        internal let showsIcons: Bool
+        internal let showsComments: Bool
     }
 
     deinit {

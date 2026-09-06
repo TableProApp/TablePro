@@ -55,6 +55,25 @@ internal enum SidebarViewOptionsMenu {
         ]
     }
 
+    /// Applied here rather than by each menu that offers these, so a fourth option added above
+    /// cannot work from the empty-area menu and do nothing from the filter row's control.
+    /// Returns false for a command that is not one of these, which is what lets the object tree's
+    /// own dispatch hand every command to this first.
+    @MainActor
+    internal static func apply(_ command: SidebarMenuCommand) -> Bool {
+        switch command {
+        case .toggleObjectIcons:
+            AppSettingsManager.shared.general.showObjectIcons.toggle()
+        case .toggleObjectComments:
+            AppSettingsManager.shared.general.showObjectComments.toggle()
+        case .setRowSize(let size):
+            AppSettingsManager.shared.general.sidebarRowSize = size
+        default:
+            return false
+        }
+        return true
+    }
+
     /// The control in the filter row is sidebar chrome that outlives a connection switch, so it
     /// reads the settings directly rather than through whichever tree happens to be mounted.
     @MainActor

@@ -45,7 +45,6 @@ internal final class SidebarContainerViewController: NSViewController {
         searchField.delegate = self
         searchField.setAccessibilityIdentifier("sidebar-filter")
         searchField.setAccessibilityLabel(String(localized: "Filter"))
-        view.addSubview(searchField)
 
         viewOptionsButton.isHidden = true
         viewOptionsButton.setContentHuggingPriority(.required, for: .horizontal)
@@ -127,6 +126,10 @@ internal final class SidebarContainerViewController: NSViewController {
             return
         }
         searchField.isHidden = false
+        /// Set here rather than left to the observation task, which runs on the next main-actor
+        /// turn: the button would show over the favorites filter for a turn on the way in, and
+        /// linger for a turn on the way out, with the stack view re-laying the row each time.
+        viewOptionsButton.isHidden = state.selectedSidebarTab != .tables
         observationTask = Task { @MainActor [weak self] in
             guard let self else { return }
             while !Task.isCancelled {

@@ -59,16 +59,7 @@ internal final class SidebarViewOptionsButton: NSPopUpButton {
     @objc
     private func performViewOption(_ sender: NSMenuItem) {
         guard let box = sender.representedObject as? SidebarMenuCommandBox<SidebarMenuCommand> else { return }
-        switch box.command {
-        case .toggleObjectIcons:
-            AppSettingsManager.shared.general.showObjectIcons.toggle()
-        case .toggleObjectComments:
-            AppSettingsManager.shared.general.showObjectComments.toggle()
-        case .setRowSize(let size):
-            AppSettingsManager.shared.general.sidebarRowSize = size
-        default:
-            return
-        }
+        _ = SidebarViewOptionsMenu.apply(box.command)
     }
 }
 

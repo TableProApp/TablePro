@@ -23,12 +23,27 @@ internal enum SidebarMenuBuilder {
         /// every item would be greyed out unless a validator answers for it. The spec decides what
         /// exists instead of what is dimmed, so nothing here needs validating.
         menu.autoenablesItems = false
+        fill(menu, with: sections, target: target, action: action, keyboard: keyboard, isTopLevel: true)
+    }
+
+    private static func fill<Command: Equatable & SidebarMenuShortcutProviding>(
+        _ menu: NSMenu,
+        with sections: [SidebarMenuSection<Command>],
+        target: AnyObject,
+        action: Selector,
+        keyboard: KeyboardSettings,
+        isTopLevel: Bool
+    ) {
+        menu.removeAllItems()
+        menu.autoenablesItems = false
         for (index, section) in sections.nonEmptySections().enumerated() {
             if index > 0 {
                 menu.addItem(.separator())
             }
             for item in section.items {
-                menu.addItem(makeItem(item, target: target, action: action, keyboard: keyboard))
+                menu.addItem(makeItem(
+                    item, target: target, action: action, keyboard: keyboard, isTopLevel: isTopLevel
+                ))
             }
         }
     }
@@ -37,15 +52,18 @@ internal enum SidebarMenuBuilder {
         _ item: SidebarMenuItem<Command>,
         target: AnyObject,
         action: Selector,
-        keyboard: KeyboardSettings
+        keyboard: KeyboardSettings,
+        isTopLevel: Bool
     ) -> NSMenuItem {
         switch item {
         case .command(let entry):
-            return makeCommandItem(entry, target: target, action: action, keyboard: keyboard)
+            return makeCommandItem(
+                entry, target: target, action: action, keyboard: keyboard, showsShortcut: isTopLevel
+            )
         case .submenu(let title, let sections):
             let container = NSMenuItem(title: title, action: nil, keyEquivalent: "")
             let submenu = NSMenu(title: title)
-            fill(submenu, with: sections, target: target, action: action, keyboard: keyboard)
+            fill(submenu, with: sections, target: target, action: action, keyboard: keyboard, isTopLevel: false)
             container.submenu = submenu
             return container
         }
@@ -55,17 +73,22 @@ internal enum SidebarMenuBuilder {
     /// and its menu-bar twin together. Measured on macOS 27: a key equivalent on a contextual menu
     /// item is display-only, because `NSView.performKeyEquivalent` never consults the view's own
     /// menu, so this claims nothing the menu bar already owns and blanks nothing.
+    ///
+    /// A shortcut names one command, so it is shown once, on the top-level item. A submenu's leaves
+    /// are variants of the command its container stands for: Import's four format items all carry
+    /// `.importTables`, and stamping the shortcut on each showed one binding four times over.
     private static func makeCommandItem<Command: Equatable & SidebarMenuShortcutProviding>(
         _ entry: SidebarMenuEntry<Command>,
         target: AnyObject,
         action: Selector,
-        keyboard: KeyboardSettings
+        keyboard: KeyboardSettings,
+        showsShortcut: Bool
     ) -> NSMenuItem {
         let item = NSMenuItem(title: entry.title, action: action, keyEquivalent: "")
         item.target = target
         item.representedObject = SidebarMenuCommandBox(entry.command)
         item.isEnabled = true
-        if let shortcut = entry.command.shortcutAction {
+        if showsShortcut, let shortcut = entry.command.shortcutAction {
             MenuItemFactory.apply(shortcut: shortcut, keyboard: keyboard, to: item)
         }
         if let isOn = entry.isOn {

@@ -73,6 +73,26 @@ struct SidebarMenuBuilderTests {
         #expect(menu.items[0].keyEquivalentModifierMask == (expected?.modifiers ?? []))
     }
 
+    /// A shortcut names one command, so it is shown once. Import's format items all carry
+    /// `.importTables`, and stamping the binding on each showed one shortcut four times over.
+    @Test("A submenu's items show no shortcut, even when the command has one")
+    func submenuItemsShowNoShortcut() {
+        let ref = DatabaseTreeTableRef(
+            database: "app",
+            schema: "public",
+            table: TableInfo(name: "orders", type: .table, rowCount: nil, schema: "public")
+        )
+        let menu = build([DatabaseTreeMenuSection([
+            .submenu(title: "Import", items: [
+                .command("CSV", .importTables(formatId: "csv", ref: ref)),
+                .command("JSON", .importTables(formatId: "json", ref: ref)),
+            ])
+        ])])
+
+        let nested = try? #require(menu.items[0].submenu)
+        #expect(nested?.items.allSatisfy { $0.keyEquivalent.isEmpty } == true)
+    }
+
     /// A command the menu bar never bound shows no shortcut, rather than one invented here.
     @Test("A command with no menu-bar binding shows no shortcut")
     func unboundCommandsShowNothing() {
