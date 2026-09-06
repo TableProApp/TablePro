@@ -79,11 +79,14 @@ internal final class ConnectionFormSplitViewController: NSSplitViewController {
 
 // MARK: - Toolbar
 
-/// The toolbar a sidebar window is expected to have: the sidebar toggle over the sidebar, then the
-/// tracking separator that keeps the toolbar's own divider on the split divider as it is dragged.
+/// The tracking separator alone: it keeps the titlebar's own divider on the split divider as that
+/// divider is dragged, which is what makes the titlebar read as part of a sidebar window.
 ///
-/// `.toggleSidebar` is AppKit's own item, already wired to `NSSplitViewController.toggleSidebar(_:)`
-/// through the responder chain, so the View menu's Show Sidebar drives the same state.
+/// No `.toggleSidebar`. The four sections are the window's only navigation, so a button whose job is
+/// to hide them earns nothing in the titlebar. Collapsing stays reachable, because
+/// `NSSplitViewController.toggleSidebar(_:)` is on the responder chain and the View menu's Show
+/// Sidebar sends exactly that, so a sidebar dragged shut can always be brought back.
+///
 /// `.sidebarTrackingSeparator` is supplied by AppKit whenever the window's contentViewController is
 /// an `NSSplitViewController`, which is why this window has no wrapper around it.
 @MainActor
@@ -91,7 +94,6 @@ internal final class ConnectionFormToolbarDelegate: NSObject, NSToolbarDelegate 
     internal static let identifier = NSToolbar.Identifier("com.TablePro.toolbar.connectionForm")
 
     private static let items: [NSToolbarItem.Identifier] = [
-        .toggleSidebar,
         .sidebarTrackingSeparator,
     ]
 
