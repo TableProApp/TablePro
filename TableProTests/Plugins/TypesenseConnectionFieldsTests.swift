@@ -51,10 +51,13 @@ struct TypesensePluginManifestTests {
         #expect(defaults.contains { $0.typeId == DatabaseType.typesense.rawValue })
     }
 
+    /// Read from `currentPluginKitVersion` rather than written out, so the next ABI bump moves
+    /// this with it. Hardcoding the number left this suite asserting 21 after the plists went to
+    /// 22 and failed the branch that bumped them.
     @Test("The bundle pins the PluginKit ABI and the release it ships in")
     func declaresVersionGates() throws {
         let plist = try manifest()
-        #expect(plist["TableProPluginKitVersion"] as? Int == 21)
+        #expect(plist["TableProPluginKitVersion"] as? Int == PluginManager.currentPluginKitVersion)
         #expect(plist["TableProMinAppVersion"] as? String == "0.73.0")
     }
 }

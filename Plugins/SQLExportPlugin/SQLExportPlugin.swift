@@ -49,6 +49,11 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
     }
 
     var ddlFailures: [String] = []
+
+    /// Kept apart from `ddlFailures` because the summary that reads it says "table structure", and
+    /// a table whose `CREATE TABLE` came back fine and only lost its indexes is a different thing
+    /// to tell the user about.
+    var indexFailures: [String] = []
     var metadataWarnings: [String] = []
 
     /// The tables a foreign key cycle left the ordering unable to place. They keep the order the
@@ -108,6 +113,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         progress: PluginExportProgress
     ) async throws -> ExportFormatResult {
         ddlFailures = []
+        indexFailures = []
         metadataWarnings = []
         exportSpansContainers = false
         tablesUnorderedByCycle = []
@@ -170,13 +176,22 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             try await writeDataPhase(
                 sortedTables: sortedTables, columnsByTable: columnsByTable,
                 dataSource: dataSource, to: writer, progress: progress)
-            try writeFinalizationPhase(
+            try await writeFinalizationPhase(
                 sortedTables: sortedTables, fkMap: fkMap, columnsByTable: columnsByTable,
-                dataSource: dataSource, to: writer)
+                dataSource: dataSource, to: writer, progress: progress)
             try await writeObjectCreatePhase(
                 objects: definitionObjects,
                 kinds: [.view, .materializedView, .routine, .trigger, .event],
                 dataSource: dataSource, to: writer, progress: progress)
+            /// A materialized view carries its own indexes, and PostgreSQL needs a unique one
+            /// before `REFRESH MATERIALIZED VIEW CONCURRENTLY` will run. It holds no rows the
+            /// export streams, so it is not in `sortedTables` and gets its own pass here, once the
+            /// phase above has created it.
+            if try await writeIndexPhase(
+                objects: definitionObjects.filter { $0.kind == .materializedView },
+                dataSource: dataSource, to: writer, progress: progress) {
+                try writer.write("\n")
+            }
             try await writeGrantPhase(
                 objects: definitionObjects, dataSource: dataSource, to: writer)
 
@@ -219,6 +234,11 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             let failedTables = ddlFailures.joined(separator: ", ")
             warnings.append(String(
                 format: String(localized: "Could not fetch table structure for: %@"), failedTables))
+        }
+        if !indexFailures.isEmpty {
+            warnings.append(String(
+                format: String(localized: "Could not fetch indexes for: %@"),
+                indexFailures.joined(separator: ", ")))
         }
         warnings.append(contentsOf: metadataWarnings)
         return ExportFormatResult(warnings: warnings)
@@ -387,6 +407,12 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         }
     }
 
+    /// The sequences and enum types the selected tables depend on, created before the tables that
+    /// reference them.
+    ///
+    /// Their `DROP` follows the table's own Drop column. It used to be written unconditionally, so
+    /// a dump meant to be appended to a live database opened with `DROP TYPE ... CASCADE`, which
+    /// takes the enum column out of every other table using that type.
     private func writeDependentTypesAndSequences(
         tables: [PluginExportTable],
         dataSource: any PluginExportDataSource,
@@ -402,8 +428,10 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                 for seq in sequences where !emittedSequenceNames.contains(seq.name) {
                     emittedSequenceNames.insert(seq.name)
                     let quotedName = "\"\(seq.name.replacingOccurrences(of: "\"", with: "\"\""))\""
-                    try writer.write(
-                        "DROP SEQUENCE IF EXISTS \(quotedName)\(cascadeClause(dataSource));\n")
+                    if optionValue(table, at: 1) {
+                        try writer.write(
+                            "DROP SEQUENCE IF EXISTS \(quotedName)\(cascadeClause(dataSource));\n")
+                    }
                     try writer.write("\(seq.ddl)\n\n")
                 }
             } catch {
@@ -416,8 +444,10 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                 for enumType in enumTypes where !emittedTypeNames.contains(enumType.name) {
                     emittedTypeNames.insert(enumType.name)
                     let quotedName = "\"\(enumType.name.replacingOccurrences(of: "\"", with: "\"\""))\""
-                    try writer.write(
-                        "DROP TYPE IF EXISTS \(quotedName)\(cascadeClause(dataSource));\n")
+                    if optionValue(table, at: 1) {
+                        try writer.write(
+                            "DROP TYPE IF EXISTS \(quotedName)\(cascadeClause(dataSource));\n")
+                    }
                     let quotedLabels = enumType.labels.map { "'\(dataSource.escapeStringLiteral($0))'" }
                     try writer.write("CREATE TYPE \(quotedName) AS ENUM (\(quotedLabels.joined(separator: ", ")));\n\n")
                 }
@@ -445,6 +475,9 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                 let ddl = rewriter.rewrite(
                     try await dataSource.fetchTableDDL(
                         table: table.name, databaseName: table.databaseName))
+                guard !ddl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw SQLExportObjectError.emptyDefinition
+                }
                 try writer.write(ddl)
                 if !ddl.hasSuffix(";") {
                     try writer.write(";")
@@ -488,6 +521,9 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             }
             do {
                 let ddl = ddlRewriter(for: dataSource).rewrite(try await dataSource.fetchObjectDDL(object))
+                guard !ddl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw SQLExportObjectError.emptyDefinition
+                }
                 try writer.write(ddl)
                 if !ddl.hasSuffix(";") {
                     try writer.write(";")
@@ -575,8 +611,9 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         fkMap: [String: [PluginForeignKeyInfo]],
         columnsByTable: [String: [PluginColumnInfo]],
         dataSource: any PluginExportDataSource,
-        to writer: SQLExportFileWriter
-    ) throws {
+        to writer: SQLExportFileWriter,
+        progress: PluginExportProgress
+    ) async throws {
         var emittedAnything = false
         /// A driver that hands back the server's own CREATE statement has already declared these
         /// constraints inline, so adding them again names each one twice: MySQL and SQL Server
@@ -592,6 +629,11 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                     emittedAnything = true
                 }
             }
+        }
+
+        if try await writeIndexPhase(
+            objects: sortedTables, dataSource: dataSource, to: writer, progress: progress) {
+            emittedAnything = true
         }
 
         /// `setval` and `pg_get_serial_sequence` are PostgreSQL's own, so the sequence is only
@@ -612,6 +654,46 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         if emittedAnything {
             try writer.write("\n")
         }
+    }
+
+    /// Writes each object's `CREATE INDEX` statements, after its rows and after the deferred
+    /// foreign keys.
+    ///
+    /// That is where every engine's own dump tool puts them, and the reason is that a bulk load
+    /// into an indexed table pays to maintain an index it is about to have rebuilt anyway.
+    /// A driver whose `CREATE TABLE` already declares its indexes answers nothing here, so a dump
+    /// never creates one twice.
+    ///
+    /// A driver that cannot read them is recorded and commented into the file rather than failing
+    /// the export: one unreadable table must not cost the user a dump that is otherwise correct.
+    @discardableResult
+    private func writeIndexPhase(
+        objects: [PluginExportTable],
+        dataSource: any PluginExportDataSource,
+        to writer: SQLExportFileWriter,
+        progress: PluginExportProgress
+    ) async throws -> Bool {
+        var emittedAnything = false
+        for object in objects where optionValue(object, at: 0) {
+            try progress.checkCancellation()
+            let sanitizedName = PluginExportUtilities.sanitizeForSQLComment(object.name)
+            do {
+                let statements = try await dataSource.fetchIndexDDL(
+                    table: object.name, databaseName: object.databaseName)
+                for statement in statements {
+                    let terminated = statement.hasSuffix(";") ? statement : "\(statement);"
+                    try writer.write("\(terminated)\n")
+                    emittedAnything = true
+                }
+            } catch {
+                indexFailures.append(sanitizedName)
+                Self.logger.warning("Failed to fetch indexes for \(sanitizedName): \(error)")
+                let warning = "Warning: failed to fetch indexes for \(sanitizedName): \(error)"
+                try writer.write("-- \(PluginExportUtilities.sanitizeForSQLComment(warning))\n")
+                emittedAnything = true
+            }
+        }
+        return emittedAnything
     }
 
     private func renderIdentitySetval(

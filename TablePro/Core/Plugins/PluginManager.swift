@@ -14,7 +14,11 @@ import TableProPluginKit
 @MainActor @Observable
 final class PluginManager {
     static let shared = PluginManager()
-    /// Raised to 21 for two additions: `tableDDLIncludesForeignKeys` on `PluginDatabaseDriver` and
+    /// Raised to 22 for `fetchIndexDDL` on `PluginDatabaseDriver` and `PluginExportDataSource`,
+    /// which is what lets a dump write a table's indexes after its rows instead of leaving whether
+    /// they appear at all to each driver's `fetchTableDDL`.
+    ///
+    /// Raised to 21 before that for two additions: `tableDDLIncludesForeignKeys` on `PluginDatabaseDriver` and
     /// `PluginExportDataSource`, and `PluginQueryTiming` with the `PluginQueryResult` initializer
     /// that carries it. Raised to 20 before that for the whole-schema index and table metadata
     /// requirements.
@@ -27,7 +31,7 @@ final class PluginManager {
     /// rebuilt CassandraDriver for the v20 requirements it implements none of. Left at 20, such a
     /// plugin passes `validateBundleVersions` in a shipped v20 app and then fails
     /// `Bundle.loadAndReturnError`; at 21 that app refuses it and says to update.
-    nonisolated static let currentPluginKitVersion = 21
+    nonisolated static let currentPluginKitVersion = 22
 
     /// Still 19, so every plugin already published for the previous release keeps loading.
     nonisolated static let minimumCompatiblePluginKitVersion = 19

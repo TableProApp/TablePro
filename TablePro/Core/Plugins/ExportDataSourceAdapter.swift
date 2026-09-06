@@ -151,6 +151,11 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         pluginDriver?.tableDDLIncludesForeignKeys ?? false
     }
 
+    func fetchIndexDDL(table: String, databaseName: String) async throws -> [String] {
+        guard let pluginDriver else { return [] }
+        return try await pluginDriver.fetchIndexDDL(table: table, schema: exportSchema(for: databaseName))
+    }
+
     // MARK: - Object DDL
 
     /// A driver addresses a routine, trigger or type through the info object it handed out, which
@@ -167,14 +172,12 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         case .view:
             return try await pluginDriver.fetchViewDefinition(view: object.name, schema: schema)
         case .materializedView:
-            /// PostgreSQL answers `fetchViewDefinition` out of `pg_views`, which excludes
-            /// materialized views, so the engines that do not distinguish them fall back rather
-            /// than failing the object.
-            do {
-                return try await pluginDriver.fetchViewDefinition(view: object.name, schema: schema)
-            } catch {
-                return try await pluginDriver.fetchTableDDL(table: object.name, schema: schema)
-            }
+            /// No fallback to `fetchTableDDL`. It succeeds on a materialized view on several
+            /// engines and returns a `CREATE TABLE`, so the dump carried a `DROP MATERIALIZED
+            /// VIEW` followed by a table definition, reported success, and restored an empty
+            /// ordinary table where the view had been. A driver that cannot produce the definition
+            /// now says so and the export names the object it could not write.
+            return try await pluginDriver.fetchViewDefinition(view: object.name, schema: schema)
         case .routine:
             guard let routine = try await cachedRoutines(schema: schema, databaseName: object.databaseName)
                 .first(where: { $0.name == object.name && ($0.argumentSignature ?? "") == (object.identity ?? "") })

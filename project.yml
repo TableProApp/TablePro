@@ -408,7 +408,10 @@ targets:
       - Plugins/ClickHouseDriverPlugin/ClickHousePluginDriver+Schema.swift
       - Plugins/ClickHouseDriverPlugin/ClickHousePluginDriver+TableOperations.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseTableOperations.swift
+      - Plugins/CassandraDriverPlugin/CassandraIndexStatements.swift
       - Plugins/DamengDriverPlugin/DamengParameterBinder.swift
+      - Plugins/DamengDriverPlugin/DamengIndexStatements.swift
+      - Plugins/OracleDriverPlugin/OracleIndexStatements.swift
       - Plugins/DamengDriverPlugin/DamengStatementClassifier.swift
       - Plugins/DuckDBDriverPlugin/DuckDBFileKinds.swift
       - Plugins/DuckDBDriverPlugin/DuckDBPositionParser.swift

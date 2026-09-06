@@ -151,11 +151,12 @@ extension MSSQLPluginDriver {
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
-        let esc = MSSQLSchemaQueries.escapeBracket(effectiveSchema(schema))
-        let bracketedTable = table.replacingOccurrences(of: "]", with: "]]")
-        let bracketedFull = "[\(esc)].[\(bracketedTable)]"
+        /// Bracket-escaped for the identifier and literal-escaped for the string it sits in:
+        /// SQL Server allows both `]` and `'` in an identifier.
+        let bracketedFull = MSSQLSchemaQueries.escape(
+            MSSQLSchemaQueries.bracketed(schema: effectiveSchema(schema), table: table))
         let sql = """
-            SELECT i.name, i.is_unique, i.is_primary_key, c.name AS column_name
+            SELECT i.name, i.is_unique, i.is_primary_key, c.name AS column_name, i.type_desc
             FROM sys.indexes i
             JOIN sys.index_columns ic
                 ON i.object_id = ic.object_id AND i.index_id = ic.index_id
@@ -166,14 +167,18 @@ extension MSSQLPluginDriver {
             ORDER BY i.index_id, ic.key_ordinal
             """
         let result = try await execute(query: sql)
-        var indexMap: [String: (unique: Bool, primary: Bool, columns: [String])] = [:]
+        var indexMap: [String: (unique: Bool, primary: Bool, columns: [String], type: String)] = [:]
         for row in result.rows {
             guard let idxName = row[safe: 0]?.asText,
                   let colName = row[safe: 3]?.asText else { continue }
             let isUnique = (row[safe: 1]?.asText) == "1"
             let isPrimary = (row[safe: 2]?.asText) == "1"
             if indexMap[idxName] == nil {
-                indexMap[idxName] = (unique: isUnique, primary: isPrimary, columns: [])
+                indexMap[idxName] = (
+                    unique: isUnique,
+                    primary: isPrimary,
+                    columns: [],
+                    type: row[safe: 4]?.asText ?? "NONCLUSTERED")
             }
             indexMap[idxName]?.columns.append(colName)
         }
@@ -183,9 +188,47 @@ extension MSSQLPluginDriver {
                 columns: info.columns,
                 isUnique: info.unique,
                 isPrimary: info.primary,
-                type: "CLUSTERED"
+                type: info.type
             )
         }.sorted { $0.name < $1.name }
+    }
+
+    /// A table can hold exactly one clustered index, and the primary key usually is it, so a
+    /// synthesised statement has to say which kind each index is: scripting them all as
+    /// `CLUSTERED` makes the server reject the second with "Cannot create more than one clustered
+    /// index".
+    ///
+    /// A key column and an `INCLUDE` column are told apart by `is_included_column`, and a filtered
+    /// index's predicate comes from the catalog already parenthesised.
+    ///
+    /// Only the primary key's index is excluded. `fetchTableDDL` declares the primary key inline
+    /// and the foreign keys, but never a `UNIQUE` constraint, so that constraint's index has to
+    /// come through here or `CREATE TABLE t (a INT UNIQUE)` round-trips with no uniqueness at all.
+    func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
+        /// The bracketed name is spliced into a string literal, so a name carrying a quote needs
+        /// the literal escape as well as the bracket one. SQL Server allows both characters in an
+        /// identifier.
+        let objectRef = MSSQLSchemaQueries.escape(
+            MSSQLSchemaQueries.bracketed(schema: effectiveSchema(schema), table: table))
+        let sql = """
+            SELECT i.name, i.type_desc, i.is_unique, i.filter_definition,
+                   c.name AS column_name, ic.is_included_column, ic.is_descending_key
+            FROM sys.indexes i
+            JOIN sys.index_columns ic
+                ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+            JOIN sys.columns c
+                ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+            WHERE i.object_id = OBJECT_ID('\(objectRef)')
+              AND i.name IS NOT NULL
+              AND i.is_primary_key = 0
+              AND i.type IN (1, 2)
+            ORDER BY i.index_id, ic.is_included_column, ic.key_ordinal
+            """
+        let result = try await execute(query: sql)
+        return MSSQLSchemaQueries.indexStatements(
+            rows: result.rows.map { row in row.map { $0.asText } },
+            schema: effectiveSchema(schema),
+            table: table)
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {

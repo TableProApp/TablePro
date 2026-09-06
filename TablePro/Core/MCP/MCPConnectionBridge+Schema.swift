@@ -55,7 +55,7 @@ extension MCPConnectionBridge {
             let foreignKeys = try await driver.fetchForeignKeys(table: table)
             let checkConstraints = (try? await driver.fetchCheckConstraints(table: table)) ?? []
             let approximateRowCount = (try? await driver.fetchApproximateRowCount(table: table)) ?? nil
-            let ddl = try? await driver.fetchTableDDL(table: table)
+            let ddl = await MCPConnectionBridge.composedTableDDL(driver: driver, table: table)
 
             var result: [String: JsonValue] = [
                 "table": .string(table),
@@ -95,10 +95,20 @@ extension MCPConnectionBridge {
         ])
     }
 
+    /// The table's own statement plus the indexes it does not declare, because a caller asking for
+    /// a table's DDL wants what recreates it, not the half the export replays first.
+    static func composedTableDDL(driver: DatabaseDriver, table: String) async -> String? {
+        guard let base = try? await driver.fetchTableDDL(table: table) else { return nil }
+        let indexes = (try? await driver.fetchIndexDDL(table: table)) ?? []
+        return TableDDLComposer.compose(tableDDL: base, indexDDL: indexes)
+    }
+
     func getTableDDL(scope: DatabaseScope, table: String) async throws -> JsonValue {
         try await ensureConnected(scope.connectionId)
         let ddl = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-            try await driver.fetchTableDDL(table: table)
+            let base = try await driver.fetchTableDDL(table: table)
+            let indexes = (try? await driver.fetchIndexDDL(table: table)) ?? []
+            return TableDDLComposer.compose(tableDDL: base, indexDDL: indexes)
         }
         return .object([
             "table": .string(table),

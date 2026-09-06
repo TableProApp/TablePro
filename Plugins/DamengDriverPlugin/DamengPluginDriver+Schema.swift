@@ -172,6 +172,37 @@ extension DamengPluginDriver {
         }.sorted { $0.name < $1.name }
     }
 
+    func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
+        let owner = effectiveSchema(schema)
+        let result = try await executeParameterized(
+            query: """
+                SELECT i.INDEX_NAME, i.UNIQUENESS, ic.COLUMN_NAME
+                FROM ALL_INDEXES i
+                JOIN ALL_IND_COLUMNS ic
+                  ON i.INDEX_NAME = ic.INDEX_NAME
+                 AND i.OWNER = ic.INDEX_OWNER
+                WHERE i.TABLE_NAME = ?
+                  AND i.OWNER = ?
+                  AND NOT EXISTS (
+                    -- Only the primary key. fetchTableDDL declares that inline and no other
+                    -- constraint, so a unique constraint's index has to come through here or the
+                    -- restore loses the uniqueness.
+                    SELECT 1 FROM ALL_CONSTRAINTS c
+                    WHERE c.INDEX_NAME = i.INDEX_NAME
+                      AND c.OWNER = i.OWNER
+                      AND c.CONSTRAINT_TYPE = 'P'
+                  )
+                ORDER BY i.INDEX_NAME, ic.COLUMN_POSITION
+                """,
+            parameters: [.text(table), .text(owner)]
+        )
+        return DamengIndexStatements.render(
+            rows: result.rows.map { row in row.map { $0.asText } },
+            schema: owner,
+            table: table,
+            quote: quoteIdentifier)
+    }
+
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
         let result = try await executeParameterized(
             query: """

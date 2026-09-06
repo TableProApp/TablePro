@@ -428,6 +428,21 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         []
     }
 
+    func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
+        let ks = resolveKeyspace(schema)
+        let result = try await execute(query: """
+            SELECT index_name, kind, options
+            FROM system_schema.indexes
+            WHERE keyspace_name = '\(escapeSingleQuote(ks))'
+              AND table_name = '\(escapeSingleQuote(table))'
+            """)
+        return CassandraIndexStatements.render(
+            rows: result.rows.map { row in row.map { $0.asText } },
+            keyspace: ks,
+            table: table,
+            quote: { "\"\(escapeIdentifier($0))\"" })
+    }
+
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let ks = resolveKeyspace(schema)
 

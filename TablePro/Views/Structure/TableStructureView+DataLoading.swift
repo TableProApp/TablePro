@@ -73,9 +73,7 @@ extension TableStructureView {
                     let sequences = try await driver.fetchDependentSequences(forTable: table)
                     let enumTypes = try await driver.fetchDependentTypes(forTable: table)
                     let baseDDL = try await driver.fetchTableDDL(table: table)
-                    if sequences.isEmpty && enumTypes.isEmpty {
-                        return baseDDL
-                    }
+                    let indexDDL = (try? await driver.fetchIndexDDL(table: table)) ?? []
                     var preamble = ""
                     for seq in sequences {
                         preamble += seq.ddl + "\n\n"
@@ -85,7 +83,8 @@ extension TableStructureView {
                         let quotedLabels = enumType.labels.map { "'\(SQLEscaping.escapeStringLiteral($0))'" }
                         preamble += "CREATE TYPE \(quotedName) AS ENUM (\(quotedLabels.joined(separator: ", ")));\n"
                     }
-                    return preamble + "\n" + baseDDL
+                    return TableDDLComposer.compose(
+                        tableDDL: baseDDL, indexDDL: indexDDL, preamble: preamble)
                 }
             case .triggers:
                 do {
