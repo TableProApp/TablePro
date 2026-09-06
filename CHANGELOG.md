@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Export, Delete and Empty for a Typesense collection. (#2629)
 - Typesense API keys in Users & Roles, with the collections and actions each key holds. (#2629)
 - Server Dashboard metrics for Typesense, from `/metrics.json` and `/stats.json`. (#2629)
+- Encoding and byte order mark options for CSV export, with a warning naming what the encoding dropped. (#2534)
 - Indexes in an SQL export, written after the data. (#2492)
 - Image preview beside the source for a cell holding SVG or a raster image. (#2535)
 - DuckDB backup and restore, as one `.duckdb` file or a folder of Parquet. (#2485)
@@ -66,6 +67,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Repeated MCP access prompts when a client retried a call the user had just denied. (#2640)
 - Destructive-operation consent reaching an elicitation-capable MCP client as an internal error instead of a prompt.
 - `ai_policy` in `list_connections` reporting `askEachTime` whatever the app-wide default was.
+- Quote menu in the CSV export options untranslated in every localized build. (#2534)
+- Line feed instead of the chosen line ending on the table comment of a multi-table CSV export. (#2534)
 - Indexes missing from an SQL export on SQLite, LibSQL, Cloudflare D1, SQL Server, Oracle, Dameng and Cassandra. (#2492)
 - DuckDB expression index exported as invalid SQL. (#2492)
 - DuckDB index whose name contains "primary" reported as the table's primary key and left out of its DDL. (#2492)

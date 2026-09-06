@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProPluginKit
 
 struct CSVExportOptionsView: View {
     @Bindable var plugin: CSVExportPlugin
@@ -29,6 +30,23 @@ struct CSVExportOptionsView: View {
                 .padding(.vertical, 4)
 
             VStack(alignment: .leading, spacing: 10) {
+                optionRow(String(localized: "Encoding", bundle: .main)) {
+                    Picker(String(localized: "Encoding", bundle: .main), selection: $plugin.settings.encoding) {
+                        ForEach(PluginTextEncoding.allCases) { encoding in
+                            Text(verbatim: encoding.displayName).tag(encoding)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .frame(width: 140, alignment: .trailing)
+                }
+
+                Toggle("Include byte order mark", isOn: $plugin.settings.writesByteOrderMark)
+                    .toggleStyle(.checkbox)
+                    .disabled(!plugin.settings.encoding.supportsByteOrderMark)
+                    .padding(.leading, 20)
+                    .help("Excel on Windows needs this to read UTF-8. Other readers show it as part of the first value.")
+
                 optionRow(String(localized: "Delimiter", bundle: .main)) {
                     Picker(String(localized: "Delimiter", bundle: .main), selection: $plugin.settings.delimiter) {
                         ForEach(CSVDelimiter.allCases) { delimiter in
@@ -43,7 +61,7 @@ struct CSVExportOptionsView: View {
                 optionRow(String(localized: "Quote", bundle: .main)) {
                     Picker(String(localized: "Quote", bundle: .main), selection: $plugin.settings.quoteHandling) {
                         ForEach(CSVQuoteHandling.allCases) { handling in
-                            Text(handling.rawValue).tag(handling)
+                            Text(handling.displayName).tag(handling)
                         }
                     }
                     .pickerStyle(.menu)

@@ -52,7 +52,17 @@ final class CSVExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             }
         }
 
-        let lineBreak = settings.lineBreak.value
+        /// One plugin instance serves every window, and a dialog open in another window writes
+        /// straight into `settings`. Reading it per row would let a picker change halfway through
+        /// switch the delimiter, the line ending or the encoding of a file already being written.
+        let options = settings
+        let lineBreak = options.lineBreak.value
+        let encoding = options.encoding
+        var report = CSVEncodingReport()
+
+        if options.writesByteOrderMark, !encoding.byteOrderMark.isEmpty {
+            try fileHandle.write(contentsOf: Data(encoding.byteOrderMark))
+        }
 
         for (index, table) in tables.enumerated() {
             try progress.checkCancellation()
@@ -61,7 +71,12 @@ final class CSVExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
 
             if tables.count > 1 {
                 let sanitizedName = PluginExportUtilities.sanitizeForSQLComment(table.qualifiedName)
-                try fileHandle.write(contentsOf: "# Table: \(sanitizedName)\n".toUTF8Data())
+                try write(
+                    "# Table: \(sanitizedName)\(lineBreak)",
+                    to: fileHandle,
+                    encoding: encoding,
+                    report: &report
+                )
             }
 
             var isFirstBatch = true
@@ -74,23 +89,23 @@ final class CSVExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                 switch element {
                 case .header(let header):
                     columns = header.columns
-                    if isFirstBatch && settings.includeFieldNames {
+                    if isFirstBatch && options.includeFieldNames {
                         let headerLine = columns
-                            .map { escapeCSVField($0, options: settings) }
-                            .joined(separator: settings.delimiter.actualValue)
-                        try fileHandle.write(contentsOf: (headerLine + lineBreak).toUTF8Data())
+                            .map { escapeCSVField($0, options: options) }
+                            .joined(separator: options.delimiter.actualValue)
+                        try write(headerLine + lineBreak, to: fileHandle, encoding: encoding, report: &report)
                     }
                     isFirstBatch = false
                 case .rows(let rows):
                     for row in rows {
-                        try writeCSVRow(row, options: settings, to: fileHandle)
+                        try writeCSVRow(row, options: options, to: fileHandle, report: &report)
                         progress.incrementRow()
                     }
                 }
             }
 
             if index < tables.count - 1 {
-                try fileHandle.write(contentsOf: "\(lineBreak)\(lineBreak)".toUTF8Data())
+                try write("\(lineBreak)\(lineBreak)", to: fileHandle, encoding: encoding, report: &report)
             }
         }
 
@@ -99,15 +114,40 @@ final class CSVExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         try PluginExportUtilities.commitAtomicWrite(from: tempURL, to: destination)
         committed = true
         progress.finalizeTable()
-        return ExportFormatResult()
+        return ExportFormatResult(warnings: report.warnings(for: encoding))
     }
 
     // MARK: - Private
 
+    /// Every byte this format writes goes through here, so the chosen encoding and the record of
+    /// what it could not represent stay together. `String.toUTF8Data()` is left alone: seven
+    /// plugins call it, and giving it an encoding parameter would replace its mangled symbol and
+    /// stop every already-built plugin from loading.
+    ///
+    /// The encoding is passed in rather than read from `settings`, which one shared plugin
+    /// instance publishes to every window: an export running while another window's dialog changes
+    /// the picker would otherwise switch encoding mid-file, under a mark and a warning naming the
+    /// one it started with.
+    private func write(
+        _ text: String,
+        to fileHandle: FileHandle,
+        encoding: PluginTextEncoding,
+        report: inout CSVEncodingReport
+    ) throws {
+        let encoded = try PluginTextEncoder.encode(
+            text,
+            as: encoding,
+            detectingUnrepresented: !report.isSaturated
+        )
+        report.record(encoded.unrepresented)
+        try fileHandle.write(contentsOf: encoded.data)
+    }
+
     private func writeCSVRow(
         _ row: [PluginCellValue],
         options: CSVExportOptions,
-        to fileHandle: FileHandle
+        to fileHandle: FileHandle,
+        report: inout CSVEncodingReport
     ) throws {
         let delimiter = options.delimiter.actualValue
         let lineBreak = options.lineBreak.value
@@ -143,7 +183,7 @@ final class CSVExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             return escapeCSVField(processed, options: options, originalHadLineBreaks: hadLineBreaks)
         }.joined(separator: delimiter)
 
-        try fileHandle.write(contentsOf: (rowLine + lineBreak).toUTF8Data())
+        try write(rowLine + lineBreak, to: fileHandle, encoding: options.encoding, report: &report)
     }
 
     /// Escaping and quoting live in `PluginRowWriters`, so this format, the other export formats
