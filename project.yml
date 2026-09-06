@@ -395,6 +395,11 @@ targets:
       - Plugins/EtcdDriverPlugin/EtcdCommandParser.swift
       - Plugins/EtcdDriverPlugin/EtcdQueryBuilder.swift
       - Plugins/EtcdDriverPlugin/EtcdStatementGenerator.swift
+      - Plugins/TypesenseDriverPlugin/TypesenseConsoleParser.swift
+      - Plugins/TypesenseDriverPlugin/TypesenseFilterBuilder.swift
+      - Plugins/TypesenseDriverPlugin/TypesenseQueryBuilder.swift
+      - Plugins/TypesenseDriverPlugin/TypesenseSchema.swift
+      - Plugins/TypesenseDriverPlugin/TypesenseStatementGenerator.swift
       - Plugins/HTMLExportPlugin/HTMLExportModels.swift
       - Plugins/JSONExportPlugin/JSONExportModels.swift
       - Plugins/MarkdownExportPlugin/MarkdownExportModels.swift
@@ -1143,6 +1148,15 @@ targets:
       - package: TableProCore
         product: TableProTrinoCore
 
+  TypesenseDriverPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: TypesenseDriverPlugin
+      principalClass: TypesensePlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProNumberFormatting
+
 # Compile-checks every plugin, including the registry-only ones the app does not
 # embed. CI builds this scheme so a registry plugin cannot rot between releases.
 aggregateTargets:
@@ -1184,6 +1198,7 @@ aggregateTargets:
       - SurrealDBDriverPlugin
       - TeradataDriver
       - TrinoDriverPlugin
+      - TypesenseDriverPlugin
       - XLSXExport
     scheme: {}
 

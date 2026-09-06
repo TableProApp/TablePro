@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tunnel Command pane, with presets for `kubectl port-forward` and `aws ssm start-session` and a custom command line. (#2520)
 - Bar chart column in the EXPLAIN tree, with a Metric menu for self cost, self time and row counts. (#2633)
 - Approval setting for MCP connection access, with the list of approved connections and a Forget action. (#2640)
+- Typesense driver plugin, with collection browsing, document editing and a REST request console. (#2629)
 
 ### Fixed
 

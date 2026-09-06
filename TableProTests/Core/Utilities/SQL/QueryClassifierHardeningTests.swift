@@ -348,6 +348,93 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.classifyTier("DELETE /index", databaseType: .elasticsearch) == .destructive)
     }
 
+    @Test("Typesense separates search from writes and deletes")
+    func typesenseTiers() {
+        #expect(!QueryClassifier.isWriteQuery("GET /collections", databaseType: .typesense))
+        #expect(!QueryClassifier.isWriteQuery("POST /multi_search {}", databaseType: .typesense))
+        #expect(
+            !QueryClassifier.isWriteQuery(
+                "GET /collections/books/documents/search?q=*",
+                databaseType: .typesense
+            )
+        )
+        #expect(QueryClassifier.isWriteQuery("POST /collections/books/documents", databaseType: .typesense))
+        #expect(QueryClassifier.isWriteQuery("PATCH /collections/books/documents/1", databaseType: .typesense))
+        #expect(
+            QueryClassifier.classifyTier(
+                "DELETE /collections/books/documents/1",
+                databaseType: .typesense
+            ) == .destructive
+        )
+    }
+
+    /// The body of a Typesense console request is the caller's own JSON. Scanning the whole
+    /// statement for a read path let a bulk import carrying `"/multi_search"` in a field value
+    /// classify as a read, which passes the read-only refusal and needs no destructive consent.
+    @Test("A read path inside the request body does not make a write safe")
+    func typesenseBodyCannotForgeAReadPath() {
+        let smuggled = """
+        POST /collections/books/documents/import?action=upsert
+        {"id": "1", "note": "/multi_search"}
+        """
+        #expect(QueryClassifier.isWriteQuery(smuggled, databaseType: .typesense))
+        #expect(QueryClassifier.classifyTier(smuggled, databaseType: .typesense) == .write)
+
+        let exportInBody = """
+        POST /collections/books/documents/import
+        {"note": "/documents/export"}
+        """
+        #expect(QueryClassifier.isWriteQuery(exportInBody, databaseType: .typesense))
+    }
+
+    @Test("A read path has to be the request's own path, not a prefix of a longer one")
+    func typesenseReadPathMustEndTheRequestPath() {
+        #expect(
+            QueryClassifier.isWriteQuery(
+                "POST /collections/books/documents/search/../import",
+                databaseType: .typesense
+            )
+        )
+        #expect(
+            !QueryClassifier.isWriteQuery(
+                "POST /collections/books/documents/search?x=1",
+                databaseType: .typesense
+            )
+        )
+    }
+
+    @Test("A key path in the body does not flag an ordinary read as widening access")
+    func typesenseUnsafePathMustBeTheRequestPath() {
+        #expect(
+            !QueryClassifier.reachesFilesystemOrExecutesCode(
+                "POST /collections/books/documents\n{\"note\": \"/keys\"}",
+                databaseType: .typesense
+            )
+        )
+        #expect(
+            !QueryClassifier.reachesFilesystemOrExecutesCode(
+                "GET /collections/keys/documents/search",
+                databaseType: .typesense
+            )
+        )
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode("GET /keys/abc", databaseType: .typesense))
+    }
+
+    @Test("Typesense snapshots and key minting are flagged as reaching beyond the data")
+    func typesenseUnsafeSurfacesAreFlagged() {
+        #expect(
+            QueryClassifier.reachesFilesystemOrExecutesCode(
+                "POST /operations/snapshot?snapshot_path=/tmp/out",
+                databaseType: .typesense
+            )
+        )
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode("POST /keys", databaseType: .typesense))
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode("GET /keys", databaseType: .typesense))
+        #expect(
+            !QueryClassifier.reachesFilesystemOrExecutesCode("GET /collections", databaseType: .typesense)
+        )
+    }
+
     @Test("Elasticsearch stored scripts are flagged as code execution on both verbs")
     func elasticsearchScriptsAreFlagged() {
         #expect(

@@ -656,7 +656,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             return .relational
         case "Redshift", "ClickHouse", "DuckDB", "BigQuery":
             return .analytical
-        case "MongoDB", "Elasticsearch", "SurrealDB":
+        case "MongoDB", "Elasticsearch", "SurrealDB", "Typesense":
             return .document
         case "Redis":
             return .keyValue
@@ -696,6 +696,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         case "BigQuery":       return String(localized: "Google Cloud serverless data warehouse")
         case "SurrealDB":      return String(localized: "Multi-model database with SurrealQL")
         case "Kafka":          return String(localized: "Event streaming platform")
+        case "Typesense":      return String(localized: "Typo-tolerant open-source search engine")
         default:               return ""
         }
     }

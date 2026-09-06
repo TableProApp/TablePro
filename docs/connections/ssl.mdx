@@ -43,7 +43,7 @@ A new connection starts on the mode that matches the driver's own default, and t
 | MySQL, MariaDB | Preferred | Tries TLS, then retries plain on an SSL handshake error. Auth and network errors are not retried |
 | SQL Server | Preferred | FreeTDS `encryption=request`, falls back to plain |
 | Teradata | Disabled | Opens a TLS transport, retries on a plain socket if it fails to come up |
-| MongoDB, Redis, Cassandra, ClickHouse, Elasticsearch, SurrealDB | Disabled | Nothing. No fallback exists, so Preferred forces TLS exactly like Required |
+| MongoDB, Redis, Cassandra, ClickHouse, Elasticsearch, Typesense, SurrealDB | Disabled | Nothing. No fallback exists, so Preferred forces TLS exactly like Required |
 | etcd | Disabled | Nothing. The driver never reads this pane. Set **TLS Mode** in the Advanced fields instead, and see [etcd](/databases/etcd) |
 | Trino | Disabled | Sends every request over HTTPS with no fallback, again like Required |
 | Oracle | Disabled | Connects in plain TCP, so it behaves like Disabled. The pane shows a red warning; use Required to enforce TCPS |
