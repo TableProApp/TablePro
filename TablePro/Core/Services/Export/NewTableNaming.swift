@@ -8,6 +8,8 @@ import Foundation
 enum NewTableNameProblem: Equatable {
     case blank
     case nameTaken
+    case reservedPrefix(String)
+    case tooLong(maximumBytes: Int)
 }
 
 /// How an engine treats a table name written without quotes, and what it refuses outright.
@@ -86,12 +88,27 @@ enum NewTableNaming {
         return disambiguating(fitted, style: style, avoiding: existingKeys)
     }
 
+    /// The engine's rules apply to whatever is in the field, not just to what was proposed: the
+    /// suggestion is only a starting point and the user is free to type a name the server will
+    /// refuse. Catching that here is the whole point of the check, since the alternative is the
+    /// driver's own error after the sheet has dismissed.
+    ///
     /// `existingNames` is `nil` when the table list never loaded. A collision cannot be ruled out
     /// then, and it must not be ruled in either: reporting one name as taken because the catalog
     /// is unreachable would block an import the engine would have accepted.
-    static func problem(with name: String, existingNames: Set<String>?) -> NewTableNameProblem? {
+    static func problem(
+        with name: String,
+        style: NewTableNameStyle,
+        existingNames: Set<String>?
+    ) -> NewTableNameProblem? {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return .blank }
+        if let reserved = style.reservedPrefix, trimmed.lowercased().hasPrefix(reserved.lowercased()) {
+            return .reservedPrefix(reserved)
+        }
+        if trimmed.utf8.count > style.maximumByteLength {
+            return .tooLong(maximumBytes: style.maximumByteLength)
+        }
         guard let existingNames else { return nil }
         return existingNames.contains(trimmed.lowercased()) ? .nameTaken : nil
     }
