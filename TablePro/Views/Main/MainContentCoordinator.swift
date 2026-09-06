@@ -54,7 +54,9 @@ enum ActiveSheet: Identifiable {
     /// The tables the user right-clicked travel with the request, because the object browser may be
     /// pointed somewhere else by the time the sheet appears.
     case transferTables(tables: Set<String>)
-    case backupDatabase
+    /// The databases the user right-clicked travel with the request, so the sheet opens on them
+    /// rather than on wherever the object browser happens to point. Empty means the browse database.
+    case backupDatabase(databases: Set<String>)
     case restoreDatabase(fileURL: URL)
     /// Oracle, Snowflake and BigQuery unload to a server directory or a bucket, so this is a
     /// separate command from Backup Dump rather than a mode of it.

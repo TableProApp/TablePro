@@ -11,11 +11,26 @@ import Testing
 
 @Suite("NativeDumpService command construction")
 struct NativeDumpServiceCommandTests {
-    private var postgresDescriptor: NativeDumpDescriptor {
-        guard let descriptor = NativeDumpRegistry.descriptor(for: .postgresql) else {
-            fatalError("PostgreSQL must have a dump descriptor")
+    private var postgresTool: NativeDumpDescriptor.CommandLineTool {
+        guard let tool = NativeDumpRegistry.descriptor(for: .postgresql)?.commandLineTool else {
+            fatalError("PostgreSQL must have a command line dump tool")
         }
-        return descriptor
+        return tool
+    }
+
+    private func request(
+        connection: DatabaseConnection,
+        fileURL: URL,
+        password: String? = "s3cret",
+        scope: NativeDumpScope = .wholeDatabase
+    ) -> NativeDumpDescriptor.Request {
+        NativeDumpDescriptor.Request(
+            connection: connection,
+            database: "sales",
+            fileURL: fileURL,
+            password: password,
+            scope: scope
+        )
     }
 
     private func connection(
@@ -42,12 +57,13 @@ struct NativeDumpServiceCommandTests {
     func backupCommandShape() throws {
         let command = try NativeDumpService.buildCommand(
             kind: .backup,
-            descriptor: postgresDescriptor,
+            tool: postgresTool,
             executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
-            effective: connection(),
-            database: "sales",
-            fileURL: URL(fileURLWithPath: "/tmp/sales.dump"),
-            password: "s3cret"
+            request: request(
+                connection: connection(),
+                fileURL: URL(fileURLWithPath: "/tmp/sales.dump"),
+                password: "s3cret"
+            )
         )
 
         #expect(command.arguments.contains("-Fc"))
@@ -64,12 +80,13 @@ struct NativeDumpServiceCommandTests {
     func restoreCommandShape() throws {
         let command = try NativeDumpService.buildCommand(
             kind: .restore,
-            descriptor: postgresDescriptor,
+            tool: postgresTool,
             executable: URL(fileURLWithPath: "/usr/bin/pg_restore"),
-            effective: connection(),
-            database: "sales",
-            fileURL: URL(fileURLWithPath: "/tmp/sales.dump"),
-            password: "s3cret"
+            request: request(
+                connection: connection(),
+                fileURL: URL(fileURLWithPath: "/tmp/sales.dump"),
+                password: "s3cret"
+            )
         )
 
         #expect(command.arguments.contains("--no-owner"))
@@ -85,12 +102,13 @@ struct NativeDumpServiceCommandTests {
     func hostFallback() throws {
         let command = try NativeDumpService.buildCommand(
             kind: .backup,
-            descriptor: postgresDescriptor,
+            tool: postgresTool,
             executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
-            effective: connection(host: ""),
-            database: "sales",
-            fileURL: URL(fileURLWithPath: "/tmp/x.dump"),
-            password: nil
+            request: request(
+                connection: connection(host: ""),
+                fileURL: URL(fileURLWithPath: "/tmp/x.dump"),
+                password: nil
+            )
         )
         #expect(slice(after: "-h", in: command.arguments) == "127.0.0.1")
     }
@@ -99,12 +117,13 @@ struct NativeDumpServiceCommandTests {
     func usernameOmitted() throws {
         let command = try NativeDumpService.buildCommand(
             kind: .backup,
-            descriptor: postgresDescriptor,
+            tool: postgresTool,
             executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
-            effective: connection(username: ""),
-            database: "sales",
-            fileURL: URL(fileURLWithPath: "/tmp/x.dump"),
-            password: nil
+            request: request(
+                connection: connection(username: ""),
+                fileURL: URL(fileURLWithPath: "/tmp/x.dump"),
+                password: nil
+            )
         )
         #expect(!command.arguments.contains("-U"))
     }
@@ -113,21 +132,23 @@ struct NativeDumpServiceCommandTests {
     func passwordOptional() throws {
         let nilPw = try NativeDumpService.buildCommand(
             kind: .backup,
-            descriptor: postgresDescriptor,
+            tool: postgresTool,
             executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
-            effective: connection(),
-            database: "sales",
-            fileURL: URL(fileURLWithPath: "/tmp/x.dump"),
-            password: nil
+            request: request(
+                connection: connection(),
+                fileURL: URL(fileURLWithPath: "/tmp/x.dump"),
+                password: nil
+            )
         )
         let emptyPw = try NativeDumpService.buildCommand(
             kind: .backup,
-            descriptor: postgresDescriptor,
+            tool: postgresTool,
             executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
-            effective: connection(),
-            database: "sales",
-            fileURL: URL(fileURLWithPath: "/tmp/x.dump"),
-            password: ""
+            request: request(
+                connection: connection(),
+                fileURL: URL(fileURLWithPath: "/tmp/x.dump"),
+                password: ""
+            )
         )
         #expect(nilPw.environment["PGPASSWORD"] == nil)
         #expect(emptyPw.environment["PGPASSWORD"] == nil)
@@ -146,12 +167,13 @@ struct NativeDumpServiceCommandTests {
     func sslModeMapping(mode: TableProPluginKit.SSLMode, expected: String?) throws {
         let command = try NativeDumpService.buildCommand(
             kind: .backup,
-            descriptor: postgresDescriptor,
+            tool: postgresTool,
             executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
-            effective: connection(sslMode: mode),
-            database: "sales",
-            fileURL: URL(fileURLWithPath: "/tmp/x.dump"),
-            password: nil
+            request: request(
+                connection: connection(sslMode: mode),
+                fileURL: URL(fileURLWithPath: "/tmp/x.dump"),
+                password: nil
+            )
         )
         #expect(command.environment["PGSSLMODE"] == expected)
     }
@@ -160,12 +182,13 @@ struct NativeDumpServiceCommandTests {
     func environmentIsMinimal() throws {
         let command = try NativeDumpService.buildCommand(
             kind: .backup,
-            descriptor: postgresDescriptor,
+            tool: postgresTool,
             executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
-            effective: connection(sslMode: .required),
-            database: "sales",
-            fileURL: URL(fileURLWithPath: "/tmp/x.dump"),
-            password: "s3cret"
+            request: request(
+                connection: connection(sslMode: .required),
+                fileURL: URL(fileURLWithPath: "/tmp/x.dump"),
+                password: "s3cret"
+            )
         )
         let allowed: Set<String> = [
             "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL",
@@ -185,14 +208,15 @@ struct NativeDumpServiceCommandTests {
 // MARK: - Fake Runner
 
 private final class FakeDumpRunner: NativeDumpRunner, @unchecked Sendable {
-    private(set) var startedCommand: NativeDumpCommand?
+    var startedJob: NativeDumpJob?
+    private(set) var startCount = 0
     private(set) var cancelCount: Int = 0
     private var continuation: CheckedContinuation<NativeDumpRunResult, Never>?
     private var bufferedResult: NativeDumpRunResult?
     private let lock = NSLock()
 
-    func start(_ command: NativeDumpCommand) throws {
-        startedCommand = command
+    func start() throws {
+        startCount += 1
     }
 
     func cancel() {
@@ -233,24 +257,33 @@ private final class FakeDumpRunner: NativeDumpRunner, @unchecked Sendable {
 @Suite("NativeDumpService state machine", .serialized)
 @MainActor
 struct NativeDumpServiceStateMachineTests {
-    private func fakeCommand() -> NativeDumpCommand {
-        NativeDumpCommand(
-            executable: URL(fileURLWithPath: "/usr/bin/true"),
-            arguments: [],
-            environment: [:],
-            stderrByteCap: 64_000
+    private func fakeJob() -> NativeDumpJob {
+        .process(
+            NativeDumpCommand(
+                executable: URL(fileURLWithPath: "/usr/bin/true"),
+                arguments: [],
+                environment: [:],
+                stderrByteCap: 64_000
+            )
         )
+    }
+
+    private func service(kind: NativeDumpKind, runner: FakeDumpRunner) -> NativeDumpService {
+        NativeDumpService(kind: kind, runnerFactory: { job in
+            runner.startedJob = job
+            return runner
+        })
     }
 
     @Test("successful run transitions idle -> running -> finished")
     func successfulBackup() async throws {
         let runner = FakeDumpRunner()
-        let service = NativeDumpService(kind: .backup, runnerFactory: { runner })
+        let service = service(kind: .backup, runner: runner)
         let updates = service.stateUpdates()
 
         #expect(service.state == .idle)
         try service.run(
-            command: fakeCommand(),
+            job: fakeJob(),
             database: "sales",
             fileURL: URL(fileURLWithPath: "/tmp/test-success.dump"),
             totalBytesEstimate: 1_000
@@ -276,11 +309,11 @@ struct NativeDumpServiceStateMachineTests {
     @Test("non-zero exit transitions to failed and surfaces stderr")
     func failedRun() async throws {
         let runner = FakeDumpRunner()
-        let service = NativeDumpService(kind: .restore, runnerFactory: { runner })
+        let service = service(kind: .restore, runner: runner)
         let updates = service.stateUpdates()
 
         try service.run(
-            command: fakeCommand(),
+            job: fakeJob(),
             database: "sales",
             fileURL: URL(fileURLWithPath: "/tmp/test-failed.dump")
         )
@@ -298,11 +331,11 @@ struct NativeDumpServiceStateMachineTests {
     @Test("cancel transitions running -> cancelling -> cancelled")
     func cancelRun() async throws {
         let runner = FakeDumpRunner()
-        let service = NativeDumpService(kind: .backup, runnerFactory: { runner })
+        let service = service(kind: .backup, runner: runner)
         let updates = service.stateUpdates()
 
         try service.run(
-            command: fakeCommand(),
+            job: fakeJob(),
             database: "sales",
             fileURL: URL(fileURLWithPath: "/tmp/test-cancel.dump")
         )
@@ -319,17 +352,17 @@ struct NativeDumpServiceStateMachineTests {
     @Test("calling run while already running throws alreadyRunning")
     func doubleRunThrows() throws {
         let runner = FakeDumpRunner()
-        let service = NativeDumpService(kind: .backup, runnerFactory: { runner })
+        let service = service(kind: .backup, runner: runner)
 
         try service.run(
-            command: fakeCommand(),
+            job: fakeJob(),
             database: "sales",
             fileURL: URL(fileURLWithPath: "/tmp/test-double.dump")
         )
 
         #expect(throws: NativeDumpError.alreadyRunning) {
             try service.run(
-                command: fakeCommand(),
+                job: fakeJob(),
                 database: "sales",
                 fileURL: URL(fileURLWithPath: "/tmp/test-double-2.dump")
             )
@@ -339,11 +372,11 @@ struct NativeDumpServiceStateMachineTests {
     @Test("empty stderr falls back to a synthesized error message")
     func emptyStderrFallback() async throws {
         let runner = FakeDumpRunner()
-        let service = NativeDumpService(kind: .backup, runnerFactory: { runner })
+        let service = service(kind: .backup, runner: runner)
         let updates = service.stateUpdates()
 
         try service.run(
-            command: fakeCommand(),
+            job: fakeJob(),
             database: "sales",
             fileURL: URL(fileURLWithPath: "/tmp/test-emptyerr.dump")
         )
