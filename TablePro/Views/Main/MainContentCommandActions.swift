@@ -1074,11 +1074,17 @@ final class MainContentCommandActions {
     }
 
     func backupDatabase() {
-        coordinator?.activeSheet = .backupDatabase
+        coordinator?.activeSheet = .backupDatabase(databases: [])
     }
 
+    /// Asked of the connection, not only its type. libSQL reaches either a local file or a Turso
+    /// URL and only the file can be handed to `sqlite3`, so a remote one offered a Backup Dump that
+    /// wrote a 52-byte file and reported success.
     var supportsBackup: Bool {
-        NativeDumpRegistry.supports(connection.type)
+        NativeDumpRegistry.supports(
+            connection,
+            localFilePath: NativeDumpService.localFilePath(for: connection)
+        )
     }
 
     var supportsRestore: Bool { supportsBackup }
@@ -1104,10 +1110,12 @@ final class MainContentCommandActions {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.allowedContentTypes = Self.restoreSourceContentTypes
+        panel.allowedContentTypes = restoreSourceContentTypes
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = restoreAcceptsDirectory
         panel.title = String(localized: "Choose Dump File")
         panel.prompt = String(localized: "Choose")
-        panel.message = String(localized: "Select a dump file produced by pg_dump in custom archive format.")
+        panel.message = restoreSourceMessage
 
         let response: NSApplication.ModalResponse
         if let window = NSApp.keyWindow {
@@ -1119,11 +1127,31 @@ final class MainContentCommandActions {
         coordinator?.activeSheet = .restoreDatabase(fileURL: url)
     }
 
-    private static var restoreSourceContentTypes: [UTType] {
-        if let dumpType = UTType(filenameExtension: "dump") {
-            return [dumpType, .data]
+    /// The engine's own archive, not PostgreSQL's. Every engine the registry supports is offered
+    /// Restore Dump, and the panel used to tell all of them to pick a `pg_dump` custom archive.
+    private var restoreSourceContentTypes: [UTType] {
+        let extensions = NativeDumpRegistry.formats(for: connection.type)
+            .map(\.fileExtension)
+            .filter { !$0.isEmpty }
+        let types = extensions.compactMap { UTType(filenameExtension: $0) }
+        guard restoreAcceptsDirectory else { return types + [.data] }
+        return types + [.folder, .data]
+    }
+
+    /// DuckDB restores either one `.duckdb` file or a folder of Parquet, so the panel has to accept
+    /// a folder as well.
+    private var restoreAcceptsDirectory: Bool {
+        NativeDumpRegistry.formats(for: connection.type).contains { $0.producesDirectory }
+    }
+
+    private var restoreSourceMessage: String {
+        let descriptions = NativeDumpRegistry.formats(for: connection.type)
+            .map(\.contentDescription)
+            .filter { !$0.isEmpty }
+        guard let joined = descriptions.formatted(.list(type: .or)).nilIfEmpty else {
+            return String(localized: "Select a dump file this engine's own tool wrote.")
         }
-        return [.data]
+        return String(format: String(localized: "Select a dump this connection's engine wrote: %@."), joined)
     }
 
     func saveAsFavorite() {
