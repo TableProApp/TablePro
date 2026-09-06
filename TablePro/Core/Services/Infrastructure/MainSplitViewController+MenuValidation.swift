@@ -158,10 +158,14 @@ extension MainSplitViewController: NSMenuItemValidation {
              #selector(executeAllStatements(_:)),
              #selector(executeQueryWithoutLimit(_:)),
              #selector(explainQuery(_:)),
-             #selector(formatQuery(_:)),
-             #selector(explainQueryWithAI(_:)),
-             #selector(optimizeQueryWithAI(_:)):
+             #selector(formatQuery(_:)):
             return context.isConnected && context.hasQueryText
+        /// Both hand their statement to the assistant, which will not open with the feature off.
+        /// They validated on the query alone, so with AI off the item stayed enabled, the shortcut
+        /// fired and nothing happened at all: no pane, no alert, nothing.
+        case #selector(explainQueryWithAI(_:)),
+             #selector(optimizeQueryWithAI(_:)):
+            return context.isConnected && context.hasQueryText && AppSettingsManager.shared.ai.enabled
         case #selector(toggleFold(_:)), #selector(foldAll(_:)), #selector(unfoldAll(_:)):
             return context.hasEditorForFind
         case #selector(goToPreviousStatement(_:)), #selector(goToNextStatement(_:)):

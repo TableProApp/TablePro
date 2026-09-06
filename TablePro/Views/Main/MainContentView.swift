@@ -406,7 +406,7 @@ struct MainContentView: View {
                 /// but it was gated on `tabType == .table`, so picking a row in a query result did
                 /// nothing and the setting read as intermittently broken rather than scoped.
                 if !newIndices.isEmpty, AppSettingsManager.shared.dataGrid.autoShowInspector {
-                    coordinator.trailingPaneProxy?.showInspector()
+                    coordinator.trailingPaneProxy?.revealInspectorForSelection()
                 }
                 scheduleInspectorUpdate()
             },

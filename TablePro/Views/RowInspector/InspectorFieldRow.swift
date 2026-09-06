@@ -56,7 +56,7 @@ internal struct InspectorFieldRow: View {
                 .truncationMode(.middle)
                 .layoutPriority(1)
             Spacer(minLength: 6)
-            if isFocused, context.showsTypeBadge {
+            if context.showsTypeBadge {
                 TypeBadge(context.columnType.badgeLabel)
             }
             editor
@@ -151,6 +151,7 @@ internal struct InspectorFieldRow: View {
         .fixedSize()
         .frame(minWidth: 12)
         .help(String(localized: "Value Options"))
+        .accessibilityIdentifier("inspector-value-menu")
     }
 
     private var menuContent: some View {
@@ -170,8 +171,6 @@ internal struct InspectorFieldRow: View {
     }
 
     // MARK: - Editor
-
-    private var isFocused: Bool { focusedField == fieldID }
 
     private var editor: some View {
         FieldEditorContent(

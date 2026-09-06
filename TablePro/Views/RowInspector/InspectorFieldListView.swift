@@ -69,6 +69,21 @@ internal struct InspectorFieldListView: View {
         .padding(.vertical, 5)
     }
 
+    /// Whether this field accepts a change at all.
+    ///
+    /// One answer, read by the editor, by the value menu and by the keyboard shortcuts alike. A
+    /// PHP-serialized value cannot be round-tripped without PHP, so the field is presented but never
+    /// mutated: Set NULL, Set DEFAULT, Set EMPTY and the SQL functions would each overwrite the
+    /// serialized payload with something the app cannot rebuild.
+    internal static func isFieldEditable(
+        _ field: FieldEditState,
+        kind: FieldEditorKind,
+        rowIsEditable: Bool
+    ) -> Bool {
+        guard rowIsEditable, !field.isServerOwned else { return false }
+        return kind != .phpSerialized
+    }
+
     /// A structure row's edits are recorded by its own grid, so `hasEdits` stays false while
     /// `hasCommittedEdit` is true. Gating on pending edits alone left the filter permanently
     /// unusable on exactly the rows it lists as modified.
@@ -108,7 +123,6 @@ internal struct InspectorFieldListView: View {
         .scrollContentBackground(.hidden)
         .onKeyPress(keys: [.tab]) { press in
             moveFocus(within: fields, forward: !press.modifiers.contains(.shift))
-            return .handled
         }
         .onKeyPress(keys: ["n", "d"]) { press in
             guard press.modifiers.contains(.control), press.modifiers.contains(.option) else {
@@ -121,7 +135,7 @@ internal struct InspectorFieldListView: View {
     @ViewBuilder
     private func row(for field: FieldEditState) -> some View {
         let kind = FieldEditorResolver.resolve(field: field)
-        let editable = isEditable && !field.isServerOwned
+        let editable = Self.isFieldEditable(field, kind: kind, rowIsEditable: isEditable)
         InspectorFieldRow(
             context: context(for: field, kind: kind, isEditable: editable),
             layout: InspectorFieldLayout.resolve(for: kind),
@@ -178,23 +192,30 @@ internal struct InspectorFieldListView: View {
     /// Tab has to be intercepted rather than left to AppKit. Measured: the key view loop inside a
     /// SwiftUI `List` has exactly one stop, so `nextValidKeyView` never leaves the field it starts
     /// in and Tab moved between fields not at all.
-    private func moveFocus(within fields: [FieldEditState], forward: Bool) {
-        guard !fields.isEmpty else { return }
+    /// Handled while there is another field to reach, ignored at either end so the key falls
+    /// through and focus can leave the list for the search field, the filter and the view-mode
+    /// control. Wrapping around instead trapped the keyboard inside the row for good.
+    private func moveFocus(within fields: [FieldEditState], forward: Bool) -> KeyPress.Result {
+        guard !fields.isEmpty else { return .ignored }
         guard let current = focusedField, let index = fields.firstIndex(where: { $0.id == current }) else {
             focusedField = forward ? fields.first?.id : fields.last?.id
-            return
+            return .handled
         }
-        let step = forward ? 1 : -1
-        let next = (index + step + fields.count) % fields.count
+        let next = forward ? index + 1 : index - 1
+        guard fields.indices.contains(next) else {
+            focusedField = nil
+            return .ignored
+        }
         focusedField = fields[next].id
+        return .handled
     }
 
     private func applyStateShortcut(_ key: KeyEquivalent) -> KeyPress.Result {
         guard isEditable,
               let focusedField,
               let field = editState.fields.first(where: { $0.id == focusedField }),
-              !field.isServerOwned,
-              !field.isSchemaField
+              !field.isSchemaField,
+              Self.isFieldEditable(field, kind: FieldEditorResolver.resolve(field: field), rowIsEditable: isEditable)
         else { return .ignored }
         if key == "n" {
             editState.setFieldToNull(at: field.columnIndex)

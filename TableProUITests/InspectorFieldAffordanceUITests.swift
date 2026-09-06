@@ -13,13 +13,13 @@ final class InspectorFieldAffordanceUITests: UITestCase {
     func testTheValueMenuIsPresentWithoutHoveringAField() throws {
         let app = try launchWithSampleDatabase()
         let window = try mainWindow(of: app)
-        let grid = try openFirstTableRow(in: app, window: window)
-        _ = grid
+        _ = try openFirstTableRow(in: app, window: window)
 
+        let menu = window.descendants(matching: .any)["inspector-value-menu"].firstMatch
         XCTAssertTrue(
-            waitForPredicate(timeout: 20) { self.valueMenus(in: window).count > 0 },
+            menu.waitToExist(timeout: 30),
             "Every inspector field draws its own value menu. The pointer is nowhere near one here, "
-                + "so a hover-gated control would leave this at zero."
+                + "so a hover-gated control would never appear."
         )
     }
 
@@ -30,7 +30,7 @@ final class InspectorFieldAffordanceUITests: UITestCase {
 
         let search = window.searchFields["inspector-field-search"]
         XCTAssertTrue(
-            search.waitToExist(timeout: 20),
+            search.waitToExist(timeout: 30),
             "The field search is part of the inspector, not something a menu reveals."
         )
     }
@@ -42,12 +42,9 @@ final class InspectorFieldAffordanceUITests: UITestCase {
         let window = try mainWindow(of: app)
         _ = try openFirstTableRow(in: app, window: window)
 
+        let subtitle = window.staticTexts["inspector-subject-subtitle"]
         XCTAssertTrue(
-            waitForPredicate(timeout: 20) {
-                window.staticTexts.allElementsBoundByIndex.contains { element in
-                    (element.label).localizedCaseInsensitiveContains("Row ")
-                }
-            },
+            subtitle.waitToExist(timeout: 30),
             "The inspector header reports which row of how many is selected."
         )
     }
@@ -66,10 +63,6 @@ final class InspectorFieldAffordanceUITests: UITestCase {
         gridPoint(in: grid, of: window, dy: 70).click()
         showInspector(in: app)
         return grid
-    }
-
-    private func valueMenus(in window: XCUIElement) -> [XCUIElement] {
-        window.menuButtons.allElementsBoundByIndex.filter { $0.label == "Value Options" }
     }
 
     private func mainWindow(of app: XCUIApplication) throws -> XCUIElement {

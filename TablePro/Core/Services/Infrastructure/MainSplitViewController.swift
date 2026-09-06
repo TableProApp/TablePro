@@ -156,6 +156,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     private var connectionStatusCancellable: AnyCancellable?
     private var railVisibilityCancellable: AnyCancellable?
     private var connectionUpdatedCancellable: AnyCancellable?
+    private var aiAvailabilityCancellable: AnyCancellable?
 
     // MARK: - Init
 
@@ -398,6 +399,16 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
             .receive(on: RunLoop.main)
             .sink { [weak self] changedId in
                 self?.handleConnectionRecordChange(changedId)
+            }
+        /// Turning the assistant off has to reach the pane that is showing it. Every visibility
+        /// question re-resolves the stored surface against this setting on each read, so without
+        /// this the hosted child and the commands disagree: an assistant stays on screen while the
+        /// menu offers Hide Inspector, and Inspector then collapses the pane instead of replacing
+        /// what is in it. The panel this replaced normalized its own tab on the same event.
+        aiAvailabilityCancellable = AppEvents.shared.aiSettingsChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in
+                self?.reconcileTrailingSurfaceAvailability()
             }
         handleConnectionStatusChange()
         applyRailVisibility(workspaceCount: WorkspaceRailStore.entries.count)
@@ -648,6 +659,14 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         workspace.phase = next
         syncConnectingProgressGrace(of: workspace)
         syncPanes(of: workspace)
+        /// `syncPanes` rebuilds both trailing roots but parents neither: which one is hosted is
+        /// decided by `showSelectedTrailingPane`, and none of its other callers is on the adoption
+        /// path. A connection whose state is built here, restoring a persisted assistant, would
+        /// otherwise keep the inspector `viewDidLoad` mounted before that state existed, while
+        /// every command reported the assistant as the visible surface.
+        if workspaces.selectedConnectionId == connectionId {
+            showSelectedTrailingPane()
+        }
         guard phaseChanged else { return }
         if workspaces.selectedConnectionId == connectionId {
             applyPaneChrome()
@@ -1008,9 +1027,28 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         reveal(.assistant)
     }
 
+    /// Auto-show follows a grid click, which is not a request for a different surface. Revealing
+    /// the inspector unconditionally swapped the assistant out from under a half-typed question and
+    /// persisted the inspector as that connection's surface, on every row the user clicked.
+    func revealInspectorForSelection() {
+        guard !isAssistantVisible else { return }
+        showInspector()
+    }
+
     func hideTrailingPane() {
         inspectorSplitItem?.animator().isCollapsed = true
         recomputeWindowMinSize()
+    }
+
+    /// Puts the hosted child back in step with what the settings now allow.
+    ///
+    /// The stored surface is left alone: a user who turns the assistant off and on again gets it
+    /// back, because `TrailingPaneSurface.resolved` is what hides it in the meantime rather than
+    /// anything overwriting their choice.
+    private func reconcileTrailingSurfaceAvailability() {
+        guard isViewLoaded else { return }
+        showSelectedTrailingPane()
+        toolbarOwner?.managedToolbar.validateVisibleItems()
     }
 
     private func reveal(_ surface: TrailingPaneSurface) {
@@ -1331,8 +1369,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
             splitView.autosaveName = nil
             userPaneLayout = ChromePaneLayout(
                 isSidebarCollapsed: sidebarSplitItem.isCollapsed,
-                isTrailingPaneCollapsed: inspectorSplitItem.isCollapsed,
-                trailingSurface: trailingPaneState?.surface ?? .inspector
+                isTrailingPaneCollapsed: inspectorSplitItem.isCollapsed
             )
         }
 
@@ -1389,9 +1426,9 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         if let restored = userPaneLayout {
             userPaneLayout = nil
             sidebarSplitItem.isCollapsed = restored.isSidebarCollapsed
-            /// The surface goes back before the pane does. One split item hosts both, so revealing
-            /// without this puts the inspector in front of a user who had the assistant up.
-            trailingPaneState?.surface = restored.trailingSurface
+            /// The surface comes from the workspace that owns it, never from this record. Writing a
+            /// captured one here reached whichever connection was selected by the time the reveal
+            /// ran, which is not the one it was captured from.
             showSelectedTrailingPane()
             inspectorSplitItem.isCollapsed = restored.isTrailingPaneCollapsed
         }

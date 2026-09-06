@@ -82,17 +82,23 @@ final class JSONRowInspectorUITests: UITestCase {
     /// the grid itself is the way in, which is what the drawn-cell grid's other suites do too.
     ///
     /// `dy` has to clear the header, which the grid draws at 42pt to fit a column comment. A point
-    /// inside it opens the header's own column menu, which offers no row command at all.
+    /// inside it opens the header's own column menu, which offers no row command at all. `dx` comes
+    /// from `gridPoint`, which clears the object browser: the browser overlaps the grid's leading
+    /// edge on the 1024x768 runner, so a fixed offset right-clicks the browser and opens its menu
+    /// instead of the row's.
     private func openRowAsJSON(in window: XCUIElement, grid: XCUIElement) {
-        let firstRow = grid.coordinate(withNormalizedOffset: .zero)
-            .withOffset(CGVector(dx: 60, dy: 70))
+        let firstRow = gridPoint(in: grid, of: window, dy: 70)
         firstRow.click()
         Thread.sleep(forTimeInterval: NSEvent.doubleClickInterval)
         firstRow.rightClick()
 
         /// A contextual menu opens inside the window and the menu-bar menus hang off `MenuBar`, so
         /// scoping to the window isolates the one that just opened rather than searching both.
-        let item = window.menus.firstMatch.menuItems["Show Row as JSON"]
+        ///
+        /// The item is matched across the window's menus rather than inside `menus.firstMatch`:
+        /// every inspector field now draws its own value menu, so the first menu under the window
+        /// is no longer reliably the contextual one that just opened.
+        let item = window.menus.menuItems["Show Row as JSON"].firstMatch
         XCTAssertTrue(item.waitToExist(timeout: 15), "The row's context menu must offer Show Row as JSON")
         item.click()
     }

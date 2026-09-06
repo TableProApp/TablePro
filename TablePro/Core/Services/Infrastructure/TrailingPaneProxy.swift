@@ -20,6 +20,10 @@ internal protocol TrailingPaneProxy: AnyObject {
     func showInspector()
     func showAssistant()
     func hideTrailingPane()
+
+    /// Reveals the inspector for a selection the user made somewhere else, and only if that does
+    /// not take the pane away from something they opened deliberately.
+    func revealInspectorForSelection()
 }
 
 internal extension TrailingPaneProxy {
