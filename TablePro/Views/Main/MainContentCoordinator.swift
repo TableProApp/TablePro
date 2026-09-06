@@ -776,6 +776,9 @@ final class MainContentCoordinator {
     /// one. Activation happens here rather than at window open, which is what keeps a window that
     /// never opens the assistant from reading the whole conversation history off disk.
     func showAssistant() {
+        /// The gate comes first. Activating builds the view model, whose init reads the stored
+        /// conversations, and the pane would then refuse to open it anyway.
+        guard AppSettingsManager.shared.ai.enabled else { return }
         trailingPaneState?.assistant.activate()
         trailingPaneProxy?.showAssistant()
     }
