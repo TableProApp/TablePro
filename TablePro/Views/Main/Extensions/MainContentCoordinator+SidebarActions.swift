@@ -165,10 +165,10 @@ extension MainContentCoordinator {
 
     // MARK: - Export/Import
 
-    /// The schema travels with the names because a bare name does not identify a table. Without it
-    /// the dialog resolved `orders` against whichever schema it considered current.
-    func openExportDialog(preselectedTableNames: Set<String>? = nil, schema: String? = nil) {
-        exportPreselection = preselectedTableNames.map { .tables(names: $0, schema: schema) }
+    /// The scope travels with the names because a bare name does not identify a table. Without it
+    /// the dialog resolved `orders` against whichever container it considered current.
+    func openExportDialog(preselectedTableNames: Set<String>? = nil, scope: DatabaseContainerRef? = nil) {
+        exportPreselection = preselectedTableNames.map { .tables(names: $0, scope: scope) }
         activeSheet = .exportDialog
     }
 

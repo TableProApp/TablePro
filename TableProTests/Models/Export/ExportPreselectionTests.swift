@@ -13,7 +13,7 @@ import Testing
 struct ExportPreselectionTests {
     @Test("Named tables only select inside the current container")
     func namedTablesStayInCurrentContainer() {
-        let preselection = ExportPreselection.tables(names: ["users"], schema: nil)
+        let preselection = ExportPreselection.tables(names: ["users"], scope: nil)
 
         #expect(preselection.selects(object: "users", kind: .table, inContainer: .database("sales"), isCurrentContainer: true))
         #expect(!preselection.selects(object: "users", kind: .table, inContainer: .database("analytics"), isCurrentContainer: false))
@@ -23,7 +23,7 @@ struct ExportPreselectionTests {
     /// Before this, the dialog matched the bare name against whichever schema it called current.
     @Test("A schema-scoped table preselection selects only its own schema")
     func schemaScopedTablesStayInTheirSchema() {
-        let preselection = ExportPreselection.tables(names: ["orders"], schema: "reporting")
+        let preselection = ExportPreselection.tables(names: ["orders"], scope: .schema(database: "app", schema: "reporting"))
 
         #expect(preselection.selects(
             object: "orders", kind: .table,
@@ -40,7 +40,7 @@ struct ExportPreselectionTests {
     /// A named schema is what makes the preselection reachable there at all.
     @Test("A named schema selects even where nothing is the current container")
     func namedSchemaWorksWithoutACurrentContainer() {
-        let preselection = ExportPreselection.tables(names: ["orders"], schema: "SALES")
+        let preselection = ExportPreselection.tables(names: ["orders"], scope: .schema(database: "app", schema: "SALES"))
 
         #expect(preselection.selects(
             object: "orders", kind: .table,
@@ -50,7 +50,7 @@ struct ExportPreselectionTests {
 
     @Test("A table preselection with no schema keeps the old current-container rule")
     func unscopedTablesFallBackToCurrentContainer() {
-        let preselection = ExportPreselection.tables(names: ["users"], schema: nil)
+        let preselection = ExportPreselection.tables(names: ["users"], scope: nil)
 
         #expect(preselection.selects(
             object: "users", kind: .table,
@@ -58,17 +58,47 @@ struct ExportPreselectionTests {
         ))
     }
 
-    @Test("A sidebar selection carries its schema only when every row agrees")
-    func sidebarSelectionCarriesAgreedSchema() {
+    @Test("A sidebar selection carries its scope only when every row agrees")
+    func sidebarSelectionCarriesAgreedScope() {
         #expect(ExportPreselection.tables(fromSidebarSelection: [
             Self.ref("orders", schema: "reporting"),
             Self.ref("totals", schema: "reporting"),
-        ]).scopedSchema == "reporting")
+        ], grouping: .bySchema).scopedSchema == "reporting")
 
         #expect(ExportPreselection.tables(fromSidebarSelection: [
             Self.ref("orders", schema: "reporting"),
             Self.ref("users", schema: "public"),
-        ]).scopedSchema == nil)
+        ], grouping: .bySchema).scopedSchema == nil)
+    }
+
+    /// Cassandra reports its keyspace as a schema and Teradata writes the database into one, yet
+    /// both group by database, so the dialog lists no schema rows at all. Scoping those to a schema
+    /// matched nothing and lost the preselection entirely.
+    @Test("An engine that groups by database is scoped to the database, schema or not")
+    func byDatabaseEnginesScopeToTheDatabase() {
+        let ref = Self.ref("orders", schema: "keyspace_one")
+        let scope = ExportPreselection.scope(for: ref, grouping: .byDatabase)
+
+        #expect(scope == .database("app"))
+
+        let preselection = ExportPreselection.tables(names: ["orders"], scope: scope)
+        #expect(preselection.selects(
+            object: "orders", kind: .table,
+            inContainer: .database("app"), isCurrentContainer: false
+        ))
+        #expect(!preselection.selects(
+            object: "orders", kind: .table,
+            inContainer: .database("other"), isCurrentContainer: true
+        ))
+    }
+
+    @Test("A schema-grouped engine is scoped to the schema")
+    func schemaGroupedEnginesScopeToTheSchema() {
+        let ref = Self.ref("orders", schema: "reporting")
+        #expect(ExportPreselection.scope(for: ref, grouping: .bySchema)
+            == .schema(database: "app", schema: "reporting"))
+        #expect(ExportPreselection.scope(for: ref, grouping: .hierarchicalSchema)
+            == .schema(database: "app", schema: "reporting"))
     }
 
     /// The section holding the preselected table opens, or a correctly ticked row sits inside a
@@ -76,6 +106,7 @@ struct ExportPreselectionTests {
     @Test("A container preselection exposes no schema scope")
     func containerPreselectionHasNoSchemaScope() {
         #expect(ExportPreselection.containers([.database("sales")]).scopedSchema == nil)
+        #expect(ExportPreselection.tables(names: ["orders"], scope: .database("app")).scopedSchema == nil)
     }
 
     private static func ref(_ name: String, schema: String?) -> DatabaseTreeTableRef {
@@ -111,8 +142,8 @@ struct ExportPreselectionTests {
 
     @Test("A single table names the export file")
     func singleTableNamesTheFile() {
-        #expect(ExportPreselection.tables(names: ["users"], schema: nil).singleTableName == "users")
-        #expect(ExportPreselection.tables(names: ["users", "orders"], schema: nil).singleTableName == nil)
+        #expect(ExportPreselection.tables(names: ["users"], scope: nil).singleTableName == "users")
+        #expect(ExportPreselection.tables(names: ["users", "orders"], scope: nil).singleTableName == nil)
         #expect(ExportPreselection.containers([.database("sales")]).singleTableName == nil)
     }
 
@@ -206,7 +237,7 @@ struct ExportPreselectionTests {
         #expect(ExportPreselection.containers([
             .database("app"), .database("analytics"),
         ]).scopedDatabase == nil)
-        #expect(ExportPreselection.tables(names: ["users"], schema: nil).scopedDatabase == nil)
+        #expect(ExportPreselection.tables(names: ["users"], scope: nil).scopedDatabase == nil)
     }
 
     @Test("Container names are exposed for expansion and file naming")
@@ -214,6 +245,6 @@ struct ExportPreselectionTests {
         let preselection = ExportPreselection.containers([.database("sales"), .database("analytics")])
 
         #expect(preselection.containerNames == ["sales", "analytics"])
-        #expect(ExportPreselection.tables(names: ["users"], schema: nil).containerNames.isEmpty)
+        #expect(ExportPreselection.tables(names: ["users"], scope: nil).containerNames.isEmpty)
     }
 }

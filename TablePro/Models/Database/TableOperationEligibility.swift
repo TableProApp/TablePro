@@ -8,13 +8,10 @@ import TableProPluginKit
 
 /// Which objects a table operation may be aimed at.
 ///
-/// The sidebar's contextual menu and the menu bar both offer Truncate, and they used to decide
-/// eligibility separately: the sidebar hid the item for a view, while the menu bar's validator
-/// asked only whether anything was selected. So selecting a view and using the menu bar staged a
-/// `TRUNCATE` against it that the server then refused, failing the whole save.
-///
-/// It lives beside the models rather than beside the sidebar because the menu-bar validator in
-/// `Core/` has to reach it too, and a `Views/` file is the wrong dependency for that.
+/// The single answer for both menus that offer Truncate. Deciding it in two places let them
+/// disagree, and the menu bar's copy asked only whether anything was selected, so it staged a
+/// `TRUNCATE` against a view. It sits beside the models because the menu-bar validator in `Core/`
+/// has to reach it and must not depend on a `Views/` file.
 enum TableOperationEligibility {
     /// A kind whose rows the engine will not let you replace or remove in place. A view holds no
     /// rows of its own, a foreign or external table proxies rows on another server, and a system

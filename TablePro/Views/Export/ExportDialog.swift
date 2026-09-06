@@ -88,7 +88,7 @@ struct ExportDialog: View {
         if case .tables(_, let preselection) = mode {
             return preselection
         }
-        return .tables(names: [], schema: nil)
+        return .tables(names: [], scope: nil)
     }
 
     // MARK: - Body
@@ -652,6 +652,11 @@ struct ExportDialog: View {
         /// failed load would leave them on screen looking like that database's contents.
         guard preselection.scopedDatabase == nil else { return }
         let dbName = connection.database
+        /// The preload can only build a database-shaped container, so a preselection scoped to a
+        /// schema is evaluated against the wrong one here and records every row unselected. The
+        /// snapshot it leaves is keyed by bare container name, so a database and a schema that
+        /// share one, `app` and `app`, then restore that stale answer over the real preselection.
+        guard preselection.scope(covers: .database(dbName)) else { return }
         let objectItems = sidebarTables.map { table in
             let kind = PluginExportObjectKind.from(tableType: table.type.rawValue)
             return ExportObjectItem(
@@ -1156,6 +1161,6 @@ struct ExportDialog: View {
 
     return ExportDialog(
         isPresented: .constant(true),
-        mode: .tables(connection: connection, preselection: .tables(names: ["users"], schema: nil))
+        mode: .tables(connection: connection, preselection: .tables(names: ["users"], scope: nil))
     )
 }

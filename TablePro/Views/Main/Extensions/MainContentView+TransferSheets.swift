@@ -19,7 +19,10 @@ extension MainContentView {
                 mode: .tables(
                     connection: exportConnection,
                     preselection: coordinator.exportPreselection
-                        ?? .tables(fromSidebarSelection: coordinator.windowSidebarState.selectedTables)
+                        ?? .tables(
+                            fromSidebarSelection: coordinator.windowSidebarState.selectedTables,
+                            grouping: PluginManager.shared.databaseGroupingStrategy(for: connection.type)
+                        )
                 ),
                 sidebarTables: tables
             )
