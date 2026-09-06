@@ -582,21 +582,20 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             )
             return result.rows.compactMap { row in
                 guard let name = row[safe: 0]?.asText else { return nil }
-                let isUnique = (row[safe: 1]?.asText) == "true"
                 let sql = row[safe: 2]?.asText
-                let isPrimary = name.lowercased().contains("primary")
-                    || (sql?.uppercased().contains("PRIMARY KEY") ?? false)
 
-                let columns = extractIndexColumns(from: sql)
-
+                /// `duckdb_indexes()` lists user indexes only, so nothing here backs a primary key.
+                /// Reading one out of the name matched any index called something like
+                /// `idx_primary_contact`, which then reported as the table's primary key and as
+                /// unique.
                 return PluginIndexInfo(
                     name: name,
-                    columns: columns,
-                    isUnique: isUnique || isPrimary,
-                    isPrimary: isPrimary,
+                    columns: extractIndexColumns(from: sql),
+                    isUnique: (row[safe: 1]?.asText) == "true",
+                    isPrimary: false,
                     type: "ART"
                 )
-            }.sorted { $0.isPrimary && !$1.isPrimary }
+            }
         } catch {
             return []
         }
@@ -647,23 +646,11 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
 
         if let firstRow = nativeResult.rows.first, let sql = firstRow[0].asText {
-            var ddl = sql.hasSuffix(";") ? sql : sql + ";"
-
-            let indexes = try await fetchIndexes(table: table, schema: schemaName)
-            for index in indexes where !index.isPrimary {
-                let uniqueStr = index.isUnique ? "UNIQUE " : ""
-                let cols = index.columns.map { "\"\(escapeIdentifier($0))\"" }.joined(separator: ", ")
-                ddl += "\n\nCREATE \(uniqueStr)INDEX \"\(escapeIdentifier(index.name))\""
-                    + " ON \"\(escapeIdentifier(schemaName))\".\"\(escapeIdentifier(table))\""
-                    + " (\(cols));"
-            }
-
-            return ddl
+            return sql.hasSuffix(";") ? sql : sql + ";"
         }
 
         // Fallback: synthesize DDL from schema metadata
         let columns = try await fetchColumns(table: table, schema: schemaName)
-        let indexes = try await fetchIndexes(table: table, schema: schemaName)
         let fks = try await fetchForeignKeys(table: table, schema: schemaName)
 
         var ddl = "CREATE TABLE \"\(escapeIdentifier(schemaName))\".\"\(escapeIdentifier(table))\" (\n"
@@ -695,15 +682,20 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         ddl += allDefs.joined(separator: ",\n")
         ddl += "\n);"
 
-        for index in indexes where !index.isPrimary {
-            let uniqueStr = index.isUnique ? "UNIQUE " : ""
-            let cols = index.columns.map { "\"\(escapeIdentifier($0))\"" }.joined(separator: ", ")
-            ddl += "\n\nCREATE \(uniqueStr)INDEX \"\(escapeIdentifier(index.name))\""
-                + " ON \"\(escapeIdentifier(schemaName))\".\"\(escapeIdentifier(table))\""
-                + " (\(cols));"
-        }
-
         return ddl
+    }
+
+    /// `duckdb_indexes()` carries each index's own `CREATE INDEX` text, which reproduces an
+    /// expression key that no column list can. It lists user indexes only: an index DuckDB builds
+    /// to back a PRIMARY KEY or UNIQUE constraint is not a row there, so nothing has to be filtered
+    /// out of the result.
+    func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
+        let result = try await executeParameterized(
+            query: DuckDBSchemaQueries.indexDDLForTable,
+            parameters: [.text(try requireCatalog()), .text(resolveSchema(schema)), .text(table)]
+        )
+        return result.rows.compactMap { $0[safe: 0]?.asText }
+            .map { $0.hasSuffix(";") ? $0 : $0 + ";" }
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
@@ -1030,23 +1022,46 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private static let indexColumnsRegex = try? NSRegularExpression(
-        pattern: #"ON\s+(?:(?:"[^"]*"|[^\s(]+)\s*\.\s*)*(?:"[^"]*"|[^\s(]+)\s*\(([^)]+)\)"#,
+        pattern: #"ON\s+(?:(?:"[^"]*"|[^\s(]+)\s*\.\s*)*(?:"[^"]*"|[^\s(]+)\s*\("#,
         options: .caseInsensitive
     )
 
+    /// Splits an index's key list on the commas that separate its keys.
+    ///
+    /// A key can be an expression, so both the opening parenthesis and the commas inside it belong
+    /// to the key rather than to the list: `(lower(email))` is one key and `(coalesce(a, b))` is
+    /// one key with a comma in it. Matching the list with a regex that stops at the first closing
+    /// parenthesis produced `(lower(email` and `[(COALESCE(a, b]`, which the DDL then quoted as
+    /// column names.
     private func extractIndexColumns(from sql: String?) -> [String] {
         guard let sql, let regex = Self.indexColumnsRegex else { return [] }
 
         let range = NSRange(sql.startIndex..., in: sql)
         guard let match = regex.firstMatch(in: sql, range: range),
-              match.numberOfRanges > 1,
-              let columnsRange = Range(match.range(at: 1), in: sql) else {
+              let openParen = Range(match.range, in: sql) else {
             return []
         }
 
-        return String(sql[columnsRange]).split(separator: ",").map {
-            $0.trimmingCharacters(in: .whitespaces)
-                .replacingOccurrences(of: "\"", with: "")
+        var depth = 1
+        var current = ""
+        var keys: [String] = []
+        for character in sql[openParen.upperBound...] {
+            if character == "(" {
+                depth += 1
+            } else if character == ")" {
+                depth -= 1
+                if depth == 0 { break }
+            } else if character == "," , depth == 1 {
+                keys.append(current)
+                current = ""
+                continue
+            }
+            current.append(character)
         }
+        keys.append(current)
+
+        return keys
+            .map { $0.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "\"", with: "") }
+            .filter { !$0.isEmpty }
     }
 }

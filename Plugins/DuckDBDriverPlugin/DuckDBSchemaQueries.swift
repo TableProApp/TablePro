@@ -113,6 +113,19 @@ enum DuckDBSchemaQueries {
           AND table_name = $3
         """
 
+    /// The statement DuckDB itself recorded, which is the only form that reproduces an expression
+    /// index. `duckdb_indexes()` lists user indexes only, so a constraint's backing index is absent
+    /// rather than needing to be filtered out.
+    static let indexDDLForTable = """
+        SELECT sql
+        FROM duckdb_indexes()
+        WHERE database_name = $1
+          AND schema_name = $2
+          AND table_name = $3
+          AND sql IS NOT NULL
+        ORDER BY index_name
+        """
+
     /// The referencing and referenced column lists are parallel, so unnesting both in one
     /// SELECT pairs them by position: a two-column key yields `(x, a)` then `(y, b)`.
     /// DuckDB rejects `CASCADE`, `SET NULL` and `SET DEFAULT` at parse time, so a foreign

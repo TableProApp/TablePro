@@ -13,6 +13,64 @@ public enum MSSQLSchemaQueries {
         "[\(escapeBracket(schema))].[\(escapeBracket(table))]"
     }
 
+    /// Renders `CREATE INDEX` for the rows `sys.indexes` joined to `sys.index_columns` returns,
+    /// one statement per index, in the order the rows arrive.
+    ///
+    /// Each row is `name, type_desc, is_unique, filter_definition, column_name,
+    /// is_included_column, is_descending_key`. The kind is written out because a table can hold
+    /// only one clustered index: scripting every index as `CLUSTERED`, which is what the driver
+    /// used to report, makes the server reject the second one. `filter_definition` already arrives
+    /// parenthesised, so it is spliced in as it stands.
+    public static func indexStatements(
+        rows: [[String?]],
+        schema: String,
+        table: String
+    ) -> [String] {
+        var order: [String] = []
+        var keys: [String: [String]] = [:]
+        var included: [String: [String]] = [:]
+        var kind: [String: String] = [:]
+        var unique: [String: Bool] = [:]
+        var filter: [String: String] = [:]
+
+        for row in rows {
+            guard let name = row[safe: 0] ?? nil, let column = row[safe: 4] ?? nil else { continue }
+            if keys[name] == nil, included[name] == nil {
+                order.append(name)
+                keys[name] = []
+                included[name] = []
+                kind[name] = (row[safe: 1] ?? nil) ?? "NONCLUSTERED"
+                unique[name] = (row[safe: 2] ?? nil) == "1"
+                if let predicate = row[safe: 3] ?? nil, !predicate.isEmpty {
+                    filter[name] = predicate
+                }
+            }
+            let quoted = "[\(escapeBracket(column))]"
+            if (row[safe: 5] ?? nil) == "1" {
+                included[name]?.append(quoted)
+            } else {
+                let descending = (row[safe: 6] ?? nil) == "1"
+                keys[name]?.append(descending ? "\(quoted) DESC" : quoted)
+            }
+        }
+
+        return order.compactMap { name -> String? in
+            guard let keyColumns = keys[name], !keyColumns.isEmpty else { return nil }
+            var statement = "CREATE "
+            if unique[name] == true { statement += "UNIQUE " }
+            statement += "\(kind[name] ?? "NONCLUSTERED") INDEX [\(escapeBracket(name))]"
+            statement += " ON \(bracketed(schema: schema, table: table))"
+            statement += " (\(keyColumns.joined(separator: ", ")))"
+            if let includedColumns = included[name], !includedColumns.isEmpty {
+                statement += " INCLUDE (\(includedColumns.joined(separator: ", ")))"
+            }
+            if let predicate = filter[name] {
+                statement += " WHERE \(predicate)"
+            }
+            return statement + ";"
+        }
+    }
+
     public static func qualifiedName(schema: String?, table: String) -> String {
         guard let schema, !schema.isEmpty else {
             return "[\(escapeBracket(table))]"

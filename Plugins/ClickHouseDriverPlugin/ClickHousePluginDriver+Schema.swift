@@ -225,14 +225,33 @@ extension ClickHousePluginDriver {
         return result.rows.first?.first?.asText ?? ""
     }
 
+    /// A materialized view is answered with `SHOW CREATE TABLE`, which carries its target table
+    /// and engine clause. `as_select` is the `SELECT` alone and would describe it as an ordinary
+    /// view, so the restore would build one and lose where the rows are actually kept.
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
         let escapedView = view.replacingOccurrences(of: "'", with: "''")
         let sql = """
-            SELECT as_select FROM system.tables
+            SELECT engine, as_select FROM system.tables
             WHERE database = currentDatabase() AND name = '\(escapedView)'
             """
         let result = try await execute(query: sql)
-        return result.rows.first?.first?.asText ?? ""
+        guard let row = result.rows.first else {
+            throw ClickHouseError(message: String(
+                format: String(localized: "ClickHouse returned no definition for view '%@'."), view))
+        }
+
+        if row[safe: 0]?.asText == "MaterializedView" {
+            return try await fetchTableDDL(table: view, schema: schema)
+        }
+
+        guard let body = row[safe: 1]?.asText,
+              !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw ClickHouseError(message: String(
+                format: String(localized: "ClickHouse returned no definition for view '%@'."), view))
+        }
+        /// `as_select` is the view's `SELECT` alone, so it needs the header a dump replays. Written
+        /// bare it made the restore run a query and create no view.
+        return "CREATE VIEW \(quoteIdentifier(view)) AS\n\(body)"
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
