@@ -660,7 +660,9 @@ private extension QueryClassifier {
     /// The verb and the path, and nothing else. A Typesense console request is one header line
     /// followed by a JSON body, and the body is the caller's data: scanning the whole statement
     /// let `POST /collections/c/documents/import` carrying `"note": "/multi_search"` in a field
-    /// read as a search, which is a read-only mode and MCP gate bypass.
+    /// read as a search, which is a read-only mode and MCP gate bypass. A URL path holds no raw
+    /// space, so the path ends at the first one: that keeps a body written on the header line out
+    /// of it, and stops `POST /collections/c /multi_search` from ending in a read path.
     static func typesenseRequestLine(_ trimmed: String) -> (verb: String, path: String) {
         let header = trimmed.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? ""
         let parts = header.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
@@ -673,6 +675,7 @@ private extension QueryClassifier {
                 path = String(path[..<stop.lowerBound])
             }
         }
+        path = String(path.prefix { !$0.isWhitespace })
         if !path.hasPrefix("/") { path = "/" + path }
         return (String(verb).uppercased(), path.uppercased())
     }
