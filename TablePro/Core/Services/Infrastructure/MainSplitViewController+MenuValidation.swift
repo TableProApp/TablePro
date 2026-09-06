@@ -325,6 +325,11 @@ extension MainSplitViewController: NSMenuItemValidation {
         if action == #selector(toggleSidebar(_:)) || action == #selector(toggleInspector(_:)) {
             return currentPane == .content
         }
+        /// The assistant is the one surface a setting can take away, so its command goes with it
+        /// rather than staying enabled over a pane that would refuse to open.
+        if action == #selector(toggleAssistant(_:)) {
+            return currentPane == .content && AppSettingsManager.shared.ai.enabled
+        }
         if action == #selector(setResultView(_:)) { return canShowResultView(menuItem) }
         if action == #selector(requestDisconnect) { return canDisconnect }
         if action == #selector(retryConnection) { return canReconnect }
@@ -342,6 +347,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             setTitle(isSidebarCollapsed ? "Show Sidebar" : "Hide Sidebar", on: menuItem)
         case #selector(toggleInspector(_:)):
             setTitle(isInspectorVisible ? "Hide Inspector" : "Show Inspector", on: menuItem)
+        case #selector(toggleAssistant(_:)):
+            setTitle(isAssistantVisible ? "Hide Assistant" : "Show Assistant", on: menuItem)
         case #selector(toggleWorkspaceRail(_:)):
             setTitle(isWorkspaceRailEnabled ? "Hide Connections" : "Show Connections", on: menuItem)
         case #selector(undo(_:)):

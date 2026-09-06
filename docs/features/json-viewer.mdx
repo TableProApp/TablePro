@@ -115,15 +115,15 @@ The length test reads the stored value, so a long value pasted into a one-line f
 
 The text box and the JSON editor each carry a drag handle under them, with separate remembered heights that survive a relaunch.
 
-**Open in Window** detaches a JSON, PHP or text value into its own resizable window; on an editable row, edits there join the same pending changes as the field. An image detaches read-only. **Expand in Sidebar**, on JSON and PHP only, fills the inspector with that one field, and **Fields** goes back.
+**Open in Window** detaches a JSON, PHP or text value into its own resizable window; on an editable row, edits there join the same pending changes as the field. An image detaches read-only. The expand button on a JSON, PHP, text or binary field grows it to fill the inspector's height with the other fields still listed around it; click it again to shrink it back.
 
-Right-click a field for its menu; an editable field also shows it on a hover button. **Set NULL**, **Set DEFAULT**, **Set EMPTY** and **SQL Functions** need an editable field. **Copy Value** is always there, and a read-only field keeps its text selectable.
+Every field carries a menu at its trailing edge, and right-clicking the field opens the same one. **Set NULL**, **Set DEFAULT**, **Set EMPTY** and **SQL Functions** need an editable field; `Ctrl+Option+N` and `Ctrl+Option+D` reach the first two from the keyboard. **Copy Value** is always there, and a read-only field keeps its text selectable.
 
-With no row selected, the inspector describes the table: data, index and total size, row count, average row size, engine, collation, and creation and update dates, as far as the database reports them. On a Structure tab it follows the structure grid.
+With no row selected, the inspector describes the table the tab is bound to: data, index and total size, row count, average row size, engine, collation, and creation and update dates, as far as the database reports them. A tab with no table of its own, such as a query, leaves it empty. On a Structure tab it follows the structure grid and names the selected column.
 
 ## Row as JSON
 
-Right-click a row and choose **Show Row as JSON**, or open the inspector and pick its **JSON** tab. The row prints as one JSON object, keys in the result's own column order: numbers and booleans unquoted, NULL as `null`, binary as hex. Like the **Details** tab beside it, it prints every column the result carries, including any you hid in the grid. A JSON column, and a text column holding a document, arrive as nested keys instead of as a string.
+Right-click a row and choose **Show Row as JSON**, or open the inspector and switch it to **JSON**. The row prints as one JSON object, keys in the result's own column order: numbers and booleans unquoted, NULL as `null`, binary as hex. Like **Fields** beside it, it prints every column the result carries, including any hidden in the grid. A JSON column, and a text column holding a document, arrive as nested keys instead of as a string.
 
 <Frame caption="A Track row as JSON, with its AlbumId key opened onto the Album row">
   <img className="block dark:hidden" src="/images/row-as-json.png" alt="Row as JSON" />
@@ -136,7 +136,7 @@ A foreign key carries a disclosure control. Click it and the referenced row is f
 
 The filter field takes text, or a regular expression wrapped in slashes such as `/^rental/`. It matches keys and values, keeps the keys that lead to a match along with everything under a key that matches, and opens what was collapsed. `Escape` clears it. An invalid expression outlines the field in red and filters nothing.
 
-Editing stays on the **Details** tab. Right-click a line for **Copy Value** and **Copy Key**; a foreign key line adds **Open** for the referenced table, filtered to that row.
+Editing stays on **Fields**. Right-click a line for **Copy Value** and **Copy Key**; a foreign key line adds **Open** for the referenced table, filtered to that row.
 
 Caps: a document over 100,000 characters prints as a string rather than as nested keys, the same cap the [JSON tree](#limits) has. A binary value shows its first 64 bytes followed by an ellipsis, the same cap the grid's own **Copy** applies.
 

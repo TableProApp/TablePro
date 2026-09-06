@@ -41,7 +41,7 @@ struct CommandActionsBulkCloseTests {
                 get: { tableOperationOptions },
                 set: { tableOperationOptions = $0 }
             ),
-            rightPanelState: RightPanelState()
+            trailingPaneState: TrailingPaneState()
         )
 
         let window = NSWindow()

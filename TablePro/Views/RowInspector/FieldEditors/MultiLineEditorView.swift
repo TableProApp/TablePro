@@ -8,12 +8,17 @@ import SwiftUI
 internal struct MultiLineEditorView: View {
     let context: FieldEditorContext
     var onPopOut: ((String) -> Void)?
+    var isExpanded = false
 
     @AppStorage(PreferenceKeys.rowInspectorTextFieldHeight.name, store: AppStorageEnvironment.shared.defaults)
     private var fieldHeight = ResizableFieldMetrics.defaultTextHeight
 
     var body: some View {
-        ResizableEditorContainer(height: $fieldHeight, range: ResizableFieldMetrics.textHeightRange) {
+        ResizableEditorContainer(
+            height: $fieldHeight,
+            range: ResizableFieldMetrics.textHeightRange,
+            expandedHeight: isExpanded ? ResizableFieldMetrics.expandedHeight : nil
+        ) {
             TextValueEditor(
                 text: context.value,
                 isEditable: !context.isReadOnly,

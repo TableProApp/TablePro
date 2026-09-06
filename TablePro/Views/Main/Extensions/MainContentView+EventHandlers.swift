@@ -188,7 +188,7 @@ extension MainContentView {
         }
 
         if !changeManager.hasChanges {
-            rightPanelState.editState.clearEdits()
+            trailingPaneState.inspector.editState.clearEdits()
         }
 
         var modifiedColumns = Set<Int>()
@@ -208,7 +208,7 @@ extension MainContentView {
                 }
             }
         }
-        rightPanelState.editState.configure(
+        trailingPaneState.inspector.editState.configure(
             selectedRowIndices: selectedIndices,
             allRows: stringRows,
             columns: tableRows.columns,
@@ -216,17 +216,18 @@ extension MainContentView {
             externallyModifiedColumns: modifiedColumns,
             primaryKeyColumns: pkColumns,
             foreignKeyColumns: fkColumns,
-            serverOwnedColumns: tableRows.generatedColumns
+            serverOwnedColumns: tableRows.generatedColumns,
+            displayFormats: inspectorDisplayFormats(for: tab, columns: tableRows.columns, types: tableRows.columnTypes)
         )
 
         guard isSidebarEditable else {
-            rightPanelState.editState.onFieldChanged = nil
+            trailingPaneState.inspector.editState.onFieldChanged = nil
             return
         }
 
         let capturedCoordinator = coordinator
-        let capturedEditState = rightPanelState.editState
-        rightPanelState.editState.onFieldChanged = { columnIndex, newValue in
+        let capturedEditState = trailingPaneState.inspector.editState
+        trailingPaneState.inspector.editState.onFieldChanged = { columnIndex, newValue in
             guard let tab = capturedCoordinator.tabManager.selectedTab else { return }
             let tableRows = capturedCoordinator.tabSessionRegistry.tableRows(for: tab.id)
             let columnName =
@@ -262,9 +263,47 @@ extension MainContentView {
         }
     }
 
+    /// The per-column display formats the grid is applying, in column order.
+    ///
+    /// The inspector had no idea these existed: its values came from a raw pass that decoded bytes
+    /// with `isoLatin1` and passed text straight through, while the dead tuple path beside it
+    /// computed formatted values nothing displayed. Only the editor choice is taken from the
+    /// format; the value stays raw, because a save writes what the editor holds and a formatted
+    /// timestamp written back into an integer column would corrupt it.
+    private func inspectorDisplayFormats(
+        for tab: QueryTab,
+        columns: [String],
+        types: [ColumnType?]
+    ) -> [ValueDisplayFormat?] {
+        let service = ValueDisplayFormatService.shared
+        let scope = tab.tableContext.scope(connectionId: coordinator.connection.id)
+        let storageKeys = ValueDisplayFormatColumnKey.storageKeys(for: columns)
+        let activeFormats = InspectorValueDisplayFormatResolver.activeFormats(
+            from: coordinator.dataTabDelegate?.tableViewCoordinator,
+            matching: columns
+        )
+        let storedFormats = activeFormats == nil
+            ? storageKeys.map { service.effectiveFormat(columnKey: $0, scope: scope) }
+            : []
+        return columns.indices.map { index in
+            let resolved = InspectorValueDisplayFormatResolver.resolve(
+                columnIndex: index,
+                activeFormats: activeFormats,
+                storedFormat: storedFormats.indices.contains(index) ? storedFormats[index] : .raw,
+                columnType: index < types.count ? types[index] : nil,
+                databaseType: coordinator.connection.type
+            )
+            /// `.raw` is what the resolver returns for "nobody chose a format", and it is also what
+            /// `FieldEditorResolver` reads as "skip JSON, PHP and image detection". Forwarding it
+            /// would take the content-driven editors away from every column that has no override,
+            /// which is nearly all of them, so absence stays nil.
+            return resolved == .raw ? nil : resolved
+        }
+    }
+
     private func clearSidebarEditState() {
-        rightPanelState.editState.fields = []
-        rightPanelState.editState.onFieldChanged = nil
+        trailingPaneState.inspector.editState.fields = []
+        trailingPaneState.inspector.editState.onFieldChanged = nil
     }
 
     /// Populate the inspector from the grid that owns a schema selection, and send every
@@ -278,15 +317,15 @@ extension MainContentView {
             return
         }
 
-        rightPanelState.editState.configure(schemaFields: row.fields, displayRow: displayRow)
+        trailingPaneState.inspector.editState.configure(schemaFields: row.fields, displayRow: displayRow)
 
         guard row.isEditable else {
-            rightPanelState.editState.onFieldChanged = nil
+            trailingPaneState.inspector.editState.onFieldChanged = nil
             return
         }
 
         let capturedCoordinator = coordinator
-        rightPanelState.editState.onFieldChanged = { fieldIndex, newValue in
+        trailingPaneState.inspector.editState.onFieldChanged = { fieldIndex, newValue in
             capturedCoordinator.inspectorRowSource?.commitInspectorField(
                 displayRow: displayRow,
                 fieldIndex: fieldIndex,

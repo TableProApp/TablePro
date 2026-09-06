@@ -95,7 +95,7 @@ final class DataTabGridDelegate: DataGridViewDelegate {
     /// selection keeps that selection on purpose, and the panel then shows its first row, which is
     /// the row the Details tab shows too.
     func dataGridShowRowAsJSON() {
-        coordinator?.showJSONPanel()
+        coordinator?.showRowAsJSON()
     }
 
     func dataGridHideColumn(_ columnName: String) {

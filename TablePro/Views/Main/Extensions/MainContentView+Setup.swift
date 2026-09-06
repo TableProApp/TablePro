@@ -289,12 +289,12 @@ extension MainContentView {
             pendingTruncates: $pendingTruncates,
             pendingDeletes: $pendingDeletes,
             tableOperationOptions: $tableOperationOptions,
-            rightPanelState: rightPanelState
+            trailingPaneState: trailingPaneState
         )
         actions.window = viewWindow
         coordinator.commandActions = actions
         commandActions = actions
-        coordinator.splitViewController?.rebuildInspectorPane()
+        coordinator.splitViewController?.rebuildTrailingPanes()
     }
 
     // MARK: - Database Switcher

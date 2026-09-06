@@ -16,13 +16,18 @@ struct FieldEditorContextPolicyTests {
         originalValue: String? = "value",
         hasMultipleValues: Bool = false
     ) -> FieldEditorContext {
-        FieldEditorContext(
+        let state: FieldValueState = {
+            if hasMultipleValues { return .multipleValues }
+            guard let originalValue else { return .null }
+            return .value(originalValue)
+        }()
+        return FieldEditorContext(
             columnName: "body",
             columnType: .text(rawType: "TEXT"),
             isLongText: true,
             value: .constant(originalValue ?? ""),
             originalValue: originalValue,
-            hasMultipleValues: hasMultipleValues,
+            valueState: state,
             isReadOnly: isReadOnly,
             allowsNullAndDefault: allowsNullAndDefault
         )
@@ -58,6 +63,36 @@ struct FieldEditorContextPolicyTests {
     @Test("a stored NULL says NULL")
     func storedNullSaysNull() {
         #expect(makeContext(isReadOnly: true, originalValue: nil).emptyStatePlaceholder == "NULL")
+    }
+
+    /// Nothing is written until Save, so a field the user has marked NULL still holds its stored
+    /// value. Copying the editor's own text would hand back an empty string for it.
+    @Test("Copy Value on a field marked NULL copies the stored value, not an empty string")
+    func copyValueOnPendingNullCopiesTheStoredValue() {
+        let context = FieldEditorContext(
+            columnName: "body",
+            columnType: .text(rawType: "TEXT"),
+            isLongText: false,
+            value: .constant(""),
+            originalValue: "kept",
+            valueState: .pendingNull,
+            isReadOnly: false
+        )
+        #expect(context.copyableValue == "kept")
+    }
+
+    @Test("Copy Value on an ordinary field copies what the editor holds")
+    func copyValueOnAValueCopiesTheEditor() {
+        let context = FieldEditorContext(
+            columnName: "body",
+            columnType: .text(rawType: "TEXT"),
+            isLongText: false,
+            value: .constant("typed"),
+            originalValue: "stored",
+            valueState: .value("typed"),
+            isReadOnly: false
+        )
+        #expect(context.copyableValue == "typed")
     }
 
     @Test("a multi-row selection says so instead of showing NULL")

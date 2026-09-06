@@ -97,7 +97,9 @@ final class JSONRowInspectorUITests: UITestCase {
         item.click()
     }
 
-    /// The tab strip is a segmented control, which AppKit publishes as radio buttons.
+    /// The inspector's view-mode control is a segmented control, which AppKit publishes as radio
+    /// buttons. It selects between two renderings of the same row; the assistant used to be a third
+    /// segment here and is its own surface now.
     private func jsonTab(in window: XCUIElement) -> XCUIElement {
         window.radioButtons["JSON"]
     }

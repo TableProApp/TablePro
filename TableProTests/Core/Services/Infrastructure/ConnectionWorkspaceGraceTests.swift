@@ -108,7 +108,7 @@ final class ConnectionWorkspaceGraceTests: XCTestCase {
             ),
             session: nil,
             sessionState: nil,
-            rightPanelState: nil,
+            trailingPaneState: nil,
             phase: phase
         )
     }

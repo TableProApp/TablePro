@@ -53,7 +53,7 @@ struct CommandActionsDispatchTests {
         var pendingTruncates: Set<DatabaseTreeTableRef> = []
         var pendingDeletes: Set<DatabaseTreeTableRef> = []
         var tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions] = [:]
-        let rightPanelState = RightPanelState()
+        let trailingPaneState = TrailingPaneState()
 
         let actions = MainContentCommandActions(
             coordinator: coordinator,
@@ -66,7 +66,7 @@ struct CommandActionsDispatchTests {
                 get: { tableOperationOptions },
                 set: { tableOperationOptions = $0 }
             ),
-            rightPanelState: rightPanelState
+            trailingPaneState: trailingPaneState
         )
 
         return (actions, coordinator)

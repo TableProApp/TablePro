@@ -17,7 +17,7 @@ struct ConnectionWorkspaceRegistryTests {
             payloadConnection: nil,
             session: nil,
             sessionState: nil,
-            rightPanelState: nil,
+            trailingPaneState: nil,
             phase: .idle
         )
     }

@@ -289,7 +289,7 @@ struct ConnectionWindowChromeTests {
                 connection: connection,
                 driver: MockDatabaseDriver(connection: connection)
             )
-            selected.rightPanelState = RightPanelState(connectionId: connection.id)
+            selected.trailingPaneState = TrailingPaneState(connectionId: connection.id)
             selected.sessionState = SessionStateFactory.create(connection: connection, payload: nil)
         }
 
@@ -311,7 +311,7 @@ struct ConnectionWindowChromeTests {
                 payloadConnection: connection,
                 session: nil,
                 sessionState: nil,
-                rightPanelState: nil,
+                trailingPaneState: nil,
                 phase: phase
             )
         }

@@ -207,6 +207,7 @@ See [Filtering](/features/filtering) for the filter bar itself.
 | Expand or collapse the selected container | `Right` / `Left` |
 | Clear the sidebar selection | `Escape` |
 | Toggle inspector | `Cmd+Option+I` |
+| Toggle assistant | `Cmd+Option+A` |
 | Toggle results | `Cmd+Option+R` |
 | Toggle history | `Cmd+Y` |
 | Increase text size (editor font) | `Cmd+=` |
@@ -227,6 +228,17 @@ With the sidebar focused, typing the first letters of an object's name jumps to 
 ### Query history drawer
 
 With the drawer open (`Cmd+Y`) and its entry list focused, `Return` loads the selected entry into the editor, `Delete` removes it, and `Cmd+C` copies its query. `Cmd+Y` hides the drawer again.
+
+### Inspector fields
+
+| Action | Shortcut |
+|--------|----------|
+| Next field | `Tab` |
+| Previous field | `Shift+Tab` |
+| Set the focused field to NULL | `Ctrl+Option+N` |
+| Set the focused field to its DEFAULT | `Ctrl+Option+D` |
+
+`Ctrl+Option+N` and `Ctrl+Option+D` skip a field the server owns and a column definition on a Structure tab, neither of which takes either state.
 
 ## Welcome window
 

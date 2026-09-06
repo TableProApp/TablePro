@@ -6,30 +6,21 @@
 import SwiftUI
 
 internal struct SetPickerView: View {
-    let context: FieldEditorContext
-    let values: [String]
-    var isPendingNull: Bool = false
-    var isPendingDefault: Bool = false
-    var onSetNull: (() -> Void)?
-    var onSetDefault: (() -> Void)?
+    internal let context: FieldEditorContext
+    internal let values: [String]
+    internal var onSetNull: (() -> Void)?
+    internal var onSetDefault: (() -> Void)?
 
     @State private var isSetPopoverPresented = false
 
     var body: some View {
-        let isNullValue = context.originalValue == nil && !isPendingDefault
-        let displayLabel: String = {
-            if isPendingNull || isNullValue { return "NULL" }
-            if isPendingDefault { return "DEFAULT" }
-            return context.value.wrappedValue.isEmpty
-                ? String(localized: "No selection")
-                : context.value.wrappedValue
-        }()
-
         Menu {
-            Button { isSetPopoverPresented = true } label: {
+            Button {
+                isSetPopoverPresented = true
+            } label: {
                 Text("Edit Values…")
             }
-            if onSetNull != nil || onSetDefault != nil {
+            if context.canMutate, onSetNull != nil || onSetDefault != nil {
                 Divider()
                 if let onSetNull {
                     Button("Set NULL", action: onSetNull)
@@ -42,6 +33,7 @@ internal struct SetPickerView: View {
             HStack(spacing: 4) {
                 Text(displayLabel)
                     .font(ThemeEngine.shared.valueFontSwiftUI)
+                    .foregroundStyle(context.valueState.placeholder == nil ? .primary : .secondary)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Image(systemName: "chevron.down")
@@ -58,23 +50,25 @@ internal struct SetPickerView: View {
         .popover(isPresented: $isSetPopoverPresented) {
             SetPopoverContentView(
                 allowedValues: values,
-                initialSelections: parseSetSelections(from: context.value.wrappedValue, allowed: values),
-                onCommit: { result in
-                    context.value.wrappedValue = result ?? ""
-                },
-                onDismiss: {
-                    isSetPopoverPresented = false
-                }
+                initialSelections: Self.selections(from: context.valueState.editableText, allowed: values),
+                onCommit: { context.value.wrappedValue = $0 ?? "" },
+                onDismiss: { isSetPopoverPresented = false }
             )
         }
     }
 
-    private func parseSetSelections(from value: String, allowed: [String]) -> [String: Bool] {
+    /// Follows `valueState`, so a set the user has just edited on a NULL column shows what they
+    /// chose, and a multi-row selection that disagrees says so instead of reporting NULL.
+    private var displayLabel: String {
+        if let placeholder = context.valueState.placeholder { return placeholder }
+        let text = context.valueState.editableText
+        return text.isEmpty ? String(localized: "No selection") : text
+    }
+
+    private static func selections(from value: String, allowed: [String]) -> [String: Bool] {
         let selected = Set(value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
-        var dict: [String: Bool] = [:]
-        for val in allowed {
-            dict[val] = selected.contains(val)
+        return allowed.reduce(into: [:]) { result, candidate in
+            result[candidate] = selected.contains(candidate)
         }
-        return dict
     }
 }

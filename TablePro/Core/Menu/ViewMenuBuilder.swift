@@ -25,6 +25,12 @@ enum ViewMenuBuilder {
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
+                String(localized: "Show Assistant"),
+                action: #selector(MainSplitViewController.toggleAssistant(_:)),
+                shortcut: .toggleAssistant,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
                 String(localized: "Show Connections"),
                 action: #selector(MainSplitViewController.toggleWorkspaceRail(_:)),
                 shortcut: .toggleWorkspaceRail,

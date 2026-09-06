@@ -106,6 +106,15 @@ extension MainWindowToolbar {
                 action: #selector(performShowDashboard(_:)),
                 description: String(localized: "Server Dashboard")
             )
+        case Self.assistant:
+            return menuOnlyItem(
+                id: itemIdentifier,
+                label: String(localized: "Assistant"),
+                symbol: "sparkles",
+                action: #selector(performToggleAssistant(_:)),
+                shortcut: .toggleAssistant,
+                description: String(localized: "Toggle Assistant")
+            )
         case Self.history:
             return menuOnlyItem(
                 id: itemIdentifier,

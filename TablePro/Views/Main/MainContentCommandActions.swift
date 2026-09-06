@@ -39,7 +39,7 @@ final class MainContentCommandActions {
     @ObservationIgnored private let pendingTruncates: Binding<Set<DatabaseTreeTableRef>>
     @ObservationIgnored private let pendingDeletes: Binding<Set<DatabaseTreeTableRef>>
     @ObservationIgnored private let tableOperationOptions: Binding<[DatabaseTreeTableRef: TableOperationOptions]>
-    @ObservationIgnored private let rightPanelState: RightPanelState
+    @ObservationIgnored private let trailingPaneState: TrailingPaneState
 
     /// The window this instance belongs to — used for key-window guards.
     @ObservationIgnored weak var window: NSWindow? {
@@ -76,7 +76,7 @@ final class MainContentCommandActions {
         pendingTruncates: Binding<Set<DatabaseTreeTableRef>>,
         pendingDeletes: Binding<Set<DatabaseTreeTableRef>>,
         tableOperationOptions: Binding<[DatabaseTreeTableRef: TableOperationOptions]>,
-        rightPanelState: RightPanelState
+        trailingPaneState: TrailingPaneState
     ) {
         self.coordinator = coordinator
         self.connection = connection
@@ -85,9 +85,8 @@ final class MainContentCommandActions {
         self.pendingTruncates = pendingTruncates
         self.pendingDeletes = pendingDeletes
         self.tableOperationOptions = tableOperationOptions
-        self.rightPanelState = rightPanelState
+        self.trailingPaneState = trailingPaneState
 
-        setupSaveAction()
         setupObservers()
     }
 
@@ -153,21 +152,23 @@ final class MainContentCommandActions {
 
     // MARK: - Save Action
 
-    private func setupSaveAction() {
-        rightPanelState.onSave = { [weak self] in
+    /// Writes the inspector's pending edits.
+    ///
+    /// This used to be stored back on the panel's state as an `onSave` closure that only this type
+    /// ever set and only this type ever called; no view read it, despite a comment saying the panel
+    /// did. Calling the coordinator directly is the same work with one fewer hop.
+    private func saveInspectorEdits() {
+        let editState = trailingPaneState.inspector.editState
+        Task { [weak self] in
             guard let self else { return }
-            Task {
-                do {
-                    try await self.coordinator?.saveSidebarEdits(
-                        editState: self.rightPanelState.editState
-                    )
-                } catch {
-                    AlertHelper.showErrorSheet(
-                        title: String(localized: "Failed to Save Changes"),
-                        message: error.localizedDescription,
-                        window: self.window
-                    )
-                }
+            do {
+                try await self.coordinator?.saveSidebarEdits(editState: editState)
+            } catch {
+                AlertHelper.showErrorSheet(
+                    title: String(localized: "Failed to Save Changes"),
+                    message: error.localizedDescription,
+                    window: self.window
+                )
             }
         }
     }
@@ -796,8 +797,8 @@ final class MainContentCommandActions {
         }
 
         // Sidebar-only edits (made directly in the inspector panel)
-        if rightPanelState.editState.hasEdits {
-            rightPanelState.onSave?()
+        if trailingPaneState.inspector.editState.hasEdits {
+            saveInspectorEdits()
             return true
         }
 
@@ -856,7 +857,7 @@ final class MainContentCommandActions {
         coordinator?.changeManager.clearChangesAndUndoHistory()
         pendingTruncates.wrappedValue.removeAll()
         pendingDeletes.wrappedValue.removeAll()
-        rightPanelState.editState.clearEdits()
+        trailingPaneState.inspector.editState.clearEdits()
         finish(asBatchSurvivor: asBatchSurvivor)
     }
 
@@ -984,9 +985,9 @@ final class MainContentCommandActions {
             pendingTruncates.wrappedValue = truncates
             pendingDeletes.wrappedValue = deletes
             tableOperationOptions.wrappedValue = options
-        } else if rightPanelState.editState.hasEdits {
+        } else if trailingPaneState.inspector.editState.hasEdits {
             // Save sidebar-only edits (edits made directly in the right panel)
-            rightPanelState.onSave?()
+            saveInspectorEdits()
         }
         // File save: write query back to source file
         else if let tab = coordinator?.tabManager.selectedTab,
@@ -1029,13 +1030,13 @@ final class MainContentCommandActions {
 
     func aiExplainQuery() {
         guard let query = coordinator?.tabManager.selectedTab?.content.query, !query.isEmpty else { return }
-        coordinator?.showAIChatPanel()
+        coordinator?.showAssistant()
         coordinator?.aiViewModel?.handleExplainSelection(query)
     }
 
     func aiOptimizeQuery() {
         guard let query = coordinator?.tabManager.selectedTab?.content.query, !query.isEmpty else { return }
-        coordinator?.showAIChatPanel()
+        coordinator?.showAssistant()
         coordinator?.aiViewModel?.handleOptimizeSelection(query)
     }
 
@@ -1044,7 +1045,7 @@ final class MainContentCommandActions {
     }
 
     func showRowAsJSON() {
-        coordinator?.showJSONPanel()
+        coordinator?.showRowAsJSON()
     }
 
     func openForeignKeyTable(reference: JSONForeignKeyRef, value: String) {
@@ -1225,7 +1226,7 @@ final class MainContentCommandActions {
     }
 
     func toggleRightSidebar() {
-        coordinator?.inspectorProxy?.toggleInspector()
+        coordinator?.trailingPaneProxy?.toggleInspector()
     }
 
     func goToPreviousPage() {

@@ -83,7 +83,7 @@ extension MainContentCoordinator {
         evictionTask?.cancel()
         evictionTask = nil
 
-        rightPanelState?.teardown()
+        trailingPaneState?.teardown()
 
         teardown()
 

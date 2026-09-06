@@ -24,7 +24,7 @@ import SwiftUI
         pendingTruncates: .constant([]),
         pendingDeletes: .constant([]),
         tableOperationOptions: .constant([:]),
-        rightPanelState: RightPanelState(),
+        trailingPaneState: TrailingPaneState(),
         tabManager: state.tabManager,
         changeManager: state.changeManager,
         toolbarState: state.toolbarState,

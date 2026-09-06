@@ -1,12 +1,12 @@
 //
-//  FieldMenuView.swift
+//  FieldMenuContent.swift
 //  TablePro
 //
 
 import SwiftUI
 
-/// The field actions (Set NULL/DEFAULT/EMPTY, copy, SQL functions). Shared by the
-/// hover menu button and the field's context menu so both stay in sync.
+/// The field actions (Set NULL/DEFAULT/EMPTY, copy, SQL functions). Shared by the row's own pull
+/// down and its context menu so both stay in sync.
 ///
 /// A read-only field keeps the copy actions and loses the mutating ones. Hiding the whole menu
 /// left a value that is neither selectable nor copyable.
@@ -66,48 +66,5 @@ internal struct FieldMenuContent: View {
                 Button("Clear") { onClear() }
             }
         }
-    }
-}
-
-internal struct FieldMenuView: View {
-    let value: String
-    let columnType: ColumnType
-    let sqlFunctions: [SQLFunctionProvider.SQLFunction]
-    let canMutate: Bool
-    let isPendingNull: Bool
-    let isPendingDefault: Bool
-    let onSetNull: () -> Void
-    let onSetDefault: () -> Void
-    let onSetEmpty: () -> Void
-    let onSetFunction: (String) -> Void
-    let onClear: () -> Void
-
-    var body: some View {
-        Menu {
-            FieldMenuContent(
-                value: value,
-                columnType: columnType,
-                sqlFunctions: sqlFunctions,
-                canMutate: canMutate,
-                isPendingNull: isPendingNull,
-                isPendingDefault: isPendingDefault,
-                onSetNull: onSetNull,
-                onSetDefault: onSetDefault,
-                onSetEmpty: onSetEmpty,
-                onSetFunction: onSetFunction,
-                onClear: onClear
-            )
-        } label: {
-            Image(systemName: "chevron.down")
-                .font(.caption)
-                .frame(width: 20, height: 20)
-                .contentShape(Rectangle())
-        }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .accessibilityLabel(String(localized: "Value Options"))
-        .help(String(localized: "Value Options"))
     }
 }

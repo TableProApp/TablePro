@@ -10,7 +10,7 @@ extension MainContentCoordinator {
     }
 
     var hasSidebarEdits: Bool {
-        rightPanelState?.editState.hasEdits ?? false
+        trailingPaneState?.inspector.editState.hasEdits ?? false
     }
 
     /// Only the selected tab's editors are mounted, so only the selected tab has live state on the

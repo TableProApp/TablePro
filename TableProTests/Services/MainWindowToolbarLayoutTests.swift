@@ -46,13 +46,32 @@ struct MainWindowToolbarInspectorPlacementTests {
         #expect(MainWindowToolbar.defaultItemIdentifiers.last == MainWindowToolbar.inspector)
     }
 
-    @Test("A flexible space anchors the inspector toggle to the window edge")
+    /// One flexible space, immediately after the separator, is what pushes the whole trailing group
+    /// to the window edge. Everything after it is a pane toggle; a second flexible space in there
+    /// would split the group and let the items drift apart as the pane opens.
+    @Test("A flexible space anchors the trailing toggles to the window edge")
     func flexibleSpaceSeparatesTheTrackingSeparatorFromTheToggle() throws {
         let identifiers = MainWindowToolbar.defaultItemIdentifiers
         let separatorIndex = try #require(identifiers.firstIndex(of: .inspectorTrackingSeparator))
         let toggleIndex = try #require(identifiers.firstIndex(of: MainWindowToolbar.inspector))
         #expect(separatorIndex < toggleIndex)
-        #expect(Array(identifiers[(separatorIndex + 1) ..< toggleIndex]) == [.flexibleSpace])
+        #expect(identifiers[separatorIndex + 1] == .flexibleSpace)
+
+        let trailingGroup = Array(identifiers[(separatorIndex + 2) ..< toggleIndex])
+        #expect(!trailingGroup.contains(.flexibleSpace))
+        #expect(trailingGroup.allSatisfy { $0 == MainWindowToolbar.assistant })
+    }
+
+    /// The assistant shares the trailing edge with the inspector, because the two of them drive one
+    /// pane. It ships in the default set for a new toolbar; an autosaved one keeps what it has, and
+    /// the menu-bar command is what reaches the assistant there.
+    @Test("The assistant toggle sits beside the inspector toggle")
+    func assistantSitsBesideTheInspectorToggle() throws {
+        let identifiers = MainWindowToolbar.defaultItemIdentifiers
+        let assistantIndex = try #require(identifiers.firstIndex(of: MainWindowToolbar.assistant))
+        let toggleIndex = try #require(identifiers.firstIndex(of: MainWindowToolbar.inspector))
+        #expect(assistantIndex + 1 == toggleIndex)
+        #expect(MainWindowToolbar.allowedItemIdentifiers.contains(MainWindowToolbar.assistant))
     }
 
     /// Ahead of the separator the toggle lands in the content section, which measured wrong in both

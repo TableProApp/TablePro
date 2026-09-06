@@ -10,7 +10,7 @@ import TableProPluginKit
 
 extension MainContentCoordinator {
     func fixErrorWithAI(query: String, error: String) {
-        showAIChatPanel()
+        showAssistant()
         aiViewModel?.handleFixError(query: query, error: error)
     }
 

@@ -29,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Table picker in Backup Dump, everything selected by default. (#2485)
 - Backup of several databases into one folder, one file each. (#2485)
 - Back Up… on a database selection in the connection tree. (#2485)
+- Assistant as its own pane, with View > Show Assistant and `Cmd+Option+A`.
+- Compact one-line rows in the inspector for short values, with long text, JSON and images still full width.
+- Always-visible value menu on every inspector field, with `Ctrl+Option+N` for NULL and `Ctrl+Option+D` for DEFAULT.
+- Tab and Shift+Tab between inspector fields.
+- Field search and an edited-fields-only filter in the inspector.
+- Table and row position at the top of the inspector.
 
 ### Changed
 
@@ -39,6 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tab moves focus out of Startup Commands and Pre-Connect Script instead of inserting a tab.
 - SQL export writes a materialized view's indexes once the view exists. (#2492)
 - Backup Dump as one sheet with scope, format and destination, in place of a picker with a save panel over it. (#2485)
+- Inspector shows the selected row as Fields or JSON, with AI Chat moved out of its tab strip.
+- Structured inspector values expand in place instead of replacing the whole pane.
 - Object tree context menu regrouped into four groups by intent, with the connection-wide commands off object rows.
 - View Options as a control in the sidebar's filter row, in place of an entry on every context menu.
 - View ER Diagram and New View on the object tree's empty-area menu only.
@@ -60,6 +68,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - VoiceOver reading a database chooser row's icon before the driver's name.
 - Animations that played through the Reduce Motion setting when removing a jump host or copying DDL or a query plan.
 - Icon-only controls with no VoiceOver name or tooltip in the date picker, row inspector and slash command settings.
+- Inspector picker reading NULL after setting a value on a NULL column, including on every new row.
+- Inspector picker reading NULL for a multi-row selection whose values differ.
+- Structure inspector drawing the Name and Type fields in two different fonts.
+- Primary key, foreign key and edited markers silent to VoiceOver in the inspector.
+- Inspector showing the last table's statistics on a tab with no table.
+- Auto-show inspector on row select doing nothing on a query tab.
+- Inspector ignoring a column's display format, showing raw where the grid showed JSON or PHP.
+- AI conversation history read from disk on every connection window, with the assistant never opened.
 - `is_connected` reported as true over MCP for a connection that had stopped answering.
 - Cost badge on every plan node of a query ending in `LIMIT`, where the share it reads could exceed 100%. (#2633)
 - Green "low cost" badge on plans that report no cost at all, such as SQLite and ClickHouse. (#2633)

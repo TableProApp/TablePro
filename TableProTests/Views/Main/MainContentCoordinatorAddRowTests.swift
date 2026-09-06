@@ -100,7 +100,7 @@ struct MainContentCommandActionsResultViewTests {
                 get: { tableOperationOptions },
                 set: { tableOperationOptions = $0 }
             ),
-            rightPanelState: RightPanelState()
+            trailingPaneState: TrailingPaneState()
         )
 
         var tab = QueryTab(title: "users", query: "SELECT * FROM users", tabType: tabType)
