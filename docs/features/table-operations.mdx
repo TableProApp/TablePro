@@ -7,7 +7,7 @@ Dropping a table cannot be undone, and **Cascade** in the confirmation dialog wi
 
 ## Create a table or view
 
-**Database > New Table…** opens the visual structure editor (see [Table Structure](/features/table-structure)). **Database > New View…** opens a query tab holding a `CREATE VIEW` template for the engine. Both are also on the sidebar's right-click menu over empty space, and both are dimmed while [safe mode](/features/safe-mode) blocks writes.
+**Database > New Table…** opens the visual structure editor (see [Table Structure](/features/table-structure)). **Database > New View…** opens a query tab holding a `CREATE VIEW` template for the engine. Both are also on the sidebar's right-click menu over empty space, where [safe mode](/features/safe-mode) removes them rather than dimming them.
 
 ## Drop and truncate
 
@@ -82,7 +82,7 @@ PostgreSQL VACUUM carries FULL (rewrites the table and blocks access), ANALYZE, 
 
 Views carry an eye icon in the sidebar; materialized views and foreign tables get their own. All three are read-only kinds, so their menus drop **Truncate** and **Import**, and the drop item reads **Drop View**, **Drop Materialized View**, or **Drop Foreign Table**. Dropping removes the definition only, and the data in the underlying tables stays.
 
-Right-click empty space and choose **Create New View…** to write a new one; right-click an existing view and choose **Edit View Definition** to open the current definition in a query tab. Either way, execute the statement to apply it.
+Right-click empty space and choose **New View…** to write a new one; right-click an existing view and choose **Edit View Definition** to open the current definition in a query tab. Either way, execute the statement to apply it.
 
 ## Databases and schemas
 

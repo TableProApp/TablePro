@@ -9,6 +9,10 @@ import SwiftUI
 @MainActor
 internal final class SidebarContainerViewController: NSViewController {
     private let searchField = NSSearchField()
+    /// Sidebar chrome, like the field it shares a row with, so it survives a connection switch and
+    /// writes settings that are not scoped to one. Hidden on the Favorites tab, whose list draws
+    /// none of what these options settle.
+    private let viewOptionsButton = SidebarViewOptionsButton()
     /// The filter field is window chrome and stays put; only the object list below it belongs to a
     /// connection, so that is the part the window swaps.
     private let listHost = WorkspacePaneHost()
@@ -43,6 +47,20 @@ internal final class SidebarContainerViewController: NSViewController {
         searchField.setAccessibilityLabel(String(localized: "Filter"))
         view.addSubview(searchField)
 
+        viewOptionsButton.isHidden = true
+        viewOptionsButton.setContentHuggingPriority(.required, for: .horizontal)
+
+        /// A stack view rather than two anchored controls, so hiding the button on the Favorites
+        /// tab takes its width with it: `detachesHiddenViews` removes a hidden arranged subview
+        /// from the layout, where a hidden anchored one would keep its gap beside the field.
+        let filterRow = NSStackView(views: [searchField, viewOptionsButton])
+        filterRow.translatesAutoresizingMaskIntoConstraints = false
+        filterRow.orientation = .horizontal
+        filterRow.alignment = .centerY
+        filterRow.spacing = 6
+        filterRow.detachesHiddenViews = true
+        view.addSubview(filterRow)
+
         addChild(listHost)
         let hostingView = listHost.view
         hostingView.translatesAutoresizingMaskIntoConstraints = false
@@ -51,17 +69,17 @@ internal final class SidebarContainerViewController: NSViewController {
 
         /// The insets are a margin, not an invariant, so they yield rather than break when the
         /// window narrows the sidebar to the workspace rail and leaves this view no width at all.
-        let searchLeading = searchField.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10)
-        let searchTrailing = searchField.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10)
-        searchLeading.priority = .defaultHigh
-        searchTrailing.priority = .defaultHigh
+        let rowLeading = filterRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10)
+        let rowTrailing = filterRow.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10)
+        rowLeading.priority = .defaultHigh
+        rowTrailing.priority = .defaultHigh
 
         NSLayoutConstraint.activate([
-            searchField.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 5),
-            searchLeading,
-            searchTrailing,
+            filterRow.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 5),
+            rowLeading,
+            rowTrailing,
 
-            hostingView.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 5),
+            hostingView.topAnchor.constraint(equalTo: filterRow.bottomAnchor, constant: 5),
             hostingView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             hostingView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             hostingView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -105,6 +123,7 @@ internal final class SidebarContainerViewController: NSViewController {
         self.sidebarState = state
         guard let state else {
             searchField.isHidden = true
+            viewOptionsButton.isHidden = true
             return
         }
         searchField.isHidden = false
@@ -146,9 +165,11 @@ internal final class SidebarContainerViewController: NSViewController {
         case .tables:
             activeText = state.searchText
             placeholder = String(localized: "Filter")
+            viewOptionsButton.isHidden = false
         case .favorites:
             activeText = state.favoritesSearchText
             placeholder = String(localized: "Filter favorites")
+            viewOptionsButton.isHidden = true
         }
 
         if searchField.stringValue != activeText {

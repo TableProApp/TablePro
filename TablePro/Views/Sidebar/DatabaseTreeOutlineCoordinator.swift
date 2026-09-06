@@ -107,6 +107,26 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             }
         }
         favoritesObservers.withLockUnchecked { $0.append(databaseObserver) }
+        observeObjectListAppearance()
+    }
+
+    /// The rows repaint from the setting rather than from the command that wrote it, so the same
+    /// change arrives whether it came from the View Options control in the filter row, the
+    /// empty-area menu, or Settings. Toggling Show Object Icons in Settings used to repaint
+    /// nothing, because only the contextual menu's own handler called `refreshVisibleRows`.
+    ///
+    /// Re-arms itself, because `withObservationTracking` fires once per registration.
+    private func observeObjectListAppearance() {
+        withObservationTracking {
+            _ = AppSettingsManager.shared.general.showObjectIcons
+            _ = AppSettingsManager.shared.general.showObjectComments
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.refreshVisibleRows()
+                self.observeObjectListAppearance()
+            }
+        }
     }
 
     deinit {

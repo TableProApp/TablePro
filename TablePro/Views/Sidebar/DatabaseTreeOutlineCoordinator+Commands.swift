@@ -151,10 +151,8 @@ extension DatabaseTreeOutlineCoordinator {
             mainCoordinator?.openRedisKey(key, keyType: keyType)
         case .toggleObjectIcons:
             AppSettingsManager.shared.general.showObjectIcons.toggle()
-            refreshVisibleRows()
         case .toggleObjectComments:
             AppSettingsManager.shared.general.showObjectComments.toggle()
-            refreshVisibleRows()
         case .setRowSize(let size):
             AppSettingsManager.shared.general.sidebarRowSize = size
         }

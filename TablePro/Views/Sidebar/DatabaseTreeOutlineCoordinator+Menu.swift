@@ -16,7 +16,7 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
     internal func menuNeedsUpdate(_ menu: NSMenu) {
         SidebarMenuBuilder.fill(
             menu,
-            with: DatabaseTreeMenuSpec.items(for: menuContext()),
+            with: DatabaseTreeMenuSpec.sections(for: menuContext()),
             target: self,
             action: #selector(performMenuCommand(_:))
         )
