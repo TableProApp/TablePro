@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 @testable import TablePro
 import TableProPluginKit
@@ -11,6 +12,12 @@ private final class PasteMockClipboard: ClipboardProvider {
     func readGridRows() -> GridRowsClipboardPayload? { gridRowsToRead }
     func writeText(_ text: String) {}
     func writeCsv(_ csv: String) {}
+
+    var copiedImages: [NSImage] = []
+
+    func writeImage(_ image: NSImage) {
+        copiedImages.append(image)
+    }
     func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload) {}
     var hasText: Bool { textToRead != nil }
     var hasGridRows: Bool { gridRowsToRead != nil }

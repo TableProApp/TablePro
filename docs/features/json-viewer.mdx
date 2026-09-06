@@ -1,6 +1,6 @@
 ---
 title: Cell and Row Viewers
-description: View and edit JSON, PHP serialized, and binary cell values, set per-column display formats, and inspect whole rows in the sidebar
+description: View and edit JSON, PHP serialized, image and binary cell values, set per-column display formats, and inspect whole rows in the sidebar
 ---
 
 Click the chevron on a JSON or blob cell to open its value in a popover anchored to that cell. Which viewer opens follows the column: its declared type, or the **Display As** choice on its header, and that choice changes rendering only, never what is stored.
@@ -60,6 +60,23 @@ Set **Display As > PHP Serialized** on a text column, then double-click or press
 
 A blob cell renders in the grid as compact hex (`0x48656C…`), unless its column reads as text. Click the chevron or double-click for the popover: a classic hex dump with offset, byte columns, and ASCII, plus an editable hex field under it on an editable table. That field takes spaced or continuous hex, with or without a `0x` prefix, and invalid hex disables **Save**.
 
+Bytes that read as an image open on the picture instead, with **Hex** the second segment. The [image viewer](#image-viewer) covers that.
+
+## Image viewer
+
+A cell whose content is an image opens on the drawing, with its stored form one segment away: **Hex** for a binary column, **Source** for SVG markup in a text column. The source stays editable wherever the cell is, and **Save** commits it through the same [change tracking](/features/change-tracking) queue as any other edit.
+
+Detection reads the value, not the column, since the same PNG turns up in `BLOB`, `BYTEA` and `VARBINARY`, and SVG arrives as often in a text column as a binary one. PNG, JPEG, JPEG 2000, GIF, TIFF, BMP, ICO, WebP, HEIC, HEIF and AVIF are identified from their header; SVG from its root element, behind any byte order mark, XML declaration, comment or doctype. A PDF, a Photoshop file and a camera raw file are left as hex, since a database client that opened them as "the image in this cell" would be guessing. **Display As > Raw Value** on the column turns detection off.
+
+<Frame caption="An SVG logo in a text column, with its markup a segment away">
+  <img className="block dark:hidden" src="/images/cell-image-viewer.png" alt="Popover showing a rendered SVG logo above a checkerboard, with Image and Source segments" />
+  <img className="hidden dark:block" src="/images/cell-image-viewer-dark.png" alt="Popover showing a rendered SVG logo above a checkerboard, with Image and Source segments" />
+</Frame>
+
+Transparency draws on a checkerboard. The footer names the format and, for a raster image, the stored pixel size, which is what the file holds rather than what fits the pane. **Copy Image** puts the drawing on the clipboard as an image; **Copy** on the cell itself still copies the stored value. The pop-out button opens a resizable window, read-only there.
+
+SVG rasterizes in a separate process that reads the markup and nothing else. It reaches no network and no file: an `<image href="https://…">`, an `@import`, an external entity and a `<script>` all draw as nothing. A document that cannot be drawn within three seconds is abandoned and the pane says so.
+
 ## Limits
 
 A value that refuses to open in one mode still opens in another.
@@ -72,6 +89,8 @@ A value that refuses to open in one mode still opens in another.
 | PHP serialized | 5,000,000 characters, 256 levels deep | Tree shows a placeholder, Raw still works |
 | Hex dump and hex editor | 10 KB | The dump is truncated, and the editor opens read-only |
 | Blob cell in the grid | First 64 bytes | Rendered as `0x48656C…` |
+| Image preview | 16 MB | "Too Large to Preview". The source still opens |
+| SVG rasterizing | 3 seconds | "Could Not Render This Image". The markup still opens |
 
 ## Row details inspector
 
@@ -81,6 +100,7 @@ A value that refuses to open in one mode still opens in another.
 | --- | --- |
 | A JSON column, or text that parses as JSON | JSON editor |
 | A PHP serialized value | Read-only [PHP viewer](#php-serialized-viewer) |
+| An image, in any column | [Image viewer](#image-viewer), source behind the second segment |
 | An enum, set, or boolean column | Picker |
 | A blob column | Hex editor |
 | A `TEXT` variant, `CLOB` or `NTEXT` column, or any value with a line break or over 80 characters | Scrolling text box |
@@ -95,7 +115,7 @@ The length test reads the stored value, so a long value pasted into a one-line f
 
 The text box and the JSON editor each carry a drag handle under them, with separate remembered heights that survive a relaunch.
 
-**Open in Window** detaches a JSON, PHP or text value into its own resizable window; on an editable row, edits there join the same pending changes as the field. **Expand in Sidebar**, on JSON and PHP only, fills the inspector with that one field, and **Fields** goes back.
+**Open in Window** detaches a JSON, PHP or text value into its own resizable window; on an editable row, edits there join the same pending changes as the field. An image detaches read-only. **Expand in Sidebar**, on JSON and PHP only, fills the inspector with that one field, and **Fields** goes back.
 
 Right-click a field for its menu; an editable field also shows it on a hover button. **Set NULL**, **Set DEFAULT**, **Set EMPTY** and **SQL Functions** need an editable field. **Copy Value** is always there, and a read-only field keeps its text selectable.
 

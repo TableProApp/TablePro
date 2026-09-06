@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Database type change from inside the connection editor.
 - The reason Save is unavailable, next to the Save button in the connection editor.
 - Approval setting for MCP connection access, with the list of approved connections and a Forget action. (#2640)
+- Image preview beside the source for a cell holding SVG or a raster image. (#2535)
 
 ### Changed
 

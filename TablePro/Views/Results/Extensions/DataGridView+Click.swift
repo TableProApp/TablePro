@@ -25,7 +25,8 @@ extension TableViewCoordinator {
         guard let context = makeCellContext(row: row, columnIndex: columnIndex) else { return }
         guard presentsCell(row: row, tableColumnIndex: tableColumn) else { return }
 
-        switch CellInteractionResolver().resolve(context) {
+        let mode = CellInteractionResolver().resolve(context)
+        switch mode {
         case .blocked:
             return
         case .viewInline(let value):
@@ -36,6 +37,14 @@ extension TableViewCoordinator {
             showBlobViewerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
         case .viewPhpSerialized:
             showPhpViewerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
+        case .viewSvg, .editSvg:
+            showSvgViewerPopover(
+                tableView: tableView,
+                row: row,
+                column: tableColumn,
+                columnIndex: columnIndex,
+                isEditable: mode == .editSvg
+            )
         case .editInline:
             beginCellEdit(row: row, tableColumnIndex: tableColumn)
         case .editOverlay(let value):
@@ -60,15 +69,18 @@ extension TableViewCoordinator {
             ? columnDisplayFormats[columnIndex]
             : nil
 
+        let typedValue = cellTypedValue(at: row, column: columnIndex)
+
         return CellContext(
             columnType: columnType,
             value: cellValue(at: row, column: columnIndex),
             isTableEditable: isEditable,
             isRowDeleted: changeManager.isRowDeleted(row),
             isImmutableColumn: immutable.contains(columnName),
-            isBinaryValue: cellTypedValue(at: row, column: columnIndex).asBytes != nil,
+            isBinaryValue: typedValue.asBytes != nil,
             isForeignKey: tableRows.columnForeignKeys[columnName] != nil,
-            displayFormatOverride: override
+            displayFormatOverride: override,
+            detectedContent: CellValueContentDetector.detect(typedValue)
         )
     }
 

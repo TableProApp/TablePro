@@ -309,7 +309,8 @@ private enum ContextFactory {
         isImmutableColumn: Bool = false,
         isBinaryValue: Bool = false,
         isForeignKey: Bool = false,
-        displayFormatOverride: ValueDisplayFormat? = nil
+        displayFormatOverride: ValueDisplayFormat? = nil,
+        detectedContent: CellValueContent = .plain
     ) -> CellContext {
         CellContext(
             columnType: columnType,
@@ -319,7 +320,98 @@ private enum ContextFactory {
             isImmutableColumn: isImmutableColumn,
             isBinaryValue: isBinaryValue,
             isForeignKey: isForeignKey,
-            displayFormatOverride: displayFormatOverride
+            displayFormatOverride: displayFormatOverride,
+            detectedContent: detectedContent
         )
+    }
+}
+
+@Suite("CellInteractionResolver - image content")
+struct CellInteractionResolverImageTests {
+    private let resolver = CellInteractionResolver()
+    private let markup = "<svg><rect/></svg>"
+
+    @Test("SVG in a read-only text column opens the SVG viewer")
+    func readOnlySvgViews() {
+        let context = ContextFactory.make(
+            value: markup,
+            columnType: .text(rawType: "TEXT"),
+            isTableEditable: false,
+            detectedContent: .image(.svg)
+        )
+        #expect(resolver.resolve(context) == .viewSvg)
+    }
+
+    @Test("SVG in an editable text column opens the SVG viewer with its source editable")
+    func editableSvgEdits() {
+        let context = ContextFactory.make(
+            value: markup,
+            columnType: .text(rawType: "TEXT"),
+            isTableEditable: true,
+            detectedContent: .image(.svg)
+        )
+        #expect(resolver.resolve(context) == .editSvg)
+    }
+
+    @Test("SVG in an immutable column keeps the read-only viewer")
+    func immutableSvgViews() {
+        let context = ContextFactory.make(
+            value: markup,
+            columnType: .text(rawType: "TEXT"),
+            isTableEditable: true,
+            isImmutableColumn: true,
+            detectedContent: .image(.svg)
+        )
+        #expect(resolver.resolve(context) == .viewSvg)
+    }
+
+    /// Raw Value is how a column opts out of every kind of detection, image included.
+    @Test("Display As Raw Value suppresses the SVG viewer")
+    func rawOverrideSuppressesSvg() {
+        let context = ContextFactory.make(
+            value: markup,
+            columnType: .text(rawType: "TEXT"),
+            isTableEditable: false,
+            displayFormatOverride: .raw,
+            detectedContent: .image(.svg)
+        )
+        #expect(resolver.resolve(context) == .viewInline(value: markup))
+    }
+
+    /// A binary column keeps the hex popover, which grows an Image segment of its own.
+    @Test("a raster image in a blob column still opens the blob viewer")
+    func rasterInBlobColumnKeepsTheBlobViewer() {
+        let context = ContextFactory.make(
+            value: nil,
+            columnType: .blob(rawType: "BLOB"),
+            isTableEditable: false,
+            isBinaryValue: true,
+            detectedContent: .image(.raster("public.png"))
+        )
+        #expect(resolver.resolve(context) == .viewBlob)
+    }
+
+    @Test("SVG stored as bytes keeps the blob path rather than the text one")
+    func svgAsBytesKeepsTheBlobPath() {
+        let context = ContextFactory.make(
+            value: nil,
+            columnType: .blob(rawType: "BLOB"),
+            isTableEditable: true,
+            isBinaryValue: true,
+            detectedContent: .image(.svg)
+        )
+        #expect(resolver.resolve(context) == .editBlob)
+    }
+
+    @Test("a row marked for deletion opens nothing, image or not")
+    func deletedRowStaysBlocked() {
+        let context = ContextFactory.make(
+            value: markup,
+            columnType: .text(rawType: "TEXT"),
+            isTableEditable: true,
+            isRowDeleted: true,
+            detectedContent: .image(.svg)
+        )
+        #expect(resolver.resolve(context) == .blocked)
     }
 }
