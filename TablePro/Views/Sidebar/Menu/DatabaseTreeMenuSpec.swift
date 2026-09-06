@@ -6,113 +6,63 @@
 import Foundation
 import TableProPluginKit
 
-/// Everything the object tree's contextual menu depends on, as values.
-///
-/// `clicked` is nil for a right-click in the empty area below the last row, which `NSOutlineView`
-/// reports as `clickedRow == -1`. That case used to produce no menu at all.
-internal struct DatabaseTreeMenuContext {
-    internal let clicked: DatabaseTreeNode.Kind?
-    internal let selectedTables: Set<DatabaseTreeTableRef>
-    internal let selectedContainers: [DatabaseContainerRef]
-    internal let activeDatabase: String?
-    internal let activeSchema: String?
-    /// Whether this engine can open a second connection to another database on the server, which
-    /// is what lets the export dialog scope itself to a database other than the active one.
-    internal let canReachOtherDatabases: Bool
-    internal let systemSchemas: Set<String>
-    internal let isReadOnly: Bool
-    internal let supportsImport: Bool
-    internal let importFormats: [ImportFormatOption]
-    internal let maintenanceOperations: [String]
-    internal let dropEligibility: ContainerDropEligibility.Context
-    internal let renameEligibility: ObjectRenameEligibility.Context
-    internal let containerEntityName: String
-    internal let containerEntityNamePlural: String
-    internal let schemaEntityName: String
-    internal let schemaEntityNamePlural: String
-    internal let objectKindTitles: [SidebarObjectKind: String]
-    internal let isFavorite: Bool
-    /// Keyed per database rather than resolved for the clicked row alone, because a right-click
-    /// inside a multi-selection acts on the whole selection and those databases need not share a tag.
-    internal var favoriteDatabaseEnvironments: [String: FavoriteDatabaseEnvironment] = [:]
-    internal let showObjectIcons: Bool
-    internal let showObjectComments: Bool
-    internal let rowSize: SidebarRowSizePreference
-    internal var canFilterDatabases: Bool = false
-    internal var hasDatabaseFilter: Bool = false
-    /// Copying reads the source and writes somewhere else, so it needs a driver that reports
-    /// structure and a target that is not this connection's read-only self.
-    internal var canCopyObjects: Bool = false
-    /// Duplicating means creating a database, which is the same test the New Database command uses.
-    internal var canDuplicateDatabase: Bool = false
-
-    /// Whether this connection has a dump tool at all. Backing up writes nothing to the database,
-    /// so safe mode does not gate it, which is the same rule File > Backup Dump follows.
-    internal var canBackUp: Bool = false
-    /// Whether the driver can offer a CREATE TYPE template. Read-only mode still hides the item.
-    internal var canCreateType: Bool = false
-}
-
 internal enum DatabaseTreeMenuSpec {
-    /// Every menu ends with View Options, including a row's. It used to hang off row menus only,
-    /// which put it out of reach whenever the list was empty, loading or failed.
-    internal static func items(for context: DatabaseTreeMenuContext) -> [DatabaseTreeMenuItem] {
-        let rows = rawItems(for: context)
-        let viewOptions = DatabaseTreeMenuItem.submenu(
-            title: String(localized: "View Options"),
-            items: viewOptionItems(context)
-        )
-        guard !rows.contains(viewOptions) else {
-            return DatabaseTreeMenuItem.collapsingSeparators(rows)
-        }
-        return DatabaseTreeMenuItem.collapsingSeparators(rows + [.separator, viewOptions])
-    }
-
-    private static func rawItems(for context: DatabaseTreeMenuContext) -> [DatabaseTreeMenuItem] {
-        guard let clicked = context.clicked else { return backgroundItems(context) }
+    /// A menu is a list of groups, and every group here is one intent: reach the object, note it,
+    /// move its data, change it. The HIG asks for a small number of items in about three groups and
+    /// for commands relevant to the clicked object only, so nothing connection-wide belongs on a
+    /// row. View Options used to be appended to every menu including every object row, and View ER
+    /// Diagram sat in the middle of a table row's clipboard and export commands; both now live on
+    /// the empty-area menu, where the thing they act on is the sidebar rather than an object.
+    internal static func sections(for context: DatabaseTreeMenuContext) -> [DatabaseTreeMenuSection] {
+        guard let clicked = context.clicked else { return backgroundSections(context) }
         switch clicked {
         case .recentTable(let ref):
-            return tableItems(ref, context: context, isRecentRow: true) + [
-                .separator,
-                .command(String(localized: "Remove from Recent"), .removeRecent(ref)),
-                .command(String(localized: "Clear Recent Tables"), .clearRecents)
+            return tableSections(ref, context: context, isRecentRow: true) + [
+                DatabaseTreeMenuSection([
+                    .command(String(localized: "Remove from Recent"), .removeRecent(ref)),
+                    .command(String(localized: "Clear Recent Tables"), .clearRecents)
+                ])
             ]
         case .table(let ref):
-            return tableItems(ref, context: context)
+            return tableSections(ref, context: context)
         case .database(let metadata):
-            return containerItems(.database(metadata.name, isSystem: metadata.isSystemDatabase), context: context)
+            return containerSections(.database(metadata.name, isSystem: metadata.isSystemDatabase), context: context)
         case .schema(let database, let schema):
-            return containerItems(
+            return containerSections(
                 .schema(database: database, schema: schema, isSystem: context.systemSchemas.contains(schema)),
                 context: context
             )
         case .routine(let ref):
-            return routineItems(ref)
+            return routineSections(ref)
         case .trigger(let ref):
-            return triggerItems(ref)
+            return triggerSections(ref)
         case .userType(let ref):
-            return userTypeItems(ref)
+            return userTypeSections(ref)
         case .objectKindSection(let kind):
-            return objectKindItems(kind, context: context)
+            return objectKindSections(kind, context: context)
         case .containerObjectKindSection(let group):
-            return [.command(String(localized: "Refresh"), .refreshContainerObjectKind(group))]
-                + createTypeItems(kind: group.kind, database: group.database, schema: group.schema, context: context)
+            return [
+                DatabaseTreeMenuSection([.command(String(localized: "Refresh"), .refreshContainerObjectKind(group))]),
+                DatabaseTreeMenuSection(
+                    createTypeItems(kind: group.kind, database: group.database, schema: group.schema, context: context)
+                )
+            ]
         case .hierarchicalSchemaSection(let schema):
-            return hierarchicalSchemaItems(schema, context: context)
+            return hierarchicalSchemaSections(schema, context: context)
         case .redisNode(let node):
-            return redisItems(node)
+            return redisSections(node)
         case .status, .recentSection, .redisKeysSection:
-            return backgroundItems(context)
+            return backgroundSections(context)
         }
     }
 
     // MARK: - Objects
 
-    private static func tableItems(
+    private static func tableSections(
         _ ref: DatabaseTreeTableRef,
         context: DatabaseTreeMenuContext,
         isRecentRow: Bool = false
-    ) -> [DatabaseTreeMenuItem] {
+    ) -> [DatabaseTreeMenuSection] {
         /// Narrowed to the clicked row's own database, because a queued Truncate or Drop is
         /// applied by one save against one database. A tree selection can span two of them, and
         /// the second database's tables would then either run in the first or refuse the whole
@@ -120,7 +70,18 @@ internal enum DatabaseTreeMenuSpec {
         let targets = SidebarMenuTarget
             .resolve(clicked: ref, selection: Array(context.selectedTables))
             .filter { $0.database == ref.database }
-        let names = targets.map(\.table.name).sorted()
+        return [
+            DatabaseTreeMenuSection(openItems(ref, context: context)),
+            DatabaseTreeMenuSection(noteItems(ref, targets: targets, context: context)),
+            DatabaseTreeMenuSection(dataItems(ref, targets: targets, context: context)),
+            DatabaseTreeMenuSection(writeItems(ref, targets: targets, context: context, isRecentRow: isRecentRow))
+        ]
+    }
+
+    private static func openItems(
+        _ ref: DatabaseTreeTableRef,
+        context: DatabaseTreeMenuContext
+    ) -> [DatabaseTreeMenuItem] {
         var items: [DatabaseTreeMenuItem] = [
             .command(String(localized: "Open in New Tab"), .openInNewTab(ref)),
             .command(String(localized: "Show Structure"), .showStructure(ref))
@@ -128,18 +89,42 @@ internal enum DatabaseTreeMenuSpec {
         if SidebarContextMenuLogic.isView(clickedTable: ref.table), !context.isReadOnly {
             items.append(.command(String(localized: "Edit View Definition"), .editViewDefinition(ref)))
         }
-        items.append(.separator)
-        items.append(.command(
-            context.isFavorite
-                ? String(localized: "Remove from Favorites")
-                : String(localized: "Add to Favorites"),
-            .toggleFavorite(ref)
-        ))
-        items.append(.separator)
-        items.append(.command(copyNamesTitle(count: names.count), .copyTableNames(names)))
-        items.append(.command(String(localized: "Export…"), .exportTables(names: Set(names), ref: ref)))
-        items.append(.command(
-            String(localized: "Transfer To…"), .transferTables(names: Set(names), ref: ref)))
+        return items
+    }
+
+    private static func noteItems(
+        _ ref: DatabaseTreeTableRef,
+        targets: [DatabaseTreeTableRef],
+        context: DatabaseTreeMenuContext
+    ) -> [DatabaseTreeMenuItem] {
+        let names = targets.map(\.table.name).sorted()
+        return [
+            .command(copyNamesTitle(count: names.count), .copyTableNames(names)),
+            .command(
+                context.isFavorite
+                    ? String(localized: "Remove from Favorites")
+                    : String(localized: "Add to Favorites"),
+                .toggleFavorite(ref)
+            )
+        ]
+    }
+
+    /// Everything that moves the object's data somewhere else, in the order the work usually runs:
+    /// out of the table, into it, across to another connection, across to another database.
+    private static func dataItems(
+        _ ref: DatabaseTreeTableRef,
+        targets: [DatabaseTreeTableRef],
+        context: DatabaseTreeMenuContext
+    ) -> [DatabaseTreeMenuItem] {
+        let names = Set(targets.map(\.table.name))
+        var items: [DatabaseTreeMenuItem] = [
+            .command(String(localized: "Export…"), .exportTables(names: names, ref: ref))
+        ]
+        if !context.isReadOnly,
+           SidebarContextMenuLogic.importVisible(clickedTable: ref.table, supportsImport: context.supportsImport) {
+            items += importItems(context.importFormats, ref: ref)
+        }
+        items.append(.command(String(localized: "Transfer To…"), .transferTables(names: names, ref: ref)))
         if context.canCopyObjects {
             /// Narrowed to the clicked row's own schema as well as its database. A copy names one
             /// source scope, so a selection spanning two schemas would read one of them and either
@@ -150,13 +135,6 @@ internal enum DatabaseTreeMenuSpec {
                 .copyObjectsTo(objects: copySelections(for: sameScope), ref: ref)
             ))
         }
-        items.append(.command(String(localized: "View ER Diagram"), .showERDiagram))
-
-        if !context.isReadOnly,
-           SidebarContextMenuLogic.importVisible(clickedTable: ref.table, supportsImport: context.supportsImport) {
-            items += importItems(context.importFormats, ref: ref)
-        }
-
         if SidebarContextMenuLogic.maintenanceGroupEnabled(
             isReadOnly: context.isReadOnly,
             hasSelection: true,
@@ -169,13 +147,22 @@ internal enum DatabaseTreeMenuSpec {
                 }
             ))
         }
+        return items
+    }
 
-        guard !context.isReadOnly else { return items }
-        items.append(.separator)
+    /// Destructive last, behind its own separator, which is the only way macOS sets one apart:
+    /// `NSMenuItem` has no destructive role and Apple does not colour Finder's Move to Trash.
+    private static func writeItems(
+        _ ref: DatabaseTreeTableRef,
+        targets: [DatabaseTreeTableRef],
+        context: DatabaseTreeMenuContext,
+        isRecentRow: Bool
+    ) -> [DatabaseTreeMenuItem] {
+        guard !context.isReadOnly else { return [] }
+        var items: [DatabaseTreeMenuItem] = []
         if ObjectRenameEligibility.canRename(table: ref.table, context: context.renameEligibility) {
             items.append(.command(String(localized: "Rename"), .beginRenameTable(ref: ref, isRecentRow: isRecentRow)))
         }
-        items.append(.command(String(localized: "Create New View…"), .createView))
         if SidebarContextMenuLogic.truncateVisible(clickedTable: ref.table) {
             items.append(.command(String(localized: "Truncate"), .truncateTables(targets: targets, ref: ref)))
         }
@@ -202,41 +189,44 @@ internal enum DatabaseTreeMenuSpec {
         )]
     }
 
-    private static func routineItems(_ ref: DatabaseTreeRoutineRef) -> [DatabaseTreeMenuItem] {
-        var items: [DatabaseTreeMenuItem] = [.command(String(localized: "Copy Name"), .copyText(ref.routine.name))]
+    private static func routineSections(_ ref: DatabaseTreeRoutineRef) -> [DatabaseTreeMenuSection] {
+        var copies: [DatabaseTreeMenuItem] = [.command(String(localized: "Copy Name"), .copyText(ref.routine.name))]
         if let signature = ref.routine.argumentSignature, !signature.isEmpty {
-            items.append(.command(
+            copies.append(.command(
                 String(localized: "Copy with Signature"),
                 .copyText(RoutineDisplayLabel.copyableSignature(for: ref.routine))
             ))
         }
-        items.append(.separator)
-        items.append(.command(String(localized: "Show DDL"), .showObjectSource(ref.objectRef)))
-        return items
+        return [
+            DatabaseTreeMenuSection(copies),
+            DatabaseTreeMenuSection([.command(String(localized: "Show DDL"), .showObjectSource(ref.objectRef))])
+        ]
     }
 
-    private static func triggerItems(_ ref: DatabaseTreeTriggerRef) -> [DatabaseTreeMenuItem] {
-        var items: [DatabaseTreeMenuItem] = [.command(String(localized: "Copy Name"), .copyText(ref.trigger.name))]
+    private static func triggerSections(_ ref: DatabaseTreeTriggerRef) -> [DatabaseTreeMenuSection] {
+        var copies: [DatabaseTreeMenuItem] = [.command(String(localized: "Copy Name"), .copyText(ref.trigger.name))]
         if let table = ref.trigger.table, !table.isEmpty {
-            items.append(.command(String(localized: "Copy Table Name"), .copyText(table)))
+            copies.append(.command(String(localized: "Copy Table Name"), .copyText(table)))
         }
-        items.append(.separator)
-        items.append(.command(String(localized: "Show DDL"), .showObjectSource(ref.objectRef)))
-        return items
+        return [
+            DatabaseTreeMenuSection(copies),
+            DatabaseTreeMenuSection([.command(String(localized: "Show DDL"), .showObjectSource(ref.objectRef))])
+        ]
     }
 
-    private static func userTypeItems(_ ref: DatabaseTreeUserTypeRef) -> [DatabaseTreeMenuItem] {
-        var items: [DatabaseTreeMenuItem] = [.command(String(localized: "Copy Name"), .copyText(ref.type.name))]
+    private static func userTypeSections(_ ref: DatabaseTreeUserTypeRef) -> [DatabaseTreeMenuSection] {
+        var copies: [DatabaseTreeMenuItem] = [.command(String(localized: "Copy Name"), .copyText(ref.type.name))]
         if ref.type.qualifiedName != ref.type.name {
-            items.append(.command(String(localized: "Copy Qualified Name"), .copyText(ref.type.qualifiedName)))
+            copies.append(.command(String(localized: "Copy Qualified Name"), .copyText(ref.type.qualifiedName)))
         }
-        items.append(.separator)
-        items.append(.command(String(localized: "Show Definition"), .showObjectSource(ref.objectRef)))
-        return items
+        return [
+            DatabaseTreeMenuSection(copies),
+            DatabaseTreeMenuSection([.command(String(localized: "Show Definition"), .showObjectSource(ref.objectRef))])
+        ]
     }
 
     /// Only the Types section offers it, and only where the engine can hand over a template. It is
-    /// omitted rather than disabled in read-only mode, the way Create New View is on a table row.
+    /// omitted rather than disabled in read-only mode, the way New View is on the empty-area menu.
     private static func createTypeItems(
         kind: SidebarObjectKind,
         database: String?,
@@ -244,28 +234,29 @@ internal enum DatabaseTreeMenuSpec {
         context: DatabaseTreeMenuContext
     ) -> [DatabaseTreeMenuItem] {
         guard kind == .type, context.canCreateType, !context.isReadOnly else { return [] }
-        return [
-            .separator,
-            .command(String(localized: "Create New Type…"), .createType(database: database, schema: schema))
-        ]
+        return [.command(String(localized: "New Type…"), .createType(database: database, schema: schema))]
     }
 
-    private static func redisItems(_ node: RedisKeyNode) -> [DatabaseTreeMenuItem] {
+    private static func redisSections(_ node: RedisKeyNode) -> [DatabaseTreeMenuSection] {
         switch node {
         case .namespace(_, let fullPrefix, _, _):
-            return [.command(String(localized: "Copy Namespace Prefix"), .copyRedisNamespacePrefix(fullPrefix))]
+            return [DatabaseTreeMenuSection([
+                .command(String(localized: "Copy Namespace Prefix"), .copyRedisNamespacePrefix(fullPrefix))
+            ])]
         case .key(_, let fullKey, let keyType):
             return [
-                .command(String(localized: "Copy Key"), .copyRedisKey(fullKey)),
-                .command(String(localized: "Open in New Tab"), .openRedisKey(key: fullKey, keyType: keyType))
+                DatabaseTreeMenuSection([
+                    .command(String(localized: "Open in New Tab"), .openRedisKey(key: fullKey, keyType: keyType))
+                ]),
+                DatabaseTreeMenuSection([.command(String(localized: "Copy Key"), .copyRedisKey(fullKey))])
             ]
         }
     }
 
-    private static func objectKindItems(
+    private static func objectKindSections(
         _ kind: SidebarObjectKind,
         context: DatabaseTreeMenuContext
-    ) -> [DatabaseTreeMenuItem] {
+    ) -> [DatabaseTreeMenuSection] {
         var items: [DatabaseTreeMenuItem] = []
         if kind == .table {
             let title = context.objectKindTitles[kind] ?? kind.pluralDisplayName
@@ -275,79 +266,87 @@ internal enum DatabaseTreeMenuSpec {
             ))
         }
         items.append(.command(String(localized: "Refresh"), .refreshObjectKind(kind)))
-        items += createTypeItems(
-            kind: kind, database: context.activeDatabase, schema: context.activeSchema, context: context
-        )
-        return items
+        return [
+            DatabaseTreeMenuSection(items),
+            DatabaseTreeMenuSection(createTypeItems(
+                kind: kind, database: context.activeDatabase, schema: context.activeSchema, context: context
+            ))
+        ]
     }
 
     /// An engine whose tree hangs tables off schemas draws no database rows at all, so its schemas
     /// arrive here rather than as `.schema`. Without this the rename an engine declares and
     /// implements is unreachable on Snowflake and Trino, which are the two that do.
-    private static func hierarchicalSchemaItems(
+    private static func hierarchicalSchemaSections(
         _ schema: String,
         context: DatabaseTreeMenuContext
-    ) -> [DatabaseTreeMenuItem] {
-        var items: [DatabaseTreeMenuItem] = [
-            .command(String(localized: "Refresh"), .refreshHierarchicalSchema(schema))
-        ]
+    ) -> [DatabaseTreeMenuSection] {
         let ref = DatabaseContainerRef.schema(
             database: context.activeDatabase,
             schema: schema,
             isSystem: context.systemSchemas.contains(schema)
         )
-        /// Oracle, Snowflake, Trino, Dameng and BigQuery draw their schemas here rather than as
-        /// container rows, and several of them need a schema-scoped source, so leaving Copy To on
-        /// the container path alone put it out of reach on exactly the engines that require it.
-        items += copyItems(ref, context: context)
-        guard let renameable = ObjectRenameEligibility.renameable([ref], context: context.renameEligibility)
-        else { return items }
-        items.append(.separator)
-        items.append(.command(renameTitle(for: renameable, context: context), .renameContainer(renameable)))
-        return items
+        var writes: [DatabaseTreeMenuItem] = []
+        if let renameable = ObjectRenameEligibility.renameable([ref], context: context.renameEligibility) {
+            writes.append(.command(renameTitle(for: renameable, context: context), .renameContainer(renameable)))
+        }
+        return [
+            DatabaseTreeMenuSection([.command(String(localized: "Refresh"), .refreshHierarchicalSchema(schema))]),
+            /// Oracle, Snowflake, Trino, Dameng and BigQuery draw their schemas here rather than as
+            /// container rows, and several of them need a schema-scoped source, so leaving Copy To
+            /// on the container path alone put it out of reach on exactly the engines that require it.
+            DatabaseTreeMenuSection(copyItems(ref, context: context)),
+            DatabaseTreeMenuSection(writes)
+        ]
     }
 
     // MARK: - Containers
 
-    private static func containerItems(
+    private static func containerSections(
         _ clicked: DatabaseContainerRef,
         context: DatabaseTreeMenuContext
-    ) -> [DatabaseTreeMenuItem] {
+    ) -> [DatabaseTreeMenuSection] {
         let targets = SidebarMenuTarget.resolveContainers(clicked: clicked, selection: context.selectedContainers)
-        let droppable = ContainerDropEligibility.droppable(targets, context: context.dropEligibility)
-        var items: [DatabaseTreeMenuItem] = []
-
+        var open: [DatabaseTreeMenuItem] = []
         /// Omitted rather than disabled: a menu item that can never fire in this state is noise, and
         /// the HIG prefers removing an item that does not apply over showing it greyed out.
         if targets.count == 1, !isActive(clicked, context: context) {
-            items.append(.command(useAsActiveTitle(for: clicked, context: context), .useAsActive(clicked)))
+            open.append(.command(useAsActiveTitle(for: clicked, context: context), .useAsActive(clicked)))
         }
-        items.append(.command(String(localized: "Refresh"), .refreshContainers(targets)))
-        items.append(.command(copyNamesTitle(count: targets.count), .copyContainerNames(targets)))
+        open.append(.command(String(localized: "Refresh"), .refreshContainers(targets)))
 
+        var note: [DatabaseTreeMenuItem] = [.command(copyNamesTitle(count: targets.count), .copyContainerNames(targets))]
         let favoriteDatabases = targets.filter { $0.kind == .database }.compactMap(\.database)
         if !favoriteDatabases.isEmpty {
-            let favoriteItems = favoriteDatabaseItems(
+            note += favoriteDatabaseItems(
                 databases: favoriteDatabases,
                 state: FavoriteDatabaseSelectionState(
                     environments: favoriteDatabases.map { context.favoriteDatabaseEnvironments[$0] }
                 )
             )
-            if !favoriteItems.isEmpty {
-                items.append(.separator)
-                items += favoriteItems
-            }
         }
 
+        return [
+            DatabaseTreeMenuSection(open),
+            DatabaseTreeMenuSection(note),
+            DatabaseTreeMenuSection(containerDataItems(clicked, targets: targets, context: context)),
+            DatabaseTreeMenuSection(containerWriteItems(targets: targets, context: context))
+        ]
+    }
+
+    private static func containerDataItems(
+        _ clicked: DatabaseContainerRef,
+        targets: [DatabaseContainerRef],
+        context: DatabaseTreeMenuContext
+    ) -> [DatabaseTreeMenuItem] {
+        var items: [DatabaseTreeMenuItem] = []
         if ExportPreselection.canPreselect(
             containers: targets,
             activeDatabase: context.activeDatabase,
             canReachOtherDatabases: context.canReachOtherDatabases
         ) {
-            items.append(.separator)
             items.append(.command(String(localized: "Export…"), .exportContainers(targets)))
         }
-
         /// Offered on a multi-selection where Export is not: `ExportPreselection.canPreselect`
         /// requires every container to share one database, and backing several databases up into
         /// one folder is the whole point of the command.
@@ -360,12 +359,18 @@ internal enum DatabaseTreeMenuSpec {
         if targets.count == 1 {
             items += copyItems(clicked, context: context)
         }
-        let renameable = ObjectRenameEligibility.renameable(targets, context: context.renameEligibility)
-        guard renameable != nil || !droppable.isEmpty else { return items }
-        items.append(.separator)
-        if let renameable {
+        return items
+    }
+
+    private static func containerWriteItems(
+        targets: [DatabaseContainerRef],
+        context: DatabaseTreeMenuContext
+    ) -> [DatabaseTreeMenuItem] {
+        var items: [DatabaseTreeMenuItem] = []
+        if let renameable = ObjectRenameEligibility.renameable(targets, context: context.renameEligibility) {
             items.append(.command(renameTitle(for: renameable, context: context), .renameContainer(renameable)))
         }
+        let droppable = ContainerDropEligibility.droppable(targets, context: context.dropEligibility)
         if !droppable.isEmpty {
             items.append(.command(dropTitle(for: droppable, context: context), .dropContainers(droppable)))
         }
@@ -414,8 +419,7 @@ internal enum DatabaseTreeMenuSpec {
         if clicked.kind == .database, context.canDuplicateDatabase, !clicked.isSystem {
             items.append(.command(String(localized: "Duplicate Database…"), .duplicateDatabase(clicked)))
         }
-        guard !items.isEmpty else { return [] }
-        return [.separator] + items
+        return items
     }
 
     /// A table row's copy carries the whole selection the menu resolved, so right-clicking inside a
@@ -492,49 +496,30 @@ internal enum DatabaseTreeMenuSpec {
 
     /// The menu for the empty area below the last row, and for the rows that stand for nothing.
     /// It has to produce at least one item: a menu that updates to nothing still shows an empty frame.
-    private static func backgroundItems(_ context: DatabaseTreeMenuContext) -> [DatabaseTreeMenuItem] {
-        var items: [DatabaseTreeMenuItem] = []
+    ///
+    /// This is where everything scoped to the connection or the sidebar lives, rather than on an
+    /// object row: creating an object names no existing one, the diagram is the whole schema, the
+    /// database filter and View Options are the sidebar's own state.
+    private static func backgroundSections(_ context: DatabaseTreeMenuContext) -> [DatabaseTreeMenuSection] {
+        var creation: [DatabaseTreeMenuItem] = []
         if !context.isReadOnly {
-            items.append(.command(String(localized: "New Table…"), .createTable))
-            items.append(.command(String(localized: "New View…"), .createView))
-            items.append(.separator)
+            creation.append(.command(String(localized: "New Table…"), .createTable))
+            creation.append(.command(String(localized: "New View…"), .createView))
         }
-        items.append(.command(String(localized: "View ER Diagram"), .showERDiagram))
+        var filters: [DatabaseTreeMenuItem] = []
         if context.canFilterDatabases {
-            items.append(.separator)
-            items.append(.command(String(localized: "Filter Databases…"), .filterDatabases))
+            filters.append(.command(String(localized: "Filter Databases…"), .filterDatabases))
             if context.hasDatabaseFilter {
-                items.append(.command(String(localized: "Show All Databases"), .showAllDatabases))
+                filters.append(.command(String(localized: "Show All Databases"), .showAllDatabases))
             }
         }
-        items.append(.separator)
-        items.append(.submenu(title: String(localized: "View Options"), items: viewOptionItems(context)))
-        return items
-    }
-
-    /// Reachable from every menu, including the empty-area one, because it was previously nested in
-    /// a row's menu and so disappeared entirely whenever the sidebar was empty, loading or failed.
-    internal static func viewOptionItems(_ context: DatabaseTreeMenuContext) -> [DatabaseTreeMenuItem] {
-        var items: [DatabaseTreeMenuItem] = [
-            .command(SidebarMenuEntry(
-                title: String(localized: "Icons"),
-                command: .toggleObjectIcons,
-                isOn: context.showObjectIcons
-            )),
-            .command(SidebarMenuEntry(
-                title: String(localized: "Comments"),
-                command: .toggleObjectComments,
-                isOn: context.showObjectComments
-            )),
-            .separator
+        return [
+            DatabaseTreeMenuSection(creation),
+            DatabaseTreeMenuSection([.command(String(localized: "View ER Diagram"), .showERDiagram)]),
+            DatabaseTreeMenuSection(filters),
+            DatabaseTreeMenuSection([
+                .submenu(title: SidebarViewOptionsMenu.title, sections: SidebarViewOptionsMenu.sections(context))
+            ])
         ]
-        items += SidebarRowSizePreference.allCases.map { size in
-            .command(SidebarMenuEntry(
-                title: size.title,
-                command: .setRowSize(size),
-                isOn: context.rowSize == size
-            ))
-        }
-        return items
     }
 }

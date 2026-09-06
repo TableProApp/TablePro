@@ -29,30 +29,26 @@ internal struct FavoritesMenuContext {
 }
 
 internal enum FavoritesMenuSpec {
-    internal static func items(for context: FavoritesMenuContext) -> [FavoritesMenuItem] {
-        SidebarMenuItem.collapsingSeparators(rawItems(for: context))
-    }
-
-    private static func rawItems(for context: FavoritesMenuContext) -> [FavoritesMenuItem] {
-        guard let clicked = context.clicked else { return backgroundItems(context) }
+    internal static func sections(for context: FavoritesMenuContext) -> [FavoritesMenuSection] {
+        guard let clicked = context.clicked else { return backgroundSections(context) }
         switch clicked {
         case .databaseEnvironment:
-            return backgroundItems(context)
+            return backgroundSections(context)
         case .database(let entry):
-            return databaseItems(entry, context: context)
+            return databaseSections(entry, context: context)
         case .table(let table):
-            return tableItems(table)
+            return tableSections(table)
         case .query(let node):
-            return queryItems(node, context: context)
+            return querySections(node, context: context)
         case .header, .teamQuery:
-            return backgroundItems(context)
+            return backgroundSections(context)
         }
     }
 
-    private static func databaseItems(
+    private static func databaseSections(
         _ entry: FavoriteDatabaseEntry,
         context: FavoritesMenuContext
-    ) -> [FavoritesMenuItem] {
+    ) -> [FavoritesMenuSection] {
         var items: [FavoritesMenuItem] = []
         if entry.database != context.activeDatabase {
             items.append(.command(
@@ -74,57 +70,67 @@ internal enum FavoritesMenuSpec {
                 ))
             }
         ))
-        items.append(.separator)
-        items.append(.command(FavoriteDatabaseMenu.removeTitle, .removeDatabaseFavorite(entry)))
-        return items
-    }
-
-    private static func tableItems(_ table: TableInfo) -> [FavoritesMenuItem] {
-        [
-            .command(String(localized: "Open Table"), .openTable(table)),
-            .command(String(localized: "Show ER Diagram"), .showERDiagram),
-            .separator,
-            .command(String(localized: "Remove from Favorites"), .removeTableFavorite(table))
+        return [
+            FavoritesMenuSection(items),
+            FavoritesMenuSection([
+                .command(FavoriteDatabaseMenu.removeTitle, .removeDatabaseFavorite(entry))
+            ])
         ]
     }
 
-    private static func queryItems(
+    /// Spelled as the Database menu and the object tree spell it. It read "Show ER Diagram" here
+    /// and "View ER Diagram" everywhere else, which is one command reading as two.
+    private static func tableSections(_ table: TableInfo) -> [FavoritesMenuSection] {
+        [
+            FavoritesMenuSection([
+                .command(String(localized: "Open Table"), .openTable(table)),
+                .command(String(localized: "View ER Diagram"), .showERDiagram)
+            ]),
+            FavoritesMenuSection([
+                .command(String(localized: "Remove from Favorites"), .removeTableFavorite(table))
+            ])
+        ]
+    }
+
+    private static func querySections(
         _ node: FavoriteNode,
         context: FavoritesMenuContext
-    ) -> [FavoritesMenuItem] {
+    ) -> [FavoritesMenuSection] {
         switch node.content {
         case .favorite(let favorite):
-            return favoriteItems(favorite, context: context)
+            return favoriteSections(favorite, context: context)
         case .linkedFavorite(let linked):
-            return linkedFavoriteItems(linked)
+            return linkedFavoriteSections(linked)
         case .folder(let folder):
-            return folderItems(folder)
+            return folderSections(folder)
         case .linkedFolder(let folder):
-            return linkedFolderItems(folder)
+            return linkedFolderSections(folder)
         case .linkedSubfolder:
             /// A subfolder mirrors a directory, so it owns no command of its own. It still gets the
             /// background menu rather than an empty frame.
-            return backgroundItems(context)
+            return backgroundSections(context)
         }
     }
 
-    private static func favoriteItems(
+    private static func favoriteSections(
         _ favorite: SQLFavorite,
         context: FavoritesMenuContext
-    ) -> [FavoritesMenuItem] {
-        var items: [FavoritesMenuItem] = [
-            .command(String(localized: "Insert in Editor"), .insertFavorite(favorite)),
-            .command(String(localized: "Run in New Tab"), .runFavoriteInNewTab(favorite)),
-            .separator,
+    ) -> [FavoritesMenuSection] {
+        var edits: [FavoritesMenuItem] = [
             .command(String(localized: "Copy Query"), .copyText(favorite.query)),
             .command(String(localized: "Edit…"), .editFavorite(favorite))
         ]
         if let moveTo = moveToSubmenu(favorite, folders: context.allFolders) {
-            items.append(moveTo)
+            edits.append(moveTo)
         }
-        items.append(.separator)
-        items.append(.command(String(localized: "Delete"), .deleteFavorite(favorite)))
-        return items
+        return [
+            FavoritesMenuSection([
+                .command(String(localized: "Insert in Editor"), .insertFavorite(favorite)),
+                .command(String(localized: "Run in New Tab"), .runFavoriteInNewTab(favorite))
+            ]),
+            FavoritesMenuSection(edits),
+            FavoritesMenuSection([.command(String(localized: "Delete"), .deleteFavorite(favorite))])
+        ]
     }
 
     private static func moveToSubmenu(
@@ -132,79 +138,89 @@ internal enum FavoritesMenuSpec {
         folders: [SQLFavoriteFolder]
     ) -> FavoritesMenuItem? {
         guard !folders.isEmpty else { return nil }
-        var nested: [FavoritesMenuItem] = []
+        var root: [FavoritesMenuItem] = []
         if favorite.folderId != nil {
-            nested.append(.command(
+            root.append(.command(
                 String(localized: "Root Level"),
                 .moveFavorite(id: favorite.id, toFolder: nil)
             ))
-            nested.append(.separator)
         }
-        nested += folders
+        let targets: [FavoritesMenuItem] = folders
             .filter { $0.id != favorite.folderId }
             .map { .command($0.name, .moveFavorite(id: favorite.id, toFolder: $0.id)) }
-        guard nested.contains(where: { if case .command = $0 { return true } else { return false } })
-        else { return nil }
-        return .submenu(title: String(localized: "Move to"), items: SidebarMenuItem.collapsingSeparators(nested))
+        guard !root.isEmpty || !targets.isEmpty else { return nil }
+        return .submenu(
+            title: String(localized: "Move to"),
+            sections: [FavoritesMenuSection(root), FavoritesMenuSection(targets)]
+        )
     }
 
-    private static func linkedFavoriteItems(_ favorite: LinkedSQLFavorite) -> [FavoritesMenuItem] {
+    private static func linkedFavoriteSections(_ favorite: LinkedSQLFavorite) -> [FavoritesMenuSection] {
         [
-            .command(String(localized: "Open in Editor"), .openLinkedFavorite(favorite)),
-            .command(String(localized: "Edit Metadata…"), .editLinkedMetadata(favorite)),
-            .separator,
-            .command(String(localized: "Copy Query"), .copyLinkedFavoriteQuery(favorite)),
-            .command(String(localized: "Show in Finder"), .revealLinkedFavorite(favorite)),
-            .separator,
-            .command(String(localized: "Move File to Trash"), .trashLinkedFavorite(favorite))
+            FavoritesMenuSection([
+                .command(String(localized: "Open in Editor"), .openLinkedFavorite(favorite)),
+                .command(String(localized: "Edit Metadata…"), .editLinkedMetadata(favorite))
+            ]),
+            FavoritesMenuSection([
+                .command(String(localized: "Copy Query"), .copyLinkedFavoriteQuery(favorite)),
+                .command(String(localized: "Show in Finder"), .revealLinkedFavorite(favorite))
+            ]),
+            FavoritesMenuSection([
+                .command(String(localized: "Move File to Trash"), .trashLinkedFavorite(favorite))
+            ])
         ]
     }
 
-    private static func linkedFolderItems(_ folder: LinkedSQLFolder) -> [FavoritesMenuItem] {
+    private static func linkedFolderSections(_ folder: LinkedSQLFolder) -> [FavoritesMenuSection] {
         [
-            .command(String(localized: "Show in Finder"), .revealLinkedFolder(folder)),
-            .command(String(localized: "Copy Path"), .copyText(folder.expandedURL.path)),
-            .separator,
-            .command(
-                folder.isEnabled ? String(localized: "Disable") : String(localized: "Enable"),
-                .setLinkedFolderEnabled(folder, !folder.isEnabled)
-            ),
-            .command(String(localized: "Reload"), .reloadLinkedFolders),
-            .separator,
-            .command(String(localized: "Add Another SQL Folder…"), .addLinkedFolder),
-            .separator,
-            .command(String(localized: "Remove from Sidebar"), .removeLinkedFolder(folder))
+            FavoritesMenuSection([
+                .command(String(localized: "Show in Finder"), .revealLinkedFolder(folder)),
+                .command(String(localized: "Copy Path"), .copyText(folder.expandedURL.path))
+            ]),
+            FavoritesMenuSection([
+                .command(
+                    folder.isEnabled ? String(localized: "Disable") : String(localized: "Enable"),
+                    .setLinkedFolderEnabled(folder, !folder.isEnabled)
+                ),
+                .command(String(localized: "Reload"), .reloadLinkedFolders),
+                .command(String(localized: "Add Another SQL Folder…"), .addLinkedFolder)
+            ]),
+            FavoritesMenuSection([
+                .command(String(localized: "Remove from Sidebar"), .removeLinkedFolder(folder))
+            ])
         ]
     }
 
-    private static func folderItems(_ folder: SQLFavoriteFolder) -> [FavoritesMenuItem] {
+    private static func folderSections(_ folder: SQLFavoriteFolder) -> [FavoritesMenuSection] {
         [
-            .command(String(localized: "Rename"), .renameFolder(folder)),
-            .command(String(localized: "New Favorite…"), .newFavorite(folderId: folder.id)),
-            .command(String(localized: "New Subfolder"), .newFolder(parentId: folder.id)),
-            .separator,
-            .command(String(localized: "Delete Folder"), .deleteFolder(folder))
+            FavoritesMenuSection([
+                .command(String(localized: "New Favorite…"), .newFavorite(folderId: folder.id)),
+                .command(String(localized: "New Subfolder"), .newFolder(parentId: folder.id))
+            ]),
+            FavoritesMenuSection([.command(String(localized: "Rename"), .renameFolder(folder))]),
+            FavoritesMenuSection([.command(String(localized: "Delete Folder"), .deleteFolder(folder))])
         ]
     }
 
     /// The empty area below the last row, a header, and a Team Library row all land here. It is the
     /// same list the bottom bar's plus button used to carry, which is where those commands go now
     /// that the sidebar has no bottom bar.
-    internal static func backgroundItems(_ context: FavoritesMenuContext) -> [FavoritesMenuItem] {
-        var items: [FavoritesMenuItem] = [
-            .command(String(localized: "New Query"), .newQuery),
-            .separator,
-            .command(String(localized: "New Favorite…"), .newFavorite(folderId: nil)),
-            .command(String(localized: "New Folder"), .newFolder(parentId: nil)),
-            .separator,
-            .command(String(localized: "Add Linked SQL Folder…"), .addLinkedFolder)
+    internal static func backgroundSections(_ context: FavoritesMenuContext) -> [FavoritesMenuSection] {
+        var team: [FavoritesMenuItem] = []
+        if context.teamLibraryAvailable {
+            team.append(.command(
+                String(localized: "Publish Saved Queries to Team…"),
+                .publishSavedQueriesToTeam
+            ))
+        }
+        return [
+            FavoritesMenuSection([.command(String(localized: "New Query"), .newQuery)]),
+            FavoritesMenuSection([
+                .command(String(localized: "New Favorite…"), .newFavorite(folderId: nil)),
+                .command(String(localized: "New Folder"), .newFolder(parentId: nil)),
+                .command(String(localized: "Add Linked SQL Folder…"), .addLinkedFolder)
+            ]),
+            FavoritesMenuSection(team)
         ]
-        guard context.teamLibraryAvailable else { return items }
-        items.append(.separator)
-        items.append(.command(
-            String(localized: "Publish Saved Queries to Team…"),
-            .publishSavedQueriesToTeam
-        ))
-        return items
     }
 }

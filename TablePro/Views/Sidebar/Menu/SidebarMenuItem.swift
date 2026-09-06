@@ -13,12 +13,14 @@ import Foundation
 /// outline view means the items have to be `NSMenuItem`s, and describing them as values first keeps
 /// every decision about which items exist, in what order, testable without a window.
 ///
+/// There is deliberately no `separator` case. A menu is a list of `SidebarMenuSection`s and the
+/// builder rules between them, so a stray separator is unrepresentable rather than swept up.
+///
 /// Generic over the command so both sidebar lists share one model and one builder while keeping
 /// their own, closed, vocabularies.
 internal enum SidebarMenuItem<Command: Equatable>: Equatable {
-    case separator
     case command(SidebarMenuEntry<Command>)
-    case submenu(title: String, items: [SidebarMenuItem<Command>])
+    case submenu(title: String, sections: [SidebarMenuSection<Command>])
 }
 
 /// No destructive flag. AppKit gives `NSMenuItem` no destructive role, on any SDK up to macOS 26,
@@ -47,21 +49,8 @@ internal extension SidebarMenuItem {
         .command(SidebarMenuEntry(title: title, command: command))
     }
 
-    /// A menu is assembled by appending groups, so a group that turns out to be empty leaves a
-    /// separator with nothing on one side of it. SwiftUI's `Divider()` collapsed those on its own;
-    /// an imperative builder has to.
-    static func collapsingSeparators(_ items: [SidebarMenuItem<Command>]) -> [SidebarMenuItem<Command>] {
-        var result: [SidebarMenuItem<Command>] = []
-        for item in items {
-            guard item == .separator else {
-                result.append(item)
-                continue
-            }
-            guard let last = result.last, last != .separator else { continue }
-            result.append(item)
-        }
-        while result.last == .separator { result.removeLast() }
-        return result
+    static func submenu(title: String, items: [SidebarMenuItem<Command>]) -> SidebarMenuItem<Command> {
+        .submenu(title: title, sections: [SidebarMenuSection(items)])
     }
 }
 

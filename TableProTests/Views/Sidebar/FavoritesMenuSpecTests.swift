@@ -23,10 +23,13 @@ struct FavoritesMenuSpecTests {
         )
     }
 
+    private func commands(_ sections: [FavoritesMenuSection]) -> [FavoritesMenuCommand] {
+        commands(sections.flatMap(\.items))
+    }
+
     private func commands(_ items: [FavoritesMenuItem]) -> [FavoritesMenuCommand] {
         items.flatMap { item -> [FavoritesMenuCommand] in
             switch item {
-            case .separator: return []
             case .command(let entry): return [entry.command]
             case .submenu(_, let nested): return commands(nested)
             }
@@ -74,12 +77,14 @@ struct FavoritesMenuSpecTests {
         ]
 
         for kind in kinds {
-            #expect(!FavoritesMenuSpec.items(for: context(clicked: kind)).isEmpty)
+            #expect(!FavoritesMenuSpec.sections(for: context(clicked: kind)).isEmpty)
         }
     }
 
-    @Test("A menu never opens or closes on a separator, and never doubles one")
-    func separatorsAreCollapsed() {
+    /// The HIG asks for about three groups. Placing the separators is the builder's job now, so
+    /// what this can still get wrong is the number of groups it asks for.
+    @Test("No menu carries more than four groups")
+    func menusStayWithinFourGroups() {
         let kinds: [FavoritesOutlineNode.Kind?] = [
             nil,
             .database(database()),
@@ -89,19 +94,15 @@ struct FavoritesMenuSpecTests {
         ]
 
         for kind in kinds {
-            let items = FavoritesMenuSpec.items(for: context(clicked: kind))
-            #expect(items.first != .separator)
-            #expect(items.last != .separator)
-            for (previous, next) in zip(items, items.dropFirst()) {
-                #expect(!(previous == .separator && next == .separator))
-            }
+            let sections = FavoritesMenuSpec.sections(for: context(clicked: kind)).nonEmptySections()
+            #expect(sections.count <= 4, "\(String(describing: kind)) produced \(sections.count) groups")
         }
     }
 
     /// These moved out of the bar at the bottom of the sidebar.
     @Test("The empty area carries the commands the bottom bar used to")
     func backgroundOffersCreation() {
-        let issued = commands(FavoritesMenuSpec.items(for: context(clicked: nil)))
+        let issued = commands(FavoritesMenuSpec.sections(for: context(clicked: nil)))
 
         #expect(issued.contains(.newQuery))
         #expect(issued.contains(.newFavorite(folderId: nil)))
@@ -111,8 +112,8 @@ struct FavoritesMenuSpecTests {
 
     @Test("Publishing to the team appears only when the licence allows it")
     func teamPublishIsGated() {
-        let with = commands(FavoritesMenuSpec.items(for: context(clicked: nil, teamLibraryAvailable: true)))
-        let without = commands(FavoritesMenuSpec.items(for: context(clicked: nil, teamLibraryAvailable: false)))
+        let with = commands(FavoritesMenuSpec.sections(for: context(clicked: nil, teamLibraryAvailable: true)))
+        let without = commands(FavoritesMenuSpec.sections(for: context(clicked: nil, teamLibraryAvailable: false)))
 
         #expect(with.contains(.publishSavedQueriesToTeam))
         #expect(!without.contains(.publishSavedQueriesToTeam))
@@ -121,7 +122,7 @@ struct FavoritesMenuSpecTests {
     @Test("A database favorite can switch, change environment, or be removed")
     func databaseFavoriteCommands() {
         let entry = database()
-        let issued = commands(FavoritesMenuSpec.items(for: FavoritesMenuContext(
+        let issued = commands(FavoritesMenuSpec.sections(for: FavoritesMenuContext(
             clicked: .database(entry),
             databaseEntityName: "Database",
             activeDatabase: "other"
@@ -135,7 +136,7 @@ struct FavoritesMenuSpecTests {
     @Test("The active database omits a redundant switch command")
     func activeDatabaseOmitsSwitch() {
         let entry = database()
-        let issued = commands(FavoritesMenuSpec.items(for: FavoritesMenuContext(
+        let issued = commands(FavoritesMenuSpec.sections(for: FavoritesMenuContext(
             clicked: .database(entry),
             databaseEntityName: "Database",
             activeDatabase: entry.database
@@ -148,7 +149,7 @@ struct FavoritesMenuSpecTests {
     func moveToSkipsTheCurrentFolder() {
         let home = SQLFavoriteFolder(name: "Home")
         let other = SQLFavoriteFolder(name: "Other")
-        let issued = commands(FavoritesMenuSpec.items(
+        let issued = commands(FavoritesMenuSpec.sections(
             for: context(clicked: .query(.favorite(favorite(folderId: home.id))), allFolders: [home, other])
         ))
 
@@ -159,7 +160,7 @@ struct FavoritesMenuSpecTests {
     @Test("A favourite in a folder can be moved back to the root")
     func rootLevelOfferedFromInsideAFolder() {
         let home = SQLFavoriteFolder(name: "Home")
-        let issued = commands(FavoritesMenuSpec.items(
+        let issued = commands(FavoritesMenuSpec.sections(
             for: context(clicked: .query(.favorite(favorite(folderId: home.id))), allFolders: [home])
         ))
 
@@ -169,7 +170,7 @@ struct FavoritesMenuSpecTests {
     @Test("A favourite already at the root is not offered Root Level again")
     func rootLevelOnlyWhenInAFolder() {
         let folder = SQLFavoriteFolder(name: "Home")
-        let issued = commands(FavoritesMenuSpec.items(
+        let issued = commands(FavoritesMenuSpec.sections(
             for: context(clicked: .query(.favorite(favorite(folderId: nil))), allFolders: [folder])
         ))
 
@@ -179,11 +180,11 @@ struct FavoritesMenuSpecTests {
     @Test("A linked folder offers Enable when it is disabled and Disable when it is not")
     func linkedFolderTogglesByState() {
         var folder = LinkedSQLFolder(path: "~/queries")
-        let enabled = commands(FavoritesMenuSpec.items(
+        let enabled = commands(FavoritesMenuSpec.sections(
             for: context(clicked: .query(.linkedFolder(folder, children: [])))
         ))
         folder.isEnabled = false
-        let disabled = commands(FavoritesMenuSpec.items(
+        let disabled = commands(FavoritesMenuSpec.sections(
             for: context(clicked: .query(.linkedFolder(folder, children: [])))
         ))
 
