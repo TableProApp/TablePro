@@ -41,17 +41,24 @@ struct NativeDumpRegistryTests {
         kind: NativeDumpKind = .backup,
         connection overrideConnection: DatabaseConnection? = nil,
         password: String? = "s3cret",
-        fileURL: URL = URL(fileURLWithPath: "/tmp/out.bin")
+        fileURL: URL = URL(fileURLWithPath: "/tmp/out.bin"),
+        scope: NativeDumpScope = .wholeDatabase,
+        localFilePath: String? = nil
     ) throws -> NativeDumpCommand {
-        let descriptor = try #require(NativeDumpRegistry.descriptor(for: type))
+        let tool = try #require(NativeDumpRegistry.descriptor(for: type)?.commandLineTool)
+        let effective = overrideConnection ?? connection(type: type)
         return try NativeDumpService.buildCommand(
             kind: kind,
-            descriptor: descriptor,
+            tool: tool,
             executable: URL(fileURLWithPath: "/usr/bin/tool"),
-            effective: overrideConnection ?? connection(type: type),
-            database: "sales",
-            fileURL: fileURL,
-            password: password
+            request: NativeDumpDescriptor.Request(
+                connection: effective,
+                database: "sales",
+                fileURL: fileURL,
+                password: password,
+                scope: scope,
+                localFilePath: localFilePath ?? effective.database
+            )
         )
     }
 
@@ -60,7 +67,8 @@ struct NativeDumpRegistryTests {
         for type in [DatabaseType.postgresql, .redshift, .mysql, .mariadb, .mongodb, .sqlite] {
             #expect(NativeDumpRegistry.supports(type), "\(type.rawValue) should have a descriptor")
         }
-        for type in [DatabaseType.clickhouse, .oracle, .duckdb] {
+        #expect(NativeDumpRegistry.supports(.duckdb), "DuckDB dumps through its own engine")
+        for type in [DatabaseType.clickhouse, .oracle] {
             #expect(!NativeDumpRegistry.supports(type), "\(type.rawValue) should not claim one")
         }
     }
@@ -164,6 +172,32 @@ struct NativeDumpRegistryTests {
         #expect(restore.isRestore)
     }
 
+    /// libSQL claims the SQLite descriptor and keeps its path in a plugin-declared additional
+    /// field, leaving `database` empty. Reading `database` handed `sqlite3` an empty path, which
+    /// exits 0 after writing a 52-byte file the result sheet then reported as a backup.
+    @Test("libSQL dumps the file its driver opens, not the empty database field")
+    func libsqlUsesItsResolvedPath() throws {
+        var remote = connection(type: .libsql, host: "", port: 0, database: "", username: "")
+        remote.additionalFields["libsqlFilePath"] = "/tmp/turso.db"
+        let backup = try command(
+            .libsql, connection: remote, localFilePath: "/tmp/turso.db"
+        )
+        #expect(backup.arguments == ["/tmp/turso.db", ".dump"])
+    }
+
+    /// A libSQL connection to a Turso URL has no local file, so `sqlite3` cannot reach it at all.
+    /// Answering by type alone is what offered Backup Dump on one and wrote nothing.
+    @Test("A connection with no local file is not offered a dump")
+    func remoteFileBackedConnectionIsUnsupported() {
+        var remote = connection(type: .libsql, host: "", port: 0, database: "", username: "")
+        remote.additionalFields["databaseUrl"] = "libsql://db.turso.io"
+        #expect(!NativeDumpRegistry.supports(remote, localFilePath: nil))
+
+        var local = remote
+        local.additionalFields["libsqlFilePath"] = "/tmp/turso.db"
+        #expect(NativeDumpRegistry.supports(local, localFilePath: "/tmp/turso.db"))
+    }
+
     @Test("An empty host falls back to loopback on every engine that takes one")
     func emptyHostFallsBackToLoopback() throws {
         let mysql = try command(.mysql, connection: connection(type: .mysql, host: ""))
@@ -186,9 +220,9 @@ struct NativeDumpRegistryTests {
     /// spellings have to be tried before reporting the tool missing.
     @Test("MySQL tries both the mysql and mariadb tool names")
     func mysqlTriesBothToolNames() throws {
-        let descriptor = try #require(NativeDumpRegistry.descriptor(for: .mysql))
-        #expect(descriptor.backupBinaries == ["mysqldump", "mariadb-dump"])
-        #expect(descriptor.restoreBinaries == ["mysql", "mariadb"])
+        let tool = try #require(NativeDumpRegistry.descriptor(for: .mysql)?.commandLineTool)
+        #expect(tool.backupBinaries == ["mysqldump", "mariadb-dump"])
+        #expect(tool.restoreBinaries == ["mysql", "mariadb"])
     }
 
     @Test("A YAML-quoted password survives quotes and backslashes")
