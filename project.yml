@@ -120,6 +120,9 @@ targets:
           # main() lives here, and it belongs to the tablepro-mcp helper. The rest of
           # CLI/ compiles into the app too, so TableProTests can drive the real proxy.
           - CLI/BridgeMain.swift
+          # main() for the tablepro-imagerender helper, which is a whole executable on
+          # its own: nothing in it is reachable from the app.
+          - CLI/ImageRenderMain.swift
           # Copied whole below. A plain glob flattens it into Resources/ and the
           # inventory then cannot find its texts/ directory.
           - Resources/ThirdPartyLicenses
@@ -160,6 +163,12 @@ targets:
         codeSign: true
         link: false
       - target: mcp-server
+        embed: true
+        codeSign: true
+        removeHeaders: false
+        copy:
+          destination: executables
+      - target: image-renderer
         embed: true
         codeSign: true
         removeHeaders: false
@@ -343,6 +352,27 @@ targets:
         SWIFT_APPROACHABLE_CONCURRENCY: YES
         SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
 
+  # ─── Out-of-process image rasterizer, embedded as Contents/MacOS/tablepro-imagerender ─
+
+  image-renderer:
+    type: tool
+    platform: macOS
+    # Deliberately a leaf: the whole point is that an SVG this parses cannot take the app
+    # down with it, so it shares no code and reads nothing but stdin.
+    sources:
+      - TablePro/CLI/ImageRenderMain.swift
+      # The one rule the app and the renderer must not disagree about. Dependency-free, so the
+      # renderer stays a leaf.
+      - TablePro/Core/Services/Formatting/SvgDocumentGate.swift
+    scheme: {}
+    settings:
+      base:
+        ENABLE_HARDENED_RUNTIME: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.tablepro-imagerender
+        PRODUCT_NAME: tablepro-imagerender
+        SWIFT_APPROACHABLE_CONCURRENCY: YES
+        SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
+
   # ─── Tests ────────────────────────────────────────────────────────────────────
 
   TableProTests:
@@ -382,7 +412,10 @@ targets:
       - Plugins/ClickHouseDriverPlugin/ClickHousePluginDriver+Schema.swift
       - Plugins/ClickHouseDriverPlugin/ClickHousePluginDriver+TableOperations.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseTableOperations.swift
+      - Plugins/CassandraDriverPlugin/CassandraIndexStatements.swift
       - Plugins/DamengDriverPlugin/DamengParameterBinder.swift
+      - Plugins/DamengDriverPlugin/DamengIndexStatements.swift
+      - Plugins/OracleDriverPlugin/OracleIndexStatements.swift
       - Plugins/DamengDriverPlugin/DamengStatementClassifier.swift
       - Plugins/DuckDBDriverPlugin/DuckDBFileKinds.swift
       - Plugins/DuckDBDriverPlugin/DuckDBPositionParser.swift

@@ -554,26 +554,10 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
               CASE con.contype WHEN 'p' THEN 0 WHEN 'u' THEN 1 WHEN 'c' THEN 2 END
             """
 
-        let indexesQuery = """
-            SELECT indexdef
-            FROM pg_indexes
-            WHERE tablename = '\(safeTable)'
-              AND schemaname = '\(schemaLiteral)'
-              AND indexname NOT IN (
-                SELECT conname FROM pg_constraint
-                JOIN pg_class ON pg_class.oid = conrelid
-                JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
-                WHERE pg_class.relname = '\(safeTable)'
-                  AND pg_namespace.nspname = '\(schemaLiteral)'
-              )
-            ORDER BY indexname
-            """
-
         async let columnsResult = execute(query: columnsQuery)
         async let constraintsResult = execute(query: constraintsQuery)
-        async let indexesResult = execute(query: indexesQuery)
 
-        let (cols, cons, idxs) = try await (columnsResult, constraintsResult, indexesResult)
+        let (cols, cons) = try await (columnsResult, constraintsResult)
 
         let columnDefs = cols.rows.compactMap { $0[0].asText }
         guard !columnDefs.isEmpty else {
@@ -585,13 +569,36 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         parts.append(contentsOf: constraints)
 
         let quotedSchema = quoteIdentifier(resolvedSchema)
-        let ddl = "CREATE TABLE \(quotedSchema).\(quotedTable) (\n  " +
+        return "CREATE TABLE \(quotedSchema).\(quotedTable) (\n  " +
             parts.joined(separator: ",\n  ") +
             "\n);"
+    }
 
-        let indexDefs = idxs.rows.compactMap { $0[0].asText }
-        if indexDefs.isEmpty { return ddl }
-        return ddl + "\n\n" + indexDefs.joined(separator: ";\n") + ";"
+    /// `pg_get_indexdef` is what `pg_dump` itself emits, and it round-trips an expression key, an
+    /// operator class, an `INCLUDE` list, a storage parameter, a partial predicate and a per-column
+    /// sort direction verbatim. It also qualifies the table whatever `search_path` holds, so a dump
+    /// spanning two schemas attaches each index to the right one.
+    ///
+    /// An index backing a constraint is excluded by `conindid` rather than by matching its name
+    /// against `conname`, which is how `pg_dump` does it: the names agree for a unique or primary
+    /// key constraint, but a CHECK constraint that happens to share an index's name would drop that
+    /// index from the dump.
+    func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
+        let query = """
+            SELECT pg_get_indexdef(ix.indexrelid)
+            FROM pg_index ix
+            JOIN pg_class c ON c.oid = ix.indrelid
+            JOIN pg_class i ON i.oid = ix.indexrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relname = '\(escapeLiteral(table))'
+              AND n.nspname = '\(escapeLiteral(schema ?? core.currentSchema))'
+              AND NOT EXISTS (
+                SELECT 1 FROM pg_constraint con WHERE con.conindid = ix.indexrelid
+              )
+            ORDER BY i.relname
+            """
+        let result = try await execute(query: query)
+        return result.rows.compactMap { $0[0].asText }
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
@@ -603,7 +610,23 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
               AND schemaname = '\(schemaLiteral)'
             """
         let result = try await execute(query: query)
-        guard let firstRow = result.rows.first, let ddl = firstRow[0].asText else {
+        if let firstRow = result.rows.first, let ddl = firstRow[0].asText {
+            return ddl
+        }
+
+        /// `pg_views` excludes materialized views, so a name that is one reaches here with no rows.
+        /// Falling through to `fetchTableDDL` instead, which succeeds on a matview because
+        /// `pg_class` and `pg_attribute` both cover one, put a `CREATE TABLE` in the dump under a
+        /// `DROP MATERIALIZED VIEW` and restored an empty ordinary table.
+        let matview = """
+            SELECT 'CREATE MATERIALIZED VIEW ' || quote_ident(schemaname) || '.' || quote_ident(matviewname)
+                   || ' AS ' || E'\\n' || definition AS ddl
+            FROM pg_matviews
+            WHERE matviewname = '\(escapeLiteral(view))'
+              AND schemaname = '\(schemaLiteral)'
+            """
+        let matviewResult = try await execute(query: matview)
+        guard let row = matviewResult.rows.first, let ddl = row[0].asText else {
             throw LibPQPluginError(message: "Failed to fetch definition for view '\(view)'", sqlState: nil, detail: nil)
         }
         return ddl

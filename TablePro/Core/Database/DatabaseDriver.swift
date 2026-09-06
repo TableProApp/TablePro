@@ -146,6 +146,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Fetch the DDL (CREATE TABLE statement) for a specific table
     func fetchTableDDL(table: String) async throws -> String
 
+    /// The CREATE INDEX statements this table needs that `fetchTableDDL` does not already declare.
+    /// Empty on an engine whose CREATE TABLE carries them inline. Default returns empty.
+    func fetchIndexDDL(table: String) async throws -> [String]
+
     /// Fetch dependent type definitions (e.g., PostgreSQL enum types) for a table.
     /// Returns array of (typeName, labels) pairs. Default returns empty.
     func fetchDependentTypes(forTable table: String) async throws -> [(name: String, labels: [String])]
@@ -313,6 +317,8 @@ extension DatabaseDriver {
     }
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult? { nil }
+
+    func fetchIndexDDL(table: String) async throws -> [String] { [] }
 
     func resolveQueryCompletionProfile(
         databaseTypeId: String,

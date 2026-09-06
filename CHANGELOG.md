@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Typesense API keys in Users & Roles, with the collections and actions each key holds. (#2629)
 - Server Dashboard metrics for Typesense, from `/metrics.json` and `/stats.json`. (#2629)
 - Encoding and byte order mark options for CSV export, with a warning naming what the encoding dropped. (#2534)
+- Indexes in an SQL export, written after the data. (#2492)
+- Image preview beside the source for a cell holding SVG or a raster image. (#2535)
+- DuckDB backup and restore, as one `.duckdb` file or a folder of Parquet. (#2485)
+- Table picker in Backup Dump, everything selected by default. (#2485)
+- Backup of several databases into one folder, one file each. (#2485)
+- Back Up… on a database selection in the connection tree. (#2485)
 
 ### Changed
 
@@ -30,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Save, Cancel and Test Connection on a bottom action bar instead of the titlebar.
 - `Use ~/.pgpass` below Username rather than above it.
 - Tab moves focus out of Startup Commands and Pre-Connect Script instead of inserting a tab.
+- SQL export writes a materialized view's indexes once the view exists. (#2492)
+- Backup Dump as one sheet with scope, format and destination, in place of a picker with a save panel over it. (#2485)
 
 ### Fixed
 
@@ -61,6 +69,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ai_policy` in `list_connections` reporting `askEachTime` whatever the app-wide default was.
 - Quote menu in the CSV export options untranslated in every localized build. (#2534)
 - Line feed instead of the chosen line ending on the table comment of a multi-table CSV export. (#2534)
+- Indexes missing from an SQL export on SQLite, LibSQL, Cloudflare D1, SQL Server, Oracle, Dameng and Cassandra. (#2492)
+- DuckDB expression index exported as invalid SQL. (#2492)
+- DuckDB index whose name contains "primary" reported as the table's primary key and left out of its DDL. (#2492)
+- PostgreSQL index left out of an export when a check constraint on the same table shared its name. (#2492)
+- PostgreSQL materialized view exported as a `CREATE TABLE`. (#2492)
+- `DROP TYPE` and `DROP SEQUENCE` in an SQL export with Drop unticked. (#2492)
+- Oracle and ClickHouse views exported as a bare `SELECT` with no `CREATE VIEW`. (#2492)
+- Bare `;` written for an object whose definition the server would not return. (#2492)
+- SQL Server reporting every index as clustered. (#2492)
+- Unique constraints lost from an SQL export on SQL Server, Oracle and Dameng, whose `CREATE TABLE` never declared them. (#2492)
+- ClickHouse materialized view exported as an ordinary view. (#2492)
+- Backup Dump and Restore Dump unusable on SQLite, with an empty database list and a dimmed confirm button. (#2485)
+- libSQL backup writing an empty 52-byte file and reporting success. (#2485)
+- Restore Dump asking every engine for a file `pg_dump` wrote. (#2485)
+- Cancel doing nothing while a backup's size estimate ran. (#2485)
+- Backup size estimate queueing behind a query tab's own work and joining its open transaction. (#2485)
+- A narrowed PostgreSQL dump matching nothing when a table name held a capital, a dot or a wildcard. (#2485)
 
 ## [0.72.0] - 2026-09-04
 

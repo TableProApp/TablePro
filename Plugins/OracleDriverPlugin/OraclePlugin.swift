@@ -515,6 +515,16 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }.sorted { $0.name < $1.name }
     }
 
+    func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
+        let owner = effectiveSchema(schema)
+        let result = try await rawQuery(OracleIndexStatements.query(schema: owner, table: table))
+        return OracleIndexStatements.render(
+            rows: result.rows.map { row in row.map { $0.stringValue } },
+            schema: owner,
+            table: table,
+            quote: quoteIdentifier)
+    }
+
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
         let result = try await rawQuery(
             OracleSchemaQueries.foreignKeys(schema: effectiveSchema(schema), table: table)
@@ -702,7 +712,14 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         // which corrupts OracleNIO's connection state machine.
         let sql = "SELECT TEXT_VC FROM ALL_VIEWS WHERE VIEW_NAME = '\(escapedView)' AND OWNER = '\(escaped)'"
         let result = try await execute(query: sql)
-        return result.rows.first?.first?.asText ?? ""
+        guard let body = result.rows.first?.first?.asText,
+              !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw OraclePluginError(core: .queryFailed(
+                String(format: String(localized: "Oracle returned no definition for view '%@'."), view)))
+        }
+        /// `TEXT_VC` is the view's `SELECT` and nothing else, so it needs the header a dump replays.
+        /// Written bare it made the restore run a query and create no view.
+        return "CREATE OR REPLACE VIEW \(quoteIdentifier(effectiveSchema(schema))).\(quoteIdentifier(view)) AS\n\(body)"
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {

@@ -96,6 +96,22 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo]
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo]
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo]
+
+    /// The `CREATE INDEX` statements this table needs that `fetchTableDDL` does not already
+    /// declare, ready to run. A dump replays them after the data, which is where every engine's
+    /// own tool puts them, so a bulk load is not paying to maintain an index it is about to have
+    /// rebuilt anyway.
+    ///
+    /// This is DDL text rather than `PluginIndexInfo` because that struct cannot carry an
+    /// expression key, an operator class, an `INCLUDE` list, a storage parameter or a per-column
+    /// sort direction. Rendering from it loses a partial GIN index entirely and turns an
+    /// `INCLUDE` column into a key column, which is a different index rather than a missing one.
+    ///
+    /// Returning nothing is the right answer for an engine whose `CREATE TABLE` carries its
+    /// indexes inline, and for one that has no secondary indexes at all. A driver that answers
+    /// here must not also declare the same indexes in `fetchTableDDL`, or the dump creates each
+    /// one twice.
+    func fetchIndexDDL(table: String, schema: String?) async throws -> [String]
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo]
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo]
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo]
@@ -544,6 +560,11 @@ public extension PluginDatabaseDriver {
         }
         return result
     }
+
+    /// Defaults to nothing, which is correct for an engine whose `CREATE TABLE` already carries
+    /// its indexes and for one that has none. A driver that overrides this must drop the same
+    /// statements from `fetchTableDDL` in the same change.
+    func fetchIndexDDL(table: String, schema: String?) async throws -> [String] { [] }
 
     /// Answers whether `fetchAllIndexes` is a single query rather than the N+1 default below.
     var providesBulkIndexFetch: Bool { false }

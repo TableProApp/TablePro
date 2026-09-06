@@ -15,6 +15,11 @@ internal struct CellContext: Equatable {
     let isForeignKey: Bool
     let displayFormatOverride: ValueDisplayFormat?
 
+    /// What the value itself turned out to be, resolved once by the caller that holds the typed
+    /// cell. It reaches the resolver rather than being sniffed here so the row inspector, which
+    /// resolves through `CellValueContentDetector` too, cannot reach a different answer.
+    let detectedContent: CellValueContent
+
     init(
         columnType: ColumnType?,
         value: String?,
@@ -23,7 +28,8 @@ internal struct CellContext: Equatable {
         isImmutableColumn: Bool,
         isBinaryValue: Bool = false,
         isForeignKey: Bool = false,
-        displayFormatOverride: ValueDisplayFormat? = nil
+        displayFormatOverride: ValueDisplayFormat? = nil,
+        detectedContent: CellValueContent = .plain
     ) {
         self.columnType = columnType
         self.value = value
@@ -33,6 +39,7 @@ internal struct CellContext: Equatable {
         self.isBinaryValue = isBinaryValue
         self.isForeignKey = isForeignKey
         self.displayFormatOverride = displayFormatOverride
+        self.detectedContent = detectedContent
     }
 }
 
@@ -42,11 +49,14 @@ internal enum CellInteractionMode: Equatable {
     case viewBlob
     case viewPhpSerialized
 
+    case viewSvg
+
     case editInline(value: String)
     case editOverlay(value: String)
     case editForeignKey
     case editJson
     case editBlob
+    case editSvg
 
     case blocked
 }
@@ -59,6 +69,10 @@ internal struct CellInteractionResolver {
 
         if context.columnType?.isBlobType == true || context.isBinaryValue {
             return isReadOnly ? .viewBlob : .editBlob
+        }
+
+        if case .image(.svg) = context.detectedContent, context.displayFormatOverride != .raw {
+            return isReadOnly ? .viewSvg : .editSvg
         }
 
         switch context.displayFormatOverride {

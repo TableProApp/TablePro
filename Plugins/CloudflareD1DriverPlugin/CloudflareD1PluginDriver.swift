@@ -468,6 +468,22 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         return formatted.hasSuffix(";") ? formatted : formatted + ";"
     }
 
+    /// `sqlite_master` stores each index's own `CREATE INDEX` text, which is what `sqlite3 .dump`
+    /// replays and which carries a partial predicate, an expression key, a collation and a sort
+    /// direction exactly as written. An index SQLite created for itself to back a UNIQUE or PRIMARY
+    /// KEY constraint has a null `sql`, so testing for that is what keeps `sqlite_autoindex_*` out
+    /// of the dump: those come back with the constraint inside `CREATE TABLE`.
+    func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
+        let result = try await execute(query: """
+            SELECT sql FROM sqlite_master
+            WHERE type = 'index'
+              AND tbl_name = '\(escapeStringLiteral(table))'
+              AND sql IS NOT NULL
+            ORDER BY name
+            """)
+        return result.rows.compactMap { $0[safe: 0]?.asText }
+    }
+
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
         let safeView = escapeStringLiteral(view)
         let query = """

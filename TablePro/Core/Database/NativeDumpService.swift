@@ -2,9 +2,10 @@
 //  NativeDumpService.swift
 //  TablePro
 //
-//  Consolidated backup + restore state machine for PostgreSQL connections.
-//  The actual Process execution is delegated to a `DumpRunner` so the
-//  state machine can be exercised in tests with a fake runner.
+//  Consolidated backup + restore state machine. The work itself is delegated to a
+//  `NativeDumpRunner` so the state machine can be exercised in tests with a fake one,
+//  and so an engine that dumps through its own statements can share every bit of the
+//  progress, cancel and result handling that spawning a process already had.
 //
 
 import Foundation
@@ -39,6 +40,7 @@ enum NativeDumpError: LocalizedError, Equatable {
     case noSession
     case alreadyRunning
     case sourceUnreadable
+    case engineStatementUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -49,18 +51,20 @@ enum NativeDumpError: LocalizedError, Equatable {
                 installHint
             )
         case .unsupportedDatabase:
-            return String(localized: "This database type has no command line dump tool TablePro can drive.")
+            return String(localized: "This database type has no dump TablePro can drive.")
         case .noSession:
             return String(localized: "Connect to the database before starting this operation.")
         case .alreadyRunning:
             return String(localized: "An operation is already running.")
         case .sourceUnreadable:
             return String(localized: "The selected backup file is not readable.")
+        case .engineStatementUnavailable:
+            return String(localized: "TablePro could not read the database's own name from the connection.")
         }
     }
 }
 
-/// Parameters for a single backup or restore command.
+/// Parameters for a single backup or restore subprocess.
 struct NativeDumpCommand: Equatable {
     let executable: URL
     let arguments: [String]
@@ -104,22 +108,37 @@ struct NativeDumpCommand: Equatable {
     }
 }
 
-/// Captured terminal state of a finished/cancelled subprocess.
+/// Parameters for a dump the engine runs for itself.
+struct NativeDumpStatementJob: Sendable, Equatable {
+    let statements: [String]
+    /// Run after a failure and ignored. A `DETACH` inside a transaction the engine already aborted
+    /// fails too, and the caller has the real error to report instead of this one.
+    let cleanupStatements: [String]
+    let scope: DatabaseScope
+}
+
+/// What a run is, so the service can pick a runner without either runner accepting a shape it
+/// cannot execute.
+enum NativeDumpJob {
+    case process(NativeDumpCommand)
+    case statements(NativeDumpStatementJob)
+}
+
+/// Captured terminal state of a finished/cancelled run.
 struct NativeDumpRunResult: Equatable {
     let exitCode: Int32
     let stderr: String
     let wasCancelled: Bool
 }
 
-/// Spawns and supervises a single subprocess. Abstracted so the dump
-/// state machine can be tested without launching real processes.
+/// Runs one backup or restore and reports how it ended. Abstracted so the state machine can be
+/// tested without launching a process or reaching a database.
 protocol NativeDumpRunner: AnyObject {
-    /// Launches the command. Throws synchronously if the binary can't be spawned.
-    /// `result` returns the final outcome when the process exits.
-    func start(_ command: NativeDumpCommand) throws
-    /// Sends SIGTERM. Safe to call multiple times.
+    /// Begins the work. Throws synchronously if it cannot be started at all.
+    func start() throws
+    /// Asks for cancellation. Safe to call more than once.
     func cancel()
-    /// Resolves once the process has terminated (normally or via cancel).
+    /// Resolves once the work has ended, however it ended.
     var result: NativeDumpRunResult { get async }
 }
 
@@ -133,10 +152,11 @@ final class NativeDumpService {
     let kind: NativeDumpKind
     private(set) var state: NativeDumpState = .idle
 
-    @ObservationIgnored private let runnerFactory: () -> any NativeDumpRunner
+    @ObservationIgnored private let runnerFactory: @MainActor (NativeDumpJob) -> any NativeDumpRunner
     @ObservationIgnored private var runner: (any NativeDumpRunner)?
     @ObservationIgnored private var byteSizeTask: Task<Void, Never>?
     @ObservationIgnored private var stateObservers: [UUID: AsyncStream<NativeDumpState>.Continuation] = [:]
+    @ObservationIgnored private var toolName = "dump"
 
     func stateUpdates() -> AsyncStream<NativeDumpState> {
         let (stream, continuation) = AsyncStream<NativeDumpState>.makeStream()
@@ -158,43 +178,50 @@ final class NativeDumpService {
         }
     }
 
-    /// Default initializer uses the real `Process`-backed runner.
+    /// Default initializer picks the runner the job calls for.
     init(kind: NativeDumpKind) {
         self.kind = kind
-        self.runnerFactory = { ProcessNativeDumpRunner() }
+        self.runnerFactory = { job in
+            switch job {
+            case .process(let command):
+                return ProcessNativeDumpRunner(command: command)
+            case .statements(let job):
+                return InProcessDumpRunner(job: job)
+            }
+        }
     }
 
     /// Test-friendly initializer that injects a custom runner factory.
-    init(kind: NativeDumpKind, runnerFactory: @escaping () -> any NativeDumpRunner) {
+    init(kind: NativeDumpKind, runnerFactory: @escaping @MainActor (NativeDumpJob) -> any NativeDumpRunner) {
         self.kind = kind
         self.runnerFactory = runnerFactory
     }
 
-    /// Starts the operation. `fileURL` is the destination for `.backup` and
-    /// the source for `.restore`. `totalBytesEstimate` enables a determinate
-    /// progress bar (used by backup; restore stays indeterminate).
+    /// Starts the operation. `fileURL` is the destination for `.backup` and the source for
+    /// `.restore`. `totalBytesEstimate` enables a determinate progress bar.
     ///
-    /// This entry point resolves dependencies from app singletons
-    /// (`DatabaseManager`, `ConnectionStorage`, `CLIExecutableFinder`).
-    /// Tests should use `run(command:database:fileURL:totalBytesEstimate:)`
-    /// directly with a fake runner.
+    /// This entry point resolves dependencies from app singletons (`DatabaseManager`,
+    /// `ConnectionStorage`, `CLIExecutableFinder`, `PluginManager`). Tests should use
+    /// `run(job:database:fileURL:totalBytesEstimate:)` directly with a fake runner.
     func start(
         connection: DatabaseConnection,
         database: String,
         fileURL: URL,
+        scope: NativeDumpScope = .wholeDatabase,
+        formatId: String? = nil,
         totalBytesEstimate: Int64? = nil
     ) async throws {
         if case .running = state { throw NativeDumpError.alreadyRunning }
         if case .cancelling = state { throw NativeDumpError.alreadyRunning }
 
-        guard let descriptor = NativeDumpRegistry.descriptor(for: connection.type) else {
+        guard let descriptor = NativeDumpRegistry.descriptor(for: connection.type, formatId: formatId) else {
             throw NativeDumpError.unsupportedDatabase
         }
 
         let session = DatabaseManager.shared.session(for: connection.id)
         guard session?.isConnected == true else { throw NativeDumpError.noSession }
 
-        if kind == .restore {
+        if kind == .restore, !descriptor.archiveFormat.producesDirectory {
             guard FileManager.default.isReadableFile(atPath: fileURL.path) else {
                 throw NativeDumpError.sourceUnreadable
             }
@@ -202,42 +229,72 @@ final class NativeDumpService {
 
         let effective = session?.effectiveConnection ?? connection
         let password = ConnectionStorage.shared.loadPassword(for: connection.id) ?? session?.cachedPassword
+        let localFilePath = Self.localFilePath(for: effective)
+        let catalog = descriptor.engineStatements == nil
+            ? nil
+            : await Self.resolvedCatalog(connectionId: connection.id, database: database)
 
-        let candidates = descriptor.binaries(for: kind)
-        guard let resolved = candidates.lazy.compactMap({ name -> (String, String)? in
-            guard let path = CLIExecutableFinder.findExecutable(name) else { return nil }
-            return (name, path)
-        }).first else {
-            throw NativeDumpError.binaryNotFound(
-                name: candidates.formatted(.list(type: .or)),
-                installHint: descriptor.installHint
+        let request = NativeDumpDescriptor.Request(
+            connection: effective,
+            database: database,
+            fileURL: fileURL,
+            password: password,
+            scope: scope,
+            currentCatalog: catalog,
+            localFilePath: localFilePath
+        )
+
+        switch descriptor.mechanism {
+        case .commandLineTool(let tool):
+            let candidates = tool.binaries(for: kind)
+            guard let resolved = candidates.lazy.compactMap({ name -> (String, String)? in
+                guard let path = CLIExecutableFinder.findExecutable(name) else { return nil }
+                return (name, path)
+            }).first else {
+                throw NativeDumpError.binaryNotFound(
+                    name: candidates.formatted(.list(type: .or)),
+                    installHint: tool.installHint
+                )
+            }
+            let (binaryName, resolvedPath) = resolved
+            toolName = binaryName
+            let command = try Self.buildCommand(
+                kind: kind,
+                tool: tool,
+                executable: URL(fileURLWithPath: resolvedPath),
+                request: request
+            )
+            try run(job: .process(command), database: database, fileURL: fileURL, totalBytesEstimate: totalBytesEstimate)
+
+        case .engineStatements(let engine):
+            let alias = Self.backupAlias()
+            let statements = engine.statements(for: kind, request: request, alias: alias)
+            guard !statements.isEmpty else { throw NativeDumpError.engineStatementUnavailable }
+            toolName = connection.type.rawValue
+            let scopeForRun = DatabaseManager.shared.resolvedScope(
+                database: database, schema: nil, for: connection.id
+            ) ?? DatabaseScope(connectionId: connection.id, database: database, schema: nil)
+            try run(
+                job: .statements(
+                    NativeDumpStatementJob(
+                        statements: statements,
+                        cleanupStatements: engine.cleanupStatements(alias),
+                        scope: scopeForRun
+                    )
+                ),
+                database: database,
+                fileURL: fileURL,
+                totalBytesEstimate: totalBytesEstimate
             )
         }
-        let (binaryName, resolvedPath) = resolved
 
-        let command = try Self.buildCommand(
-            kind: kind,
-            descriptor: descriptor,
-            executable: URL(fileURLWithPath: resolvedPath),
-            effective: effective,
-            database: database,
-            fileURL: fileURL,
-            password: password
-        )
-
-        try run(
-            command: command,
-            database: database,
-            fileURL: fileURL,
-            totalBytesEstimate: totalBytesEstimate
-        )
-        Self.logger.info("\(binaryName, privacy: .public) started db=\(database, privacy: .public)")
+        Self.logger.info("\(self.toolName, privacy: .public) started db=\(database, privacy: .public)")
     }
 
-    /// Test-friendly entry: spawns the given pre-built command via the runner
-    /// and wires up termination/progress state. Skips dependency resolution.
+    /// Test-friendly entry: hands the job to the runner and wires up termination and progress.
+    /// Skips dependency resolution.
     func run(
-        command: NativeDumpCommand,
+        job: NativeDumpJob,
         database: String,
         fileURL: URL,
         totalBytesEstimate: Int64? = nil
@@ -245,8 +302,8 @@ final class NativeDumpService {
         if case .running = state { throw NativeDumpError.alreadyRunning }
         if case .cancelling = state { throw NativeDumpError.alreadyRunning }
 
-        let runner = runnerFactory()
-        try runner.start(command)
+        let runner = runnerFactory(job)
+        try runner.start()
         self.runner = runner
 
         setState(.running(database: database, fileURL: fileURL, bytesProcessed: 0, totalBytes: totalBytesEstimate))
@@ -266,6 +323,57 @@ final class NativeDumpService {
         runner?.cancel()
     }
 
+    // MARK: - Resolution
+
+    /// The path a file-backed driver actually opens, read from wherever that driver keeps it.
+    /// SQLite uses `database`; DuckDB and libSQL use a plugin-declared additional field.
+    static func localFilePath(for connection: DatabaseConnection) -> String? {
+        guard let field = PluginManager.shared.localFilePathField(for: connection.type) else { return nil }
+        let path = connection.localFilePath(in: field)
+        return path.isEmpty ? nil : path
+    }
+
+    /// The engine's own name for the database being dumped.
+    ///
+    /// `COPY FROM DATABASE` names a catalog, and DuckDB derives a catalog name from the file's
+    /// basename: measured, `my-weird.name.db` attaches as `my-weird`, and `COPY FROM DATABASE main`
+    /// fails with `Catalog "main" does not exist`. DuckDB also reaches more than one catalog at once
+    /// through `ATTACH`, so the answer is the picked database when the engine lists it, and only
+    /// otherwise the one the session is on.
+    static func resolvedCatalog(connectionId: UUID, database: String) async -> String? {
+        guard let scope = DatabaseManager.shared.resolvedScope(
+            database: database, schema: nil, for: connectionId
+        ) else { return nil }
+        return try? await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+            let reported = (try? await driver.fetchDatabases()) ?? []
+            let current = try? await driver.execute(query: "SELECT current_database()")
+            return catalogName(
+                picked: database,
+                reported: reported,
+                current: current?.rows.first?.first?.asText
+            )
+        }
+    }
+
+    /// Pure so the choice is testable without an engine. The picked name wins when the engine says
+    /// it exists, because a connection with two catalogs attached has to dump the one that was
+    /// ticked rather than whichever the session is parked on.
+    nonisolated static func catalogName(
+        picked: String,
+        reported: [String],
+        current: String?
+    ) -> String? {
+        if !picked.isEmpty, reported.contains(picked) { return picked }
+        if let current, !current.isEmpty { return current }
+        return picked.isEmpty ? nil : picked
+    }
+
+    /// Unique per run, so a `DETACH` that could not execute leaves nothing behind that blocks the
+    /// next attempt with "database with name already exists".
+    static func backupAlias() -> String {
+        "tablepro_backup_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12))"
+    }
+
     // MARK: - Command Construction
 
     /// The descriptor supplies the arguments and the environment; this adds the parts every tool
@@ -274,41 +382,31 @@ final class NativeDumpService {
     /// does not.
     nonisolated static func buildCommand(
         kind: NativeDumpKind,
-        descriptor: NativeDumpDescriptor,
+        tool: NativeDumpDescriptor.CommandLineTool,
         executable: URL,
-        effective: DatabaseConnection,
-        database: String,
-        fileURL: URL,
-        password: String?
+        request: NativeDumpDescriptor.Request
     ) throws -> NativeDumpCommand {
-        let request = NativeDumpDescriptor.Request(
-            connection: effective,
-            database: database,
-            fileURL: fileURL,
-            password: password
-        )
-        var arguments = descriptor.arguments(for: kind, request: request)
+        var arguments = tool.arguments(for: kind, request: request)
         var environment = minimalEnvironment()
-        environment.merge(descriptor.environment(request)) { _, new in new }
+        environment.merge(tool.environment(request)) { _, new in new }
 
         var credentialsFileURL: URL?
-        if descriptor.environment(request).isEmpty,
-           let password, !password.isEmpty,
-           !effective.username.isEmpty,
-           descriptor.backupBinaries.contains("mongodump") {
+        if tool.needsCredentialsFile,
+           let password = request.password, !password.isEmpty,
+           !request.connection.username.isEmpty {
             let file = try writeMongoCredentialsFile(password: password)
             credentialsFileURL = file
             arguments.append("--config=\(file.path)")
         }
 
-        let delivery = descriptor.delivery(for: kind)
+        let delivery = tool.delivery(for: kind)
         return NativeDumpCommand(
             executable: executable,
             arguments: arguments,
             environment: environment,
             stderrByteCap: 64_000,
             delivery: delivery,
-            redirectedFileURL: delivery == .standardOutput ? fileURL : nil,
+            redirectedFileURL: delivery == .standardOutput ? request.fileURL : nil,
             temporaryCredentialsFileURL: credentialsFileURL,
             isRestore: kind == .restore
         )
@@ -351,16 +449,6 @@ final class NativeDumpService {
         return env
     }
 
-    nonisolated static func pgSSLMode(_ mode: SSLMode) -> String? {
-        switch mode {
-        case .disabled: return nil
-        case .preferred: return "prefer"
-        case .required: return "require"
-        case .verifyCa: return "verify-ca"
-        case .verifyIdentity: return "verify-full"
-        }
-    }
-
     // MARK: - Termination + Progress
 
     private func handleTermination(
@@ -372,36 +460,52 @@ final class NativeDumpService {
         byteSizeTask = nil
         runner = nil
 
-        let writtenBytes: Int64
-        if kind == .backup {
-            writtenBytes = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int64) ?? 0
-        } else {
-            writtenBytes = 0
-        }
+        let writtenBytes: Int64 = kind == .backup ? Self.sizeOfDestination(fileURL) : 0
 
         if result.wasCancelled {
-            if kind == .backup {
-                try? FileManager.default.removeItem(at: fileURL)
-            }
+            if kind == .backup { Self.removeDestination(fileURL) }
             setState(.cancelled)
-            Self.logger.notice("\(self.kind == .backup ? "pg_dump" : "pg_restore", privacy: .public) cancelled db=\(database, privacy: .public)")
+            Self.logger.notice("\(self.toolName, privacy: .public) cancelled db=\(database, privacy: .public)")
             return
         }
 
         if result.exitCode == 0 {
             setState(.finished(database: database, fileURL: fileURL, bytesProcessed: writtenBytes))
-            Self.logger.info("\(self.kind == .backup ? "pg_dump" : "pg_restore", privacy: .public) finished bytes=\(writtenBytes) db=\(database, privacy: .public)")
+            Self.logger.info("\(self.toolName, privacy: .public) finished bytes=\(writtenBytes) db=\(database, privacy: .public)")
             return
         }
 
-        if kind == .backup {
-            try? FileManager.default.removeItem(at: fileURL)
-        }
+        if kind == .backup { Self.removeDestination(fileURL) }
         let summary = result.stderr.isEmpty
             ? String(format: String(localized: "Process exited with code %d"), Int(result.exitCode))
             : result.stderr
         setState(.failed(message: summary, targetMayBeModified: kind == .restore))
-        Self.logger.error("\(self.kind == .backup ? "pg_dump" : "pg_restore", privacy: .public) failed code=\(result.exitCode) db=\(database, privacy: .public) stderr=\(result.stderr)")
+        Self.logger.error("\(self.toolName, privacy: .public) failed code=\(result.exitCode) db=\(database, privacy: .public) stderr=\(result.stderr)")
+    }
+
+    /// A DuckDB Parquet backup is a folder, so its size is the sum of what is inside it and its
+    /// removal is recursive. `removeItem` already handles a directory; `attributesOfItem` does not
+    /// sum one.
+    nonisolated static func sizeOfDestination(_ url: URL) -> Int64 {
+        let manager = FileManager.default
+        var isDirectory: ObjCBool = false
+        guard manager.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return 0 }
+        guard isDirectory.boolValue else {
+            return (try? manager.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
+        }
+        guard let enumerator = manager.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey]) else {
+            return 0
+        }
+        var total: Int64 = 0
+        for case let child as URL in enumerator {
+            let size = (try? child.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            total += Int64(size)
+        }
+        return total
+    }
+
+    nonisolated static func removeDestination(_ url: URL) {
+        try? FileManager.default.removeItem(at: url)
     }
 
     private func startByteSizePolling(url: URL, database: String, totalBytes: Int64?) {
@@ -411,143 +515,12 @@ final class NativeDumpService {
                 try? await Task.sleep(nanoseconds: 250_000_000)
                 guard let self else { return }
                 guard case .running = self.state else { return }
-                let size = (try? FileManager.default
-                    .attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
                 self.setState(.running(
                     database: database,
                     fileURL: url,
-                    bytesProcessed: size,
+                    bytesProcessed: Self.sizeOfDestination(url),
                     totalBytes: totalBytes
                 ))
-            }
-        }
-    }
-}
-
-// MARK: - Helpers
-
-private extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
-}
-
-// MARK: - Real Process Runner
-
-final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
-    private let process = Process()
-    private let stderrPipe = Pipe()
-    private let stateLock = NSLock()
-    private var stderrBuffer = Data()
-    private var wasCancelled = false
-    private var terminationResult: NativeDumpRunResult?
-    private var continuation: CheckedContinuation<NativeDumpRunResult, Never>?
-    private var redirectedHandle: FileHandle?
-    private var credentialsFileURL: URL?
-
-    func start(_ command: NativeDumpCommand) throws {
-        let stderrCap = command.stderrByteCap
-
-        process.executableURL = command.executable
-        process.arguments = command.arguments
-        process.environment = command.environment
-        process.standardError = stderrPipe
-        credentialsFileURL = command.temporaryCredentialsFileURL
-
-        try attachRedirection(for: command)
-
-        stderrPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let chunk = handle.availableData
-            guard !chunk.isEmpty, let self else { return }
-            self.stateLock.lock()
-            self.stderrBuffer.append(chunk)
-            if self.stderrBuffer.count > stderrCap {
-                self.stderrBuffer = Data(self.stderrBuffer.suffix(stderrCap))
-            }
-            self.stateLock.unlock()
-        }
-
-        process.terminationHandler = { [weak self] proc in
-            guard let self else { return }
-            self.stderrPipe.fileHandleForReading.readabilityHandler = nil
-            self.releaseRedirection()
-
-            self.stateLock.lock()
-            let stderrText = String(data: self.stderrBuffer, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let result = NativeDumpRunResult(
-                exitCode: proc.terminationStatus,
-                stderr: stderrText,
-                wasCancelled: self.wasCancelled
-            )
-            self.terminationResult = result
-            let pending = self.continuation
-            self.continuation = nil
-            self.stateLock.unlock()
-
-            pending?.resume(returning: result)
-        }
-
-        try process.run()
-    }
-
-    func cancel() {
-        stateLock.lock()
-        wasCancelled = true
-        stateLock.unlock()
-        if process.isRunning {
-            process.terminate()
-        }
-    }
-
-    /// A tool that writes to standard output gets the destination file as its stdout, and a restore
-    /// that reads from standard input gets the dump file as its stdin. The one that manages its own
-    /// file gets the null device, which is what keeps a chatty tool from filling a pipe nobody
-    /// drains and deadlocking on write.
-    private func attachRedirection(for command: NativeDumpCommand) throws {
-        guard command.delivery == .standardOutput, let fileURL = command.redirectedFileURL else {
-            process.standardOutput = FileHandle.nullDevice
-            return
-        }
-        switch command.isRestore {
-        case true:
-            guard FileManager.default.isReadableFile(atPath: fileURL.path) else {
-                throw NativeDumpError.sourceUnreadable
-            }
-            let handle = try FileHandle(forReadingFrom: fileURL)
-            redirectedHandle = handle
-            process.standardInput = handle
-            process.standardOutput = FileHandle.nullDevice
-        case false:
-            guard FileManager.default.createFile(atPath: fileURL.path, contents: nil) else {
-                throw NativeDumpError.sourceUnreadable
-            }
-            let handle = try FileHandle(forWritingTo: fileURL)
-            redirectedHandle = handle
-            process.standardOutput = handle
-        }
-    }
-
-    /// Runs however the process ended, including a cancel, so a credentials file never outlives the
-    /// process that needed it.
-    private func releaseRedirection() {
-        try? redirectedHandle?.close()
-        redirectedHandle = nil
-        if let credentialsFileURL {
-            try? FileManager.default.removeItem(at: credentialsFileURL)
-        }
-        credentialsFileURL = nil
-    }
-
-    var result: NativeDumpRunResult {
-        get async {
-            await withCheckedContinuation { continuation in
-                stateLock.lock()
-                if let cached = terminationResult {
-                    stateLock.unlock()
-                    continuation.resume(returning: cached)
-                    return
-                }
-                self.continuation = continuation
-                stateLock.unlock()
             }
         }
     }
@@ -556,24 +529,26 @@ final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
 // MARK: - Database Size Helper
 
 extension NativeDumpService {
-    /// Best-effort estimate of the database's on-disk size. Used as an upper
-    /// bound for the backup progress bar; the dump file is typically much
-    /// smaller because of compression, so the bar tops out at the size and
-    /// then jumps when pg_dump exits.
-    /// Returns nil if the query fails or the driver isn't connected.
+    /// Best-effort estimate of the database's on-disk size. Used as an upper bound for the backup
+    /// progress bar; the dump file is typically much smaller because of compression, so the bar
+    /// tops out at the size and then jumps when the tool exits. Returns nil if the query fails.
+    ///
+    /// Routed through `withMetadataDriver` rather than taken straight off `driver(for:)`. On the
+    /// session driver this query queues behind whatever the user is running and joins whatever
+    /// transaction a query tab left open, which is the hazard `metadataRoute` exists to avoid.
     static func estimatedDatabaseSize(
         connection: DatabaseConnection,
         database: String
     ) async -> Int64? {
         guard let query = sizeQuery(for: connection.type) else { return nil }
-        guard let driver = DatabaseManager.shared.driver(for: connection.id) else { return nil }
-        do {
-            let result = try await driver.executeParameterized(query: query, parameters: [database])
-            guard let text = result.rows.first?.first?.asText else { return nil }
-            return Int64(text)
-        } catch {
-            return nil
+        guard let scope = DatabaseManager.shared.resolvedScope(
+            database: database, schema: nil, for: connection.id
+        ) else { return nil }
+        let result = try? await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+            try await driver.executeParameterized(query: query, parameters: [database])
         }
+        guard let text = result?.rows.first?.first?.asText else { return nil }
+        return Int64(text)
     }
 
     /// An engine with no cheap size answer returns nil, which leaves the progress bar

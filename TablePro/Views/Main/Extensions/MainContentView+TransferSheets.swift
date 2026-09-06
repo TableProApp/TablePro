@@ -80,12 +80,13 @@ extension MainContentView {
             }
         case .transferTables(let tables):
             transferSheet(tables: tables, dismiss: dismissBinding)
-        case .backupDatabase:
+        case .backupDatabase(let databases):
             BackupDatabaseFlow(
                 isPresented: dismissBinding,
                 connection: connectionWithCurrentDatabase,
                 initialDatabase: DatabaseManager.shared.session(for: connection.id)?.browseDatabase
-                    ?? connection.database
+                    ?? connection.database,
+                preselectedDatabases: databases
             )
         case .restoreDatabase(let fileURL):
             RestoreDatabaseFlow(

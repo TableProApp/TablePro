@@ -85,7 +85,18 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
                 supportsDatabaseSwitching: PluginManager.shared.supportsDatabaseSwitching(for: databaseType),
                 isReadOnly: mainCoordinator?.safeModeLevel.blocksAllWrites ?? false
             ),
+            canBackUp: backupIsAvailable(),
             canCreateType: DatabaseManager.shared.driver(for: connectionId)?.createTypeTemplate(schema: nil) != nil
+        )
+    }
+
+    private func backupIsAvailable() -> Bool {
+        guard let connection = DatabaseManager.shared.session(for: connectionId)?.connection else {
+            return false
+        }
+        return NativeDumpRegistry.supports(
+            connection,
+            localFilePath: NativeDumpService.localFilePath(for: connection)
         )
     }
 

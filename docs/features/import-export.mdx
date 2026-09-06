@@ -35,11 +35,14 @@ SQL exports more than tables. A database holding more than one kind of object gr
 | Group | Written as | Engines |
 |---|---|---|
 | Types | `CREATE TYPE` | PostgreSQL and its forks |
-| Tables | `CREATE TABLE` plus `INSERT` | every SQL engine |
+| Sequences | `CREATE SEQUENCE` | PostgreSQL and its forks |
+| Tables | `CREATE TABLE` plus `INSERT` and `CREATE INDEX` | every SQL engine |
+| Foreign Tables | `CREATE FOREIGN TABLE` | PostgreSQL |
 | Views | `CREATE VIEW` from the server's own definition | every SQL engine |
 | Materialized Views | `CREATE MATERIALIZED VIEW` | PostgreSQL, Oracle |
 | Routines | `CREATE FUNCTION` or `CREATE PROCEDURE` | engines with stored routines |
 | Triggers | `CREATE TRIGGER` | engines with triggers |
+| Events | `CREATE EVENT` | MySQL, MariaDB |
 | Privileges | `GRANT`, one principal per row | engines with user management |
 
 A database with only tables lists them flat, with no group to open first.
@@ -115,6 +118,8 @@ As SQL, a results export writes `INSERT` statements only. A result set is the ou
     | Exclude DEFINER clauses | Yes |
 
     Structure (CREATE TABLE), Drop (DROP TABLE IF EXISTS), and Data (INSERT statements) are per-table checkboxes, and a multi-table export can mix them.
+
+    Structure carries the table's indexes. They are written after the rows, next to the deferred foreign keys, which is where `pg_dump` and `sqlite3 .dump` put them: a bulk load into an indexed table pays to maintain an index the restore is about to build anyway. On MySQL, MariaDB, ClickHouse, Trino and CockroachDB the server writes them inside `CREATE TABLE`, so they arrive with the table instead. A materialized view's indexes follow the view.
 
     <Warning>
     All three are on by default, so an SQL export carries `DROP TABLE IF EXISTS` unless you untick **Drop**. Run that file against the wrong database and it drops the tables first.

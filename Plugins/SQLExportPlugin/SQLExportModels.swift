@@ -44,3 +44,24 @@ public struct SQLExportOptions: Equatable, Codable {
             ?? defaults.splitSizeMegabytes
     }
 }
+
+/// Why an object's definition could not be written.
+///
+/// Several drivers answer an unreadable definition with an empty string rather than throwing: a
+/// SQL Server view created `WITH ENCRYPTION`, or one the connected login cannot see, returns no
+/// row and reads back as "". Writing that put a bare `;` under the object's comment banner and
+/// reported a clean export, so the guard turns it into a failure the summary names.
+/// `CustomStringConvertible` as well as `LocalizedError`, because the warning the export writes
+/// into the dump interpolates the error value itself. Without it the comment read
+/// `failed to fetch DDL for table orders: emptyDefinition`, the case name.
+internal enum SQLExportObjectError: LocalizedError, CustomStringConvertible {
+    case emptyDefinition
+
+    internal var errorDescription: String? {
+        String(localized: "the server returned no definition", bundle: .main)
+    }
+
+    internal var description: String {
+        errorDescription ?? ""
+    }
+}

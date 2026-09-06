@@ -54,12 +54,14 @@ struct PostgreSQLSQLEscapingCorrectness {
 @Suite("PostgreSQL DDL Assembly")
 struct PostgreSQLDDLAssembly {
 
+    /// Mirrors how `PostgreSQLPluginDriver.fetchTableDDL` assembles its statement. Indexes are no
+    /// longer part of it: they come back from `fetchIndexDDL` so the dump can write them after the
+    /// data, so there is nothing to append here.
     private func assembleDDL(
         schema: String,
         table: String,
         columns: [String],
-        constraints: [String] = [],
-        indexes: [String] = []
+        constraints: [String] = []
     ) -> String? {
         guard !columns.isEmpty else { return nil }
 
@@ -69,15 +71,9 @@ struct PostgreSQLDDLAssembly {
         var parts = columns
         parts.append(contentsOf: constraints)
 
-        let ddl = "CREATE TABLE \(quotedSchema).\(quotedTable) (\n  " +
+        return "CREATE TABLE \(quotedSchema).\(quotedTable) (\n  " +
             parts.joined(separator: ",\n  ") +
             "\n);"
-
-        if indexes.isEmpty {
-            return ddl
-        }
-
-        return ddl + "\n\n" + indexes.joined(separator: ";\n") + ";"
     }
 
     @Test("Basic CREATE TABLE with columns only")
@@ -122,24 +118,6 @@ struct PostgreSQLDDLAssembly {
         let idPos = (result as NSString).range(of: "\"id\" integer").location
         let pkPos = (result as NSString).range(of: "PRIMARY KEY").location
         #expect(idPos < pkPos, "Columns should appear before constraints")
-    }
-
-    @Test("CREATE TABLE with indexes — indexes appear after the statement")
-    func createTableWithIndexes() {
-        let columns = ["\"id\" integer NOT NULL"]
-        let indexes = [
-            "CREATE INDEX \"idx_users_name\" ON \"public\".\"users\" USING btree (\"name\")"
-        ]
-
-        let result = assembleDDL(schema: "public", table: "users", columns: columns, indexes: indexes)!
-
-        #expect(result.contains(");"))
-        #expect(result.contains("\n\n"))
-        #expect(result.contains("CREATE INDEX"))
-
-        let semiPos = (result as NSString).range(of: ");").location
-        let indexPos = (result as NSString).range(of: "CREATE INDEX").location
-        #expect(semiPos < indexPos, "Indexes should appear after CREATE TABLE statement")
     }
 
     @Test("Empty columns returns nil — no empty CREATE TABLE produced")

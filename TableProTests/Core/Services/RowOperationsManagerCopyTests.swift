@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 @testable import TablePro
 import TableProPluginKit
@@ -22,6 +23,12 @@ private final class MockClipboardProvider: ClipboardProvider {
     func writeCsv(_ csv: String) {
         lastWrittenText = csv
         lastWasGridRows = false
+    }
+
+    var copiedImages: [NSImage] = []
+
+    func writeImage(_ image: NSImage) {
+        copiedImages.append(image)
     }
 
     func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload) {

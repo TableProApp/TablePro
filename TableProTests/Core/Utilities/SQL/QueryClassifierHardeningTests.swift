@@ -387,6 +387,26 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.isWriteQuery(exportInBody, databaseType: .typesense))
     }
 
+    /// A URL path holds no raw space, so everything after the first one belongs to the body. The
+    /// path ran to the end of the header line, which both classified `POST /multi_search {}` as a
+    /// write and let a second path appended after a space end the request path in a read.
+    @Test("The request path ends at the first space, and a second path cannot follow it")
+    func typesensePathEndsAtTheFirstSpace() {
+        #expect(!QueryClassifier.isWriteQuery("POST /multi_search {\"searches\": []}", databaseType: .typesense))
+        #expect(
+            QueryClassifier.isWriteQuery(
+                "POST /collections/books/documents /multi_search",
+                databaseType: .typesense
+            )
+        )
+        #expect(
+            QueryClassifier.classifyTier(
+                "POST /collections/books/documents /documents/export",
+                databaseType: .typesense
+            ) == .write
+        )
+    }
+
     @Test("A read path has to be the request's own path, not a prefix of a longer one")
     func typesenseReadPathMustEndTheRequestPath() {
         #expect(
