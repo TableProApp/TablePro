@@ -31,6 +31,7 @@ internal struct InspectorHeaderView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                        .accessibilityIdentifier("inspector-subject-subtitle")
                 }
             }
             Spacer(minLength: 6)

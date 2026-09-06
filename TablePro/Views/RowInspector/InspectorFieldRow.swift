@@ -151,6 +151,7 @@ internal struct InspectorFieldRow: View {
         .fixedSize()
         .frame(minWidth: 12)
         .help(String(localized: "Value Options"))
+        .accessibilityIdentifier("inspector-value-menu")
     }
 
     private var menuContent: some View {
