@@ -1,9 +1,9 @@
 ---
 title: Backup & Restore
-description: Dump and restore with each engine's own command line tools, with progress, cancel, and SSH tunnel reuse
+description: Dump and restore with each engine's own tools, with scope, progress, cancel, and SSH tunnel reuse
 ---
 
-The engine's own tools do the work, and none of them ship inside TablePro. Install the ones for your engine first:
+Most engines here need a command line tool that does not ship inside TablePro. Install the one for your engine first:
 
 | Engine | Tools | Install | Dump file |
 |---|---|---|---|
@@ -12,16 +12,21 @@ The engine's own tools do the work, and none of them ship inside TablePro. Insta
 | MongoDB | `mongodump`, `mongorestore` | `brew install mongodb-database-tools` | `.archive`, gzipped |
 | SQLite, libSQL | `sqlite3` | `brew install sqlite` | `.sql` |
 | SQL Server | `sqlpackage` | [Download from Microsoft](https://learn.microsoft.com/sql/tools/sqlpackage/sqlpackage-download) | `.bacpac` |
+| DuckDB | none, the engine writes it | nothing to install | `.duckdb`, or a folder of Parquet |
 
 MariaDB 11.0 renamed its clients, so `mariadb-dump` and `mariadb` are accepted in place of `mysqldump` and `mysql`.
 
 The lookup takes the first match from `/usr/bin/which`, then `/opt/homebrew/bin`, `/usr/local/bin`, and Postgres.app's latest version. That path decides which client version does the work.
 
+DuckDB is the exception: its dump is a statement the engine already in front of TablePro runs, over the connection that is already open.
+
+**File > Backup Dump…** is dimmed on an engine that is not in the table, and on a libSQL connection pointed at a Turso URL rather than a local file, which `sqlite3` cannot reach. For those, use a SQL export from [Import & Export](/features/import-export).
+
 <Info>
-**File > Backup Dump…** is dimmed on an engine that is not in the table. For those, use a SQL export from [Import & Export](/features/import-export). Restore is disabled on a read-only [Safe Mode](/features/safe-mode) connection; backup is not, because it writes nothing to the database.
+Restore is disabled on a read-only [Safe Mode](/features/safe-mode) connection. Backup is not, because it writes nothing to the database.
 </Info>
 
-<Frame caption="The Backup Dump sheet with its format and scope options">
+<Frame caption="The Backup Dump sheet with its scope tree, format and destination">
   <img className="block dark:hidden" src="/images/backup-dump-dialog.png" alt="Backup Dump sheet" />
   <img className="hidden dark:block" src="/images/backup-dump-dialog-dark.png" alt="Backup Dump sheet" />
 </Frame>
@@ -29,45 +34,75 @@ The lookup takes the first match from `/usr/bin/which`, then `/opt/homebrew/bin`
 ## Backup dump
 
 <Steps>
-  <Step title="Start the dump">
-    Choose **File > Backup Dump…** on a connected session and pick the database.
+  <Step title="Open the sheet">
+    Choose **File > Backup Dump…** on a connected session, or right-click one or more databases in the connection tree and choose **Back Up…**. The tree's selection arrives ticked.
   </Step>
-  <Step title="Choose where to save it">
-    The default filename is `<database>-<yyyy-MM-dd-HHmmss>` with the engine's extension from the table. PostgreSQL uses the custom archive format (`pg_dump -Fc`), MySQL and SQLite write SQL, and MongoDB writes a gzipped archive.
+  <Step title="Tick what goes in">
+    The database being browsed starts ticked and whole. Tick more databases to write more files. Open a database's disclosure triangle to reach its tables, all of them ticked, and untick the ones to leave out.
+  </Step>
+  <Step title="Pick the format and the folder">
+    Only DuckDB offers a choice of format. Every file lands in the folder named under **Save to**, called `<database>-<yyyy-MM-dd-HHmmss>` with the engine's extension.
   </Step>
   <Step title="Watch the byte counter">
-    **Cancel** confirms, sends `SIGTERM`, and removes the partial file. On success the result sheet gives the size and **Show in Finder**.
+    **Cancel** confirms, stops the run, and removes the partial file. Databases already written are kept. The result sheet lists every database with its file and size, and **Show in Finder** selects them.
 
-    The bar shows a percentage on PostgreSQL and MySQL, which answer a database size query cheaply. MongoDB and SQLite show an indeterminate bar with a running byte count.
+    The bar shows a percentage on PostgreSQL and MySQL, which answer a database size query cheaply. The rest show an indeterminate bar with a running byte count.
   </Step>
 </Steps>
+
+## What goes in
+
+Ticking a whole database dumps everything in it: tables, views, routines, triggers and sequences, whatever the engine's tool carries. Unticking even one table narrows the dump to the ticked ones, and every engine narrows differently.
+
+| Engine | Narrows to | What a narrowed dump leaves out |
+|---|---|---|
+| PostgreSQL, Redshift | tables | Sequences, types, schemas, and tables the selection references. The dump will not restore on its own |
+| MySQL, MariaDB | tables | Views, and tables the selection references. It restores, with those references dangling |
+| MongoDB | collections | Nothing |
+| SQLite, libSQL | tables, plus each one's indexes and triggers | Nothing |
+| SQL Server | table data | Nothing. The `.bacpac` always carries the whole schema, and a table the selection references by foreign key has to be ticked too |
+| DuckDB | nothing, the picker is off | The whole database goes in every time |
+
+The sheet repeats the relevant row under the tree as soon as a selection is narrowed. Leave every table ticked to get the whole database, which is what the sheet starts on.
+
+## Backing up several databases
+
+Tick more than one database and the run writes one file per database into the chosen folder. Two databases whose names differ only by a character a file name cannot hold, such as `a/b` and `a:b`, get a numbered suffix rather than one overwriting the other.
+
+Each database runs on its own. A failure stops that one and the run carries on, and the result sheet says which database failed and why alongside the ones that worked.
 
 ## Restore dump
 
 <Steps>
   <Step title="Pick the dump file">
-    Choose **File > Restore Dump…** and select a file the matching backup tool wrote.
+    Choose **File > Restore Dump…** and select a file the matching backup tool wrote. The panel names the formats this connection's engine accepts.
   </Step>
   <Step title="Pick the target database">
-    `pg_restore` runs with `--no-owner --no-acl`, so the connection user ends up owning the restored objects. `mongorestore` is scoped with `--nsInclude` to the database you pick.
+    Engines with more than one database ask which. SQLite and DuckDB reach exactly one, so they skip straight to the confirmation.
+
+    `pg_restore` runs with `--no-owner --no-acl`, so the connection user ends up owning the restored objects. `mongorestore` is scoped with `--nsInclude` to the database picked.
   </Step>
   <Step title="Confirm">
     The dump is replayed into a database that already has contents. Objects it names are overwritten.
   </Step>
   <Step title="Wait it out">
-    Restore shows no percentage. **Cancel** confirms and sends `SIGTERM`, and the target database is left as it stands: drop it and restore into a fresh one, or clean up the partial objects yourself.
+    Restore shows no percentage. **Cancel** confirms and stops the run, and the target database is left as it stands: drop it and restore into a fresh one, or clean up the partial objects yourself.
   </Step>
 </Steps>
 
-No `--clean` is passed, so restoring on top of a schema that already holds conflicting objects produces errors instead of replacing them.
+No `--clean` is passed, so restoring on top of a schema that already holds conflicting objects produces errors instead of replacing them. A DuckDB restore behaves the same way, and reports the first object whose name is already taken.
+
+Restore covers the whole file. There is no table picker on the way back in.
 
 ## What a dump carries
 
 `mysqldump` runs with `--single-transaction --routines --triggers --events`, so a MySQL dump is consistent with itself and carries stored routines, triggers and scheduled events. `pg_dump -Fc` carries the whole database. `sqlite3 .dump` writes the schema and every row as SQL.
 
+DuckDB writes one of two things. A `.duckdb` file carries tables, views, indexes, foreign keys and sequences, and only DuckDB reads it, which is also true of `pg_dump`'s archive and MongoDB's. A Parquet folder holds `schema.sql`, `load.sql` and one Parquet file per table, which pandas, Spark and BigQuery read directly. Pick the file to restore into TablePro later, the folder to hand the data to something else.
+
 ## SSH tunnels and SSL
 
-Both flows reuse the connection's active SSH tunnel, with no second port forward. SSL mode reaches PostgreSQL through `PGSSLMODE` and MySQL through `--ssl-mode`, `verify-ca` and `verify-full` included. SQLite opens a file, so neither applies.
+Both flows reuse the connection's active SSH tunnel, with no second port forward. SSL mode reaches PostgreSQL through `PGSSLMODE` and MySQL through `--ssl-mode`, `verify-ca` and `verify-full` included. SQLite and DuckDB open a file, so neither applies.
 
 ## Server-side export
 
@@ -87,7 +122,7 @@ Nothing lands on your Mac. The result is on the server or in the bucket, and the
 
 ## Passwords
 
-Your password never reaches the tool's argument list, which every process on the machine can read through `ps`. PostgreSQL gets `PGPASSWORD` and MySQL gets `MYSQL_PWD`, both in the environment. MongoDB's tools read neither, so TablePro writes a `0600` config file and deletes it when the process exits.
+Your password never reaches the tool's argument list, which every process on the machine can read through `ps`. PostgreSQL gets `PGPASSWORD` and MySQL gets `MYSQL_PWD`, both in the environment. MongoDB's tools read neither, so TablePro writes a `0600` config file and deletes it when the process exits. DuckDB is asked for nothing: it is already connected.
 
 <Warning>
 SqlPackage is the exception. It accepts a password only inside its connection string, which means the command line, where other processes on the Mac can read it while the dump runs. TablePro asks before starting one. Windows or Entra authentication avoids it entirely: leave the username empty and the tool uses integrated security.
@@ -95,10 +130,11 @@ SqlPackage is the exception. It accepts a password only inside its connection st
 
 ## Failures
 
-A non-zero exit shows the last 64 KB of the tool's stderr in a scrollable monospaced view. Three causes account for most of them.
+A non-zero exit shows the last 64 KB of the tool's stderr in a scrollable monospaced view, and DuckDB's own error text in the same place. Four causes account for most of them.
 
 | What you see | What to do |
 |---|---|
 | *"… was not found on this system"* followed by an install command | Run that command so the binaries land on `PATH`. The message names the tool and the package for your engine |
 | An authentication failure | The password goes through the environment or a config file rather than a prompt, so this is the account or the database. Check that the role can log in |
 | Objects that conflict with the dump | Restore into a fresh database, or drop the conflicting objects first |
+| *"a single transaction can only write to a single attached database"* | A DuckDB query tab has an open transaction that has already written. Commit or roll it back, then run the backup again |

@@ -106,6 +106,8 @@ extension DatabaseTreeOutlineCoordinator {
             ClipboardService.shared.writeText(targets.map(\.name).joined(separator: ","))
         case .exportContainers(let targets):
             mainCoordinator?.openExportDialog(containers: targets)
+        case .backUpContainers(let databases):
+            mainCoordinator?.activeSheet = .backupDatabase(databases: Set(databases))
         case .dropContainers(let targets):
             mainCoordinator?.requestContainerDrop(targets)
         case .copyObjectsTo(let objects, let ref):

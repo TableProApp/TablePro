@@ -23,6 +23,10 @@ struct BackupProgressSheet: View {
     /// bar indeterminate (used for restore).
     let totalBytes: Int64?
     let isCancelling: Bool
+    /// Which database of how many, for a run that covers more than one. A single-database run
+    /// passes 1 and 1 and the step line is left out.
+    var itemIndex: Int = 1
+    var itemTotal: Int = 1
     let onCancel: () -> Void
 
     @State private var showCancelConfirmation = false
@@ -31,6 +35,13 @@ struct BackupProgressSheet: View {
         VStack(spacing: 20) {
             Text(titleString)
                 .font(.title3.weight(.semibold))
+
+            if itemTotal > 1 {
+                Text(stepString)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
 
             VStack(spacing: 8) {
                 HStack {
@@ -125,9 +136,17 @@ struct BackupProgressSheet: View {
 
     private var cancelAlertMessage: String {
         switch kind {
-        case .backup: return String(localized: "The partial backup file will be removed.")
+        case .backup: return String(localized: "The partial backup file is removed. Databases already written are kept.")
         case .restore: return String(localized: "The target database may be left in a partial state.")
         }
+    }
+
+    private var stepString: String {
+        String(
+            format: String(localized: "Database %1$lld of %2$lld"),
+            Int64(itemIndex),
+            Int64(itemTotal)
+        )
     }
 
     private var byteCountString: String {
