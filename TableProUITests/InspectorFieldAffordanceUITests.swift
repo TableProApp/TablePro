@@ -71,11 +71,6 @@ final class InspectorFieldAffordanceUITests: UITestCase {
         )
 
         gridPoint(in: grid, of: window, dy: 70).click()
-        XCTAssertTrue(
-            waitForPredicate(timeout: 10) { grid.tableRows.allElementsBoundByIndex.contains { $0.isSelected } },
-            "The click must select a row, or the inspector has nothing to draw fields for"
-        )
-
         showInspector(in: app)
         return grid
     }

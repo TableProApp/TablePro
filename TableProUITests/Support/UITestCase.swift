@@ -234,10 +234,17 @@ internal class UITestCase: XCTestCase {
     /// to produce, and reports that as the missing thing. A grid that exists is also not laid out
     /// yet, and a coordinate taken off an empty frame resolves to `(inf, inf)`, which posts at no
     /// display at all and takes the runner down instead of failing.
+    ///
+    /// The question has to stop at the first row. `allElementsBoundByIndex` resolves the whole set,
+    /// and asking the grid for its rows is what activates `DataGridCellAccessibilityView`, so the
+    /// table view then prepares every row of the page and mounts a cell view for each: fine on
+    /// Album's 347 rows, and past XCUITest's own query budget on the `Track` table the sample opens
+    /// by default, where it fails the suite with "Timed out while evaluating UI query" rather than
+    /// with an assertion. `firstMatch` is what stops the traversal early.
     internal func waitForClickableRows(in grid: XCUIElement, timeout: TimeInterval = 30) -> Bool {
-        waitForPredicate(timeout: timeout) {
-            grid.frame.width > 0 && grid.frame.height > 0
-                && !grid.tableRows.allElementsBoundByIndex.isEmpty
+        let firstRow = grid.tableRows.firstMatch
+        return waitForPredicate(timeout: timeout) {
+            grid.frame.width > 0 && grid.frame.height > 0 && firstRow.exists
         }
     }
 
