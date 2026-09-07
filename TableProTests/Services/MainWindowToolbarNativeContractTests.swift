@@ -120,6 +120,32 @@ struct MainWindowToolbarNativeContractTests {
         #expect(item.image != nil)
     }
 
+    /// An overflowed item survives only as its `menuFormRepresentation`, and AppKit writes that
+    /// entry's image once when the item is vended, so a glyph that follows the connection left the
+    /// previous engine's icon in the menu.
+    ///
+    /// Pushed from `refreshConnectionScopedItems` rather than from wherever the image is set.
+    /// Measured: touching `menuFormRepresentation` before the item assigns its own materializes
+    /// AppKit's default one, and the later assignment then does not carry the key equivalent or the
+    /// validation mapping the toolbar put on it.
+    @Test("The connection glyph reaches the overflow entry too")
+    func engineGlyphReachesTheMenuForm() throws {
+        let owner = MainWindowToolbar()
+        let group = try #require(
+            owner.toolbar(
+                owner.managedToolbar,
+                itemForItemIdentifier: MainWindowToolbar.connectionGroup,
+                willBeInsertedIntoToolbar: true
+            ) as? NSToolbarItemGroup
+        )
+        let connection = try #require(
+            group.subitems.first { $0.itemIdentifier == MainWindowToolbar.connection }
+        )
+
+        #expect(connection.image != nil)
+        #expect(connection.menuFormRepresentation?.image === connection.image)
+    }
+
     /// Icon-only is the default because that is what Apple's own toolbars ship and what keeps the
     /// titlebar one row tall; AppKit's own default is icon-and-label. Measured on macOS 27: an
     /// autosaved display mode is restored when the toolbar reaches its window, which is after
