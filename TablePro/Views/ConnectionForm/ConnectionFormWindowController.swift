@@ -67,7 +67,7 @@ internal final class ConnectionFormWindowController: NSWindowController, NSWindo
         window.isRestorable = false
         window.contentMinSize = NSSize(width: 720, height: 560)
         window.setContentSize(NSSize(width: 820, height: 620))
-        window.setFrameAutosaveName(WindowIdentifier.connectionForm)
+        window.setFrameAutosaveName(NSWindow.FrameAutosaveName(SplitViewAutosaveName.current(WindowIdentifier.connectionForm)))
 
         self.init(window: window)
 

@@ -37,7 +37,7 @@ struct QueryPlanOutlineView: NSViewRepresentable {
         // four-column era, AppKit restores the known columns in their saved order and appends
         // anything it has never seen, so the bar would have arrived stranded past Actual Time for
         // everyone who had ever resized a plan column. A new name starts from the declared order.
-        outlineView.autosaveName = "com.TablePro.queryPlanOutline.v2"
+        outlineView.autosaveName = SplitViewAutosaveName.current("com.TablePro.queryPlanOutline.v2")
         outlineView.autosaveTableColumns = true
 
         // Every EXPLAIN run mints fresh node identities, so persisted expansion would key off
