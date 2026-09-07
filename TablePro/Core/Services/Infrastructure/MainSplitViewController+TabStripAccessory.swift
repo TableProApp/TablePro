@@ -95,6 +95,7 @@ internal extension MainSplitViewController {
                 containerTarget: workspace.connection.flatMap {
                     PluginManager.shared.containerSwitchTarget(for: $0.type)
                 },
+                executionOwner: sessionState.coordinator,
                 onNewTab: { [weak workspace] in
                     workspace?.sessionState?.coordinator.commandActions?.newTab()
                 }

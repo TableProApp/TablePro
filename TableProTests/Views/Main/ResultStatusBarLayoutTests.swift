@@ -62,6 +62,7 @@ struct ResultStatusBarLayoutTests {
                 onRequestExactCount: {}
             ),
             structureFooter: StructureFooterCapability(),
+            execution: ExecutionReadout(isExecuting: false, lastTiming: nil, onCancel: {}),
             viewMode: .constant(viewMode),
             onToggleFilters: {},
             onFetchAll: {},

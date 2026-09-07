@@ -362,6 +362,13 @@ final class MainContentCommandActions {
         PluginManager.shared.supportsDatabaseTree(for: connection.type)
     }
 
+    /// Whether the driver published any session context to switch. Only Snowflake does today, and
+    /// it pays two round trips for the list, so this reads what `loadSessionContexts` already
+    /// fetched rather than asking again.
+    var hasSessionContexts: Bool {
+        !(coordinator?.sessionContexts.isEmpty ?? true)
+    }
+
     var supportsSchemaSwitching: Bool {
         PluginManager.shared.supportsSchemaSwitching(for: connection.type)
     }
@@ -1304,25 +1311,34 @@ final class MainContentCommandActions {
     // MARK: - Database Operations (Group A — Called Directly)
 
     func openDatabaseSwitcher() {
-        guard let coordinator else { return }
-        let type = coordinator.connection.type
-        guard PluginManager.shared.supportsContainerSwitching(for: type) else { return }
-        guard PluginManager.shared.connectionMode(for: type) != .fileBased else { return }
-        coordinator.contentWindow?.makeFirstResponder(nil)
-        coordinator.presentedScopeSwitcher = nil
-        presentDatabaseSwitcher(on: coordinator, target: nil)
+        openScopeSwitcher(nil)
     }
 
-    /// The same chooser, opened from the toolbar chip so it appears against the scope it switches.
-    /// Clearing first responder is what lets the popover's search field take focus, which is why
-    /// the chip cannot just flip its own presentation flag.
-    func openScopeSwitcher(_ target: ContainerSwitchTarget) {
-        guard let coordinator else { return }
-        let type = coordinator.connection.type
-        guard PluginManager.shared.switchableContainers(for: type).contains(target) else { return }
+    /// The one way into the container chooser, for either scope. It used to have two, and the
+    /// second skipped the session gate the first applies: the centred toolbar chip opened the
+    /// chooser over a session the health monitor had given up on, while the button 200pt away and
+    /// the menu command were both correctly disabled. A chooser with one entry point cannot drift
+    /// from itself.
+    ///
+    /// `nil` means the engine's primary container, which is what a command with no scope named can
+    /// mean.
+    func openScopeSwitcher(_ target: ContainerSwitchTarget?) {
+        guard let coordinator, canSwitchContainer(target, on: coordinator) else { return }
+        /// Clearing first responder is what lets the popover's search field take focus.
         coordinator.contentWindow?.makeFirstResponder(nil)
         coordinator.switcherPresenter?.dismiss()
-        coordinator.presentedScopeSwitcher = target
+        presentDatabaseSwitcher(on: coordinator, target: target)
+    }
+
+    private func canSwitchContainer(
+        _ target: ContainerSwitchTarget?,
+        on coordinator: MainContentCoordinator
+    ) -> Bool {
+        let type = coordinator.connection.type
+        guard MainWindowToolbar.hasLiveSession(coordinator.toolbarState.connectionState) else { return false }
+        guard PluginManager.shared.connectionMode(for: type) != .fileBased else { return false }
+        guard let target else { return PluginManager.shared.supportsContainerSwitching(for: type) }
+        return PluginManager.shared.switchableContainers(for: type).contains(target)
     }
 
     func openQuickSwitcher() {
@@ -1340,15 +1356,14 @@ final class MainContentCommandActions {
         coordinator?.splitViewController?.openConnectionSwitcher()
     }
 
-    /// The chip's chooser belongs to the coordinator, so the window asks for it to go rather than
-    /// writing the state itself.
     func dismissScopeSwitcher() {
-        coordinator?.presentedScopeSwitcher = nil
+        coordinator?.switcherPresenter?.dismiss()
     }
 
-    /// Anchored to the connection group rather than to the Database button inside it, because the
-    /// group is the only item AppKit draws a frame for: its subitems exist to populate the overflow
-    /// menu and carry no frame of their own.
+    /// Anchored to the connection group rather than to the Database subitem inside it. Measured:
+    /// `NSToolbar.items` holds groups only, never their subitems, and a native group's subitems
+    /// carry no view, so the subitem cannot resolve as an anchor and the presenter would fall back
+    /// to its floating panel.
     private func presentDatabaseSwitcher(on coordinator: MainContentCoordinator, target: ContainerSwitchTarget?) {
         coordinator.switcherPresenter?.present(
             from: coordinator.contentWindow,

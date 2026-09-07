@@ -505,7 +505,7 @@ extension QueryExecutionCoordinator {
                 ])
                 return
             }
-            parent.toolbarState.lastQueryTiming = fetchResult.resolvedTiming
+            parent.toolbarState.recordQueryTiming(fetchResult.resolvedTiming, for: claim.tabId)
             reportOperation(
                 kind: .query,
                 claim: claim,
@@ -616,7 +616,7 @@ extension QueryExecutionCoordinator {
             parent.seedBufferFromActiveResult(tabId: tabId)
             if parent.tabManager.selectedTabId == tabId {
                 parent.toolbarState.isResultsCollapsed = false
-                parent.toolbarState.lastQueryTiming = timing
+                parent.toolbarState.recordQueryTiming(timing, for: tabId)
                 parent.announceQueryError(contextMsg)
             }
 

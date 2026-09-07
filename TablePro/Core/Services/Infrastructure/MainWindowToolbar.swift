@@ -14,17 +14,31 @@ import TableProPluginKit
 internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     nonisolated internal static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
-    internal static let toolbarIdentifier = NSToolbar.Identifier("com.TablePro.main.toolbar.v2")
+    /// The autosave name. Bumping it discards every saved arrangement, so it moves only when the
+    /// default set changes enough that replaying a stored one would be worse than resetting it. The
+    /// v3 move drops the hosted status item and four commands from the default, and a v2 list still
+    /// names identifiers the delegate no longer vends.
+    internal static let toolbarIdentifier = NSToolbar.Identifier("com.TablePro.main.toolbar.v3")
 
-    /// Which connection the toolbar is about. Every item reads through this rather than capturing
-    /// a coordinator, so a switch repoints one reference instead of rebuilding eight items, two
-    /// `NSHostingController`s and the window's whole titlebar.
-    internal let subject = ToolbarSubject()
+    /// Which connection the toolbar is about. Every item reads this rather than capturing a
+    /// coordinator, so a switch repoints one reference instead of rebuilding the window's whole
+    /// titlebar; `NSWindow.toolbar` is never reassigned, which is worth as much as the rebuild
+    /// itself, because assigning an already-built toolbar still costs AppKit the titlebar
+    /// hierarchy.
+    ///
+    /// Weak on purpose. The coordinator is owned by `ConnectionWorkspace.sessionState` and leaves
+    /// `MainContentCoordinator.activeCoordinators` only on deinit, so a strong reference here
+    /// would keep a torn-down connection alive and voting in every aggregate that walks that
+    /// registry.
+    internal private(set) weak var coordinator: MainContentCoordinator?
 
-    internal var coordinator: MainContentCoordinator? { subject.coordinator }
+    /// The window behind the toolbar, which every connection it points at comes and goes under.
+    /// Switch Connection is the window's command, so it cannot be reached through the connection
+    /// that just went away.
+    internal weak var windowController: MainSplitViewController?
 
     internal let managedToolbar: NSToolbar
-    private var pendingChangeObservationGeneration = 0
+    private var itemStateObservationGeneration = 0
     private var cancellables: Set<AnyCancellable> = []
 
     /// Which shortcut each item advertises, and the wording it advertises it with. The item cannot
@@ -40,18 +54,11 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// `shortcutBindings` is: a second hand-written table drifts.
     private var menuFormIdentifiers: [Selector: NSToolbarItem.Identifier] = [:]
 
-    /// How a hosted item answers "how wide are you". `.intrinsicContentSize` only overrides the
-    /// hosting view's `intrinsicContentSize`, and AppKit measures a view-backed item when it is
-    /// inserted and never reads that value again. Repointing the subject then left the item at the
-    /// width of the connection that had gone: the content redrew correctly inside a container
-    /// measured for the other engine, and only a click on the toolbar resized it. Under
-    /// `.preferredContentSize` the hosting view resizes itself, which is what AppKit follows.
-    internal static let hostedItemSizingOptions: NSHostingSizingOptions = .preferredContentSize
-
-    /// Retain hosting controllers per item identifier. NSHostingController is not retained by NSToolbarItem,
-    /// so without this its view orphans and the toolbar item collapses to zero width.
-    internal var hostingControllers: [NSToolbarItem.Identifier: NSHostingController<AnyView>] = [:]
     private(set) var sidebarGroup: NSToolbarItemGroup?
+
+    /// `NSMenu.delegate` is weak, and the safe-mode control's menu is built here rather than by the
+    /// menu bar, so this toolbar is what keeps its delegate alive.
+    internal let safeModeMenuDelegate = SafeModeMenuDelegate()
 
     override internal convenience init() {
         self.init(managedToolbar: NSToolbar(identifier: Self.toolbarIdentifier))
@@ -61,10 +68,14 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         self.managedToolbar = managedToolbar
         super.init()
         self.managedToolbar.delegate = self
+        /// The default for a toolbar nobody has customized, which is what Finder ships and what
+        /// keeps the titlebar one row tall. It does not overrule the user: measured, an autosaved
+        /// display mode is restored when the toolbar reaches its window, which is after this, so a
+        /// reader who turns labels on keeps them.
         self.managedToolbar.displayMode = .iconOnly
         self.managedToolbar.allowsUserCustomization = true
         self.managedToolbar.autosavesConfiguration = true
-        self.managedToolbar.centeredItemIdentifiers = [Self.principal]
+        self.managedToolbar.centeredItemIdentifiers = [Self.connectionGroup]
         /// The hop off `AppSettingsManager.keyboard`'s own `didSet` matters: without it the toolbar
         /// items are mutated re-entrantly, part way through the settings write that triggered them.
         AppEvents.shared.keyboardSettingsChanged
@@ -121,23 +132,18 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         MenuItemFactory.apply(shortcut: binding.shortcut, keyboard: keyboard, to: menuItem)
     }
 
-    /// `@Observable` generates no equality check, so assigning the same coordinator still fires
-    /// every observer. `windowDidBecomeKey` runs on activation with the connection unchanged, so
-    /// without this guard the window would pay for a switch every time it came forward.
+    /// `windowDidBecomeKey` runs on activation with the connection unchanged, so without the guard
+    /// the window would pay for a switch every time it came forward.
     internal func repoint(to coordinator: MainContentCoordinator?) {
-        guard subject.coordinator !== coordinator else { return }
-        /// The switcher used to close itself here, because its popover lived inside a view keyed
-        /// `.id(coordinator.connectionId)` and SwiftUI tore that identity down on a repoint. The
-        /// presenter owns the surface now, so the dismissal has to be explicit or a workspace
-        /// switch would leave the chooser open over the connection it no longer belongs to. It goes
-        /// through the window, because a repoint to no connection at all is one of the switches.
-        subject.windowController?.switcherPresenter.dismiss()
-        /// The chip's chooser is SwiftUI-presented and dies with the view a repoint destroys, but
-        /// its state does not, so it would spring open again on the way back to this connection.
-        subject.coordinator?.presentedScopeSwitcher = nil
-        pendingChangeObservationGeneration += 1
-        subject.coordinator = coordinator
-        observePendingChangeState()
+        guard self.coordinator !== coordinator else { return }
+        /// The presenter owns the switcher surface, so the dismissal has to be explicit or a
+        /// workspace switch would leave the chooser open over the connection it no longer belongs
+        /// to. It goes through the window, because a repoint to no connection at all is one of the
+        /// switches.
+        windowController?.switcherPresenter.dismiss()
+        itemStateObservationGeneration += 1
+        self.coordinator = coordinator
+        observeItemState()
         refreshConnectionScopedItems()
         syncSidebarSelection()
         managedToolbar.validateVisibleItems()
@@ -148,37 +154,44 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         /// independent floating `NSPanel` with no parent-child relationship to the window, so
         /// nothing else would take it down with the window that opened it. A window whose
         /// connection was released has no coordinator to reach it through.
-        subject.windowController?.switcherPresenter.dismiss()
-        pendingChangeObservationGeneration += 1
+        windowController?.switcherPresenter.dismiss()
+        itemStateObservationGeneration += 1
         sidebarGroup = nil
-        hostingControllers.removeAll()
-        subject.coordinator = nil
+        coordinator = nil
     }
 
-    private func observePendingChangeState() {
-        let generation = pendingChangeObservationGeneration
+    /// What a validation pass depends on beyond the responder chain. `validateVisibleItems()` is
+    /// also what re-runs `StatefulToolbarItem.validate()`, so the safe-mode glyph tracks the level
+    /// through the same channel rather than through an observer of its own.
+    private func observeItemState() {
+        let generation = itemStateObservationGeneration
         let coordinatorIdentifier = coordinator.map { ObjectIdentifier($0) }
         withObservationTracking { [weak self] in
             _ = self?.coordinator?.toolbarState.hasPendingChanges
             _ = self?.coordinator?.toolbarState.hasDataPendingChanges
+            _ = self?.coordinator?.toolbarState.safeModeLevel
+            _ = self?.coordinator?.toolbarState.currentDatabase
+            _ = self?.coordinator?.toolbarState.currentSchema
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self,
-                      generation == self.pendingChangeObservationGeneration,
+                      generation == self.itemStateObservationGeneration,
                       coordinatorIdentifier == self.coordinator.map({ ObjectIdentifier($0) })
                 else { return }
-                self.observePendingChangeState()
+                self.observeItemState()
                 self.managedToolbar.validateVisibleItems()
             }
         }
     }
 
-    /// Three items carry text derived from the connection's database type, and none of them can be
-    /// repointed by validation: a subitem of a view-backed group is never sent `validate()`, and a
-    /// menu built at construction keeps whatever it was built with. They are pushed here instead.
+    /// Items carrying text or a menu derived from the connection. Validation cannot repoint them:
+    /// a menu built at construction keeps whatever it was built with, and a label is not part of
+    /// what `validate()` reconsiders. They are pushed here instead.
     private func refreshConnectionScopedItems() {
         for item in allItems() {
             switch item.itemIdentifier {
+            case Self.connection:
+                item.image = engineGlyph
             case Self.database:
                 apply(label: containerEntityName, to: item)
                 updateShortcutDescription(
@@ -220,7 +233,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     static let refresh = NSToolbarItem.Identifier("com.TablePro.toolbar.refresh")
     static let saveChanges = NSToolbarItem.Identifier("com.TablePro.toolbar.saveChanges")
     static let addRow = NSToolbarItem.Identifier("com.TablePro.toolbar.addRow")
-    static let principal = NSToolbarItem.Identifier("com.TablePro.toolbar.principal")
+    static let safeMode = NSToolbarItem.Identifier("com.TablePro.toolbar.safeMode")
     static let quickSwitcher = NSToolbarItem.Identifier("com.TablePro.toolbar.quickSwitcher")
     static let newTab = NSToolbarItem.Identifier("com.TablePro.toolbar.newTab")
     static let previewSQL = NSToolbarItem.Identifier("com.TablePro.toolbar.previewSQL")
@@ -232,6 +245,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     static let exportTables = NSToolbarItem.Identifier("com.TablePro.toolbar.export")
     static let importTables = NSToolbarItem.Identifier("com.TablePro.toolbar.import")
     static let refreshSaveGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.refreshSaveGroup")
+    static let editorGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.editorGroup")
     static let restorePreviousValues = NSToolbarItem.Identifier("com.TablePro.toolbar.restorePreviousValues")
     static let exportImportGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.exportImportGroup")
     static let sidebarToggle = NSToolbarItem.Identifier("com.TablePro.toolbar.sidebarToggle")
@@ -251,24 +265,42 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// is what anchors it to the window's trailing edge, and it is the order Apple ships in
     /// WWDC23 session 10054. Keep the toggle last: ahead of the separator it lands in the content
     /// section and is wrong in both states.
+    ///
+    /// Four runs, and every item in one belongs to the same job, because adjacent items share one
+    /// background under Liquid Glass and a run of unrelated singletons reads as scatter. A
+    /// `NSToolbarItemGroup` is one control however many subitems it holds, so Table Actions and
+    /// the two editor commands are groups rather than five loose buttons.
+    ///
+    /// The centre is what the window is pointed at: the connection and the container, each a
+    /// titled control that opens its own chooser, which is the shape Xcode gives its scheme and
+    /// destination. It carries a title rather than a label, so it still reads as words with the
+    /// toolbar in icon-only mode. The centred item this replaces was an `NSHostingController`, and
+    /// that is the whole reason it used to disappear: measured, a native centred group is still
+    /// fully visible at 700pt where the hosted one was dropped at 1000pt, because AppKit can
+    /// compress a group it draws itself and can only drop a view it does not.
+    ///
+    /// Nothing here repeats the window title, which names the tab rather than the connection.
     internal static let defaultItemIdentifiers: [NSToolbarItem.Identifier] = [
         sidebarToggle,
         .sidebarTrackingSeparator,
         backForwardGroup,
+        .flexibleSpace,
         connectionGroup,
-        principal,
         .flexibleSpace,
         refreshSaveGroup,
-        quickSwitcher,
-        newTab,
-        previewSQL,
+        editorGroup,
+        safeMode,
         .inspectorTrackingSeparator,
         .flexibleSpace,
         assistant,
         inspector,
     ]
 
+    /// `addRow`, `restorePreviousValues`, `quickSwitcher` and `newTab` are absent on purpose: they
+    /// ride a group as subitems and the delegate vends no standalone item for any of them, so
+    /// listing one here would offer the customization palette a tile it cannot build.
     internal static let allowedItemIdentifiers: [NSToolbarItem.Identifier] = defaultItemIdentifiers + [
+        previewSQL,
         results,
         exportImportGroup,
         dashboard,
@@ -342,12 +374,9 @@ extension MainWindowToolbar {
     /// Pushed from the split view controller whenever the sidebar tab or its collapsed
     /// state changes, instead of an observation loop watching for it.
     internal func syncSidebarSelection() {
-        guard let group = sidebarGroup, let coordinator else { return }
-        let sidebarState = SharedSidebarState.forConnection(coordinator.connectionId)
-        let sidebarVisible = !(coordinator.splitViewController?.isSidebarCollapsed ?? true)
-        group.selectedIndex = sidebarVisible
-            ? (Self.sidebarSegmentTabs.firstIndex(of: sidebarState.selectedSidebarTab) ?? -1)
-            : -1
+        guard let group = sidebarGroup else { return }
+        let tab = coordinator?.splitViewController?.selectedSidebarTab
+        group.selectedIndex = tab.flatMap(Self.sidebarSegmentTabs.firstIndex(of:)) ?? -1
         managedToolbar.validateVisibleItems()
     }
 }

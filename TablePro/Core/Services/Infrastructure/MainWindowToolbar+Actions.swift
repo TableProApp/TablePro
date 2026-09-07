@@ -11,7 +11,7 @@ extension MainWindowToolbar {
     /// the connection on screen; this one is the way off it, so it cannot be reached through that
     /// connection's coordinator, which a disconnect nils.
     @objc func performOpenConnectionSwitcher(_ sender: Any?) {
-        subject.windowController?.openConnectionSwitcher()
+        windowController?.openConnectionSwitcher()
     }
 
     @objc func performOpenDatabaseSwitcher(_ sender: Any?) {

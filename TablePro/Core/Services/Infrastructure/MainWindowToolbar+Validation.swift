@@ -56,6 +56,11 @@ extension MainWindowToolbar: NSToolbarItemValidation {
             return context.connected && AppSettingsManager.shared.ai.enabled
         case Self.database:
             return context.connected && !context.fileBased && context.supportsContainerSwitching
+        case Self.safeMode:
+            /// Safe mode is what stands between a stray keystroke and a live table, so the control
+            /// that sets it answers for as long as the session does. A window with no session has
+            /// nothing to protect and nothing to write it to.
+            return context.connected
         case Self.refresh, Self.quickSwitcher, Self.newTab, Self.exportTables:
             return context.connected
         case Self.sidebarToggle:

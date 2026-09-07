@@ -56,7 +56,7 @@ struct QueryTimingBreakdown: Equatable {
     }
 }
 
-/// The popover behind the toolbar's duration readout.
+/// The popover behind the status bar's duration readout.
 struct QueryTimingPopover: View {
     let breakdown: QueryTimingBreakdown
     let explanation: String

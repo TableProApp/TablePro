@@ -2,7 +2,7 @@
 //  ConnectionToolbarStateTests.swift
 //  TableProTests
 //
-//  Tests for the toolbar chip's grouping-aware text resolution.
+//  Tests for the state the toolbar and the menu bar validate against.
 //
 
 import Foundation
@@ -13,72 +13,10 @@ import Testing
 @MainActor
 @Suite("ConnectionToolbarState")
 struct ConnectionToolbarStateTests {
-    // MARK: - scopeComponents
-
-    @Test("A database-only engine shows just its database")
-    func scopeComponentsByDatabase() {
-        let state = ConnectionToolbarState()
-        state.databaseType = .mysql
-        state.databaseGroupingStrategy = .byDatabase
-        state.currentDatabase = "myappdb"
-        state.currentSchema = "ignored"
-
-        #expect(state.scopeComponents.map(\.name) == ["myappdb"])
-        #expect(state.scopeComponents.map(\.kind) == [.database])
-    }
-
-    /// The chip used to show only the schema here while its click switched the database. Both
-    /// scopes are now present, each with its own chooser (#2196).
-    @Test("A schema-grouped engine shows its database and its schema")
-    func scopeComponentsBySchema() {
-        let state = ConnectionToolbarState()
-        state.databaseType = .postgresql
-        state.databaseGroupingStrategy = .bySchema
-        state.currentDatabase = "Sales"
-        state.currentSchema = "dbo"
-
-        #expect(state.scopeComponents.map(\.name) == ["Sales", "dbo"])
-        #expect(state.scopeComponents.map(\.kind) == [.database, .schema])
-    }
-
-    @Test("An unresolved schema leaves only the database component")
-    func scopeComponentsBySchemaWithNilSchema() {
-        let state = ConnectionToolbarState()
-        state.databaseType = .postgresql
-        state.databaseGroupingStrategy = .bySchema
-        state.currentDatabase = "Sales"
-        state.currentSchema = nil
-
-        #expect(state.scopeComponents.map(\.name) == ["Sales"])
-    }
-
-    @Test("An empty schema leaves only the database component")
-    func scopeComponentsBySchemaWithEmptySchema() {
-        let state = ConnectionToolbarState()
-        state.databaseType = .postgresql
-        state.databaseGroupingStrategy = .bySchema
-        state.currentDatabase = "Sales"
-        state.currentSchema = ""
-
-        #expect(state.scopeComponents.map(\.name) == ["Sales"])
-    }
-
-    @Test("A flat engine shows just its database (Redis, MongoDB)")
-    func scopeComponentsFlat() {
-        let state = ConnectionToolbarState()
-        state.databaseType = .redis
-        state.databaseGroupingStrategy = .flat
-        state.currentDatabase = "0"
-        state.currentSchema = "ignored"
-
-        #expect(state.scopeComponents.map(\.name) == ["0"])
-        #expect(state.scopeComponents.map(\.isSwitchable) == [false])
-    }
-
     // MARK: - reset
 
     @Test("reset clears database, schema, and grouping strategy")
-    func resetClearsAllChipFields() {
+    func resetClearsScopeFields() {
         let state = ConnectionToolbarState()
         state.databaseGroupingStrategy = .bySchema
         state.currentDatabase = "Sales"
@@ -89,7 +27,36 @@ struct ConnectionToolbarStateTests {
         #expect(state.currentDatabase == "")
         #expect(state.currentSchema == nil)
         #expect(state.databaseGroupingStrategy == .byDatabase)
-        #expect(state.scopeComponents.isEmpty)
+    }
+
+    // MARK: - query timing
+
+    /// The status bar that draws this belongs to one tab, so an untagged duration would report a
+    /// background tab's query under the rows of the tab on screen.
+    @Test("A duration is only offered to the tab that produced it")
+    func queryTimingIsScopedToItsTab() {
+        let state = ConnectionToolbarState()
+        let ran = UUID()
+        let other = UUID()
+
+        state.recordQueryTiming(PluginQueryTiming(total: 1.5), for: ran)
+
+        #expect(state.queryTiming(forTab: ran)?.total == 1.5)
+        #expect(state.queryTiming(forTab: other) == nil)
+    }
+
+    /// A failure on one tab says nothing about the duration another tab is still showing.
+    @Test("Clearing a duration from another tab leaves it standing")
+    func clearingFromAnotherTabIsIgnored() {
+        let state = ConnectionToolbarState()
+        let ran = UUID()
+        state.recordQueryTiming(PluginQueryTiming(total: 1.5), for: ran)
+
+        state.clearQueryTiming(forTab: UUID())
+        #expect(state.queryTiming(forTab: ran)?.total == 1.5)
+
+        state.clearQueryTiming(forTab: ran)
+        #expect(state.queryTiming(forTab: ran) == nil)
     }
 
     // MARK: - syncFromSession

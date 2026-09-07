@@ -3,13 +3,13 @@ title: Import & Export
 description: Export to CSV, JSON, SQL, MQL, or XLSX. Import SQL, JSON, and CSV files with column mapping and transaction safety
 ---
 
-The toolbar's **Export** (`Cmd+Shift+E`) re-reads every table you tick with `SELECT * FROM`, so what is on screen has no bearing on the file: filters, sort, hidden columns, and the page you are on are all ignored, and table size does not matter. **Export Results…** on the grid's right-click menu writes what the tab has loaded instead. Import is `Cmd+Shift+I`.
+**File > Export** (`Cmd+Shift+E`) re-reads every table you tick with `SELECT * FROM`, so what is on screen has no bearing on the file: filters, sort, hidden columns, and the page you are on are all ignored, and table size does not matter. **Export Results…** on the grid's right-click menu writes what the tab has loaded instead. Import is `Cmd+Shift+I`.
 
 ## Export data
 
 <Steps>
   <Step title="Open the export dialog">
-    Open a table or run a query, then click **Export** in the toolbar (`Cmd+Shift+E`), or right-click the results grid and choose **Export Results…**.
+    Open a table or run a query, then choose **File > Export** (`Cmd+Shift+E`), or right-click the results grid and choose **Export Results…**.
   </Step>
   <Step title="Choose a format and scope">
     Pick a format, tick objects in the tree, and set the options for that format.
@@ -69,7 +69,7 @@ A whole-table export streams from the database at constant memory, with no row-c
 
 **Export Results…** writes what the tab holds in memory, which is the output of the query that filled it. The filter bar and a sorted header are part of that query, and so is column visibility on a table tab: hiding a column re-queries without it, keeping only the primary key and anything being sorted on. Two things are not part of it. A column value filter narrows the loaded rows in the grid afterwards, so it never reaches the file. And a truncated result with more rows behind it is re-run and streamed in full rather than written as far as it got.
 
-As SQL, a results export writes `INSERT` statements only. A result set is the output of a query rather than a table, so there is no schema to recreate and nothing to drop: the **Structure** and **Drop** options belong to the toolbar export, which reads real tables. Identifiers are quoted and values escaped the way the source engine reads them, so the file imports back into it.
+As SQL, a results export writes `INSERT` statements only. A result set is the output of a query rather than a table, so there is no schema to recreate and nothing to drop: the **Structure** and **Drop** options belong to **File > Export**, which reads real tables. Identifiers are quoted and values escaped the way the source engine reads them, so the file imports back into it.
 
 ### Formats
 

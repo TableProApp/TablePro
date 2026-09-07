@@ -7,7 +7,7 @@ import StagedUntilSave from "/snippets/staged-until-save.mdx";
 
 <StagedUntilSave what="Cell edits, inserts and deletes" />
 
-The toolbar counts what is pending, modified cells stay highlighted, `Cmd+Shift+P` shows the statements the queue will produce, and `Cmd+S` runs them. The queue belongs to the tab, so switching tabs leaves it alone.
+Modified cells stay highlighted, `Cmd+Shift+P` shows the statements the queue will produce, and `Cmd+S` runs them. The queue belongs to the tab, so switching tabs leaves it alone.
 
 <Frame caption="Data grid with pending changes highlighted">
   <img className="block dark:hidden" src="/images/change-tracking.png" alt="Pending edits, inserts, and deletions highlighted in the data grid" />
@@ -85,7 +85,7 @@ There is no discard button. Undo the edits, or take the **Discard Unsaved Change
 
 ## Previewing the SQL
 
-`Cmd+Shift+P`, or the eye button in the toolbar, lists the statements with their parameter values inlined, so the preview reads as what will run. **Copy All** copies every statement.
+`Cmd+Shift+P`, or **Query > Preview SQL**, lists the statements with their parameter values inlined, so the preview reads as what will run. **Copy All** copies every statement.
 
 ## Undo and redo
 

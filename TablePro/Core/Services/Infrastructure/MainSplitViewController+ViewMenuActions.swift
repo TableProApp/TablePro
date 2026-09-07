@@ -28,6 +28,17 @@ extension MainSplitViewController {
         commandActions?.setResultsViewMode(mode)
     }
 
+    /// The sidebar belongs to the window, so these act on it directly rather than through the
+    /// selected connection's actions, matching `toggleWorkspaceRail(_:)`. They reveal rather than
+    /// toggle: Show Tables invoked while tables are showing has to leave them showing.
+    @objc func showTablesSidebarTab(_ sender: Any?) {
+        revealSidebarTab(.tables)
+    }
+
+    @objc func showFavoritesSidebarTab(_ sender: Any?) {
+        revealSidebarTab(.favorites)
+    }
+
     @objc func useFlatSidebarLayout(_ sender: Any?) {
         commandActions?.setSidebarLayout(.flat)
     }

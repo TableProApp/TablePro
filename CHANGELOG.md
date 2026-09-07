@@ -30,11 +30,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Backup of several databases into one folder, one file each. (#2485)
 - Back Up… on a database selection in the connection tree. (#2485)
 - Assistant as its own pane, with View > Show Assistant and `Cmd+Option+A`.
-- Compact one-line rows in the inspector for short values, with long text, JSON and images still full width.
+- Inspector fields with the column name and type on one line and the value at full width below.
+- A BLOB too large to edit whole marked read-only in the inspector, in place of an editable first 10 KB.
 - Always-visible value menu on every inspector field, with `Ctrl+Option+N` for NULL and `Ctrl+Option+D` for DEFAULT.
 - Tab and Shift+Tab between inspector fields.
 - Field search and an edited-fields-only filter in the inspector.
 - Table and row position at the top of the inspector.
+- Safe Mode, Session Context and Schema submenus in the Database menu.
+- Show Tables and Show Favorites in the View menu.
+- Running indicator on the editor tab whose query is executing.
 
 ### Changed
 
@@ -51,9 +55,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - View Options as a control in the sidebar's filter row, in place of an entry on every context menu.
 - View ER Diagram and New View on the object tree's empty-area menu only.
 - Keyboard shortcuts shown on sidebar context menu items that have a menu bar equivalent.
+- Toolbar rebuilt around five icon-only groups, with the connection and container as a centred control that switches either.
+- Query duration and Stop in the results status bar, in place of the centred toolbar readout.
+- Safe Mode as a toolbar menu whose icon follows the level.
+- Window subtitle dropped, now that the toolbar names the container.
+- Toolbar arrangements reset once, to the new default set.
 
 ### Fixed
 
+- Toolbar commands pushed into the overflow menu at 1200pt by a centred item that could not shrink.
+- Container chooser opening over a session the health monitor had given up on.
+- No way to change a Snowflake warehouse or role once the window narrowed enough to clip the connection group.
+- Blank Connection and Status tiles in Customize Toolbar.
+- Stop advertising the old key after Cancel Query was rebound.
 - Query Live Activity still counting up on the iOS Lock Screen and Dynamic Island after the app was quit mid-query.
 - Stop leaving an iOS MySQL or Redis query running, with the spinner and the Live Activity stuck behind it.
 - A stopped or memory-stopped iOS query recorded in Query History as successful.

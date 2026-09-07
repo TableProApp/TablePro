@@ -99,6 +99,7 @@ struct EditorTabStripChromeTests {
             tabManager: manager,
             interaction: interaction,
             containerTarget: nil,
+            executionOwner: nil,
             onNewTab: {},
             surfaceStyle: .solid
         )

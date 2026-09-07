@@ -109,7 +109,7 @@ Loaded rows are the exception, and only in bulk. Background table tabs keep thei
 
 A tab is bound to one connection, database, and schema, and every query, refresh, filter, sort, structure read, and structure save it runs uses that binding. Switching tabs never changes the connection's saved default database. To point an existing tab somewhere else, use the database picker in the query editor's toolbar: it rebinds that one tab and reruns it.
 
-The window subtitle names the frontmost tab's database, and its schema on engines that have one. That is how you tell two tabs on one connection apart.
+The centred toolbar control names the frontmost tab's database, and clicking it switches to another. That is how you tell two tabs on one connection apart. On engines with schemas, **Database > Schema** names the one in use and switches it.
 
 <Info>
 PostgreSQL, Redshift, and CockroachDB change database only by reconnecting, so a tab bound to a second database runs on its own connection: no shared temp tables, session variables, or open transaction. See [PostgreSQL](/databases/postgresql#cross-database-tabs).

@@ -117,7 +117,7 @@ extension QueryExecutionCoordinator {
         let cumulativeTime = timing.total
         guard parent.tabExecution.settle(claim) else { return }
         parent.retireQueryTask(for: claim)
-        parent.toolbarState.lastQueryTiming = timing
+        parent.toolbarState.recordQueryTiming(timing, for: claim.tabId)
 
         /// Once for the batch, never once per statement, and below the settle gate rather than at
         /// the call site: a superseded batch has its results dropped here, and a notification

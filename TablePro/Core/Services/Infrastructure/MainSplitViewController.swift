@@ -457,7 +457,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         guard let window = view.window else { return }
         let owner = toolbarOwner ?? MainWindowToolbar()
         toolbarOwner = owner
-        owner.subject.windowController = self
+        owner.windowController = self
         /// Pointed at the connection before the toolbar reaches the window, so the delegate builds
         /// its items with a subject already in place and nothing has to be rebuilt afterwards.
         owner.repoint(to: coordinator)
@@ -1180,6 +1180,29 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         let state = SharedSidebarState.forConnection(connectionId)
         guard !state.databaseFilterSelected.isEmpty else { return }
         state.databaseFilterSelected = []
+    }
+
+    /// Which list the sidebar is showing, or nil while it is collapsed or narrowed to the rail.
+    /// The segmented control and the two View-menu items both read it, so neither can report a
+    /// selection the sidebar is not showing.
+    var selectedSidebarTab: SidebarTab? {
+        guard sidebarChromeMode.showsObjectBrowser, sidebarSplitItem?.isCollapsed == false else { return nil }
+        guard let connectionId = currentSession?.connection.id else { return nil }
+        return SharedSidebarState.forConnection(connectionId).selectedSidebarTab
+    }
+
+    /// Selects a list and leaves the sidebar open, which is what a command called "Show Tables"
+    /// has to do. `setSidebarTab` is a toggle, correctly so for the segmented control it serves:
+    /// pressing the segment already selected closes the sidebar. A menu item that did that would
+    /// be a Show command that hides.
+    func revealSidebarTab(_ tab: SidebarTab) {
+        guard sidebarChromeMode.showsObjectBrowser else { return }
+        guard let connectionId = currentSession?.connection.id else { return }
+        SharedSidebarState.forConnection(connectionId).selectedSidebarTab = tab
+        if sidebarSplitItem?.isCollapsed == true {
+            sidebarSplitItem?.animator().isCollapsed = false
+        }
+        toolbarOwner?.syncSidebarSelection()
     }
 
     /// Refused while the sidebar is narrowed to the workspace rail. The item is open, so the

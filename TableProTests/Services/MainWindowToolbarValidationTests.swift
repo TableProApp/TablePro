@@ -431,11 +431,6 @@ struct MainWindowToolbarValidationTests {
         #expect(toolbar.validationCount == invalidationBaseline)
     }
 
-    @Test("Toolbar identifier is stable across instances so AppKit autosave can persist customizations")
-    func toolbarIdentifierIsStable() {
-        #expect(MainWindowToolbar.toolbarIdentifier == "com.TablePro.main.toolbar.v2")
-    }
-
     @Test("Toolbar is configured for user customization and autosave")
     func toolbarConfigurationEnablesAutosave() {
         let coordinator = makeCoordinator()
@@ -502,9 +497,9 @@ struct MainWindowToolbarRepointTests {
         #expect(owner.coordinator == nil)
     }
 
-    /// `windowDidBecomeKey` runs on every activation with the connection unchanged, and
-    /// `@Observable` generates no equality check, so a repoint to the same coordinator would
-    /// otherwise invalidate the hosted items every time the window came forward.
+    /// `windowDidBecomeKey` runs on every activation with the connection unchanged, so without the
+    /// guard the window would re-observe, re-label and re-validate every item each time it came
+    /// forward.
     @Test("Repointing to the same coordinator is a no-op")
     func repointToSameCoordinatorIsIgnored() {
         let coordinator = makeCoordinator()
@@ -512,9 +507,8 @@ struct MainWindowToolbarRepointTests {
         let owner = MainWindowToolbar()
 
         owner.repoint(to: coordinator)
-        let subjectBefore = owner.subject.coordinator
         owner.repoint(to: coordinator)
-        #expect(owner.subject.coordinator === subjectBefore)
+        #expect(owner.coordinator === coordinator)
     }
 
     /// The item is built once and outlives every connection the window shows, so anything it reads

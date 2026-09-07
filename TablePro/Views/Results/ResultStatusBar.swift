@@ -26,6 +26,7 @@ struct ResultStatusBar: View {
     let columnState: StatusBarColumnState
     let paginationCallbacks: PaginationCallbacks
     let structureFooter: StructureFooterCapability
+    let execution: ExecutionReadout
     @Binding var viewMode: ResultsViewMode
     let onToggleFilters: () -> Void
     let onFetchAll: (() -> Void)?
@@ -114,7 +115,24 @@ struct ResultStatusBar: View {
                         .truncationMode(.tail)
                         .layoutPriority(-1)
                 }
+
+                executionReadout
             }
+        }
+    }
+
+    /// Whether a query is running and how long the last one took, beside the rows it produced. It
+    /// used to be a hosted SwiftUI view in the centre of the toolbar, where AppKit dropped it whole
+    /// before any command as soon as the window narrowed.
+    @ViewBuilder
+    private var executionReadout: some View {
+        if execution.isActive {
+            separator
+            ExecutionIndicatorView(
+                isExecuting: execution.isExecuting,
+                lastTiming: execution.lastTiming,
+                onCancel: execution.onCancel
+            )
         }
     }
 

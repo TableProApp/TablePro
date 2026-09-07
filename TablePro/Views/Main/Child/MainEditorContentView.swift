@@ -961,11 +961,12 @@ struct MainEditorContentView: View {
     private func statusBar(tab: QueryTab) -> some View {
         let resolvedRows = resolvedTableRows(for: tab)
         let structureFooter = coordinator.structureSessions[tab.id]?.footer ?? StructureFooterCapability()
+        let isExecuting = coordinator.tabExecution.isExecuting(tab.id)
         let snapshot = StatusBarSnapshot(
             tab: tab,
             tableRows: resolvedRows,
             displayRowCount: coordinator.displayIDs(forTab: tab.id)?.count,
-            isFetching: coordinator.tabExecution.isExecuting(tab.id),
+            isFetching: isExecuting,
             hasStructureActions: structureFooter.isActive
         )
         return ResultStatusBar(
@@ -999,6 +1000,11 @@ struct MainEditorContentView: View {
                 onRequestExactCount: { coordinator.paginationCoordinator.requestExactRowCount() }
             ),
             structureFooter: structureFooter,
+            execution: ExecutionReadout(
+                isExecuting: isExecuting,
+                lastTiming: coordinator.toolbarState.queryTiming(forTab: tab.id),
+                onCancel: { coordinator.cancelCurrentQuery() }
+            ),
             viewMode: resultsViewModeBinding(for: tab),
             onToggleFilters: { coordinator.toggleFilterPanel() },
             onFetchAll: { coordinator.fetchAllRows() },

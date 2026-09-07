@@ -68,6 +68,8 @@ enum DatabaseMenuBuilder {
                 action: #selector(MainSplitViewController.editViewDefinition(_:))
             ),
             schemaSubmenu(),
+            sessionContextSubmenu(),
+            safeModeSubmenu(),
             favoriteDatabaseSubmenu(),
             maintenanceSubmenu(),
             MenuItemFactory.item(
@@ -173,10 +175,40 @@ enum DatabaseMenuBuilder {
     private static let schemaDelegate = SchemaMenuDelegate()
 
     /// Where switching schema lives now that the sidebar has no bottom bar. The active schema is
-    /// still readable at a glance from the toolbar's chip, which already shows it.
+    /// still readable at a glance from the window's subtitle, which `WindowTitleResolver` writes.
+    ///
+    /// The checked list this delegate fills is the quick path. Open Schema Switcher above it is the
+    /// same chooser the database item opens, and it is what carries search, favourites, drop and
+    /// export for the inner scope.
     private static func schemaSubmenu() -> NSMenuItem {
-        let container = MenuItemFactory.submenu(String(localized: "Schema"), items: [])
+        let container = MenuItemFactory.submenu(String(localized: "Schema"), items: [
+            MenuItemFactory.item(
+                String(localized: "Open Schema Switcher…"),
+                action: #selector(MainSplitViewController.openSchemaSwitcher(_:))
+            ),
+            MenuItemFactory.separator,
+        ])
         container.submenu?.delegate = schemaDelegate
+        return container
+    }
+
+    private static let sessionContextDelegate = SessionContextMenuDelegate()
+
+    /// Snowflake's warehouse and role, and anything else a driver publishes through
+    /// `fetchSessionContexts`. The set is per-driver and dynamic, which a toolbar item cannot be.
+    private static func sessionContextSubmenu() -> NSMenuItem {
+        let container = MenuItemFactory.submenu(String(localized: "Session Context"), items: [])
+        container.submenu?.delegate = sessionContextDelegate
+        return container
+    }
+
+    private static let safeModeDelegate = SafeModeMenuDelegate()
+
+    /// The same list the toolbar's Safe Mode control opens, so every toolbar item keeps a menu-bar
+    /// command as the HIG asks.
+    private static func safeModeSubmenu() -> NSMenuItem {
+        let container = MenuItemFactory.submenu(String(localized: "Safe Mode"), items: [])
+        container.submenu?.delegate = safeModeDelegate
         return container
     }
 }

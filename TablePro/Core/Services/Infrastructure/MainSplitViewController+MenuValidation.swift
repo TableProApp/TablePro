@@ -57,6 +57,9 @@ struct MenuValidationContext: Equatable {
     var canNavigateForward = false
     var canSaveAsFavorite = false
     var canSwitchSidebarLayout = false
+    /// False while the sidebar is collapsed or narrowed to the workspace rail, where there is no
+    /// object browser for either tab to select.
+    var showsObjectBrowser = false
     var canToggleWorkspaceRail = false
     var canShowTableStructure = false
     var canEditViewDefinition = false
@@ -76,6 +79,7 @@ struct MenuValidationContext: Equatable {
     var supportsServerDashboard = false
     var supportsUserManagement = false
     var supportsSchemaSwitching = false
+    var hasSessionContexts = false
     var canFilterDatabases = false
     var canFavoriteActiveDatabase = false
     var hasDatabaseFilter = false
@@ -232,6 +236,12 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.canFilterDatabases && context.hasDatabaseFilter
         case #selector(openContainerSwitcher(_:)):
             return context.isConnected && context.supportsContainerSwitching
+        case #selector(openSchemaSwitcher(_:)):
+            return context.isConnected && context.supportsSchemaSwitching
+        case #selector(setSafeModeLevel(_:)):
+            return context.isConnected
+        case #selector(switchSessionContext(_:)):
+            return context.isConnected && context.hasSessionContexts
         case #selector(showServerDashboard(_:)):
             return context.isConnected && context.supportsServerDashboard
         case #selector(showUsersAndRoles(_:)):
@@ -249,6 +259,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.canNavigateForward
         case #selector(useFlatSidebarLayout(_:)), #selector(useTreeSidebarLayout(_:)):
             return context.canSwitchSidebarLayout
+        case #selector(showTablesSidebarTab(_:)), #selector(showFavoritesSidebarTab(_:)):
+            return context.isConnected && context.showsObjectBrowser
         case #selector(toggleWorkspaceRail(_:)),
              #selector(showPreviousWorkspace(_:)),
              #selector(showNextWorkspace(_:)):
@@ -266,6 +278,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         guard let actions = commandActions else {
             return MenuValidationContext(
                 hasSelectedWorkspace: workspaces.selectedConnectionId != nil,
+                showsObjectBrowser: sidebarChromeMode.showsObjectBrowser,
                 canToggleWorkspaceRail: canToggleWorkspaceRail
             )
         }
@@ -298,6 +311,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             canNavigateForward: actions.canNavigateForward,
             canSaveAsFavorite: actions.canSaveAsFavorite,
             canSwitchSidebarLayout: actions.canSwitchSidebarLayout,
+            showsObjectBrowser: sidebarChromeMode.showsObjectBrowser,
             canToggleWorkspaceRail: canToggleWorkspaceRail,
             canShowTableStructure: actions.canShowTableStructure,
             canEditViewDefinition: actions.canEditViewDefinition,
@@ -317,6 +331,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             supportsServerDashboard: actions.supportsServerDashboard,
             supportsUserManagement: actions.supportsUserManagement,
             supportsSchemaSwitching: actions.supportsSchemaSwitching,
+            hasSessionContexts: actions.hasSessionContexts,
             canFilterDatabases: actions.canFilterDatabases,
             canFavoriteActiveDatabase: actions.canFavoriteActiveDatabase,
             hasDatabaseFilter: actions.hasDatabaseFilter
@@ -387,6 +402,10 @@ extension MainSplitViewController: NSMenuItemValidation {
             setState(commandActions?.sidebarLayout == .flat ? .on : .off, on: menuItem)
         case #selector(useTreeSidebarLayout(_:)):
             setState(commandActions?.sidebarLayout == .tree ? .on : .off, on: menuItem)
+        case #selector(showTablesSidebarTab(_:)):
+            setState(selectedSidebarTab == .tables ? .on : .off, on: menuItem)
+        case #selector(showFavoritesSidebarTab(_:)):
+            setState(selectedSidebarTab == .favorites ? .on : .off, on: menuItem)
         default:
             return
         }

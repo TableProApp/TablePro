@@ -34,6 +34,24 @@ extension MainSplitViewController {
         commandActions?.openDatabaseSwitcher()
     }
 
+    /// The full chooser for the inner scope, which the checked Schema submenu beside it cannot
+    /// replace: only the popover searches, favourites, drops and exports.
+    @objc func openSchemaSwitcher(_ sender: Any?) {
+        commandActions?.openScopeSwitcher(.schema)
+    }
+
+    @objc func setSafeModeLevel(_ sender: Any?) {
+        guard let raw = (sender as? NSMenuItem)?.representedObject as? String,
+              let level = SafeModeLevel(rawValue: raw) else { return }
+        commandActions?.coordinator?.setSafeModeLevel(level)
+    }
+
+    @objc func switchSessionContext(_ sender: Any?) {
+        guard let selection = (sender as? NSMenuItem)?.representedObject as? SessionContextSelection,
+              let coordinator = commandActions?.coordinator else { return }
+        Task { await coordinator.switchSessionContext(id: selection.contextId, to: selection.value) }
+    }
+
     @objc func openQuickSwitcher(_ sender: Any?) {
         commandActions?.openQuickSwitcher()
     }

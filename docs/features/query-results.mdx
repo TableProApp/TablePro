@@ -31,17 +31,17 @@ names its result tab `monthly totals`. Names longer than 28 characters are trunc
 | Pin | The pin on the right of the tab, `Cmd+Option+P`, or right-click > **Pin Result** |
 | Close | `Cmd+Shift+W`, or right-click > **Close** |
 | Close the rest | Right-click > **Close Others** |
-| Show or hide the panel | `Cmd+Option+R`, or the toolbar button |
+| Show or hide the panel | `Cmd+Option+R`, or **View > Show Results** |
 
 A pinned result moves to the front of the strip, and the next query opens a new tab instead of overwriting it. Pinned tabs cannot be closed or cleared until you unpin them, which is what makes them useful for comparing two runs side by side.
 
 Picking a result moves the editor cursor to the statement that produced it and unfolds that statement if it was collapsed. Picking the result already showing does nothing, so clicking between pinned results never moves the editor under you. A statement you have since edited away leaves the cursor where it is.
 
-The results panel expands itself when a query runs. The toolbar's trash button clears the query and the results together; to keep the query, right-click the results and choose **Clear Results**.
+The results panel expands itself when a query runs. The editor's trash button clears the query and the results together; to keep the query, right-click the results and choose **Clear Results**.
 
 ## How long it took
 
-The toolbar's right side reads the elapsed time of the last query, from sending it to having the last row. On a remote server, or through an [SSH tunnel](/connections/ssh-profiles), most of a large result's elapsed time is transfer rather than the query.
+The bar under the grid reads the elapsed time of the last query, from sending it to having the last row. On a remote server, or through an [SSH tunnel](/connections/ssh-profiles), most of a large result's elapsed time is transfer rather than the query.
 
 Click the number for the split.
 

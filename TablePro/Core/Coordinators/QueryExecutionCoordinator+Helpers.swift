@@ -766,7 +766,7 @@ extension QueryExecutionCoordinator {
         // itself on its own tab and leaves the window chrome to whatever is actually on screen.
         if parent.tabManager.selectedTabId == tabId {
             parent.toolbarState.isResultsCollapsed = false
-            parent.toolbarState.lastQueryTiming = nil
+            parent.toolbarState.clearQueryTiming(forTab: tabId)
             parent.announceQueryError(message)
         }
 

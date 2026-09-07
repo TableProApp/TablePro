@@ -22,6 +22,18 @@ struct MainWindowToolbarShortcutHintTests {
         )
     }
 
+    /// Most commands ride a group, so the delegate vends no standalone item for them. Resolving
+    /// through the group is what the tests have to do, and it is also what the overflow menu and
+    /// the customization palette do.
+    private func vendSubitem(
+        _ identifier: NSToolbarItem.Identifier,
+        of groupIdentifier: NSToolbarItem.Identifier,
+        from owner: MainWindowToolbar
+    ) -> NSToolbarItem? {
+        let group = vend(groupIdentifier, from: owner) as? NSToolbarItemGroup
+        return group?.subitems.first { $0.itemIdentifier == identifier }
+    }
+
     private func withKeyboard(
         _ key: BoundKey,
         for action: ShortcutAction,
@@ -40,7 +52,11 @@ struct MainWindowToolbarShortcutHintTests {
     @Test("A vended item takes its key equivalent from the user's binding, not a literal")
     func vendedItemFollowsCustomBinding() {
         withKeyboard(.character("j", command: true, control: true), for: .quickSwitcher) { owner in
-            let item = vend(MainWindowToolbar.quickSwitcher, from: owner)
+            let item = vendSubitem(
+                MainWindowToolbar.quickSwitcher,
+                of: MainWindowToolbar.editorGroup,
+                from: owner
+            )
             let menuItem = item?.menuFormRepresentation
             #expect(menuItem?.keyEquivalent == "j")
             #expect(menuItem?.keyEquivalentModifierMask == [.command, .control])
@@ -50,7 +66,11 @@ struct MainWindowToolbarShortcutHintTests {
     @Test("A vended item's tooltip names the user's binding")
     func vendedItemTooltipNamesCustomBinding() {
         withKeyboard(.character("j", command: true, control: true), for: .quickSwitcher) { owner in
-            let item = vend(MainWindowToolbar.quickSwitcher, from: owner)
+            let item = vendSubitem(
+                MainWindowToolbar.quickSwitcher,
+                of: MainWindowToolbar.editorGroup,
+                from: owner
+            )
             #expect(item?.toolTip?.contains("⌃⌘J") == true)
         }
     }
@@ -68,17 +88,24 @@ struct MainWindowToolbarShortcutHintTests {
         }()
 
         let owner = MainWindowToolbar()
-        guard let item = vend(MainWindowToolbar.quickSwitcher, from: owner) else {
+        guard let item = vendSubitem(
+            MainWindowToolbar.quickSwitcher,
+            of: MainWindowToolbar.editorGroup,
+            from: owner
+        ) else {
             Issue.record("Toolbar did not vend the Open Quickly item")
             return
         }
-        owner.managedToolbar.insertItem(withItemIdentifier: MainWindowToolbar.quickSwitcher, at: 0)
+        owner.managedToolbar.insertItem(withItemIdentifier: MainWindowToolbar.editorGroup, at: 0)
 
         var keyboard = AppSettingsManager.shared.keyboard
         keyboard.setShortcut(.character("j", command: true, control: true), for: .quickSwitcher)
         AppSettingsManager.shared.keyboard = keyboard
 
-        let vendedItem = owner.managedToolbar.items.first { $0.itemIdentifier == MainWindowToolbar.quickSwitcher }
+        let group = owner.managedToolbar.items.first {
+            $0.itemIdentifier == MainWindowToolbar.editorGroup
+        } as? NSToolbarItemGroup
+        let vendedItem = group?.subitems.first { $0.itemIdentifier == MainWindowToolbar.quickSwitcher }
         /// The toolbar refreshes off the settings write rather than inside it, so the hop through
         /// the main run loop has to complete before the item can be read.
         #expect(spinRunLoopUntil { vendedItem?.menuFormRepresentation?.keyEquivalent == "j" })

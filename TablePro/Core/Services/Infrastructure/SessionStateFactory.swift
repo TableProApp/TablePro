@@ -80,7 +80,6 @@ enum SessionStateFactory {
             toolbarSt.connectionState = .connected
             toolbarSt.databaseVersion = driver.serverVersion
         }
-        toolbarSt.hasCompletedSetup = true
 
         if connection.type.pluginTypeId == "Redis" {
             let dbIndex = connection.redisDatabase ?? Int(connection.database) ?? 0

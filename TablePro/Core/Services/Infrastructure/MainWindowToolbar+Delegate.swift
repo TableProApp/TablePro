@@ -16,13 +16,22 @@ extension MainWindowToolbar {
         Self.lifecycleLogger.info(
             "[open] toolbar delegate buildItem id=\(itemIdentifier.rawValue, privacy: .public) hasCoordinator=\(self.coordinator != nil)"
         )
+        guard let item = buildItem(itemIdentifier, willBeInsertedIntoToolbar: flag) else { return nil }
+        applyVisibilityPriority(to: item)
+        return item
+    }
+
+    private func buildItem(
+        _ itemIdentifier: NSToolbarItem.Identifier,
+        willBeInsertedIntoToolbar flag: Bool
+    ) -> NSToolbarItem? {
         switch itemIdentifier {
         case Self.sidebarToggle:
             return makeSidebarToggleItem(claimsSlot: Self.claimsItemSlot(willBeInsertedIntoToolbar: flag))
         case Self.backForwardGroup:
             /// `isNavigational` is what puts back and forward on the leading edge of the content
             /// title area, where Finder and Safari keep them, instead of in the slot the identifier
-            /// list nominally gives them. `connectionGroup` below relies on the same flag.
+            /// list nominally gives them.
             let group = makeNativeGroup(
                 id: itemIdentifier,
                 label: String(localized: "Navigation"),
@@ -31,49 +40,26 @@ extension MainWindowToolbar {
             group.isNavigational = true
             return group
         case Self.connectionGroup:
-            let group = makeGroup(
+            /// Native, like every other group here. As a view-backed group it drew a hosted SwiftUI
+            /// row and its subitems were inert: the header is explicit that a property set on the
+            /// parent, "such as label or view, apply to the entire item", so neither subitem
+            /// reached the overflow menu, the customization palette or `validate()`.
+            ///
+            /// Not navigational, unlike back and forward. `isNavigational` asks AppKit to lift an
+            /// item to the leading edge of the content area, which is the opposite of what
+            /// `centeredItemIdentifiers` asks for, and this group is the centred one.
+            return makeNativeGroup(
                 id: itemIdentifier,
                 label: String(localized: "Connection"),
-                subitems: [subitemConnection(), subitemDatabase()],
-                retainsController: Self.claimsItemSlot(willBeInsertedIntoToolbar: flag),
-                content: HStack(spacing: 4) {
-                    ConnectionToolbarSubjectButton(subject: subject)
-                    DatabaseToolbarSubjectButton(subject: subject)
-                    SessionContextToolbarSubjectButton(subject: subject)
-                }
+                subitems: [subitemConnection(), subitemDatabase()]
             )
-            group.isNavigational = true
-            return group
-        case Self.principal:
-            let item = hostingItem(
+        case Self.safeMode:
+            return subitemSafeMode()
+        case Self.editorGroup:
+            return makeNativeGroup(
                 id: itemIdentifier,
-                label: String(localized: "Status"),
-                symbol: nil,
-                action: nil,
-                keyEquivalent: "",
-                modifiers: [],
-                retainsController: Self.claimsItemSlot(willBeInsertedIntoToolbar: flag),
-                content: ToolbarPrincipalSubjectContent(subject: subject)
-            )
-            item.visibilityPriority = .high
-            item.toolTip = String(localized: "Connection status")
-            return item
-        case Self.quickSwitcher:
-            return menuOnlyItem(
-                id: itemIdentifier,
-                label: String(localized: "Open Quickly"),
-                symbol: "magnifyingglass",
-                action: #selector(performOpenQuickSwitcher(_:)),
-                shortcut: .quickSwitcher
-            )
-        case Self.newTab:
-            return menuOnlyItem(
-                id: itemIdentifier,
-                label: String(localized: "New Tab"),
-                symbol: "plus.rectangle",
-                action: #selector(performNewTab(_:)),
-                shortcut: .newTab,
-                description: String(localized: "New Query Tab")
+                label: String(localized: "Editor"),
+                subitems: [subitemNewTab(), subitemQuickSwitcher()]
             )
         case Self.previewSQL:
             return menuOnlyItem(

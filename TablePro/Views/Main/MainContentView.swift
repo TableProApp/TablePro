@@ -288,6 +288,14 @@ struct MainContentView: View {
                 await loadTableMetadataIfNeeded()
                 scheduleInspectorUpdate()
             }
+            /// Keyed on the connection alone. The only driver that answers `fetchSessionContexts`
+            /// is Snowflake, which pays two round trips for it, so this must not reload per query.
+            /// It lives with the connection's content rather than with the toolbar control it used
+            /// to feed, because the Database menu is what offers these now and a menu has no view
+            /// to hang a `task` on.
+            .task(id: coordinator.toolbarState.connectionState) {
+                await coordinator.loadSessionContexts()
+            }
             .onChange(of: inspectorTrigger) {
                 scheduleInspectorUpdate()
             }

@@ -18,6 +18,39 @@ extension MainWindowToolbar {
         return String(format: String(localized: "Preview %@"), language)
     }
 
+    /// The engine's own glyph, which is what the centred status item used to draw beside the
+    /// connection name. It is the brand channel and nothing else: the connection's identity colour
+    /// deliberately never reaches a glyph, because a second meaning painted over the engine's own
+    /// colour reads as a hue shift rather than a signal (#2398).
+    var engineGlyph: NSImage? {
+        let type = coordinator?.toolbarState.databaseType
+        let label = type?.rawValue ?? String(localized: "Connection")
+        guard let name = type?.iconName else {
+            return NSImage(systemSymbolName: "network", accessibilityDescription: label)
+        }
+        if let symbol = NSImage(systemSymbolName: name, accessibilityDescription: label) {
+            return symbol
+        }
+        let asset = NSImage(named: name)
+        asset?.isTemplate = true
+        asset?.accessibilityDescription = label
+        return asset
+    }
+
+    /// The connection's own name, which is what the centred item is for. Empty for a window that
+    /// is between connections, where AppKit draws the glyph alone rather than an empty capsule.
+    var connectionTitle: String {
+        coordinator?.connection.name ?? ""
+    }
+
+    /// The container this control switches, and only that. It briefly read "app › public" on a
+    /// schema-grouped engine while the click still opened the database chooser, which makes the
+    /// word the user aimed at the one thing the control cannot change. The schema has its own
+    /// commands under Database > Schema, including the same chooser.
+    var containerTitle: String {
+        coordinator?.toolbarState.currentDatabase ?? ""
+    }
+
     func subitemConnection() -> NSToolbarItem {
         menuOnlyItem(
             id: Self.connection,
@@ -25,8 +58,41 @@ extension MainWindowToolbar {
             symbol: "network",
             action: #selector(performOpenConnectionSwitcher(_:)),
             shortcut: .switchConnection,
-            description: String(localized: "Switch Connection")
+            description: String(localized: "Switch Connection"),
+            image: engineGlyph,
+            titleProvider: { [weak self] in self?.connectionTitle ?? "" }
         )
+    }
+
+    /// A one-of-six chooser that also has to report which one is current, which is
+    /// `NSMenuToolbarItem` plus a glyph that follows the level. `StatefulToolbarItem.validate()`
+    /// re-reads `symbolProvider` on every validation pass, and `observeItemState` puts
+    /// `safeModeLevel` on the list of things that trigger one.
+    func subitemSafeMode() -> NSToolbarItem {
+        let label = String(localized: "Safe Mode")
+        let item = SafeModeToolbarItem(itemIdentifier: Self.safeMode)
+        item.label = label
+        item.paletteLabel = label
+        item.isBordered = true
+        item.levelProvider = { [weak self] in self?.coordinator?.toolbarState.safeModeLevel ?? .silent }
+        /// The same class the Database menu's submenu uses, so the two lists cannot describe
+        /// different levels, and the checkmark is resolved when the menu opens rather than when
+        /// the item was built. `NSMenu.delegate` is weak, so the toolbar holds this one.
+        item.menu = safeModeMenu()
+
+        let menuItem = NSMenuItem(title: label, action: nil, keyEquivalent: "")
+        menuItem.submenu = safeModeMenu()
+        item.menuFormRepresentation = menuItem
+        /// No `toolTip` here. `levelProvider` already wrote one naming the current level, and
+        /// overwriting it with the bare label was permanent: `applyLevel` returns early once the
+        /// level it applied has not changed, so nothing would ever put the level back.
+        return item
+    }
+
+    private func safeModeMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.delegate = safeModeMenuDelegate
+        return menu
     }
 
     /// What this driver calls the thing a connection browses, so the item reads "Open Keyspace" on
@@ -45,7 +111,29 @@ extension MainWindowToolbar {
             symbol: "cylinder",
             action: #selector(performOpenDatabaseSwitcher(_:)),
             shortcut: .openDatabase,
-            description: String(format: String(localized: "Open %@"), containerName)
+            description: String(format: String(localized: "Open %@"), containerName),
+            titleProvider: { [weak self] in self?.containerTitle ?? "" }
+        )
+    }
+
+    func subitemNewTab() -> NSToolbarItem {
+        menuOnlyItem(
+            id: Self.newTab,
+            label: String(localized: "New Tab"),
+            symbol: "plus.rectangle",
+            action: #selector(performNewTab(_:)),
+            shortcut: .newTab,
+            description: String(localized: "New Query Tab")
+        )
+    }
+
+    func subitemQuickSwitcher() -> NSToolbarItem {
+        menuOnlyItem(
+            id: Self.quickSwitcher,
+            label: String(localized: "Open Quickly"),
+            symbol: "magnifyingglass",
+            action: #selector(performOpenQuickSwitcher(_:)),
+            shortcut: .quickSwitcher
         )
     }
 
@@ -177,47 +265,17 @@ extension MainWindowToolbar {
 
     // MARK: - Helpers
 
-    func hostingItem<Content: View>(
-        id: NSToolbarItem.Identifier,
-        label: String,
-        symbol: String?,
-        action: Selector?,
-        keyEquivalent: String,
-        modifiers: NSEvent.ModifierFlags,
-        retainsController: Bool = true,
-        content: Content
-    ) -> NSToolbarItem {
-        let item = NSToolbarItem(itemIdentifier: id)
-        item.label = label
-        item.paletteLabel = label
-
-        // Controller must outlive the item; AppKit doesn't retain it and the view orphans otherwise.
-        // focusable(false) stops SwiftUI from claiming scene focus on click, which would break menu shortcuts.
-        let controller = NSHostingController(rootView: AnyView(content.focusable(false)))
-        controller.sizingOptions = MainWindowToolbar.hostedItemSizingOptions
-        retain(controller, for: id, when: retainsController)
-        item.view = controller.view
-
-        if let symbol {
-            item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
-        }
-        if let action {
-            item.target = self
-            item.action = action
-            item.autovalidates = true
-            bindMenuForm(action: action, to: id)
-            let menuItem = NSMenuItem(title: label, action: action, keyEquivalent: keyEquivalent)
-            menuItem.keyEquivalentModifierMask = modifiers
-            menuItem.target = self
-            menuItem.image = item.image
-            item.menuFormRepresentation = menuItem
-        }
-
-        return item
-    }
-
     /// The label is what the customization palette and the overflow menu show, so it stays short.
     /// The tooltip is the one place with room to say what the item does and which key runs it.
+    ///
+    /// `image` overrides the symbol for an item whose glyph is not an SF Symbol at all, which is
+    /// the engine icons: half of them are asset-catalog art.
+    ///
+    /// `titleProvider` supplies the words an item draws beside its glyph, which is not the label:
+    /// measured, an icon-only toolbar suppresses the label and still draws the title, and that is
+    /// what lets the centred pair read as words while every other item stays a glyph. It is a
+    /// closure because the words follow the connection, and the item outlives every connection the
+    /// window shows.
     func menuOnlyItem(
         id: NSToolbarItem.Identifier,
         label: String,
@@ -225,17 +283,24 @@ extension MainWindowToolbar {
         action: Selector,
         shortcut: ShortcutAction? = nil,
         description: String? = nil,
-        symbolProvider: (@MainActor () -> String)? = nil
+        symbolProvider: (@MainActor () -> String)? = nil,
+        image: NSImage? = nil,
+        titleProvider: (@MainActor () -> String)? = nil
     ) -> NSToolbarItem {
         let item = StatefulToolbarItem(itemIdentifier: id)
         item.label = label
         item.paletteLabel = label
+        item.titleProvider = titleProvider
         item.target = self
         item.action = action
         item.autovalidates = true
         item.isBordered = true
         item.symbolAccessibilityDescription = label
-        item.symbolProvider = symbolProvider ?? { symbol }
+        if let image {
+            item.image = image
+        } else {
+            item.symbolProvider = symbolProvider ?? { symbol }
+        }
         bindMenuForm(action: action, to: id)
 
         let menuItem = NSMenuItem(title: label, action: action, keyEquivalent: "")
@@ -262,43 +327,25 @@ extension MainWindowToolbar {
         return group
     }
 
-    func makeGroup<Content: View>(
-        id: NSToolbarItem.Identifier,
-        label: String,
-        subitems: [NSToolbarItem],
-        retainsController: Bool = true,
-        content: Content
-    ) -> NSToolbarItemGroup {
-        let group = NSToolbarItemGroup(itemIdentifier: id)
-        group.label = label
-        group.paletteLabel = label
-
-        // Same retention requirement as hostingItem: group.view comes from this controller.
-        let controller = NSHostingController(rootView: AnyView(content.focusable(false)))
-        controller.sizingOptions = MainWindowToolbar.hostedItemSizingOptions
-        retain(controller, for: id, when: retainsController)
-        group.view = controller.view
-
-        group.subitems = subitems
-        return group
+    /// Which items AppKit gives up last. The HIG's rule is that trailing items "remain visible at
+    /// all window sizes" while centre items "automatically collapse into the system-managed
+    /// overflow menu", and `visibilityPriority` is how that order is expressed: the header says
+    /// items with the highest value "are chosen last for the overflow menu".
+    ///
+    /// The commands are raised rather than the centre lowered, because the centre carries two
+    /// names of unbounded length. Measured at 850pt with everything at the default: the connection
+    /// and container titles took the whole content width and every command went to the overflow
+    /// menu. A truncated container name is a worse loss than Refresh and Save.
+    func applyVisibilityPriority(to item: NSToolbarItem) {
+        guard item.itemIdentifier != Self.connectionGroup else { return }
+        item.visibilityPriority = .high
     }
 
     /// One slot per identifier, and the slot belongs to the item that is actually in the toolbar.
     /// AppKit asks the delegate again with `willBeInsertedIntoToolbar: false` to build the palette
-    /// copies shown by Customize Toolbar, and letting those overwrite the slot released the
-    /// controllers whose views were on screen. `NSToolbarItem` does not retain its controller, so
-    /// the live items collapsed to zero width the moment the panel opened. The sidebar segmented
-    /// control keeps its live group in a slot of the same shape, so both read this one predicate.
+    /// copies shown by Customize Toolbar, and a palette copy that took the slot left every later
+    /// `syncSidebarSelection()` writing into a discarded group.
     static func claimsItemSlot(willBeInsertedIntoToolbar: Bool) -> Bool {
         willBeInsertedIntoToolbar
-    }
-
-    private func retain(
-        _ controller: NSHostingController<AnyView>,
-        for id: NSToolbarItem.Identifier,
-        when retains: Bool
-    ) {
-        guard retains else { return }
-        hostingControllers[id] = controller
     }
 }

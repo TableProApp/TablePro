@@ -39,6 +39,12 @@ internal struct EditorTabStrip: View {
     /// shares a title with. Resolved by the window, because a view has no business asking the
     /// plugin registry what kind of container a connection has.
     internal let containerTarget: ContainerSwitchTarget?
+    /// Which tabs are running something. Read from the coordinator rather than pushed in, because
+    /// `tabExecution` is a stored property of an `@Observable`, so a claim opening or settling
+    /// invalidates this strip the same way it invalidates the result pane. A tab that is not the
+    /// selected one has no status bar on screen, and its progress used to show as the window-wide
+    /// spinner in the centre of the toolbar.
+    internal let executionOwner: MainContentCoordinator?
     internal let onNewTab: () -> Void
     /// Left unset by the app, which reads the two accessibility settings instead. A test sets it,
     /// because glass does not rasterise.
@@ -164,6 +170,7 @@ internal struct EditorTabStrip: View {
                 ),
                 position: index + 1,
                 count: tabs.count,
+                isBusy: executionOwner?.tabExecution.isBusy(tab.id) ?? false,
                 commands: interaction.commands
             )
             .opacity(opacity(of: tab))
@@ -206,6 +213,7 @@ private struct EditorTabStripItem: View {
     let showsLeadingSeparator: Bool
     let position: Int
     let count: Int
+    let isBusy: Bool
     /// The same command set the pointer's owner drives. The controls below never receive a mouse
     /// event any more, and exist for the keyboard, Full Keyboard Access and VoiceOver, which reach
     /// them without one.
@@ -322,12 +330,20 @@ private struct EditorTabStripItem: View {
         .contentShape(Rectangle())
     }
 
-    /// Work that finished while this tab was not the one on screen. It sits in the trailing
-    /// accessory slot the layout already reserves, so nothing reflows when it appears, and it
-    /// never shows on the selected tab because selecting the tab is what clears it.
+    /// What this tab is doing, in the trailing accessory slot the layout already reserves, so
+    /// nothing reflows as it changes. Running outranks finished-unseen because it is the later
+    /// state: a tab that started new work is no longer holding an unread result.
+    ///
+    /// The spinner shows on the selected tab too, unlike the dot. The dot answers "did something
+    /// happen while I was away", which selecting the tab settles; the spinner answers "is it still
+    /// going", which selecting the tab does not.
     @ViewBuilder
     private var unseenIndicator: some View {
-        if tab.execution.finishedUnseenAt != nil, !isSelected {
+        if isBusy {
+            ProgressView()
+                .controlSize(.mini)
+                .accessibilityHidden(true)
+        } else if tab.execution.finishedUnseenAt != nil, !isSelected {
             Circle()
                 .fill(Color.accentColor)
                 .frame(width: EditorTabStripLayout.unseenDotDiameter)
@@ -360,6 +376,9 @@ private struct EditorTabStripItem: View {
         var description = String(format: String(localized: "%1$d of %2$d"), position, count)
         if tab.isPreview {
             description = String(format: String(localized: "%@, preview tab"), description)
+        }
+        if isBusy {
+            return String(format: String(localized: "%@, running"), description)
         }
         guard tab.execution.finishedUnseenAt != nil, !isSelected else { return description }
         return String(format: String(localized: "%@, finished"), description)

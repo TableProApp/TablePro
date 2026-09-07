@@ -30,16 +30,16 @@ It does not sit in front of reading metadata. Loading the sidebar, opening a tab
 
 The Redis, MongoDB, and etcd drivers cannot open a read-only session, so Safe Mode treats every query on those connections as a write: the Alert and Safe Mode levels confirm everything, and Read-Only blocks everything. Every other driver classifies reads and writes normally.
 
-## Toolbar badge
+## Changing the level while connected
 
-The level appears as a badge in the toolbar, orange for the Alert levels and red for Safe Mode and Read-Only. Click it to change level.
+A padlock in the toolbar carries the current level: open for **Silent**, closed for the rest. Click it for the six levels with the current one ticked. **Database > Safe Mode** is the same list.
 
-<Frame caption="Safe Mode badge in the toolbar">
-  <img className="block dark:hidden" src="/images/safe-mode-toolbar-badge.png" alt="Safe Mode level badge and picker in the toolbar" />
-  <img className="hidden dark:block" src="/images/safe-mode-toolbar-badge-dark.png" alt="Safe Mode level badge and picker in the toolbar" />
+<Frame caption="The padlock reads the level without opening the menu">
+  <img className="block dark:hidden" src="/images/safe-mode-toolbar-badge.png" alt="Toolbar padlock with the six Safe Mode levels listed beneath it" />
+  <img className="hidden dark:block" src="/images/safe-mode-toolbar-badge-dark.png" alt="Toolbar padlock with the six Safe Mode levels listed beneath it" />
 </Frame>
 
-There is no session-only override. A change from the badge writes back to the saved connection, so it holds across tables and tabs, shows up on the Options section, and reaches your other Macs when iCloud Sync is on. Editing the level in the form works the same way round and reaches an open connection right away.
+There is no session-only override. A change here writes back to the saved connection, so it holds across tables and tabs, shows up on the Options section, and reaches your other Macs when iCloud Sync is on. Editing the level in the form works the same way round and reaches an open connection right away.
 
 ## Server read-only is not Safe Mode
 

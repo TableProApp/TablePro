@@ -42,9 +42,12 @@ enum WindowTitleResolver {
             return connectionTitle(connectionName)
         }
 
+        /// No subtitle. The container the window is browsing is the toolbar's centred item, which
+        /// is a control that switches it; a subtitle saying the same words is the second copy the
+        /// HIG's principal item "takes precedent over". The title names the tab, which is a
+        /// different fact and the one a window tab label needs.
         let title = resolveTitle(tab: tab, connection: connection, queryLanguageName: queryLanguageName)
-        let subtitle = resolveSubtitle(tab: tab, connection: connection)
-        return ResolvedWindowTitle(title: title, subtitle: subtitle == title ? "" : subtitle)
+        return ResolvedWindowTitle(title: title, subtitle: "")
     }
 
     private static func connectionTitle(_ name: String) -> ResolvedWindowTitle {
@@ -80,22 +83,6 @@ enum WindowTitleResolver {
             sourceFileURL: tab?.content.sourceFileURL,
             databaseType: connection.type,
             queryLanguageName: queryLanguageName
-        )
-    }
-
-    static func resolveSubtitle(payload: EditorTabPayload?, connection: DatabaseConnection) -> String {
-        bindingSubtitle(
-            databaseName: payload?.databaseName ?? "",
-            schemaName: payload?.schemaName,
-            fallback: connection.name
-        )
-    }
-
-    static func resolveSubtitle(tab: QueryTab?, connection: DatabaseConnection) -> String {
-        bindingSubtitle(
-            databaseName: tab?.tableContext.databaseName ?? "",
-            schemaName: tab?.tableContext.schemaName,
-            fallback: connection.name
         )
     }
 
@@ -148,20 +135,5 @@ enum WindowTitleResolver {
             return String(format: String(localized: "%@ Query"), queryLanguageName)
         }
         return fallbackTitle
-    }
-
-    /// Every tab owns a database for its whole life, so the subtitle names that binding
-    /// whatever the tab holds. Only a tab with no binding at all falls back to the
-    /// connection, and a blank value counts as no binding at every tier.
-    private static func bindingSubtitle(
-        databaseName: String,
-        schemaName: String?,
-        fallback: String
-    ) -> String {
-        guard !databaseName.isBlank else { return fallback }
-        if let schemaName, !schemaName.isBlank {
-            return "\(databaseName) · \(schemaName)"
-        }
-        return databaseName
     }
 }

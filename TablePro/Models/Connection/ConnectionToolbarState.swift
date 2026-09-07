@@ -50,17 +50,11 @@ enum ToolbarConnectionState: Equatable {
 final class ConnectionToolbarState {
     // MARK: - Connection Info
 
-    /// The tags assigned to this connection
-    var tagIds: [UUID] = []
-
     /// Database type (MySQL, MariaDB, PostgreSQL, SQLite)
     var databaseType: DatabaseType = .mysql
 
     /// Server version string (e.g., "11.1.2")
     var databaseVersion: String?
-
-    /// Connection name for display
-    var connectionName: String = ""
 
     /// Active database (always meaningful). For schema-grouped engines like SQL Server,
     /// this is the SQL Server database (e.g. "Sales"); the active schema lives in
@@ -75,19 +69,36 @@ final class ConnectionToolbarState {
     /// everything else follows the engine's switchable containers.
     var databaseGroupingStrategy: GroupingStrategy = .byDatabase
 
-    /// The engine's own colour, which the engine glyph wears on every connection.
-    var brandColor: Color = .init(nsColor: .systemOrange)
-
-    /// The colour the user assigned to this connection, `nil` when they assigned none.
-    var identityColor: ConnectionColor?
-
     /// Current connection state
     var connectionState: ToolbarConnectionState = .disconnected
 
     // MARK: - Query Execution
 
-    /// How long the last completed query took, and what that time was spent on.
-    var lastQueryTiming: PluginQueryTiming?
+    /// How long the last completed query took, and which tab ran it.
+    ///
+    /// The tab is not decoration. This is drawn by the status bar under a tab's own rows, so an
+    /// untagged duration reports a background tab's query as if the tab on screen had run it. It
+    /// used to be drawn by the centred toolbar item, which belonged to no tab and so could not be
+    /// wrong in that particular way.
+    private(set) var lastQueryTiming: PluginQueryTiming?
+    private(set) var lastQueryTimingTabId: UUID?
+
+    /// The one writer, so the duration and the tab that produced it cannot drift apart.
+    func recordQueryTiming(_ timing: PluginQueryTiming?, for tabId: UUID?) {
+        lastQueryTiming = timing
+        lastQueryTimingTabId = timing == nil ? nil : tabId
+    }
+
+    /// Clears the duration only when this tab is the one that produced it. A failure on one tab
+    /// has nothing to say about the duration another tab is still showing.
+    func clearQueryTiming(forTab tabId: UUID) {
+        guard lastQueryTimingTabId == tabId else { return }
+        recordQueryTiming(nil, for: nil)
+    }
+
+    func queryTiming(forTab tabId: UUID) -> PluginQueryTiming? {
+        lastQueryTimingTabId == tabId ? lastQueryTiming : nil
+    }
 
     // MARK: - Future Expansion
 
@@ -122,38 +133,6 @@ final class ConnectionToolbarState {
     /// SQL statements rendered in the SQL preview sheet
     var previewStatements: [String] = []
 
-    /// Network latency in milliseconds (for SSH connections)
-    var latencyMs: Int?
-
-    /// Replication lag in seconds (for replicated databases)
-    var replicationLagSeconds: Int?
-
-    var hasCompletedSetup = false
-
-    // MARK: - Computed Properties
-
-    /// Formatted database version with type
-    var formattedDatabaseInfo: String {
-        if let version = databaseVersion, !version.isEmpty {
-            return "\(databaseType.rawValue) \(version)"
-        }
-        return databaseType.rawValue
-    }
-
-    /// One component per container dimension the engine switches, outermost first, so PostgreSQL
-    /// reads "app › public" and MySQL reads "app". An engine that switches nothing still gets one
-    /// component, which is unclickable.
-    var scopeComponents: [ConnectionScopeComponent] {
-        ConnectionScopeResolver.components(
-            switchable: PluginManager.shared.switchableContainers(for: databaseType),
-            groupingStrategy: databaseGroupingStrategy,
-            currentDatabase: currentDatabase,
-            currentSchema: currentSchema,
-            containerEntityName: PluginManager.shared.containerEntityName(for: databaseType),
-            schemaEntityName: PluginManager.shared.schemaEntityName(for: databaseType)
-        )
-    }
-
     // MARK: - Initialization
 
     init() {}
@@ -172,11 +151,7 @@ final class ConnectionToolbarState {
     /// iCloud pull, so an unguarded write would invalidate every window's toolbar on a change that
     /// touched nothing it displays.
     func update(from connection: DatabaseConnection) {
-        if connectionName != connection.name { connectionName = connection.name }
         if databaseType != connection.type { databaseType = connection.type }
-        if brandColor != connection.brandColor { brandColor = connection.brandColor }
-        if identityColor != connection.identityColor { identityColor = connection.identityColor }
-        if tagIds != connection.tagIds { tagIds = connection.tagIds }
 
         let strategy = PluginManager.shared.databaseGroupingStrategy(for: connection.type)
         if databaseGroupingStrategy != strategy { databaseGroupingStrategy = strategy }
@@ -225,20 +200,14 @@ final class ConnectionToolbarState {
 
     /// Reset to default disconnected state
     func reset() {
-        tagIds = []
         databaseType = .mysql
         databaseVersion = nil
-        connectionName = ""
         currentDatabase = ""
         currentSchema = nil
         databaseGroupingStrategy = .byDatabase
-        brandColor = databaseType.themeColor
-        identityColor = nil
         connectionState = .disconnected
-        lastQueryTiming = nil
+        recordQueryTiming(nil, for: nil)
         safeModeLevel = .silent
         isTableTab = false
-        latencyMs = nil
-        replicationLagSeconds = nil
     }
 }
