@@ -4,11 +4,10 @@ import TableProModels
 
 struct ConnectedView: View {
     @Environment(AppState.self) private var appState
+    @Environment(ConnectionCoordinatorStore.self) private var coordinatorStore
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
     let connection: DatabaseConnection
-    let cachedCoordinator: ConnectionCoordinator?
-    let onCoordinatorCreated: (ConnectionCoordinator) -> Void
 
     @State private var coordinator: ConnectionCoordinator?
     @State private var hapticSuccess = false
@@ -48,25 +47,17 @@ struct ConnectedView: View {
         } message: {
             Text("This connection no longer exists. It may have been removed from another device.")
         }
-        .task {
-            if let cached = cachedCoordinator {
-                coordinator = cached
-                if case .connected = cached.phase { return }
-                await cached.connect()
-            } else {
-                let c = ConnectionCoordinator(connection: connection, appState: appState)
-                coordinator = c
-                onCoordinatorCreated(c)
-                c.restorePersistedState()
-                await c.connect()
-            }
-            if let c = coordinator, !Task.isCancelled {
-                if case .connected = c.phase {
-                    c.loadHistory()
-                    hapticSuccess.toggle()
-                } else if case .error = c.phase {
-                    hapticError.toggle()
-                }
+        .task(id: coordinatorStore.revision) {
+            let resolved = coordinatorStore.coordinator(for: connection, appState: appState)
+            coordinator = resolved
+            if case .connected = resolved.phase { return }
+            await resolved.connect()
+            guard !Task.isCancelled else { return }
+            if case .connected = resolved.phase {
+                resolved.loadHistory()
+                hapticSuccess.toggle()
+            } else if case .error = resolved.phase {
+                hapticError.toggle()
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -110,6 +101,7 @@ struct ConnectedView: View {
                              connection.name.isEmpty ? connection.host : connection.name))
             }
             Button(String(localized: "Cancel"), role: .cancel) {
+                coordinator?.cancelConnect()
                 dismiss()
             }
             .buttonStyle(.bordered)

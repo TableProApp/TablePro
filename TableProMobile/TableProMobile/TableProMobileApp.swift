@@ -21,17 +21,10 @@ struct TableProMobileApp: App {
     var body: some Scene {
         WindowGroup {
             ZStack {
-                Group {
-                    if appState.hasCompletedOnboarding {
-                        ConnectionListView()
-                            .environment(appState)
-                    } else {
-                        OnboardingView()
-                            .environment(appState)
-                    }
-                }
-                .blur(radius: lockState.isLocked ? 20 : 0)
-                .allowsHitTesting(!lockState.isLocked)
+                SceneRootView(connectionManager: appState.connectionManager)
+                    .environment(appState)
+                    .blur(radius: lockState.isLocked ? 20 : 0)
+                    .allowsHitTesting(!lockState.isLocked)
 
                 if lockState.isLocked {
                     LockScreenView()

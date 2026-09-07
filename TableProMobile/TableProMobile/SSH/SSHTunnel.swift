@@ -32,6 +32,7 @@ actor SSHTunnel {
 
     private static let bufferSize = 32_768
     private static let connectionTimeout: Int32 = 10
+    private static let blockingCallTimeoutMilliseconds: Int = 15_000
     nonisolated let sessionLock = NSLock()
 
     private var isAlive: Bool {
@@ -126,6 +127,7 @@ actor SSHTunnel {
         }
 
         libssh2_session_set_blocking(sess, 1)
+        libssh2_session_set_timeout(sess, Self.blockingCallTimeoutMilliseconds)
 
         let rc = libssh2_session_handshake(sess, socketFD)
         if rc != 0 {

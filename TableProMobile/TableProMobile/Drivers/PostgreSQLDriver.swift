@@ -362,7 +362,11 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
 private actor PostgreSQLActor {
     private var conn: OpaquePointer?
 
-    func connect(host: String, port: Int, user: String, password: String, database: String, ssl: DriverSSLConfiguration = .disabled) throws {
+    private static let connectTimeout: TimeInterval = 15
+    private static let pollSliceMilliseconds: Int32 = 100
+
+    /// `PQconnectdb` blocks with no way to abort, so a cancelled connect can never stop dialing.
+    func connect(host: String, port: Int, user: String, password: String, database: String, ssl: DriverSSLConfiguration = .disabled) async throws {
         guard (1...65_535).contains(port) else {
             throw PostgreSQLError.connectionFailed(
                 "Port \(port) is out of range. Use a value between 1 and 65535."
@@ -380,15 +384,63 @@ private actor PostgreSQLActor {
             ssl: ssl
         )
 
-        let connection = PQconnectdb(connStr)
-
-        guard PQstatus(connection) == CONNECTION_OK else {
-            let msg = connection.flatMap { String(cString: PQerrorMessage($0)) } ?? "Unknown error"
-            PQfinish(connection)
-            throw PostgreSQLError.connectionFailed(msg)
+        guard let connection = PQconnectStart(connStr) else {
+            throw PostgreSQLError.connectionFailed(String(localized: "Could not start a connection."))
         }
 
+        var adopted = false
+        defer { if !adopted { PQfinish(connection) } }
+
+        guard PQstatus(connection) != CONNECTION_BAD else {
+            throw PostgreSQLError.connectionFailed(Self.message(from: connection))
+        }
+
+        try await pollUntilConnected(connection)
+
         self.conn = connection
+        adopted = true
+    }
+
+    private func pollUntilConnected(_ connection: OpaquePointer) async throws {
+        let deadline = Date().addingTimeInterval(Self.connectTimeout)
+        var status = PGRES_POLLING_WRITING
+
+        while true {
+            try Task.checkCancellation()
+
+            switch status {
+            case PGRES_POLLING_OK:
+                return
+            case PGRES_POLLING_FAILED:
+                throw PostgreSQLError.connectionFailed(Self.message(from: connection))
+            case PGRES_POLLING_READING, PGRES_POLLING_WRITING:
+                let socket = PQsocket(connection)
+                guard socket >= 0 else {
+                    throw PostgreSQLError.connectionFailed(Self.message(from: connection))
+                }
+                guard Date() < deadline else {
+                    throw PostgreSQLError.connectionFailed(String(localized: "Connection timed out."))
+                }
+
+                let events = status == PGRES_POLLING_READING ? Int16(POLLIN) : Int16(POLLOUT)
+                var descriptor = pollfd(fd: socket, events: events, revents: 0)
+                let ready = poll(&descriptor, 1, Self.pollSliceMilliseconds)
+                guard ready >= 0 else {
+                    throw PostgreSQLError.connectionFailed(String(localized: "Connection failed while waiting on the socket."))
+                }
+                guard ready > 0 else { continue }
+
+                status = PQconnectPoll(connection)
+            default:
+                status = PQconnectPoll(connection)
+            }
+        }
+    }
+
+    private static func message(from connection: OpaquePointer?) -> String {
+        guard let connection else { return String(localized: "Unknown error") }
+        let text = String(cString: PQerrorMessage(connection))
+        return text.isEmpty ? String(localized: "Unknown error") : text
     }
 
     func close() {

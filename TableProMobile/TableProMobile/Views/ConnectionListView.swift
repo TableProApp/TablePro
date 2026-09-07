@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 
 struct ConnectionListView: View {
     @Environment(AppState.self) private var appState
+    @Environment(ConnectionCoordinatorStore.self) private var coordinatorStore
     @State private var showingAddConnection = false
     @State private var editingConnection: DatabaseConnection?
     @SceneStorage("lastConnectionId") private var selectedConnectionIdString: String?
@@ -17,7 +18,6 @@ struct ConnectionListView: View {
     @State private var editMode: EditMode = .inactive
     @State private var connectionToDelete: DatabaseConnection?
     @State private var showingSettings = false
-    @State private var coordinatorCache: [UUID: ConnectionCoordinator] = [:]
     @State private var showingFileImporter = false
     @State private var importItem: IdentifiableURL?
     @State private var showingExport = false
@@ -130,10 +130,8 @@ struct ConnectionListView: View {
             }
         }
         .fullScreenCover(item: openConnection) { connection in
-            ConnectedView(connection: connection, cachedCoordinator: coordinatorCache[connection.id]) { coordinator in
-                coordinatorCache[connection.id] = coordinator
-            }
-            .id(connection.id)
+            ConnectedView(connection: connection)
+                .id(connection.id)
         }
         .sheet(isPresented: $showingAddConnection) {
             ConnectionFormView { connection in
@@ -144,6 +142,7 @@ struct ConnectionListView: View {
         .sheet(item: $editingConnection) { connection in
             ConnectionFormView(editing: connection) { updated in
                 appState.updateConnection(updated)
+                coordinatorStore.invalidate(updated.id)
                 editingConnection = nil
             }
         }
@@ -301,7 +300,6 @@ struct ConnectionListView: View {
                         if selectedConnectionUUID == connection.id {
                             selectedConnectionIdString = nil
                         }
-                        coordinatorCache.removeValue(forKey: connection.id)
                         appState.removeConnection(connection)
                     }
                 }

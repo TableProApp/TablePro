@@ -58,6 +58,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Stop leaving an iOS MySQL or Redis query running, with the spinner and the Live Activity stuck behind it.
 - A stopped or memory-stopped iOS query recorded in Query History as successful.
 - Query Live Activity marked interrupted while an iOS query longer than five minutes was still running.
+- Connection screen stuck on Connecting for good after a cancelled connect on iPhone and iPad.
+- Edited connection host, port or credentials ignored until relaunch on iPhone and iPad.
+- SSH tunnel handshake with no timeout on iPhone and iPad, against a server that accepts TCP and then stalls.
 - Export and Transfer To preselecting a same-named table from another schema, or nothing at all.
 - Delete queuing a table drop from the menu bar with none of the confirmation the sidebar asks for.
 - Truncate Table offered from the menu bar for a view, which the server then refuses.
