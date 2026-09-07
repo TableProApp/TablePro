@@ -7,8 +7,6 @@ import AppKit
 import Combine
 import Observation
 import os
-import SwiftUI
-import TableProPluginKit
 
 @MainActor
 internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
@@ -171,7 +169,6 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             _ = self?.coordinator?.toolbarState.hasDataPendingChanges
             _ = self?.coordinator?.toolbarState.safeModeLevel
             _ = self?.coordinator?.toolbarState.currentDatabase
-            _ = self?.coordinator?.toolbarState.currentSchema
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self,

@@ -20,10 +20,10 @@ extension MainSplitViewController {
     /// telling the user to reconnect or pick another connection.
     func openConnectionSwitcher() {
         view.window?.makeFirstResponder(nil)
-        commandActions?.dismissScopeSwitcher()
         switcherPresenter.present(
             from: view.window,
             anchoredTo: MainWindowToolbar.connectionGroup,
+            subject: .connection,
             contentSize: ConnectionSwitcherPopover.contentSize
         ) { dismiss in
             ConnectionSwitcherPopover(dismiss: dismiss)

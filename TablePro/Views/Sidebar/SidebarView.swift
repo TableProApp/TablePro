@@ -128,10 +128,6 @@ struct SidebarView: View {
         }
         .onAppear {
             coordinator?.sidebarViewModel = viewModel
-            if let driver = DatabaseManager.shared.driver(for: connectionId),
-               coordinator?.toolbarState.databaseVersion == nil {
-                coordinator?.toolbarState.databaseVersion = driver.serverVersion
-            }
         }
         .onChange(of: viewModel.showOperationDialog) { _, isPresented in
             guard isPresented else { return }

@@ -53,9 +53,6 @@ final class ConnectionToolbarState {
     /// Database type (MySQL, MariaDB, PostgreSQL, SQLite)
     var databaseType: DatabaseType = .mysql
 
-    /// Server version string (e.g., "11.1.2")
-    var databaseVersion: String?
-
     /// Active database (always meaningful). For schema-grouped engines like SQL Server,
     /// this is the SQL Server database (e.g. "Sales"); the active schema lives in
     /// `currentSchema`, and the toolbar shows both.
@@ -64,10 +61,6 @@ final class ConnectionToolbarState {
     /// Active schema for engines that browse one schema at a time. Nil for `.byDatabase` and
     /// `.flat` engines, where the database is the only unit, and until the schema resolves.
     var currentSchema: String?
-
-    /// How the engine groups data. Decides what a connection that switches nothing displays;
-    /// everything else follows the engine's switchable containers.
-    var databaseGroupingStrategy: GroupingStrategy = .byDatabase
 
     /// Current connection state
     var connectionState: ToolbarConnectionState = .disconnected
@@ -80,24 +73,30 @@ final class ConnectionToolbarState {
     /// untagged duration reports a background tab's query as if the tab on screen had run it. It
     /// used to be drawn by the centred toolbar item, which belonged to no tab and so could not be
     /// wrong in that particular way.
-    private(set) var lastQueryTiming: PluginQueryTiming?
-    private(set) var lastQueryTimingTabId: UUID?
+    /// One entry per tab, not one slot. A single slot meant any tab finishing a query erased the
+    /// duration another tab was still showing, because the reader asks per tab and a slot tagged
+    /// with someone else answers nil.
+    private(set) var queryTimings: [UUID: PluginQueryTiming] = [:]
 
-    /// The one writer, so the duration and the tab that produced it cannot drift apart.
+    /// The one writer, so a duration and the tab that produced it cannot drift apart.
     func recordQueryTiming(_ timing: PluginQueryTiming?, for tabId: UUID?) {
-        lastQueryTiming = timing
-        lastQueryTimingTabId = timing == nil ? nil : tabId
+        guard let tabId else { return }
+        queryTimings[tabId] = timing
     }
 
-    /// Clears the duration only when this tab is the one that produced it. A failure on one tab
-    /// has nothing to say about the duration another tab is still showing.
+    /// A failure on one tab has nothing to say about the duration another tab is showing, so this
+    /// names the tab whose duration is going.
     func clearQueryTiming(forTab tabId: UUID) {
-        guard lastQueryTimingTabId == tabId else { return }
-        recordQueryTiming(nil, for: nil)
+        queryTimings[tabId] = nil
     }
 
     func queryTiming(forTab tabId: UUID) -> PluginQueryTiming? {
-        lastQueryTimingTabId == tabId ? lastQueryTiming : nil
+        queryTimings[tabId]
+    }
+
+    /// Closing a tab takes its duration with it, or the dictionary grows for the window's life.
+    func forgetQueryTimings(keeping openTabIds: Set<UUID>) {
+        queryTimings = queryTimings.filter { openTabIds.contains($0.key) }
     }
 
     // MARK: - Future Expansion
@@ -153,9 +152,6 @@ final class ConnectionToolbarState {
     func update(from connection: DatabaseConnection) {
         if databaseType != connection.type { databaseType = connection.type }
 
-        let strategy = PluginManager.shared.databaseGroupingStrategy(for: connection.type)
-        if databaseGroupingStrategy != strategy { databaseGroupingStrategy = strategy }
-
         syncFromSession(for: connection)
     }
 
@@ -201,12 +197,10 @@ final class ConnectionToolbarState {
     /// Reset to default disconnected state
     func reset() {
         databaseType = .mysql
-        databaseVersion = nil
         currentDatabase = ""
         currentSchema = nil
-        databaseGroupingStrategy = .byDatabase
         connectionState = .disconnected
-        recordQueryTiming(nil, for: nil)
+        queryTimings = [:]
         safeModeLevel = .silent
         isTableTab = false
     }

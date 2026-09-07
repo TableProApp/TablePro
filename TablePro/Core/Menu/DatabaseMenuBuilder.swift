@@ -181,13 +181,7 @@ enum DatabaseMenuBuilder {
     /// same chooser the database item opens, and it is what carries search, favourites, drop and
     /// export for the inner scope.
     private static func schemaSubmenu() -> NSMenuItem {
-        let container = MenuItemFactory.submenu(String(localized: "Schema"), items: [
-            MenuItemFactory.item(
-                String(localized: "Open Schema Switcher…"),
-                action: #selector(MainSplitViewController.openSchemaSwitcher(_:))
-            ),
-            MenuItemFactory.separator,
-        ])
+        let container = MenuItemFactory.submenu(String(localized: "Schema"), items: [])
         container.submenu?.delegate = schemaDelegate
         return container
     }

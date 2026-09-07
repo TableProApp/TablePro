@@ -44,7 +44,11 @@ internal struct EditorTabStrip: View {
     /// invalidates this strip the same way it invalidates the result pane. A tab that is not the
     /// selected one has no status bar on screen, and its progress used to show as the window-wide
     /// spinner in the centre of the toolbar.
-    internal let executionOwner: MainContentCoordinator?
+    ///
+    /// Weak for the reason `MainWindowToolbar.coordinator` is: the coordinator leaves
+    /// `activeCoordinators` only on deinit, so a strong reference held by a pane that outlives the
+    /// workspace would keep a torn-down connection voting in every aggregate that walks it.
+    internal weak var executionOwner: MainContentCoordinator?
     internal let onNewTab: () -> Void
     /// Left unset by the app, which reads the two accessibility settings instead. A test sets it,
     /// because glass does not rasterise.

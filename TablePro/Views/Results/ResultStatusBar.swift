@@ -27,6 +27,9 @@ struct ResultStatusBar: View {
     let paginationCallbacks: PaginationCallbacks
     let structureFooter: StructureFooterCapability
     let execution: ExecutionReadout
+    /// The object tree's own reload, reported where every other piece of background activity in
+    /// this window is. It had no surface at all between the centred toolbar item going and this.
+    let isRefreshingSchema: Bool
     @Binding var viewMode: ResultsViewMode
     let onToggleFilters: () -> Void
     let onFetchAll: (() -> Void)?
@@ -133,6 +136,10 @@ struct ResultStatusBar: View {
                 lastTiming: execution.lastTiming,
                 onCancel: execution.onCancel
             )
+        }
+        if isRefreshingSchema {
+            DelayedProgressIndicator(isActive: true)
+                .accessibilityLabel(String(localized: "Refreshing"))
         }
     }
 

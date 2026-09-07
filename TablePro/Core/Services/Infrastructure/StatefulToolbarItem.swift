@@ -78,12 +78,21 @@ internal final class SafeModeToolbarItem: NSMenuToolbarItem {
         didSet { applyLevel() }
     }
 
+    /// Its own enablement, because AppKit will not ask for it. This item carries no action, and
+    /// `NSToolbarItem`'s own `validate()` only sends `validateToolbarItem(_:)` for an item that
+    /// has one, so the toolbar's predicate for this identifier was never consulted and the control
+    /// stayed live over a session that had gone.
+    internal var isEnabledProvider: (@MainActor () -> Bool)?
+
     private var symbolSource = ToolbarSymbolSource()
     private var appliedLevel: SafeModeLevel?
 
     override internal func validate() {
         super.validate()
         applyLevel()
+        if let isEnabledProvider {
+            isEnabled = isEnabledProvider()
+        }
     }
 
     /// The tooltip carries the level's name because the glyph alone cannot: `lock` and

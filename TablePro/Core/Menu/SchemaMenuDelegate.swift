@@ -12,8 +12,14 @@ import AppKit
 final class SchemaMenuDelegate: NSObject, NSMenuDelegate {
     private static let action = #selector(MainSplitViewController.switchToSchema(_:))
 
+    private static let switcherAction = #selector(MainSplitViewController.openSchemaSwitcher(_:))
+
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+        /// Added here rather than when the container was built, because this method clears the
+        /// menu on every open: a statically added item is destroyed the first time the submenu is
+        /// used, which reads as a command that does not exist.
+        addSwitcherItem(to: menu)
         let controller = NSApp.target(forAction: Self.action, to: nil, from: nil) as? MainSplitViewController
         guard let coordinator = controller?.commandActions?.coordinator else {
             addPlaceholder(to: menu)
@@ -45,6 +51,19 @@ final class SchemaMenuDelegate: NSObject, NSMenuDelegate {
         item.representedObject = schema
         item.state = schema == current ? .on : .off
         return item
+    }
+
+    /// The full chooser for the inner scope. The checked list below it is the quick path; only the
+    /// chooser searches, favourites, drops and exports.
+    private func addSwitcherItem(to menu: NSMenu) {
+        let item = NSMenuItem(
+            title: String(localized: "Open Schema Switcher…"),
+            action: Self.switcherAction,
+            keyEquivalent: ""
+        )
+        item.target = nil
+        menu.addItem(item)
+        menu.addItem(.separator())
     }
 
     private func addPlaceholder(to menu: NSMenu) {

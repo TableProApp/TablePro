@@ -4,7 +4,6 @@
 //
 
 import AppKit
-import SwiftUI
 
 extension MainWindowToolbar {
     // MARK: - Subitem Builders
@@ -31,9 +30,12 @@ extension MainWindowToolbar {
         if let symbol = NSImage(systemSymbolName: name, accessibilityDescription: label) {
             return symbol
         }
-        let asset = NSImage(named: name)
-        asset?.isTemplate = true
-        asset?.accessibilityDescription = label
+        /// Copied before it is touched. `NSImage(named:)` returns the one cached instance for that
+        /// asset, so setting `isTemplate` or `accessibilityDescription` on it rewrites the image
+        /// every other engine-icon consumer in the app is holding.
+        guard let asset = NSImage(named: name)?.copy() as? NSImage else { return nil }
+        asset.isTemplate = true
+        asset.accessibilityDescription = label
         return asset
     }
 
@@ -75,6 +77,10 @@ extension MainWindowToolbar {
         item.paletteLabel = label
         item.isBordered = true
         item.levelProvider = { [weak self] in self?.coordinator?.toolbarState.safeModeLevel ?? .silent }
+        item.isEnabledProvider = { [weak self] in
+            guard let self, let context = validationContext() else { return false }
+            return Self.isEnabled(itemIdentifier: Self.safeMode, context: context)
+        }
         /// The same class the Database menu's submenu uses, so the two lists cannot describe
         /// different levels, and the checkmark is resolved when the menu opens rather than when
         /// the item was built. `NSMenu.delegate` is weak, so the toolbar holds this one.

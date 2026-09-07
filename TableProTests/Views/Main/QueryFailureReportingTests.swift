@@ -59,7 +59,7 @@ struct QueryFailureReportingTests {
 
         Self.finishFailure(on: coordinator, tabId: tabId, claim: claim)
 
-        #expect(coordinator.toolbarState.lastQueryTiming == nil)
+        #expect(coordinator.toolbarState.queryTiming(forTab: tabId) == nil)
         #expect(tabManager.tabs.first?.execution.executionTime == nil)
     }
 
@@ -169,7 +169,7 @@ struct QueryFailureReportingTests {
         Self.finishFailure(on: coordinator, tabId: backgroundTabId, claim: claim)
 
         #expect(tabManager.tabs.first?.execution.errorMessage != nil)
-        #expect(coordinator.toolbarState.lastQueryTiming?.total == 1.5)
+        #expect(coordinator.toolbarState.queryTiming(forTab: selectedTabId)?.total == 1.5)
         #expect(coordinator.toolbarState.isResultsCollapsed)
     }
 

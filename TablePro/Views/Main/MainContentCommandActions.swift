@@ -1326,7 +1326,6 @@ final class MainContentCommandActions {
         guard let coordinator, canSwitchContainer(target, on: coordinator) else { return }
         /// Clearing first responder is what lets the popover's search field take focus.
         coordinator.contentWindow?.makeFirstResponder(nil)
-        coordinator.switcherPresenter?.dismiss()
         presentDatabaseSwitcher(on: coordinator, target: target)
     }
 
@@ -1368,6 +1367,7 @@ final class MainContentCommandActions {
         coordinator.switcherPresenter?.present(
             from: coordinator.contentWindow,
             anchoredTo: MainWindowToolbar.connectionGroup,
+            subject: .container(target),
             contentSize: DatabaseSwitcherPopover.contentSize
         ) { dismiss in
             DatabaseSwitcherPopoverHost(coordinator: coordinator, target: target, dismiss: dismiss)
@@ -1456,7 +1456,6 @@ final class MainContentCommandActions {
         Task { [weak coordinator] in
             guard let coordinator, !coordinator.isTearingDown else { return }
             if let driver = DatabaseManager.shared.driver(for: coordinator.connection.id) {
-                coordinator.toolbarState.databaseVersion = driver.serverVersion
             }
             if case .loading = SchemaService.shared.state(for: coordinator.connection.id) {
                 coordinator.initRedisKeyTreeIfNeeded()

@@ -15,18 +15,18 @@ import Testing
 struct ConnectionToolbarStateTests {
     // MARK: - reset
 
-    @Test("reset clears database, schema, and grouping strategy")
+    @Test("reset clears the scope and every tab's duration")
     func resetClearsScopeFields() {
         let state = ConnectionToolbarState()
-        state.databaseGroupingStrategy = .bySchema
         state.currentDatabase = "Sales"
         state.currentSchema = "dbo"
+        state.recordQueryTiming(PluginQueryTiming(total: 1.5), for: UUID())
 
         state.reset()
 
         #expect(state.currentDatabase == "")
         #expect(state.currentSchema == nil)
-        #expect(state.databaseGroupingStrategy == .byDatabase)
+        #expect(state.queryTimings.isEmpty)
     }
 
     // MARK: - query timing

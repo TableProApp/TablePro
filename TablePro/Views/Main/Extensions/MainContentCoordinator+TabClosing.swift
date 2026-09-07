@@ -40,6 +40,7 @@ extension MainContentCoordinator {
         prune(&createTableDrafts, keeping: openTabIds)
         prune(&navigationHistories, keeping: openTabIds)
         prune(&pendingRowAnchors, keeping: openTabIds)
+        toolbarState.forgetQueryTimings(keeping: openTabIds)
         for (tabId, session) in structureSessions where !openTabIds.contains(tabId) {
             session.releaseViewWiring()
             structureSessions.removeValue(forKey: tabId)

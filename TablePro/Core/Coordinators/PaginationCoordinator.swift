@@ -358,10 +358,7 @@ final class PaginationCoordinator {
                     }
                     parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(replaceDelta)
                     parent.retireQueryTask(for: nil)
-                    parent.toolbarState.recordQueryTiming(
-                        result.resolvedTiming,
-                        for: parent.tabManager.selectedTabId
-                    )
+                    parent.toolbarState.recordQueryTiming(result.resolvedTiming, for: tabId)
 
                     let totalTime = CFAbsoluteTimeGetCurrent() - start
                     progressLog.info("[fetchAll] DONE rows=\(result.rows.count) fetchTime=\(String(format: "%.3f", fetchTime))s totalTime=\(String(format: "%.3f", totalTime))s")

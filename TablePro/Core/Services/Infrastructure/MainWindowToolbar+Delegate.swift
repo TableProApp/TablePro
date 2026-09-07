@@ -5,7 +5,6 @@
 
 import AppKit
 import os
-import SwiftUI
 
 extension MainWindowToolbar {
     internal func toolbar(

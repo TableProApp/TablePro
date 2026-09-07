@@ -78,7 +78,7 @@ struct MainWindowToolbarNativeContractTests {
             ) else { continue }
             let expected: NSToolbarItem.VisibilityPriority =
                 identifier == MainWindowToolbar.connectionGroup ? .standard : .high
-            #expect(item.visibilityPriority == expected, identifier.rawValue)
+            #expect(item.visibilityPriority == expected, "\(identifier.rawValue)")
         }
     }
 
@@ -97,7 +97,7 @@ struct MainWindowToolbarNativeContractTests {
         )
         #expect(group.subitems.count == 2)
         for subitem in group.subitems {
-            #expect(subitem is StatefulToolbarItem, subitem.itemIdentifier.rawValue)
+            #expect(subitem is StatefulToolbarItem, "\(subitem.itemIdentifier.rawValue)")
         }
     }
 
@@ -133,26 +133,63 @@ struct MainWindowToolbarNativeContractTests {
     }
 
     /// The HIG's macOS rule: "Make every toolbar item available as a command in the menu bar." The
-    /// rewrite moved four things out of the toolbar, and a command with no toolbar item and no menu
-    /// item is unreachable. Snowflake's warehouse and role were exactly that even before the
-    /// rewrite: they existed only inside the hosted connection group, so a window narrow enough to
-    /// clip that group could not change either.
-    @Test("Everything the toolbar stopped offering is a menu-bar command")
+    /// rewrite moved the sidebar's two lists out of the toolbar's segmented control, and a command
+    /// with no toolbar item and no menu item is unreachable.
+    ///
+    /// The other relocated commands live in submenus their delegate fills on open, so they are
+    /// checked where that is true of them: `safeModeSubmenuOffersEveryLevel` and
+    /// `schemaSubmenuSurvivesItsDelegate`, and `dynamicSubmenusHaveDelegates` for the per-driver
+    /// Session Context list, which legitimately holds a placeholder until a driver publishes one.
+    @Test("The sidebar lists the toolbar used to own are menu-bar commands")
     func relocatedCommandsReachTheMenuBar() {
         let menu = MainMenuBuilder.build(keyboard: KeyboardSettings())
         var found: Set<Selector> = []
         collectSelectors(from: menu, into: &found)
 
         let relocated: [Selector] = [
-            #selector(MainSplitViewController.setSafeModeLevel(_:)),
-            #selector(MainSplitViewController.switchSessionContext(_:)),
             #selector(MainSplitViewController.showTablesSidebarTab(_:)),
             #selector(MainSplitViewController.showFavoritesSidebarTab(_:)),
-            #selector(MainSplitViewController.openSchemaSwitcher(_:)),
         ]
         for selector in relocated {
             #expect(found.contains(selector), "\(NSStringFromSelector(selector)) has no menu-bar command")
         }
+    }
+
+    /// Safe Mode's list does not depend on a session, so its delegate fills it every time and all
+    /// six levels have to be there. A five-level list would silently strip a level from the only
+    /// menu-bar route to it.
+    @Test("The Safe Mode submenu offers every level")
+    func safeModeSubmenuOffersEveryLevel() throws {
+        let menu = MainMenuBuilder.build(keyboard: KeyboardSettings())
+        let database = try #require(menu.items.first { $0.submenu?.title == String(localized: "Database") }?.submenu)
+        let safeMode = try #require(
+            database.items.first { $0.title == String(localized: "Safe Mode") }?.submenu
+        )
+
+        safeMode.delegate?.menuNeedsUpdate?(safeMode)
+
+        let action = #selector(MainSplitViewController.setSafeModeLevel(_:))
+        #expect(safeMode.items.filter { $0.action == action }.count == SafeModeLevel.allCases.count)
+    }
+
+    /// A delegate that clears the menu on open destroys anything added when the container was
+    /// built, so a statically added item is gone the first time the submenu is used. The earlier
+    /// version of this suite inspected the freshly built menu and passed while the shipped Schema
+    /// submenu had no Open Schema Switcher command at all.
+    @Test("The Schema submenu still offers its switcher after the delegate fills it")
+    func schemaSubmenuSurvivesItsDelegate() throws {
+        let menu = MainMenuBuilder.build(keyboard: KeyboardSettings())
+        let database = try #require(menu.items.first { $0.submenu?.title == String(localized: "Database") }?.submenu)
+        let schema = try #require(
+            database.items.first { $0.title == String(localized: "Schema") }?.submenu
+        )
+
+        schema.delegate?.menuNeedsUpdate?(schema)
+
+        #expect(
+            schema.items.contains { $0.action == #selector(MainSplitViewController.openSchemaSwitcher(_:)) },
+            "the switcher command has to survive menuNeedsUpdate"
+        )
     }
 
     /// A dynamic submenu is empty until it opens, so a delegate that never runs is a submenu that
@@ -163,7 +200,7 @@ struct MainWindowToolbarNativeContractTests {
         let database = try #require(menu.items.first { $0.submenu?.title == String(localized: "Database") }?.submenu)
 
         for title in [String(localized: "Safe Mode"), String(localized: "Session Context")] {
-            let submenu = try #require(database.items.first { $0.title == title }?.submenu, title)
+            let submenu = try #require(database.items.first { $0.title == title }?.submenu, "\(title)")
             #expect(submenu.delegate != nil, "\(title) needs a delegate to fill it")
         }
     }
@@ -183,16 +220,25 @@ struct MainWindowToolbarNativeContractTests {
 /// through two entry points with two different gates.
 @MainActor
 struct MainWindowToolbarSingleSourceTests {
-    /// The switcher has one entry point, so a caller cannot reach it past the session gate. The
-    /// centred chip did exactly that: its only condition was the engine's capability, so it opened
-    /// the chooser over a session the health monitor had given up on while the button beside it and
-    /// the menu command were both correctly disabled.
-    @Test("One command opens the container chooser, for either scope")
+    /// The chooser has one entry point, so nothing can reach it past the session gate. The centred
+    /// chip did exactly that: its only condition was the engine's capability, so it opened the
+    /// chooser over a session the health monitor had given up on while the button beside it and the
+    /// menu command were both correctly disabled.
+    @Test("One toolbar control opens the container chooser")
     func containerChooserHasOneEntryPoint() {
-        let sources = MainWindowToolbar.allowedItemIdentifiers.filter {
-            $0 == MainWindowToolbar.database
-        }
-        #expect(sources.count == 1)
+        let owner = MainWindowToolbar()
+        let openers = MainWindowToolbar.allowedItemIdentifiers
+            .compactMap {
+                owner.toolbar(owner.managedToolbar, itemForItemIdentifier: $0, willBeInsertedIntoToolbar: true)
+            }
+            .flatMap { item -> [NSToolbarItem] in
+                guard let group = item as? NSToolbarItemGroup else { return [item] }
+                return [item] + group.subitems
+            }
+            .filter { $0.action == #selector(MainWindowToolbar.performOpenDatabaseSwitcher(_:)) }
+
+        #expect(openers.count == 1)
+        #expect(openers.first?.itemIdentifier == MainWindowToolbar.database)
     }
 
     /// The container the window is browsing is drawn once, by the centred control that switches
