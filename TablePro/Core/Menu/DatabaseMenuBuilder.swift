@@ -174,8 +174,9 @@ enum DatabaseMenuBuilder {
 
     private static let schemaDelegate = SchemaMenuDelegate()
 
-    /// Where switching schema lives now that the sidebar has no bottom bar. The active schema is
-    /// still readable at a glance from the window's subtitle, which `WindowTitleResolver` writes.
+    /// Where switching schema lives now that the sidebar has no bottom bar, and the only place the
+    /// active schema is named: the toolbar's centred control shows the database it switches and
+    /// nothing else, and the window carries no subtitle.
     ///
     /// The checked list this delegate fills is the quick path. Open Schema Switcher above it is the
     /// same chooser the database item opens, and it is what carries search, favourites, drop and
@@ -201,7 +202,10 @@ enum DatabaseMenuBuilder {
     /// The same list the toolbar's Safe Mode control opens, so every toolbar item keeps a menu-bar
     /// command as the HIG asks.
     private static func safeModeSubmenu() -> NSMenuItem {
-        let container = MenuItemFactory.submenu(String(localized: "Safe Mode"), items: [])
+        /// "Safe Mode Level", not "Safe Mode": the levels inside it include one called Safe Mode,
+        /// and a submenu holding an item of its own name reads as a loop. It also gave the menu bar
+        /// two items with one title, which System Settings binds App Shortcuts by.
+        let container = MenuItemFactory.submenu(String(localized: "Safe Mode Level"), items: [])
         container.submenu?.delegate = safeModeDelegate
         return container
     }

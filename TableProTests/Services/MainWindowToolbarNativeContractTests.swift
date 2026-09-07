@@ -189,7 +189,7 @@ struct MainWindowToolbarNativeContractTests {
         let menu = MainMenuBuilder.build(keyboard: KeyboardSettings())
         let database = try #require(menu.items.first { $0.submenu?.title == String(localized: "Database") }?.submenu)
         let safeMode = try #require(
-            database.items.first { $0.title == String(localized: "Safe Mode") }?.submenu
+            database.items.first { $0.title == String(localized: "Safe Mode Level") }?.submenu
         )
 
         safeMode.delegate?.menuNeedsUpdate?(safeMode)
@@ -225,7 +225,7 @@ struct MainWindowToolbarNativeContractTests {
         let menu = MainMenuBuilder.build(keyboard: KeyboardSettings())
         let database = try #require(menu.items.first { $0.submenu?.title == String(localized: "Database") }?.submenu)
 
-        for title in [String(localized: "Safe Mode"), String(localized: "Session Context")] {
+        for title in [String(localized: "Safe Mode Level"), String(localized: "Session Context")] {
             let submenu = try #require(database.items.first { $0.title == title }?.submenu, "\(title)")
             #expect(submenu.delegate != nil, "\(title) needs a delegate to fill it")
         }

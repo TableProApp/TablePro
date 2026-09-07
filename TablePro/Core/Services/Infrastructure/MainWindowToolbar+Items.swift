@@ -86,7 +86,9 @@ extension MainWindowToolbar {
         /// the item was built. `NSMenu.delegate` is weak, so the toolbar holds this one.
         item.menu = safeModeMenu()
 
-        let menuItem = NSMenuItem(title: label, action: nil, keyEquivalent: "")
+        /// The overflow entry names the list, not the control, for the same reason the Database
+        /// menu's container does: one of the levels inside it is itself called Safe Mode.
+        let menuItem = NSMenuItem(title: String(localized: "Safe Mode Level"), action: nil, keyEquivalent: "")
         menuItem.submenu = safeModeMenu()
         item.menuFormRepresentation = menuItem
         /// No `toolTip` here. `levelProvider` already wrote one naming the current level, and

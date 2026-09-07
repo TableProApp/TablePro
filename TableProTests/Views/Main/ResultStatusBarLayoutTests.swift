@@ -62,7 +62,12 @@ struct ResultStatusBarLayoutTests {
                 onRequestExactCount: {}
             ),
             structureFooter: StructureFooterCapability(),
-            execution: ExecutionReadout(isExecuting: false, lastTiming: nil, onCancel: {}),
+            execution: ExecutionReadout(
+                tabId: UUID(),
+                execution: TabExecutionRegistry(),
+                lastTiming: nil,
+                onCancel: {}
+            ),
             isRefreshingSchema: false,
             viewMode: .constant(viewMode),
             onToggleFilters: {},

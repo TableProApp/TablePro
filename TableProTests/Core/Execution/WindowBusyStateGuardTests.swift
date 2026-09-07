@@ -46,12 +46,40 @@ struct WindowBusyStateGuardTests {
         )
     }
 
-    /// The scan above only proves the old flag is gone. This proves the indicator reads the registry,
-    /// so a future edit cannot satisfy both scans by wiring the toolbar to some third value.
-    @Test("The execution indicator is fed from the execution registry")
-    func executionIndicatorReadsTheRegistry() throws {
-        let callSites = try Self.sourceLines { $0.contains("isExecuting: coordinator?.tabExecution.isAnyExecuting") }
-        #expect(callSites.count == 1)
+    /// The scans above only prove the old flag is gone. This proves the readout the status bar
+    /// draws IS the registry, so a future edit cannot satisfy both scans by wiring it to some third
+    /// value.
+    ///
+    /// Behavioural rather than a source scan. The scan this replaces matched one call site's exact
+    /// spelling, so moving the readout out of the toolbar broke it while the invariant it guards
+    /// still held. `ExecutionReadout.isExecuting` is now computed from a stored registry rather
+    /// than a stored `Bool`, which is what makes this assertable: reintroducing the parameter
+    /// changes the memberwise initializer and this file stops compiling.
+    @Test("The execution readout is a live read of the execution registry")
+    func executionIndicatorReadsTheRegistry() {
+        var registry = TabExecutionRegistry()
+        let tab = UUID()
+        let other = UUID()
+        func readout(_ id: UUID) -> ExecutionReadout {
+            ExecutionReadout(tabId: id, execution: registry, lastTiming: nil, onCancel: {})
+        }
+
+        let claim = registry.claim(tab)
+        #expect(readout(tab).isExecuting)
+        #expect(readout(other).isExecuting == false)
+
+        /// Hoisted out of `#expect`, which evaluates its expression inside a closure that captures
+        /// `registry` immutably, so a mutating call cannot go in one.
+        let settled = registry.settle(claim)
+        #expect(settled)
+        #expect(readout(tab).isExecuting == false)
+
+        /// Fetch All extends the result already on screen, so it registers unclaimed work rather
+        /// than a claim. The readout has to count it, or Fetch All runs with no Stop button.
+        let work = registry.beginUnclaimedWork(for: tab)
+        #expect(readout(tab).isExecuting)
+        registry.endUnclaimedWork(work, for: tab)
+        #expect(readout(tab).isExecuting == false)
     }
 
     private struct SourceLine {

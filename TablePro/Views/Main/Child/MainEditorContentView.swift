@@ -961,10 +961,6 @@ struct MainEditorContentView: View {
     private func statusBar(tab: QueryTab) -> some View {
         let resolvedRows = resolvedTableRows(for: tab)
         let structureFooter = coordinator.structureSessions[tab.id]?.footer ?? StructureFooterCapability()
-        /// `isBusy`, not `isExecuting`: Fetch All extends the result already on screen and so
-        /// registers unclaimed work rather than a claim, and the readout this replaced watched the
-        /// window-wide flag that counted both. With the narrower predicate a Fetch All ran with no
-        /// spinner and no Stop button anywhere in the window.
         let isExecuting = coordinator.tabExecution.isBusy(tab.id)
         let snapshot = StatusBarSnapshot(
             tab: tab,
@@ -1005,7 +1001,8 @@ struct MainEditorContentView: View {
             ),
             structureFooter: structureFooter,
             execution: ExecutionReadout(
-                isExecuting: isExecuting,
+                tabId: tab.id,
+                execution: coordinator.tabExecution,
                 lastTiming: coordinator.toolbarState.queryTiming(forTab: tab.id),
                 onCancel: { coordinator.cancelCurrentQuery() }
             ),

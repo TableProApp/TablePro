@@ -140,7 +140,13 @@ final class QueryInsightsTabUITests: UITestCase {
     /// CI runner once a connection window is loaded. `launchWithSampleDatabase` has always relied
     /// on this.
     private func openInsights(in app: XCUIApplication) {
-        let item = app.menuBars.menuItems["Query Insights"]
+        /// Scoped to the Database menu, not the whole menu bar. Once the tab is open the window is
+        /// titled "Query Insights", and AppKit's auto-managed Window menu carries an entry with
+        /// exactly that title, so an unscoped query matches two elements and the click fails.
+        /// Measured: an entry reads "Title (Subtitle)" with a subtitle and exactly "Title" without,
+        /// and this window has no subtitle. Scoping is not a click, so the no-click-on-the-parent
+        /// contract above still holds.
+        let item = app.menuBars.menuBarItems["Database"].menuItems["Query Insights"]
         XCTAssertTrue(item.waitToExist(timeout: 10), "Database > Query Insights must exist")
         item.click()
     }
