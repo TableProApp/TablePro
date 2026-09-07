@@ -56,7 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Query Live Activity still counting up on the iOS Lock Screen and Dynamic Island after the app was quit mid-query.
 - Stop leaving an iOS MySQL or Redis query running, with the spinner and the Live Activity stuck behind it.
-- A stopped or memory-stopped iOS query recorded in Query History as successful.
+- A stopped or memory-stopped iOS query recorded in Query History as successful, including a write that streamed no rows.
 - Query Live Activity marked interrupted while an iOS query longer than five minutes was still running.
 - Connection screen stuck on Connecting for good after a cancelled connect on iPhone and iPad.
 - Edited connection host, port or credentials ignored until relaunch on iPhone and iPad.
