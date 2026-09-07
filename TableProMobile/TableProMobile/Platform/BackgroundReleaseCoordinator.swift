@@ -40,17 +40,19 @@ final class BackgroundReleaseCoordinator {
         syncAssertion()
     }
 
-    func releaseForSuspension() async {
+    @discardableResult
+    func releaseForSuspension() async -> [UUID] {
         isPreparedForSuspension = false
         guard connectionManager.hasSuspensionBlockingResources else {
             syncAssertion()
-            return
+            return []
         }
         beginAssertion()
         releasesInFlight += 1
-        await connectionManager.releaseSuspensionBlockingResources()
+        let released = await connectionManager.releaseSuspensionBlockingResources()
         releasesInFlight -= 1
         syncAssertion()
+        return released
     }
 
     private var needsAssertion: Bool {

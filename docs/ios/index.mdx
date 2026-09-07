@@ -64,7 +64,9 @@ A new row starts with every column on **DEFAULT**, which leaves that column out 
 
 ### Querying
 
-The editor highlights SQL, runs a statement, and stops one mid-flight. Results copy or export as JSON, CSV, or SQL `INSERT`. A running query appears in a Live Activity on the lock screen and Dynamic Island; **Settings > Privacy** hides the SQL text there.
+The editor highlights SQL, runs a statement, and stops one mid-flight. **Stop** ends the result stream at once; on MySQL and Redis the statement keeps running on the server until it finishes. Results copy or export as JSON, CSV, or SQL `INSERT`.
+
+A running query appears in a Live Activity on the lock screen and Dynamic Island, with the elapsed time and the row count so far. **Settings > Privacy** replaces the SQL text there with "Running query". The card clears when the query ends. Quitting the app mid-query leaves it behind, marked interrupted, until the next launch clears it.
 
 ## What is missing
 

@@ -35,6 +35,45 @@ struct QueryEditorViewModelTests {
         }
     }
 
+    @Test("stop marks the run cancelled rather than letting it settle as finished")
+    func stopRecordsCancellation() async {
+        let driver = MockDatabaseDriver()
+        let gate = QueryGate()
+        driver.beforeExecute = { await gate.wait() }
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: makeColumns(), rows: [["1"]], rowsAffected: 0, executionTime: 0))
+        ]
+
+        let vm = QueryEditorViewModel(windowCapacity: 100)
+        let run = Task { await vm.run(driver: driver, query: "SELECT 1") }
+        while !vm.isRunning {
+            await Task.yield()
+        }
+        vm.stop()
+        await gate.open()
+        await run.value
+
+        #expect(vm.truncationReason != nil)
+        if case .truncated(let reason) = vm.phase, case .cancelled = reason {
+            #expect(vm.truncationMessage != nil)
+        } else {
+            Issue.record("expected truncated(.cancelled) phase, got \(vm.phase)")
+        }
+        #expect(QueryExecutionOutcome(phase: vm.phase) == .stopped)
+    }
+
+    @Test("stop on an idle view model changes nothing")
+    func stopWhenIdleIsInert() {
+        let vm = QueryEditorViewModel(windowCapacity: 100)
+
+        vm.stop()
+
+        #expect(vm.truncationReason == nil)
+        if case .idle = vm.phase {} else {
+            Issue.record("expected idle phase, got \(vm.phase)")
+        }
+    }
+
     @Test("run completes without truncation for a small result")
     func runCompletes() async {
         let driver = MockDatabaseDriver()
@@ -92,5 +131,21 @@ struct QueryEditorViewModelTests {
         if case .idle = vm.phase {} else {
             Issue.record("expected idle phase after reset")
         }
+    }
+}
+
+private actor QueryGate {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var isOpen = false
+
+    func wait() async {
+        guard !isOpen else { return }
+        await withCheckedContinuation { continuation = $0 }
+    }
+
+    func open() {
+        isOpen = true
+        continuation?.resume()
+        continuation = nil
     }
 }

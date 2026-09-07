@@ -86,14 +86,16 @@ public final class ConnectionManager: @unchecked Sendable {
         !suspensionBlockingIds().isEmpty
     }
 
-    public func releaseSuspensionBlockingResources() async {
+    @discardableResult
+    public func releaseSuspensionBlockingResources() async -> [UUID] {
         let ids = suspensionBlockingIds()
-        guard !ids.isEmpty else { return }
+        guard !ids.isEmpty else { return [] }
         await withTaskGroup(of: Void.self) { group in
             for id in ids {
                 group.addTask { await self.disconnect(id) }
             }
         }
+        return ids
     }
 
     private func suspensionBlockingIds() -> [UUID] {

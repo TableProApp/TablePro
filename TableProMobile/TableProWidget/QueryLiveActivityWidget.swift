@@ -17,9 +17,9 @@ struct QueryLiveActivityWidget: Widget {
                         .background(.tint.opacity(0.15), in: RoundedRectangle(cornerRadius: 7))
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    elapsedText(context.state)
+                    elapsedText(context.state, isStale: context.isStale)
                         .font(.title3.monospacedDigit())
-                        .foregroundStyle(context.state.endedAt == nil ? .primary : .secondary)
+                        .foregroundStyle(isLive(context) ? .primary : .secondary)
                 }
                 DynamicIslandExpandedRegion(.center) {
                     Text(context.attributes.connectionName)
@@ -34,21 +34,18 @@ struct QueryLiveActivityWidget: Widget {
                             .lineLimit(1)
                             .truncationMode(.tail)
                         Spacer()
-                        if context.state.rowsStreamed > 0 {
-                            Label(rowCountText(context.state.rowsStreamed), systemImage: "list.bullet")
-                                .font(.caption)
-                                .labelStyle(.titleAndIcon)
-                                .foregroundStyle(.secondary)
-                        }
+                        Text(statusText(context))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
             } compactLeading: {
                 Image(systemName: "terminal.fill")
                     .foregroundStyle(.tint)
             } compactTrailing: {
-                compactStatus(state: context.state)
+                compactStatus(context)
             } minimal: {
-                compactStatus(state: context.state)
+                compactStatus(context)
             }
             .widgetURL(deepLink(connectionId: context.attributes.connectionId))
         }
@@ -78,13 +75,11 @@ struct QueryLiveActivityWidget: Widget {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 2) {
-                elapsedText(context.state)
+                elapsedText(context.state, isStale: context.isStale)
                     .font(.body.monospacedDigit())
-                if context.state.rowsStreamed > 0 {
-                    Text(rowCountText(context.state.rowsStreamed))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
+                Text(statusText(context))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(.horizontal, 14)
@@ -94,23 +89,76 @@ struct QueryLiveActivityWidget: Widget {
     // MARK: - Compact / Minimal Status
 
     @ViewBuilder
-    private func compactStatus(state: QueryActivityAttributes.ContentState) -> some View {
-        if state.endedAt != nil {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-        } else {
+    private func compactStatus(_ context: ActivityViewContext<QueryActivityAttributes>) -> some View {
+        if isLive(context) {
             ProgressView()
                 .progressViewStyle(.circular)
                 .controlSize(.mini)
+        } else {
+            Image(systemName: symbolName(for: outcome(context)))
+                .foregroundStyle(tint(for: outcome(context)))
         }
     }
 
     // MARK: - Helpers
 
+    private func isLive(_ context: ActivityViewContext<QueryActivityAttributes>) -> Bool {
+        context.state.endedAt == nil && !context.isStale
+    }
+
+    private func outcome(_ context: ActivityViewContext<QueryActivityAttributes>) -> QueryActivityAttributes.Outcome {
+        guard context.state.outcome == .running else { return context.state.outcome }
+        return context.isStale ? .interrupted : .running
+    }
+
+    private func symbolName(for outcome: QueryActivityAttributes.Outcome) -> String {
+        switch outcome {
+        case .running: "hourglass"
+        case .completed: "checkmark.circle.fill"
+        case .failed: "xmark.circle.fill"
+        case .stopped: "stop.circle.fill"
+        case .interrupted: "exclamationmark.triangle.fill"
+        }
+    }
+
+    private func tint(for outcome: QueryActivityAttributes.Outcome) -> Color {
+        switch outcome {
+        case .running: .secondary
+        case .completed: .green
+        case .failed: .red
+        case .stopped: .secondary
+        case .interrupted: .orange
+        }
+    }
+
+    private func statusText(_ context: ActivityViewContext<QueryActivityAttributes>) -> String {
+        switch outcome(context) {
+        case .running:
+            return context.state.rowsStreamed > 0
+                ? rowCountText(context.state.rowsStreamed)
+                : String(localized: "Running")
+        case .completed:
+            return context.state.rowsStreamed > 0
+                ? rowCountText(context.state.rowsStreamed)
+                : String(localized: "Done")
+        case .failed:
+            return String(localized: "Failed")
+        case .stopped:
+            return String(localized: "Stopped")
+        case .interrupted:
+            return String(localized: "Interrupted")
+        }
+    }
+
     @ViewBuilder
-    private func elapsedText(_ state: QueryActivityAttributes.ContentState) -> some View {
+    private func elapsedText(
+        _ state: QueryActivityAttributes.ContentState,
+        isStale: Bool
+    ) -> some View {
         if let ended = state.endedAt {
             Text(formatElapsed(ended.timeIntervalSince(state.startedAt)))
+        } else if isStale {
+            Text(formatElapsed(state.elapsedWhenLastAlive))
         } else {
             Text(timerInterval: state.startedAt...Date.distantFuture, countsDown: false, showsHours: false)
         }

@@ -33,6 +33,7 @@ final class AppState {
     var pendingImportURL: URL?
     let connectionManager: ConnectionManager
     let backgroundRelease: BackgroundReleaseCoordinator
+    let queryActivities = QueryActivityController()
     let syncCoordinator = IOSSyncCoordinator()
     let sshProvider: IOSSSHProvider
     let secureStore: KeychainSecureStore

@@ -6,7 +6,7 @@ import TableProModels
 @MainActor
 @Observable
 final class QueryEditorViewModel {
-    enum Phase: Sendable {
+    nonisolated enum Phase: Sendable {
         case idle
         case running
         case finished
@@ -105,6 +105,8 @@ final class QueryEditorViewModel {
     }
 
     func stop() {
+        guard case .running = phase else { return }
+        buffer.markTruncated(.cancelled)
         fetchTask?.cancel()
     }
 

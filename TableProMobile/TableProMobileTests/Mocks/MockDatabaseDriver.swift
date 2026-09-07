@@ -33,6 +33,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     var beforeDisconnect: (@Sendable () async -> Void)?
+    var beforeExecute: (@Sendable () async -> Void)?
 
     func connect() async throws {}
     func disconnect() async throws {
@@ -42,6 +43,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     func cancelCurrentQuery() async throws {}
 
     func execute(query: String) async throws -> QueryResult {
+        await beforeExecute?()
         executedQueries.append(query)
         guard !scriptedExecuteResults.isEmpty else {
             return QueryResult(columns: [], rows: [], rowsAffected: 0, executionTime: 0)
