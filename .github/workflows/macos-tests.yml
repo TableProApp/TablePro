@@ -341,8 +341,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: scripts/ci/summarize-xcresult.sh TestResults.xcresult "Unit tests"
 
+      # The bundle is evidence about the run, not the run's verdict, so a failure to upload it
+      # must not decide whether the suite passed. GitHub's own artifact endpoint answered
+      # ENOTFOUND on run 34056832569 and turned a green suite red, which failed the gate on main.
       - name: Upload test results
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: macos-test-results
@@ -422,8 +426,11 @@ jobs:
         if: ${{ !cancelled() }}
         run: scripts/ci/summarize-xcresult.sh UITestResults.xcresult "UI tests ${{ matrix.shard }}/${{ matrix.of }}"
 
+      # Diagnostic, exactly as in the unit job above: an upload that cannot reach GitHub says
+      # nothing about the tests and must not fail the shard.
       - name: Upload UI test results
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: macos-ui-test-results-${{ matrix.shard }}
