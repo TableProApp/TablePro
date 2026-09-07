@@ -317,8 +317,6 @@ final class ConnectionFormViewModel {
             try? secureStore.delete(forKey: "com.TablePro.sshkeydata.\(tempId.uuidString)")
         }
 
-        await appState.sshProvider.setPendingConnectionId(tempId)
-
         do {
             _ = try await appState.connectionManager.connect(testConn)
             await appState.connectionManager.disconnect(tempId)

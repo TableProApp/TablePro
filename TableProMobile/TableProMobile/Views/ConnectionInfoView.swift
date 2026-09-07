@@ -5,6 +5,7 @@ import TableProModels
 struct ConnectionInfoView: View {
     @Environment(ConnectionCoordinator.self) private var coordinator
     @Environment(AppState.self) private var appState
+    @Environment(ConnectionCoordinatorStore.self) private var coordinatorStore
 
     private var connection: DatabaseConnection { coordinator.connection }
 
@@ -52,6 +53,7 @@ struct ConnectionInfoView: View {
         )) {
             ConnectionFormView(editing: connection) { updated in
                 appState.updateConnection(updated)
+                coordinatorStore.invalidate(updated.id)
                 coordinator.showingEditSheet = false
             }
         }

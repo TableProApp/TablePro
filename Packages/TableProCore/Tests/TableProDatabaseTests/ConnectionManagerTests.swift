@@ -1,133 +1,8 @@
-import Testing
 import Foundation
 @testable import TableProDatabase
 @testable import TableProModels
+import Testing
 
-// MARK: - Mock Types
-
-private final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
-    var isConnected = false
-    var shouldFailConnect = false
-    var holdsSuspensionBlockingResource = false
-    var onConnect: (@Sendable () -> Void)?
-    var beforeDisconnect: (@Sendable () async -> Void)?
-    private(set) var disconnectCount = 0
-
-    func connect() async throws {
-        if shouldFailConnect { throw NSError(domain: "test", code: 1) }
-        onConnect?()
-        isConnected = true
-    }
-
-    func disconnect() async throws {
-        await beforeDisconnect?()
-        isConnected = false
-        disconnectCount += 1
-    }
-    func ping() async throws -> Bool { isConnected }
-
-    func execute(query: String) async throws -> QueryResult {
-        QueryResult(columns: [], rows: [], rowsAffected: 0, executionTime: 0, isTruncated: false, statusMessage: nil)
-    }
-
-    func cancelCurrentQuery() async throws {}
-    func fetchTables(schema: String?) async throws -> [TableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] { [] }
-    func fetchDatabases() async throws -> [String] { [] }
-    func switchDatabase(to name: String) async throws {}
-    var supportsSchemas: Bool { false }
-    func switchSchema(to name: String) async throws {}
-    func fetchSchemas() async throws -> [String] { [] }
-    var currentSchema: String? { nil }
-    var supportsTransactions: Bool { false }
-    func beginTransaction() async throws {}
-    func commitTransaction() async throws {}
-    func rollbackTransaction() async throws {}
-    var serverVersion: String? { nil }
-}
-
-private final class MockDriverFactory: DriverFactory, @unchecked Sendable {
-    var drivers: [String: any DatabaseDriver] = [:]
-
-    func createDriver(for connection: DatabaseConnection, password: String?) throws -> any DatabaseDriver {
-        guard let driver = drivers[connection.type.rawValue] else {
-            throw ConnectionError.driverNotFound(connection.type.rawValue)
-        }
-        return driver
-    }
-
-    func supportedTypes() -> [DatabaseType] { [] }
-}
-
-private final class MockSecureStore: SecureStore, Sendable {
-    private let passwords: [String: String]
-
-    init(passwords: [String: String] = [:]) {
-        self.passwords = passwords
-    }
-
-    func store(_ value: String, forKey key: String) throws {}
-
-    func retrieve(forKey key: String) throws -> String? {
-        passwords[key]
-    }
-
-    func delete(forKey key: String) throws {}
-}
-
-// MARK: - Synchronisation Helpers
-
-private actor Gate {
-    private var isOpen = false
-    private var hasEntered = false
-    private var blocked: [CheckedContinuation<Void, Never>] = []
-    private var observers: [CheckedContinuation<Void, Never>] = []
-
-    func enter() async {
-        hasEntered = true
-        for observer in observers { observer.resume() }
-        observers.removeAll()
-        guard !isOpen else { return }
-        await withCheckedContinuation { blocked.append($0) }
-    }
-
-    func open() {
-        isOpen = true
-        for waiter in blocked { waiter.resume() }
-        blocked.removeAll()
-    }
-
-    func waitUntilEntered() async {
-        guard !hasEntered else { return }
-        await withCheckedContinuation { observers.append($0) }
-    }
-}
-
-private actor Barrier {
-    private static let pollInterval: UInt64 = 20_000_000
-    private static let maxPolls = 250
-
-    private let expected: Int
-    private var arrived = 0
-    private(set) var overlapped = 0
-
-    init(expected: Int) {
-        self.expected = expected
-    }
-
-    func arriveAndWait() async {
-        arrived += 1
-        var polls = 0
-        while arrived < expected, polls < Self.maxPolls {
-            try? await Task.sleep(nanoseconds: Self.pollInterval)
-            polls += 1
-        }
-        guard arrived >= expected else { return }
-        overlapped += 1
-    }
-}
 
 @Suite("ConnectionManager Tests")
 struct ConnectionManagerTests {
@@ -142,7 +17,7 @@ struct ConnectionManagerTests {
             name: "Test",
             type: DatabaseType(rawValue: "mock"),
             host: "localhost",
-            port: 5432
+            port: 5_432
         )
 
         let session = try await manager.connect(connection)
@@ -253,7 +128,43 @@ struct ConnectionManagerTests {
             _ = try await manager.connect(connection)
         }
 
-        #expect(sshProvider.closedTunnels.contains(connection.id))
+        #expect(sshProvider.closedTunnelIds.count == 1)
+        #expect(sshProvider.closedTunnels.isEmpty)
+    }
+
+    @Test("A losing attempt closes its own tunnel, never the tunnel the winner installed")
+    func losingAttemptClosesOnlyItsOwnTunnel() async throws {
+        let factory = MockDriverFactory()
+        let ssh = MockSSHProvider()
+        let manager = ConnectionManager(
+            driverFactory: factory,
+            secureStore: MockSecureStore(),
+            sshProvider: ssh
+        )
+        let connection = DatabaseConnection(
+            name: "Tunnelled",
+            type: DatabaseType(rawValue: "mock"),
+            sshEnabled: true,
+            sshConfiguration: SSHConfiguration(host: "jump.example.com")
+        )
+        let gate = Gate()
+
+        let slow = MockDatabaseDriver()
+        slow.beforeConnect = { await gate.enter() }
+        factory.drivers["mock"] = slow
+
+        let losing = Task { _ = try await manager.connect(connection) }
+        await gate.waitUntilEntered()
+
+        factory.drivers["mock"] = MockDatabaseDriver()
+        _ = try await manager.connect(connection)
+        let winningTunnel = ssh.openedTunnelIds[1]
+
+        await gate.open()
+        await #expect(throws: CancellationError.self) { try await losing.value }
+
+        #expect(ssh.closedTunnelIds == [ssh.openedTunnelIds[0]])
+        #expect(!ssh.closedTunnelIds.contains(winningTunnel))
     }
 
     @Test("Only sessions holding a suspension blocking resource are released")
@@ -366,22 +277,70 @@ struct ConnectionManagerTests {
         #expect(first.disconnectCount == 1)
         #expect(second.isConnected)
     }
-}
 
-// MARK: - Mock SSH Provider
+    @Test("An attempt invalidated while it is connecting discards its own driver")
+    func invalidatedAttemptDiscardsItsDriver() async throws {
+        let factory = MockDriverFactory()
+        let manager = ConnectionManager(driverFactory: factory, secureStore: MockSecureStore())
+        let connection = DatabaseConnection(name: "Test", type: DatabaseType(rawValue: "mock"))
+        let gate = Gate()
 
-private final class MockSSHProvider: SSHProvider, @unchecked Sendable {
-    var closedTunnels: Set<UUID> = []
+        let driver = MockDatabaseDriver()
+        driver.beforeConnect = { await gate.enter() }
+        factory.drivers["mock"] = driver
 
-    func createTunnel(
-        config: SSHConfiguration,
-        remoteHost: String,
-        remotePort: Int
-    ) async throws -> SSHTunnel {
-        SSHTunnel(localHost: "127.0.0.1", localPort: 33306)
+        let attempt = Task { try await manager.connect(connection) }
+        await gate.waitUntilEntered()
+
+        manager.invalidateAttempt(for: connection.id)
+        await gate.open()
+
+        await #expect(throws: CancellationError.self) { try await attempt.value }
+        #expect(manager.session(for: connection.id) == nil)
+        #expect(driver.disconnectCount == 1)
     }
 
-    func closeTunnel(for connectionId: UUID) async throws {
-        closedTunnels.insert(connectionId)
+    @Test("A late attempt cannot overwrite the session a newer attempt established")
+    func lateAttemptCannotClobberNewerSession() async throws {
+        let factory = MockDriverFactory()
+        let manager = ConnectionManager(driverFactory: factory, secureStore: MockSecureStore())
+        let connection = DatabaseConnection(name: "Test", type: DatabaseType(rawValue: "mock"))
+        let gate = Gate()
+
+        let slow = MockDatabaseDriver()
+        slow.beforeConnect = { await gate.enter() }
+        factory.drivers["mock"] = slow
+
+        let first = Task { try await manager.connect(connection) }
+        await gate.waitUntilEntered()
+
+        let fast = MockDatabaseDriver()
+        factory.drivers["mock"] = fast
+        _ = try await manager.connect(connection)
+
+        await gate.open()
+        await #expect(throws: CancellationError.self) { try await first.value }
+
+        #expect(manager.session(for: connection.id)?.driver === fast)
+        #expect(slow.disconnectCount == 1)
+    }
+
+    @Test("A tunnel is opened for the connection being dialed, not for whoever asked last")
+    func tunnelCarriesItsOwnConnectionId() async throws {
+        let factory = MockDriverFactory()
+        let ssh = MockSSHProvider()
+        let manager = ConnectionManager(
+            driverFactory: factory,
+            secureStore: MockSecureStore(),
+            sshProvider: ssh
+        )
+        var connection = DatabaseConnection(name: "Tunnelled", type: DatabaseType(rawValue: "mock"))
+        connection.sshEnabled = true
+        connection.sshConfiguration = SSHConfiguration(host: "jump.example.com", port: 22, username: "probe")
+        factory.drivers["mock"] = MockDatabaseDriver()
+
+        _ = try await manager.connect(connection)
+
+        #expect(ssh.tunnelledConnectionIds == [connection.id])
     }
 }

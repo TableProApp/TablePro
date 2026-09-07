@@ -28,7 +28,6 @@ struct IntentDatabaseSession {
             sshProvider: sshProvider
         )
         if connection.sshEnabled {
-            await sshProvider.setPendingConnectionId(connection.id)
         }
         do {
             let session = try await manager.connect(connection)

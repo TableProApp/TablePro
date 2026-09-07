@@ -2,6 +2,7 @@ import CMariaDB
 import Foundation
 import TableProDatabase
 import TableProModels
+import TableProMSSQLCore
 
 nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     private let actor = MySQLActor()
@@ -263,7 +264,9 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
 private actor MySQLActor {
     private var mysql: UnsafeMutablePointer<MYSQL>?
 
-    func connect(host: String, port: Int, user: String, password: String, database: String, ssl: DriverSSLConfiguration) throws {
+    private static let connectDeadline: DispatchTimeInterval = .seconds(15)
+
+    func connect(host: String, port: Int, user: String, password: String, database: String, ssl: DriverSSLConfiguration) async throws {
         // Close existing connection if reconnecting
         if let mysql { mysql_close(mysql); self.mysql = nil }
 
@@ -306,9 +309,25 @@ private actor MySQLActor {
                 "Port \(port) is out of range. Use a value between 1 and 65535."
             )
         }
-        guard mysql_real_connect(
-            handle, host, user, password, database, portU32, nil, 0
-        ) != nil else {
+        // A late call closes the handle it was still using, rather than the caller closing it.
+        nonisolated(unsafe) let unsafeHandle = handle
+        let connected = try await runCancellableBlocking(
+            on: DispatchQueue(label: "com.TablePro.mysql.connect.\(UUID().uuidString)"),
+            deadline: Self.connectDeadline,
+            timeoutError: {
+                MySQLError.connectionFailed(
+                    String(localized: "Timed out connecting to the MySQL server.")
+                )
+            },
+            work: {
+                mysql_real_connect(
+                    unsafeHandle, host, user, password, database, portU32, nil, 0
+                ) != nil
+            },
+            discardLateResult: { _ in mysql_close(unsafeHandle) }
+        )
+
+        guard connected else {
             let msg = String(cString: mysql_error(handle))
             mysql_close(handle)
             throw MySQLError.connectionFailed(msg)
