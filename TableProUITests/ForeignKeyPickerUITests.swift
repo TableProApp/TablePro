@@ -72,7 +72,7 @@ final class ForeignKeyPickerUITests: UITestCase {
         let grid = window.tables.matching(identifier: "data-grid").firstMatch
         XCTAssertTrue(grid.waitToExist(timeout: 30), "Album produced no data grid")
         XCTAssertTrue(
-            waitForPredicate(timeout: 30) { !grid.tableRows.allElementsBoundByIndex.isEmpty },
+            waitForClickableRows(in: grid),
             "Album must load rows before a cell can be edited"
         )
         return grid

@@ -226,6 +226,21 @@ internal class UITestCase: XCTestCase {
             .withOffset(CGVector(dx: max(80, clearOfBrowser), dy: dy))
     }
 
+    /// The preconditions a click taken off the grid actually has, which existence does not give.
+    ///
+    /// The grid enters the tree when its table view is mounted, which is before the query behind it
+    /// has returned. A click posted then lands on empty grid and selects nothing, and nothing fails
+    /// there: the suite goes on to wait out its own timeout for whatever the selection was supposed
+    /// to produce, and reports that as the missing thing. A grid that exists is also not laid out
+    /// yet, and a coordinate taken off an empty frame resolves to `(inf, inf)`, which posts at no
+    /// display at all and takes the runner down instead of failing.
+    internal func waitForClickableRows(in grid: XCUIElement, timeout: TimeInterval = 30) -> Bool {
+        waitForPredicate(timeout: timeout) {
+            grid.frame.width > 0 && grid.frame.height > 0
+                && !grid.tableRows.allElementsBoundByIndex.isEmpty
+        }
+    }
+
     /// The object browser draws its rows as hosted cells, so a row's name arrives as the static
     /// text's `value`, carrying the object kind the row reads out to VoiceOver, rather than as a
     /// label or an identifier. Matching on `value` is what finds them.

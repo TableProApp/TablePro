@@ -57,10 +57,25 @@ final class InspectorFieldAffordanceUITests: UITestCase {
     /// the grid on the 1024x768 runner, and `dy` clears the 42pt header so the click does not open
     /// the column menu. The row is selected before the inspector opens, so the reveal cannot move
     /// the grid out from under the coordinate.
+    ///
+    /// The rows have to be in before the click, or it lands on empty grid and selects nothing: the
+    /// inspector then opens on its no-selection state, which draws no field and so no value menu,
+    /// and the failure reads as a missing menu rather than as a missed row. That is what made this
+    /// suite fail on a contended runner and pass on its retry.
     private func openFirstTableRow(in app: XCUIApplication, window: XCUIElement) throws -> XCUIElement {
         let grid = window.tables.matching(identifier: "data-grid").firstMatch
         XCTAssertTrue(grid.waitToExist(timeout: 30), "The sample table must produce a grid")
+        XCTAssertTrue(
+            waitForClickableRows(in: grid),
+            "The sample table must have its rows in before one of them can be clicked"
+        )
+
         gridPoint(in: grid, of: window, dy: 70).click()
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { grid.tableRows.allElementsBoundByIndex.contains { $0.isSelected } },
+            "The click must select a row, or the inspector has nothing to draw fields for"
+        )
+
         showInspector(in: app)
         return grid
     }
