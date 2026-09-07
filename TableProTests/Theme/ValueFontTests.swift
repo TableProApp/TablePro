@@ -106,6 +106,10 @@ struct ValueFontTests {
             "TablePro/Views/Results/SvgViewerContentView.swift",
             "TablePro/Views/Results/CellImageWindowController.swift",
             "TablePro/Views/RowInspector/FieldEditors/ImageFieldView.swift",
+            /// Reached from `.blobHex`, which inherits the value font from the row, and from
+            /// `.image`, which does not, so it has to name the font itself or the same dump renders
+            /// monospaced down one route and proportional down the other.
+            "TablePro/Views/RowInspector/FieldEditors/BlobHexEditorView.swift",
             "TablePro/Views/Results/ForeignKeyPreviewView.swift",
             "TablePro/Views/Results/ArrayValueEditorView.swift",
             "TablePro/Views/Results/SetPopoverContentView.swift",

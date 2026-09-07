@@ -30,7 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Backup of several databases into one folder, one file each. (#2485)
 - Back Up… on a database selection in the connection tree. (#2485)
 - Assistant as its own pane, with View > Show Assistant and `Cmd+Option+A`.
-- Compact one-line rows in the inspector for short values, with long text, JSON and images still full width.
+- Inspector fields with the column name and type on one line and the value at full width below.
+- A BLOB too large to edit whole marked read-only in the inspector, in place of an editable first 10 KB.
 - Always-visible value menu on every inspector field, with `Ctrl+Option+N` for NULL and `Ctrl+Option+D` for DEFAULT.
 - Tab and Shift+Tab between inspector fields.
 - Field search and an edited-fields-only filter in the inspector.

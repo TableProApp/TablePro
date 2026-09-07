@@ -138,7 +138,7 @@ internal struct InspectorFieldListView: View {
         let editable = Self.isFieldEditable(field, kind: kind, rowIsEditable: isEditable)
         InspectorFieldRow(
             context: context(for: field, kind: kind, isEditable: editable),
-            layout: InspectorFieldLayout.resolve(for: kind),
+            layout: InspectorFieldLayout.resolve(for: kind, isSchemaField: field.isSchemaField),
             kind: kind,
             isModified: field.hasEdit || field.hasCommittedEdit,
             isPrimaryKey: field.isPrimaryKey,

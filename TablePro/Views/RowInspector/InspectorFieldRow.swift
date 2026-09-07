@@ -46,36 +46,34 @@ internal struct InspectorFieldRow: View {
 
     // MARK: - Layouts
 
+    /// A schema row: the label in a fixed trailing-aligned lane, the editor filling what is left.
+    /// The lane is a constant because the label vocabulary is closed and authored; its widest member
+    /// renders at 66.4pt, so 96 carries every one of them with room for a longer translation.
     private var inlineRow: some View {
-        HStack(spacing: 5) {
-            statusGlyphs
-            Text(context.columnName)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .layoutPriority(1)
-            Spacer(minLength: 6)
-            if context.showsTypeBadge {
-                TypeBadge(context.columnType.badgeLabel)
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            HStack(spacing: 3) {
+                statusGlyphs
+                fieldLabel
             }
+            .frame(width: Self.schemaLabelLaneWidth, alignment: .trailing)
             editor
-                .frame(maxWidth: Self.inlineEditorMaxWidth, alignment: .trailing)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            modifiedGlyph
             valueMenu
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 3)
     }
 
+    /// A data row: name and type on their own line, the value at full width beneath. Every value in
+    /// the pane then starts at the same x and gets the whole content width, against the 24 to 31pt a
+    /// long column name used to leave it.
     private var stackedRow: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 5) {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 4) {
                 statusGlyphs
-                Text(context.columnName)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                fieldLabel
                 Spacer(minLength: 4)
+                modifiedGlyph
                 if context.showsTypeBadge {
                     TypeBadge(context.columnType.badgeLabel)
                 }
@@ -96,7 +94,18 @@ internal struct InspectorFieldRow: View {
             }
             editor
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, 2)
+    }
+
+    /// Carries the full name as a tooltip, which is what the HIG asks of a label it had to clip:
+    /// "consider using an expansion tooltip to show the full version of clipped or truncated text".
+    private var fieldLabel: some View {
+        Text(context.columnName)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .help(context.columnName)
     }
 
     // MARK: - Header pieces
@@ -104,25 +113,35 @@ internal struct InspectorFieldRow: View {
     /// Drawn without accessibility of their own; the row's own label carries what they mean, so a
     /// reader is told which field is the primary key and which holds an unsaved edit. They were
     /// bare `Image` and `Circle` decoration before and said nothing at all.
+    ///
+    /// A row with neither takes no width for them, so its name sits at the same leading edge as the
+    /// value beneath it. Reserving the space on every row instead indented every name past its own
+    /// value by 18pt, which is the misalignment this layout exists to remove.
+    @ViewBuilder
     private var statusGlyphs: some View {
-        HStack(spacing: 3) {
+        if isPrimaryKey {
+            Image(systemName: "key.fill")
+                .foregroundStyle(.orange)
+                .font(.caption2)
+                .accessibilityHidden(true)
+        } else if isForeignKey {
+            Image(systemName: "arrow.up.forward")
+                .foregroundStyle(.secondary)
+                .font(.caption2)
+                .accessibilityHidden(true)
+        }
+    }
+
+    /// The unsaved-edit marker sits at the trailing end rather than in front of the name, so
+    /// recording an edit cannot shift the name it belongs to.
+    @ViewBuilder
+    private var modifiedGlyph: some View {
+        if isModified {
             Circle()
                 .fill(Color.accentColor)
                 .frame(width: 5, height: 5)
-                .opacity(isModified ? 1 : 0)
-            Group {
-                if isPrimaryKey {
-                    Image(systemName: "key.fill").foregroundStyle(.orange)
-                } else if isForeignKey {
-                    Image(systemName: "arrow.up.forward").foregroundStyle(.secondary)
-                } else {
-                    Color.clear
-                }
-            }
-            .font(.caption2)
-            .frame(width: 10)
+                .accessibilityHidden(true)
         }
-        .accessibilityHidden(true)
     }
 
     private var accessibilityLabel: String {
@@ -205,7 +224,13 @@ internal struct InspectorFieldRow: View {
     }
 
 
-    /// An inline value gives the label room to be read. Measured at the pane's 270pt minimum, a
-    /// wider share leaves a long column name showing three characters and an ellipsis.
-    private static let inlineEditorMaxWidth: CGFloat = 150
+    /// The lane a schema row's label sits in. The vocabulary is closed and authored, and its widest
+    /// member, "Ref Columns", renders at 66.4pt in `.subheadline`, so this carries every label with
+    /// 45% left over for a longer translation. A label that still overruns truncates in the middle
+    /// and keeps its tooltip rather than taking the width from its own value.
+    ///
+    /// It is a constant, not a measurement. A lane derived from the rows on screen would change
+    /// width as the user scrolls, because a `PreferenceKey` max-reduce inside a `List` only ever
+    /// sees the realized rows.
+    private static let schemaLabelLaneWidth: CGFloat = 96
 }
