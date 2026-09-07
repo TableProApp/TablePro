@@ -101,6 +101,8 @@ A filter is `{ column, operator, value, second_value, case_sensitive }`. `column
 
 A sort entry is `{ column, direction }`, `direction` being `ascending` (default) or `descending`, and entries apply in the order given. `offset` defaults to 0.
 
+Sorting on a column left out of `columns` appends it to the result. The columns you asked for keep the positions you asked for, and the sort column follows them, because some drivers can only order by a column they select.
+
 ### `count_rows`
 
 Without filters this returns the engine's fast estimate unless `exact` is set. With filters it always counts for real, because an estimate cannot answer a filtered question.

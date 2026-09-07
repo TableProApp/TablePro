@@ -39,6 +39,7 @@ struct FocusedColumnResolutionTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: { _, _ in 100 }
         )
         return (tableView, schema)
@@ -75,6 +76,7 @@ struct FocusedColumnResolutionTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: { _, _ in 100 }
         )
         tableView.reloadData()

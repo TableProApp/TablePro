@@ -66,6 +66,8 @@ struct QueryTab: Identifiable, Equatable {
     var loadEpoch: Int = 0
 
     var pendingRestoredSort: [PersistedSortColumn]?
+    /// The source the saved sort was written with, held until the first load resolves the columns.
+    var restoredSortSource: SortSource = .unset
     var restoredPage: Int?
     /// The page size `restoredPage` was measured in. A page index means nothing without it: the
     /// offset is recomputed as `(page - 1) * pageSize`, so reading the index in a different size
@@ -159,6 +161,7 @@ struct QueryTab: Identifiable, Equatable {
         self.paginationVersion = 0
         self.loadEpoch = 0
         self.pendingRestoredSort = nil
+        self.restoredSortSource = .unset
         self.restoredPage = nil
         self.restoredPageSize = nil
         self.restoredCursorOffset = nil
@@ -189,7 +192,12 @@ struct QueryTab: Identifiable, Equatable {
         )
         self.pendingChanges = TabChangeSnapshot()
         self.selectedRowIndices = []
-        self.sortState = SortState()
+        /// A saved sort with no columns is the user's Don't Sort, and it never reaches the pending
+        /// path because there is nothing there to resolve. Seeding the source here is what carries
+        /// it past `wantsDefaultSort` on the first load.
+        self.sortState = (persisted.sortColumns?.isEmpty ?? true) && persisted.sortSource == .user
+            ? SortState(columns: [], source: .user)
+            : SortState()
         self.filterState = TabFilterState()
         self.findState = TabFindState()
         self.columnLayout = ColumnLayoutState(
@@ -205,6 +213,11 @@ struct QueryTab: Identifiable, Equatable {
         self.paginationVersion = 0
         self.loadEpoch = 0
         self.pendingRestoredSort = persisted.sortColumns
+        /// A file written before `sortSource` existed carries no answer, so it decodes to the
+        /// behaviour it was written under: saved columns were always the user's, and no saved
+        /// columns meant nothing had decided.
+        self.restoredSortSource = persisted.sortSource
+            ?? ((persisted.sortColumns?.isEmpty == false) ? .user : .unset)
         let clampedPageSize = persisted.restoredPageSize
             .map { $0.clamped(to: SettingsValidationRules.defaultPageSizeRange) }
         self.restoredPageSize = clampedPageSize
@@ -310,6 +323,13 @@ struct QueryTab: Identifiable, Equatable {
             guard resolved.isEmpty else { return resolved }
             return carriesPendingState ? pendingRestoredSort : nil
         }()
+        /// Written whatever the columns came to, because the source is the whole answer for an empty
+        /// sort: `.user` with no columns is the user's Don't Sort, and gating it the way the columns
+        /// are gated would drop that the moment the tab had run once.
+        let persistedSortSource: SortSource = {
+            if sortState.source != .unset { return sortState.source }
+            return carriesPendingState ? restoredSortSource : .unset
+        }()
 
         let restoredPage: Int?
         let restoredPageSize: Int?
@@ -342,6 +362,7 @@ struct QueryTab: Identifiable, Equatable {
             objectRef: display.objectRef,
             queryParameters: content.queryParameters.isEmpty ? nil : content.queryParameters,
             sortColumns: persistedSort,
+            sortSource: persistedSortSource,
             restoredPage: restoredPage,
             restoredPageSize: restoredPageSize,
             cursorOffset: Self.clampedCursorOffset(restoredCursorOffset, in: persistedQuery),

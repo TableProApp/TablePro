@@ -81,6 +81,7 @@ struct DataGridRowIdentityTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: { _, _ in 120 }
         )
 

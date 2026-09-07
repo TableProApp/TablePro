@@ -64,6 +64,7 @@ struct DrawnCellReachabilityTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: { _, _ in 120 }
         )
         let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 600, height: 200))

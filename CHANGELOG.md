@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tab and Shift+Tab between inspector fields.
 - Field search and an edited-fields-only filter in the inspector.
 - Table and row position at the top of the inspector.
+- Sort direction setting for the data grid, applied to the default row sort and to the first click on a column header. (#2665)
 
 ### Changed
 
@@ -54,6 +55,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Default row sort drawn on a column header as though it had been clicked.
+- First click on an already default-sorted column skipping straight to descending.
+- Don't Sort undone by the default row sort on the next load of the table.
+- Sort fired by a column-header drag the user dropped back where it started.
+- Shift-clicked second sort column lost when the tab was reused for another table.
+- Saved sort dropped on relaunch when its column was hidden.
+- Sort marker moved onto another column after a query returned different columns.
+- Sorted column silent to VoiceOver.
+- Sort chevron left on a column after Cancel on Discard Unsaved Changes.
+- Move Column Up and Down dimmed on the Structure tab after Don't Sort.
+- Order lost by an MCP `browse_table` sorting on a column outside its `columns` list.
 - Query Live Activity still counting up on the iOS Lock Screen and Dynamic Island after the app was quit mid-query.
 - Stop leaving an iOS MySQL or Redis query running, with the spinner and the Live Activity stuck behind it.
 - A stopped or memory-stopped iOS query recorded in Query History as successful, including a write that streamed no rows.
