@@ -492,8 +492,8 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return .nothingToRelease
         case .holdsOpenTransaction:
             return .kept(String(localized: "This connection has an open transaction. Commit or roll it back first."))
-        case .holdsTemporaryObjects:
-            return .kept(String(localized: "This connection has temporary tables or views, which closing the file would delete."))
+        case .holdsSessionObjects:
+            return .kept(String(localized: "This connection has session objects, such as a temporary table, a macro or a prepared statement, which closing the file would delete."))
         case .holdsAttachedCatalogs:
             return .kept(String(localized: "This connection has another database attached, which closing the file would detach."))
         case .holdsChangedSettings:
@@ -555,8 +555,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func cancelQuery() throws {
-        guard let conn = liveConnection.current else { return }
-        duckdb_interrupt(conn)
+        liveConnection.interrupt()
     }
 
     // MARK: - Streaming

@@ -86,6 +86,30 @@ struct MySQLSessionFootprintTests {
         #expect(result.blockingReason != nil)
     }
 
+    /// A comment in front of a statement pushed the keyword off the front, so the prefix checks
+    /// found nothing and the session read as clean. A release then dropped the temporary table.
+    @Test("A comment in front of a statement does not hide it")
+    func leadingCommentsDoNotHideState() {
+        #expect(footprint(after: "-- staging\nCREATE TEMPORARY TABLE staging (a INT)").hasTemporaryTables)
+        #expect(footprint(after: "/* setup */ SET @total = 5").hasUserVariables)
+        #expect(footprint(after: "# note\nPREPARE stmt FROM 'SELECT 1'").hasPreparedStatements)
+        #expect(footprint(after: "-- lock it\nLOCK TABLES users WRITE").hasLockedTables)
+    }
+
+    /// The driver's query timeout is a `SET SESSION`, and `DatabaseManager` applies it on every
+    /// connect. Counting it would leave the footprint dirty before the user ran anything, and no
+    /// connection would ever be released.
+    @Test("A semicolon inside a literal does not split a statement")
+    func semicolonsInsideLiteralsAreNotSeparators() {
+        #expect(footprint(after: "SELECT ';CREATE TEMPORARY TABLE x (a INT);'").isClean)
+        #expect(footprint(after: "INSERT INTO t VALUES ('SET @x = 1')").isClean)
+    }
+
+    @Test("A variable assigned with := is tracked")
+    func walrusAssignmentIsTracked() {
+        #expect(footprint(after: "SELECT @counter := 1").hasUserVariables)
+    }
+
     @Test("A reset clears everything, for a session that is genuinely new")
     func resetClearsEverything() {
         var result = footprint(after: "BEGIN", "CREATE TEMPORARY TABLE staging (a INT)")

@@ -83,7 +83,7 @@ struct MySQLSessionFootprint: Equatable {
         @unknown default: hasOpenTransaction = true
         }
 
-        for statement in sql.split(separator: ";") {
+        for statement in SQLStatementSplitting.statements(in: sql) {
             observeStatement(statement)
         }
     }
@@ -94,10 +94,8 @@ struct MySQLSessionFootprint: Equatable {
         self = MySQLSessionFootprint()
     }
 
-    private mutating func observeStatement(_ statement: Substring) {
-        let normalized = statement
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .uppercased()
+    private mutating func observeStatement(_ statement: String) {
+        let normalized = statement.uppercased()
         guard !normalized.isEmpty else { return }
 
         if normalized.hasPrefix("CREATE TEMPORARY ") || normalized.hasPrefix("CREATE OR REPLACE TEMPORARY ") {
@@ -132,9 +130,10 @@ struct MySQLSessionFootprint: Equatable {
         if normalized.hasPrefix("SET ") {
             observeSet(normalized)
         }
-        /// `SELECT ... INTO @x` and `EXECUTE ... INTO @x` both write a user variable without a
-        /// leading `SET`. `INTO @` is specific enough to catch them and rare enough elsewhere.
-        if normalized.contains("INTO @") {
+        /// `SELECT ... INTO @x` and `EXECUTE ... INTO @x` write a user variable without a leading
+        /// `SET`, and `SELECT @x := 1` writes one without either. Both spellings lose the variable
+        /// on a reconnect just as `SET @x` does.
+        if normalized.contains("INTO @") || normalized.contains("@") && normalized.contains(":=") {
             hasUserVariables = true
         }
     }

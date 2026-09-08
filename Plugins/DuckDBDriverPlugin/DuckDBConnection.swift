@@ -23,7 +23,7 @@ enum DuckDBReleaseOutcome: Equatable {
     case alreadyReleased
     case notOpen
     case notIdleYet
-    case holdsTemporaryObjects
+    case holdsSessionObjects
     case holdsAttachedCatalogs
     case holdsChangedSettings
     case holdsOpenTransaction
@@ -127,8 +127,19 @@ actor DuckDBConnectionActor {
 
         try openHandle(spec: spec)
         isReleased = false
-        for statement in sessionSetup {
-            _ = try? runSetup(statement)
+        do {
+            for statement in sessionSetup {
+                _ = try runSetup(statement)
+            }
+        } catch {
+            /// The session could not be put back where it was, so the handle is closed again
+            /// rather than handed over half restored. A `USE` that fails because the schema was
+            /// dropped while the file was released would otherwise leave the connection running in
+            /// DuckDB's default catalog while still reporting the old position, and every query
+            /// after it would silently address the wrong objects.
+            closeHandle()
+            isReleased = true
+            throw error
         }
         lastActivity = ContinuousClock.now
     }
@@ -148,9 +159,9 @@ actor DuckDBConnectionActor {
         }
 
         let startTime = Date()
+        noteActivity(query)
         var resolved = try Self.resolvedResult(query: query, parameters: [], connection: conn)
         defer { duckdb_destroy_result(&resolved.result) }
-        noteActivity(query)
         return Self.extractResult(from: &resolved.result, schema: resolved.schema, startTime: startTime)
     }
 
@@ -161,9 +172,9 @@ actor DuckDBConnectionActor {
         }
 
         let startTime = Date()
+        noteActivity(query)
         var resolved = try Self.resolvedResult(query: query, parameters: parameters, connection: conn)
         defer { duckdb_destroy_result(&resolved.result) }
-        noteActivity(query)
         return Self.extractResult(from: &resolved.result, schema: resolved.schema, startTime: startTime)
     }
 
@@ -176,9 +187,9 @@ actor DuckDBConnectionActor {
             throw DuckDBPluginError.notConnected
         }
 
+        noteActivity(query)
         var resolved = try Self.resolvedResult(query: query, parameters: [], connection: conn)
         defer { duckdb_destroy_result(&resolved.result) }
-        noteActivity(query)
         try Self.streamResultRows(&resolved.result, schema: resolved.schema, continuation: continuation)
     }
 
@@ -261,6 +272,10 @@ actor DuckDBConnectionActor {
 
     // MARK: - Release preconditions
 
+    /// Recorded before the statement runs, not after. `duckdb_query` executes a batch until one
+    /// statement fails, so `BEGIN; INSERT ...` can leave a transaction open and still throw. Noting
+    /// it only on success would leave `hasOpenTransaction` false over a transaction that is
+    /// genuinely open, and the next release would close the handle and roll it back.
     private func noteActivity(_ query: String) {
         lastActivity = ContinuousClock.now
         switch SQLTransactionTracking.effect(of: query) {
@@ -277,22 +292,22 @@ actor DuckDBConnectionActor {
     private func heldSessionState() -> DuckDBReleaseOutcome? {
         if hasOpenTransaction { return .holdsOpenTransaction }
         guard let counts = try? readHeldStateCounts() else { return .stateUnreadable }
-        if counts.temporaryObjects > 0 { return .holdsTemporaryObjects }
+        if counts.sessionObjects > 0 { return .holdsSessionObjects }
         if counts.catalogs > 1 { return .holdsAttachedCatalogs }
         guard let settings = try? readSettings() else { return .stateUnreadable }
         return settings == baselineSettings ? nil : .holdsChangedSettings
     }
 
-    private func readHeldStateCounts() throws -> (catalogs: Int, temporaryObjects: Int) {
+    private func readHeldStateCounts() throws -> (catalogs: Int, sessionObjects: Int) {
         let result = try runInternalQuery(DuckDBSchemaQueries.sessionHeldState)
-        guard let row = result.rows.first, row.count >= 3 else {
+        guard let row = result.rows.first, row.count >= 2 else {
             throw DuckDBPluginError.queryFailed("DuckDB reported no session state")
         }
         let values = row.compactMap { $0.asText.flatMap(Int.init) }
-        guard values.count >= 3 else {
+        guard values.count >= 2 else {
             throw DuckDBPluginError.queryFailed("DuckDB reported unreadable session state")
         }
-        return (catalogs: values[0], temporaryObjects: values[1] + values[2])
+        return (catalogs: values[0], sessionObjects: values[1])
     }
 
     /// The settings the driver moves itself, which a reopen replays from `sessionSetup` and which

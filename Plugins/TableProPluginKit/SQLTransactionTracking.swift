@@ -37,11 +37,11 @@ public enum SQLTransactionTracking {
     /// Closing is matched against the whole statement rather than its first word, and the two
     /// directions are deliberately asymmetric.
     ///
-    /// Splitting on `;` cuts string literals in half, so a query can leave a fragment that begins
-    /// with a transaction keyword without being one. Reading such a fragment as an *open* costs
-    /// only a resource kept a while longer. Reading one as a *close* clears the flag that is
-    /// protecting a real transaction, and the release that follows rolls it back. `SELECT 'a;
-    /// COMMIT '` is exactly that: the second fragment's first word is `COMMIT`.
+    /// Statements come from `SQLStatementSplitting`, which does not cut inside a literal or a
+    /// comment, so `SELECT ';COMMIT;'` stays one statement. Even so the two directions stay
+    /// asymmetric: reading a fragment as an *open* costs only a resource kept a while longer, while
+    /// reading one as a *close* clears the flag protecting a real transaction and the release that
+    /// follows rolls it back.
     private static let closingStatements: Set<String> = [
         "COMMIT", "COMMIT TRANSACTION", "COMMIT WORK",
         "ROLLBACK", "ROLLBACK TRANSACTION", "ROLLBACK WORK",
@@ -51,7 +51,7 @@ public enum SQLTransactionTracking {
 
     public static func effect(of sql: String) -> Effect {
         var effect = Effect.unchanged
-        for statement in sql.split(separator: ";") {
+        for statement in SQLStatementSplitting.statements(in: sql) {
             if closes(statement) {
                 effect = .closes
             } else if opens(statement) {
@@ -61,12 +61,12 @@ public enum SQLTransactionTracking {
         return effect
     }
 
-    private static func opens(_ statement: Substring) -> Bool {
+    private static func opens(_ statement: String) -> Bool {
         guard let keyword = leadingKeyword(of: statement) else { return false }
         return openingKeywords.contains(keyword)
     }
 
-    private static func closes(_ statement: Substring) -> Bool {
+    private static func closes(_ statement: String) -> Bool {
         let normalized = statement
             .split(whereSeparator: { $0.isWhitespace })
             .joined(separator: " ")
@@ -74,7 +74,7 @@ public enum SQLTransactionTracking {
         return closingStatements.contains(normalized)
     }
 
-    private static func leadingKeyword(of statement: Substring) -> String? {
+    private static func leadingKeyword(of statement: String) -> String? {
         guard let first = statement.split(whereSeparator: { $0.isWhitespace }).first else { return nil }
         return first.uppercased()
     }

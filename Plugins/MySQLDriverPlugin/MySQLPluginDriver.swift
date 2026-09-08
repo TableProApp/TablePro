@@ -50,6 +50,15 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// The re-acquisition in flight, so concurrent callers await one attempt instead of racing.
     private var reacquireTask: Task<Void, Error>?
 
+    /// Set by `disconnect()`. An idle release also leaves `mariadbConnection` nil, so nil alone
+    /// cannot say whether the session is waiting to be used again or is over: without this, work
+    /// still queued when the user disconnected would open a fresh server connection behind them.
+    private var isDisconnected = false
+
+    /// How many calls hold the connection right now. A release that ignores this can null the
+    /// connection between `requireConnection` returning and the query reaching the server.
+    private var activeOperations = 0
+
     internal static let logger = Logger(subsystem: "com.TablePro", category: "MySQLPluginDriver")
 
     var currentSchema: String? { nil }
@@ -120,6 +129,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         sessionLock.withLock {
             isReleased = false
+            isDisconnected = false
             lastActivity = ContinuousClock.now
         }
         await startIdleReleaseIfRequested()
@@ -132,10 +142,15 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         mariadbConnection = nil
         _serverVersion = nil
         isMariaDB = false
-        sessionLock.withLock {
+        let inFlight = sessionLock.withLock { () -> Task<Void, Error>? in
             isReleased = false
+            isDisconnected = true
             footprint.reset()
+            let task = reacquireTask
+            reacquireTask = nil
+            return task
         }
+        inFlight?.cancel()
     }
 
     /// A ping is TablePro asking whether the connection still works, not the user using it, so it
@@ -173,6 +188,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return try await executeWithReconnect(query: query, isRetry: false, rowCap: cap)
         }
         let conn = try await requireConnection()
+        defer { endOperation() }
         noteActivity(query)
         let startTime = Date()
         let result = try await conn.executeParameterizedQuery(query, parameters: parameters, rowCap: cap)
@@ -198,6 +214,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         let conn = try await requireConnection()
+        defer { endOperation() }
         noteActivity(query)
 
         let startTime = Date()
@@ -235,6 +252,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let startTime = Date()
 
         let conn = try await requireConnection()
+        defer { endOperation() }
         if countsAsActivity {
             noteActivity(query)
         }
@@ -306,13 +324,20 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// Takes a server connection again if the last one was handed back. A connection that was
     /// never released costs one boolean.
     private func requireConnection() async throws -> MariaDBPluginConnection {
-        if sessionLock.withLock({ isReleased }) || mariadbConnection == nil {
+        let state = sessionLock.withLock { (released: isReleased, disconnected: isDisconnected) }
+        guard !state.disconnected else { throw MariaDBPluginError.notConnected }
+        if state.released || mariadbConnection == nil {
             try await reacquireOnce()
         }
-        guard let conn = mariadbConnection else {
+        guard let conn = mariadbConnection, !sessionLock.withLock({ isDisconnected }) else {
             throw MariaDBPluginError.notConnected
         }
+        sessionLock.withLock { activeOperations += 1 }
         return conn
+    }
+
+    private func endOperation() {
+        sessionLock.withLock { activeOperations = max(0, activeOperations - 1) }
     }
 
     /// Concurrent callers wait on the one attempt rather than each starting their own. A metadata
@@ -362,9 +387,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         /// between them and be run on a connection that is about to go away.
         let handover: (outcome: PluginResourceRelease, connection: MariaDBPluginConnection?) =
             sessionLock.withLock {
-                guard let connection = mariadbConnection, !isReleased else {
+                guard let connection = mariadbConnection, !isReleased, !isDisconnected else {
                     return (.nothingToRelease, nil)
                 }
+                guard activeOperations == 0 else { return (.nothingToRelease, nil) }
                 if let minimumIdle, ContinuousClock.now - lastActivity < minimumIdle {
                     return (.nothingToRelease, nil)
                 }
@@ -832,11 +858,16 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Streaming
 
+    /// The bridge task is retained and cancelled from `onTermination`. Without that, a consumer
+    /// that stops reading, which an export or a copy does on cancel, leaves this task draining the
+    /// whole result and holding the connection open: the inner stream's abort never fires because
+    /// nothing ever cancels the task awaiting it.
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         AsyncThrowingStream { continuation in
-            Task {
+            let task = Task {
                 do {
                     let conn = try await requireConnection()
+                    defer { self.endOperation() }
                     noteActivity(query)
                     for try await element in conn.streamQuery(query) {
                         continuation.yield(element)
@@ -846,6 +877,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     continuation.finish(throwing: error)
                 }
             }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 
@@ -933,10 +965,19 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Query Timeout
 
+    /// The statement goes in as driver setup, not as use. It is a `SET SESSION`, so counting it
+    /// would mark the session as carrying a changed setting, and `DatabaseManager` applies the
+    /// timeout on every connect: the footprint would be dirty before the user ran anything and no
+    /// connection would ever be released. It is the driver's own setting and the reconnect puts it
+    /// back, so it is not the session's to lose.
     func applyQueryTimeout(_ seconds: Int) async throws {
         sessionLock.withLock { appliedQueryTimeoutSeconds = seconds }
         do {
-            _ = try await execute(query: mysqlQueryTimeoutStatement(seconds: seconds, isMariaDB: isMariaDB))
+            _ = try await executeWithReconnect(
+                query: mysqlQueryTimeoutStatement(seconds: seconds, isMariaDB: isMariaDB),
+                isRetry: false,
+                countsAsActivity: false
+            )
         } catch {
             Self.logger.warning("Failed to set query timeout: \(error.localizedDescription)")
         }

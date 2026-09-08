@@ -48,9 +48,12 @@ internal enum ConnectionFileLockAction {
         /// A release that worked is reported by the file becoming available to whatever the user
         /// was trying to run, not by an alert congratulating them. A refusal is worth interrupting
         /// for, because they asked for something that did not happen and only the driver knows why.
+        /// Resource-neutral, because the same path serves a DuckDB file lock and a MySQL server
+        /// connection. Naming the file to someone who released a connection reads as a different
+        /// failure than the one they hit.
         guard !outcome.didRelease, let reason = outcome.reason else { return }
         AlertHelper.showErrorSheet(
-            title: String(format: String(localized: "“%@” is still using the file"), connectionName),
+            title: String(format: String(localized: "“%@” is still in use"), connectionName),
             message: reason,
             window: presentingWindow
         )

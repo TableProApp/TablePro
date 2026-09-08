@@ -71,6 +71,25 @@ struct SQLTransactionTrackingTests {
         #expect(SQLTransactionTracking.effect(of: "BEGIN; INSERT INTO t VALUES ('a;b'); COMMIT") == .closes)
     }
 
+    /// The finding that made the splitter literal-aware. A raw `;` split turns `SELECT ';COMMIT;'`
+    /// into `SELECT '`, `COMMIT` and `'`, and that middle fragment is an exact `COMMIT`: reading it
+    /// as one clears the flag protecting a real transaction, and the release that follows rolls the
+    /// transaction back.
+    @Test("A semicolon inside a literal does not end a statement")
+    func semicolonsInsideLiteralsAreNotSeparators() {
+        #expect(SQLTransactionTracking.effect(of: "SELECT ';COMMIT;'") == .unchanged)
+        #expect(SQLTransactionTracking.effect(of: "BEGIN; SELECT ';COMMIT;'") == .opens)
+        #expect(SQLTransactionTracking.effect(of: "SELECT \";COMMIT;\"") == .unchanged)
+        #expect(SQLTransactionTracking.effect(of: "SELECT `a;COMMIT;b`") == .unchanged)
+    }
+
+    @Test("A comment in front of a statement does not hide its keyword")
+    func leadingCommentsDoNotHideTheKeyword() {
+        #expect(SQLTransactionTracking.effect(of: "-- start work\nBEGIN") == .opens)
+        #expect(SQLTransactionTracking.effect(of: "/* wrap up */ COMMIT") == .closes)
+        #expect(SQLTransactionTracking.effect(of: "BEGIN; -- note; with a semicolon\nSELECT 1") == .opens)
+    }
+
     @Test("A close is recognised with its optional TRANSACTION or WORK suffix")
     func closingSuffixesAreRecognised() {
         for sql in ["COMMIT TRANSACTION", "COMMIT WORK", "ROLLBACK WORK", "END TRANSACTION", "abort transaction"] {
