@@ -93,3 +93,117 @@ struct DataGridSelectionTests {
         #expect(box.writeCount == 0)
     }
 }
+
+@Suite("DataGridView+Selection published row selection")
+@MainActor
+struct PublishedRowSelectionTests {
+    private func makeCoordinator(box: SelectionBox) -> TableViewCoordinator {
+        TableViewCoordinator(
+            changeManager: AnyChangeManager(DataChangeManager()),
+            isEditable: true,
+            selectedRowIndices: box.binding(),
+            delegate: nil,
+            layoutPersister: FakeColumnLayoutPersister()
+        )
+    }
+
+    @Test("a cell range publishes every row it covers, not the anchor row")
+    func cellRangePublishesEveryCoveredRow() {
+        let box = SelectionBox()
+        let coordinator = makeCoordinator(box: box)
+
+        coordinator.selectionController.update(
+            .single(
+                GridRect(rows: 1...6, columns: 0...0),
+                anchor: GridCoord(row: 1, column: 0),
+                active: GridCoord(row: 6, column: 0)
+            )
+        )
+        coordinator.publishRowSelection(rowSelection: [1])
+
+        #expect(box.value == [1, 2, 3, 4, 5, 6])
+        #expect(coordinator.currentRowSelection() == [1, 2, 3, 4, 5, 6])
+    }
+
+    @Test("two discontiguous cells publish both of their rows")
+    func discontiguousCellsPublishBothRows() {
+        let box = SelectionBox()
+        let coordinator = makeCoordinator(box: box)
+
+        coordinator.selectionController.update(
+            GridSelection(
+                rectangles: [GridRect(cell: GridCoord(row: 3, column: 0)), GridRect(cell: GridCoord(row: 17, column: 2))],
+                activeCell: GridCoord(row: 17, column: 2),
+                anchor: GridCoord(row: 3, column: 0)
+            )
+        )
+        coordinator.publishRowSelection(rowSelection: [17])
+
+        #expect(box.value == [3, 17])
+    }
+
+    @Test("with no cell selection the row selection is published unchanged")
+    func rowSelectionPublishesUnchanged() {
+        let box = SelectionBox()
+        let coordinator = makeCoordinator(box: box)
+
+        coordinator.publishRowSelection(rowSelection: [2, 3])
+
+        #expect(box.value == [2, 3])
+    }
+
+    @Test("clearing the cell selection falls back to the row selection")
+    func clearingCellSelectionFallsBack() {
+        let box = SelectionBox()
+        let coordinator = makeCoordinator(box: box)
+
+        coordinator.selectionController.update(
+            .single(
+                GridRect(rows: 4...9, columns: 0...0),
+                anchor: GridCoord(row: 4, column: 0),
+                active: GridCoord(row: 9, column: 0)
+            )
+        )
+        coordinator.publishRowSelection(rowSelection: [4])
+        #expect(box.value == [4, 5, 6, 7, 8, 9])
+
+        coordinator.selectionController.clear()
+        coordinator.publishRowSelection(rowSelection: [4])
+
+        #expect(box.value == [4])
+    }
+
+    @Test("publishing records what it wrote so an unchanged value is not written twice")
+    func publishRecordsWhatItWrote() {
+        let box = SelectionBox()
+        let coordinator = makeCoordinator(box: box)
+
+        #expect(coordinator.lastPublishedRowSelection == nil)
+
+        coordinator.publishRowSelection(rowSelection: [8])
+        #expect(coordinator.lastPublishedRowSelection == [8])
+        let afterFirst = box.writeCount
+
+        coordinator.publishRowSelection(rowSelection: [8])
+        #expect(box.writeCount == afterFirst)
+    }
+
+    @Test("the grid selection controller publishes through its change hook")
+    func selectionControllerHookPublishes() {
+        let box = SelectionBox()
+        let coordinator = makeCoordinator(box: box)
+        coordinator.selectionController.onSelectionChange = { [weak coordinator] _ in
+            coordinator?.publishRowSelection()
+        }
+
+        coordinator.selectionController.update(
+            .single(
+                GridRect(rows: 2...5, columns: 1...3),
+                anchor: GridCoord(row: 2, column: 1),
+                active: GridCoord(row: 5, column: 3)
+            )
+        )
+
+        #expect(box.value == [2, 3, 4, 5])
+    }
+}

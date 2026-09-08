@@ -363,7 +363,15 @@ struct DataGridView: NSViewRepresentable {
         }
     }
 
+    /// Pushes a selection the app set from outside into the table view.
+    ///
+    /// The binding now carries `currentRowSelection()`, which spans every row a cell drag covers
+    /// while the table view holds only the anchor. Pushing that back would turn a cell rectangle
+    /// into a full row selection, and `DataGridRowView.drawCellSelectionFill` skips a selected row
+    /// because AppKit already fills it, so the rectangle would be painted as whole rows. A value
+    /// this coordinator published is therefore not a value to sync.
     private func syncSelection(tableView: NSTableView, coordinator: TableViewCoordinator) {
+        guard selectedRowIndices != coordinator.lastPublishedRowSelection else { return }
         let currentSelection = tableView.selectedRowIndexes
         let targetSelection = IndexSet(selectedRowIndices)
         guard currentSelection != targetSelection else { return }
@@ -495,6 +503,11 @@ struct DataGridView: NSViewRepresentable {
             delegate: delegate,
             layoutPersister: layoutPersister ?? FileColumnLayoutPersister.shared
         )
+        /// The cell selection's half of the row selection. Every mutator funnels through
+        /// `GridSelectionController.update(_:)`, so this is the one hook that sees a drag widen.
+        coordinator.selectionController.onSelectionChange = { [weak coordinator] _ in
+            coordinator?.publishRowSelection()
+        }
         let columnLayoutBinding = $columnLayout
         coordinator.onColumnLayoutDidChange = { layout in
             if columnLayoutBinding.wrappedValue != layout {

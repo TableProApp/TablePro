@@ -523,6 +523,13 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// to widen these, because nobody chose their width.
     var unownedRestoredColumnNames: Set<String> = []
     var isApplyingProgrammaticRowSelection = false
+    /// The last value `publishRowSelection()` wrote, or nil before it has written one. `nil` has to
+    /// mean "nothing published yet" rather than "empty", or a tab restoring an empty selection would
+    /// be mistaken for one this coordinator produced and never reach the table view.
+    private(set) var lastPublishedRowSelection: Set<Int>?
+    /// What `NSTableView.selectedRowIndexes` last reported, which is what `resolvedFocus` compares
+    /// against. The binding cannot serve, because it carries the cell selection's rows too.
+    var lastTableViewRowSelection: Set<Int> = []
     var isRebuildingColumns: Bool = false
     var hasUnpersistedColumnLayoutChanges = false
     var shouldRecalculateAutomaticColumnWidths = false
@@ -815,6 +822,33 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         isApplyingProgrammaticRowSelection = true
         tableView.selectRowIndexes(indexes, byExtendingSelection: false)
         isApplyingProgrammaticRowSelection = false
+    }
+
+    /// Publishes the rows every command already acts on, so the readouts name the same set.
+    ///
+    /// The cell selection's rows win, because a cell drag is how most multi-row work starts and
+    /// Delete, Copy and the row menu have always read it through `currentRowSelection()`. The
+    /// binding did not: it copied `NSTableView.selectedRowIndexes`, which `mouseDown` pins to the
+    /// single anchor row for the whole of a drag, so a drag over six rows reported one selected row
+    /// and deleted six.
+    ///
+    /// The row half is passed in rather than read back off the binding, which is the copy this
+    /// writes; reading it here would make the derivation circular and no row selection would ever
+    /// reach it. `lastPublishedRowSelection` is what lets `syncSelection` tell a value published
+    /// here from one the app set from outside.
+    func publishRowSelection(rowSelection: Set<Int>) {
+        let resolved = selectionController.isEmpty
+            ? rowSelection
+            : Set(selectionController.selection.affectedRows)
+        lastPublishedRowSelection = resolved
+        guard selectedRowIndices != resolved else { return }
+        selectedRowIndices = resolved
+    }
+
+    /// The cell selection moved and the row selection did not, so the row half comes off the table
+    /// view. A coordinator with no table view has only the binding to fall back on.
+    func publishRowSelection() {
+        publishRowSelection(rowSelection: tableView.map { Set($0.selectedRowIndexes) } ?? selectedRowIndices)
     }
 
     func displayRow(at displayIndex: Int) -> Row? {

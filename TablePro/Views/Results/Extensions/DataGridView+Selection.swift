@@ -67,17 +67,22 @@ extension TableViewCoordinator {
     func tableViewSelectionDidChange(_ notification: Notification) {
         guard let tableView = notification.object as? NSTableView else { return }
 
-        let previousSelection = selectedRowIndices
+        /// The table view's own previous selection, not the binding's. The binding now carries
+        /// `currentRowSelection()`, which spans a cell drag's rows, and `resolvedFocus` reads the
+        /// difference between two row selections to find the row the gesture just added.
+        let previousSelection = lastTableViewRowSelection
         let newSelection = Set(tableView.selectedRowIndexes.map { $0 })
-        if newSelection != previousSelection {
-            selectedRowIndices = newSelection
-        }
+        lastTableViewRowSelection = newSelection
 
-        guard let keyTableView = tableView as? KeyHandlingTableView else { return }
+        guard let keyTableView = tableView as? KeyHandlingTableView else {
+            publishRowSelection(rowSelection: newSelection)
+            return
+        }
 
         if !isApplyingProgrammaticRowSelection, !newSelection.isEmpty, !selectionController.isEmpty {
             selectionController.clear()
         }
+        publishRowSelection(rowSelection: newSelection)
 
         let newFocus = resolvedFocus(
             previous: previousSelection,
