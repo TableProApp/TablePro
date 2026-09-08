@@ -7,19 +7,15 @@ import AppKit
 
 /// The throughput readout inside the centred connection group.
 ///
-/// The one place in this toolbar that carries a view, and the reason is measured. AppKit sizes a
-/// view-less item's `title` **once, when the item is inserted**: setting a longer title afterwards
-/// leaves the item at its original width and clips the text, and neither `validateVisibleItems()`
-/// nor a window resize re-measures it. Only a `displayMode` round trip or removing and re-inserting
-/// the item does, and both rebuild the toolbar visibly. So a figure that changes once a second
-/// cannot live in a title.
+/// The one place in this toolbar that carries a view, and the reason is that the figure has to hold
+/// a constant width. A view-less item would carry it in `title`, and a title re-measures: with the
+/// figure written into one and `validateVisibleItems()` called, the group went 219pt, 233pt, 232pt,
+/// 251pt across `0 kB/s`, `145 kB/s`, `1.2 MB/s` and `888.8 MB/s`, walking its own midpoint 16pt.
+/// A group is laid out around that midpoint, so every one of those steps slides the connection name
+/// beside it, once a second.
 ///
-/// The other half of the measurement is why the view is a fixed width rather than sized to its text.
-/// The centred group is laid out around its midpoint, so a group that grows by 14pt moves its
-/// leading edge 7pt one way and the database item 7pt the other. Measured at 1200pt: the same group
-/// sat at x=488.5 reading `↓0 kB/s` and x=481.5 reading `↓145 kB/s`. With the width pinned, changing
-/// the text moves nothing at all: group and field frames were identical across `↓0 kB/s`,
-/// `↓145 kB/s`, `↑1.2 MB/s` and `↓88 MB/s`.
+/// A view pinned to a width settles it. Measured across the same four figures, the group frame and
+/// the field frame were byte-identical every time: `group.x=396.0 w=248.0`, `field.x=573.0 w=71.0`.
 ///
 /// It publishes no action, so AppKit never validates it and it has no menu-bar command of its own.
 /// That is the cost of a readout, and it is why the item is only in the group at all for a
@@ -41,6 +37,15 @@ internal final class TransportRateToolbarItem: NSToolbarItem {
         field.translatesAutoresizingMaskIntoConstraints = false
         field.widthAnchor.constraint(equalToConstant: Self.fieldWidth).isActive = true
         view = field
+        /// After `view`, never before, and this ordering is the whole of it. `NSToolbarItem.h`:
+        /// "many of the set/get methods will be implemented by calls forwarded to the view you set,
+        /// if it responds to it", and `NSTextField` responds to `setBordered:`. Set first, the flag
+        /// is discarded and the readout draws as bare text beside two capsules; set after, AppKit
+        /// gives it a real `NSToolbarPlatterView` the same 36pt height and 8pt gap as its
+        /// neighbours. Measured: 2 platters and a 14pt-tall field one way, 3 platters and a 36pt
+        /// one the other. Writing `field.isBordered = false` anywhere later deletes the capsule
+        /// again, just as silently.
+        isBordered = true
         overflowEntry.isEnabled = false
         menuFormRepresentation = overflowEntry
         apply(rate: nil)

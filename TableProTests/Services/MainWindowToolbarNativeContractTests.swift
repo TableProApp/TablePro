@@ -38,10 +38,12 @@ struct MainWindowToolbarNativeContractTests {
         }
     }
 
-    /// The one exception, and the reason it is safe. AppKit sizes a view-less item's `title` once,
-    /// when the item is inserted: measured, setting a longer title afterwards leaves the item at its
-    /// old width and clips the text, and neither `validateVisibleItems()` nor a window resize
-    /// re-measures it. So a figure that changes once a second cannot live in a title.
+    /// The one exception, and the reason it is safe. A view-less item would carry the figure in
+    /// `title`, and a title re-measures: written into one with `validateVisibleItems()` called, the
+    /// group went 219pt, 233pt, 232pt, 251pt across `0 kB/s`, `145 kB/s`, `1.2 MB/s` and
+    /// `888.8 MB/s`, walking its own midpoint 16pt and sliding the connection name beside it once a
+    /// second. A view pinned to a width holds still: the group and field frames were byte-identical
+    /// across the same four figures.
     ///
     /// What made the old hosted status item undroppable was that it had no width of its own to give
     /// back. This one is pinned to a width measured from the widest figure it can ever draw, so it
@@ -61,6 +63,17 @@ struct MainWindowToolbarNativeContractTests {
             let width = (candidate as NSString).size(withAttributes: [.font: font]).width
             #expect(width <= constant, "\"\(candidate)\" needs \(width)pt but the field is \(constant)pt")
         }
+    }
+
+    /// The capsule, and the ordering that is the whole of it. `NSToolbarItem.h` forwards many of its
+    /// setters to the view once one is set, and `NSTextField` responds to `setBordered:`, so
+    /// `isBordered` written before `view` is discarded and the readout draws as bare text between
+    /// two capsules. Written after, AppKit gives it a real platter at the same height and gap as its
+    /// neighbours: measured, 2 platters and a 14pt-tall field one way, 3 platters and a 36pt one the
+    /// other. Nothing warns when it is wrong, which is why this assertion exists.
+    @Test("The throughput readout wears the group's capsule")
+    func throughputReadoutIsBordered() {
+        #expect(MainWindowToolbar().transportRateItem.isBordered)
     }
 
     /// The readout is a readout: it publishes no action, so AppKit never validates it and it has no
