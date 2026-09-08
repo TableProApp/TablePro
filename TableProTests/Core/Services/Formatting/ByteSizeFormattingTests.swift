@@ -24,6 +24,29 @@ struct ByteSizeFormattingTests {
         #expect(ByteSizeFormatting.string(byteString: "unknown") == "unknown")
     }
 
+    @Test("A rate is the size for that many bytes, per second")
+    func ratesRenderPerSecond() {
+        let rate = ByteSizeFormatting.string(bytesPerSecond: 145_408)
+
+        #expect(rate.hasPrefix(ByteSizeFormatting.string(bytes: Int64(145_408))))
+        #expect(rate.hasSuffix("/s"))
+    }
+
+    @Test("A fractional rate rounds to whole bytes")
+    func ratesRound() {
+        #expect(ByteSizeFormatting.string(bytesPerSecond: 511.6) == ByteSizeFormatting.string(bytesPerSecond: 512))
+    }
+
+    /// A sampler dividing by an interval it measured can produce these, and `Int64(_:)` traps on
+    /// every one of them.
+    @Test("A rate that is not a finite non-negative number renders as nothing")
+    func unrepresentableRatesRenderEmpty() {
+        #expect(ByteSizeFormatting.string(bytesPerSecond: .infinity).isEmpty)
+        #expect(ByteSizeFormatting.string(bytesPerSecond: .nan).isEmpty)
+        #expect(ByteSizeFormatting.string(bytesPerSecond: -1).isEmpty)
+        #expect(ByteSizeFormatting.string(bytesPerSecond: Double(Int64.max)).isEmpty)
+    }
+
     @Test("Durations grow units as they get longer")
     func durationsGrowUnits() {
         let seconds = DurationFormatting.string(seconds: 5)

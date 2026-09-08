@@ -46,6 +46,11 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
 
     private let forwardFailure = SSHForwardFailureRecorder()
 
+    /// Shared by every client relay this tunnel serves, so the readout describes the tunnel rather
+    /// than whichever socket the driver happens to be using. Owned here and registered weakly, so
+    /// the totals disappear with the tunnel instead of outliving it.
+    private let byteCounter = TransportByteCounter()
+
     struct JumpHop {
         let session: OpaquePointer    // LIBSSH2_SESSION*
         let socket: Int32             // TCP or socketpair fd
@@ -93,6 +98,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
             label: "com.TablePro.ssh.accept.\(connectionId.uuidString)",
             qos: .utility
         )
+        TransportActivityRegistry.shared.register(byteCounter, for: connectionId)
     }
 
     var isRunning: Bool {
@@ -392,7 +398,8 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
             transportFD: socketFD,
             channelIO: LibSSH2ChannelIO(channel: channel, session: session, sessionQueue: sessionQueue),
             bufferSize: Self.relayBufferSize,
-            isActive: { [weak self] in self?.isRunning ?? false }
+            isActive: { [weak self] in self?.isRunning ?? false },
+            byteCounter: byteCounter
         )
 
         let startedAt = Date()

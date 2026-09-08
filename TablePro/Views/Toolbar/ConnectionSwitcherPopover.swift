@@ -61,6 +61,13 @@ struct ConnectionSwitcherPopover: View {
         DatabaseManager.shared.lastActiveSessionId
     }
 
+    /// The connection the window that opened this popover is on, which is the one the activity
+    /// footer describes. Absent while the window is between connections, where the footer draws
+    /// nothing rather than a row about no transport.
+    private var currentConnection: DatabaseConnection? {
+        currentSessionId.flatMap { activeSessions[$0]?.connection }
+    }
+
     private var sortedSessions: [ConnectionSession] {
         Array(activeSessions.values).sorted { $0.lastActiveAt > $1.lastActiveAt }
     }
@@ -122,6 +129,10 @@ struct ConnectionSwitcherPopover: View {
             Divider()
 
             content
+
+            Divider()
+
+            ConnectionActivityFooter(connection: currentConnection)
 
             Divider()
 

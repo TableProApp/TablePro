@@ -61,6 +61,22 @@ enum ConnectionTunnelKind: String, CaseIterable, Sendable {
         }
     }
 
+    /// Whether TablePro's own Swift code carries this transport's bytes, and can therefore count
+    /// them for the connection activity readout.
+    ///
+    /// The three subprocess transports run someone else's binary, which owns its socket from end to
+    /// end; TablePro reads their standard error for a readiness line and never sees a payload byte.
+    /// Remote Database File measures nothing per query by construction: it fetches the file once and
+    /// the driver then reads a local copy, so there is no wire traffic left to describe. A direct
+    /// connection has no case here at all, and is handled as the absence of one: its socket belongs
+    /// to the driver's own C library, inside the plugin.
+    var carriesMeasuredBytes: Bool {
+        switch self {
+        case .ssh, .socksProxy: return true
+        case .cloudflare, .cloudSQLProxy, .tunnelCommand, .remoteFile: return false
+        }
+    }
+
     /// The connection form's label for reaching the database with no transport in between.
     static var directDisplayName: String {
         String(localized: "Direct")

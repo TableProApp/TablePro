@@ -21,6 +21,14 @@ internal enum ByteSizeFormatting {
         string(bytes: Int64(clamping: bytes))
     }
 
+    /// A throughput figure, rendered as the size per second: "142 KB/s". Rounded to whole bytes
+    /// first, because the size formatter takes an integer and a rate never arrives as one.
+    internal static func string(bytesPerSecond: Double) -> String {
+        let rounded = bytesPerSecond.rounded()
+        guard rounded.isFinite, rounded >= 0, rounded < Double(Int64.max) else { return "" }
+        return String(format: String(localized: "%@/s"), string(bytes: Int64(rounded)))
+    }
+
     /// Returns the input unchanged when it is not a number, because several servers report
     /// these values as opaque strings. `Double` parses "inf", "nan" and values past `Int64.max`,
     /// all of which trap on conversion, so a server reporting one of those has to fall through to

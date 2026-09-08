@@ -47,6 +47,11 @@ actor SOCKSProxyManager: TunnelManaging {
         let listener: NWListener
         let localPort: Int
         var relays: [UUID: RelayPair] = [:]
+
+        /// Shared by every relay pair the listener accepts, so the readout describes the proxy
+        /// rather than one of the sockets through it. Held here, which is what makes the totals
+        /// vanish with the tunnel the registry only points at weakly.
+        let byteCounter = TransportByteCounter()
     }
 
     private var tunnels: [UUID: TunnelState] = [:]
@@ -98,7 +103,9 @@ actor SOCKSProxyManager: TunnelManaging {
         }
 
         let localPort = try await Self.startListener(listener)
-        tunnels[connectionId] = TunnelState(listener: listener, localPort: localPort)
+        let state = TunnelState(listener: listener, localPort: localPort)
+        tunnels[connectionId] = state
+        TransportActivityRegistry.shared.register(state.byteCounter, for: connectionId)
         updateAppNapState()
         Self.logger.info("SOCKS proxy tunnel ready for \(connectionId.uuidString, privacy: .public) on 127.0.0.1:\(localPort)")
         return localPort
@@ -160,7 +167,7 @@ actor SOCKSProxyManager: TunnelManaging {
         targetHost: String,
         targetPort: Int
     ) {
-        guard tunnels[connectionId] != nil else {
+        guard let byteCounter = tunnels[connectionId]?.byteCounter else {
             inbound.cancel()
             return
         }
@@ -179,7 +186,7 @@ actor SOCKSProxyManager: TunnelManaging {
         }
         inbound.start(queue: Self.networkQueue)
 
-        Task { [connectTimeout] in
+        Task { [connectTimeout, byteCounter] in
             do {
                 try await Self.waitUntilReady(outbound, timeout: connectTimeout, proxyHost: config.host, proxyPort: config.port)
                 outbound.stateUpdateHandler = { [weak self] state in
@@ -199,8 +206,8 @@ actor SOCKSProxyManager: TunnelManaging {
                     guard bothFinished else { return }
                     Task { await self?.removeRelay(connectionId: connectionId, relayId: relayId) }
                 }
-                Self.pump(inbound, into: outbound, onFinished: onDirectionFinished)
-                Self.pump(outbound, into: inbound, onFinished: onDirectionFinished)
+                Self.pump(inbound, into: outbound, record: byteCounter.recordSent, onFinished: onDirectionFinished)
+                Self.pump(outbound, into: inbound, record: byteCounter.recordReceived, onFinished: onDirectionFinished)
             } catch {
                 Self.logger.warning("SOCKS relay setup failed for \(connectionId.uuidString, privacy: .public): \(error.localizedDescription)")
                 await self.removeRelay(connectionId: connectionId, relayId: relayId)
@@ -367,13 +374,19 @@ actor SOCKSProxyManager: TunnelManaging {
         }
     }
 
+    /// `record` is what makes one call of this recursion a direction: the pair that carries the
+    /// client's bytes towards the proxy passes `recordSent`, the pair coming back passes
+    /// `recordReceived`. The connection ids are not in scope here, and threading one in would name
+    /// the tunnel rather than the direction, which is the half the caller already knows.
     private static func pump(
         _ source: NWConnection,
         into destination: NWConnection,
+        record: @escaping @Sendable (Int) -> Void,
         onFinished: @escaping @Sendable () -> Void
     ) {
         source.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { data, _, isComplete, error in
             if let data, !data.isEmpty {
+                record(data.count)
                 destination.send(content: data, completion: .contentProcessed { sendError in
                     guard sendError == nil else {
                         source.cancel()
@@ -386,7 +399,7 @@ actor SOCKSProxyManager: TunnelManaging {
                         onFinished()
                         return
                     }
-                    pump(source, into: destination, onFinished: onFinished)
+                    pump(source, into: destination, record: record, onFinished: onFinished)
                 })
                 return
             }
@@ -401,7 +414,7 @@ actor SOCKSProxyManager: TunnelManaging {
                 onFinished()
                 return
             }
-            pump(source, into: destination, onFinished: onFinished)
+            pump(source, into: destination, record: record, onFinished: onFinished)
         }
     }
 }

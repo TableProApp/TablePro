@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Field search and an edited-fields-only filter in the inspector.
 - Table and row position at the top of the inspector.
 - Sort direction setting for the data grid, applied to the default row sort and to the first click on a column header. (#2665)
+- Transport activity under the connection switcher: bytes carried, and live throughput on an SSH tunnel or SOCKS proxy.
 
 ### Changed
 

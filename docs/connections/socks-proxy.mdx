@@ -63,6 +63,8 @@ An SSH dynamic port forward is a SOCKS5 proxy. Run `ssh -D 1080 user@bastion`, t
 
 [SSL/TLS](/connections/ssl) still applies, with one unavoidable adjustment: the driver dials a loopback port that no server certificate names, so **Verify CA** and **Verify Identity** fall back to **Required** and certificate paths are dropped.
 
+Bytes through the proxy are counted the same way an SSH tunnel's are. Press `Ctrl+Cmd+C` and read the footer under the connection list. See [transport activity](/connections#switch-connections-and-databases).
+
 ## Troubleshooting
 
 ### Timed out connecting through the SOCKS proxy
