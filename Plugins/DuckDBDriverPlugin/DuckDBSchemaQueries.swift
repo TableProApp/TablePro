@@ -193,6 +193,39 @@ enum DuckDBSchemaQueries {
         return "SELECT COUNT(*) FROM (SELECT 1 FROM \(target) LIMIT \(limit)) AS _t"
     }
 
+    /// What the session is holding that closing the handle would destroy, in one round trip.
+    ///
+    /// `internal = false` is not optional on either count. DuckDB keeps its own machinery in the
+    /// `temp` catalog and marks it temporary: measured on the shipped v1.5.2, a connection that
+    /// has run nothing already reports 46 temporary views. Without the predicate the answer is
+    /// never zero and the lock is never released.
+    ///
+    /// Tables and views are not the whole of it. Measured on the shipped v1.5.2, a `CREATE TEMP
+    /// MACRO`, a `PREPARE` and a `SET VARIABLE` each leave both temporary counts at zero while
+    /// living in `duckdb_functions()`, `duckdb_prepared_statements()` and `duckdb_variables()`, and
+    /// each is destroyed by a close. All five are summed because the gate only asks whether the
+    /// session holds anything at all.
+    ///
+    /// One catalog is the file itself, so a count above one means the user attached something,
+    /// and an `ATTACH` does not survive a reopen.
+    static let sessionHeldState = """
+        SELECT
+            (SELECT count(*) FROM duckdb_databases() WHERE internal = false) AS catalog_count,
+            (SELECT count(*) FROM duckdb_tables() WHERE temporary AND internal = false)
+                + (SELECT count(*) FROM duckdb_views() WHERE temporary AND internal = false)
+                + (SELECT count(*) FROM duckdb_functions() WHERE internal = false)
+                + (SELECT count(*) FROM duckdb_prepared_statements())
+                + (SELECT count(*) FROM duckdb_variables()) AS session_object_count
+        """
+
+    /// `duckdb_settings()` reports no default, so a setting the user changed is only visible by
+    /// comparing against what the connection opened with. The driver snapshots this at connect
+    /// and again before releasing, and any difference it does not own itself blocks the release.
+    static let allSettings = """
+        SELECT name, value
+        FROM duckdb_settings()
+        """
+
     static func useDatabase(_ database: String) -> String {
         "USE \(quoteIdentifier(database))"
     }

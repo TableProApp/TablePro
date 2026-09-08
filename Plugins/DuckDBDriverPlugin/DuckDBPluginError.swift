@@ -12,6 +12,8 @@ enum DuckDBPluginError: Error {
     case catalogUnresolved
     case queryFailed(String)
     case unsupportedOperation
+    case fileLocked(DuckDBLockConflict)
+    case fileMissing(String)
 }
 
 extension DuckDBPluginError: PluginDriverError {
@@ -23,6 +25,14 @@ extension DuckDBPluginError: PluginDriverError {
             return String(localized: "The connection has no current DuckDB catalog to read metadata from")
         case .queryFailed(let msg): return msg
         case .unsupportedOperation: return String(localized: "Operation not supported")
+        case .fileLocked(let conflict):
+            guard let suggestion = conflict.recoverySuggestion else { return conflict.localizedDescription }
+            return "\(conflict.localizedDescription) \(suggestion)"
+        case .fileMissing(let path):
+            return String(
+                format: String(localized: "The database file is no longer at %@."),
+                path
+            )
         }
     }
 }

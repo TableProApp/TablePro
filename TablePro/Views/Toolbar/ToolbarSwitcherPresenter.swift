@@ -134,6 +134,37 @@ internal final class ToolbarSwitcherPresenter {
         _ identifier: NSToolbarItem.Identifier
     ) -> NSToolbarItem? {
         guard let toolbar = window?.toolbar, toolbar.isVisible else { return nil }
-        return toolbar.items.first { $0.itemIdentifier == identifier }
+        return anchor(identifier, in: toolbar.items, visible: toolbar.visibleItems ?? [])
+    }
+
+    /// The anchor for an identifier that may name a subitem of a group rather than an item the
+    /// toolbar carries directly.
+    ///
+    /// The connection and the container are two subitems of one centred native group, and anchoring
+    /// both choosers to the group put each of them on the seam between the two capsules rather than
+    /// under the one it belongs to. Measured on a 1200pt window: the group's midpoint is 600.0, the
+    /// Connection capsule's is 543.2 and the Container capsule's is 671.8, and a popover anchored to
+    /// the group lands at 600.0 for both. A subitem does resolve as an anchor and lands on its own
+    /// capsule to within a point, even though `NSToolbar.items` lists groups only and a native
+    /// group's subitems carry no `view`.
+    ///
+    /// It resolves only while the group is on screen. Once AppKit clips the group into the overflow
+    /// menu its subitems have no view and `NSPopover.show(relativeTo:)` raises
+    /// `NSInvalidArgumentException` ("view has no window"), which Swift cannot catch; measured, that
+    /// is exactly the width at which `visibleItems` stops naming the group. The group keeps working
+    /// there, because AppKit presents a clipped item from another affordance in the window itself,
+    /// so an overflowed group is the fallback rather than the floating panel.
+    internal static func anchor(
+        _ identifier: NSToolbarItem.Identifier,
+        in items: [NSToolbarItem],
+        visible: [NSToolbarItem]
+    ) -> NSToolbarItem? {
+        if let item = items.first(where: { $0.itemIdentifier == identifier }) { return item }
+        let groups = items.compactMap { $0 as? NSToolbarItemGroup }
+        guard let group = groups.first(where: { group in
+            group.subitems.contains { $0.itemIdentifier == identifier }
+        }) else { return nil }
+        guard visible.contains(where: { $0.itemIdentifier == group.itemIdentifier }) else { return group }
+        return group.subitems.first { $0.itemIdentifier == identifier }
     }
 }

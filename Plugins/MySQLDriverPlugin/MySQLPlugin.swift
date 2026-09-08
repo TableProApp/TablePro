@@ -23,7 +23,15 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let iconName = "mysql-icon"
     static let defaultPort = 3306
     static let additionalConnectionFields: [ConnectionField] =
-        AWSAuthFields.standard() + [AWSAuthFields.rdsEndpointField()]
+        AWSAuthFields.standard() + [AWSAuthFields.rdsEndpointField()] + [
+        ConnectionField(
+            id: "mysqlIdleReleaseMinutes",
+            label: String(localized: "Release the Server Connection After (minutes, 0 to keep it)"),
+            defaultValue: "0",
+            fieldType: .stepper(range: ConnectionField.IntRange(0...240)),
+            section: .advanced
+        )
+        ]
     static let additionalDatabaseTypeIds: [String] = ["MariaDB"]
 
     // MARK: - UI/Capability Metadata

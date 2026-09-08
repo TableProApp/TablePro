@@ -81,6 +81,26 @@ final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
             defaultValue: "remotedb",
             section: .authentication,
             visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["remote"])
+        ),
+        /// Named for what it does to the file rather than to TablePro, to keep it apart from
+        /// Safe Mode's own Read-Only level: that one is a policy this app applies to itself and
+        /// can be changed while connected, this one is how the file is opened and is fixed for
+        /// the life of the connection.
+        ConnectionField(
+            id: DuckDBAccessMode.fieldId,
+            label: String(localized: "Open the File Read-Only"),
+            defaultValue: "false",
+            fieldType: .toggle,
+            section: .advanced,
+            visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["local"])
+        ),
+        ConnectionField(
+            id: DuckDBIdleRelease.fieldId,
+            label: String(localized: "Release the File Lock After (minutes, 0 to keep it)"),
+            defaultValue: DuckDBIdleRelease.neverValue,
+            fieldType: .stepper(range: ConnectionField.IntRange(0...DuckDBIdleRelease.maximumMinutes)),
+            section: .advanced,
+            visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["local"])
         )
     ]
     static let fileExtensions: [String] = DuckDBFileKinds.all
@@ -170,9 +190,10 @@ final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
 
 final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
-    private let connectionActor = DuckDBConnectionActor()
+    private let liveConnection = DuckDBLiveConnectionBox()
+    private let connectionActor: DuckDBConnectionActor
+    private let idleReleaseTimer = DuckDBIdleReleaseTimer()
     private let stateLock = NSLock()
-    nonisolated(unsafe) private var _connectionForInterrupt: duckdb_connection?
     nonisolated(unsafe) private var _currentSchema: String = "main"
     nonisolated(unsafe) private var _currentDatabase: String?
 
@@ -208,6 +229,14 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     init(config: DriverConnectionConfig) {
         self.config = config
+        self.connectionActor = DuckDBConnectionActor(liveConnection: liveConnection)
+    }
+
+    /// The timer's task holds the connection actor, not the driver, so a driver dropped without
+    /// `disconnect()` leaves it waking forever over a handle nobody can reach.
+    deinit {
+        let timer = idleReleaseTimer
+        Task { await timer.stop() }
     }
 
     private func resolveSchema(_ schema: String?) -> String {
@@ -239,6 +268,11 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return alias.isEmpty ? "remotedb" : alias
     }
 
+    private var resolvedFilePath: String {
+        let raw = config.additionalFields["duckdbFilePath"].flatMap { $0.isEmpty ? nil : $0 } ?? config.database
+        return expandPath(raw)
+    }
+
     func connect() async throws {
         if isRemoteMode {
             try await connectRemote()
@@ -248,8 +282,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func connectLocal() async throws {
-        let rawPath = config.additionalFields["duckdbFilePath"].flatMap { $0.isEmpty ? nil : $0 } ?? config.database
-        let path = expandPath(rawPath)
+        let path = resolvedFilePath
 
         if !FileManager.default.fileExists(atPath: path) {
             guard DuckDBFileKinds.canBeCreated(atPath: path) else {
@@ -266,19 +299,24 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             }
         }
 
-        try await connectionActor.open(path: path)
-        await enableExtensionAutoloading()
+        let spec = DuckDBOpenSpec(
+            path: path,
+            accessMode: DuckDBAccessMode.resolve(fields: config.additionalFields, path: path)
+        )
+        try await connectionActor.open(spec: spec)
         // DuckDB holds an exclusive lock on the file for as long as the handle is open, and
         // nothing upstream disconnects a driver whose connect threw: DatabaseManager only
         // calls disconnect on a cancelled attempt. Without this, one failure here locks the
         // file against every later attempt until TablePro quits.
         do {
+            await enableExtensionAutoloading()
             try await refreshCurrentPosition()
         } catch {
             await connectionActor.close()
             throw error
         }
-        await captureInterruptHandle()
+        await connectionActor.captureSettingsBaseline()
+        await startIdleReleaseIfRequested()
     }
 
     private func connectRemote() async throws {
@@ -299,23 +337,33 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         let alias = aliasInput.isEmpty ? "remotedb" : aliasInput
 
-        try await connectionActor.open(path: ":memory:")
-        await enableExtensionAutoloading()
-        await loadQuackExtension()
+        try await connectionActor.open(spec: DuckDBOpenSpec(path: ":memory:", accessMode: .readWrite))
 
-        if !token.isEmpty {
-            try await connectionActor.executeQuery(QuackConnectBuilder.secretSQL(token: token))
+        // Every step below can throw, and nothing upstream closes a driver whose connect failed:
+        // `DatabaseManager` disconnects only a cancelled attempt. A remote host that does not
+        // resolve is enough to reach this, and each attempt used to leak a whole DuckDB instance
+        // and its worker threads for the life of the app. `connectLocal` has the same guard.
+        do {
+            await enableExtensionAutoloading()
+            await loadQuackExtension()
+
+            if !token.isEmpty {
+                try await connectionActor.executeQuery(QuackConnectBuilder.secretSQL(token: token))
+            }
+
+            try await connectionActor.executeQuery(
+                QuackConnectBuilder.attachSQL(host: host, port: port, alias: alias)
+            )
+            try await connectionActor.executeQuery(QuackConnectBuilder.useSQL(alias: alias))
+        } catch {
+            await connectionActor.close()
+            throw error
         }
-
-        try await connectionActor.executeQuery(QuackConnectBuilder.attachSQL(host: host, port: port, alias: alias))
-        try await connectionActor.executeQuery(QuackConnectBuilder.useSQL(alias: alias))
 
         stateLock.withLock {
             _currentSchema = "main"
             _currentDatabase = alias
         }
-
-        await captureInterruptHandle()
     }
 
     /// Every metadata query is anchored to the catalog, and the app seeds the browsed
@@ -389,22 +437,88 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    private func captureInterruptHandle() async {
-        if let conn = await connectionActor.connectionHandleForInterrupt.connection {
-            setInterruptHandle(conn)
+    // MARK: - Idle file-lock release
+
+    /// Only a file-backed DuckDB database holds a lock worth giving up. `:memory:`, which the
+    /// remote Quack mode opens, holds none and is destroyed by a close, and the Parquet, CSV and
+    /// JSON readers are never written back to.
+    private var canReleaseFile: Bool {
+        guard !isRemoteMode else { return false }
+        return DuckDBAccessMode.carriesAccessMode(path: resolvedFilePath)
+    }
+
+    var releasableResourceCommandTitle: String? {
+        guard canReleaseFile, liveConnection.isOpen else { return nil }
+        return String(localized: "Release File Lock")
+    }
+
+    /// The statements that put a reopened session back where it was. Recomputed rather than
+    /// appended to, so a session that has switched database a dozen times replays one `USE`.
+    private func refreshSessionSetup() async {
+        var statements = ["SET autoinstall_known_extensions=1", "SET autoload_known_extensions=1"]
+        let (database, schema) = stateLock.withLock { (_currentDatabase, _currentSchema) }
+        if let database, !database.isEmpty {
+            statements.append(DuckDBSchemaQueries.useSchema(schema, in: database))
+        }
+        await connectionActor.setSessionSetup(statements)
+    }
+
+    private func startIdleReleaseIfRequested() async {
+        await refreshSessionSetup()
+        guard canReleaseFile,
+              let interval = DuckDBIdleRelease.interval(
+                  fromFieldValue: config.additionalFields[DuckDBIdleRelease.fieldId]
+              )
+        else { return }
+
+        let actor = connectionActor
+        await idleReleaseTimer.start(interval: interval) {
+            let outcome = await actor.releaseFile(idleFor: interval)
+            guard outcome != .released, outcome != .notIdleYet, outcome != .alreadyReleased else { return }
+            Self.logger.debug("DuckDB kept the file lock: \(String(describing: outcome), privacy: .public)")
+        }
+    }
+
+    /// Gives the file's lock back now, for the Release File Lock command. A session holding
+    /// something a reopen would destroy keeps the lock and says which thing, because a command
+    /// that silently does nothing reads as broken.
+    func releaseIdleResource() async throws -> PluginResourceRelease {
+        guard canReleaseFile else { return .nothingToRelease }
+        let outcome = await connectionActor.releaseFile(idleFor: nil)
+        switch outcome {
+        case .released:
+            return .released
+        case .alreadyReleased, .notOpen, .notIdleYet:
+            return .nothingToRelease
+        case .holdsOpenTransaction:
+            return .kept(String(localized: "This connection has an open transaction. Commit or roll it back first."))
+        case .holdsSessionObjects:
+            return .kept(String(localized: "This connection has session objects, such as a temporary table, a macro or a prepared statement, which closing the file would delete."))
+        case .holdsAttachedCatalogs:
+            return .kept(String(localized: "This connection has another database attached, which closing the file would detach."))
+        case .holdsChangedSettings:
+            return .kept(String(localized: "This connection has settings that closing the file would reset."))
+        case .stateUnreadable:
+            return .kept(String(localized: "TablePro could not read what this connection is holding, so it kept the file."))
         }
     }
 
     func disconnect() {
-        stateLock.lock()
-        _connectionForInterrupt = nil
-        stateLock.unlock()
         let actor = connectionActor
-        Task { await actor.close() }
+        let timer = idleReleaseTimer
+        Task {
+            await timer.stop()
+            await actor.close()
+        }
     }
 
+    /// A ping is TablePro asking whether the connection still works, not the user using it, so it
+    /// neither counts as activity nor takes the file back. A released connection is healthy by
+    /// definition: nothing is wrong with it, it is waiting to be used, and reopening the file to
+    /// prove that would take the lock straight back off whatever the release handed it to.
     func ping() async throws {
-        _ = try await execute(query: "SELECT 1")
+        guard !(await connectionActor.hasReleasedFile) else { return }
+        _ = try await connectionActor.pingQuery()
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
@@ -441,11 +555,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func cancelQuery() throws {
-        stateLock.lock()
-        let conn = _connectionForInterrupt
-        stateLock.unlock()
-        guard let conn else { return }
-        duckdb_interrupt(conn)
+        liveConnection.interrupt()
     }
 
     // MARK: - Streaming
@@ -749,6 +859,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func switchSchema(to schema: String) async throws {
         _ = try await execute(query: DuckDBSchemaQueries.useSchema(schema, in: currentDatabase))
         stateLock.withLock { _currentSchema = schema }
+        await refreshSessionSetup()
     }
 
     // MARK: - Database Operations
@@ -774,6 +885,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             _currentDatabase = canonical
             _currentSchema = landedSchema.flatMap { $0 } ?? "main"
         }
+        await refreshSessionSetup()
     }
 
     private func canonicalCatalogName(matching database: String) async -> String? {
@@ -824,12 +936,6 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     // MARK: - Private Helpers
-
-    nonisolated private func setInterruptHandle(_ handle: duckdb_connection?) {
-        stateLock.lock()
-        _connectionForInterrupt = handle
-        stateLock.unlock()
-    }
 
     private func expandPath(_ path: String) -> String {
         if path.hasPrefix("~") {

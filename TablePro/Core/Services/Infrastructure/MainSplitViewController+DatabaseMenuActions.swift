@@ -22,7 +22,7 @@ extension MainSplitViewController {
         view.window?.makeFirstResponder(nil)
         switcherPresenter.present(
             from: view.window,
-            anchoredTo: MainWindowToolbar.connectionGroup,
+            anchoredTo: MainWindowToolbar.connection,
             subject: .connection,
             contentSize: ConnectionSwitcherPopover.contentSize
         ) { dismiss in

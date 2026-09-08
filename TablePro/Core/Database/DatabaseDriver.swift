@@ -45,6 +45,15 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Apply query execution timeout (seconds, 0 = no limit)
     func applyQueryTimeout(_ seconds: Int) async throws
 
+    /// What the command that hands this connection's held resource back should be called, or nil
+    /// when the driver holds nothing it can give up. A per-connection answer, not a per-engine one.
+    var releasableResourceCommandTitle: String? { get }
+
+    /// Hands that resource back now, keeping the session alive. A result that did not release is
+    /// a refusal rather than a failure, and carries the reason: re-acquiring the resource would
+    /// not restore what the session is currently holding.
+    func releaseIdleResource() async throws -> PluginResourceRelease
+
     func resolveQueryCompletionProfile(
         databaseTypeId: String,
         base: QueryCompletionProfile
@@ -371,6 +380,10 @@ extension DatabaseDriver {
     func ping() async throws {
         _ = try await execute(query: "SELECT 1")
     }
+
+    var releasableResourceCommandTitle: String? { nil }
+
+    func releaseIdleResource() async throws -> PluginResourceRelease { .nothingToRelease }
 
     func testConnection() async throws -> Bool {
         try await connect()

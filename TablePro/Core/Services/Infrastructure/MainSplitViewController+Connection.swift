@@ -70,6 +70,25 @@ internal extension MainSplitViewController {
         }
     }
 
+    /// Hands the connection's database file back to the rest of the machine without ending the
+    /// session, for the embedded engines that hold one. Asked of the live driver rather than of
+    /// the database type, because a DuckDB connection to a Parquet file or a remote Quack server
+    /// holds no file lock while its neighbour on a `.duckdb` file does.
+    @objc func releaseFileLock(_ sender: Any?) {
+        guard let connection = payloadConnection else { return }
+        Task {
+            await ConnectionFileLockAction.release(
+                connectionId: connection.id,
+                connectionName: connection.name,
+                presentingWindow: view.window
+            )
+        }
+    }
+
+    var canReleaseFileLock: Bool {
+        ConnectionFileLockAction.commandTitle(connectionId: workspaces.selectedConnectionId) != nil
+    }
+
     var canDisconnect: Bool {
         payloadConnection != nil && phase == .connected
     }

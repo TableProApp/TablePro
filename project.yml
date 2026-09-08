@@ -417,7 +417,10 @@ targets:
       - Plugins/DamengDriverPlugin/DamengIndexStatements.swift
       - Plugins/OracleDriverPlugin/OracleIndexStatements.swift
       - Plugins/DamengDriverPlugin/DamengStatementClassifier.swift
+      - Plugins/DuckDBDriverPlugin/DuckDBAccessMode.swift
       - Plugins/DuckDBDriverPlugin/DuckDBFileKinds.swift
+      - Plugins/DuckDBDriverPlugin/DuckDBIdleRelease.swift
+      - Plugins/DuckDBDriverPlugin/DuckDBLockConflict.swift
       - Plugins/DuckDBDriverPlugin/DuckDBPositionParser.swift
       - Plugins/DuckDBDriverPlugin/DuckDBSchemaQueries.swift
       - Plugins/DuckDBDriverPlugin/DuckDBTypeRendering.swift
@@ -477,6 +480,8 @@ targets:
       - Plugins/MongoDBDriverPlugin/MongoStreamProjection.swift
       - Plugins/OracleDriverPlugin/OracleObjectQueries.swift
       - Plugins/MySQLDriverPlugin/MySQLColumnDefinitionSQL.swift
+      - Plugins/MySQLDriverPlugin/MySQLIdleRelease.swift
+      - Plugins/MySQLDriverPlugin/MySQLSessionFootprint.swift
       - Plugins/MySQLDriverPlugin/MySQLGeneratedColumnClassification.swift
       - Plugins/MySQLDriverPlugin/MySQLObjectQueries.swift
       - Plugins/MySQLDriverPlugin/MySQLQueryTimeoutStatement.swift

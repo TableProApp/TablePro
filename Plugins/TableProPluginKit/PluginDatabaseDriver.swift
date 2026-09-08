@@ -154,6 +154,28 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     func cancelQuery() throws
     func applyQueryTimeout(_ seconds: Int) async throws
+
+    /// What the command that hands this connection's held resource back should be called, or nil
+    /// when the driver holds nothing it can give up.
+    ///
+    /// The title belongs to the driver because what is released differs: DuckDB takes a whole-file
+    /// write lock that stops every other process opening the same database, so its command is
+    /// "Release File Lock", while a server driver gives back a connection slot. A nil title is how
+    /// a driver says the command does not apply, and the app leaves it out rather than showing a
+    /// command that can never do anything.
+    ///
+    /// It is a per-connection answer, not a per-engine one: the same DuckDB driver holds a file
+    /// lock on a `.duckdb` path and none on a Parquet file or a remote server.
+    var releasableResourceCommandTitle: String? { get }
+
+    /// Hands that resource back now, keeping the session alive so the next call re-acquires it.
+    ///
+    /// A result that did not release is a refusal, not a failure, and carries the reason: a driver
+    /// must refuse whenever re-acquiring the resource would not restore what the session is
+    /// holding. Committed data has to survive a release; session state generally does not, so
+    /// temporary objects, an open transaction, or settings the user changed are all reasons to keep
+    /// it and say so. Throwing is reserved for a release that was attempted and failed.
+    func releaseIdleResource() async throws -> PluginResourceRelease
     var serverVersion: String? { get }
     var parameterStyle: ParameterStyle { get }
     func resolveQueryCompletionProfile(
@@ -488,6 +510,10 @@ public extension PluginDatabaseDriver {
     func cancelQuery() throws {}
 
     func applyQueryTimeout(_ seconds: Int) async throws {}
+
+    var releasableResourceCommandTitle: String? { nil }
+
+    func releaseIdleResource() async throws -> PluginResourceRelease { .nothingToRelease }
 
     func ping() async throws {
         _ = try await execute(query: "SELECT 1")

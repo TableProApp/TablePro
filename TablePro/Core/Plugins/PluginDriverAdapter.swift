@@ -152,6 +152,14 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try await pluginDriver.applyQueryTimeout(seconds)
     }
 
+    var releasableResourceCommandTitle: String? {
+        pluginDriver.releasableResourceCommandTitle
+    }
+
+    func releaseIdleResource() async throws -> PluginResourceRelease {
+        try await pluginDriver.releaseIdleResource()
+    }
+
     func resolveQueryCompletionProfile(
         databaseTypeId: String,
         base: QueryCompletionProfile

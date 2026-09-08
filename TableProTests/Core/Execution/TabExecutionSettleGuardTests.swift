@@ -10,7 +10,7 @@
 //
 //  The scan is keyed on the receiver, not on the bare method name: `MCPHandlerOutcomeGate.settle`
 //  is an unrelated resume-once continuation that returns nothing, so there is no answer to consume
-//  there. `registryIsOnlyReachedThroughTheScannedPropertyName` keeps that narrowing fail-closed.
+//  there. `everyMutableRegistryUsesTheScannedPropertyName` keeps that narrowing fail-closed.
 //
 
 import Foundation
@@ -32,15 +32,19 @@ struct TabExecutionSettleGuardTests {
         )
     }
 
-    @Test("The registry is only reached through the property name the guard scans")
-    func registryIsOnlyReachedThroughTheScannedPropertyName() throws {
+    /// `settle` is `mutating`, so it can only run on a registry the compiler lets it mutate: a `var`
+    /// or an `inout` parameter. An immutable binding is inert whatever it is called, which is what
+    /// lets `ExecutionReadout` hold the registry as `let execution` and ask it for the busy bit.
+    @Test("Every registry a settle can run on is named tabExecution")
+    func everyMutableRegistryUsesTheScannedPropertyName() throws {
         let references = try Self.registryReferences()
         #expect(!references.isEmpty)
+        let escaping = references.filter { $0.isMutable && !$0.text.contains("var tabExecution") }
         #expect(
-            references.allSatisfy { $0.text.contains("var tabExecution") },
+            escaping.isEmpty,
             """
-            The settle guard scans for `tabExecution.settle(`. A registry reached under another \
-            name escapes it, so widen the scan: \(references.map(\.description).sorted())
+            The settle guard scans for `tabExecution.settle(`. A registry that can be mutated under \
+            another name escapes it, so widen the scan: \(escaping.map(\.description).sorted())
             """
         )
     }
@@ -83,6 +87,11 @@ struct TabExecutionSettleGuardTests {
                 || trimmed.hasPrefix("return ")
                 || trimmed.hasPrefix("while ")
                 || trimmed.contains(" = ")
+        }
+
+        /// Whether a `mutating` member is reachable through the binding this line declares.
+        var isMutable: Bool {
+            text.contains("var ") || text.contains("inout ")
         }
 
         var description: String { "\(file):\(line)" }

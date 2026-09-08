@@ -85,9 +85,29 @@ SELECT * FROM 'data.csv';
 SELECT * FROM read_parquet('analytics.parquet');
 ```
 
+## Sharing the file with another process
+
+One process writes a DuckDB file at a time, and the lock lasts as long as the connection. While a tab is open on `sales.duckdb`, `duckdb sales.duckdb` in a terminal is refused, and so is a notebook, a dbt run, or a second TablePro window.
+
+Three ways out, in **Options** on the connection:
+
+| Setting | What happens | Pick this when |
+|---|---|---|
+| **Release the File Lock After** | The file is handed back once the connection has been idle that many minutes, and taken again on the next query. `0`, the default, keeps it | A script or a scheduled job needs the file while you are reading it |
+| **Open the File Read-Only** | The file is opened read-only, which several processes can do at once. Writes are refused by the engine | Two or more readers, and nothing writing |
+| Neither | The lock is held for the life of the connection | Nothing else touches the file |
+
+**Database ▸ Release File Lock** hands it back now, without ending the session. The tabs, the schema cache and the row you were on all stay; the next query takes the file again.
+
+A release is refused, with the reason, while the session holds anything reopening would destroy: an open transaction, a temporary table or view, an attached database, or a changed setting. Commit the transaction or drop the temporary table and the release goes through.
+
+Read-only is not a way to keep writing from somewhere else. A read-write connection blocks every other process, read-only ones included; a read-only connection blocks writers. Two readers work, a reader and a writer do not.
+
+Releasing hands the file to whoever wants it next, which may not be you. A query run after another process has taken it fails until that process lets go; reconnect once it has.
+
 ## Limitations
 
-- A DuckDB file takes one writer at a time. A connect against a file another process holds fails, naming that process. Quit the `duckdb` CLI, the Python process or the other TablePro window first.
+- A DuckDB file takes one writer at a time. A connect against a file another process holds fails, naming that process and its process ID. Quit the `duckdb` CLI, the Python process or the other TablePro window first, or set **Release the File Lock After**.
 - A data file opened through **Browse…** is read-only, and the file on disk is left byte for byte identical. To change its contents, open a `.duckdb` database and run `CREATE TABLE t AS SELECT * FROM 'data.parquet'`.
 - Remote (Quack) lists no tables in the sidebar. Write them out by name through the alias.
 - No SSL/TLS section and no SSH tunnel. The engine is in-process; see [SSL/TLS](/connections/ssl).
@@ -106,6 +126,14 @@ The file opened and exposed nothing to list. Check that it is a DuckDB database 
 ### Port must be a number between 1 and 65535
 
 **Port** holds something else. The Quack default is `9494`.
+
+### … is using sales.duckdb
+
+Another process holds the file. The message names it and its process ID. Quit it, or turn on **Open the File Read-Only** when the message says read-only would get in, which it does when the other process is itself a reader.
+
+### The database file is no longer at …
+
+The file moved or was deleted while the connection was idle with its lock released. Point the connection at the new path, or restore the file, then reconnect.
 
 ## Related
 

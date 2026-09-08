@@ -96,6 +96,13 @@ enum DatabaseMenuBuilder {
                 action: #selector(MainSplitViewController.showQueryInsights(_:))
             ),
             MenuItemFactory.separator,
+            /// No ellipsis: the HIG reserves one for an action that needs more information before
+            /// it can complete, and this needs none. It validates to disabled for every connection
+            /// whose driver holds no file, which is all of them but the embedded engines.
+            MenuItemFactory.item(
+                String(localized: "Release File Lock"),
+                action: #selector(MainSplitViewController.releaseFileLock(_:))
+            ),
             MenuItemFactory.item(
                 String(localized: "Disconnect"),
                 action: #selector(MainSplitViewController.requestDisconnect)
