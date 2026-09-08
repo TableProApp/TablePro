@@ -213,12 +213,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         return columnPool.previousPresentedColumnIndex(before: index, in: tableView)
     }
 
-    /// The single way to reach a column, for Find, cell navigation and the inline editor alike.
-    func scrollColumnToVisible(tableColumnIndex index: Int) {
-        guard let tableView, index >= 0, index < tableView.numberOfColumns else { return }
-        tableView.scrollColumnToVisible(index)
-    }
-
     /// The columns the user is looking at, which is every presented column and not merely the
     /// mounted ones. Copy, find and size-all all read this, so narrowing it to the window would
     /// silently drop the columns off screen from a copied row or a search.
@@ -491,6 +485,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         for row in rows {
             (tableView.rowView(atRow: row, makeIfNecessary: false) as? DataGridRowView)?.redrawCells()
         }
+        repaintRowGutter()
     }
 
     /// Repaints one drawn cell, which is what a mounted cell got from `setNeedsDisplay` on itself.
@@ -523,6 +518,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// to widen these, because nobody chose their width.
     var unownedRestoredColumnNames: Set<String> = []
     var isApplyingProgrammaticRowSelection = false
+    weak var rowGutter: DataGridRowGutterView?
+    weak var rowGutterHeader: DataGridRowGutterHeaderView?
     /// The last value `publishRowSelection()` wrote, or nil before it has written one. `nil` has to
     /// mean "nothing published yet" rather than "empty", or a tab restoring an empty selection would
     /// be mistaken for one this coordinator produced and never reach the table view.
@@ -612,6 +609,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.reloadVisibleRowsAndStates()
+                /// The row-number font is a theme value and it decides the column's width, which
+                /// the pinned gutter mirrors. Nothing re-measured it on a theme change before, so
+                /// the width was already going stale here.
+                self?.resizeRowNumberColumnForCurrentRange()
+                self?.repaintRowGutter()
             }
     }
 
@@ -720,6 +722,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
               !column.isHidden else { return }
         let maxRowNumber = paginationOffsetProvider() + cachedRowCount
         DataGridView.sizeRowNumberColumn(column, forMaxRowNumber: maxRowNumber)
+        synchronizeRowGutter()
     }
 
     func applyInsertedRows(_ indices: IndexSet) {

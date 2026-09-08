@@ -152,6 +152,7 @@ struct DataGridView: NSViewRepresentable {
         }
 
         installSelectionOverlay(tableView: tableView, coordinator: coordinator)
+        installRowGutter(scrollView: scrollView, tableView: tableView, coordinator: coordinator)
         coordinator.attachScrollObservers(scrollView: scrollView)
         // Intentionally do not prime cachedRowCount/cachedColumnCount here.
         // They represent what NSTableView has actually rendered. Leaving them
@@ -464,6 +465,30 @@ struct DataGridView: NSViewRepresentable {
         column.width = columnWidth
         column.minWidth = columnWidth
         column.maxWidth = columnWidth
+    }
+
+    /// The row-number strip that holds the viewport's leading edge, and its header cap.
+    ///
+    /// Two views because they sit in two clip views: `addFloatingSubview(_:for:)` covers the content
+    /// clip view only, and the header has its own. See `DataGridRowGutterView` for why this is the
+    /// mechanism and why the `__rowNumber__` column stays attached underneath it.
+    private func installRowGutter(
+        scrollView: NSScrollView,
+        tableView: KeyHandlingTableView,
+        coordinator: TableViewCoordinator
+    ) {
+        let gutter = DataGridRowGutterView(frame: .zero)
+        gutter.coordinator = coordinator
+        tableView.addSubview(gutter)
+        scrollView.addFloatingSubview(gutter, for: .horizontal)
+
+        let headerCap = DataGridRowGutterHeaderView(frame: .zero)
+        headerCap.coordinator = coordinator
+        scrollView.addSubview(headerCap)
+
+        coordinator.rowGutter = gutter
+        coordinator.rowGutterHeader = headerCap
+        coordinator.synchronizeRowGutter()
     }
 
     private func installSelectionOverlay(tableView: KeyHandlingTableView, coordinator: TableViewCoordinator) {

@@ -80,6 +80,10 @@ extension TableViewCoordinator {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.remountAccessibilityCells()
+                /// The pinned gutter is repositioned by AppKit rather than redrawn, so a scroll that
+                /// exposes rows it has never drawn has to ask for them. A viewport of row numbers is
+                /// a fraction of what the rows themselves repaint on the same notification.
+                self?.repaintRowGutter()
                 self?.schedulePrewarmResume()
             }
         }

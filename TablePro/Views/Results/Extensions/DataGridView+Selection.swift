@@ -83,6 +83,7 @@ extension TableViewCoordinator {
             selectionController.clear()
         }
         publishRowSelection(rowSelection: newSelection)
+        repaintRowGutter()
 
         let newFocus = resolvedFocus(
             previous: previousSelection,

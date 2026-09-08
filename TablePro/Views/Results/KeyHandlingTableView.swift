@@ -214,7 +214,7 @@ final class KeyHandlingTableView: NSTableView {
                 controller.endDrag(dragged: dragged, originalCoord: initial)
                 return
             }
-            let point = convert(event.locationInWindow, from: nil)
+            let point = pointClearOfPinnedGutter(convert(event.locationInWindow, from: nil))
             autoscroll(with: event)
             let rowIdx = clampRow(row(at: point))
             let columnIdx = clampDataColumn(column(at: point), schema: schema)
@@ -223,6 +223,27 @@ final class KeyHandlingTableView: NSTableView {
             if coord != initial { dragged = true }
             controller.continueDrag(to: coord)
         }
+    }
+
+    /// Pushes a drag point out from under the pinned row gutter, and scrolls to reveal what it
+    /// covers.
+    ///
+    /// `autoscroll(with:)` measures against the clip view, which the gutter does not shrink, so a
+    /// drag parked over the strip never scrolls and the column under it resolves normally. The user
+    /// would then be extending the selection over a column the gutter is hiding.
+    private func pointClearOfPinnedGutter(_ point: NSPoint) -> NSPoint {
+        guard let clipView = enclosingScrollView?.contentView else { return point }
+        let gutterWidth = DataGridRowGutterView.width(of: self)
+        guard gutterWidth > 0 else { return point }
+        let edge = clipView.bounds.origin.x + gutterWidth
+        guard point.x < edge else { return point }
+        let target = max(0, clipView.bounds.origin.x - gutterWidth)
+        if target != clipView.bounds.origin.x {
+            clipView.scroll(to: NSPoint(x: target, y: clipView.bounds.origin.y))
+            enclosingScrollView?.reflectScrolledClipView(clipView)
+            return NSPoint(x: max(point.x, target + gutterWidth), y: point.y)
+        }
+        return NSPoint(x: edge, y: point.y)
     }
 
     private func clampRow(_ value: Int) -> Int {
@@ -364,6 +385,11 @@ final class KeyHandlingTableView: NSTableView {
         case .home, .end, .pageUp, .pageDown:
             super.keyDown(with: event)
             return
+        case .space:
+            if modifiers == [.shift] {
+                selectRowsIntersectingSelection()
+                return
+            }
         case .delete, .forwardDelete:
             if modifiers.isEmpty || matchesDeleteShortcut(event) {
                 deleteSelectedRowsIfPossible()
@@ -390,6 +416,32 @@ final class KeyHandlingTableView: NSTableView {
         }
 
         interpretKeyEvents([event])
+    }
+
+    /// Widens the selection to every whole row it touches, on Shift+Space, which is the spreadsheet
+    /// convention for it.
+    ///
+    /// Numbers spells the same command Option-Command-Return, and that is taken: it is the shipped
+    /// default for Execute Query Without Limit (`KeyboardShortcutModels`), which is a menu item, and
+    /// AppKit resolves a menu key equivalent before the event reaches a view. Plain Space is Preview
+    /// FK here and Control-Space is the editor's completions, so Shift+Space is both free and the
+    /// binding a spreadsheet user already knows.
+    ///
+    /// This is the keyboard half of #2664. The row-number gutter is now pinned, but a route that
+    /// needs no pointer at all is what makes whole-row selection reachable from wherever the cell
+    /// cursor already is, and it is what `GridSelectionController.selectEntireRow` was written for.
+    func selectRowsIntersectingSelection() {
+        guard let coordinator, let controller = gridSelection else { return }
+        let totalColumns = totalDataColumns()
+        guard totalColumns > 0 else { return }
+        let rows = coordinator.currentRowSelection(fallbackRow: focusedRow >= 0 ? focusedRow : nil)
+        guard !rows.isEmpty else { return }
+
+        controller.selectEntireRows(rows, totalColumns: totalColumns)
+        withProgrammaticRowSelection {
+            selectRowIndexes(IndexSet(rows), byExtendingSelection: false)
+        }
+        coordinator.repaintRowGutter()
     }
 
     private func matchesDeleteShortcut(_ event: NSEvent) -> Bool {
