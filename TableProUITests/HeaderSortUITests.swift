@@ -64,25 +64,37 @@ final class HeaderSortUITests: UITestCase {
 
     // MARK: - Helpers
 
-    /// Waits for the header to be hittable, not merely to exist.
+    /// The header is read for its geometry and clicked through a coordinate, never through the
+    /// element.
     ///
-    /// `waitToExist` polls `.exists` alone, while `click()` hit-tests once and throws
-    /// "Not hittable" if the view is not ready. The grid is still settling when the rows land:
-    /// the first accessibility question activates `DataGridCellAccessibilityView` and defers
-    /// `remountAccessibilityCells()` onto an async main-actor task, so a click posted straight after
-    /// `waitForClickableRows` can arrive mid-remount.
+    /// A column header is one more thing inside the grid that XCUITest will not click, alongside
+    /// the rows and cells `gridPoint` exists for. Measured on the runner and on a developer Mac:
+    /// the header element exists, reports `isEnabled` true and a correct frame inside the grid, and
+    /// nothing in the failure's own element tree or screen recording overlaps it, yet `isHittable`
+    /// stays false for a full thirty seconds. `waitUntilHittable` therefore waits out its timeout
+    /// on a header that is on screen, which is how this suite was merged red (#2670) and stayed
+    /// red. A coordinate taken off the grid clicks it every time, including the right-click that
+    /// raises the header menu.
+    ///
+    /// The offset is measured from the grid rather than assumed, because the column's position
+    /// moves with the row-number gutter's width and with the sidebar.
     private func clickHeader(in grid: XCUIElement, rightClick: Bool = false) throws {
         let header = grid.buttons
             .matching(NSPredicate(format: "label BEGINSWITH %@", "Column: \(Self.sortedColumn)"))
             .firstMatch
         XCTAssertTrue(
-            waitUntilHittable(header, timeout: 30),
-            "The grid must publish a clickable \(Self.sortedColumn) header"
+            header.waitToExist(timeout: 30),
+            "The grid must publish a \(Self.sortedColumn) header"
         )
+        let frame = header.frame
+        let origin = grid.frame.origin
+        XCTAssertTrue(frame.width > 0, "The \(Self.sortedColumn) header must be laid out")
+        let point = grid.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: frame.midX - origin.x, dy: frame.midY - origin.y))
         if rightClick {
-            header.rightClick()
+            point.rightClick()
         } else {
-            header.click()
+            point.click()
         }
     }
 

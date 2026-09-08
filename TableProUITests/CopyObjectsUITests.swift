@@ -32,10 +32,9 @@ final class CopyObjectsUITests: UITestCase {
         XCTAssertTrue(item.waitToExist(timeout: 10))
         item.click()
 
-        let objects = window.descendants(matching: .any)
-            .matching(identifier: "copy-objects-list").firstMatch
-        let target = window.descendants(matching: .any)
-            .matching(identifier: "copy-objects-target").firstMatch
+        let sheet = copyToSheet(of: window)
+        let objects = sheet.outlines.matching(identifier: "copy-objects-list").firstMatch
+        let target = sheet.buttons.matching(identifier: "copy-objects-target").firstMatch
         XCTAssertTrue(
             waitForPredicate(timeout: 20) { objects.exists || target.exists },
             "Copy To must open a sheet offering the objects and a target"
@@ -43,7 +42,7 @@ final class CopyObjectsUITests: UITestCase {
 
         /// Nothing has been written and nothing can be: the sheet is still on its first step, so
         /// Cancel is the whole interaction under test.
-        let cancel = window.buttons["Cancel"].firstMatch
+        let cancel = sheet.buttons["Cancel"].firstMatch
         if cancel.waitToExist(timeout: 10) {
             cancel.click()
         }
@@ -62,7 +61,7 @@ final class CopyObjectsUITests: UITestCase {
         XCTAssertTrue(item.waitToExist(timeout: 10))
         item.click()
 
-        let search = window.descendants(matching: .any)
+        let search = copyToSheet(of: window).searchFields
             .matching(identifier: "copy-objects-search").firstMatch
         XCTAssertTrue(search.waitToExist(timeout: 20), "The sheet must offer a search field")
         XCTAssertTrue(waitUntilHittable(search, timeout: 20))
@@ -90,10 +89,9 @@ final class CopyObjectsUITests: UITestCase {
     func testAPerTableFilterIsSetFromTheObjectListAndShownOnTheRow() throws {
         let app = try launchWithSampleDatabase()
         let window = try readyWindow(of: app)
-        try openCopyToSheet(onRow: "Album", in: window, of: app)
+        let sheet = try openCopyToSheet(onRow: "Album", in: window, of: app)
 
-        let funnel = window.descendants(matching: .any)
-            .matching(identifier: "copy-objects-row-filter-Album").firstMatch
+        let funnel = sheet.buttons.matching(identifier: "copy-objects-row-filter-Album").firstMatch
         XCTAssertTrue(funnel.waitToExist(timeout: 20), "A table row must offer a row filter")
         XCTAssertTrue(waitUntilHittable(funnel, timeout: 20))
         funnel.click()
@@ -108,8 +106,7 @@ final class CopyObjectsUITests: UITestCase {
         XCTAssertTrue(done.waitToExist(timeout: 10))
         done.click()
 
-        let summary = window.descendants(matching: .any)
-            .matching(identifier: "copy-objects-row-scope-Album").firstMatch
+        let summary = sheet.staticTexts.matching(identifier: "copy-objects-row-scope-Album").firstMatch
         XCTAssertTrue(
             waitForPredicate(timeout: 20) { summary.exists },
             "The row must show the filter it now carries"
@@ -128,10 +125,9 @@ final class CopyObjectsUITests: UITestCase {
     func testAFilterCarryingASecondStatementBlocksContinue() throws {
         let app = try launchWithSampleDatabase()
         let window = try readyWindow(of: app)
-        try openCopyToSheet(onRow: "Album", in: window, of: app)
+        let sheet = try openCopyToSheet(onRow: "Album", in: window, of: app)
 
-        let funnel = window.descendants(matching: .any)
-            .matching(identifier: "copy-objects-row-filter-Album").firstMatch
+        let funnel = sheet.buttons.matching(identifier: "copy-objects-row-filter-Album").firstMatch
         XCTAssertTrue(funnel.waitToExist(timeout: 20))
         XCTAssertTrue(waitUntilHittable(funnel, timeout: 20))
         funnel.click()
@@ -146,7 +142,7 @@ final class CopyObjectsUITests: UITestCase {
         XCTAssertTrue(done.waitToExist(timeout: 10))
         done.click()
 
-        let cont = window.buttons["Continue"].firstMatch
+        let cont = sheet.buttons["Continue"].firstMatch
         XCTAssertTrue(
             waitForPredicate(timeout: 20) { cont.exists && !cont.isEnabled },
             "Continue must stay unavailable while a filter holds a second statement"
@@ -157,18 +153,33 @@ final class CopyObjectsUITests: UITestCase {
 
     // MARK: - Helpers
 
+    @discardableResult
     private func openCopyToSheet(
         onRow name: String,
         in window: XCUIElement,
         of app: XCUIApplication
-    ) throws {
+    ) throws -> XCUIElement {
         openContextMenu(onRow: name, in: window, of: app)
         let item = contextMenuItem(copyToTitle, in: app)
         XCTAssertTrue(item.waitToExist(timeout: 10))
         item.click()
-        let list = window.descendants(matching: .any)
-            .matching(identifier: "copy-objects-list").firstMatch
+        let sheet = copyToSheet(of: window)
+        let list = sheet.outlines.matching(identifier: "copy-objects-list").firstMatch
         XCTAssertTrue(list.waitToExist(timeout: 20), "Copy To must open its object list")
+        return sheet
+    }
+
+    /// Every lookup inside the sheet starts here, and none of them walks the window.
+    ///
+    /// The window behind the sheet holds a data grid, and a grid answers its first accessibility
+    /// question by mounting a cell per row of the page: the sample opens on `Track`, so the window
+    /// publishes about 12,800 elements. A `descendants(matching: .any)` taken off the window walks
+    /// all of them, which measured 8.5 to 14.5 seconds per evaluation on the runner, so three polls
+    /// used up a twenty second wait and the suite reported a sheet that was open on screen as never
+    /// having opened. The sheet is a direct child of the window, so `children` resolves it without
+    /// touching the grid, and everything under it is a sixty element subtree.
+    private func copyToSheet(of window: XCUIElement) -> XCUIElement {
+        window.children(matching: .sheet).firstMatch
     }
 
     private func readyWindow(of app: XCUIApplication) throws -> XCUIElement {
