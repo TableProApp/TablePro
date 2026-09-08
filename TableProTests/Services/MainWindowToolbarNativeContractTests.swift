@@ -31,11 +31,77 @@ struct MainWindowToolbarNativeContractTests {
     /// item, such as label or view, apply to the entire item"). AppKit can only drop it whole, and
     /// it did: at 1200pt the hosted status item held its width while seven commands went to the
     /// overflow menu.
-    @Test("No toolbar item is backed by a view")
-    func noItemIsViewBacked() {
+    @Test("No command is backed by a view")
+    func noCommandIsViewBacked() {
         for item in vendedItems() {
             #expect(item.view == nil, "\(item.itemIdentifier.rawValue) must not be view-backed")
         }
+    }
+
+    /// The one exception, and the reason it is safe. AppKit sizes a view-less item's `title` once,
+    /// when the item is inserted: measured, setting a longer title afterwards leaves the item at its
+    /// old width and clips the text, and neither `validateVisibleItems()` nor a window resize
+    /// re-measures it. So a figure that changes once a second cannot live in a title.
+    ///
+    /// What made the old hosted status item undroppable was that it had no width of its own to give
+    /// back. This one is pinned to a width measured from the widest figure it can ever draw, so it
+    /// never needs compressing, and it is only in the group at all for a connection whose bytes the
+    /// app carries.
+    @Test("The throughput readout is view-backed, and pinned to a width it cannot outgrow")
+    func throughputReadoutIsPinned() throws {
+        let owner = MainWindowToolbar()
+        let field = try #require(owner.transportRateItem.view as? NSTextField)
+        let pinned = field.constraints.filter { $0.firstAttribute == .width && $0.relation == .equal }
+        let constant = try #require(pinned.first?.constant)
+
+        #expect(pinned.count == 1, "The readout must carry exactly one width constraint")
+
+        let font = try #require(field.font)
+        for candidate in TransportRateLabel.widestCandidates {
+            let width = (candidate as NSString).size(withAttributes: [.font: font]).width
+            #expect(width <= constant, "\"\(candidate)\" needs \(width)pt but the field is \(constant)pt")
+        }
+    }
+
+    /// The readout is a readout: it publishes no action, so AppKit never validates it and it has no
+    /// menu-bar command of its own. That is the trade the placement makes, and it is pinned here so
+    /// a later change that gives it an action has to say so.
+    ///
+    /// It still gets an overflow entry, because the centred group is the first region AppKit sheds
+    /// when the window narrows and the figure should not vanish with the controls beside it. The
+    /// entry is disabled: there is nothing to click.
+    @Test("The throughput readout claims no action but still reports in the overflow menu")
+    func throughputReadoutIsInertButVisible() throws {
+        let owner = MainWindowToolbar()
+        let item = owner.transportRateItem
+
+        #expect(item.action == nil)
+
+        let entry = try #require(item.menuFormRepresentation)
+        #expect(entry.action == nil)
+        #expect(!entry.isEnabled)
+        #expect(!entry.title.isEmpty)
+    }
+
+    /// An arrow glyph is what the field draws; it is not what the overflow entry or VoiceOver
+    /// should be handed, because neither reads it as a direction.
+    @Test("The overflow entry names the direction rather than drawing an arrow")
+    func overflowEntryNamesTheDirection() throws {
+        let owner = MainWindowToolbar()
+        owner.transportRateItem.apply(rate: TransportRate(receivedPerSecond: 145_408, sentPerSecond: 0))
+        let entry = try #require(owner.transportRateItem.menuFormRepresentation)
+
+        #expect(!entry.title.contains("\u{2193}"))
+        #expect(!entry.title.contains("\u{2191}"))
+    }
+
+    /// Structural, and deliberately so: adding or removing a subitem is the one change AppKit does
+    /// re-measure. It happens when a connection is adopted, never under a running tunnel.
+    @Test("A connection with no measurable transport carries no readout")
+    func unmeasuredConnectionsCarryNoReadout() {
+        let owner = MainWindowToolbar()
+
+        #expect(!owner.connectionGroupSubitems().contains { $0 === owner.transportRateItem })
     }
 
     /// Finder ships 8 controls and Xcode 13. The default set was 17 plus a hosted status blob, and

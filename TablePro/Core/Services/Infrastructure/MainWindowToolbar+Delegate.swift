@@ -47,11 +47,16 @@ extension MainWindowToolbar {
             /// Not navigational, unlike back and forward. `isNavigational` asks AppKit to lift an
             /// item to the leading edge of the content area, which is the opposite of what
             /// `centeredItemIdentifiers` asks for, and this group is the centred one.
-            return makeNativeGroup(
+            ///
+            /// The throughput readout joins it here rather than standing on its own, so it is
+            /// centred with the pair it describes and shares their capsule.
+            let group = makeNativeGroup(
                 id: itemIdentifier,
                 label: String(localized: "Connection"),
-                subitems: [subitemConnection(), subitemDatabase()]
+                subitems: connectionGroupSubitems()
             )
+            adopt(connectionGroup: group)
+            return group
         case Self.safeMode:
             return subitemSafeMode()
         case Self.editorGroup:

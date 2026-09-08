@@ -45,6 +45,14 @@ extension MainWindowToolbar {
         coordinator?.connection.name ?? ""
     }
 
+    /// Whether the centred group carries a throughput readout at all, and whether there is a second
+    /// reading worth taking. Read from the connection's configuration rather than from the registry,
+    /// so it holds for the whole session: the group's shape is settled when the connection is
+    /// adopted and never changes under a running tunnel.
+    var carriesMeasuredTransport: Bool {
+        coordinator?.connection.activeTunnelKind?.carriesMeasuredBytes == true
+    }
+
     /// The container this control switches, and only that. It briefly read "app › public" on a
     /// schema-grouped engine while the click still opened the database chooser, which makes the
     /// word the user aimed at the one thing the control cannot change. The schema has its own

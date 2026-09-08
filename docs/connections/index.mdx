@@ -80,9 +80,13 @@ A connection's group, tags, and favorite star sync through iCloud unless it is m
 
 Press `Ctrl+Cmd+C` for **Switch Connection**. Whatever is already open sits at the top, and the rest are listed under the group they belong to, a nested group carrying its full path. Arrow keys move, `Return` switches the window to that connection, and `Cmd`-click opens a saved one in a window of its own. Typing searches every group at once and collapses the matches into a single list.
 
-A footer under that list names the transport the window's connection runs on. On an SSH tunnel or a SOCKS proxy it also carries the bytes that have crossed since the transport opened, received and sent, with the rate beside a direction while data moves. An idle transport keeps its totals and drops the rate.
+A footer under that list names the transport the window's connection runs on. On an SSH tunnel or a SOCKS proxy it also carries the bytes that have crossed since the transport opened, received and sent.
 
 The rest show their name alone. Cloudflare Tunnel, Cloud SQL Auth Proxy and Tunnel Command each run a separate binary that holds the connection end to end, a [remote database file](/connections/remote-database-files) is fetched once and then read from disk, and a direct connection's socket belongs to the database driver.
+
+### Throughput in the toolbar
+
+The same two transports put a live figure beside the connection name in the middle of the toolbar, an arrow for whichever direction is busier and the rate: `↓145 kB/s`. It reads `0 kB/s` while nothing moves, which is most of the time on a database connection. A connection on any other transport has no figure there at all.
 
 **Open Database** (`Cmd+K`) moves to another database on the same server.
 

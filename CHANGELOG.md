@@ -42,7 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Show Tables and Show Favorites in the View menu.
 - Running indicator on the editor tab whose query is executing.
 - Sort direction setting for the data grid, applied to the default row sort and to the first click on a column header. (#2665)
-- Transport activity under the connection switcher: bytes carried, and live throughput on an SSH tunnel or SOCKS proxy.
+- Transport activity for an SSH tunnel or SOCKS proxy: live throughput in the toolbar, bytes carried in the connection switcher.
 
 ### Changed
 
