@@ -10,6 +10,9 @@ private final class SpyLiveActivityHandle: LiveActivityHandle {
     private(set) var endedStates: [QueryActivityAttributes.ContentState] = []
     private(set) var updatedStaleDates: [Date?] = []
     weak var store: SpyLiveActivityStore?
+    var holdsEndUntilReleased = false
+    private(set) var isEndParked = false
+    private var endGate: CheckedContinuation<Void, Never>?
 
     init(id: String, state: QueryActivityAttributes.ContentState) {
         self.id = id
@@ -22,9 +25,21 @@ private final class SpyLiveActivityHandle: LiveActivityHandle {
     }
 
     func end(state: QueryActivityAttributes.ContentState) async {
+        if holdsEndUntilReleased {
+            await withCheckedContinuation {
+                endGate = $0
+                isEndParked = true
+            }
+        }
         self.state = state
         endedStates.append(state)
         store?.forget(self)
+    }
+
+    func releaseEnd() {
+        isEndParked = false
+        endGate?.resume()
+        endGate = nil
     }
 }
 
@@ -303,6 +318,33 @@ struct QueryActivityControllerTests {
         let final = store.requested.first?.endedStates.first
         #expect(final?.outcome == .stopped)
         #expect(final?.endedAt == referenceNow)
+    }
+
+    @Test
+    func aReapDuringAnInFlightEndDoesNotEndTheActivityTwice() async {
+        let store = SpyLiveActivityStore()
+        let controller = makeController(store: store)
+
+        let token = await controller.start(
+            connectionId: UUID(),
+            connectionName: "SIT",
+            query: "select 1",
+            startedAt: referenceNow
+        )
+        let handle = store.requested.first
+        handle?.holdsEndUntilReleased = true
+
+        let ending = Task { await controller.end(token: token, outcome: .completed) }
+        while handle?.isEndParked == false {
+            await Task.yield()
+        }
+        await controller.reapOrphans()
+        handle?.releaseEnd()
+        await ending.value
+
+        #expect(handle?.endedStates.count == 1)
+        #expect(handle?.endedStates.first?.outcome == .completed)
+        #expect(controller.ownedActivityIds.isEmpty)
     }
 
     @Test

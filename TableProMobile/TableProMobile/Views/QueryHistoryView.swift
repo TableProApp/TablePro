@@ -17,7 +17,7 @@ struct QueryHistoryView: View {
                                 Image(systemName: "exclamationmark.circle.fill")
                                     .font(.footnote)
                                     .foregroundStyle(.red)
-                                    .accessibilityLabel(String(localized: "Failed"))
+                                    .accessibilityLabel(item.errorMessage ?? String(localized: "Failed"))
                             }
                             Text(verbatim: item.query)
                                 .font(.system(.footnote, design: .monospaced))

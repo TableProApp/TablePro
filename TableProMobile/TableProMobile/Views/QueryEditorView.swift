@@ -434,10 +434,10 @@ struct QueryEditorView: View {
         )
 
         guard !Task.isCancelled else {
+            recordHistory(query: trimmed, outcome: .stopped, errorMessage: QueryExecutionOutcome.stopped.historyMessage)
             isExecuting = false
             executionStartTime = nil
             await appState.queryActivities.end(token: token, outcome: .stopped)
-            recordHistory(query: trimmed, outcome: .stopped, errorMessage: QueryExecutionOutcome.stopped.historyMessage)
             return
         }
 
@@ -448,31 +448,24 @@ struct QueryEditorView: View {
         progressUpdater.cancel()
         let phase = viewModel.phase
         let outcome = QueryExecutionOutcome(phase: phase)
-        let elapsed = viewModel.executionTime
-        isExecuting = false
-        executionStartTime = nil
-
-        await appState.queryActivities.end(token: token, outcome: outcome.activityOutcome)
 
         if case .error(let err) = phase {
             appError = err
             hapticError.toggle()
             recordHistory(query: trimmed, outcome: outcome, errorMessage: err.localizedDescription)
-            return
-        }
-
-        executionTime = elapsed
-
-        guard outcome == .completed else {
+        } else {
+            executionTime = viewModel.executionTime
+            if outcome == .completed {
+                hapticSuccess.toggle()
+                IOSAnalyticsProvider.shared.markFirstQueryExecuted()
+            }
             recordHistory(query: trimmed, outcome: outcome, errorMessage: outcome.historyMessage)
-            return
         }
 
-        hapticSuccess.toggle()
+        isExecuting = false
+        executionStartTime = nil
 
-        IOSAnalyticsProvider.shared.markFirstQueryExecuted()
-
-        recordHistory(query: trimmed, outcome: outcome, errorMessage: nil)
+        await appState.queryActivities.end(token: token, outcome: outcome.activityOutcome)
     }
 
     private func recordHistory(query: String, outcome: QueryExecutionOutcome, errorMessage: String?) {

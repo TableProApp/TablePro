@@ -125,9 +125,8 @@ final class QueryEditorViewModel {
             case .warning, .critical:
                 guard case .running = self.phase else { return }
                 Self.logger.warning("Memory pressure: stopping query stream to stay within limits")
-                self.fetchTask?.cancel()
-                guard !self.buffer.isEmpty else { return }
                 self.buffer.markTruncated(.memoryPressure)
+                self.fetchTask?.cancel()
                 self.phase = .truncated(reason: .memoryPressure)
             }
         }

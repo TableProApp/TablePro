@@ -86,6 +86,7 @@ final class DataGridColumnPool {
         savedLayout: ColumnLayoutState?,
         isEditable: Bool,
         hiddenColumnNames: Set<String>,
+        firstClickSortDirection: SortDirection,
         widthCalculator: (String, Int) -> CGFloat
     ) -> Bool {
         attach(to: tableView)
@@ -114,7 +115,8 @@ final class DataGridColumnPool {
                     columnType: slot < columnTypes.count ? columnTypes[slot] : nil,
                     comment: comment,
                     width: resolvedWidth,
-                    isEditable: isEditable
+                    isEditable: isEditable,
+                    firstClickSortDirection: firstClickSortDirection
                 )
                 let hidden = hiddenFromLayout.contains(columnName) || hiddenColumnNames.contains(columnName)
                 if hidden {
@@ -258,7 +260,8 @@ final class DataGridColumnPool {
         columnType: ColumnType?,
         comment: String?,
         width: CGFloat,
-        isEditable: Bool
+        isEditable: Bool,
+        firstClickSortDirection: SortDirection
     ) {
         if !(column.headerCell is SortableHeaderCell) || column.headerCell.stringValue != name {
             let cell = SortableHeaderCell(textCell: name)
@@ -291,8 +294,10 @@ final class DataGridColumnPool {
         if column.isEditable != isEditable {
             column.isEditable = isEditable
         }
-        if column.sortDescriptorPrototype?.key != name {
-            column.sortDescriptorPrototype = NSSortDescriptor(key: name, ascending: true)
+        let prototypeAscending = firstClickSortDirection == .ascending
+        if column.sortDescriptorPrototype?.key != name
+            || column.sortDescriptorPrototype?.ascending != prototypeAscending {
+            column.sortDescriptorPrototype = NSSortDescriptor(key: name, ascending: prototypeAscending)
         }
     }
 

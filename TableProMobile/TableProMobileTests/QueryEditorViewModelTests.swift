@@ -62,6 +62,31 @@ struct QueryEditorViewModelTests {
         #expect(QueryExecutionOutcome(phase: vm.phase) == .stopped)
     }
 
+    @Test("memory pressure before the first row still marks the run interrupted")
+    func pressureBeforeAnyRowIsNotASuccess() async {
+        let driver = MockDatabaseDriver()
+        let gate = QueryGate()
+        driver.beforeExecute = { await gate.wait() }
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: makeColumns(), rows: [], rowsAffected: 1, executionTime: 0))
+        ]
+
+        let vm = QueryEditorViewModel(windowCapacity: 100)
+        let run = Task { await vm.run(driver: driver, query: "UPDATE t SET a = 1") }
+        while !vm.isRunning {
+            await Task.yield()
+        }
+        await vm.handlePressure(.critical)
+        await gate.open()
+        await run.value
+
+        if case .truncated(let reason) = vm.phase, case .memoryPressure = reason {
+            #expect(QueryExecutionOutcome(phase: vm.phase) == .interrupted)
+        } else {
+            Issue.record("expected truncated(.memoryPressure) phase, got \(vm.phase)")
+        }
+    }
+
     @Test("stop on an idle view model changes nothing")
     func stopWhenIdleIsInert() {
         let vm = QueryEditorViewModel(windowCapacity: 100)

@@ -156,6 +156,7 @@ struct DataGridSettings: Codable, Equatable {
     var queryResultRowCap: Int
     var truncateQueryResults: Bool
     var defaultSortBehavior: DefaultSortBehavior
+    var defaultSortDirection: SortDirection
 
     static let `default` = DataGridSettings(
         rowHeight: .normal,
@@ -169,7 +170,8 @@ struct DataGridSettings: Codable, Equatable {
         countRowsIfEstimateLessThan: 100_000,
         queryResultRowCap: 10_000,
         truncateQueryResults: true,
-        defaultSortBehavior: .none
+        defaultSortBehavior: .none,
+        defaultSortDirection: .ascending
     )
 
     init(
@@ -184,7 +186,8 @@ struct DataGridSettings: Codable, Equatable {
         countRowsIfEstimateLessThan: Int = 100_000,
         queryResultRowCap: Int = 10_000,
         truncateQueryResults: Bool = true,
-        defaultSortBehavior: DefaultSortBehavior = .none
+        defaultSortBehavior: DefaultSortBehavior = .none,
+        defaultSortDirection: SortDirection = .ascending
     ) {
         self.rowHeight = rowHeight
         self.dateFormat = dateFormat
@@ -198,6 +201,7 @@ struct DataGridSettings: Codable, Equatable {
         self.queryResultRowCap = queryResultRowCap
         self.truncateQueryResults = truncateQueryResults
         self.defaultSortBehavior = defaultSortBehavior
+        self.defaultSortDirection = defaultSortDirection
     }
 
     init(from decoder: Decoder) throws {
@@ -215,6 +219,7 @@ struct DataGridSettings: Codable, Equatable {
         queryResultRowCap = try container.decodeIfPresent(Int.self, forKey: .queryResultRowCap) ?? 10_000
         truncateQueryResults = try container.decodeIfPresent(Bool.self, forKey: .truncateQueryResults) ?? true
         defaultSortBehavior = try container.decodeIfPresent(DefaultSortBehavior.self, forKey: .defaultSortBehavior) ?? .none
+        defaultSortDirection = try container.decodeIfPresent(SortDirection.self, forKey: .defaultSortDirection) ?? .ascending
     }
 
     // MARK: - Validated Properties

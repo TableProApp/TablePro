@@ -91,21 +91,32 @@ extension MainContentCoordinator {
         let tab = tabManager.tabs[index]
         guard tab.pendingRestoredSort != nil || tab.restoredPage != nil else { return false }
 
+        let pendingSort = tab.pendingRestoredSort ?? []
+        /// Against the full schema, not the scoped selection. `selectColumns` retains only the
+        /// columns the *live* sort names, and a restored sort is still sitting in
+        /// `pendingRestoredSort`, so a saved sort on a hidden column resolved to nothing and the
+        /// next save wrote the loss to disk.
         let resolvedSort = MainContentCoordinator.resolveRestoredSortColumns(
-            tab.pendingRestoredSort ?? [],
-            in: effectiveResultColumns(for: tab)
+            pendingSort,
+            in: cachedSchemaColumns(for: tab)?.columns ?? effectiveResultColumns(for: tab)
         )
+        /// A sort that resolved to nothing has not been consumed, it has failed to resolve, which is
+        /// what an empty column list looks like when the schema fetch did not land. Clearing it
+        /// anyway threw the saved sort away and the next save wrote the loss to disk.
+        let sortWasConsumed = pendingSort.isEmpty || !resolvedSort.isEmpty
         // The persisted page index counts pages of the size it was taken in, so reading it in
         // today's default would land the tab on rows it was never showing.
         let pageSize = tab.restoredPageSize ?? AppSettingsManager.shared.dataGrid.defaultPageSize
         let page = max(1, tab.restoredPage ?? 1)
 
         tabManager.mutate(at: index) { tab in
-            tab.pendingRestoredSort = nil
+            if sortWasConsumed {
+                tab.pendingRestoredSort = nil
+            }
             tab.restoredPage = nil
             tab.restoredPageSize = nil
             if !resolvedSort.isEmpty {
-                tab.sortState = SortState(columns: resolvedSort, source: .user)
+                tab.sortState = SortState(columns: resolvedSort, source: tab.restoredSortSource)
             }
             tab.pagination.pageSize = pageSize
             tab.pagination.currentPage = page
@@ -114,8 +125,14 @@ extension MainContentCoordinator {
         return !resolvedSort.isEmpty || page > 1
     }
 
+    /// The app default applies only while nothing has decided the order.
+    ///
+    /// `isSorting` alone cannot gate this: an empty sort the user chose through Don't Sort looks
+    /// exactly like a tab that has never sorted, so the default was written straight back over it on
+    /// the next first load, and Don't Sort could never stick.
     func wantsDefaultSort(for tab: QueryTab, hint: DefaultSortHint) -> Bool {
         guard tab.tabType == .table,
+              tab.sortState.source == .unset,
               !tab.sortState.isSorting,
               let tableName = tab.tableContext.tableName, !tableName.isEmpty else {
             return false
@@ -137,6 +154,7 @@ extension MainContentCoordinator {
 
         let resolved = DefaultSortResolver.resolveSortState(
             behavior: AppSettingsManager.shared.dataGrid.defaultSortBehavior,
+            direction: AppSettingsManager.shared.dataGrid.defaultSortDirection,
             pluginHint: hint,
             primaryKeyColumns: resolvedPrimaryKeyColumns(for: tab),
             allColumns: effectiveResultColumns(for: tab)

@@ -40,6 +40,7 @@ final class QueryActivityController {
         let connectionId: UUID
         let handle: any LiveActivityHandle
         var lastUpdatedAt: Date
+        var isEnding = false
     }
 
     private let store: any LiveActivityStore
@@ -106,7 +107,7 @@ final class QueryActivityController {
     }
 
     func update(token: QueryExecutionToken?, rowsStreamed: Int) async {
-        guard let token, let execution = executions[token] else { return }
+        guard let token, let execution = executions[token], !execution.isEnding else { return }
         let instant = now()
         let rowsChanged = execution.handle.state.rowsStreamed != rowsStreamed
         let heartbeatDue = instant.timeIntervalSince(execution.lastUpdatedAt) >= Self.heartbeatInterval
@@ -123,18 +124,21 @@ final class QueryActivityController {
     }
 
     func end(token: QueryExecutionToken?, outcome: QueryActivityAttributes.Outcome) async {
-        guard let token, let execution = executions.removeValue(forKey: token) else { return }
+        guard let token, let execution = executions[token], !execution.isEnding else { return }
+        executions[token]?.isEnding = true
         await end(execution: execution, outcome: outcome)
+        executions.removeValue(forKey: token)
     }
 
     func endEverything(forConnection connectionId: UUID, outcome: QueryActivityAttributes.Outcome) async {
-        let matching = executions.filter { $0.value.connectionId == connectionId }
+        let matching = executions.filter { $0.value.connectionId == connectionId && !$0.value.isEnding }
         guard !matching.isEmpty else { return }
         for token in matching.keys {
-            executions.removeValue(forKey: token)
+            executions[token]?.isEnding = true
         }
-        for execution in matching.values {
+        for (token, execution) in matching {
             await end(execution: execution, outcome: outcome)
+            executions.removeValue(forKey: token)
         }
     }
 

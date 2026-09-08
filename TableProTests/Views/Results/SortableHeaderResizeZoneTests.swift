@@ -68,6 +68,7 @@ struct SortableHeaderResizeZoneTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: hidden,
+            firstClickSortDirection: .ascending,
             widthCalculator: { _, _ in columnWidth }
         )
 
@@ -116,6 +117,7 @@ struct SortableHeaderResizeZoneTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: { _, _ in 120 }
         )
         tableView.layoutSubtreeIfNeeded()
