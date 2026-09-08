@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use tablepro_core::{ColumnInfo, QueryResult, Value};
 
-use super::grid::{GridMsg, TabGridContext, build_column_view};
+use super::grid::{CellPreset, GridMsg, TabGridContext, build_column_view};
 
 const PAGE_SIZE_OPTIONS: &[u64] = &[100, 500, 1_000, 5_000, 10_000];
 const DEFAULT_PAGE_SIZE: u64 = 1_000;
@@ -193,10 +193,20 @@ pub enum BrowseTabInput {
         col_index: usize,
         new_value: String,
     },
-    GridSetCellNull {
+    /// Cell context-menu "Set Value". The grid names the preset; the
+    /// tab resolves it against the column's declared type, because
+    /// only the tab holds the column metadata that says whether an
+    /// empty string is a value the column can hold.
+    GridSetCellValue {
         row_position: u32,
         col_index: usize,
+        preset: CellPreset,
     },
+    /// The grid could not carry out a menu action in full and wants
+    /// to say so.
+    GridShowToast(String),
+    GridExportResults(QueryResult),
+    ExportCurrentPage,
     GridDeleteRowAt {
         row_position: u32,
     },
@@ -285,6 +295,9 @@ pub enum BrowseTabOutput {
     CopyRowAsInsert { row_position: u32 },
     /// Generic clipboard-copy request from grid.
     CopyToClipboard(String),
+    /// "Export Results…" from the grid menu or the paginator button.
+    /// Carries the rows to write and a suggested file name stem.
+    ExportResults { result: QueryResult, name: String },
     /// Column-name vocabulary for editor autocomplete; App merges across tabs.
     SchemaWordsChanged(Vec<String>),
     /// Show a generic info dialog for "Cannot edit / select exactly one row".
@@ -313,6 +326,64 @@ pub enum BrowseTabOutput {
 impl BrowseTab {
     pub fn snapshot(&self) -> Option<QueryResult> {
         self.current_result.clone()
+    }
+
+    fn export_name(&self) -> String {
+        match &self.schema {
+            Some(s) => format!("{s}.{}", self.table),
+            None => self.table.clone(),
+        }
+    }
+
+    /// The tracker context the grid renders through. Copy and export
+    /// read the same context, so what leaves the tab is what the user
+    /// is looking at, pending edits included.
+    fn grid_context(&self) -> TabGridContext {
+        TabGridContext {
+            tab_id: Some(self.tab_id),
+            pk_col_indices: self
+                .current_columns
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| c.primary_key)
+                .map(|(i, _)| i)
+                .collect(),
+        }
+    }
+
+    /// What the paginator's Export button writes. Built from the live
+    /// grid so it matches the context menu's Export Results row for
+    /// row; falls back to the fetch itself before the grid exists.
+    fn export_payload(&self) -> Option<QueryResult> {
+        let current = self.current_result.as_ref()?;
+        let Some(column_view) = self.current_column_view.as_ref() else {
+            return Some(current.clone());
+        };
+        Some(super::grid::export_snapshot(
+            column_view,
+            &current.columns,
+            current.truncated,
+            &self.grid_context(),
+        ))
+    }
+
+    /// Resolve a "Set Value" preset against the column it lands in.
+    /// The grid offers Empty only on free-text columns, so the
+    /// fallback here is for the keyboard and action-activation paths:
+    /// an empty string means NULL on a column that takes one, and is
+    /// refused on a column that does not, exactly as typing an empty
+    /// value into the cell would be.
+    fn resolve_cell_preset(&self, preset: CellPreset, col_index: usize) -> Result<Value, String> {
+        match preset {
+            CellPreset::Null => Ok(Value::Null),
+            CellPreset::Empty => {
+                let col = self.current_columns.get(col_index);
+                match col {
+                    Some(c) if super::grid::column_accepts_empty(&c.data_type) => Ok(Value::Text(String::new())),
+                    _ => parse_input_for_column("", col),
+                }
+            }
+        }
     }
 
     pub fn columns(&self) -> &[ColumnInfo] {
@@ -447,7 +518,7 @@ impl BrowseTab {
         prev_button.connect_clicked(move |_| sender_for_prev.input(BrowseTabInput::PrevPage));
         let sender_for_next = sender.clone();
         next_button.connect_clicked(move |_| sender_for_next.input(BrowseTabInput::NextPage));
-        let sender_for_last = sender;
+        let sender_for_last = sender.clone();
         last_button.connect_clicked(move |_| sender_for_last.input(BrowseTabInput::LastPage));
 
         // Paginator lives in a native `gtk::ActionBar` to match the
@@ -458,18 +529,13 @@ impl BrowseTab {
         // background, and high-contrast theming come for free.
         let paginator_bar = gtk::ActionBar::new();
 
-        // Export menu uses win.export-csv / win.export-json (App-level
-        // actions); they read the active tab's snapshot so the buttons
-        // implicitly target this tab when this tab is active.
-        let export_menu = gtk::gio::Menu::new();
-        export_menu.append(Some(&crate::tr!("Export as CSV…")), Some("win.export-csv"));
-        export_menu.append(Some(&crate::tr!("Export as JSON…")), Some("win.export-json"));
-        let export_button = gtk::MenuButton::builder()
+        let export_button = gtk::Button::builder()
             .icon_name("document-save-symbolic")
             .tooltip_text(crate::tr!("Export results"))
-            .menu_model(&export_menu)
             .build();
         export_button.add_css_class("flat");
+        let export_sender = sender.clone();
+        export_button.connect_clicked(move |_| export_sender.input(BrowseTabInput::ExportCurrentPage));
 
         // Filter button — opens the rule editor for server-side WHERE.
         // Action `win.open-filter` is registered in app/mod.rs and
@@ -938,27 +1004,13 @@ impl BrowseTab {
         // changed (rare in practice — would require schema migration
         // mid-session). Build the full column-view scaffolding.
         clear_box(&self.grid_holder);
-        let edit_sender = if self.read_only {
-            None
-        } else {
-            Some(self.grid_sender.clone())
-        };
-        let pk_col_indices: Vec<usize> = self
-            .current_columns
-            .iter()
-            .enumerate()
-            .filter(|(_, c)| c.primary_key)
-            .map(|(i, _)| i)
-            .collect();
-        let tab_ctx = TabGridContext {
-            tab_id: Some(self.tab_id),
-            pk_col_indices,
-        };
+        let tab_ctx = self.grid_context();
         let (column_view, selection) = build_column_view(
             &result,
             &self.current_columns,
             &self.table,
-            edit_sender,
+            self.grid_sender.clone(),
+            !self.read_only,
             self.current_sort,
             Some(self.grid_sender.clone()),
             self.connection_id,
@@ -1461,9 +1513,10 @@ impl SimpleComponent for BrowseTab {
                     return glib::Propagation::Proceed;
                 };
                 grid_sender_for_null
-                    .send(GridMsg::SetCellNull {
+                    .send(GridMsg::SetCellValue {
                         row_position,
                         col_index,
+                        preset: CellPreset::Null,
                     })
                     .ok();
                 glib::Propagation::Stop
@@ -1580,14 +1633,18 @@ impl SimpleComponent for BrowseTab {
                 new_value,
             },
             GridMsg::CopyToClipboard(text) => BrowseTabInput::GridCopyToClipboard(text),
+            GridMsg::ShowToast(text) => BrowseTabInput::GridShowToast(text),
             GridMsg::CopyRowAsInsert { row_position } => BrowseTabInput::GridCopyRowAsInsert { row_position },
-            GridMsg::SetCellNull {
+            GridMsg::SetCellValue {
                 row_position,
                 col_index,
-            } => BrowseTabInput::GridSetCellNull {
+                preset,
+            } => BrowseTabInput::GridSetCellValue {
                 row_position,
                 col_index,
+                preset,
             },
+            GridMsg::ExportResults(result) => BrowseTabInput::GridExportResults(result),
             GridMsg::DeleteRowAt { row_position } => BrowseTabInput::GridDeleteRowAt { row_position },
             GridMsg::InsertRow => BrowseTabInput::InsertRow,
             GridMsg::DuplicateRow { row_position } => BrowseTabInput::DuplicateRow { row_position },
@@ -1965,7 +2022,7 @@ impl SimpleComponent for BrowseTab {
                 let Some(selection) = self.current_selection.as_ref() else {
                     return;
                 };
-                let positions = selected_positions(selection);
+                let positions = super::grid::selected_positions(selection);
                 if positions.is_empty() {
                     return;
                 }
@@ -2134,16 +2191,57 @@ impl SimpleComponent for BrowseTab {
                     t.track_cell_edit(key, col_index, original, new);
                 });
             }
-            BrowseTabInput::GridSetCellNull {
+            BrowseTabInput::GridSetCellValue {
                 row_position,
                 col_index,
+                preset,
             } => {
+                let value = match self.resolve_cell_preset(preset, col_index) {
+                    Ok(value) => value,
+                    Err(message) => {
+                        let _ = sender.output(BrowseTabOutput::ShowToast(message));
+                        return;
+                    }
+                };
+                if let Some(row_obj) = self.row_object_at(row_position)
+                    && let Some(draft_id) = row_obj.draft_id()
+                {
+                    crate::services::change_tracker::with_tab(self.tab_id, |t| {
+                        t.track_draft_cell_edit(draft_id, col_index, value.clone());
+                    });
+                    row_obj.set_cell(col_index, value);
+                    return;
+                }
                 let Some((key, row)) = self.row_key_at(row_position) else {
                     return;
                 };
                 let original = row[col_index].clone();
                 crate::services::change_tracker::with_tab(self.tab_id, |t| {
-                    t.track_cell_edit(key, col_index, original, Value::Null);
+                    t.track_cell_edit(key, col_index, original, value);
+                });
+            }
+            BrowseTabInput::GridShowToast(message) => {
+                let _ = sender.output(BrowseTabOutput::ShowToast(message));
+            }
+            BrowseTabInput::GridExportResults(mut result) => {
+                // The grid owns the rows it is showing; the fetch that
+                // produced them belongs to the tab, and the hot-path
+                // page refresh swaps rows under a ColumnView built for
+                // an earlier fetch.
+                result.truncated = self.current_result.as_ref().is_some_and(|r| r.truncated);
+                let _ = sender.output(BrowseTabOutput::ExportResults {
+                    result,
+                    name: self.export_name(),
+                });
+            }
+            BrowseTabInput::ExportCurrentPage => {
+                let Some(result) = self.export_payload() else {
+                    let _ = sender.output(BrowseTabOutput::ShowToast(crate::tr!("Nothing to export")));
+                    return;
+                };
+                let _ = sender.output(BrowseTabOutput::ExportResults {
+                    result,
+                    name: self.export_name(),
                 });
             }
             BrowseTabInput::GridDeleteRowAt { row_position } => {
@@ -2161,34 +2259,30 @@ impl SimpleComponent for BrowseTab {
                 let _ = sender.output(BrowseTabOutput::CopyToClipboard(text));
             }
             BrowseTabInput::CopySelectedRowsAsTsv => {
+                // Same renderer as the context menu's Copy as > Rows:
+                // one selection cannot produce two different clipboard
+                // payloads depending on how the user asked for it.
                 let Some(selection) = self.current_selection.as_ref() else {
                     return;
                 };
-                let positions = selected_positions(selection);
+                let positions = super::grid::selected_positions(selection);
                 if positions.is_empty() {
                     return;
                 }
-                let model = match selection.model() {
-                    Some(m) => m,
-                    None => return,
+                let Some(model) = selection.model() else {
+                    return;
                 };
-                let mut rows: Vec<String> = Vec::with_capacity(positions.len());
-                for pos in &positions {
-                    let Some(item) = model.item(*pos) else { continue };
-                    let Ok(row) = item.downcast::<super::row_object::RowObject>() else {
-                        continue;
-                    };
-                    let cells = row.cells_clone();
-                    let line: Vec<String> = cells
-                        .iter()
-                        .map(|v| escape_tsv_cell(&super::grid::value_to_display_text(v)))
-                        .collect();
-                    rows.push(line.join("\t"));
-                }
+                let ctx = self.grid_context();
+                let rows: Vec<Vec<Value>> = positions
+                    .iter()
+                    .filter_map(|pos| model.item(*pos))
+                    .filter_map(|item| item.downcast::<super::row_object::RowObject>().ok())
+                    .map(|row| ctx.effective_cells(&row))
+                    .collect();
                 if rows.is_empty() {
                     return;
                 }
-                let tsv = rows.join("\n");
+                let tsv = tablepro_core::export::render_tsv(&self.current_columns, &rows, false);
                 let _ = sender.output(BrowseTabOutput::CopyToClipboard(tsv));
             }
             BrowseTabInput::PasteNotSupported => {
@@ -2429,23 +2523,6 @@ fn clear_box(b: &gtk::Box) {
     }
 }
 
-/// TSV cells can't carry literal tab / newline / CR without breaking
-/// the row-or-column boundary. Spreadsheet apps (LibreOffice Calc,
-/// Excel) interpret these as field separators on paste, so a cell
-/// containing one would silently split. Replace with a single space
-/// to preserve the row structure on paste; the user can paste into
-/// a plain text view to see the originals.
-fn escape_tsv_cell(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for ch in text.chars() {
-        match ch {
-            '\t' | '\n' | '\r' => out.push(' '),
-            other => out.push(other),
-        }
-    }
-    out
-}
-
 /// Collapse newlines / carriage returns to spaces, then squash any
 /// resulting consecutive whitespace runs to a single space. Applied
 /// at cell-edit commit time for non-JSON columns so a multi-line
@@ -2497,16 +2574,6 @@ fn update_selection_chrome(label: &gtk::Label, n: u32) {
     let count = n.to_string();
     label.set_label(&crate::tr!("{n} selected · press Delete to remove").replace("{n}", &count));
     label.set_visible(true);
-}
-
-fn selected_positions(selection: &gtk::MultiSelection) -> Vec<u32> {
-    let bitset = selection.selection();
-    let mut out = Vec::with_capacity(bitset.size() as usize);
-    for i in 0..bitset.size() {
-        out.push(bitset.nth(i as u32));
-    }
-    out.sort_unstable();
-    out
 }
 
 /// Parse a user-typed cell value against the column's declared data

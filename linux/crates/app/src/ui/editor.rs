@@ -10,7 +10,7 @@ use tokio_util::sync::CancellationToken;
 use tablepro_core::QueryResult;
 use tablepro_storage::query_history::{self, NewEntry, Outcome};
 
-use super::grid::{TabGridContext, build_column_view};
+use super::grid::{GridMsg, TabGridContext, build_column_view};
 use crate::services::database_service::{self, ConnectionMetadata};
 
 pub struct SqlEditor {
@@ -20,6 +20,7 @@ pub struct SqlEditor {
     running_spinner: gtk::Spinner,
     results_holder: gtk::Box,
     status: gtk::Label,
+    grid_sender: relm4::Sender<GridMsg>,
     cancel_token: Option<CancellationToken>,
     executing_sql: Option<String>,
     executing_metadata: Option<ConnectionMetadata>,
@@ -81,12 +82,22 @@ pub enum SqlEditorInput {
     /// Ctrl+/ → toggle SQL line-comment for the selected lines (or
     /// the cursor's line). Standard IDE shortcut.
     ToggleLineComment,
+    /// Context-menu actions from a result grid.
+    Grid(GridMsg),
 }
 
 #[derive(Debug)]
 pub enum SqlEditorOutput {
     RunStateChanged(bool),
     QueryChanged(String),
+    CopyToClipboard(String),
+    ShowToast(String),
+    /// "Export Results…" from a result grid's context menu, with the
+    /// file-name stem derived from the statement that produced it.
+    ExportResults {
+        result: QueryResult,
+        name: String,
+    },
 }
 
 #[relm4::component(pub)]
@@ -353,6 +364,9 @@ impl SimpleComponent for SqlEditor {
         });
         widgets.source_view.add_controller(drop_target);
 
+        let (grid_sender, grid_receiver) = relm4::channel::<GridMsg>();
+        relm4::spawn_local(grid_receiver.forward(sender.input_sender().clone(), SqlEditorInput::Grid));
+
         let model = SqlEditor {
             source_view: widgets.source_view.clone(),
             run_button: widgets.run_button.clone(),
@@ -360,6 +374,7 @@ impl SimpleComponent for SqlEditor {
             running_spinner: widgets.running_spinner.clone(),
             results_holder: widgets.results_holder.clone(),
             status: widgets.status.clone(),
+            grid_sender,
             cancel_token: None,
             executing_sql: None,
             executing_metadata: None,
@@ -385,6 +400,20 @@ impl SimpleComponent for SqlEditor {
             SqlEditorInput::ToggleLineComment => {
                 toggle_line_comment(&self.source_view.buffer());
             }
+
+            SqlEditorInput::Grid(GridMsg::CopyToClipboard(text)) => {
+                let _ = sender.output(SqlEditorOutput::CopyToClipboard(text));
+            }
+            SqlEditorInput::Grid(GridMsg::ShowToast(text)) => {
+                let _ = sender.output(SqlEditorOutput::ShowToast(text));
+            }
+            SqlEditorInput::Grid(GridMsg::ExportResults(result)) => {
+                let buffer = self.source_view.buffer();
+                let (start, end) = buffer.bounds();
+                let name = export_name_for_query(&buffer.text(&start, &end, false));
+                let _ = sender.output(SqlEditorOutput::ExportResults { result, name });
+            }
+            SqlEditorInput::Grid(_) => {}
 
             SqlEditorInput::RunAtCursor => {
                 // Walk the buffer's SQL state machine and pick the
@@ -453,7 +482,7 @@ impl SimpleComponent for SqlEditor {
                 self.status
                     .set_label(&summary_label(n_total, n_ok, total_ms, first_error.is_some()));
                 clear_box(&self.results_holder);
-                render_outcomes(&self.results_holder, &outcomes);
+                render_outcomes(&self.results_holder, &outcomes, &self.grid_sender);
             }
 
             SqlEditorInput::ShowCancelled => {
@@ -735,14 +764,15 @@ fn summary_label(n_total: usize, n_ok: usize, total_ms: u128, has_error: bool) -
 /// Mount one StatementOutcome into a parent box (for single-result
 /// renders) or as an `AdwViewStack` page (multi-result). Wraps grids
 /// in a ScrolledWindow so the result pane stays scroll-bounded.
-fn build_outcome_widget(o: &StatementOutcome, idx: usize) -> gtk::Widget {
+fn build_outcome_widget(o: &StatementOutcome, idx: usize, grid_sender: &relm4::Sender<GridMsg>) -> gtk::Widget {
     match &o.kind {
         StatementOutcomeKind::Rows(result) if !result.rows.is_empty() => {
             let (column_view, _selection) = build_column_view(
                 result,
                 &result.columns,
                 "",
-                None,
+                grid_sender.clone(),
+                false,
                 None,
                 None,
                 None,
@@ -795,7 +825,7 @@ fn outcome_tab_label(idx: usize, o: &StatementOutcome) -> String {
     }
 }
 
-fn render_outcomes(holder: &gtk::Box, outcomes: &[StatementOutcome]) {
+fn render_outcomes(holder: &gtk::Box, outcomes: &[StatementOutcome], grid_sender: &relm4::Sender<GridMsg>) {
     if outcomes.is_empty() {
         let placeholder = adw::StatusPage::builder()
             .title(crate::tr!("Empty query"))
@@ -807,7 +837,7 @@ fn render_outcomes(holder: &gtk::Box, outcomes: &[StatementOutcome]) {
         return;
     }
     if outcomes.len() == 1 {
-        let widget = build_outcome_widget(&outcomes[0], 0);
+        let widget = build_outcome_widget(&outcomes[0], 0, grid_sender);
         holder.append(&widget);
         return;
     }
@@ -817,7 +847,7 @@ fn render_outcomes(holder: &gtk::Box, outcomes: &[StatementOutcome]) {
     // app — same widget for "different views of the same execution".
     let stack = adw::ViewStack::new();
     for (idx, o) in outcomes.iter().enumerate() {
-        let widget = build_outcome_widget(o, idx);
+        let widget = build_outcome_widget(o, idx, grid_sender);
         let icon = match &o.kind {
             StatementOutcomeKind::Rows(_) => "view-grid-symbolic",
             StatementOutcomeKind::Error(_) => "dialog-error-symbolic",
@@ -1093,6 +1123,27 @@ pub fn update_schema_buffer(buffer: &gtk::TextBuffer, schema_words: &[String]) {
     buffer.set_text(&text);
 }
 
+/// File-name stem for an editor export, taken from the statement that
+/// produced the results: exporting two queries in a row proposes two
+/// different files instead of offering to overwrite the first.
+pub fn export_name_for_query(query: &str) -> String {
+    if query.trim().is_empty() {
+        return crate::tr!("query-results");
+    }
+    let mut stem = String::new();
+    for c in derive_tab_label(query).chars() {
+        if c.is_alphanumeric() {
+            stem.extend(c.to_lowercase());
+        } else if !stem.ends_with('-') {
+            stem.push('-');
+        }
+    }
+    match stem.trim_matches('-') {
+        "" => crate::tr!("query-results"),
+        trimmed => trimmed.to_string(),
+    }
+}
+
 pub fn derive_tab_label(query: &str) -> String {
     for line in query.lines() {
         let trimmed = line.trim();
@@ -1153,7 +1204,18 @@ fn apply_editor_font_size(_view: &sourceview5::View, font_size: u32) {
 
 #[cfg(test)]
 mod tests {
-    use super::{split_sql_statements, sql_preview, statement_at_cursor, summary_label};
+    use super::{export_name_for_query, split_sql_statements, sql_preview, statement_at_cursor, summary_label};
+
+    #[test]
+    fn export_name_slugs_the_statement() {
+        assert_eq!(export_name_for_query("SELECT * FROM users"), "select-from-users");
+        assert_eq!(export_name_for_query("  select id\nfrom t"), "select-id");
+    }
+
+    #[test]
+    fn export_name_falls_back_when_there_is_no_statement() {
+        assert_eq!(export_name_for_query("   \n  "), crate::tr!("query-results"));
+    }
 
     #[test]
     fn splits_on_top_level_semicolons() {

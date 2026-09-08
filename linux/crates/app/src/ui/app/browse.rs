@@ -1,6 +1,5 @@
 use relm4::adw::prelude::*;
-use relm4::gtk::gio;
-use relm4::{ComponentController, ComponentSender, adw, gtk};
+use relm4::{ComponentController, ComponentSender, adw};
 
 use tablepro_core::{ColumnInfo, QueryResult};
 use uuid::Uuid;
@@ -8,7 +7,7 @@ use uuid::Uuid;
 use crate::services::database_service;
 use crate::ui::browse_tab::BrowseTabInput;
 
-use super::{App, AppMsg, ExportFormat, OpenMode, render_csv, render_json};
+use super::{App, AppMsg, OpenMode};
 
 impl App {
     /// Sidebar click — routes via OpenMode (smart switch / new tab).
@@ -234,94 +233,6 @@ impl App {
                 self.set_status_page(super::StatusKind::Error, &crate::tr!("Failed"), &msg);
             }
         }
-    }
-
-    pub(super) fn on_export(&self, format: ExportFormat) {
-        let Some((schema, table)) = self.selected_browse_slot_table() else {
-            self.show_toast(&crate::tr!("Nothing to export"));
-            return;
-        };
-        let Some(active_id) = self.selected_browse_tab_id() else {
-            self.show_toast(&crate::tr!("Nothing to export"));
-            return;
-        };
-        let result = {
-            let tabs = self.workspace_tabs.borrow();
-            tabs.get(&active_id)
-                .and_then(|t| t.browse_controller())
-                .and_then(|c| c.model().snapshot())
-        };
-        let Some(result) = result else {
-            self.show_toast(&crate::tr!("Nothing to export"));
-            return;
-        };
-        let table_label = match &schema {
-            Some(s) => format!("{s}.{table}"),
-            None => table.clone(),
-        };
-        let suggested = match format {
-            ExportFormat::Csv => format!("{table_label}.csv"),
-            ExportFormat::Json => format!("{table_label}.json"),
-        };
-        let filter = gtk::FileFilter::new();
-        match format {
-            ExportFormat::Csv => {
-                filter.set_name(Some(&crate::tr!("CSV files")));
-                filter.add_mime_type("text/csv");
-                filter.add_suffix("csv");
-            }
-            ExportFormat::Json => {
-                filter.set_name(Some(&crate::tr!("JSON files")));
-                filter.add_mime_type("application/json");
-                filter.add_suffix("json");
-            }
-        };
-        let filters = gio::ListStore::new::<gtk::FileFilter>();
-        filters.append(&filter);
-        let dialog = gtk::FileDialog::builder()
-            .title(match format {
-                ExportFormat::Csv => crate::tr!("Export as CSV"),
-                ExportFormat::Json => crate::tr!("Export as JSON"),
-            })
-            .modal(true)
-            .initial_name(&suggested)
-            .default_filter(&filter)
-            .filters(&filters)
-            .build();
-        let parent = self.window.clone();
-        let parent_for_alert = parent.clone();
-        let toast_overlay = self.toast_overlay.clone();
-        dialog.save(Some(&parent), gtk::gio::Cancellable::NONE, move |outcome| {
-            let Ok(file) = outcome else { return };
-            let Some(path) = file.path() else { return };
-            let bytes = match format {
-                ExportFormat::Csv => render_csv(&result),
-                ExportFormat::Json => render_json(&result),
-            };
-            match std::fs::write(&path, bytes) {
-                Ok(()) => toast_overlay.add_toast(relm4::adw::Toast::new(
-                    &crate::tr!("Exported to {path}").replace("{path}", &path.display().to_string()),
-                )),
-                // Failures use AdwAlertDialog instead of a transient
-                // toast — the user needs time to read the IO error
-                // (and probably copy the path to retry elsewhere).
-                // Matches the Save / Drop error-handling pattern.
-                Err(e) => {
-                    let alert = adw::AlertDialog::new(
-                        Some(&crate::tr!("Couldn't export")),
-                        Some(
-                            &crate::tr!("Writing {path} failed: {error}")
-                                .replace("{path}", &path.display().to_string())
-                                .replace("{error}", &e.to_string()),
-                        ),
-                    );
-                    alert.add_response("close", &crate::tr!("Close"));
-                    alert.set_default_response(Some("close"));
-                    alert.set_close_response("close");
-                    alert.present(Some(&parent_for_alert));
-                }
-            }
-        });
     }
 
     /// Ctrl+F / Filter button — toggle the inline filter strip on

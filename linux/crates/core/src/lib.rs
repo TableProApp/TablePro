@@ -1,6 +1,7 @@
 mod connection;
 mod driver;
 mod error;
+pub mod export;
 pub mod filter;
 mod query;
 mod read_only;

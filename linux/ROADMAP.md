@@ -131,14 +131,17 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 - [x] ORDER BY wired to `GtkColumnView` header click → server sort
 - [x] Multi-row select via shift-click + Ctrl-click
 - [x] Bulk delete with confirmation
-- [x] Right-click context menu (copy cell, copy row as INSERT, copy column, set NULL, delete row)
+- [x] Right-click context menu (copy, copy as, set value, export, insert, duplicate, delete)
 - [x] Save column widths per (connection, table)
 - [ ] Save column order per (connection, table)
 
 ### Export / import (~1 week)
 
-- [ ] Export current grid to CSV / JSON / SQL INSERT / Markdown
-- [ ] Export with options: include headers, quote style, line endings, UTF-8 BOM toggle
+- [x] Export current grid to CSV / JSON from the result grid's right-click menu and the paginator (query results included)
+- [x] Export with CSV options: NULL handling, line breaks, header row, formula sanitizing, delimiter, quote style, line endings, decimal separator
+- [ ] Export as SQL INSERT / Markdown / HTML / XML / XLSX
+- [x] Copy as Rows / With Headers / JSON / CSV / Markdown / IN Clause, Show Row as JSON
+- [ ] Paste rows from clipboard; Set Value > NOW() / CURRENT_TIMESTAMP (needs raw SQL expressions in the change tracker)
 - [ ] Import CSV → table (with column mapping dialog)
 - [ ] Run SQL file (load + execute via SQL editor)
 

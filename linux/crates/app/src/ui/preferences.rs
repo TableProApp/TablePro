@@ -2,7 +2,7 @@ use relm4::adw::prelude::*;
 use relm4::gtk::gio;
 use relm4::{adw, gtk};
 
-use crate::services::preferences::{self, Preferences};
+use crate::services::preferences;
 
 pub fn present(parent: &impl IsA<gtk::Widget>) {
     let window = adw::PreferencesDialog::builder()
@@ -168,12 +168,16 @@ pub fn present(parent: &impl IsA<gtk::Widget>) {
         let retention = retention_row.clone();
         let timeout = timeout_row.clone();
         std::rc::Rc::new(move || {
-            preferences::save(&Preferences {
-                default_page_size: page_size.value() as u64,
-                confirm_destructive: confirm.is_active(),
-                editor_font_size: font.value() as u32,
-                history_retention_days: retention.value() as u32,
-                query_timeout_secs: timeout.value() as u32,
+            // Read-modify-write, so a setting this dialog doesn't
+            // render (the CSV export options, whatever comes next)
+            // isn't reset to its default the moment the user touches
+            // one that it does.
+            preferences::update(|prefs| {
+                prefs.default_page_size = page_size.value() as u64;
+                prefs.confirm_destructive = confirm.is_active();
+                prefs.editor_font_size = font.value() as u32;
+                prefs.history_retention_days = retention.value() as u32;
+                prefs.query_timeout_secs = timeout.value() as u32;
             });
         })
     };

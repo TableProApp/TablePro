@@ -6,6 +6,7 @@ crates/app/src/ui/connect_dialog.rs
 crates/app/src/ui/edit_dialog.rs
 crates/app/src/ui/editor.rs
 crates/app/src/ui/error_text.rs
+crates/app/src/ui/export_dialog.rs
 crates/app/src/ui/grid.rs
 crates/app/src/ui/history_dialog.rs
 crates/app/src/ui/insert_dialog.rs
