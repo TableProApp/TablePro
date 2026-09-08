@@ -642,6 +642,24 @@ internal final class WorkspaceRailViewController: NSViewController {
         Task { await ConnectionCloseAction.close(connectionId: connectionId) }
     }
 
+    /// Hands the connection's database file back to the rest of the machine and keeps the session,
+    /// so the tabs, the schema cache and the row the user was on all stay where they are. The next
+    /// query takes the file again.
+    @objc
+    private func releaseWorkspaceFileLock(_ sender: NSMenuItem) {
+        guard let workspace = sender.representedObject as? WorkspaceID,
+              let entry = entries.first(where: { $0.workspace.connectionId == workspace.connectionId })
+        else { return }
+        let presentingWindow = view.window
+        Task {
+            await ConnectionFileLockAction.release(
+                connectionId: workspace.connectionId,
+                connectionName: entry.connection.name,
+                presentingWindow: presentingWindow
+            )
+        }
+    }
+
     /// Ends the session, which every workspace of the connection shares, so the other rows for it
     /// go quiet too. No window closes: each one repaints from its own phase.
     @objc
@@ -702,6 +720,17 @@ extension WorkspaceRailViewController: NSMenuDelegate {
                 workspace: entry.workspace
             )
             menu.addItem(.separator())
+        }
+
+        if let releaseTitle = ConnectionFileLockAction.commandTitle(
+            connectionId: entry.workspace.connectionId
+        ) {
+            addItem(
+                to: menu,
+                title: releaseTitle,
+                action: #selector(releaseWorkspaceFileLock(_:)),
+                workspace: entry.workspace
+            )
         }
 
         if ConnectionMenuPolicy.showsDisconnect(status: entry.status) {

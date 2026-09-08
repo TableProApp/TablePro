@@ -66,6 +66,14 @@ The sidebar lists every accessible database with each table's structure and DDL.
 
 Table and column comments show in the UI: dimmed after a table's name in the sidebar, and in the grid header tooltip. Turn that off under **View Options**, the button beside the sidebar’s filter field.
 
+## Releasing an idle connection
+
+A connection holds a server thread and one slot against `max_connections` for as long as it is open, and MySQL's `wait_timeout` never reclaims it because the 30-second health check counts as activity. **Release the Server Connection After**, in **Options**, hands the connection back after that many minutes of no queries and takes a new one on the next query. `0`, the default, keeps it.
+
+Reconnecting costs a TCP connect, the TLS handshake and authentication: measured at 2ms against a server on the same machine and 800ms to 1.9s across the internet. That cost lands on the first query after an idle period, so leave this at `0` for a remote server unless the slot matters more than the wait.
+
+A release is refused, with the reason, while the session holds anything a reconnect would destroy: an open transaction, a temporary table, a prepared statement, a `GET_LOCK`, `LOCK TABLES`, a user variable, a changed session setting, or a stored routine call, whose body is opaque.
+
 ## SSL/TLS
 
 New connections default to **Preferred**: TLS first, dropping to plain text only after an SSL handshake error. Pick **Verify CA** with the provider's certificate for strict validation. See [SSL/TLS](/connections/ssl).

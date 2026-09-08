@@ -193,6 +193,30 @@ enum DuckDBSchemaQueries {
         return "SELECT COUNT(*) FROM (SELECT 1 FROM \(target) LIMIT \(limit)) AS _t"
     }
 
+    /// What the session is holding that closing the handle would destroy, in one round trip.
+    ///
+    /// `internal = false` is not optional on either count. DuckDB keeps its own machinery in the
+    /// `temp` catalog and marks it temporary: measured on the shipped v1.5.2, a connection that
+    /// has run nothing already reports 46 temporary views. Without the predicate the answer is
+    /// never zero and the lock is never released.
+    ///
+    /// One catalog is the file itself, so a count above one means the user attached something,
+    /// and an `ATTACH` does not survive a reopen.
+    static let sessionHeldState = """
+        SELECT
+            (SELECT count(*) FROM duckdb_databases() WHERE internal = false) AS catalog_count,
+            (SELECT count(*) FROM duckdb_tables() WHERE temporary AND internal = false) AS temp_table_count,
+            (SELECT count(*) FROM duckdb_views() WHERE temporary AND internal = false) AS temp_view_count
+        """
+
+    /// `duckdb_settings()` reports no default, so a setting the user changed is only visible by
+    /// comparing against what the connection opened with. The driver snapshots this at connect
+    /// and again before releasing, and any difference it does not own itself blocks the release.
+    static let allSettings = """
+        SELECT name, value
+        FROM duckdb_settings()
+        """
+
     static func useDatabase(_ database: String) -> String {
         "USE \(quoteIdentifier(database))"
     }

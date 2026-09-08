@@ -43,6 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Running indicator on the editor tab whose query is executing.
 - Sort direction setting for the data grid, applied to the default row sort and to the first click on a column header. (#2665)
 - Transport activity for an SSH tunnel or SOCKS proxy: live throughput in the toolbar, bytes carried in the connection switcher.
+- Release File Lock on the Database menu and the connections strip, for a DuckDB connection holding a database file. (#2518)
+- Per-connection idle release for DuckDB and MySQL, handing the file lock or the server connection back after a set number of minutes. (#2518)
+- Open the File Read-Only for a DuckDB connection, so several processes can read one file at once. (#2518)
 
 ### Changed
 
@@ -68,6 +71,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Raw DuckDB driver text in place of the name of the app holding a locked database file. (#2518)
+- DuckDB instance and its worker threads leaked by every failed remote connection attempt.
+- MySQL statement replayed outside the transaction it was run in after the server dropped the connection.
+- Query timeout lost after a MySQL reconnect.
 - Toolbar commands pushed into the overflow menu at 1200pt by a centred item that could not shrink.
 - Container chooser opening over a session the health monitor had given up on.
 - No way to change a Snowflake warehouse or role once the window narrowed enough to clip the connection group.

@@ -8,10 +8,26 @@ import Foundation
 import os
 import TableProPluginKit
 
-/// Hands the open connection pointer out of the actor so a cancel can interrupt the query that is
-/// running on it. libduckdb documents `duckdb_interrupt` as the one call safe from another thread.
-struct InterruptHandle: @unchecked Sendable {
-    let connection: duckdb_connection?
+/// Everything a reopen needs to put the connection back where it was. Held from the first open,
+/// because a released handle has to be re-acquired from inside the actor with nothing handed down
+/// to it.
+struct DuckDBOpenSpec: Sendable, Equatable {
+    let path: String
+    let accessMode: DuckDBAccessMode
+}
+
+/// Why a release did not happen, for the log line that tells a user whose lock never comes back
+/// whether the timer is broken or the session is holding something.
+enum DuckDBReleaseOutcome: Equatable {
+    case released
+    case alreadyReleased
+    case notOpen
+    case notIdleYet
+    case holdsTemporaryObjects
+    case holdsAttachedCatalogs
+    case holdsChangedSettings
+    case holdsOpenTransaction
+    case stateUnreadable
 }
 
 actor DuckDBConnectionActor {
@@ -20,14 +36,181 @@ actor DuckDBConnectionActor {
     private var database: duckdb_database?
     private var connection: duckdb_connection?
 
-    var isConnected: Bool { connection != nil }
+    private var openSpec: DuckDBOpenSpec?
 
-    var connectionHandleForInterrupt: InterruptHandle { InterruptHandle(connection: connection) }
+    /// Statements the driver itself issued after opening, replayed in order on a reopen. Only the
+    /// driver's own setup goes in here: what the user did to the session is deliberately not
+    /// replayed, it is what stops a release happening at all.
+    private var sessionSetup: [String] = []
 
-    func open(path: String) throws {
+    /// `duckdb_settings()` reports no default, so a setting the user changed is visible only
+    /// against what the connection opened with.
+    private var baselineSettings: [String: String] = [:]
+
+    private var hasOpenTransaction = false
+    private var lastActivity = ContinuousClock.now
+    private var isReleased = false
+
+    private let liveConnection: DuckDBLiveConnectionBox
+
+    init(liveConnection: DuckDBLiveConnectionBox) {
+        self.liveConnection = liveConnection
+    }
+
+    /// True while the handle is closed but the connection is still live and will reopen on demand.
+    var hasReleasedFile: Bool { isReleased }
+
+    func open(spec: DuckDBOpenSpec) throws {
+        try openHandle(spec: spec)
+        openSpec = spec
+        isReleased = false
+        sessionSetup = []
+        hasOpenTransaction = false
+        lastActivity = ContinuousClock.now
+    }
+
+    /// The statements to reissue after a reopen, replaced wholesale rather than appended to. The
+    /// driver recomputes the list whenever the session moves, so switching database ten times
+    /// leaves one `USE` to replay instead of ten.
+    func setSessionSetup(_ statements: [String]) {
+        sessionSetup = statements
+    }
+
+    func captureSettingsBaseline() {
+        baselineSettings = (try? readSettings()) ?? [:]
+    }
+
+    func close() {
+        closeHandle()
+        openSpec = nil
+        sessionSetup = []
+        baselineSettings = [:]
+        hasOpenTransaction = false
+        isReleased = false
+    }
+
+    /// Gives the file's lock back if the session holds nothing a reopen would destroy.
+    ///
+    /// The whole decision happens in this one call. It has to: measured, a `duckdb_close` drops
+    /// temporary objects, attached catalogs, every changed setting and the `USE` position, and
+    /// rolls an open transaction back raising nothing. Checking from one actor call and closing
+    /// from another would let a statement land in between and be silently destroyed, which is the
+    /// failure this guard exists to prevent. Nothing here suspends, so nothing interleaves.
+    @discardableResult
+    func releaseFile(idleFor minimumIdle: Duration?) -> DuckDBReleaseOutcome {
+        guard !isReleased else { return .alreadyReleased }
+        guard connection != nil, let spec = openSpec else { return .notOpen }
+        if let minimumIdle, ContinuousClock.now - lastActivity < minimumIdle { return .notIdleYet }
+
+        if let blocked = heldSessionState() { return blocked }
+
+        closeHandle()
+        isReleased = true
+        Self.logger.info("Released the DuckDB file lock on \(spec.path, privacy: .private)")
+        return .released
+    }
+
+    /// Reopens a released handle and puts the session back. A connection that was never released
+    /// costs one boolean.
+    ///
+    /// A path that has gone away is reported rather than recreated. `duckdb_open_ext` creates a
+    /// database at any path it does not find, and `connect` deliberately allows that so a new
+    /// `.duckdb` file can be made from the connection form. Allowing it here too would answer a
+    /// file the user moved or deleted during the idle window with an empty database wearing its
+    /// name, which reads as a working connection to nothing.
+    func ensureOpen() throws {
+        guard isReleased, let spec = openSpec else { return }
+
+        guard FileManager.default.fileExists(atPath: spec.path) else {
+            throw DuckDBPluginError.fileMissing(spec.path)
+        }
+
+        try openHandle(spec: spec)
+        isReleased = false
+        for statement in sessionSetup {
+            _ = try? runSetup(statement)
+        }
+        lastActivity = ContinuousClock.now
+    }
+
+    /// Checks the handle without counting as use. `executeQuery` would refresh `lastActivity`, and
+    /// a health check every thirty seconds would then hold the idle clock at zero forever.
+    @discardableResult
+    func pingQuery() throws -> DuckDBRawResult {
+        try ensureOpen()
+        return try runInternalQuery("SELECT 1")
+    }
+
+    func executeQuery(_ query: String) throws -> DuckDBRawResult {
+        try ensureOpen()
+        guard let conn = connection else {
+            throw DuckDBPluginError.notConnected
+        }
+
+        let startTime = Date()
+        var resolved = try Self.resolvedResult(query: query, parameters: [], connection: conn)
+        defer { duckdb_destroy_result(&resolved.result) }
+        noteActivity(query)
+        return Self.extractResult(from: &resolved.result, schema: resolved.schema, startTime: startTime)
+    }
+
+    func executePrepared(_ query: String, parameters: [PluginCellValue]) throws -> DuckDBRawResult {
+        try ensureOpen()
+        guard let conn = connection else {
+            throw DuckDBPluginError.notConnected
+        }
+
+        let startTime = Date()
+        var resolved = try Self.resolvedResult(query: query, parameters: parameters, connection: conn)
+        defer { duckdb_destroy_result(&resolved.result) }
+        noteActivity(query)
+        return Self.extractResult(from: &resolved.result, schema: resolved.schema, startTime: startTime)
+    }
+
+    func streamQuery(
+        _ query: String,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) throws {
+        try ensureOpen()
+        guard let conn = connection else {
+            throw DuckDBPluginError.notConnected
+        }
+
+        var resolved = try Self.resolvedResult(query: query, parameters: [], connection: conn)
+        defer { duckdb_destroy_result(&resolved.result) }
+        noteActivity(query)
+        try Self.streamResultRows(&resolved.result, schema: resolved.schema, continuation: continuation)
+    }
+
+    // MARK: - Handle lifecycle
+
+    private func openHandle(spec: DuckDBOpenSpec) throws {
+        var config: duckdb_config?
+        if spec.accessMode == .readOnly {
+            guard duckdb_create_config(&config) != DuckDBError else {
+                throw DuckDBPluginError.connectionFailed(
+                    String(localized: "DuckDB could not allocate a configuration to open the file read-only")
+                )
+            }
+            /// Measured: a value `duckdb_set_config` rejects leaves the option unset and the open
+            /// then succeeds read-write with writes allowed, so an unchecked return here is a
+            /// read-only setting that silently does nothing.
+            guard duckdb_set_config(
+                config,
+                DuckDBAccessMode.configurationOption,
+                spec.accessMode.rawValue
+            ) != DuckDBError else {
+                duckdb_destroy_config(&config)
+                throw DuckDBPluginError.connectionFailed(
+                    String(localized: "This build of DuckDB does not accept a read-only access mode")
+                )
+            }
+        }
+        defer { duckdb_destroy_config(&config) }
+
         var db: duckdb_database?
         var errorPtr: UnsafeMutablePointer<CChar>?
-        let state = duckdb_open_ext(path, &db, nil, &errorPtr)
+        let state = duckdb_open_ext(spec.path, &db, config, &errorPtr)
 
         if state == DuckDBError {
             let detail: String
@@ -37,14 +220,17 @@ actor DuckDBConnectionActor {
             } else {
                 detail = "unknown error"
             }
+            if let conflict = DuckDBLockConflict.parse(detail) {
+                throw DuckDBPluginError.fileLocked(conflict)
+            }
             throw DuckDBPluginError.connectionFailed(
-                "Failed to open DuckDB database at '\(path)': \(detail)"
+                "Failed to open DuckDB database at '\(spec.path)': \(detail)"
             )
         }
 
         guard let openedDB = db else {
             throw DuckDBPluginError.connectionFailed(
-                "Failed to open DuckDB database at '\(path)'"
+                "Failed to open DuckDB database at '\(spec.path)'"
             )
         }
 
@@ -58,9 +244,11 @@ actor DuckDBConnectionActor {
 
         database = db
         connection = conn
+        liveConnection.set(conn)
     }
 
-    func close() {
+    private func closeHandle() {
+        liveConnection.set(nil)
         if connection != nil {
             duckdb_disconnect(&connection)
             connection = nil
@@ -71,39 +259,78 @@ actor DuckDBConnectionActor {
         }
     }
 
-    func executeQuery(_ query: String) throws -> DuckDBRawResult {
-        guard let conn = connection else {
-            throw DuckDBPluginError.notConnected
-        }
+    // MARK: - Release preconditions
 
+    private func noteActivity(_ query: String) {
+        lastActivity = ContinuousClock.now
+        switch SQLTransactionTracking.effect(of: query) {
+        case .opens: hasOpenTransaction = true
+        case .closes: hasOpenTransaction = false
+        case .unchanged: break
+        /// A case this build does not know about is treated as a transaction being open, which
+        /// keeps the file rather than closing it over something unrecognised.
+        @unknown default: hasOpenTransaction = true
+        }
+    }
+
+    /// Nil when nothing stands in the way of a release.
+    private func heldSessionState() -> DuckDBReleaseOutcome? {
+        if hasOpenTransaction { return .holdsOpenTransaction }
+        guard let counts = try? readHeldStateCounts() else { return .stateUnreadable }
+        if counts.temporaryObjects > 0 { return .holdsTemporaryObjects }
+        if counts.catalogs > 1 { return .holdsAttachedCatalogs }
+        guard let settings = try? readSettings() else { return .stateUnreadable }
+        return settings == baselineSettings ? nil : .holdsChangedSettings
+    }
+
+    private func readHeldStateCounts() throws -> (catalogs: Int, temporaryObjects: Int) {
+        let result = try runInternalQuery(DuckDBSchemaQueries.sessionHeldState)
+        guard let row = result.rows.first, row.count >= 3 else {
+            throw DuckDBPluginError.queryFailed("DuckDB reported no session state")
+        }
+        let values = row.compactMap { $0.asText.flatMap(Int.init) }
+        guard values.count >= 3 else {
+            throw DuckDBPluginError.queryFailed("DuckDB reported unreadable session state")
+        }
+        return (catalogs: values[0], temporaryObjects: values[1] + values[2])
+    }
+
+    /// The settings the driver moves itself, which a reopen replays from `sessionSetup` and which
+    /// therefore must not read as the user having changed something. `search_path` and `schema`
+    /// are not set directly: `USE` writes where it landed into both, so every database or schema
+    /// switch would otherwise look like a changed setting and no connection would ever release.
+    private static let driverOwnedSettings: Set<String> = [
+        "search_path",
+        "schema",
+        "autoinstall_known_extensions",
+        "autoload_known_extensions",
+        "access_mode",
+    ]
+
+    private func readSettings() throws -> [String: String] {
+        let result = try runInternalQuery(DuckDBSchemaQueries.allSettings)
+        var settings: [String: String] = [:]
+        for row in result.rows {
+            guard let name = row[safe: 0]?.asText, !Self.driverOwnedSettings.contains(name) else { continue }
+            settings[name] = row[safe: 1]?.asText ?? ""
+        }
+        return settings
+    }
+
+    /// Runs without touching `lastActivity` or the transaction flag. The release check is the
+    /// driver asking itself a question, and counting it as use would keep resetting the idle
+    /// clock it is being asked about.
+    private func runInternalQuery(_ query: String) throws -> DuckDBRawResult {
+        guard let conn = connection else { throw DuckDBPluginError.notConnected }
         let startTime = Date()
         var resolved = try Self.resolvedResult(query: query, parameters: [], connection: conn)
         defer { duckdb_destroy_result(&resolved.result) }
         return Self.extractResult(from: &resolved.result, schema: resolved.schema, startTime: startTime)
     }
 
-    func executePrepared(_ query: String, parameters: [PluginCellValue]) throws -> DuckDBRawResult {
-        guard let conn = connection else {
-            throw DuckDBPluginError.notConnected
-        }
-
-        let startTime = Date()
-        var resolved = try Self.resolvedResult(query: query, parameters: parameters, connection: conn)
-        defer { duckdb_destroy_result(&resolved.result) }
-        return Self.extractResult(from: &resolved.result, schema: resolved.schema, startTime: startTime)
-    }
-
-    func streamQuery(
-        _ query: String,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
-    ) throws {
-        guard let conn = connection else {
-            throw DuckDBPluginError.notConnected
-        }
-
-        var resolved = try Self.resolvedResult(query: query, parameters: [], connection: conn)
-        defer { duckdb_destroy_result(&resolved.result) }
-        try Self.streamResultRows(&resolved.result, schema: resolved.schema, continuation: continuation)
+    @discardableResult
+    private func runSetup(_ statement: String) throws -> DuckDBRawResult {
+        try runInternalQuery(statement)
     }
 
     // MARK: - Projection planning

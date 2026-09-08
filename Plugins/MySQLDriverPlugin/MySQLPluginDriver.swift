@@ -24,6 +24,32 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// Detected server type from version string after connecting
     private var isMariaDB = false
 
+    /// What the session is holding that a reconnect would destroy. Tracked from the statements
+    /// that go through the driver, because MySQL will not answer the question: measured on 8.4.11,
+    /// an ordinary user is refused on every table that would report its own temporary tables, user
+    /// variables, locks or transaction.
+    private var footprint = MySQLSessionFootprint()
+
+    /// Set by `applyQueryTimeout` so any reconnect can put it back. The server forgets it, and a
+    /// silently untimed session is how a runaway query stopped being interruptible.
+    private var appliedQueryTimeoutSeconds: Int?
+
+    /// True while the server connection has been handed back and the session is waiting to take
+    /// another on its next use.
+    private var isReleased = false
+
+    private let idleReleaseTimer = MySQLIdleReleaseTimer()
+
+    /// Guards `footprint`, `appliedQueryTimeoutSeconds`, `isReleased` and `lastActivity`. The
+    /// driver is `@unchecked Sendable` and the idle timer runs on its own task, so the release
+    /// decision and a query arriving would otherwise read and write them at the same time.
+    private let sessionLock = NSLock()
+
+    private var lastActivity = ContinuousClock.now
+
+    /// The re-acquisition in flight, so concurrent callers await one attempt instead of racing.
+    private var reacquireTask: Task<Void, Error>?
+
     internal static let logger = Logger(subsystem: "com.TablePro", category: "MySQLPluginDriver")
 
     var currentSchema: String? { nil }
@@ -62,6 +88,13 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         self._activeDatabase = config.database
     }
 
+    /// The timer's task outlives the driver it was started for, so a driver dropped without
+    /// `disconnect()` leaves it waking forever on a connection nobody can reach.
+    deinit {
+        let timer = idleReleaseTimer
+        Task { await timer.stop() }
+    }
+
     // MARK: - Connection
 
     func connect() async throws {
@@ -85,17 +118,37 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             _serverVersion = version
             isMariaDB = version.lowercased().contains("mariadb")
         }
+        sessionLock.withLock {
+            isReleased = false
+            lastActivity = ContinuousClock.now
+        }
+        await startIdleReleaseIfRequested()
     }
 
     func disconnect() {
+        let timer = idleReleaseTimer
+        Task { await timer.stop() }
         mariadbConnection?.disconnect()
         mariadbConnection = nil
         _serverVersion = nil
         isMariaDB = false
+        sessionLock.withLock {
+            isReleased = false
+            footprint.reset()
+        }
     }
 
+    /// A ping is TablePro asking whether the connection still works, not the user using it, so it
+    /// neither counts as activity nor takes a released connection back.
+    ///
+    /// Both halves matter. The health monitor pings every 30 seconds, so a ping that counted as
+    /// activity would keep `lastActivity` fresh forever and the idle timer would never once fire.
+    /// And a released connection is healthy by definition: nothing is wrong with it, it is waiting
+    /// to be used, so reconnecting to prove it works would undo the release 30 seconds after it
+    /// happened and pay the reconnect cost for nothing.
     func ping() async throws {
-        _ = try await execute(query: "SELECT 1")
+        guard !sessionLock.withLock({ isReleased }) else { return }
+        _ = try await executeWithReconnect(query: "SELECT 1", isRetry: false, countsAsActivity: false)
     }
 
     // MARK: - Transaction Management
@@ -119,9 +172,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let parameters else {
             return try await executeWithReconnect(query: query, isRetry: false, rowCap: cap)
         }
-        guard let conn = mariadbConnection else {
-            throw MariaDBPluginError.notConnected
-        }
+        let conn = try await requireConnection()
+        noteActivity(query)
         let startTime = Date()
         let result = try await conn.executeParameterizedQuery(query, parameters: parameters, rowCap: cap)
         return PluginQueryResult(
@@ -145,9 +197,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
-        guard let conn = mariadbConnection else {
-            throw MariaDBPluginError.notConnected
-        }
+        let conn = try await requireConnection()
+        noteActivity(query)
 
         let startTime = Date()
         let result = try await conn.executeParameterizedQuery(query, parameters: parameters)
@@ -170,11 +221,22 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         mariadbConnection?.cancelCurrentQuery()
     }
 
-    private func executeWithReconnect(query: String, isRetry: Bool, rowCap: Int? = nil) async throws -> PluginQueryResult {
+    /// The reconnect this does is not the idle release: it is recovery from a connection the
+    /// server dropped, where the session state is already gone. `mysqlStatementIsSafeToReplay`
+    /// decides whether the statement can be run twice, and the footprint decides whether running
+    /// it again would land it somewhere different. Replaying a statement outside the transaction
+    /// the user opened for it commits work they meant to be able to roll back.
+    private func executeWithReconnect(
+        query: String,
+        isRetry: Bool,
+        rowCap: Int? = nil,
+        countsAsActivity: Bool = true
+    ) async throws -> PluginQueryResult {
         let startTime = Date()
 
-        guard let conn = mariadbConnection else {
-            throw MariaDBPluginError.notConnected
+        let conn = try await requireConnection()
+        if countsAsActivity {
+            noteActivity(query)
         }
 
         do {
@@ -212,9 +274,15 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 columnMeta: result.columnMeta
             )
         } catch let error as MariaDBPluginError
-            where !isRetry && isConnectionLostError(error) && mysqlStatementIsSafeToReplay(query) {
+            where !isRetry && isConnectionLostError(error) && mysqlStatementIsSafeToReplay(query)
+                && !hasOpenTransaction {
             try await reconnect()
-            return try await executeWithReconnect(query: query, isRetry: true, rowCap: rowCap)
+            return try await executeWithReconnect(
+                query: query,
+                isRetry: true,
+                rowCap: rowCap,
+                countsAsActivity: countsAsActivity
+            )
         }
     }
 
@@ -222,10 +290,126 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         [2_006, 2_013, 2_055].contains(Int(error.code))
     }
 
+    // MARK: - Idle connection release
+
+    private func noteActivity(_ sql: String) {
+        sessionLock.withLock {
+            footprint.observe(sql)
+            lastActivity = ContinuousClock.now
+        }
+    }
+
+    private var hasOpenTransaction: Bool {
+        sessionLock.withLock { footprint.hasOpenTransaction }
+    }
+
+    /// Takes a server connection again if the last one was handed back. A connection that was
+    /// never released costs one boolean.
+    private func requireConnection() async throws -> MariaDBPluginConnection {
+        if sessionLock.withLock({ isReleased }) || mariadbConnection == nil {
+            try await reacquireOnce()
+        }
+        guard let conn = mariadbConnection else {
+            throw MariaDBPluginError.notConnected
+        }
+        return conn
+    }
+
+    /// Concurrent callers wait on the one attempt rather than each starting their own. A metadata
+    /// read and a user query can arrive together on a released connection, and two `connect()`
+    /// calls would open two server connections and leak whichever lost.
+    private func reacquireOnce() async throws {
+        let attempt = sessionLock.withLock { () -> Task<Void, Error> in
+            if let inFlight = reacquireTask { return inFlight }
+            let started = Task { try await self.reacquire() }
+            reacquireTask = started
+            return started
+        }
+        defer {
+            sessionLock.withLock {
+                if reacquireTask == attempt { reacquireTask = nil }
+            }
+        }
+        try await attempt.value
+    }
+
+    private func reacquire() async throws {
+        try await connect()
+        if let seconds = sessionLock.withLock({ appliedQueryTimeoutSeconds }) {
+            try await applyQueryTimeout(seconds)
+        }
+    }
+
+    /// A server connection is worth giving back for the slot it occupies, not because anything is
+    /// blocked on it: measured against MariaDB 12.3.3, an idle connection costs about 186KB and one
+    /// of 151 slots, and nothing else is waiting for it. That is a much smaller prize than DuckDB's
+    /// file lock, and re-taking it is much more expensive: measured, 1.7-5.8ms on loopback but
+    /// 800-1900ms against a server across the internet. So this is off unless a user turns it on
+    /// per connection, and the first query after an idle period pays that cost.
+    var releasableResourceCommandTitle: String? {
+        guard mariadbConnection != nil, !sessionLock.withLock({ isReleased }) else { return nil }
+        return String(localized: "Release Server Connection")
+    }
+
+    func releaseIdleResource() async throws -> PluginResourceRelease {
+        release(idleFor: nil)
+    }
+
+    /// Both the command and the timer land here. `minimumIdle` is what separates them: the command
+    /// releases now, the timer only once the connection has actually gone quiet for that long.
+    private func release(idleFor minimumIdle: Duration?) -> PluginResourceRelease {
+        /// The decision and the handover happen under one lock so a query arriving cannot land
+        /// between them and be run on a connection that is about to go away.
+        let handover: (outcome: PluginResourceRelease, connection: MariaDBPluginConnection?) =
+            sessionLock.withLock {
+                guard let connection = mariadbConnection, !isReleased else {
+                    return (.nothingToRelease, nil)
+                }
+                if let minimumIdle, ContinuousClock.now - lastActivity < minimumIdle {
+                    return (.nothingToRelease, nil)
+                }
+                if let reason = footprint.blockingReason {
+                    return (.kept(reason), nil)
+                }
+                mariadbConnection = nil
+                isReleased = true
+                footprint.reset()
+                return (.released, connection)
+            }
+
+        guard let connection = handover.connection else { return handover.outcome }
+        connection.disconnect()
+        Self.logger.info("Released the MySQL server connection")
+        return handover.outcome
+    }
+
+    private func releaseIfIdle(interval: Duration) {
+        let outcome = release(idleFor: interval)
+        guard !outcome.didRelease, let reason = outcome.reason else { return }
+        Self.logger.debug("MySQL kept its server connection: \(reason, privacy: .public)")
+    }
+
+    private func startIdleReleaseIfRequested() async {
+        guard let interval = MySQLIdleRelease.interval(
+            fromFieldValue: config.additionalFields[MySQLIdleRelease.fieldId]
+        ) else { return }
+        await idleReleaseTimer.start(interval: interval) { [weak self] in
+            self?.releaseIfIdle(interval: interval)
+        }
+    }
+
+    /// The session the reconnect lands on is a new one, so everything the old one held is already
+    /// gone and the footprint starts clean. What the driver put there itself is put back, because
+    /// the server does not remember it: a reconnect that skips the query timeout leaves the session
+    /// with no limit at all, which is only noticed when a runaway query will not stop.
     private func reconnect() async throws {
         mariadbConnection?.disconnect()
         mariadbConnection = nil
+        sessionLock.withLock { footprint.reset() }
         try await connect()
+        if let seconds = sessionLock.withLock({ appliedQueryTimeoutSeconds }) {
+            try await applyQueryTimeout(seconds)
+        }
     }
 
     // MARK: - Schema Operations
@@ -649,10 +833,20 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        guard let conn = mariadbConnection else {
-            return AsyncThrowingStream { $0.finish(throwing: MariaDBPluginError.notConnected) }
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    let conn = try await requireConnection()
+                    noteActivity(query)
+                    for try await element in conn.streamQuery(query) {
+                        continuation.yield(element)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
         }
-        return conn.streamQuery(query)
     }
 
     // MARK: - Database Operations
@@ -740,6 +934,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Query Timeout
 
     func applyQueryTimeout(_ seconds: Int) async throws {
+        sessionLock.withLock { appliedQueryTimeoutSeconds = seconds }
         do {
             _ = try await execute(query: mysqlQueryTimeoutStatement(seconds: seconds, isMariaDB: isMariaDB))
         } catch {

@@ -213,6 +213,16 @@ extension PluginMetadataRegistry {
 
         let awsIAMFields = AWSAuthFields.standard() + [AWSAuthFields.rdsEndpointField()]
 
+        /// MySQL and MariaDB only. PostgreSQL shares `awsIAMFields` and must not pick this up:
+        /// its driver holds no releasable resource, so the setting would do nothing.
+        let mysqlIdleReleaseField = ConnectionField(
+            id: "mysqlIdleReleaseMinutes",
+            label: String(localized: "Release the Server Connection After (minutes, 0 to keep it)"),
+            defaultValue: "0",
+            fieldType: .stepper(range: ConnectionField.IntRange(0...240)),
+            section: .advanced
+        )
+
         let defaults: [(typeId: String, snapshot: PluginMetadataSnapshot)] = [
             ("MySQL", PluginMetadataSnapshot(
                 displayName: "MySQL", iconName: "mysql-icon", defaultPort: 3_306,
@@ -272,7 +282,7 @@ extension PluginMetadataRegistry {
                     columnTypesByCategory: mysqlColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: awsIAMFields,
+                    additionalConnectionFields: awsIAMFields + [mysqlIdleReleaseField],
                     category: .relational,
                     tagline: String(localized: "Most popular open-source SQL database"),
                     defaultUnixSocketPath: "/var/run/mysqld/mysqld.sock"
@@ -336,7 +346,7 @@ extension PluginMetadataRegistry {
                     columnTypesByCategory: mysqlColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: awsIAMFields,
+                    additionalConnectionFields: awsIAMFields + [mysqlIdleReleaseField],
                     category: .relational,
                     tagline: String(localized: "Open-source fork of MySQL"),
                     defaultUnixSocketPath: "/var/run/mysqld/mysqld.sock"
