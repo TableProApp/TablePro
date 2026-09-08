@@ -19,15 +19,21 @@ extension TableViewCoordinator {
         cellPasteGrid(anchorRow: anchorRow, anchorColumn: anchorColumn) != nil
     }
 
+    /// Fills cells rightwards from the anchor, in the order they appear on screen.
+    ///
+    /// The walk is over display positions, not data indices. Adding to the anchor's data index
+    /// walked the result's own column order, so after a column reorder the second value landed in
+    /// whichever column happens to hold the next slot rather than the one beside it on screen, and a
+    /// hidden column could swallow a value with nothing shown for it.
     func pasteCellsFromClipboard(anchorRow: Int, anchorColumn: Int) -> Bool {
-        guard let grid = cellPasteGrid(anchorRow: anchorRow, anchorColumn: anchorColumn) else {
+        guard let grid = cellPasteGrid(anchorRow: anchorRow, anchorColumn: anchorColumn),
+              let anchorPosition = displayPosition(ofDataColumnIndex: anchorColumn) else {
             return false
         }
 
-        let dataColumnCount = tableRowsProvider().columns.count
         let maxRow = min(anchorRow + grid.count, cachedRowCount)
-        let maxCol = min(anchorColumn + (grid.first?.count ?? 0), dataColumnCount)
-        guard anchorRow < maxRow, anchorColumn < maxCol else { return false }
+        let maxCol = min(anchorPosition + (grid.first?.count ?? 0), presentedColumnCount)
+        guard anchorRow < maxRow, anchorPosition < maxCol else { return false }
 
         let undoManager = tableView?.window?.undoManager
         undoManager?.beginUndoGrouping()
@@ -39,8 +45,9 @@ extension TableViewCoordinator {
             guard !changeManager.isRowDeleted(targetRow) else { continue }
 
             for (gridCol, cellValue) in rowValues.enumerated() {
-                let targetCol = anchorColumn + gridCol
-                guard targetCol < maxCol else { break }
+                let targetPosition = anchorPosition + gridCol
+                guard targetPosition < maxCol else { break }
+                guard let targetCol = dataColumnIndex(atDisplayPosition: targetPosition) else { continue }
                 commitCellEdit(row: targetRow, columnIndex: targetCol, newValue: cellValue)
             }
         }
@@ -69,15 +76,19 @@ extension TableViewCoordinator {
             .map { $0.components(separatedBy: "\t") }
         guard let firstRow = grid.first else { return nil }
 
+        /// A block as wide as the columns on screen is whole rows and belongs to row paste. It is
+        /// the presented count that decides, because that is what the user copied from and what the
+        /// paste below walks.
         let isSingleValue = grid.count == 1 && firstRow.count == 1
-        let dataColumnCount = tableRowsProvider().columns.count
-        if !isSingleValue, dataColumnCount > 0, grid.allSatisfy({ $0.count == dataColumnCount }) {
+        let columnCount = presentedColumnCount
+        if !isSingleValue, columnCount > 0, grid.allSatisfy({ $0.count == columnCount }) {
             return nil
         }
 
+        guard let anchorPosition = displayPosition(ofDataColumnIndex: anchorColumn) else { return nil }
         let maxRow = min(anchorRow + grid.count, cachedRowCount)
-        let maxCol = min(anchorColumn + firstRow.count, dataColumnCount)
-        guard anchorRow < maxRow, anchorColumn < maxCol else { return nil }
+        let maxCol = min(anchorPosition + firstRow.count, columnCount)
+        guard anchorRow < maxRow, anchorPosition < maxCol else { return nil }
 
         return grid
     }

@@ -132,7 +132,7 @@ final class GridSelectionController {
                 return
             }
             let last = rectangles[rectangles.count - 1]
-            let active = GridCoord(row: last.rows.lowerBound, column: last.columns.lowerBound)
+            let active = GridCoord(row: last.rows.lowerBound, displayColumn: last.columns.lowerBound)
             update(GridSelection(rectangles: rectangles, activeCell: active, anchor: dragBaseSelection.anchor))
             return
         }
@@ -144,27 +144,46 @@ final class GridSelectionController {
     func selectAll(totalRows: Int, totalColumns: Int) {
         guard totalRows > 0, totalColumns > 0 else { return }
         let rect = GridRect(rows: 0...(totalRows - 1), columns: 0...(totalColumns - 1))
-        let active = GridCoord(row: 0, column: 0)
+        let active = GridCoord(row: 0, displayColumn: 0)
         update(.single(rect, anchor: active, active: active))
     }
 
-    func selectEntireColumn(_ column: Int, totalRows: Int) {
-        guard column >= 0, totalRows > 0 else { return }
-        let rect = GridRect(rows: 0...(totalRows - 1), columns: column...column)
-        let anchor = GridCoord(row: 0, column: column)
+    func selectEntireColumn(_ displayColumn: Int, totalRows: Int) {
+        guard displayColumn >= 0, totalRows > 0 else { return }
+        let rect = GridRect(rows: 0...(totalRows - 1), columns: displayColumn...displayColumn)
+        let anchor = GridCoord(row: 0, displayColumn: displayColumn)
         update(.single(rect, anchor: anchor, active: anchor))
     }
 
-    func addEntireColumn(_ column: Int, totalRows: Int) {
-        guard column >= 0, totalRows > 0 else { return }
-        let rect = GridRect(rows: 0...(totalRows - 1), columns: column...column)
-        let anchor = GridCoord(row: 0, column: column)
+    func addEntireColumn(_ displayColumn: Int, totalRows: Int) {
+        guard displayColumn >= 0, totalRows > 0 else { return }
+        let rect = GridRect(rows: 0...(totalRows - 1), columns: displayColumn...displayColumn)
+        let anchor = GridCoord(row: 0, displayColumn: displayColumn)
         let addition = GridSelection.single(rect, anchor: anchor, active: anchor)
         update(selection.isEmpty ? addition : selection.union(addition))
     }
 
+    /// Display positions. `selectedFullColumnDataIndices()` is what a caller indexing column names
+    /// or values wants.
     func selectedFullColumns() -> IndexSet {
         fullySelectedColumns(in: selection)
+    }
+
+    /// The fully selected columns as data indices, for callers that index `TableRows.columns` or a
+    /// row's values. The inspector's CSV column insert and delete are the reason this exists: a
+    /// display position used there deletes the wrong column of the user's file.
+    func selectedFullColumnDataIndices() -> IndexSet {
+        dataIndices(from: fullySelectedColumns(in: selection))
+    }
+
+    /// Every column the selection touches, as data indices.
+    func affectedDataColumns() -> IndexSet {
+        dataIndices(from: selection.affectedColumns)
+    }
+
+    private func dataIndices(from positions: IndexSet) -> IndexSet {
+        guard let coordinator else { return positions }
+        return IndexSet(coordinator.dataColumnIndices(in: positions))
     }
 
     func selectEntireRow(_ row: Int, totalColumns: Int) {
@@ -179,7 +198,7 @@ final class GridSelectionController {
         let sorted = rows.filter { $0 >= 0 }.sorted()
         guard let first = sorted.first else { return }
         let columns = 0...(totalColumns - 1)
-        let anchor = GridCoord(row: first, column: 0)
+        let anchor = GridCoord(row: first, displayColumn: 0)
         update(
             GridSelection(
                 rectangles: sorted.map { GridRect(rows: $0...$0, columns: columns) },
@@ -206,13 +225,21 @@ final class GridSelectionController {
     private func step(from coord: GridCoord, direction: Direction, jumpToEdge: Bool, totalRows: Int, totalColumns: Int) -> GridCoord {
         switch direction {
         case .up:
-            return GridCoord(row: jumpToEdge ? 0 : max(0, coord.row - 1), column: coord.column)
+            return GridCoord(row: jumpToEdge ? 0 : max(0, coord.row - 1), displayColumn: coord.displayColumn)
         case .down:
-            return GridCoord(row: jumpToEdge ? max(0, totalRows - 1) : min(totalRows - 1, coord.row + 1), column: coord.column)
+            return GridCoord(
+                row: jumpToEdge ? max(0, totalRows - 1) : min(totalRows - 1, coord.row + 1),
+                displayColumn: coord.displayColumn
+            )
         case .left:
-            return GridCoord(row: coord.row, column: jumpToEdge ? 0 : max(0, coord.column - 1))
+            return GridCoord(row: coord.row, displayColumn: jumpToEdge ? 0 : max(0, coord.displayColumn - 1))
         case .right:
-            return GridCoord(row: coord.row, column: jumpToEdge ? max(0, totalColumns - 1) : min(totalColumns - 1, coord.column + 1))
+            return GridCoord(
+                row: coord.row,
+                displayColumn: jumpToEdge
+                    ? max(0, totalColumns - 1)
+                    : min(totalColumns - 1, coord.displayColumn + 1)
+            )
         }
     }
 

@@ -185,8 +185,8 @@ struct SelectIntersectingRowsTests {
         controller.update(
             .single(
                 GridRect(rows: 2...4, columns: 1...2),
-                anchor: GridCoord(row: 2, column: 1),
-                active: GridCoord(row: 4, column: 2)
+                anchor: GridCoord(row: 2, displayColumn: 1),
+                active: GridCoord(row: 4, displayColumn: 2)
             )
         )
 
@@ -204,8 +204,8 @@ struct SelectIntersectingRowsTests {
         controller.selectEntireRows([3, 17], totalColumns: 4)
 
         #expect(controller.selection.affectedRows == IndexSet([3, 17]))
-        #expect(!controller.selection.contains(row: 10, column: 0))
-        #expect(controller.selection.contains(row: 17, column: 3))
+        #expect(!controller.selection.contains(row: 10, displayColumn: 0))
+        #expect(controller.selection.contains(row: 17, displayColumn: 3))
     }
 
     @Test("selectEntireRow is the single-row case of the same widening")

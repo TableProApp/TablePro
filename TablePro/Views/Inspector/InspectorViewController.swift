@@ -364,7 +364,7 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
     }
 
     private func selectedFullColumns() -> IndexSet {
-        gridDelegate.coordinator?.selectionController.selectedFullColumns() ?? IndexSet()
+        gridDelegate.coordinator?.selectionController.selectedFullColumnDataIndices() ?? IndexSet()
     }
 
     private func performDeleteColumns(_ columns: [Int]) {
@@ -424,7 +424,7 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
         if let clicked = InspectorColumnMenuBuilder.clickedColumn(from: sender), clicked >= 0, clicked < count {
             return clicked
         }
-        if let first = gridDelegate.coordinator?.selectionController.selection.affectedColumns.min(),
+        if let first = gridDelegate.coordinator?.selectionController.affectedDataColumns().min(),
            first >= 0, first < count {
             return first
         }

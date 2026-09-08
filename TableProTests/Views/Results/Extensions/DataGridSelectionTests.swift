@@ -115,8 +115,8 @@ struct PublishedRowSelectionTests {
         coordinator.selectionController.update(
             .single(
                 GridRect(rows: 1...6, columns: 0...0),
-                anchor: GridCoord(row: 1, column: 0),
-                active: GridCoord(row: 6, column: 0)
+                anchor: GridCoord(row: 1, displayColumn: 0),
+                active: GridCoord(row: 6, displayColumn: 0)
             )
         )
         coordinator.publishRowSelection(rowSelection: [1])
@@ -132,9 +132,9 @@ struct PublishedRowSelectionTests {
 
         coordinator.selectionController.update(
             GridSelection(
-                rectangles: [GridRect(cell: GridCoord(row: 3, column: 0)), GridRect(cell: GridCoord(row: 17, column: 2))],
-                activeCell: GridCoord(row: 17, column: 2),
-                anchor: GridCoord(row: 3, column: 0)
+                rectangles: [GridRect(cell: GridCoord(row: 3, displayColumn: 0)), GridRect(cell: GridCoord(row: 17, displayColumn: 2))],
+                activeCell: GridCoord(row: 17, displayColumn: 2),
+                anchor: GridCoord(row: 3, displayColumn: 0)
             )
         )
         coordinator.publishRowSelection(rowSelection: [17])
@@ -160,8 +160,8 @@ struct PublishedRowSelectionTests {
         coordinator.selectionController.update(
             .single(
                 GridRect(rows: 4...9, columns: 0...0),
-                anchor: GridCoord(row: 4, column: 0),
-                active: GridCoord(row: 9, column: 0)
+                anchor: GridCoord(row: 4, displayColumn: 0),
+                active: GridCoord(row: 9, displayColumn: 0)
             )
         )
         coordinator.publishRowSelection(rowSelection: [4])
@@ -199,8 +199,8 @@ struct PublishedRowSelectionTests {
         coordinator.selectionController.update(
             .single(
                 GridRect(rows: 2...5, columns: 1...3),
-                anchor: GridCoord(row: 2, column: 1),
-                active: GridCoord(row: 5, column: 3)
+                anchor: GridCoord(row: 2, displayColumn: 1),
+                active: GridCoord(row: 5, displayColumn: 3)
             )
         )
 

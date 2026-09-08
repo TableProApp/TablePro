@@ -57,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Row count and row inspector reporting one row while Delete and Copy act on every row a cell drag covers.
+- Cell selection collapsing to the first column or the first row when a drag left the grid past the last one.
+- Cell selection, copy and paste using columns the pointer never crossed once a column had been reordered or hidden.
 - Query Live Activity still counting up on the iOS Lock Screen and Dynamic Island after the app was quit mid-query.
 - Stop leaving an iOS MySQL or Redis query running, with the spinner and the Live Activity stuck behind it.
 - A stopped or memory-stopped iOS query recorded in Query History as successful, including a write that streamed no rows.

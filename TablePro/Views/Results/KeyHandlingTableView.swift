@@ -122,9 +122,11 @@ final class KeyHandlingTableView: NSTableView {
 
     private func totalRows() -> Int { numberOfRows }
 
+    /// The columns a selection can span: the presented run, not every slot the result carries. A
+    /// hidden column has no display position, so counting slots would let Shift+Arrow and Select All
+    /// run past the end of the run.
     private func totalDataColumns() -> Int {
-        guard let schema = coordinator?.identitySchema else { return 0 }
-        return schema.totalDataColumns
+        coordinator?.presentedColumnCount ?? 0
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -168,7 +170,11 @@ final class KeyHandlingTableView: NSTableView {
         }
 
         let alreadyFocusedHere = clickedRow == focusedRow && clickedColumn == focusedColumn
-        let coord = GridCoord(row: clickedRow, column: dataColumn)
+        guard let displayColumn = coordinator?.displayPosition(ofDataColumnIndex: dataColumn) else {
+            super.mouseDown(with: event)
+            return
+        }
+        let coord = GridCoord(row: clickedRow, displayColumn: displayColumn)
         guard let controller = gridSelection else {
             super.mouseDown(with: event)
             return
@@ -181,7 +187,8 @@ final class KeyHandlingTableView: NSTableView {
                 selectRowIndexes(IndexSet(integer: activeCoord.row), byExtendingSelection: false)
             }
             focusedRow = activeCoord.row
-            focusedColumn = coordinator?.tableColumnIndex(for: activeCoord.column) ?? clickedColumn
+            focusedColumn = coordinator?.tableColumnIndex(forDisplayPosition: activeCoord.displayColumn)
+                ?? clickedColumn
         case .clearFocus:
             deselectAll(nil)
             focusedRow = -1
@@ -216,10 +223,9 @@ final class KeyHandlingTableView: NSTableView {
             }
             let point = pointClearOfPinnedGutter(convert(event.locationInWindow, from: nil))
             autoscroll(with: event)
-            let rowIdx = clampRow(row(at: point))
-            let columnIdx = clampDataColumn(column(at: point), schema: schema)
-            guard rowIdx >= 0, columnIdx >= 0 else { continue }
-            let coord = GridCoord(row: rowIdx, column: columnIdx)
+            guard let rowIdx = clampRow(row(at: point), at: point),
+                  let columnIdx = clampDataColumn(column(at: point), at: point, schema: schema) else { continue }
+            let coord = GridCoord(row: rowIdx, displayColumn: columnIdx)
             if coord != initial { dragged = true }
             controller.continueDrag(to: coord)
         }
@@ -246,18 +252,30 @@ final class KeyHandlingTableView: NSTableView {
         return NSPoint(x: edge, y: point.y)
     }
 
-    private func clampRow(_ value: Int) -> Int {
-        guard numberOfRows > 0 else { return -1 }
-        if value < 0 { return 0 }
-        if value >= numberOfRows { return numberOfRows - 1 }
-        return value
+    private func clampRow(_ value: Int, at point: NSPoint) -> Int? {
+        guard numberOfRows > 0 else { return nil }
+        return GridDragClamp.row(
+            hit: value,
+            pointY: point.y,
+            rowCount: numberOfRows,
+            lastRowMaxY: rect(ofRow: numberOfRows - 1).maxY
+        )
     }
 
-    private func clampDataColumn(_ value: Int, schema: ColumnIdentitySchema) -> Int {
-        let firstData = firstVisibleDataColumn()
-        let candidate = value < firstData ? firstData : value
-        guard candidate >= 0, candidate < numberOfColumns else { return -1 }
-        return DataGridView.dataColumnIndex(for: candidate, in: self, schema: schema) ?? -1
+    private func clampDataColumn(_ value: Int, at point: NSPoint, schema: ColumnIdentitySchema) -> Int? {
+        guard let first = coordinator?.firstPresentedColumnIndex(),
+              let last = coordinator?.lastPresentedColumnIndex() else { return nil }
+        guard let candidate = GridDragClamp.column(
+            hit: value,
+            pointX: point.x,
+            firstPresented: first,
+            lastPresented: last,
+            lastPresentedMaxX: rect(ofColumn: last).maxX
+        ) else { return nil }
+        guard let dataIndex = DataGridView.dataColumnIndex(for: candidate, in: self, schema: schema) else {
+            return nil
+        }
+        return coordinator?.displayPosition(ofDataColumnIndex: dataIndex)
     }
 
     @objc func delete(_ sender: Any?) {
@@ -482,8 +500,9 @@ final class KeyHandlingTableView: NSTableView {
     }
 
     private func focusedGridCoord() -> GridCoord? {
-        guard let cell = focusedDataCell() else { return nil }
-        return GridCoord(row: cell.row, column: cell.columnIndex)
+        guard let cell = focusedDataCell(),
+              let displayColumn = coordinator?.displayPosition(ofDataColumnIndex: cell.columnIndex) else { return nil }
+        return GridCoord(row: cell.row, displayColumn: displayColumn)
     }
 
     @objc override func insertNewline(_ sender: Any?) {
@@ -712,7 +731,8 @@ final class KeyHandlingTableView: NSTableView {
               let dataColumn = DataGridView.dataColumnIndex(for: clickedColumn, in: self, schema: schema) else {
             return false
         }
-        return controller.selection.contains(row: clickedRow, column: dataColumn)
+        guard let displayColumn = coordinator?.displayPosition(ofDataColumnIndex: dataColumn) else { return false }
+        return controller.selection.contains(row: clickedRow, displayColumn: displayColumn)
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
@@ -726,7 +746,8 @@ final class KeyHandlingTableView: NSTableView {
                let dataColumn = DataGridView.dataColumnIndex(for: clickedColumn, in: self, schema: schema),
                let controller = gridSelection,
                !controller.isEmpty,
-               controller.selection.contains(row: clickedRow, column: dataColumn) {
+               let displayColumn = coordinator?.displayPosition(ofDataColumnIndex: dataColumn),
+               controller.selection.contains(row: clickedRow, displayColumn: displayColumn) {
                 return rowView.contextMenu(for: event)
             }
             if !selectedRowIndexes.contains(clickedRow) {

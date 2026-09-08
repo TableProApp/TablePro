@@ -262,8 +262,8 @@ class DataGridRowView: NSTableRowView {
 
         cellSelectionFill.setFill()
 
-        for dataColumn in columns {
-            guard let tableColumnIndex = coordinator.tableColumnIndex(for: dataColumn) else { continue }
+        for position in columns {
+            guard let tableColumnIndex = coordinator.tableColumnIndex(forDisplayPosition: position) else { continue }
             let columnRect = tableView.rect(ofColumn: tableColumnIndex)
             let localRect = NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: bounds.height)
             guard localRect.intersects(dirtyRect) else { continue }

@@ -1,5 +1,7 @@
 import Foundation
 
+/// A rectangle of cells. Its column axis is display positions, so a sweep names the block the user
+/// actually crossed; see `GridCoord` and `DataGridView+ColumnDisplayOrder`.
 struct GridRect: Hashable {
     var rows: ClosedRange<Int>
     var columns: ClosedRange<Int>
@@ -11,18 +13,18 @@ struct GridRect: Hashable {
 
     init(cell: GridCoord) {
         self.rows = cell.row...cell.row
-        self.columns = cell.column...cell.column
+        self.columns = cell.displayColumn...cell.displayColumn
     }
 
     static func between(_ a: GridCoord, _ b: GridCoord) -> GridRect {
         GridRect(
             rows: min(a.row, b.row)...max(a.row, b.row),
-            columns: min(a.column, b.column)...max(a.column, b.column)
+            columns: min(a.displayColumn, b.displayColumn)...max(a.displayColumn, b.displayColumn)
         )
     }
 
     func contains(_ coord: GridCoord) -> Bool {
-        rows.contains(coord.row) && columns.contains(coord.column)
+        rows.contains(coord.row) && columns.contains(coord.displayColumn)
     }
 
     func clamped(rowLimit: Int, columnLimit: Int) -> GridRect? {

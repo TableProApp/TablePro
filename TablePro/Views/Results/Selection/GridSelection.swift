@@ -13,8 +13,8 @@ struct GridSelection: Equatable {
         rectangles.contains { $0.contains(coord) }
     }
 
-    func contains(row: Int, column: Int) -> Bool {
-        contains(GridCoord(row: row, column: column))
+    func contains(row: Int, displayColumn: Int) -> Bool {
+        contains(GridCoord(row: row, displayColumn: displayColumn))
     }
 
     var affectedRows: IndexSet {
@@ -25,6 +25,8 @@ struct GridSelection: Equatable {
         return set
     }
 
+    /// The display positions the selection covers. Convert with
+    /// `TableViewCoordinator.dataColumnIndices(in:)` before indexing anything that holds values.
     var affectedColumns: IndexSet {
         var set = IndexSet()
         for rect in rectangles {
@@ -48,6 +50,7 @@ struct GridSelection: Equatable {
         return GridRect(rows: minRow...maxRow, columns: minColumn...maxColumn)
     }
 
+    /// The display positions covered on one row.
     func columns(in row: Int) -> IndexSet {
         var set = IndexSet()
         for rect in rectangles where rect.rows.contains(row) {
