@@ -901,7 +901,12 @@ struct MainEditorContentView: View {
             sortState: sortStateBinding(for: tab),
             columnLayout: columnLayoutBinding(for: tab),
             valueFilter: valueFilterBinding(for: tab),
-            displayState: coordinator.displayState(for: tab)
+            displayState: coordinator.displayState(for: tab),
+            restoredRowSelection: tab.selectedRowIndices,
+            restoredCellSelection: tab.cellSelection,
+            onSelectionTeardown: { [coordinator] rows, cells in
+                coordinator.storeGridSelectionOnTeardown(rows: rows, cells: cells, forTab: tabId)
+            }
         )
         .id(tabId)
         .frame(maxHeight: .infinity, alignment: .top)

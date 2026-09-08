@@ -68,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Grid row and cell selection lost on switching editor tabs, result view modes, or moving a tab to a new window. (#2667)
 - Toolbar commands pushed into the overflow menu at 1200pt by a centred item that could not shrink.
 - Container chooser opening over a session the health monitor had given up on.
 - No way to change a Snowflake warehouse or role once the window narrowed enough to clip the connection group.

@@ -59,6 +59,12 @@ extension MainContentCoordinator {
                     $0.restoredCursorLength = range.length
                 }
             }
+            /// Before the restore below repoints `selectionState` at the incoming tab. The outgoing
+            /// grid is still mounted and still bound to that shared channel, so the repoint clears
+            /// its table view and its own teardown then has nothing left to report. (#2667)
+            if let live = mountedGridSelection() {
+                storeGridSelection(rows: live.rows, cells: live.cells, forTab: oldId)
+            }
             if let tableName = tabManager.tabs[oldIndex].tableContext.tableName {
                 FilterSettingsStorage.shared.saveLastFilters(
                     tabManager.tabs[oldIndex].filterState.appliedFilters,
@@ -90,7 +96,7 @@ extension MainContentCoordinator {
 
             recordSelectedTabContainer()
 
-            selectionState.indices = newTab.selectedRowIndices
+            selectionState.indices = newTab.selectedDisplayRows
             toolbarState.isTableTab = newTab.tabType == .table
             toolbarState.isResultsCollapsed = newTab.display.isResultsCollapsed
 

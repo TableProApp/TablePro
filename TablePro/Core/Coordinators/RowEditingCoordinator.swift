@@ -348,6 +348,9 @@ final class RowEditingCoordinator {
 
         parent.tabManager.mutate(at: tabIndex) { tab in
             tab.selectedRowIndices = newIndices
+            /// The pasted rows are the selection now. Left behind, the stored rectangle would
+            /// outrank them in `selectedDisplayRows` and come back instead of them.
+            tab.cellSelection = .empty
             tab.hasUserInteraction = true
         }
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(pasteResult.delta)

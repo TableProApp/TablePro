@@ -194,7 +194,7 @@ internal enum ScriptingSnapshot {
             resultsViewMode: tab.display.resultsViewMode
         ) == .dataGrid
         let selected = selectedOnly
-            ? (ownsLiveSelection ? coordinator.selectionState.indices : tab.selectedRowIndices)
+            ? (ownsLiveSelection ? coordinator.selectionState.indices : tab.selectedDisplayRows)
             : []
         if selectedOnly, selected.isEmpty {
             return ScriptResultEncoder.empty()

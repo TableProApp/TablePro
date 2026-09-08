@@ -104,8 +104,17 @@ struct CreateTableView: View {
             /// order the outgoing view's `onDisappear` before the incoming view's `onAppear`, so an
             /// unguarded clear that lands second nils the wiring the incoming Create Table tab has
             /// already installed, leaving its Create button and its close prompt dead.
+            ///
+            /// The shared selection channel gets a second guard, because a data grid mounting in
+            /// this tab's place restores its own rows into it and this clear landing afterwards
+            /// would wipe them.
             if coordinator?.createTableActions === actionHandler {
-                selectionState.indices = []
+                if GridSelectionOwner.resolve(
+                    tabType: coordinator?.tabManager.selectedTab?.tabType,
+                    resultsViewMode: coordinator?.tabManager.selectedTab?.display.resultsViewMode
+                ) != .dataGrid {
+                    selectionState.indices = []
+                }
                 coordinator?.createTableActions = nil
                 coordinator?.toolbarState.hasCreateTablePending = false
             }

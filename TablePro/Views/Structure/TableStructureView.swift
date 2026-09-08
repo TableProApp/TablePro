@@ -236,10 +236,17 @@ struct TableStructureView: View {
             /// and an unguarded clear that lands second nils the wiring the incoming structure tab
             /// has already installed. Its Save, Refresh, Preview SQL, undo and footer buttons then
             /// do nothing at all until something else re-runs `onAppear`.
+            ///
+            /// The shared selection channel gets a second guard on top of that one. Switching this
+            /// tab back to Data mounts the data grid, which restores its own rows into the channel,
+            /// and this clear landing afterwards would wipe them: the same unordered lifecycle, one
+            /// layer out. Ask who owns the channel now rather than assuming it is still this grid.
             if coordinator?.structureActions === actionHandler {
                 coordinator?.structureActions = nil
                 coordinator?.toolbarState.hasStructureChanges = false
-                selectionState.indices = []
+                if incomingSelectionOwner != .dataGrid {
+                    selectionState.indices = []
+                }
             }
             if coordinator?.inspectorRowSource === gridDelegate {
                 coordinator?.inspectorRowSource = nil
@@ -273,6 +280,14 @@ struct TableStructureView: View {
     }
 
     // MARK: - Toolbar
+
+    /// Which grid owns the shared selection channel now that this view is leaving.
+    private var incomingSelectionOwner: GridSelectionOwner {
+        GridSelectionOwner.resolve(
+            tabType: coordinator?.tabManager.selectedTab?.tabType,
+            resultsViewMode: coordinator?.tabManager.selectedTab?.display.resultsViewMode
+        )
+    }
 
     private var availableTabs: [StructureTab] {
         var tabs = StructureTab.allCases

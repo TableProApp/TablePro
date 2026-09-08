@@ -138,8 +138,9 @@ extension MainContentCoordinator {
     private func resetSelectionForNewResult(tabId: UUID) {
         clearValueFilter(forTab: tabId)
         tabManager.mutate(tabId: tabId) { tab in
-            guard !tab.selectedRowIndices.isEmpty else { return }
+            guard !tab.selectedRowIndices.isEmpty || !tab.cellSelection.isEmpty else { return }
             tab.selectedRowIndices = []
+            tab.cellSelection = .empty
         }
         guard let idx = tabManager.selectedTabIndex,
               idx < tabManager.tabs.count,

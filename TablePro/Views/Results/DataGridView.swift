@@ -54,6 +54,17 @@ struct DataGridView: NSViewRepresentable {
     /// reason as the value filter above. The owner hands back a fresh instance whenever the inputs
     /// that decide the text have moved, so adopting one is always safe. (#2424)
     var displayState: DataGridDisplayState?
+    /// The selection to put back once the rows are in, owned the same way again. A grid with no
+    /// owner has nothing to restore and keeps whatever its own gestures build. (#2667)
+    ///
+    /// The rows come from the tab rather than from `selectedRowIndices`, which is the shared
+    /// `GridSelectionState`: the structure grid clears that channel and then publishes its own
+    /// schema rows into it, so on a Data to Structure to Data round trip it holds either nothing or
+    /// positions belonging to another grid entirely.
+    var restoredRowSelection: Set<Int>?
+    var restoredCellSelection: GridSelection?
+    /// Handed this grid's selection on the way out, for the owner to keep until the next mount.
+    var onSelectionTeardown: (@MainActor (Set<Int>, GridSelection) -> Void)?
     var contentRevision: Int = 0
 
     // MARK: - NSViewRepresentable
@@ -240,6 +251,7 @@ struct DataGridView: NSViewRepresentable {
         }
 
         syncSortState(tableView: tableView, coordinator: coordinator)
+        restoreSelection(tableView: tableView, coordinator: coordinator)
         syncSelection(tableView: tableView, coordinator: coordinator)
         coordinator.schedulePendingColumnJump(contentReplaced: contentReplaced)
     }
@@ -362,6 +374,50 @@ struct DataGridView: NSViewRepresentable {
         } else if displayFormatsChanged {
             coordinator.reloadAfterDisplayFormatChange()
         }
+    }
+
+    /// Puts back the selection the owner kept while this tab had no grid.
+    ///
+    /// Runs after `applyStructuralUpdate`, never before: that pass ends in
+    /// `selectionController.clear()` and `reloadData()`, and `reloadData()` drops the row selection
+    /// unconditionally even when the row count has not changed (measured). Anything restored ahead
+    /// of it is thrown away on the same update.
+    ///
+    /// Clamped, because the rows can have shrunk while the grid was gone and
+    /// `NSTableView.selectRowIndexes` is all-or-nothing on an out-of-range member (measured): an
+    /// unclamped push selects nothing at all rather than the rows that do still exist. A grid whose
+    /// rows have not landed yet is left for the next pass rather than clamped away to nothing.
+    private func restoreSelection(tableView: NSTableView, coordinator: TableViewCoordinator) {
+        guard !coordinator.hasRestoredSelection else { return }
+        let rowLimit = tableView.numberOfRows
+        guard rowLimit > 0 else { return }
+        coordinator.hasRestoredSelection = true
+
+        let restored = GridSelectionRestore.resolve(
+            storedRows: restoredRowSelection ?? selectedRowIndices,
+            storedCells: restoredCellSelection ?? .empty,
+            rowLimit: rowLimit,
+            columnLimit: coordinator.presentedColumnCount
+        )
+        /// Published even when nothing survived the clamp. Returning early here would leave the
+        /// shared channel holding the old out-of-range positions, and `syncSelection` would then
+        /// push them at a table view that refuses them whole and republish them anyway: an empty
+        /// grid under a status bar and a row menu that both still report a selection.
+        coordinator.selectRowsProgrammatically(IndexSet(restored.nativeRows), in: tableView)
+        if restored.cells.isEmpty {
+            coordinator.publishRowSelection(rowSelection: restored.publishedRows)
+        } else {
+            coordinator.selectionController.update(restored.cells)
+        }
+        /// `focusedColumn` indexes `tableColumns`, which also holds the row-number column, both
+        /// spacers and the unused pool slots, while a `GridCoord` carries a display position. Writing
+        /// one into the other lands the cell cursor on chrome, and Return, Tab and column navigation
+        /// then act on the wrong column or on none.
+        guard let keyTableView = tableView as? KeyHandlingTableView,
+              let active = restored.cells.activeCell,
+              let column = coordinator.tableColumnIndex(forDisplayPosition: active.displayColumn) else { return }
+        keyTableView.focusedRow = active.row
+        keyTableView.focusedColumn = column
     }
 
     /// Pushes a selection the app set from outside into the table view.
@@ -523,6 +579,7 @@ struct DataGridView: NSViewRepresentable {
     static func dismantleNSView(_ nsView: NSScrollView, coordinator: TableViewCoordinator) {
         coordinator.overlayEditor?.dismiss(commit: true)
         coordinator.recordScrollAnchor()
+        coordinator.captureSelectionForTeardown()
         coordinator.flushPendingColumnLayoutPersistence()
         coordinator.settingsCancellable = nil
         coordinator.themeCancellable = nil
@@ -541,6 +598,7 @@ struct DataGridView: NSViewRepresentable {
         coordinator.selectionController.onSelectionChange = { [weak coordinator] _ in
             coordinator?.publishRowSelection()
         }
+        coordinator.onSelectionTeardown = onSelectionTeardown
         let columnLayoutBinding = $columnLayout
         coordinator.onColumnLayoutDidChange = { layout in
             if columnLayoutBinding.wrappedValue != layout {

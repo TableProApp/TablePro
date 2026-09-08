@@ -74,7 +74,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// its own, which is all a structure or create-table grid ever needs. (#2424)
     private(set) var displayState = DataGridDisplayState()
     var displayCache: RowDisplayCache { displayState.cache }
-    private var pendingScrollAnchorRow: Int?
+    var pendingScrollAnchorRow: Int?
     var pendingColumnJump: PendingColumnJump?
     weak var delegate: (any DataGridViewDelegate)?
     var rowReorder: DataGridRowReorder = .disabled
@@ -161,26 +161,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         } else {
             state.displayFormats = columnDisplayFormats
         }
-    }
-
-    var scrollAnchorRow: Int { pendingScrollAnchorRow ?? 0 }
-
-    /// Records where the user was looking, so returning to this tab does not start at the first row.
-    func recordScrollAnchor() {
-        guard let tableView else { return }
-        let visible = tableView.rows(in: tableView.visibleRect)
-        displayState.firstVisibleRow = max(0, visible.location)
-    }
-
-    /// `scrollRowToVisible` only guarantees visibility, so from a grid scrolled to the top it puts
-    /// the anchor at the bottom of the viewport rather than back where the user left it.
-    func restoreScrollAnchor() {
-        guard let tableView, let row = pendingScrollAnchorRow else { return }
-        pendingScrollAnchorRow = nil
-        guard row > 0, row < tableView.numberOfRows else { return }
-        let origin = tableView.rect(ofRow: row).origin
-        let x = tableView.enclosingScrollView?.contentView.bounds.origin.x ?? 0
-        tableView.scroll(NSPoint(x: x, y: origin.y))
     }
 
     func invalidateColumnIndexCache() {
@@ -538,6 +518,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// to widen these, because nobody chose their width.
     var unownedRestoredColumnNames: Set<String> = []
     var isApplyingProgrammaticRowSelection = false
+    /// Called on the way out with what this grid had selected, so an owner can keep it.
+    var onSelectionTeardown: (@MainActor (Set<Int>, GridSelection) -> Void)?
+    /// Whether the owner's stored selection has been put back yet. A restore is one-shot per mount:
+    /// after it, the reader's own gestures are the only thing that moves the selection.
+    var hasRestoredSelection = false
     weak var rowGutter: DataGridRowGutterView?
     weak var rowGutterHeader: DataGridRowGutterHeaderView?
     /// The last value `publishRowSelection()` wrote, or nil before it has written one. `nil` has to
@@ -780,9 +765,10 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     /// Drops the row selection before a wholesale replacement.
     ///
-    /// `reloadData()` leaves `selectedRowIndexes` alone when the new result happens to have as
-    /// many rows as the old one, so without this the grid keeps highlighting positions that now
-    /// hold different rows, and every consumer of the selection reads those stale positions.
+    /// `reloadData()` does clear `selectedRowIndexes` on its own, measured, whatever the new row
+    /// count is. What it does not do is tell anyone: it fires no `tableViewSelectionDidChange`, so
+    /// every mirror of the selection would go on reporting positions the table view no longer holds.
+    /// Deselecting here is what publishes the change.
     func clearRowSelection() {
         guard let tableView, !tableView.selectedRowIndexes.isEmpty else { return }
         tableView.deselectAll(nil)

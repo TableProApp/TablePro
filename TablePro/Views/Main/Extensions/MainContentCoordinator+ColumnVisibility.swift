@@ -130,7 +130,17 @@ extension MainContentCoordinator {
         guard let index = tabManager.selectedTabIndex else { return }
         var hidden = tabManager.tabs[index].columnLayout.hiddenColumns
         mutate(&hidden)
-        tabManager.mutate(at: index) { $0.columnLayout.hiddenColumns = hidden }
+        let presentedRunChanged = hidden != tabManager.tabs[index].columnLayout.hiddenColumns
+        tabManager.mutate(at: index) { tab in
+            tab.columnLayout.hiddenColumns = hidden
+            /// A stored cell rectangle is a set of display positions in the presented run, and
+            /// hiding a column renumbers that run. Clamping cannot catch it: a position that is
+            /// still in range now names a different column, so the rectangle would come back
+            /// pointing at data the reader never selected. A mounted grid drops its own selection
+            /// on the same event; this is that rule for a tab whose grid is not mounted. (#2667)
+            guard presentedRunChanged, !tab.cellSelection.isEmpty else { return }
+            tab.cellSelection = .empty
+        }
         if persist {
             persistTabHiddenColumns(tabManager.tabs[index])
         }

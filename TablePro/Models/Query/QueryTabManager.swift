@@ -478,6 +478,7 @@ final class QueryTabManager {
         tab.sortState = SortState()
         tab.restoredSortSource = .unset
         tab.selectedRowIndices = []
+        tab.cellSelection = .empty
         tab.pendingChanges = TabChangeSnapshot()
         tab.hasUserInteraction = false
         tab.tableContext.isView = isView

@@ -472,6 +472,12 @@ final class MainContentCoordinator {
             enriched.restoredCursorOffset = range.location
             enriched.restoredCursorLength = range.length
         }
+        // The grid's own teardown keeps the selection on the tab, but a tab moved to another window
+        // is snapshotted while its grid is still mounted, so that capture has not run yet.
+        if tab.id == tabManager.selectedTabId, let live = mountedGridSelection() {
+            enriched.selectedRowIndices = live.rows
+            enriched.cellSelection = live.cells
+        }
         return enriched
     }
 

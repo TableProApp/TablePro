@@ -59,6 +59,25 @@ struct GridSelection: Equatable {
         return set
     }
 
+    /// The part of this selection that still fits a grid of the given size, or `.empty` when none
+    /// of it does.
+    ///
+    /// A selection restored onto a remounted grid describes the result it was made against, and the
+    /// row count can have shrunk in between. `NSTableView.selectRowIndexes` is all-or-nothing on an
+    /// out-of-range member, measured, so an unclamped restore selects nothing at all rather than the
+    /// rows that do still exist.
+    func clamped(rowLimit: Int, columnLimit: Int) -> GridSelection {
+        let fitted = rectangles.compactMap { $0.clamped(rowLimit: rowLimit, columnLimit: columnLimit) }
+        guard !fitted.isEmpty else { return .empty }
+        func fit(_ coord: GridCoord?) -> GridCoord? {
+            guard let coord,
+                  coord.row >= 0, coord.row < rowLimit,
+                  coord.displayColumn >= 0, coord.displayColumn < columnLimit else { return nil }
+            return coord
+        }
+        return GridSelection(rectangles: fitted, activeCell: fit(activeCell), anchor: fit(anchor))
+    }
+
     func union(_ other: GridSelection) -> GridSelection {
         GridSelection(
             rectangles: rectangles + other.rectangles,
