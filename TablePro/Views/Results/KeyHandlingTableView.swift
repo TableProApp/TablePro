@@ -404,7 +404,9 @@ final class KeyHandlingTableView: NSTableView {
             super.keyDown(with: event)
             return
         case .space:
-            if modifiers == [.shift] {
+            /// Caps Lock is in `deviceIndependentFlagsMask` and is not a chord modifier, so it has
+            /// to be masked out here the way `BoundKey.matches` masks it.
+            if modifiers.intersection([.command, .shift, .option, .control]) == [.shift] {
                 selectRowsIntersectingSelection()
                 return
             }
@@ -646,8 +648,8 @@ final class KeyHandlingTableView: NSTableView {
         var cells: [Any] = []
         for rectangle in controller.selection.rectangles {
             for row in rectangle.rows where NSLocationInRange(row, visible) {
-                for column in rectangle.columns {
-                    guard let position = coordinator?.tableColumnIndex(for: column),
+                for displayColumn in rectangle.columns {
+                    guard let position = coordinator?.tableColumnIndex(forDisplayPosition: displayColumn),
                           let element = accessibilityCellElement(row: row, tableColumnIndex: position) else { continue }
                     cells.append(element)
                 }

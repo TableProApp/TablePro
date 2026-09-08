@@ -40,6 +40,34 @@ final class DataGridRowGutterView: NSView {
 
     private var tableView: KeyHandlingTableView? { coordinator?.tableView as? KeyHandlingTableView }
 
+    /// Held so a second `observeTableGeometry()` replaces rather than stacks. It is not removed in
+    /// `deinit`: this is a `@MainActor` view and a `deinit` is nonisolated, and since macOS 10.11
+    /// `NotificationCenter` drops a block observer whose token is deallocated, so the token dying
+    /// with the view is the removal.
+    private var frameObserver: (any NSObjectProtocol)?
+
+    /// Follows the table view's own height.
+    ///
+    /// `NSTableView` resizes its frame to its content, and every path that changes the row count
+    /// does it: `reloadData`, `insertRows`, `removeRows`, and a row-height settings change. The
+    /// strip is not a subview of the table, so no autoresizing mask reaches it, and the geometry
+    /// sync it does get runs from `updateCache()`, which is *before* the reload. Left on that alone
+    /// the strip keeps the height the table had when it was empty, and the numbers stop as soon as
+    /// the reader scrolls past it. Observing the frame is the one hook that sees all of them.
+    func observeTableGeometry() {
+        guard let tableView else { return }
+        frameObserver.map(NotificationCenter.default.removeObserver)
+        tableView.postsFrameChangedNotifications = true
+        frameObserver = NotificationCenter.default.addObserver(
+            forName: NSView.frameDidChangeNotification,
+            object: tableView,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.synchronizeGeometry() }
+        }
+        synchronizeGeometry()
+    }
+
     // MARK: - Geometry
 
     /// The width the attached column reserves, which is what the strip has to cover. Zero when row
@@ -76,8 +104,13 @@ final class DataGridRowGutterView: NSView {
         guard rows.length > 0 else { return }
 
         let alternates = tableView.usesAlternatingRowBackgroundColors
-        let emphasized = tableView.window?.isKeyWindow == true
-            && tableView.window?.firstResponder === tableView
+        /// The same rule the header uses. An identity check on the first responder is not it: while
+        /// a cell is being edited the responder is a descendant field editor, and the row and the
+        /// header both stay emphasized, so the strip would turn grey on its own.
+        let emphasized = SortableHeaderEmphasis.isEmphasized(
+            tableViewHoldsFocus: SortableHeaderEmphasis.holdsFocus(tableView: tableView, in: tableView.window),
+            isKeyWindow: tableView.window?.isKeyWindow ?? false
+        )
         let font = ThemeEngine.shared.dataGridFonts.rowNumber
         let pageOffset = coordinator.paginationOffsetProvider()
         let rowCount = tableView.numberOfRows
@@ -195,7 +228,7 @@ final class DataGridRowGutterView: NSView {
             selectionAnchorRow = row
             return
         }
-        if modifiers.contains(.shift), let anchor = selectionAnchorRow ?? tableView.selectedRowIndexes.first {
+        if modifiers.contains(.shift), let anchor = extendAnchor(in: tableView) {
             tableView.selectRowIndexes(IndexSet(integersIn: min(anchor, row)...max(anchor, row)), byExtendingSelection: false)
             selectionAnchorRow = anchor
             return
@@ -269,6 +302,22 @@ final class DataGridRowGutterView: NSView {
             return nil
         }
         return rowView.contextMenu(target: .row)
+    }
+
+    /// Where a Shift-extend measures from.
+    ///
+    /// The remembered anchor is only believed while it is still in range and still selected. A page
+    /// load, a new result or a selection made outside the strip all replace the table's selection
+    /// without telling this view, and an anchor that outlives one of those extends from a row in a
+    /// result that is gone, or past the end of the new one.
+    private func extendAnchor(in tableView: NSTableView) -> Int? {
+        if let anchor = selectionAnchorRow,
+           anchor >= 0, anchor < tableView.numberOfRows,
+           tableView.selectedRowIndexes.contains(anchor) {
+            return anchor
+        }
+        selectionAnchorRow = nil
+        return tableView.selectedRowIndexes.first
     }
 
     private func row(at event: NSEvent) -> Int {

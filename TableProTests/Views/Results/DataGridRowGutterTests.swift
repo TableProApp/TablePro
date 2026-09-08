@@ -192,7 +192,8 @@ struct SelectIntersectingRowsTests {
 
         controller.selectEntireRows(controller.selection.affectedRows, totalColumns: 6)
 
-        #expect(controller.selection.rectangles.count == 3)
+        /// One rectangle, because rows 2 to 4 are contiguous.
+        #expect(controller.selection.rectangles.count == 1)
         #expect(controller.selection.affectedRows == IndexSet([2, 3, 4]))
         #expect(controller.selection.affectedColumns == IndexSet(integersIn: 0..<6))
     }
@@ -203,9 +204,25 @@ struct SelectIntersectingRowsTests {
 
         controller.selectEntireRows([3, 17], totalColumns: 4)
 
+        #expect(controller.selection.rectangles.count == 2)
         #expect(controller.selection.affectedRows == IndexSet([3, 17]))
         #expect(!controller.selection.contains(row: 10, displayColumn: 0))
         #expect(controller.selection.contains(row: 17, displayColumn: 3))
+    }
+
+    /// A contiguous run must not cost one rectangle per row: the overlay, the row fill and
+    /// `columns(in:)` all walk every rectangle for every visible row, so Select All then Shift+Space
+    /// over a large result would stall on its own bookkeeping.
+    @Test("contiguous runs coalesce, and gaps still split them")
+    func contiguousRunsCoalesce() {
+        let controller = GridSelectionController()
+
+        controller.selectEntireRows(Array(0..<10_000) + [20_000], totalColumns: 3)
+
+        #expect(controller.selection.rectangles.count == 2)
+        #expect(controller.selection.rectangles.first?.rows == 0...9_999)
+        #expect(controller.selection.rectangles.last?.rows == 20_000...20_000)
+        #expect(!controller.selection.contains(row: 15_000, displayColumn: 0))
     }
 
     @Test("selectEntireRow is the single-row case of the same widening")

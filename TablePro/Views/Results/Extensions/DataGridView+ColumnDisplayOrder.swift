@@ -46,8 +46,19 @@ extension TableViewCoordinator {
         return columns[position]
     }
 
+    /// Cached rather than scanned. `SortableHeaderView.updateColumnSelectionIndicators` asks this
+    /// once per attached column on every drag update, so a linear scan makes selection movement
+    /// O(columns squared) on exactly the 500 to 1,000-column results the grid is built for (#2381).
     func displayPosition(ofDataColumnIndex dataIndex: Int) -> Int? {
-        presentedDataColumns.firstIndex(of: dataIndex)
+        if let cached = cachedDisplayPositionByDataColumn { return cached[dataIndex] }
+        var map: [Int: Int] = [:]
+        let columns = presentedDataColumns
+        map.reserveCapacity(columns.count)
+        for (position, slot) in columns.enumerated() {
+            map[slot] = position
+        }
+        cachedDisplayPositionByDataColumn = map
+        return map[dataIndex]
     }
 
     /// The data indices a selection covers, in display order. This is the slot-space answer every
@@ -63,7 +74,20 @@ extension TableViewCoordinator {
         return tableColumnIndex(for: dataIndex)
     }
 
+    /// Drops the cached mapping, and the cell selection with it when the mapping actually moved.
+    ///
+    /// A `GridSelection` holds display positions, so hiding the selected column, or hiding or moving
+    /// one before it, silently retargets it: the outline lands on a different column and Copy takes
+    /// values the user never selected. Nothing can remap it faithfully, because a hidden column's
+    /// position no longer exists, so the selection is dropped rather than left pointing somewhere
+    /// plausible. An unchanged run leaves the selection alone, which is what keeps an ordinary
+    /// reload from clearing it.
     func invalidatePresentedColumnCache() {
+        let previous = cachedPresentedDataColumns
         cachedPresentedDataColumns = nil
+        cachedDisplayPositionByDataColumn = nil
+        guard let previous, !selectionController.isEmpty else { return }
+        guard previous != presentedDataColumns else { return }
+        selectionController.clear()
     }
 }

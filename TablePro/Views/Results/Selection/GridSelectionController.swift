@@ -190,22 +190,34 @@ final class GridSelectionController {
         selectEntireRows([row], totalColumns: totalColumns)
     }
 
-    /// Widens a selection to the whole of every row it touches, which is what Option-Command-Return
-    /// asks for. One rectangle per row rather than one spanning rectangle, so a discontiguous
-    /// selection stays discontiguous instead of swallowing the rows between its parts.
+    /// Widens a selection to the whole of every row it touches, which is what Shift+Space asks for.
+    ///
+    /// One rectangle per contiguous run, not per row. Gaps have to survive, so a single spanning
+    /// rectangle is wrong, but a rectangle per row is just as wrong at the other end: Select All
+    /// then Shift+Space over a Fetch All result would build hundreds of thousands of them, and the
+    /// overlay, the row fill and `columns(in:)` all walk every rectangle for every visible row.
     func selectEntireRows(_ rows: some Collection<Int>, totalColumns: Int) {
         guard totalColumns > 0 else { return }
         let sorted = rows.filter { $0 >= 0 }.sorted()
         guard let first = sorted.first else { return }
         let columns = 0...(totalColumns - 1)
+
+        var rectangles: [GridRect] = []
+        var runStart = first
+        var runEnd = first
+        for row in sorted.dropFirst() {
+            if row == runEnd + 1 {
+                runEnd = row
+                continue
+            }
+            rectangles.append(GridRect(rows: runStart...runEnd, columns: columns))
+            runStart = row
+            runEnd = row
+        }
+        rectangles.append(GridRect(rows: runStart...runEnd, columns: columns))
+
         let anchor = GridCoord(row: first, displayColumn: 0)
-        update(
-            GridSelection(
-                rectangles: sorted.map { GridRect(rows: $0...$0, columns: columns) },
-                activeCell: anchor,
-                anchor: anchor
-            )
-        )
+        update(GridSelection(rectangles: rectangles, activeCell: anchor, anchor: anchor))
     }
 
     func extendActiveCell(from seed: GridCoord? = nil, direction: Direction, jumpToEdge: Bool, totalRows: Int, totalColumns: Int) {

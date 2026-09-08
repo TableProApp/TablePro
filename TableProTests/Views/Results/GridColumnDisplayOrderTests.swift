@@ -44,18 +44,41 @@ private struct ReorderableGrid {
         tableView.coordinator = coordinator
         tableView.delegate = coordinator
         tableView.dataSource = coordinator
+        tableView.columnAutoresizingStyle = .noColumnAutoresizing
+        tableView.style = .plain
+        tableView.intercellSpacing = NSSize(width: 1, height: 0)
         tableView.addTableColumn(DataGridView.makeRowNumberColumn())
 
         coordinator.tableView = tableView
         coordinator.rebuildColumnMetadataCache(from: tableRows)
-        for index in columns.indices {
-            guard let identifier = ColumnIdentitySchema(columns: columns).identifier(for: index) else { continue }
-            let column = NSTableColumn(identifier: identifier)
-            column.width = 100
-            tableView.addTableColumn(column)
-        }
+        /// Through the pool, not by attaching columns directly. `presentsColumn` answers from
+        /// `activeIdentifiers`, which only `reconcile` fills, so a hand-attached column is present
+        /// on screen and invisible to every display-position lookup these tests are about.
+        coordinator.columnPool.reconcile(
+            tableView: tableView,
+            schema: ColumnIdentitySchema(columns: columns),
+            columnTypes: Array(repeating: ColumnType.text(rawType: nil), count: columns.count),
+            savedLayout: nil,
+            isEditable: true,
+            hiddenColumnNames: [],
+            widthCalculator: { _, _ in 100 }
+        )
         coordinator.updateCache()
         tableView.reloadData()
+    }
+
+    /// Hides a column the way the Columns popover does.
+    func hideColumn(named name: String) {
+        coordinator.columnPool.reconcile(
+            tableView: tableView,
+            schema: ColumnIdentitySchema(columns: columns),
+            columnTypes: Array(repeating: ColumnType.text(rawType: nil), count: columns.count),
+            savedLayout: nil,
+            isEditable: true,
+            hiddenColumnNames: [name],
+            widthCalculator: { _, _ in 100 }
+        )
+        coordinator.invalidateColumnIndexCache()
     }
 
     /// Moves an attached column, the way dragging its header does. The destination is worked out
@@ -135,17 +158,49 @@ struct GridColumnDisplayOrderTests {
         #expect(!copied.contains("notes"))
     }
 
+    @Test("a hidden column drops out of the display run and out of a copy")
+    func hiddenColumnDropsOutOfTheRun() {
+        let grid = ReorderableGrid()
+        grid.hideColumn(named: "notes")
+
+        #expect(grid.presentedNames == ["id", "email"])
+        #expect(grid.coordinator.presentedColumnCount == 2)
+        #expect(grid.coordinator.dataColumnIndex(atDisplayPosition: 1) == 2)
+        #expect(grid.coordinator.displayPosition(ofDataColumnIndex: 1) == nil)
+
+        grid.coordinator.selectionController.update(
+            .single(
+                GridRect(rows: 0...0, columns: 0...1),
+                anchor: GridCoord(row: 0, displayColumn: 0),
+                active: GridCoord(row: 0, displayColumn: 1)
+            )
+        )
+        grid.coordinator.copyGridSelection(grid.coordinator.selectionController.selection)
+
+        let copied = ClipboardService.shared.readText() ?? ""
+        #expect(copied.components(separatedBy: "\t").count == 2)
+        #expect(!copied.contains("notes"))
+    }
+
     @Test("a paste fills the columns beside the anchor on screen")
     func pasteFillsTheColumnsOnScreen() {
         let grid = ReorderableGrid()
         grid.moveColumn(named: "email", toDisplayPosition: 0)
+        #expect(grid.presentedNames == ["email", "id", "notes"])
         ClipboardService.shared.writeText("x\ty")
 
         let emailDataIndex = 2
         let pasted = grid.coordinator.pasteCellsFromClipboard(anchorRow: 0, anchorColumn: emailDataIndex)
 
         #expect(pasted)
-        let changes = grid.coordinator.changeManager
-        #expect(changes.hasPendingChanges)
+        /// email is the anchor and id is the column beside it on screen. Walking data indices
+        /// instead would have written email then run off the end of the result and dropped `y`.
+        let written = grid.coordinator.changeManager.rowChanges
+            .flatMap(\.cellChanges)
+            .map { ($0.columnName, $0.newValue.asText ?? "") }
+        #expect(written.count == 2)
+        #expect(written.contains { $0.0 == "email" && $0.1 == "x" })
+        #expect(written.contains { $0.0 == "id" && $0.1 == "y" })
+        #expect(!written.contains { $0.0 == "notes" })
     }
 }

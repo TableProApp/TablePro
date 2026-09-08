@@ -376,7 +376,13 @@ struct DataGridView: NSViewRepresentable {
         let currentSelection = tableView.selectedRowIndexes
         let targetSelection = IndexSet(selectedRowIndices)
         guard currentSelection != targetSelection else { return }
+        /// The cell selection outranks the row selection in `publishRowSelection`, and this write is
+        /// programmatic, so the delegate will not clear it. Leaving it would let the old range win
+        /// and republish its rows, rejecting the row the owner just asked for: `RowEditingCoordinator`
+        /// selecting the row after a delete is exactly that case.
+        coordinator.selectionController.clear()
         coordinator.selectRowsProgrammatically(targetSelection, in: tableView)
+        coordinator.publishRowSelection(rowSelection: Set(targetSelection))
     }
 
     private static func effectiveColumnComments(for tableRows: TableRows) -> [String: String] {
@@ -488,6 +494,7 @@ struct DataGridView: NSViewRepresentable {
 
         coordinator.rowGutter = gutter
         coordinator.rowGutterHeader = headerCap
+        gutter.observeTableGeometry()
         coordinator.synchronizeRowGutter()
     }
 

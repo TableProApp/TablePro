@@ -76,18 +76,20 @@ extension TableViewCoordinator {
             .map { $0.components(separatedBy: "\t") }
         guard let firstRow = grid.first else { return nil }
 
-        /// A block as wide as the columns on screen is whole rows and belongs to row paste. It is
-        /// the presented count that decides, because that is what the user copied from and what the
-        /// paste below walks.
+        /// Whole rows are routed away by the result's own column count, not the presented one.
+        /// `TSVRowParser` fills from data index 0 and knows nothing about which columns are on
+        /// screen, so handing it a block as wide as the *visible* run writes the fields into hidden
+        /// or wrong columns. A block that matches the visible width but not the result's stays on
+        /// the cell path, where every field is placed by display position.
         let isSingleValue = grid.count == 1 && firstRow.count == 1
-        let columnCount = presentedColumnCount
-        if !isSingleValue, columnCount > 0, grid.allSatisfy({ $0.count == columnCount }) {
+        let dataColumnCount = tableRowsProvider().columns.count
+        if !isSingleValue, dataColumnCount > 0, grid.allSatisfy({ $0.count == dataColumnCount }) {
             return nil
         }
 
         guard let anchorPosition = displayPosition(ofDataColumnIndex: anchorColumn) else { return nil }
         let maxRow = min(anchorRow + grid.count, cachedRowCount)
-        let maxCol = min(anchorPosition + firstRow.count, columnCount)
+        let maxCol = min(anchorPosition + firstRow.count, presentedColumnCount)
         guard anchorRow < maxRow, anchorPosition < maxCol else { return nil }
 
         return grid

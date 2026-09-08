@@ -177,6 +177,10 @@ final class SortableHeaderView: NSTableHeaderView {
         }
         tableView?.enclosingScrollView?.tile()
         needsDisplay = true
+        /// The pinned gutter's header cap sizes itself from this view. Comments can appear without
+        /// the column set changing, and that fires no geometry callback of its own, so the cap would
+        /// keep the old height and leave a gap or overlap the header.
+        coordinator?.synchronizeRowGutter()
     }
 
     override func draw(_ dirtyRect: NSRect) {
