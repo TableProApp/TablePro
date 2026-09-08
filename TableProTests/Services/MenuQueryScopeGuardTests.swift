@@ -34,7 +34,10 @@ struct MenuQueryScopeGuardTests {
         String(localized: "ER Diagram"),
         String(localized: "Create Table"),
         String(localized: "Source"),
-        WindowTitleResolver.fallbackTitle,
+        /// `WindowTitleResolver.fallbackTitle` spelled out, not referenced: the resolver is
+        /// `@MainActor`, and a main-actor member cannot initialize a nonisolated static. The
+        /// parity test below is what keeps the two in step.
+        String(localized: "SQL Query"),
     ]
 
     @Test("No UI test resolves a menu item by a title a window can also carry")
