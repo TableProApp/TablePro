@@ -760,6 +760,13 @@ struct MainEditorContentView: View {
                                     &+ resolvedRows.rows.count,
                                 onSearchAllRows: { coordinator.findCoordinator.escalateToAllRows() }
                             )
+                            /// Per tab, like the grid below it. The field text lives in the view's
+                            /// own `@State`, seeded once from `onAppear`, and the grid's find tint
+                            /// lives on a coordinator that `.id(tabId)` rebuilds from nothing. With
+                            /// find open on both tabs this view kept its identity across a switch,
+                            /// so neither was re-seeded: the field showed the other tab's term next
+                            /// to this tab's match count, and the grid came back untinted. (#2667)
+                            .id(tab.id)
                             Divider()
                         }
 

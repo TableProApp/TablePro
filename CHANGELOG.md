@@ -71,6 +71,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Undone cell edits coming back after switching tabs. (#2667)
+- Find bar showing another tab's search term, over this tab's match count. (#2667)
 - Grid row and cell selection lost on switching editor tabs, result view modes, or moving a tab to a new window. (#2667)
 - Connection and database choosers opening between the two toolbar capsules instead of under the one that was pressed.
 - Raw DuckDB driver text in place of the name of the app holding a locked database file. (#2518)

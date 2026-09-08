@@ -36,10 +36,15 @@ extension MainContentCoordinator {
         if let oldId = oldTabId,
            let oldIndex = tabManager.tabs.firstIndex(where: { $0.id == oldId })
         {
-            if changeManager.hasChanges {
-                let savedState = changeManager.saveState()
-                tabManager.mutate(at: oldIndex) { $0.pendingChanges = savedState }
-            }
+            /// Written whether or not there are changes, because an empty snapshot is the correct
+            /// answer once the reader has undone their edits and the tab is still holding the one a
+            /// previous switch saved. Gated on `hasChanges`, the undo was never recorded: switching
+            /// back restored the edit the reader had just taken back, and the tab went on reporting
+            /// unsaved work. Nothing has repointed the change manager at this point, so it still
+            /// describes the tab being left: every other `configureForTable` caller is either the
+            /// incoming block below or guarded to the selected tab.
+            let savedState = changeManager.saveState()
+            tabManager.mutate(at: oldIndex) { $0.pendingChanges = savedState }
             // One editor serves every query tab, so `cursorPositions` describes the outgoing tab
             // only until the switch completes. Persistence writes the live caret for the selected
             // tab alone, so a caret not captured here is gone once the editor has consumed the
