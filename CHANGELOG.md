@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Row-number gutter held at the left edge of the data grid, so whole rows stay selectable when the table is scrolled sideways. (#2664)
+- `Shift+Space` to widen the grid selection to every row it touches. (#2664)
 - Table name proposed from the file name when an import creates the table, with a warning when the name is taken.
 - Copy To across database engines, with every type approximation listed before the copy runs. (#1491)
 - Per-table `WHERE` and row limit in Copy To. (#1491)
@@ -69,6 +71,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No way to change a Snowflake warehouse or role once the window narrowed enough to clip the connection group.
 - Blank Connection and Status tiles in Customize Toolbar.
 - Stop advertising the old key after Cancel Query was rebound.
+- Row count and row inspector reporting one row while Delete and Copy act on every row a cell drag covers.
+- Cell selection collapsing to the first column or the first row when a drag left the grid past the last one.
+- Cell selection, copy and paste using columns the pointer never crossed once a column had been reordered or hidden.
 - Default row sort drawn on a column header as though it had been clicked.
 - First click on an already default-sorted column skipping straight to descending.
 - Don't Sort undone by the default row sort on the next load of the table.

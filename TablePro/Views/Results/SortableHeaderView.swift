@@ -187,6 +187,10 @@ final class SortableHeaderView: NSTableHeaderView {
         }
         tableView?.enclosingScrollView?.tile()
         needsDisplay = true
+        /// The pinned gutter's header cap sizes itself from this view. Comments can appear without
+        /// the column set changing, and that fires no geometry callback of its own, so the cap would
+        /// keep the old height and leave a gap or overlap the header.
+        coordinator?.synchronizeRowGutter()
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -290,16 +294,19 @@ final class SortableHeaderView: NSTableHeaderView {
         }
     }
 
+    /// The two index sets are display positions, which is the space a selection speaks; a column's
+    /// data index is the slot it occupies in the result and is not what a position names.
     func updateColumnSelectionIndicators(selectedColumns: IndexSet, dirtyColumns: IndexSet) {
         guard let tableView = tableView, let coordinator = coordinator else { return }
         for (columnIndex, column) in tableView.tableColumns.enumerated() {
             guard let cell = column.headerCell as? SortableHeaderCell,
-                  let dataIndex = coordinator.dataColumnIndex(from: column.identifier) else { continue }
-            let shouldBeSelected = selectedColumns.contains(dataIndex)
+                  let dataIndex = coordinator.dataColumnIndex(from: column.identifier),
+                  let position = coordinator.displayPosition(ofDataColumnIndex: dataIndex) else { continue }
+            let shouldBeSelected = selectedColumns.contains(position)
             if cell.isColumnSelected != shouldBeSelected {
                 cell.isColumnSelected = shouldBeSelected
                 setNeedsDisplay(headerRect(ofColumn: columnIndex))
-            } else if dirtyColumns.contains(dataIndex) {
+            } else if dirtyColumns.contains(position) {
                 setNeedsDisplay(headerRect(ofColumn: columnIndex))
             }
         }

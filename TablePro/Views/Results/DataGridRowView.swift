@@ -262,8 +262,8 @@ class DataGridRowView: NSTableRowView {
 
         cellSelectionFill.setFill()
 
-        for dataColumn in columns {
-            guard let tableColumnIndex = coordinator.tableColumnIndex(for: dataColumn) else { continue }
+        for position in columns {
+            guard let tableColumnIndex = coordinator.tableColumnIndex(forDisplayPosition: position) else { continue }
             let columnRect = tableView.rect(ofColumn: tableColumnIndex)
             let localRect = NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: bounds.height)
             guard localRect.intersects(dirtyRect) else { continue }
@@ -346,24 +346,31 @@ class DataGridRowView: NSTableRowView {
         menu.addItem(navInNewTabItem)
     }
 
-    /// Where a right-click landed: the table column index it hit, and the data column that
-    /// resolves to. Both are -1 when the click missed, and they are different misses: no column at
-    /// all is not the same as a column that carries no data, such as the row number.
-    private func clickedColumns(for event: NSEvent) -> (table: Int, data: Int) {
-        guard let coordinator, let tableView = coordinator.tableView else { return (-1, -1) }
+    /// What a right-click landed on, as much as the row menu needs to know. A click that hit no
+    /// column at all is not the same as one that hit a column carrying no data, such as the row
+    /// number, so the two misses stay apart.
+    enum MenuTarget: Equatable {
+        case cell(dataColumn: Int)
+        case row
+        case unresolved
+
+        var dataColumn: Int {
+            guard case .cell(let index) = self else { return -1 }
+            return index
+        }
+    }
+
+    /// Where a right-click landed, resolved through the table view the row belongs to.
+    private func menuTarget(for event: NSEvent) -> MenuTarget {
+        guard let coordinator, let tableView = coordinator.tableView else { return .unresolved }
         let locationInRow = convert(event.locationInWindow, from: nil)
         let locationInTable = tableView.convert(locationInRow, from: self)
         let clickedColumn = tableView.column(at: locationInTable)
-        guard clickedColumn >= 0 else { return (-1, -1) }
-        let dataColumn = DataGridView.dataColumnIndex(
+        guard clickedColumn >= 0 else { return .unresolved }
+        guard let dataColumn = DataGridView.dataColumnIndex(
             for: clickedColumn, in: tableView, schema: coordinator.identitySchema
-        ) ?? -1
-        return (clickedColumn, dataColumn)
-    }
-
-    /// The data column a right-click landed on, or -1 when it missed one.
-    private func clickedDataColumnIndex(for event: NSEvent) -> Int {
-        clickedColumns(for: event).data
+        ) else { return .row }
+        return .cell(dataColumn: dataColumn)
     }
 
     /// Copy, meaning the cell under the pointer. Shared so a grid that builds its own row menu
@@ -371,18 +378,19 @@ class DataGridRowView: NSTableRowView {
     /// can already copy: the Structure tab had `Cmd+C` copying the clicked cell and no menu item
     /// for it at all.
     internal func makeCopyItem(for event: NSEvent) -> NSMenuItem {
-        let columns = clickedColumns(for: event)
-        let target: CopyContextTarget = if columns.data >= 0 {
-            .cell(columns.data)
-        } else if columns.table >= 0 {
-            .row
-        } else {
-            .unresolved
+        makeCopyItem(target: menuTarget(for: event))
+    }
+
+    private func makeCopyItem(target: MenuTarget) -> NSMenuItem {
+        let copyTarget: CopyContextTarget = switch target {
+        case .cell(let dataColumn): .cell(dataColumn)
+        case .row: .row
+        case .unresolved: .unresolved
         }
         let item = NSMenuItem(
             title: String(localized: "Copy"), action: #selector(copyFromContextMenu(_:)), keyEquivalent: ""
         )
-        item.representedObject = target
+        item.representedObject = copyTarget
         item.target = self
         return item
     }
@@ -391,10 +399,19 @@ class DataGridRowView: NSTableRowView {
     /// is the only level that can re-target the selection to the clicked row first; a row
     /// view answering `menuForEvent:` would swallow the event and act on the old selection.
     func contextMenu(for event: NSEvent) -> NSMenu? {
+        contextMenu(target: menuTarget(for: event))
+    }
+
+    /// The row menu for a click whose target is already known.
+    ///
+    /// The pinned row gutter needs this: it overlays whatever data column is scrolled under the
+    /// leading edge, so resolving its click through the table view would report a cell and give the
+    /// gutter the cell menu, with Set Value and IN Clause on a column the pointer never touched.
+    func contextMenu(target: MenuTarget) -> NSMenu? {
         guard let coordinator = coordinator,
               let tableView = coordinator.tableView else { return nil }
 
-        let dataColumnIndex = clickedDataColumnIndex(for: event)
+        let dataColumnIndex = target.dataColumn
 
         let menu = NSMenu()
 
@@ -405,7 +422,7 @@ class DataGridRowView: NSTableRowView {
             return menu
         }
 
-        menu.addItem(makeCopyItem(for: event))
+        menu.addItem(makeCopyItem(target: target))
 
         let copyAsMenu = NSMenu()
 

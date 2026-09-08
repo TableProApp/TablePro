@@ -152,6 +152,7 @@ struct DataGridView: NSViewRepresentable {
         }
 
         installSelectionOverlay(tableView: tableView, coordinator: coordinator)
+        installRowGutter(scrollView: scrollView, tableView: tableView, coordinator: coordinator)
         coordinator.attachScrollObservers(scrollView: scrollView)
         // Intentionally do not prime cachedRowCount/cachedColumnCount here.
         // They represent what NSTableView has actually rendered. Leaving them
@@ -363,11 +364,25 @@ struct DataGridView: NSViewRepresentable {
         }
     }
 
+    /// Pushes a selection the app set from outside into the table view.
+    ///
+    /// The binding now carries `currentRowSelection()`, which spans every row a cell drag covers
+    /// while the table view holds only the anchor. Pushing that back would turn a cell rectangle
+    /// into a full row selection, and `DataGridRowView.drawCellSelectionFill` skips a selected row
+    /// because AppKit already fills it, so the rectangle would be painted as whole rows. A value
+    /// this coordinator published is therefore not a value to sync.
     private func syncSelection(tableView: NSTableView, coordinator: TableViewCoordinator) {
+        guard selectedRowIndices != coordinator.lastPublishedRowSelection else { return }
         let currentSelection = tableView.selectedRowIndexes
         let targetSelection = IndexSet(selectedRowIndices)
         guard currentSelection != targetSelection else { return }
+        /// The cell selection outranks the row selection in `publishRowSelection`, and this write is
+        /// programmatic, so the delegate will not clear it. Leaving it would let the old range win
+        /// and republish its rows, rejecting the row the owner just asked for: `RowEditingCoordinator`
+        /// selecting the row after a delete is exactly that case.
+        coordinator.selectionController.clear()
         coordinator.selectRowsProgrammatically(targetSelection, in: tableView)
+        coordinator.publishRowSelection(rowSelection: Set(targetSelection))
     }
 
     private static func effectiveColumnComments(for tableRows: TableRows) -> [String: String] {
@@ -459,6 +474,31 @@ struct DataGridView: NSViewRepresentable {
         column.maxWidth = columnWidth
     }
 
+    /// The row-number strip that holds the viewport's leading edge, and its header cap.
+    ///
+    /// Two views because they sit in two clip views: `addFloatingSubview(_:for:)` covers the content
+    /// clip view only, and the header has its own. See `DataGridRowGutterView` for why this is the
+    /// mechanism and why the `__rowNumber__` column stays attached underneath it.
+    private func installRowGutter(
+        scrollView: NSScrollView,
+        tableView: KeyHandlingTableView,
+        coordinator: TableViewCoordinator
+    ) {
+        let gutter = DataGridRowGutterView(frame: .zero)
+        gutter.coordinator = coordinator
+        tableView.addSubview(gutter)
+        scrollView.addFloatingSubview(gutter, for: .horizontal)
+
+        let headerCap = DataGridRowGutterHeaderView(frame: .zero)
+        headerCap.coordinator = coordinator
+        scrollView.addSubview(headerCap)
+
+        coordinator.rowGutter = gutter
+        coordinator.rowGutterHeader = headerCap
+        gutter.observeTableGeometry()
+        coordinator.synchronizeRowGutter()
+    }
+
     private func installSelectionOverlay(tableView: KeyHandlingTableView, coordinator: TableViewCoordinator) {
         let overlay = GridSelectionOverlay(frame: tableView.bounds)
         overlay.tableView = tableView
@@ -496,6 +536,11 @@ struct DataGridView: NSViewRepresentable {
             delegate: delegate,
             layoutPersister: layoutPersister ?? FileColumnLayoutPersister.shared
         )
+        /// The cell selection's half of the row selection. Every mutator funnels through
+        /// `GridSelectionController.update(_:)`, so this is the one hook that sees a drag widen.
+        coordinator.selectionController.onSelectionChange = { [weak coordinator] _ in
+            coordinator?.publishRowSelection()
+        }
         let columnLayoutBinding = $columnLayout
         coordinator.onColumnLayoutDidChange = { layout in
             if columnLayoutBinding.wrappedValue != layout {

@@ -262,14 +262,11 @@ extension TableViewCoordinator {
         VisibleColumnProjection(indices: visibleColumnDataIndices())
     }
 
+    /// The selection's columns as data indices, already in display order because that is the order
+    /// its display positions run in.
     private func selectedColumnProjection() -> VisibleColumnProjection {
         guard !selectionController.isEmpty else { return visibleColumnProjection }
-        let selectedColumns = selectionController.selection.affectedColumns
-        guard !selectedColumns.isEmpty else { return visibleColumnProjection }
-        guard let visible = visibleColumnDataIndices() else {
-            return VisibleColumnProjection(indices: selectedColumns.sorted())
-        }
-        let ordered = visible.filter { selectedColumns.contains($0) }
+        let ordered = dataColumnIndices(in: selectionController.selection.affectedColumns)
         return ordered.isEmpty ? visibleColumnProjection : VisibleColumnProjection(indices: ordered)
     }
 
@@ -342,54 +339,62 @@ extension TableViewCoordinator {
         return true
     }
 
+    /// The header hands over the data index of the column it drew; a selection is built from
+    /// display positions, so the two are translated here rather than inside the controller.
     func selectColumn(_ dataColumnIndex: Int) {
+        guard let position = displayPosition(ofDataColumnIndex: dataColumnIndex) else { return }
         let totalRows = displayIDs?.count ?? tableRowsProvider().rows.count
-        selectionController.selectEntireColumn(dataColumnIndex, totalRows: totalRows)
+        selectionController.selectEntireColumn(position, totalRows: totalRows)
         if let keyTableView = tableView as? KeyHandlingTableView {
             keyTableView.deselectAll(nil)
         }
     }
 
     func extendColumnSelection(_ dataColumnIndex: Int) {
+        guard let position = displayPosition(ofDataColumnIndex: dataColumnIndex) else { return }
         let totalRows = displayIDs?.count ?? tableRowsProvider().rows.count
-        selectionController.addEntireColumn(dataColumnIndex, totalRows: totalRows)
+        selectionController.addEntireColumn(position, totalRows: totalRows)
         if let keyTableView = tableView as? KeyHandlingTableView {
             keyTableView.deselectAll(nil)
         }
     }
 
+    /// Copies the selected block in the order the user is looking at it.
+    ///
+    /// The rect's column axis is display positions, so the walk is over positions and each one is
+    /// resolved to its data index before a value is read. Walking the rect as though its bounds were
+    /// data indices copied whatever slots happened to lie between them, which after a column reorder
+    /// is not the block that was swept and can include a column the user hid.
     func copyGridSelection(_ selection: GridSelection) {
         guard let rect = selection.boundingRectangle else { return }
-        if rect.rows.count == 1, rect.columns.count == 1 {
-            copyCellValue(at: rect.rows.lowerBound, columnIndex: rect.columns.lowerBound)
+        if rect.rows.count == 1, rect.columns.count == 1,
+           let dataColumn = dataColumnIndex(atDisplayPosition: rect.columns.lowerBound) {
+            copyCellValue(at: rect.rows.lowerBound, columnIndex: dataColumn)
             return
         }
 
         let tableRows = tableRowsProvider()
         let columnTypes = tableRows.columnTypes
         let rowCount = displayIDs?.count ?? tableRows.rows.count
-        let columnCount = tableRows.columns.count
 
         let rowRange = rect.rows.lowerBound...min(rect.rows.upperBound, max(0, rowCount - 1))
-        let columnRange = rect.columns.lowerBound...min(rect.columns.upperBound, max(0, columnCount - 1))
-        guard rowRange.lowerBound <= rowRange.upperBound,
-              columnRange.lowerBound <= columnRange.upperBound else { return }
+        let positions = Array(rect.columns.lowerBound...rect.columns.upperBound)
+            .filter { $0 >= 0 && $0 < presentedColumnCount }
+        guard rowRange.lowerBound <= rowRange.upperBound, !positions.isEmpty else { return }
 
         var lines: [String] = []
         lines.reserveCapacity(rowRange.count)
         for rowIndex in rowRange {
             guard let row = displayRow(at: rowIndex) else {
-                lines.append(String(repeating: "\t", count: columnRange.count - 1))
+                lines.append(String(repeating: "\t", count: positions.count - 1))
                 continue
             }
             var fields: [String] = []
-            fields.reserveCapacity(columnRange.count)
-            for columnIndex in columnRange {
-                guard selection.contains(row: rowIndex, column: columnIndex) else {
-                    fields.append("")
-                    continue
-                }
-                guard row.values.indices.contains(columnIndex) else {
+            fields.reserveCapacity(positions.count)
+            for position in positions {
+                guard selection.contains(row: rowIndex, displayColumn: position),
+                      let columnIndex = dataColumnIndex(atDisplayPosition: position),
+                      row.values.indices.contains(columnIndex) else {
                     fields.append("")
                     continue
                 }

@@ -113,6 +113,12 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     private var columnIndexByDataIndex: [Int: Int] = [:]
+    /// Display position to data index, rebuilt lazily. `presentedDataColumns` reads it; a drag and
+    /// the cell-range fill both ask per event and per row, and deriving it walks every attached
+    /// column, so it is not a lookup to repeat. See `DataGridView+ColumnDisplayOrder`.
+    var cachedPresentedDataColumns: [Int]?
+    /// The reverse of `cachedPresentedDataColumns`, invalidated with it.
+    var cachedDisplayPositionByDataColumn: [Int: Int]?
     private static let selectionCacheLogger = Logger(subsystem: "com.TablePro", category: "DataGrid.ColumnIndexCache")
 
     func tableColumnIndex(for dataIndex: Int) -> Int? {
@@ -178,6 +184,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func invalidateColumnIndexCache() {
+        invalidatePresentedColumnCache()
         guard !columnIndexByDataIndex.isEmpty else { return }
         Self.selectionCacheLogger.debug("invalidate column index cache (had \(self.columnIndexByDataIndex.count))")
         columnIndexByDataIndex.removeAll()
@@ -223,12 +230,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     func previousPresentedColumnIndex(before index: Int) -> Int? {
         guard let tableView else { return nil }
         return columnPool.previousPresentedColumnIndex(before: index, in: tableView)
-    }
-
-    /// The single way to reach a column, for Find, cell navigation and the inline editor alike.
-    func scrollColumnToVisible(tableColumnIndex index: Int) {
-        guard let tableView, index >= 0, index < tableView.numberOfColumns else { return }
-        tableView.scrollColumnToVisible(index)
     }
 
     /// The columns the user is looking at, which is every presented column and not merely the
@@ -504,6 +505,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         for row in rows {
             (tableView.rowView(atRow: row, makeIfNecessary: false) as? DataGridRowView)?.redrawCells()
         }
+        repaintRowGutter()
     }
 
     /// Repaints one drawn cell, which is what a mounted cell got from `setNeedsDisplay` on itself.
@@ -536,6 +538,15 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// to widen these, because nobody chose their width.
     var unownedRestoredColumnNames: Set<String> = []
     var isApplyingProgrammaticRowSelection = false
+    weak var rowGutter: DataGridRowGutterView?
+    weak var rowGutterHeader: DataGridRowGutterHeaderView?
+    /// The last value `publishRowSelection()` wrote, or nil before it has written one. `nil` has to
+    /// mean "nothing published yet" rather than "empty", or a tab restoring an empty selection would
+    /// be mistaken for one this coordinator produced and never reach the table view.
+    private(set) var lastPublishedRowSelection: Set<Int>?
+    /// What `NSTableView.selectedRowIndexes` last reported, which is what `resolvedFocus` compares
+    /// against. The binding cannot serve, because it carries the cell selection's rows too.
+    var lastTableViewRowSelection: Set<Int> = []
     var isRebuildingColumns: Bool = false
     var hasUnpersistedColumnLayoutChanges = false
     var shouldRecalculateAutomaticColumnWidths = false
@@ -618,6 +629,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.reloadVisibleRowsAndStates()
+                /// The row-number font is a theme value and it decides the column's width, which
+                /// the pinned gutter mirrors. Nothing re-measured it on a theme change before, so
+                /// the width was already going stale here.
+                self?.resizeRowNumberColumnForCurrentRange()
+                self?.repaintRowGutter()
             }
     }
 
@@ -726,6 +742,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
               !column.isHidden else { return }
         let maxRowNumber = paginationOffsetProvider() + cachedRowCount
         DataGridView.sizeRowNumberColumn(column, forMaxRowNumber: maxRowNumber)
+        synchronizeRowGutter()
     }
 
     func applyInsertedRows(_ indices: IndexSet) {
@@ -828,6 +845,33 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         isApplyingProgrammaticRowSelection = true
         tableView.selectRowIndexes(indexes, byExtendingSelection: false)
         isApplyingProgrammaticRowSelection = false
+    }
+
+    /// Publishes the rows every command already acts on, so the readouts name the same set.
+    ///
+    /// The cell selection's rows win, because a cell drag is how most multi-row work starts and
+    /// Delete, Copy and the row menu have always read it through `currentRowSelection()`. The
+    /// binding did not: it copied `NSTableView.selectedRowIndexes`, which `mouseDown` pins to the
+    /// single anchor row for the whole of a drag, so a drag over six rows reported one selected row
+    /// and deleted six.
+    ///
+    /// The row half is passed in rather than read back off the binding, which is the copy this
+    /// writes; reading it here would make the derivation circular and no row selection would ever
+    /// reach it. `lastPublishedRowSelection` is what lets `syncSelection` tell a value published
+    /// here from one the app set from outside.
+    func publishRowSelection(rowSelection: Set<Int>) {
+        let resolved = selectionController.isEmpty
+            ? rowSelection
+            : Set(selectionController.selection.affectedRows)
+        lastPublishedRowSelection = resolved
+        guard selectedRowIndices != resolved else { return }
+        selectedRowIndices = resolved
+    }
+
+    /// The cell selection moved and the row selection did not, so the row half comes off the table
+    /// view. A coordinator with no table view has only the binding to fall back on.
+    func publishRowSelection() {
+        publishRowSelection(rowSelection: tableView.map { Set($0.selectedRowIndexes) } ?? selectedRowIndices)
     }
 
     func displayRow(at displayIndex: Int) -> Row? {

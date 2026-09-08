@@ -121,12 +121,11 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     /// time. Per-connection widths are not reachable through `autosaveName` anyway, since assigning
     /// a name to a split view that has already laid out does not re-apply the saved frames.
     ///
-    /// Never version this key to force a relayout. `NSSplitView` clamps a restored frame against
-    /// the current minimums, so the sidebar simply widens to fit the rail. Bumping it instead
-    /// throws away every saved sidebar width, inspector width and collapse state the user has,
-    /// leaves the old keys orphaned in `UserDefaults`, and reads as a regression nobody asked for.
+    /// Namespaced per sandbox under UI test, because AppKit files this record in the standard
+    /// defaults domain, which the sandbox does not redirect. See `SplitViewAutosaveName` for the
+    /// failure that came of one case inheriting another's pane geometry.
     private var splitAutosaveName: NSSplitView.AutosaveName {
-        "com.TablePro.mainSplit"
+        SplitViewAutosaveName.current(SplitViewAutosaveName.base)
     }
 
     // MARK: - Switcher Surfaces

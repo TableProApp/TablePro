@@ -294,8 +294,8 @@ struct CommandActionsDispatchTests {
         tableViewCoordinator.selectionController.update(
             .single(
                 GridRect(rows: 0...1, columns: 0...0),
-                anchor: GridCoord(row: 0, column: 0),
-                active: GridCoord(row: 1, column: 0)
+                anchor: GridCoord(row: 0, displayColumn: 0),
+                active: GridCoord(row: 1, displayColumn: 0)
             )
         )
         delegate.dataGridAttach(tableViewCoordinator: tableViewCoordinator)

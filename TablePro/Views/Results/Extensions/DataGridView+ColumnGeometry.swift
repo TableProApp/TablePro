@@ -25,6 +25,8 @@ extension TableViewCoordinator {
         redrawVisibleCells()
         tableView.setNeedsDisplay(tableView.visibleRect)
         selectionController.overlay?.needsDisplay = true
+        synchronizeRowGutter()
+        repaintRowGutter()
     }
 
     /// Keeps the row-number column at the head of the run.

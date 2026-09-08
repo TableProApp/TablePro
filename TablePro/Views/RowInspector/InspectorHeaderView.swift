@@ -39,7 +39,7 @@ internal struct InspectorHeaderView: View {
                 viewModePicker
             }
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, InspectorMetrics.horizontalInset)
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
