@@ -7,7 +7,7 @@ import TableProPluginKit
 final class RowOperationsManager {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "RowOperationsManager")
 
-    private static let maxClipboardRows = 50_000
+    static let maxClipboardRows = 50_000
 
     struct AddNewRowResult {
         let rowIndex: Int

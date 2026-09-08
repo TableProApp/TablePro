@@ -71,6 +71,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Whole-result copy after Select All ignoring the 50,000-row clipboard limit. (#2667)
+- Row-gutter geometry observer left registered every time a data grid was rebuilt. (#2667)
 - Edited values left on screen with nothing tracking them after discarding to change a value filter. (#2667)
 - Discard prompt on applying a value filter that changes nothing. (#2667)
 - Unsaved cell edits following the row that took their place after a per-column value filter changed. (#2667)

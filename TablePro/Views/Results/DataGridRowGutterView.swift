@@ -40,11 +40,24 @@ final class DataGridRowGutterView: NSView {
 
     private var tableView: KeyHandlingTableView? { coordinator?.tableView as? KeyHandlingTableView }
 
-    /// Held so a second `observeTableGeometry()` replaces rather than stacks. It is not removed in
-    /// `deinit`: this is a `@MainActor` view and a `deinit` is nonisolated, and since macOS 10.11
-    /// `NotificationCenter` drops a block observer whose token is deallocated, so the token dying
-    /// with the view is the removal.
+    /// Held so a second `observeTableGeometry()` replaces rather than stacks, and so the mount that
+    /// registered it can take it off again.
+    ///
+    /// It has to be taken off explicitly. `NotificationCenter` does NOT drop a block observer when
+    /// its token is deallocated: measured, a token that is never stored still fires, and one that is
+    /// stored and then released still fires. Only the `object:` parameter is held weakly. This
+    /// comment used to claim the opposite, which is why the gutter kept a registration per grid
+    /// mount for the life of the process. (#2667)
     private var frameObserver: (any NSObjectProtocol)?
+
+    /// Taken off with the mount that made it, beside the coordinator's own observers.
+    var hasTableGeometryObserver: Bool { frameObserver != nil }
+
+    func detachTableGeometryObserver() {
+        guard let frameObserver else { return }
+        NotificationCenter.default.removeObserver(frameObserver)
+        self.frameObserver = nil
+    }
 
     /// Follows the table view's own height.
     ///
