@@ -201,10 +201,20 @@ struct TableStructureView: View {
             gridDelegate.onSelectedRowsChanged = { self.selectedRows = $0 }
             gridDelegate.coordinator = coordinator
             gridDelegate.sortHandler = { [self] column, ascending in
+                /// A cleared sort arrives as column -1, which is not a column. Writing it through as
+                /// one left a descriptor that `columnReorderAvailability` reads as "the list is
+                /// sorted", so Move Column Up and Down stayed dimmed until the next reload.
+                guard column >= 0 else {
+                    structureSortDescriptor = nil
+                    sortState = SortState(columns: [], source: .user)
+                    displayVersion += 1
+                    return
+                }
                 structureSortDescriptor = StructureSortDescriptor(column: column, ascending: ascending)
-                var newSortState = SortState()
-                newSortState.columns = [SortColumn(columnIndex: column, direction: ascending ? .ascending : .descending)]
-                sortState = newSortState
+                sortState = SortState(
+                    columns: [SortColumn(columnIndex: column, direction: ascending ? .ascending : .descending)],
+                    source: .user
+                )
                 displayVersion += 1
             }
             updateGridDelegate()

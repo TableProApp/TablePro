@@ -476,6 +476,7 @@ final class QueryTabManager {
         tab.display.resultSets = []
         tab.display.activeResultSetId = nil
         tab.sortState = SortState()
+        tab.restoredSortSource = .unset
         tab.selectedRowIndices = []
         tab.pendingChanges = TabChangeSnapshot()
         tab.hasUserInteraction = false

@@ -12,9 +12,11 @@ Most of the grid's controls sit in the status bar beneath it. The view switcher 
 
 ## Sorting
 
-Click a header to cycle through ascending, descending, and off. `Shift`-click a second header to sort by both. Sorting re-runs the query with a new `ORDER BY`, so it orders the whole table rather than the page in front of you.
+Click a header to cycle through the first direction, its opposite, and off. `Shift`-click a second header to sort by both. Sorting re-runs the query with a new `ORDER BY`, so it orders the whole table rather than the page in front of you.
 
-To sort on open, set **Default row sort** in [Settings > Data](/customization/data-settings) to **Primary key** or **First column**; out of the box the order is the server's. A click on any header overrides it.
+**Sort direction** in [Settings > Data](/customization/data-settings) decides which way that first click goes. It is Ascending out of the box; set it to Descending to open on the newest rows and reach them in one click.
+
+To sort on open, set **Default row sort** to **Primary key** or **First column**; out of the box the order is the server's. That order is marked with a dimmed arrow rather than the solid one a click leaves, so a table you have not sorted does not look sorted. Clicking the same header reverses it, and **Don't Sort** in the header menu returns to the server's order and stays there.
 
 <Warning>
 Sorting on a `BLOB`, `JSON`, or spatial column the server cannot order on fails the query. Sort on another column, or set **Default row sort** back to the engine's order.

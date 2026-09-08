@@ -15,7 +15,8 @@ struct HeaderSortCycleSingleColumnTests {
         let transition = HeaderSortCycle.nextTransition(
             state: SortState(),
             clickedColumn: 2,
-            isMultiSort: false
+            isMultiSort: false,
+            firstClickDirection: .ascending
         )
         #expect(transition.newState.columns == [SortColumn(columnIndex: 2, direction: .ascending)])
     }
@@ -27,7 +28,8 @@ struct HeaderSortCycleSingleColumnTests {
         let transition = HeaderSortCycle.nextTransition(
             state: state,
             clickedColumn: 2,
-            isMultiSort: false
+            isMultiSort: false,
+            firstClickDirection: .ascending
         )
         #expect(transition.newState.columns == [SortColumn(columnIndex: 2, direction: .descending)])
     }
@@ -39,7 +41,8 @@ struct HeaderSortCycleSingleColumnTests {
         let transition = HeaderSortCycle.nextTransition(
             state: state,
             clickedColumn: 2,
-            isMultiSort: false
+            isMultiSort: false,
+            firstClickDirection: .ascending
         )
         #expect(transition.newState.columns.isEmpty)
     }
@@ -51,7 +54,8 @@ struct HeaderSortCycleSingleColumnTests {
         let transition = HeaderSortCycle.nextTransition(
             state: state,
             clickedColumn: 4,
-            isMultiSort: false
+            isMultiSort: false,
+            firstClickDirection: .ascending
         )
         #expect(transition.newState.columns == [SortColumn(columnIndex: 4, direction: .ascending)])
     }
@@ -66,7 +70,8 @@ struct HeaderSortCycleSingleColumnTests {
         let transition = HeaderSortCycle.nextTransition(
             state: state,
             clickedColumn: 1,
-            isMultiSort: false
+            isMultiSort: false,
+            firstClickDirection: .ascending
         )
         #expect(transition.newState.columns == [SortColumn(columnIndex: 1, direction: .descending)])
     }
@@ -81,7 +86,8 @@ struct HeaderSortCycleSingleColumnTests {
         let transition = HeaderSortCycle.nextTransition(
             state: state,
             clickedColumn: 3,
-            isMultiSort: false
+            isMultiSort: false,
+            firstClickDirection: .ascending
         )
         #expect(transition.newState.columns == [SortColumn(columnIndex: 3, direction: .ascending)])
     }
@@ -96,7 +102,8 @@ struct HeaderSortCycleMultiColumnTests {
         let transition = HeaderSortCycle.nextTransition(
             state: state,
             clickedColumn: 3,
-            isMultiSort: true
+            isMultiSort: true,
+            firstClickDirection: .ascending
         )
         #expect(transition.newState.columns == [
             SortColumn(columnIndex: 1, direction: .ascending),
@@ -114,7 +121,8 @@ struct HeaderSortCycleMultiColumnTests {
         let transition = HeaderSortCycle.nextTransition(
             state: state,
             clickedColumn: 3,
-            isMultiSort: true
+            isMultiSort: true,
+            firstClickDirection: .ascending
         )
         #expect(transition.newState.columns == [
             SortColumn(columnIndex: 1, direction: .ascending),
@@ -132,7 +140,8 @@ struct HeaderSortCycleMultiColumnTests {
         let transition = HeaderSortCycle.nextTransition(
             state: state,
             clickedColumn: 3,
-            isMultiSort: true
+            isMultiSort: true,
+            firstClickDirection: .ascending
         )
         #expect(transition.newState.columns == [SortColumn(columnIndex: 1, direction: .ascending)])
     }
@@ -142,7 +151,8 @@ struct HeaderSortCycleMultiColumnTests {
         let transition = HeaderSortCycle.nextTransition(
             state: SortState(),
             clickedColumn: 0,
-            isMultiSort: true
+            isMultiSort: true,
+            firstClickDirection: .ascending
         )
         #expect(transition.newState.columns == [SortColumn(columnIndex: 0, direction: .ascending)])
     }
@@ -152,14 +162,16 @@ struct HeaderSortCycleMultiColumnTests {
         var state = SortState()
         state.columns = [SortColumn(columnIndex: 1, direction: .ascending)]
 
-        let added = HeaderSortCycle.nextTransition(state: state, clickedColumn: 5, isMultiSort: true)
+        let added = HeaderSortCycle.nextTransition(
+            state: state, clickedColumn: 5, isMultiSort: true, firstClickDirection: .ascending
+        )
         #expect(added.newState.columns == [
             SortColumn(columnIndex: 1, direction: .ascending),
             SortColumn(columnIndex: 5, direction: .ascending)
         ])
 
         let toggled = HeaderSortCycle.nextTransition(
-            state: added.newState, clickedColumn: 5, isMultiSort: true
+            state: added.newState, clickedColumn: 5, isMultiSort: true, firstClickDirection: .ascending
         )
         #expect(toggled.newState.columns == [
             SortColumn(columnIndex: 1, direction: .ascending),
@@ -167,8 +179,87 @@ struct HeaderSortCycleMultiColumnTests {
         ])
 
         let removed = HeaderSortCycle.nextTransition(
-            state: toggled.newState, clickedColumn: 5, isMultiSort: true
+            state: toggled.newState, clickedColumn: 5, isMultiSort: true, firstClickDirection: .ascending
         )
         #expect(removed.newState.columns == [SortColumn(columnIndex: 1, direction: .ascending)])
+    }
+}
+
+@Suite("HeaderSortCycle - source and first-click direction")
+struct HeaderSortCycleSourceTests {
+    @Test("A default sort's first click reverses it, and the result is the user's")
+    func defaultSortFirstClickReverses() {
+        let state = SortState(
+            columns: [SortColumn(columnIndex: 0, direction: .ascending)],
+            source: .defaultSort
+        )
+        let transition = HeaderSortCycle.nextTransition(
+            state: state, clickedColumn: 0, isMultiSort: false, firstClickDirection: .ascending
+        )
+        #expect(transition.newState.columns == [SortColumn(columnIndex: 0, direction: .descending)])
+        #expect(transition.newState.source == .user)
+    }
+
+    @Test("Clearing a sort by clicking is the user's empty state, never unset")
+    func clearingStampsUser() {
+        let state = SortState(
+            columns: [SortColumn(columnIndex: 2, direction: .descending)],
+            source: .user
+        )
+        let transition = HeaderSortCycle.nextTransition(
+            state: state, clickedColumn: 2, isMultiSort: false, firstClickDirection: .ascending
+        )
+        #expect(transition.newState.columns.isEmpty)
+        #expect(transition.newState.source == .user)
+    }
+
+    @Test("A shift-click on a default sort becomes the user's, so the tab stops being reusable")
+    func shiftClickPromotesDefaultToUser() {
+        let state = SortState(
+            columns: [SortColumn(columnIndex: 0, direction: .ascending)],
+            source: .defaultSort
+        )
+        let transition = HeaderSortCycle.nextTransition(
+            state: state, clickedColumn: 3, isMultiSort: true, firstClickDirection: .ascending
+        )
+        #expect(transition.newState.columns.map(\.columnIndex) == [0, 3])
+        #expect(transition.newState.source == .user)
+    }
+
+    @Test("A descending first-click direction reverses the whole cycle")
+    func descendingFirstClickDirection() {
+        let first = HeaderSortCycle.nextTransition(
+            state: SortState(), clickedColumn: 1, isMultiSort: false, firstClickDirection: .descending
+        )
+        #expect(first.newState.columns == [SortColumn(columnIndex: 1, direction: .descending)])
+
+        let second = HeaderSortCycle.nextTransition(
+            state: first.newState, clickedColumn: 1, isMultiSort: false, firstClickDirection: .descending
+        )
+        #expect(second.newState.columns == [SortColumn(columnIndex: 1, direction: .ascending)])
+
+        let third = HeaderSortCycle.nextTransition(
+            state: second.newState, clickedColumn: 1, isMultiSort: false, firstClickDirection: .descending
+        )
+        #expect(third.newState.columns.isEmpty)
+    }
+
+    @Test("A descending shift-click adds, toggles, then removes")
+    func descendingMultiSortCycle() {
+        let base = SortState(columns: [SortColumn(columnIndex: 0, direction: .descending)], source: .user)
+        let added = HeaderSortCycle.nextTransition(
+            state: base, clickedColumn: 2, isMultiSort: true, firstClickDirection: .descending
+        )
+        #expect(added.newState.columns.map(\.direction) == [.descending, .descending])
+
+        let toggled = HeaderSortCycle.nextTransition(
+            state: added.newState, clickedColumn: 2, isMultiSort: true, firstClickDirection: .descending
+        )
+        #expect(toggled.newState.columns.map(\.direction) == [.descending, .ascending])
+
+        let removed = HeaderSortCycle.nextTransition(
+            state: toggled.newState, clickedColumn: 2, isMultiSort: true, firstClickDirection: .descending
+        )
+        #expect(removed.newState.columns.map(\.columnIndex) == [0])
     }
 }

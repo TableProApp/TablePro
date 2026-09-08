@@ -47,7 +47,7 @@ struct VerticalCollapsibleSplitView<TopContent: View, BottomContent: View>: NSVi
 
         // autosaveName is assigned after the items are added; setting it earlier does not record
         // the divider, and adjustSubviews then resets it.
-        splitViewController.splitView.autosaveName = autosaveName
+        splitViewController.splitView.autosaveName = NSSplitView.AutosaveName(SplitViewAutosaveName.current(autosaveName))
 
         context.coordinator.topController = topController
         context.coordinator.bottomController = bottomController

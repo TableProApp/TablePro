@@ -100,6 +100,18 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     private(set) var identitySchema: ColumnIdentitySchema = .empty
     var currentSortState = SortState()
 
+    /// The direction a first click on an unsorted column produces.
+    ///
+    /// `SortableHeaderView` and `DataGridColumnPool` are shared with the Structure, Create Table and
+    /// Inspector grids, which list columns rather than rows and have nothing to do with a Data Grid
+    /// setting, so the grid says whether the preference is its own.
+    var appliesRowSortPreferences: Bool = false
+
+    var firstClickSortDirection: SortDirection {
+        guard appliesRowSortPreferences else { return .ascending }
+        return AppSettingsManager.shared.dataGrid.defaultSortDirection
+    }
+
     private var columnIndexByDataIndex: [Int: Int] = [:]
     /// Display position to data index, rebuilt lazily. `presentedDataColumns` reads it; a drag and
     /// the cell-range fill both ask per event and per row, and deriving it walks every attached
@@ -263,6 +275,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         schemaName = configuration.schemaName
         primaryKeyColumns = configuration.primaryKeyColumns
         tabType = configuration.tabType
+        appliesRowSortPreferences = configuration.appliesRowSortPreferences
     }
 
     /// A grid with no table behind it keeps a saved column order only while its columns are still the

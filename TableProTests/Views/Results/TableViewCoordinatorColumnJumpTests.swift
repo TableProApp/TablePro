@@ -62,6 +62,7 @@ struct TableViewCoordinatorColumnJumpTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: hiddenColumns,
+            firstClickSortDirection: .ascending,
             widthCalculator: { _, _ in 100 }
         )
         coordinator.invalidateColumnIndexCache()

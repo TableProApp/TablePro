@@ -64,6 +64,7 @@ struct CellEditorMovementTargetTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: { _, _ in 100 }
         )
         tableView.dataSource = coordinator

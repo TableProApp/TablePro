@@ -61,6 +61,7 @@ private struct ReorderableGrid {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: { _, _ in 100 }
         )
         coordinator.updateCache()
@@ -76,6 +77,7 @@ private struct ReorderableGrid {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [name],
+            firstClickSortDirection: .ascending,
             widthCalculator: { _, _ in 100 }
         )
         coordinator.invalidateColumnIndexCache()
