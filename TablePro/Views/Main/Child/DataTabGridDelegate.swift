@@ -31,6 +31,19 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         onSortStateChanged?(state)
     }
 
+    /// The same gate sort, pagination and the WHERE filter go through. `confirmDiscardChangesIfNeeded`
+    /// answers immediately when there is nothing to lose, so an unedited result never sees an alert.
+    func dataGridConfirmDisplayOrderChange(then apply: @escaping () -> Void) {
+        guard let coordinator else {
+            apply()
+            return
+        }
+        coordinator.confirmDiscardChangesIfNeeded(action: .displayOrder) { confirmed in
+            guard confirmed else { return }
+            apply()
+        }
+    }
+
     func dataGridDisplayOrderChanged() {
         coordinator?.gridDisplayRevision &+= 1
     }

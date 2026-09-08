@@ -22,6 +22,7 @@ enum DiscardAction {
     case filter
     case resultSwitch
     case navigation
+    case displayOrder
 }
 
 struct DisplayFormatsCacheEntry {

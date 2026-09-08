@@ -395,8 +395,12 @@ extension TableViewCoordinator {
         )
         let remappedValueFilters = updateDisplayFormats(formats)
 
+        /// A remap moves the same rows to different positions, so it re-points a pending edit
+        /// exactly as an outright filter change does and takes the same confirmation.
         if remappedValueFilters {
-            reloadAfterValueFilterChange()
+            confirmDisplayOrderChange { [weak self] in
+                self?.reloadAfterValueFilterChange()
+            }
             return
         }
 

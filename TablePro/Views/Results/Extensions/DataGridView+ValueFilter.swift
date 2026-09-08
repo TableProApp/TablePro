@@ -67,19 +67,38 @@ extension TableViewCoordinator {
         valueFilterState = state
     }
 
+    /// Confirmed before the state moves, not after: the alert's whole purpose is to let the reader
+    /// keep edits that this change would re-point, so the filter must not be written until they
+    /// have said yes.
     func applyValueFilter(_ filter: ColumnValueFilter?, columnName: String, forColumn dataIndex: Int) {
-        if let filter {
-            valueFilterState.set(filter, columnName: columnName, forColumn: dataIndex)
-        } else {
-            valueFilterState.clear(column: dataIndex)
+        confirmDisplayOrderChange { [weak self] in
+            guard let self else { return }
+            if let filter {
+                self.valueFilterState.set(filter, columnName: columnName, forColumn: dataIndex)
+            } else {
+                self.valueFilterState.clear(column: dataIndex)
+            }
+            self.reloadAfterValueFilterChange()
         }
-        reloadAfterValueFilterChange()
     }
 
     func clearAllValueFilters() {
         guard valueFilterState.isActive else { return }
-        valueFilterState.clearAll()
-        reloadAfterValueFilterChange()
+        confirmDisplayOrderChange { [weak self] in
+            guard let self else { return }
+            self.valueFilterState.clearAll()
+            self.reloadAfterValueFilterChange()
+        }
+    }
+
+    /// A grid with no owner has no pending edits to lose, and the protocol default runs the work
+    /// directly, so the structure, create-table and inspector grids are unaffected.
+    func confirmDisplayOrderChange(_ apply: @escaping () -> Void) {
+        guard let delegate else {
+            apply()
+            return
+        }
+        delegate.dataGridConfirmDisplayOrderChange(then: apply)
     }
 
     func reloadAfterValueFilterChange() {
