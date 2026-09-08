@@ -71,6 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Connection and database choosers opening between the two toolbar capsules instead of under the one that was pressed.
 - Raw DuckDB driver text in place of the name of the app holding a locked database file. (#2518)
 - DuckDB instance and its worker threads leaked by every failed remote connection attempt.
 - MySQL statement replayed outside the transaction it was run in after the server dropped the connection.

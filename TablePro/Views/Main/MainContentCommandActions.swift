@@ -1359,14 +1359,13 @@ final class MainContentCommandActions {
         coordinator?.switcherPresenter?.dismiss()
     }
 
-    /// Anchored to the connection group rather than to the Database subitem inside it. Measured:
-    /// `NSToolbar.items` holds groups only, never their subitems, and a native group's subitems
-    /// carry no view, so the subitem cannot resolve as an anchor and the presenter would fall back
-    /// to its floating panel.
+    /// Anchored to the Database subitem, which is the capsule the user pressed. The group is two
+    /// capsules wide, so anchoring to it points the chooser at the seam between them; the presenter
+    /// falls back to the group by itself once AppKit clips it into the overflow menu.
     private func presentDatabaseSwitcher(on coordinator: MainContentCoordinator, target: ContainerSwitchTarget?) {
         coordinator.switcherPresenter?.present(
             from: coordinator.contentWindow,
-            anchoredTo: MainWindowToolbar.connectionGroup,
+            anchoredTo: MainWindowToolbar.database,
             subject: .container(target),
             contentSize: DatabaseSwitcherPopover.contentSize
         ) { dismiss in
