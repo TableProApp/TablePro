@@ -43,6 +43,10 @@ extension MainContentCoordinator {
             return String(localized: "Applying or clearing filters will reload data and discard all unsaved changes.")
         case .resultSwitch:
             return String(localized: "Showing another result will discard all unsaved changes.")
+        /// Worded for both directions, because Forward reaches the same guard. Naming Back here
+        /// misstated the operation the user was approving whenever they stepped forward.
+        case .navigation:
+            return String(localized: "Moving through this tab's history replaces what it is showing and will discard all unsaved changes.")
         }
     }
 

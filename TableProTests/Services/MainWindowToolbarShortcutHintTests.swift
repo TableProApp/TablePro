@@ -131,6 +131,28 @@ struct MainWindowToolbarShortcutHintTests {
         #expect(item?.toolTip?.isEmpty == false)
     }
 
+    /// Back is reachable from `allItems()` only while it is installed in its group, and `allItems()`
+    /// is the only channel that re-applies a rebind to a toolbar item. A commit that hid the pair by
+    /// emptying the group took both arrows out of that walk, so a rebind reached the menu bar and
+    /// stopped, leaving the toolbar advertising a key that no longer ran the command. `try #require`
+    /// rather than optional chaining on purpose: the house style here passes vacuously when the
+    /// subitem is absent, which is exactly the state this guards against.
+    @Test("A rebind reaches the navigation arrows")
+    func navigationFollowsLaterRebind() throws {
+        try withKeyboard(.character("j", command: true, control: true), for: .navigateBack) { owner in
+            let item = try #require(
+                vendSubitem(
+                    MainWindowToolbar.navigateBack,
+                    of: MainWindowToolbar.backForwardGroup,
+                    from: owner
+                ),
+                "Back must be reachable through its group, or a rebind cannot find it"
+            )
+            #expect(item.toolTip?.contains("⌃⌘J") == true)
+            #expect(item.menuFormRepresentation?.keyEquivalent == "j")
+        }
+    }
+
     /// The Import item opens a submenu, so its menu form carries the submenu rather than a key.
     /// Writing a key equivalent onto it would put a shortcut on a row that only opens a menu.
     /// It is only ever vended inside the Export & Import group, never on its own.

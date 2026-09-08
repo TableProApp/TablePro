@@ -72,30 +72,6 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         group.subitems = []
         return group
     }()
-    /// Back and forward, held rather than vended fresh, because emptying and refilling this group is
-    /// how the pair leaves and rejoins the toolbar. Measured: emptying it drops its platter and
-    /// moves nothing else at all (the centred group held x=647.0 midX=772.8 across hidden, shown and
-    /// hidden again), and a toggle plus layout cost 9.5ms at worst over twenty flips.
-    ///
-    /// Apple does not do this. Measured on a running Xcode, its Back/Forward group keeps its full
-    /// 75pt capsule with both segments reported DISABLED when there is nowhere to go. This app hides
-    /// it instead, by explicit request.
-    internal private(set) lazy var navigationGroup: NSToolbarItemGroup = {
-        /// Empty to begin with, which is the honest default: a toolbar with no connection behind it
-        /// has no history to walk. `syncNavigationVisibility` fills it once there is one.
-        let group = makeNativeGroup(
-            id: Self.backForwardGroup,
-            label: String(localized: "Navigation"),
-            subitems: []
-        )
-        /// `isNavigational` is what puts back and forward on the leading edge of the content title
-        /// area, where Finder and Safari keep them.
-        group.isNavigational = true
-        return group
-    }()
-
-    private lazy var navigationSubitems: [NSToolbarItem] = [subitemNavigateBack(), subitemNavigateForward()]
-
     private var transportSampler = TransportRateSampler()
     private var transportTicker: Task<Void, Never>?
 
@@ -195,6 +171,20 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         managedToolbar.validateVisibleItems()
     }
 
+    func invalidate() {
+        /// Window close reaches here rather than through `repoint`, and the panel surface is an
+        /// independent floating `NSPanel` with no parent-child relationship to the window, so
+        /// nothing else would take it down with the window that opened it. A window whose
+        /// connection was released has no coordinator to reach it through.
+        windowController?.switcherPresenter.dismiss()
+        itemStateObservationGeneration += 1
+        transportTicker?.cancel()
+        transportTicker = nil
+        transportRateItem.apply(rate: nil)
+        sidebarGroup = nil
+        coordinator = nil
+    }
+
     /// Runs only for a connection whose transport the app carries the bytes for, so an ordinary
     /// direct connection costs nothing at all. It writes into the readout's own field rather than
     /// asking the toolbar to revalidate: the field is a fixed width, so a new figure is a redraw
@@ -232,30 +222,6 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         transportRateGroup.subitems = carriesMeasuredTransport ? [transportRateItem] : []
     }
 
-    /// Both arrows go together. Hiding one of a segmented pair would leave a lone half-capsule and
-    /// change the group's width on every step through the history, which is a worse read than a
-    /// dimmed arrow.
-    private func syncNavigationVisibility() {
-        let canNavigate = coordinator.map { $0.canNavigateBack || $0.canNavigateForward } ?? false
-        let shown = !navigationGroup.subitems.isEmpty
-        guard shown != canNavigate else { return }
-        navigationGroup.subitems = canNavigate ? navigationSubitems : []
-    }
-
-    func invalidate() {
-        /// Window close reaches here rather than through `repoint`, and the panel surface is an
-        /// independent floating `NSPanel` with no parent-child relationship to the window, so
-        /// nothing else would take it down with the window that opened it. A window whose
-        /// connection was released has no coordinator to reach it through.
-        windowController?.switcherPresenter.dismiss()
-        itemStateObservationGeneration += 1
-        transportTicker?.cancel()
-        transportTicker = nil
-        transportRateItem.apply(rate: nil)
-        sidebarGroup = nil
-        coordinator = nil
-    }
-
     /// What a validation pass depends on beyond the responder chain. `validateVisibleItems()` is
     /// also what re-runs `StatefulToolbarItem.validate()`, so the safe-mode glyph tracks the level
     /// through the same channel rather than through an observer of its own.
@@ -267,8 +233,6 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             _ = self?.coordinator?.toolbarState.hasDataPendingChanges
             _ = self?.coordinator?.toolbarState.safeModeLevel
             _ = self?.coordinator?.toolbarState.currentDatabase
-            _ = self?.coordinator?.canNavigateBack
-            _ = self?.coordinator?.canNavigateForward
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self,
@@ -276,7 +240,6 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
                       coordinatorIdentifier == self.coordinator.map({ ObjectIdentifier($0) })
                 else { return }
                 self.observeItemState()
-                self.syncNavigationVisibility()
                 self.managedToolbar.validateVisibleItems()
             }
         }
@@ -287,7 +250,6 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// what `validate()` reconsiders. They are pushed here instead.
     private func refreshConnectionScopedItems() {
         syncTransportRateVisibility()
-        syncNavigationVisibility()
         for item in allItems() {
             switch item.itemIdentifier {
             case Self.connection:

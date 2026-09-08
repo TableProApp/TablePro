@@ -246,10 +246,12 @@ struct MainWindowToolbarCustomizationTests {
     /// The identifier is the autosave name, and changing it discards every user's arrangement. It
     /// moved to v3 with the rewrite that dropped the hosted status item, because a stored v2 list
     /// names identifiers the delegate no longer vends and would leave those users the crowded
-    /// toolbar the rewrite exists to fix. It is not free, so it does not move again without the
-    /// same justification.
+    /// toolbar the rewrite exists to fix. It moved to v4 for the throughput readout, whose
+    /// identifier a stored v3 arrangement does not name, so a reader who had customized the toolbar
+    /// would never see it. It is not free, so it does not move again without the same
+    /// justification.
     @Test("The toolbar identifier is stable")
     func identifierIsStable() {
-        #expect(MainWindowToolbar.toolbarIdentifier == "com.TablePro.main.toolbar.v3")
+        #expect(MainWindowToolbar.toolbarIdentifier == "com.TablePro.main.toolbar.v4")
     }
 }

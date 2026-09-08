@@ -598,9 +598,16 @@ struct FKNavigationTests {
         #expect(coordinator.canNavigateBack == false)
     }
 
-    @Test("Back stands down while the tab holds unsaved edits")
+    /// Back stays offered with unsaved edits, and asks before it discards them, the way refresh,
+    /// sort, pagination and filter already do. It used to refuse instead, which left the control
+    /// dim over a destination that still existed with nothing saying why.
+    ///
+    /// The step is not asserted here: with changes staged, `confirmDiscardChangesIfNeeded` puts a
+    /// real alert on screen, which a unit test cannot answer. What this pins is the availability,
+    /// which is what the toolbar and the View menu both read.
+    @Test("Back stays offered while the tab holds unsaved edits")
     @MainActor
-    func backIsUnavailableWithPendingEdits() throws {
+    func backStaysOfferedWithPendingEdits() throws {
         let connection = TestFixtures.makeConnection(database: "db_a")
         let tabManager = QueryTabManager()
         let coordinator = MainContentCoordinator(
@@ -623,9 +630,44 @@ struct FKNavigationTests {
 
         coordinator.changeManager.hasChanges = true
 
+        #expect(coordinator.canNavigateBack, "Unsaved edits are a prompt, not a refusal")
+    }
+
+    /// The one thing navigation still refuses outright. The discard alert clears `changeManager`
+    /// and nothing else, so offering to discard a staged structure edit would be a promise this
+    /// path cannot keep.
+    @Test("Back stands down while the tab holds staged structure edits")
+    @MainActor
+    func backIsUnavailableWithStagedStructureEdits() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(
+            tableName: "orders",
+            databaseType: connection.type,
+            databaseName: coordinator.browseDatabaseName
+        )
+
+        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        #expect(coordinator.canNavigateBack)
+
+        let tabId = try #require(tabManager.selectedTabId)
+        let session = TestFixtures.makeStructureSession()
+        coordinator.structureSessions[tabId] = session
+        session.changeManager.loadSchema(
+            tableName: "users", columns: [], indexes: [], foreignKeys: [], primaryKey: []
+        )
+        session.changeManager.addNewColumn()
+
         #expect(coordinator.canNavigateBack == false)
-        coordinator.navigateBack()
-        #expect(tabManager.selectedTab?.tableContext.tableName == "users")
     }
 
     @Test("Closing a tab takes its history with it")

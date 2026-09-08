@@ -28,10 +28,23 @@ extension MainWindowToolbar {
         case Self.sidebarToggle:
             return makeSidebarToggleItem(claimsSlot: Self.claimsItemSlot(willBeInsertedIntoToolbar: flag))
         case Self.backForwardGroup:
-            /// Held rather than built here, because emptying its subitems is how the pair hides
-            /// itself when there is nowhere to go, and the toolbar has to be showing the instance
-            /// that gets emptied.
-            return navigationGroup
+            /// `isNavigational` is what puts back and forward on the leading edge of the content
+            /// title area, where Finder and Safari keep them, instead of in the slot the identifier
+            /// list nominally gives them.
+            ///
+            /// Both subitems are installed unconditionally and stay installed. Availability is
+            /// `isEnabled`, written by `validateToolbarItem(_:)`, never presence: measured on three
+            /// running Apple apps, Xcode, Finder in column view and System Settings all keep the
+            /// 75pt capsule and dim the direction that has nowhere to go. Emptying the group
+            /// instead put the pair behind state that is `@ObservationIgnored`, so once hidden it
+            /// did not come back until the user switched tabs.
+            let group = makeNativeGroup(
+                id: itemIdentifier,
+                label: String(localized: "Navigation"),
+                subitems: [subitemNavigateBack(), subitemNavigateForward()]
+            )
+            group.isNavigational = true
+            return group
         case Self.connectionGroup:
             /// Native, like every other group here. As a view-backed group it drew a hosted SwiftUI
             /// row and its subitems were inert: the header is explicit that a property set on the

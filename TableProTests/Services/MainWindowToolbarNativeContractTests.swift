@@ -106,24 +106,20 @@ struct MainWindowToolbarNativeContractTests {
         #expect(MainWindowToolbar().transportRateGroup.subitems.isEmpty)
     }
 
-    /// Back and forward hide when there is nowhere to go, which is a deliberate departure from
-    /// Apple: measured on a running Xcode, its Back/Forward group keeps its full 75pt capsule with
-    /// both segments DISABLED. Emptying the group is what hides it, and measured, doing so drops its
-    /// platter and moves nothing else, the centred group included.
-    @Test("Back and forward are absent with no history to walk")
-    func navigationHidesWithNowhereToGo() {
+    /// Availability is `isEnabled`, never presence. Measured on three running Apple apps, Xcode,
+    /// Finder in column view and System Settings all keep the 75pt Back/Forward capsule and dim the
+    /// direction that has nowhere to go; the HIG says the same for the menu bar, "disable the action
+    /// instead of hiding it".
+    ///
+    /// This asserts on the VENDED item and on a toolbar with no coordinator, which is the state a
+    /// hidden pair would report. Testing the pure `isEnabled(itemIdentifier:context:)` predicate
+    /// cannot catch the regression this replaces: four such cases in
+    /// `MainWindowToolbarValidationTests` stayed green for the whole life of the hiding commit,
+    /// because they never look at composition.
+    @Test("Back and forward are present and dimmed, never absent")
+    func navigationIsPresentAndDimmed() throws {
         let owner = MainWindowToolbar()
-
-        #expect(owner.navigationGroup.subitems.isEmpty)
-        #expect(owner.navigationGroup.isNavigational)
-    }
-
-    /// Both arrows go together. Hiding one of a segmented pair leaves a lone half-capsule whose
-    /// width changes on every step through the history.
-    @Test("The navigation group is the whole pair or nothing")
-    func navigationHidesAsAPair() throws {
-        let owner = MainWindowToolbar()
-        let vended = try #require(
+        let group = try #require(
             owner.toolbar(
                 owner.managedToolbar,
                 itemForItemIdentifier: MainWindowToolbar.backForwardGroup,
@@ -131,8 +127,34 @@ struct MainWindowToolbarNativeContractTests {
             ) as? NSToolbarItemGroup
         )
 
-        #expect(vended === owner.navigationGroup, "The toolbar must show the instance that gets emptied")
-        #expect(vended.subitems.isEmpty || vended.subitems.count == 2)
+        #expect(group.subitems.count == 2, "The pair is installed unconditionally")
+        #expect(group.subitems.map(\.itemIdentifier) == [MainWindowToolbar.navigateBack, MainWindowToolbar.navigateForward])
+        /// What puts the pair on the leading edge, where the HIG keeps items that return to the
+        /// previous document and where they are not customizable away.
+        #expect(group.isNavigational)
+
+        for subitem in group.subitems {
+            #expect(!owner.validateToolbarItem(subitem), "With no connection each direction dims")
+        }
+    }
+
+    /// A `title` on either subitem would split the shared platter into two capsules. Measured: two
+    /// titled subitems draw two platters, untitled ones share a single platter spanning the group,
+    /// which is the one capsule Finder, Xcode and System Settings all draw.
+    @Test("Neither navigation arrow carries a title")
+    func navigationArrowsShareOneCapsule() throws {
+        let owner = MainWindowToolbar()
+        let group = try #require(
+            owner.toolbar(
+                owner.managedToolbar,
+                itemForItemIdentifier: MainWindowToolbar.backForwardGroup,
+                willBeInsertedIntoToolbar: true
+            ) as? NSToolbarItemGroup
+        )
+
+        for subitem in group.subitems {
+            #expect(subitem.title.isEmpty, "\(subitem.itemIdentifier.rawValue) must not set a title")
+        }
     }
 
     /// The readout is a readout: it publishes no action, so AppKit never validates it and it has no
