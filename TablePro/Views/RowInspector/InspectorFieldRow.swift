@@ -61,14 +61,14 @@ internal struct InspectorFieldRow: View {
             modifiedGlyph
             valueMenu
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, InspectorMetrics.betweenFields / 2)
     }
 
     /// A data row: name and type on their own line, the value at full width beneath. Every value in
     /// the pane then starts at the same x and gets the whole content width, against the 24 to 31pt a
     /// long column name used to leave it.
     private var stackedRow: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: InspectorMetrics.labelToValue) {
             HStack(spacing: 4) {
                 statusGlyphs
                 fieldLabel
@@ -94,7 +94,7 @@ internal struct InspectorFieldRow: View {
             }
             editor
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, InspectorMetrics.betweenFields / 2)
     }
 
     /// Carries the full name as a tooltip, which is what the HIG asks of a label it had to clip:

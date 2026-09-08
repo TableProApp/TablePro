@@ -65,7 +65,7 @@ internal struct InspectorFieldListView: View {
             .help(String(localized: "Show edited fields only"))
             .disabled(!hasAnyModification && !showsModifiedOnly)
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, InspectorMetrics.horizontalInset)
         .padding(.vertical, 5)
     }
 
@@ -116,10 +116,18 @@ internal struct InspectorFieldListView: View {
             ForEach(fields, id: \.id) { field in
                 row(for: field)
                     .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 6))
+                    .listRowInsets(EdgeInsets(
+                        top: 0,
+                        leading: InspectorMetrics.listRowLeadingCorrection,
+                        bottom: 0,
+                        trailing: InspectorMetrics.listRowTrailingCorrection
+                    ))
             }
         }
-        .listStyle(.inset)
+        /// `.plain`, not `.inset`: the inset style spends a hard 16pt per side before any
+        /// `listRowInsets` is consulted, so the pane's content sat at 24pt while its own header sat
+        /// at 10. `.plain` lands at half of `intercellSpacing` and can be corrected onto the edge.
+        .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .onKeyPress(keys: [.tab]) { press in
             moveFocus(within: fields, forward: !press.modifiers.contains(.shift))
