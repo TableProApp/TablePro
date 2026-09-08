@@ -310,7 +310,14 @@ final class KeyHandlingTableView: NSTableView {
             return
         }
         gridSelection?.selectAll(totalRows: totalRows, totalColumns: totalColumns)
-        selectRowIndexes(IndexSet(integersIn: 0..<totalRows), byExtendingSelection: false)
+        /// Marked programmatic, exactly as `selectRowsIntersectingSelection` marks the same
+        /// build-then-write shape. An unmarked write reads back as a gesture, and
+        /// `tableViewSelectionDidChange` answers a gesture that arrives over a live cell selection
+        /// by clearing it, so Cmd+A used to destroy the rectangle it had just built: Copy then took
+        /// the row path instead of the cell path, and Escape had nothing to cancel.
+        withProgrammaticRowSelection {
+            selectRowIndexes(IndexSet(integersIn: 0..<totalRows), byExtendingSelection: false)
+        }
     }
 
     private func focusedDataCell() -> (row: Int, columnIndex: Int)? {

@@ -581,6 +581,13 @@ struct DataGridView: NSViewRepresentable {
         coordinator.recordScrollAnchor()
         coordinator.captureSelectionForTeardown()
         coordinator.flushPendingColumnLayoutPersistence()
+        /// The mount's own registrations, taken off with it. `NotificationCenter` retains a block
+        /// observer's closure and a coordinator is built fresh per mount, so anything left here is
+        /// never fired again and never reclaimed: three scroll observers and the accessibility
+        /// activation observer per tab switch and per result-mode toggle, for the life of the
+        /// process. `releaseData()` already did this, but it only runs on session teardown.
+        coordinator.detachScrollObservers()
+        coordinator.detachAccessibilityActivationObserver()
         coordinator.settingsCancellable = nil
         coordinator.themeCancellable = nil
     }
