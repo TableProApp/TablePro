@@ -69,7 +69,13 @@ extension EditorWindow: CloseCommandNaming {
 internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     nonisolated private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
-    internal static let frameAutosaveName: NSWindow.FrameAutosaveName = "MainEditorWindow"
+    /// Namespaced per sandbox under UI test. This one is the main window's own size and position,
+    /// so a case that resized the window used to hand that size to every case after it in its
+    /// shard. See `SplitViewAutosaveName`.
+    @MainActor
+    internal static var frameAutosaveName: NSWindow.FrameAutosaveName {
+        NSWindow.FrameAutosaveName(SplitViewAutosaveName.current("MainEditorWindow"))
+    }
 
     internal let payload: EditorTabPayload
 

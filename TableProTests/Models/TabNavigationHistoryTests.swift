@@ -24,6 +24,7 @@ struct TabNavigationHistoryTests {
             resultsViewMode: .data,
             filterState: filterState,
             sortColumns: [],
+            sortSource: .unset,
             page: page,
             pageSize: 100,
             anchorRowKey: anchor

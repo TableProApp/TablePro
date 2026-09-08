@@ -39,6 +39,12 @@ struct HexEditorBody: View {
     @State private var byteCount: Int = 0
     @State private var validateTask: Task<Void, Never>?
 
+    /// Whether the value this editor opened on was already a prefix. It is a fact about the stored
+    /// value, so it is settled once here and never recomputed from what the user types. Deriving it
+    /// from the draft instead let deleting the ellipsis re-enable Save over a value the editor only
+    /// ever held the first 10,240 bytes of, which then overwrote the rest of the blob.
+    private let sourceIsTruncated: Bool
+
     init(
         initialValue: String?,
         isEditable: Bool = true,
@@ -61,10 +67,12 @@ struct HexEditorBody: View {
             self._byteCount = State(initialValue: value.data(using: .isoLatin1)?.count ?? 0)
             self._isTruncated = State(initialValue: truncated)
             self._isValid = State(initialValue: !truncated)
+            self.sourceIsTruncated = truncated
         } else {
             self._hexDumpText = State(initialValue: "")
             self._editableHex = State(initialValue: "")
             self._byteCount = State(initialValue: 0)
+            self.sourceIsTruncated = false
         }
     }
 
@@ -88,7 +96,7 @@ struct HexEditorBody: View {
                             .font(.caption)
                             .foregroundStyle(.tertiary)
 
-                        if isTruncated {
+                        if sourceIsTruncated || isTruncated {
                             Text(String(localized: "Truncated, read only"))
                                 .font(.caption)
                                 .foregroundStyle(.orange)
@@ -112,7 +120,7 @@ struct HexEditorBody: View {
                         .keyboardShortcut(.cancelAction)
                     Button("Save") { saveHex() }
                         .keyboardShortcut(.defaultAction)
-                        .disabled(!isValid || isTruncated)
+                        .disabled(!isValid || isTruncated || sourceIsTruncated)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
@@ -139,7 +147,7 @@ struct HexEditorBody: View {
     // MARK: - Actions
 
     private func saveHex() {
-        guard isValid else { return }
+        guard isValid, !sourceIsTruncated else { return }
 
         if editableHex.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             if initialValue != nil, initialValue != "" {

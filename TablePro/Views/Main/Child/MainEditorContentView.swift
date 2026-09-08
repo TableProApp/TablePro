@@ -889,6 +889,7 @@ struct MainEditorContentView: View {
                 tabType: tab.tabType,
                 showRowNumbers: AppSettingsManager.shared.dataGrid.showRowNumbers,
                 hiddenColumns: tab.columnLayout.hiddenColumns,
+                appliesRowSortPreferences: true,
                 editRefusalMessage: refusal?.message
             ),
             displayFormats: coordinator.displayFormats(for: tab),

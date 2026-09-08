@@ -342,6 +342,40 @@
         }
       }
     },
+    "Ascending" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "오름차순"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Artan"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tăng dần"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "升序"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "升序"
+          }
+        }
+      }
+    },
     "Could not write this text as %@." : {
       "localizations" : {
         "ko" : {
@@ -372,6 +406,74 @@
           "stringUnit" : {
             "value" : "無法以 %@ 寫入此文字。",
             "state" : "translated"
+          }
+        }
+      }
+    },
+    "Default row sort is applied when a table first opens. Sort direction also sets which way the first click on a column header sorts." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기본 행 정렬은 테이블을 처음 열 때 적용됩니다. 정렬 방향은 열 머리글을 처음 클릭했을 때의 정렬 방향도 결정합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Varsayılan satır sıralaması tablo ilk açıldığında uygulanır. Sıralama yönü, bir sütun başlığına yapılan ilk tıklamanın yönünü de belirler."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sắp xếp hàng mặc định được áp dụng khi mở bảng lần đầu. Hướng sắp xếp cũng quyết định chiều sắp xếp của lần nhấp đầu tiên vào tiêu đề cột."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "默认行排序在首次打开表时应用。排序方向同时决定首次点击列标题时的排序方向。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "預設列排序在首次開啟表格時套用。排序方向同時決定首次點按欄標題時的排序方向。"
+          }
+        }
+      }
+    },
+    "Descending" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "내림차순"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Azalan"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giảm dần"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "降序"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "降序"
           }
         }
       }
@@ -648,6 +750,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "MySQL 和 MariaDB。移除資料表的下一個鍵值。欄位仍保留 AUTO_INCREMENT 屬性，還原資料列時會依資料設定計數器。"
+          }
+        }
+      }
+    },
+    "Sort direction:" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "정렬 방향:"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sıralama yönü:"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hướng sắp xếp:"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排序方向："
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排序方向："
           }
         }
       }
