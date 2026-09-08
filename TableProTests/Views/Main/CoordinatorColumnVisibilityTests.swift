@@ -42,6 +42,85 @@ struct CoordinatorColumnVisibilityTests {
         return tab.id
     }
 
+    private func stageEdit(on coordinator: MainContentCoordinator) {
+        coordinator.changeManager.configureForTable(
+            tableName: "users",
+            columns: ["id", "name"],
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql,
+            generatedColumns: [],
+            triggerReload: false
+        )
+        coordinator.changeManager.recordCellChange(
+            rowIndex: 0,
+            columnIndex: 1,
+            columnName: "name",
+            oldValue: "Alice",
+            newValue: "Bob",
+            originalRow: ["1", "Alice"]
+        )
+    }
+
+    /// Hiding or showing a column re-runs the table's query with a different column list, so the
+    /// rows are replaced and an unsaved edit goes with them. Sort, pagination and the WHERE filter
+    /// all confirm first; this reload used to do it without asking.
+    ///
+    /// The declined branch is reached by pretending an alert is already up, which is what
+    /// `confirmDiscardChangesIfNeeded` answers false to. That keeps the test off the real modal,
+    /// which would hang it.
+    @Test("hiding a column changes nothing while the discard is unanswered")
+    func hidingWaitsForTheDiscardAnswer() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        stageEdit(on: coordinator)
+        coordinator.isShowingConfirmAlert = true
+
+        coordinator.hideColumn("name")
+
+        let tab = try #require(tabManager.tabs.first { $0.id == tabId })
+        #expect(tab.columnLayout.hiddenColumns.isEmpty)
+    }
+
+    @Test("showing every column changes nothing while the discard is unanswered")
+    func showAllWaitsForTheDiscardAnswer() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        coordinator.hideColumn("name")
+        stageEdit(on: coordinator)
+        coordinator.isShowingConfirmAlert = true
+
+        coordinator.showAllColumns()
+
+        let tab = try #require(tabManager.tabs.first { $0.id == tabId })
+        #expect(tab.columnLayout.hiddenColumns == ["name"])
+    }
+
+    @Test("resetting the columns changes nothing while the discard is unanswered")
+    func resetWaitsForTheDiscardAnswer() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        coordinator.hideColumn("name")
+        stageEdit(on: coordinator)
+        coordinator.isShowingConfirmAlert = true
+
+        coordinator.resetColumns()
+
+        let tab = try #require(tabManager.tabs.first { $0.id == tabId })
+        #expect(tab.columnLayout.hiddenColumns == ["name"])
+    }
+
+    /// With nothing staged the gate answers immediately, so the common case takes no round trip.
+    @Test("hiding a column with no unsaved edits applies straight away")
+    func hidingWithNoEditsAppliesImmediately() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+
+        coordinator.hideColumn("name")
+
+        let tab = try #require(tabManager.tabs.first { $0.id == tabId })
+        #expect(tab.columnLayout.hiddenColumns == ["name"])
+    }
+
     @Test("hideColumn inserts into the active tab's hidden set")
     func hideColumn() {
         let (coordinator, tabManager) = makeCoordinator()

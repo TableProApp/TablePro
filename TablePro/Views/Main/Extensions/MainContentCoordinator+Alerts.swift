@@ -52,6 +52,10 @@ extension MainContentCoordinator {
         /// position names, which is what the edits are recorded against.
         case .displayOrder:
             return String(localized: "Changing which rows are shown will discard all unsaved changes.")
+        /// Named for the reload, like sort and the WHERE filter, because that is what costs the
+        /// edits: the table is fetched again with a different column list.
+        case .columnVisibility:
+            return String(localized: "Showing or hiding columns will reload data and discard all unsaved changes.")
         }
     }
 

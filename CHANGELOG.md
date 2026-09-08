@@ -71,6 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Unsaved cell edits discarded without asking when a column was hidden, shown or reset. (#2667)
 - Edited values left on screen with nothing tracking them after discarding to change a value filter. (#2667)
 - Discard prompt on applying a value filter that changes nothing. (#2667)
 - Unsaved cell edits following the row that took their place after a per-column value filter changed. (#2667)
