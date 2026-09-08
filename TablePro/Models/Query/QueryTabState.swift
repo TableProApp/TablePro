@@ -38,6 +38,10 @@ struct PersistedTab: Codable {
     var objectRef: DatabaseObjectRef?
     var queryParameters: [QueryParameter]?
     var sortColumns: [PersistedSortColumn]?
+    /// Who chose the saved order. Absent in every file written before this existed, which decodes
+    /// back to the behaviour those files were written under: `.user` when columns were saved,
+    /// `.unset` when none were.
+    var sortSource: SortSource?
     var restoredPage: Int?
     var restoredPageSize: Int?
     var cursorOffset: Int?
@@ -64,6 +68,7 @@ struct PersistedTab: Codable {
         objectRef: DatabaseObjectRef? = nil,
         queryParameters: [QueryParameter]? = nil,
         sortColumns: [PersistedSortColumn]? = nil,
+        sortSource: SortSource? = nil,
         restoredPage: Int? = nil,
         restoredPageSize: Int? = nil,
         cursorOffset: Int? = nil,
@@ -86,6 +91,7 @@ struct PersistedTab: Codable {
         self.objectRef = objectRef
         self.queryParameters = queryParameters
         self.sortColumns = sortColumns
+        self.sortSource = sortSource
         self.restoredPage = restoredPage
         self.restoredPageSize = restoredPageSize
         self.cursorOffset = cursorOffset
@@ -99,7 +105,8 @@ struct PersistedTab: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, title, query, tabType, tableName, isView, databaseName, schemaName
         case sourceFileURL, erDiagramSchemaKey, objectRef, queryParameters
-        case sortColumns, restoredPage, restoredPageSize, cursorOffset, cursorLength, collapsedFoldRanges
+        case sortColumns, sortSource, restoredPage, restoredPageSize, cursorOffset, cursorLength
+        case collapsedFoldRanges
         case columnWidths, columnContentWidths, windowGroupIndex
         case overflowFileName
     }
@@ -119,6 +126,7 @@ struct PersistedTab: Codable {
         objectRef = try container.decodeIfPresent(DatabaseObjectRef.self, forKey: .objectRef)
         queryParameters = try container.decodeIfPresent([QueryParameter].self, forKey: .queryParameters)
         sortColumns = try container.decodeIfPresent([PersistedSortColumn].self, forKey: .sortColumns)
+        sortSource = try container.decodeIfPresent(SortSource.self, forKey: .sortSource)
         restoredPage = try container.decodeIfPresent(Int.self, forKey: .restoredPage)
         restoredPageSize = try container.decodeIfPresent(Int.self, forKey: .restoredPageSize)
         cursorOffset = try container.decodeIfPresent(Int.self, forKey: .cursorOffset)
@@ -155,12 +163,25 @@ struct TabChangeSnapshot: Equatable {
     }
 }
 
-enum SortDirection: String, Equatable, Codable {
+enum SortDirection: String, Equatable, Codable, CaseIterable, Identifiable {
     case ascending
     case descending
 
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .ascending: return String(localized: "Ascending")
+        case .descending: return String(localized: "Descending")
+        }
+    }
+
+    var opposite: SortDirection {
+        self == .ascending ? .descending : .ascending
+    }
+
     mutating func toggle() {
-        self = self == .ascending ? .descending : .ascending
+        self = opposite
     }
 }
 
@@ -183,7 +204,14 @@ struct PersistedSortColumn: Codable, Equatable {
     let direction: SortDirection
 }
 
-enum SortSource: Equatable {
+/// Who decided the order the rows are in.
+///
+/// Three answers, not two, and the third is what makes "Don't Sort" stick. An empty `SortState`
+/// used to mean both "nothing has decided yet" and "the user turned sorting off", so
+/// `wantsDefaultSort` could not tell them apart and wrote the app default back over an explicit
+/// clear on the next first load. `.unset` is the former; `columns: [], source: .user` is the latter.
+enum SortSource: String, Equatable, Codable {
+    case unset
     case user
     case defaultSort
 }
@@ -191,9 +219,9 @@ enum SortSource: Equatable {
 /// Tracks sorting state for a table (supports multi-column sort)
 struct SortState: Equatable {
     var columns: [SortColumn] = []
-    var source: SortSource = .user
+    var source: SortSource = .unset
 
-    init(columns: [SortColumn] = [], source: SortSource = .user) {
+    init(columns: [SortColumn] = [], source: SortSource = .unset) {
         self.columns = columns
         self.source = source
     }

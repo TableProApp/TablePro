@@ -52,6 +52,7 @@ struct DataGridColumnPoolTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -71,6 +72,7 @@ struct DataGridColumnPoolTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
         #expect(pool.totalSlots == 4)
@@ -82,6 +84,7 @@ struct DataGridColumnPoolTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -107,6 +110,7 @@ struct DataGridColumnPoolTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -130,6 +134,7 @@ struct DataGridColumnPoolTests {
             savedLayout: layout,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -150,6 +155,7 @@ struct DataGridColumnPoolTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -163,6 +169,7 @@ struct DataGridColumnPoolTests {
             savedLayout: layout,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -176,6 +183,7 @@ struct DataGridColumnPoolTests {
             savedLayout: layout,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -196,6 +204,7 @@ struct DataGridColumnPoolTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -209,6 +218,7 @@ struct DataGridColumnPoolTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -235,6 +245,7 @@ struct DataGridColumnPoolTests {
             savedLayout: layout,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -258,6 +269,7 @@ struct DataGridColumnPoolTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: ["email"],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -281,6 +293,7 @@ struct DataGridColumnPoolTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -301,6 +314,7 @@ struct DataGridColumnPoolTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: { name, _ in name == "id" ? 50 : 200 }
         )
 
@@ -325,6 +339,7 @@ struct DataGridColumnPoolTests {
             savedLayout: layout,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: { _, _ in 9_999 }
         )
 
@@ -350,6 +365,7 @@ struct DataGridColumnPoolTests {
             savedLayout: layout,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: { name, _ in
                 calculatedNames.append(name)
                 return 200
@@ -380,6 +396,7 @@ struct DataGridColumnPoolTests {
             savedLayout: layout,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -400,6 +417,7 @@ struct DataGridColumnPoolTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -425,6 +443,7 @@ struct DataGridColumnPoolTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -442,6 +461,7 @@ struct DataGridColumnPoolTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -469,6 +489,7 @@ struct DataGridColumnPoolTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -483,6 +504,7 @@ struct DataGridColumnPoolTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: ["email"],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -508,6 +530,7 @@ struct DataGridColumnPoolTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -522,6 +545,7 @@ struct DataGridColumnPoolTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -547,6 +571,7 @@ struct DataGridColumnPoolTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -560,6 +585,7 @@ struct DataGridColumnPoolTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -587,6 +613,7 @@ struct DataGridColumnPoolTests {
             savedLayout: layout,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -600,6 +627,7 @@ struct DataGridColumnPoolTests {
             savedLayout: layout,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
 
@@ -623,6 +651,7 @@ struct DataGridColumnPoolTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
         #expect(dataColumns(in: tableView).count == 3)
@@ -638,6 +667,7 @@ struct DataGridColumnPoolTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
         #expect(dataColumns(in: tableView).count == 3)
@@ -660,6 +690,7 @@ struct DataGridColumnPoolTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: hidden,
+            firstClickSortDirection: .ascending,
             widthCalculator: defaultWidthCalculator
         )
     }

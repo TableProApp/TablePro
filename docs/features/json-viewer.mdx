@@ -94,7 +94,7 @@ A value that refuses to open in one mode still opens in another.
 
 ## Row details inspector
 
-**View > Show Inspector** (`Cmd+Option+I`), or the toolbar button at the trailing end, opens it. A field's editor follows its content, with no **Display As** step, and the first match wins.
+**View > Show Inspector** (`Cmd+Option+I`), or the toolbar button at the trailing end, opens it. Each field carries its column name and type on one line, with the value on the line beneath, so the value gets the row's full width however long the column name is. A field's editor follows its content, with no **Display As** step, and the first match wins.
 
 | Content | Editor |
 | --- | --- |
@@ -104,14 +104,16 @@ A value that refuses to open in one mode still opens in another.
 | An enum, set, or boolean column | Picker |
 | A blob column | Hex editor |
 | A `TEXT` variant, `CLOB` or `NTEXT` column, or any value with a line break or over 80 characters | Scrolling text box |
-| Anything else | One-line field |
+| Anything else | Single-line field |
 
 <Frame caption="Row details inspector with per-field editors">
   <img className="block dark:hidden" src="/images/row-details-inspector.png" alt="Row details inspector" />
   <img className="hidden dark:block" src="/images/row-details-inspector-dark.png" alt="Row details inspector" />
 </Frame>
 
-The length test reads the stored value, so a long value pasted into a one-line field stays on one line until you save and reselect the row.
+The length test reads the stored value, so a long value pasted into a single-line field stays on one line until you save and reselect the row.
+
+The hex editor shows the first 10 KB of a blob. Past that it reads **Truncated, read only** and refuses edits, rather than saving back the part it could show.
 
 The text box and the JSON editor each carry a drag handle under them, with separate remembered heights that survive a relaunch.
 

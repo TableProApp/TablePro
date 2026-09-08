@@ -399,6 +399,7 @@ struct DataGridView: NSViewRepresentable {
             savedLayout: savedLayout,
             isEditable: isEditable,
             hiddenColumnNames: configuration.hiddenColumns,
+            firstClickSortDirection: coordinator.firstClickSortDirection,
             widthCalculator: { columnName, slot in
                 coordinator.automaticColumnWidth(
                     for: columnName,

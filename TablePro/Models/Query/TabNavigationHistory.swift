@@ -27,6 +27,7 @@ struct TabNavigationEntry: Equatable {
     var resultsViewMode: ResultsViewMode
     var filterState: TabFilterState
     var sortColumns: [PersistedSortColumn]
+    var sortSource: SortSource
     var page: Int
     var pageSize: Int
     var anchorRowKey: [String: String]?

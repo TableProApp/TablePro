@@ -33,7 +33,7 @@ internal final class IntegrationsActivityWindowController: NSWindowController {
         window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.integrationsActivity)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.setContentSize(NSSize(width: 960, height: 600))
-        window.setFrameAutosaveName(WindowIdentifier.integrationsActivity)
+        window.setFrameAutosaveName(NSWindow.FrameAutosaveName(SplitViewAutosaveName.current(WindowIdentifier.integrationsActivity)))
         self.init(window: window)
     }
 }

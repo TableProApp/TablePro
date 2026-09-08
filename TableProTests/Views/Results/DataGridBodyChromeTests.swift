@@ -69,6 +69,7 @@ struct DataGridBodyChromeTests {
             savedLayout: nil,
             isEditable: true,
             hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
             widthCalculator: { _, _ in 120 }
         )
 

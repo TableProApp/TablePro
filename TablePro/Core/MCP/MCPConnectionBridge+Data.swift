@@ -97,7 +97,16 @@ extension MCPConnectionBridge {
                 dialect: dialect
             )
             let sortState = MCPConnectionBridge.sortState(from: request.sort, columns: names)
-            let selected = try MCPConnectionBridge.validatedSelection(request.columns, available: names)
+            let requested = try MCPConnectionBridge.validatedSelection(request.columns, available: names)
+            let sortColumnNames = sortState?.columns.compactMap(\.columnName) ?? []
+            /// A projection that leaves out the sorted column drops the sort with it on any driver
+            /// that resolves its order against the list it is handed, and the caller is still told
+            /// the rows are sorted. The missing sort columns are appended rather than merged, so
+            /// every column the caller asked for keeps the position it asked for: `browse_table`
+            /// returns positional rows and reordering them would break a client silently.
+            let selected = requested.map { projection in
+                projection + sortColumnNames.filter { !projection.contains($0) && names.contains($0) }
+            }
             guard !request.filters.isEmpty else {
                 return builder.buildBaseQuery(
                     tableName: request.table,

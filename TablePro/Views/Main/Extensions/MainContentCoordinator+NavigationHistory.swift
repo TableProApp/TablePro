@@ -56,6 +56,7 @@ extension MainContentCoordinator {
             resultsViewMode: tab.display.resultsViewMode,
             filterState: tab.filterState,
             sortColumns: tab.sortState.persistedColumns,
+            sortSource: tab.sortState.source,
             page: tab.pagination.currentPage,
             pageSize: tab.pagination.pageSize,
             anchorRowKey: capturePrimaryKeyAnchor(for: tab)
@@ -159,6 +160,10 @@ extension MainContentCoordinator {
         tabManager.mutate(at: tabIndex) { tab in
             tab.filterState = entry.filterState
             tab.pendingRestoredSort = entry.sortColumns.isEmpty ? nil : entry.sortColumns
+            tab.restoredSortSource = entry.sortSource
+            if entry.sortColumns.isEmpty {
+                tab.sortState = SortState(columns: [], source: entry.sortSource)
+            }
             tab.restoredPage = max(1, entry.page)
             tab.restoredPageSize = entry.pageSize
         }
