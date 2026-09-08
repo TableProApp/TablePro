@@ -72,6 +72,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Unsaved cell edits following the row that took their place after a per-column value filter changed. (#2667)
+- Undone cell edits coming back after switching tabs. (#2667)
+- Find bar showing another tab's search term, over this tab's match count. (#2667)
+- Cell selection cleared by Select All. (#2667)
+- Scroll and accessibility observers left registered every time a data grid was rebuilt. (#2667)
 - Grid row and cell selection lost on switching editor tabs, result view modes, or moving a tab to a new window. (#2667)
 - Connection and database choosers opening between the two toolbar capsules instead of under the one that was pressed.
 - Raw DuckDB driver text in place of the name of the app holding a locked database file. (#2518)

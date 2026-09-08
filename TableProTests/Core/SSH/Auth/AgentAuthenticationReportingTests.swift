@@ -19,11 +19,19 @@ import CLibSSH2
 @testable import TablePro
 
 /// Minimal ssh-agent that answers `SSH_AGENTC_REQUEST_IDENTITIES` with a fixed identity list.
+///
+/// The serve thread is retired before `stop()` closes anything, because `shutdown` on a listening
+/// socket does not wake a blocked `accept` on Darwin and closing its descriptor frees the number
+/// for the next `socket()` call. A thread that reached `accept` after that took the *next* agent's
+/// connections and answered them from its own identity list, so the empty-agent case handed the
+/// thirty-key case an empty answer and `.agentNoMatchingIdentity` came back as `.agentNoIdentities`.
 private final class FakeSSHAgent: @unchecked Sendable {
     let path: String
     private let listenFD: Int32
+    private let stopReadFD: Int32
+    private let stopWriteFD: Int32
     private let identityBlobs: [(blob: [UInt8], comment: String)]
-    private var thread: Thread?
+    private let stopped = DispatchSemaphore(value: 0)
 
     init?(identities: [(blob: [UInt8], comment: String)]) {
         identityBlobs = identities
@@ -34,14 +42,27 @@ private final class FakeSSHAgent: @unchecked Sendable {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         path = directory.appendingPathComponent("agent.sock").path
 
+        var stopFDs: [Int32] = [-1, -1]
+        let piped = stopFDs.withUnsafeMutableBufferPointer { buffer -> Int32 in
+            guard let base = buffer.baseAddress else { return -1 }
+            return Darwin.pipe(base)
+        }
+        guard piped == 0 else { return nil }
+        stopReadFD = stopFDs[0]
+        stopWriteFD = stopFDs[1]
+
         listenFD = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard listenFD >= 0 else { return nil }
+        guard listenFD >= 0 else {
+            Darwin.close(stopReadFD)
+            Darwin.close(stopWriteFD)
+            return nil
+        }
 
         var address = sockaddr_un()
         address.sun_family = sa_family_t(AF_UNIX)
         let pathBytes = Array(path.utf8)
         guard pathBytes.count < MemoryLayout.size(ofValue: address.sun_path) else {
-            Darwin.close(listenFD)
+            closeDescriptors()
             return nil
         }
         withUnsafeMutableBytes(of: &address.sun_path) { destination in
@@ -55,29 +76,56 @@ private final class FakeSSHAgent: @unchecked Sendable {
             }
         }
         guard bound == 0, Darwin.listen(listenFD, 4) == 0 else {
-            Darwin.close(listenFD)
+            closeDescriptors()
             return nil
         }
 
-        let thread = Thread { [weak self] in self?.serve() }
-        thread.start()
-        self.thread = thread
+        Thread { [self] in serve() }.start()
     }
 
     func stop() {
-        Darwin.shutdown(listenFD, SHUT_RDWR)
-        Darwin.close(listenFD)
+        var signal: UInt8 = 0
+        _ = Darwin.write(stopWriteFD, &signal, 1)
+        stopped.wait()
+        closeDescriptors()
         try? FileManager.default.removeItem(
             at: URL(fileURLWithPath: path).deletingLastPathComponent()
         )
     }
 
+    private func closeDescriptors() {
+        Darwin.close(listenFD)
+        Darwin.close(stopReadFD)
+        Darwin.close(stopWriteFD)
+    }
+
     private func serve() {
-        while true {
+        defer { stopped.signal() }
+        while waitForInput(on: listenFD) {
             let clientFD = Darwin.accept(listenFD, nil, nil)
             guard clientFD >= 0 else { return }
             handle(clientFD)
             Darwin.close(clientFD)
+        }
+    }
+
+    /// False as soon as `stop()` asks, so no descriptor this agent owns is read from or accepted
+    /// on after the call that closes it.
+    private func waitForInput(on fd: Int32) -> Bool {
+        while true {
+            var descriptors = [
+                pollfd(fd: fd, events: Int16(POLLIN), revents: 0),
+                pollfd(fd: stopReadFD, events: Int16(POLLIN), revents: 0),
+            ]
+            let ready = descriptors.withUnsafeMutableBufferPointer { buffer in
+                Darwin.poll(buffer.baseAddress, nfds_t(buffer.count), -1)
+            }
+            if ready < 0 {
+                guard errno == EINTR else { return false }
+                continue
+            }
+            guard descriptors[1].revents == 0 else { return false }
+            return descriptors[0].revents & Int16(POLLIN) != 0
         }
     }
 
@@ -124,6 +172,7 @@ private final class FakeSSHAgent: @unchecked Sendable {
         var buffer = [UInt8](repeating: 0, count: count)
         var filled = 0
         while filled < count {
+            guard waitForInput(on: fd) else { return nil }
             let read: Int = buffer.withUnsafeMutableBytes { destination in
                 guard let base = destination.baseAddress else { return -1 }
                 return Darwin.read(fd, base.advanced(by: filled), count - filled)
@@ -234,6 +283,29 @@ struct AgentAuthenticatorFailureTests {
             #expect(reason != .agentNoMatchingIdentity(.agentSocketSetting))
             #expect(reason != .agentNoIdentities(.agentSocketSetting))
             #expect(reason != nil)
+        }
+    }
+
+    /// A stopped agent used to leave its serve thread parked in `accept`, and Darwin hands the
+    /// descriptor number it was parked on to the next `socket()` call, so the thread went on to
+    /// answer the next agent's clients out of its own identity list.
+    @Test("An agent that has been stopped never answers the next agent's clients")
+    func aStoppedAgentDoesNotAnswerTheNextAgentsClients() throws {
+        for _ in 0 ..< 20 {
+            let stopped = try #require(FakeSSHAgent(identities: []))
+            stopped.stop()
+
+            let stocked = try #require(FakeSSHAgent(identities: Self.identities(count: 3, from: 1)))
+            defer { stocked.stop() }
+
+            try withTransportlessSession { session in
+                let reason = Self.failureReason {
+                    try AgentAuthenticator(socketPath: stocked.path, socketOrigin: .agentSocketSetting)
+                        .authenticate(session: session, username: "alice")
+                }
+
+                #expect(reason != .agentNoIdentities(.agentSocketSetting))
+            }
         }
     }
 
