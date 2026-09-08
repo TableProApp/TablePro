@@ -58,11 +58,14 @@ private struct ReorderableGrid {
         tableView.reloadData()
     }
 
-    /// Moves an attached column, the way dragging its header does.
+    /// Moves an attached column, the way dragging its header does. The destination is worked out
+    /// from the presented run rather than by adding one for the row-number column: no fixed position
+    /// in `tableColumns` names a data column (#2381).
     func moveColumn(named name: String, toDisplayPosition position: Int) {
         guard let dataIndex = columns.firstIndex(of: name),
-              let from = coordinator.tableColumnIndex(for: dataIndex) else { return }
-        tableView.moveColumn(from, toColumn: position + 1)
+              let from = coordinator.tableColumnIndex(for: dataIndex),
+              let firstPresented = coordinator.firstPresentedColumnIndex() else { return }
+        tableView.moveColumn(from, toColumn: firstPresented + position)
         coordinator.invalidateColumnIndexCache()
     }
 
