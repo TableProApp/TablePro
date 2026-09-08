@@ -5,7 +5,21 @@
 
 import AppKit
 
-/// The throughput readout inside the centred connection group.
+/// The throughput readout, beside the centred connection group rather than inside it.
+///
+/// Bare text with no capsule, which is what Xcode does with the one comparable thing it ships:
+/// measured on a running Xcode, its Window Title/Activity readout draws as plain text next to the
+/// Back/Forward capsule and wears no platter of its own. A capsule was tried here and it was wrong
+/// twice over. `title` on a group subitem is what earns a subitem its own capsule (measured: two
+/// titled subitems give two platters, three untitled ones give a single platter spanning all of
+/// them, and `controlRepresentation` changes neither), so the centre became three capsules for two
+/// controls and one number, and read as scattered.
+///
+/// Sitting outside the group is what keeps the pair centred. A group is laid out around its own
+/// midpoint, so a readout inside it pushed the connection and database capsules off centre by half
+/// the readout's width. Measured at 1400pt: with the readout as a separate adjacent item the group
+/// sits at x=647.0, midX=772.8, byte-identical to having no readout at all, and the text lands 6.0pt
+/// past the group's trailing edge.
 ///
 /// The one place in this toolbar that carries a view, and the reason is that the figure has to hold
 /// a constant width. A view-less item would carry it in `title`, and a title re-measures: with the
@@ -37,15 +51,6 @@ internal final class TransportRateToolbarItem: NSToolbarItem {
         field.translatesAutoresizingMaskIntoConstraints = false
         field.widthAnchor.constraint(equalToConstant: Self.fieldWidth).isActive = true
         view = field
-        /// After `view`, never before, and this ordering is the whole of it. `NSToolbarItem.h`:
-        /// "many of the set/get methods will be implemented by calls forwarded to the view you set,
-        /// if it responds to it", and `NSTextField` responds to `setBordered:`. Set first, the flag
-        /// is discarded and the readout draws as bare text beside two capsules; set after, AppKit
-        /// gives it a real `NSToolbarPlatterView` the same 36pt height and 8pt gap as its
-        /// neighbours. Measured: 2 platters and a 14pt-tall field one way, 3 platters and a 36pt
-        /// one the other. Writing `field.isBordered = false` anywhere later deletes the capsule
-        /// again, just as silently.
-        isBordered = true
         overflowEntry.isEnabled = false
         menuFormRepresentation = overflowEntry
         apply(rate: nil)

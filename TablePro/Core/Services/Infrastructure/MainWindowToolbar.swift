@@ -15,8 +15,9 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// The autosave name. Bumping it discards every saved arrangement, so it moves only when the
     /// default set changes enough that replaying a stored one would be worse than resetting it. The
     /// v3 move drops the hosted status item and four commands from the default, and a v2 list still
-    /// names identifiers the delegate no longer vends.
-    internal static let toolbarIdentifier = NSToolbar.Identifier("com.TablePro.main.toolbar.v3")
+    /// names identifiers the delegate no longer vends. v4 adds the throughput readout: a stored v3
+    /// arrangement does not name it, so a reader who had customized the toolbar would never see it.
+    internal static let toolbarIdentifier = NSToolbar.Identifier("com.TablePro.main.toolbar.v4")
 
     /// Which connection the toolbar is about. Every item reads this rather than capturing a
     /// coordinator, so a switch repoints one reference instead of rebuilding the window's whole
@@ -54,11 +55,47 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 
     private(set) var sidebarGroup: NSToolbarItemGroup?
 
-    /// The throughput readout, and the group that hosts it. One item per toolbar rather than one
-    /// per vend: the ticker writes into it directly, so it has to be the instance the group is
-    /// actually showing.
+    /// The throughput readout. One item per toolbar rather than one per vend: the ticker writes
+    /// into it directly, so it has to be the instance the toolbar is actually showing.
     internal let transportRateItem = TransportRateToolbarItem()
-    private weak var connectionGroupItem: NSToolbarItemGroup?
+
+    /// A group holding nothing but the readout, and the reason it exists is that emptying it is how
+    /// the readout leaves the toolbar. Measured: an item whose view is hidden keeps its 75pt, and a
+    /// view constrained to zero width still leaves a 24pt gap, so neither hides it cleanly.
+    /// `NSToolbarItem.isHidden` does, but it is macOS 15 and the app targets 14. An empty group
+    /// reclaims the space exactly, on every version, with no availability gate.
+    internal private(set) lazy var transportRateGroup: NSToolbarItemGroup = {
+        let group = NSToolbarItemGroup(itemIdentifier: TransportRateToolbarItem.identifier)
+        let label = String(localized: "Throughput")
+        group.label = label
+        group.paletteLabel = label
+        group.subitems = []
+        return group
+    }()
+    /// Back and forward, held rather than vended fresh, because emptying and refilling this group is
+    /// how the pair leaves and rejoins the toolbar. Measured: emptying it drops its platter and
+    /// moves nothing else at all (the centred group held x=647.0 midX=772.8 across hidden, shown and
+    /// hidden again), and a toggle plus layout cost 9.5ms at worst over twenty flips.
+    ///
+    /// Apple does not do this. Measured on a running Xcode, its Back/Forward group keeps its full
+    /// 75pt capsule with both segments reported DISABLED when there is nowhere to go. This app hides
+    /// it instead, by explicit request.
+    internal private(set) lazy var navigationGroup: NSToolbarItemGroup = {
+        /// Empty to begin with, which is the honest default: a toolbar with no connection behind it
+        /// has no history to walk. `syncNavigationVisibility` fills it once there is one.
+        let group = makeNativeGroup(
+            id: Self.backForwardGroup,
+            label: String(localized: "Navigation"),
+            subitems: []
+        )
+        /// `isNavigational` is what puts back and forward on the leading edge of the content title
+        /// area, where Finder and Safari keep them.
+        group.isNavigational = true
+        return group
+    }()
+
+    private lazy var navigationSubitems: [NSToolbarItem] = [subitemNavigateBack(), subitemNavigateForward()]
+
     private var transportSampler = TransportRateSampler()
     private var transportTicker: Task<Void, Never>?
 
@@ -186,27 +223,23 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         transportRateItem.apply(rate: totals.flatMap { transportSampler.sample($0, at: .now) })
     }
 
-    /// The readout joins and leaves the centred group as a whole item, which is the one structural
-    /// change AppKit does re-measure. It happens when a connection is adopted, never under a
-    /// running tunnel, so nothing moves while a figure is ticking.
-    internal func connectionGroupSubitems() -> [NSToolbarItem] {
-        let controls = [subitemConnection(), subitemDatabase()]
-        return carriesMeasuredTransport ? controls + [transportRateItem] : controls
-    }
-
-    internal func adopt(connectionGroup group: NSToolbarItemGroup) {
-        connectionGroupItem = group
-    }
-
-    /// The control subitems are carried over rather than rebuilt. They hold their own menu form,
-    /// shortcut binding and title provider, and vending a second pair would leave the group showing
-    /// items nothing else in the toolbar has a reference to.
-    private func syncConnectionGroupSubitems() {
-        guard let group = connectionGroupItem else { return }
-        let carries = group.subitems.contains { $0 === transportRateItem }
+    /// Emptying and refilling the readout's own group is the one structural change AppKit
+    /// re-measures. It happens when a connection is adopted, never under a running tunnel, so
+    /// nothing moves while a figure is ticking.
+    private func syncTransportRateVisibility() {
+        let carries = !transportRateGroup.subitems.isEmpty
         guard carries != carriesMeasuredTransport else { return }
-        let controls = group.subitems.filter { $0 !== transportRateItem }
-        group.subitems = carriesMeasuredTransport ? controls + [transportRateItem] : controls
+        transportRateGroup.subitems = carriesMeasuredTransport ? [transportRateItem] : []
+    }
+
+    /// Both arrows go together. Hiding one of a segmented pair would leave a lone half-capsule and
+    /// change the group's width on every step through the history, which is a worse read than a
+    /// dimmed arrow.
+    private func syncNavigationVisibility() {
+        let canNavigate = coordinator.map { $0.canNavigateBack || $0.canNavigateForward } ?? false
+        let shown = !navigationGroup.subitems.isEmpty
+        guard shown != canNavigate else { return }
+        navigationGroup.subitems = canNavigate ? navigationSubitems : []
     }
 
     func invalidate() {
@@ -219,7 +252,6 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         transportTicker?.cancel()
         transportTicker = nil
         transportRateItem.apply(rate: nil)
-        connectionGroupItem = nil
         sidebarGroup = nil
         coordinator = nil
     }
@@ -235,6 +267,8 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             _ = self?.coordinator?.toolbarState.hasDataPendingChanges
             _ = self?.coordinator?.toolbarState.safeModeLevel
             _ = self?.coordinator?.toolbarState.currentDatabase
+            _ = self?.coordinator?.canNavigateBack
+            _ = self?.coordinator?.canNavigateForward
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self,
@@ -242,6 +276,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
                       coordinatorIdentifier == self.coordinator.map({ ObjectIdentifier($0) })
                 else { return }
                 self.observeItemState()
+                self.syncNavigationVisibility()
                 self.managedToolbar.validateVisibleItems()
             }
         }
@@ -251,7 +286,8 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// a menu built at construction keeps whatever it was built with, and a label is not part of
     /// what `validate()` reconsiders. They are pushed here instead.
     private func refreshConnectionScopedItems() {
-        syncConnectionGroupSubitems()
+        syncTransportRateVisibility()
+        syncNavigationVisibility()
         for item in allItems() {
             switch item.itemIdentifier {
             case Self.connection:
@@ -353,6 +389,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         backForwardGroup,
         .flexibleSpace,
         connectionGroup,
+        TransportRateToolbarItem.identifier,
         .flexibleSpace,
         refreshSaveGroup,
         editorGroup,

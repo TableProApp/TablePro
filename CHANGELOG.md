@@ -56,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Inspector shows the selected row as Fields or JSON, with AI Chat moved out of its tab strip.
 - Structured inspector values expand in place instead of replacing the whole pane.
 - Object tree context menu regrouped into four groups by intent, with the connection-wide commands off object rows.
+- Back and Forward absent from the toolbar while a tab has no history to walk, in place of two dimmed arrows.
 - View Options as a control in the sidebar's filter row, in place of an entry on every context menu.
 - View ER Diagram and New View on the object tree's empty-area menu only.
 - Keyboard shortcuts shown on sidebar context menu items that have a menu bar equivalent.

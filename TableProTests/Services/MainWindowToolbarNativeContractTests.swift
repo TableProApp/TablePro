@@ -65,15 +65,74 @@ struct MainWindowToolbarNativeContractTests {
         }
     }
 
-    /// The capsule, and the ordering that is the whole of it. `NSToolbarItem.h` forwards many of its
-    /// setters to the view once one is set, and `NSTextField` responds to `setBordered:`, so
-    /// `isBordered` written before `view` is discarded and the readout draws as bare text between
-    /// two capsules. Written after, AppKit gives it a real platter at the same height and gap as its
-    /// neighbours: measured, 2 platters and a 14pt-tall field one way, 3 platters and a 36pt one the
-    /// other. Nothing warns when it is wrong, which is why this assertion exists.
-    @Test("The throughput readout wears the group's capsule")
-    func throughputReadoutIsBordered() {
-        #expect(MainWindowToolbar().transportRateItem.isBordered)
+    /// Bare text, no capsule, which is what Xcode does with the one comparable thing it ships: its
+    /// Window Title/Activity readout draws as plain text beside the Back/Forward capsule, measured
+    /// on a running Xcode. `isBordered` here would give the readout a platter of its own and make
+    /// the centre three capsules for two controls and one number.
+    @Test("The throughput readout wears no capsule")
+    func throughputReadoutIsUnbordered() {
+        #expect(!MainWindowToolbar().transportRateItem.isBordered)
+    }
+
+    /// Beside the centred pair, never inside it. A group is laid out around its own midpoint, so a
+    /// readout among the subitems pushes the connection and database capsules off centre by half its
+    /// width. Measured at 1400pt: as its own adjacent item the group sits at x=647.0 midX=772.8,
+    /// byte-identical to carrying no readout at all.
+    @Test("The readout sits beside the centred group, not inside it and not centred itself")
+    func readoutIsAdjacentToTheCentre() throws {
+        let owner = MainWindowToolbar()
+        let group = try #require(
+            owner.toolbar(
+                owner.managedToolbar,
+                itemForItemIdentifier: MainWindowToolbar.connectionGroup,
+                willBeInsertedIntoToolbar: true
+            ) as? NSToolbarItemGroup
+        )
+
+        #expect(!group.subitems.contains { $0 === owner.transportRateItem })
+        #expect(!owner.managedToolbar.centeredItemIdentifiers.contains(TransportRateToolbarItem.identifier))
+
+        let identifiers = MainWindowToolbar.defaultItemIdentifiers
+        let centre = try #require(identifiers.firstIndex(of: MainWindowToolbar.connectionGroup))
+        let readout = try #require(identifiers.firstIndex(of: TransportRateToolbarItem.identifier))
+        #expect(readout == centre + 1, "The readout must follow the centred group immediately")
+    }
+
+    /// Emptying the readout's own group is how it leaves the toolbar. Measured, nothing else hides
+    /// it cleanly: a hidden view keeps its 75pt and a zero-width constraint still leaves 24pt, and
+    /// `NSToolbarItem.isHidden` is macOS 15 against a macOS 14 floor.
+    @Test("A connection with no measurable transport shows no readout")
+    func unmeasuredConnectionsCarryNoReadout() {
+        #expect(MainWindowToolbar().transportRateGroup.subitems.isEmpty)
+    }
+
+    /// Back and forward hide when there is nowhere to go, which is a deliberate departure from
+    /// Apple: measured on a running Xcode, its Back/Forward group keeps its full 75pt capsule with
+    /// both segments DISABLED. Emptying the group is what hides it, and measured, doing so drops its
+    /// platter and moves nothing else, the centred group included.
+    @Test("Back and forward are absent with no history to walk")
+    func navigationHidesWithNowhereToGo() {
+        let owner = MainWindowToolbar()
+
+        #expect(owner.navigationGroup.subitems.isEmpty)
+        #expect(owner.navigationGroup.isNavigational)
+    }
+
+    /// Both arrows go together. Hiding one of a segmented pair leaves a lone half-capsule whose
+    /// width changes on every step through the history.
+    @Test("The navigation group is the whole pair or nothing")
+    func navigationHidesAsAPair() throws {
+        let owner = MainWindowToolbar()
+        let vended = try #require(
+            owner.toolbar(
+                owner.managedToolbar,
+                itemForItemIdentifier: MainWindowToolbar.backForwardGroup,
+                willBeInsertedIntoToolbar: true
+            ) as? NSToolbarItemGroup
+        )
+
+        #expect(vended === owner.navigationGroup, "The toolbar must show the instance that gets emptied")
+        #expect(vended.subitems.isEmpty || vended.subitems.count == 2)
     }
 
     /// The readout is a readout: it publishes no action, so AppKit never validates it and it has no
@@ -106,15 +165,6 @@ struct MainWindowToolbarNativeContractTests {
 
         #expect(!entry.title.contains("\u{2193}"))
         #expect(!entry.title.contains("\u{2191}"))
-    }
-
-    /// Structural, and deliberately so: adding or removing a subitem is the one change AppKit does
-    /// re-measure. It happens when a connection is adopted, never under a running tunnel.
-    @Test("A connection with no measurable transport carries no readout")
-    func unmeasuredConnectionsCarryNoReadout() {
-        let owner = MainWindowToolbar()
-
-        #expect(!owner.connectionGroupSubitems().contains { $0 === owner.transportRateItem })
     }
 
     /// Finder ships 8 controls and Xcode 13. The default set was 17 plus a hosted status blob, and

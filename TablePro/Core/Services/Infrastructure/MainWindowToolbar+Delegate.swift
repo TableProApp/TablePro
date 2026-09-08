@@ -28,16 +28,10 @@ extension MainWindowToolbar {
         case Self.sidebarToggle:
             return makeSidebarToggleItem(claimsSlot: Self.claimsItemSlot(willBeInsertedIntoToolbar: flag))
         case Self.backForwardGroup:
-            /// `isNavigational` is what puts back and forward on the leading edge of the content
-            /// title area, where Finder and Safari keep them, instead of in the slot the identifier
-            /// list nominally gives them.
-            let group = makeNativeGroup(
-                id: itemIdentifier,
-                label: String(localized: "Navigation"),
-                subitems: [subitemNavigateBack(), subitemNavigateForward()]
-            )
-            group.isNavigational = true
-            return group
+            /// Held rather than built here, because emptying its subitems is how the pair hides
+            /// itself when there is nowhere to go, and the toolbar has to be showing the instance
+            /// that gets emptied.
+            return navigationGroup
         case Self.connectionGroup:
             /// Native, like every other group here. As a view-backed group it drew a hosted SwiftUI
             /// row and its subitems were inert: the header is explicit that a property set on the
@@ -47,16 +41,17 @@ extension MainWindowToolbar {
             /// Not navigational, unlike back and forward. `isNavigational` asks AppKit to lift an
             /// item to the leading edge of the content area, which is the opposite of what
             /// `centeredItemIdentifiers` asks for, and this group is the centred one.
-            ///
-            /// The throughput readout joins it here rather than standing on its own, so it is
-            /// centred with the pair it describes and shares their capsule.
-            let group = makeNativeGroup(
+            return makeNativeGroup(
                 id: itemIdentifier,
                 label: String(localized: "Connection"),
-                subitems: connectionGroupSubitems()
+                subitems: [subitemConnection(), subitemDatabase()]
             )
-            adopt(connectionGroup: group)
-            return group
+        case TransportRateToolbarItem.identifier:
+            /// Beside the centred pair, never inside it. A group is laid out around its own
+            /// midpoint, so a readout inside this one pushed the two capsules off centre by half
+            /// the readout's width; measured as its own adjacent item, the group sits where it
+            /// sits with no readout at all and the figure lands 6.0pt past its trailing edge.
+            return transportRateGroup
         case Self.safeMode:
             return subitemSafeMode()
         case Self.editorGroup:
