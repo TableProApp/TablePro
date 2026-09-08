@@ -638,6 +638,19 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         }
     }
 
+    /// Registered for the life of the coordinator, so it has to come off when the grid goes.
+    ///
+    /// `NotificationCenter` retains a block observer's closure, and a coordinator is built fresh on
+    /// every mount, so an entry left behind at teardown is never fired again and never reclaimed.
+    /// The closure captures `self` weakly, so this leaks the registration rather than the grid.
+    func detachAccessibilityActivationObserver() {
+        guard let accessibilityActivationObserver else { return }
+        NotificationCenter.default.removeObserver(accessibilityActivationObserver)
+        self.accessibilityActivationObserver = nil
+    }
+
+    var hasAccessibilityActivationObserver: Bool { accessibilityActivationObserver != nil }
+
     /// Whether this row is one an assistive client can be reading right now.
     ///
     /// Walking the accessibility tree makes `NSTableView` prepare every row of the page, not the
@@ -680,10 +693,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         settingsCancellable = nil
         themeCancellable?.cancel()
         themeCancellable = nil
-        if let accessibilityActivationObserver {
-            NotificationCenter.default.removeObserver(accessibilityActivationObserver)
-        }
-        accessibilityActivationObserver = nil
+        detachAccessibilityActivationObserver()
         visualIndex.clear()
         displayCache.removeAll()
         columnDisplayFormats = []
