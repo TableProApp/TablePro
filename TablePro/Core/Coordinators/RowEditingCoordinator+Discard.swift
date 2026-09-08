@@ -51,6 +51,30 @@ extension RowEditingCoordinator {
         pendingTruncates: inout Set<DatabaseTreeTableRef>,
         pendingDeletes: inout Set<DatabaseTreeTableRef>
     ) {
+        restoreRowBufferToOriginals()
+
+        if let tableName = parent.tabManager.selectedTab?.tableContext.tableName {
+            parent.saveLastFilters(for: tableName)
+        }
+
+        pendingTruncates.removeAll()
+        pendingDeletes.removeAll()
+        parent.changeManager.clearChangesAndUndoHistory()
+
+        if let (_, index) = parent.tabManager.selectedTabAndIndex {
+            parent.tabManager.mutate(at: index) { $0.pendingChanges = TabChangeSnapshot() }
+        }
+
+        Task { [parent] in await parent.refreshTables() }
+    }
+
+    /// Puts the loaded rows back the way the server last reported them.
+    ///
+    /// An edit is written straight into the tab's `TableRows` as well as being recorded, so
+    /// clearing the change records alone leaves the edited values on screen with nothing tracking
+    /// them, and the next edit captures an unsaved value as its baseline. A discard that re-queries
+    /// replaces the buffer wholesale and needs none of this; one that does not has to undo it here.
+    func restoreRowBufferToOriginals() {
         let originalValues = parent.changeManager.getOriginalValues()
         var deltas: [Delta] = []
         if let (tab, _) = parent.tabManager.selectedTabAndIndex {
@@ -81,20 +105,6 @@ extension RowEditingCoordinator {
         for delta in deltas {
             parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(delta)
         }
-
-        if let tableName = parent.tabManager.selectedTab?.tableContext.tableName {
-            parent.saveLastFilters(for: tableName)
-        }
-
-        pendingTruncates.removeAll()
-        pendingDeletes.removeAll()
-        parent.changeManager.clearChangesAndUndoHistory()
-
-        if let (_, index) = parent.tabManager.selectedTabAndIndex {
-            parent.tabManager.mutate(at: index) { $0.pendingChanges = TabChangeSnapshot() }
-        }
-
-        Task { [parent] in await parent.refreshTables() }
     }
 
     private func collectInsertedRowIDs(tabId: UUID, indices: Set<Int>) -> Set<RowID> {

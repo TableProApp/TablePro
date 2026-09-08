@@ -376,9 +376,25 @@ extension TableViewCoordinator {
         scheduleLayoutPersist()
     }
 
+    /// Gated whole, not just at the reload. `applyDisplayFormats` remaps the value filter and
+    /// rewrites the format array before it reports whether anything moved, so gating the reload
+    /// alone left a declined change half-applied: the state moved, the grid did not, and the next
+    /// unrelated update would have shown the reorder anyway.
+    ///
+    /// Only when a filter is active, because that is the only way a format change can renumber the
+    /// display at all. Without one this is a repaint, and repaints do not touch pending edits.
     @objc func setDisplayFormat(_ sender: NSMenuItem) {
         guard let info = sender.representedObject as? DisplayFormatMenuItem else { return }
+        guard valueFilterState.isActive else {
+            applyDisplayFormatSelection(info)
+            return
+        }
+        confirmDisplayOrderChange { [weak self] in
+            self?.applyDisplayFormatSelection(info)
+        }
+    }
 
+    private func applyDisplayFormatSelection(_ info: DisplayFormatMenuItem) {
         if let scope = tableScope {
             ValueDisplayFormatService.shared.setOverride(
                 info.format,
@@ -395,12 +411,8 @@ extension TableViewCoordinator {
         )
         let remappedValueFilters = updateDisplayFormats(formats)
 
-        /// A remap moves the same rows to different positions, so it re-points a pending edit
-        /// exactly as an outright filter change does and takes the same confirmation.
         if remappedValueFilters {
-            confirmDisplayOrderChange { [weak self] in
-                self?.reloadAfterValueFilterChange()
-            }
+            reloadAfterValueFilterChange()
             return
         }
 

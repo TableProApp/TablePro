@@ -140,6 +140,66 @@ struct ValueFilterChangeGuardTests {
         #expect(!coordinator.valueFilterState.isActive)
     }
 
+    /// Opening the popover and pressing Apply without touching anything is ordinary, and it moves no
+    /// row, so it must not put a discard alert in the reader's way.
+    @Test("applying the filter it already has asks nothing and still dismisses")
+    func reapplyingTheSameFilterAsksNothing() {
+        let delegate = DeferringDelegate()
+        let coordinator = makeCoordinator(delegate: delegate)
+        coordinator.applyValueFilter(onlyActive(), columnName: "status", forColumn: 0)
+        delegate.confirm()
+        #expect(delegate.askedCount == 1)
+
+        var dismissed = false
+        coordinator.applyValueFilter(
+            onlyActive(),
+            columnName: "status",
+            forColumn: 0,
+            onApplied: { dismissed = true }
+        )
+
+        #expect(delegate.askedCount == 1)
+        #expect(dismissed)
+    }
+
+    /// The popover must not close while the reader still has an alert to answer, or Cancel leaves
+    /// them with no popover and no filter and no way to see what happened.
+    @Test("the popover is dismissed only once the change is applied")
+    func popoverDismissalWaitsForTheAnswer() {
+        let delegate = DeferringDelegate()
+        let coordinator = makeCoordinator(delegate: delegate)
+
+        var dismissed = false
+        coordinator.applyValueFilter(
+            onlyActive(),
+            columnName: "status",
+            forColumn: 0,
+            onApplied: { dismissed = true }
+        )
+        #expect(!dismissed)
+
+        delegate.confirm()
+        #expect(dismissed)
+    }
+
+    @Test("declining leaves the popover open")
+    func decliningLeavesThePopoverOpen() {
+        let delegate = DeferringDelegate()
+        let coordinator = makeCoordinator(delegate: delegate)
+
+        var dismissed = false
+        coordinator.applyValueFilter(
+            onlyActive(),
+            columnName: "status",
+            forColumn: 0,
+            onApplied: { dismissed = true }
+        )
+        delegate.discard()
+
+        #expect(!dismissed)
+        #expect(!coordinator.valueFilterState.isActive)
+    }
+
     @Test("clearing when nothing is filtered asks nothing")
     func clearingWithNoFilterAsksNothing() {
         let delegate = DeferringDelegate()

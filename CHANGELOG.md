@@ -71,6 +71,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Edited values left on screen with nothing tracking them after discarding to change a value filter. (#2667)
+- Discard prompt on applying a value filter that changes nothing. (#2667)
 - Unsaved cell edits following the row that took their place after a per-column value filter changed. (#2667)
 - Undone cell edits coming back after switching tabs. (#2667)
 - Find bar showing another tab's search term, over this tab's match count. (#2667)

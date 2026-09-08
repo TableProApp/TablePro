@@ -36,15 +36,23 @@ extension MainContentCoordinator {
         if let oldId = oldTabId,
            let oldIndex = tabManager.tabs.firstIndex(where: { $0.id == oldId })
         {
-            /// Written whether or not there are changes, because an empty snapshot is the correct
-            /// answer once the reader has undone their edits and the tab is still holding the one a
-            /// previous switch saved. Gated on `hasChanges`, the undo was never recorded: switching
-            /// back restored the edit the reader had just taken back, and the tab went on reporting
-            /// unsaved work. Nothing has repointed the change manager at this point, so it still
-            /// describes the tab being left: every other `configureForTable` caller is either the
-            /// incoming block below or guarded to the selected tab.
-            let savedState = changeManager.saveState()
-            tabManager.mutate(at: oldIndex) { $0.pendingChanges = savedState }
+            /// The second half of the condition is the fix. Gated on `hasChanges` alone, an undo was
+            /// never recorded: the tab kept the snapshot a previous switch had saved, so switching
+            /// back restored the edit the reader had just taken back and the tab went on reporting
+            /// unsaved work. Writing the empty snapshot is what clears it.
+            ///
+            /// Still conditional, because `mutate` takes the element `inout` and so runs the array's
+            /// setter whether or not the block writes: an unconditional write would fire `tabs`'
+            /// `didSet` over every open tab on every switch, for nothing.
+            ///
+            /// Safe to take the snapshot from the change manager here because nothing has repointed
+            /// it yet: every other `configureForTable` and `restoreState` caller is either the
+            /// incoming block below or guarded to the selected tab, and this runs synchronously
+            /// from the selection change with no suspension in between.
+            if changeManager.hasChanges || tabManager.tabs[oldIndex].pendingChanges.hasChanges {
+                let savedState = changeManager.saveState()
+                tabManager.mutate(at: oldIndex) { $0.pendingChanges = savedState }
+            }
             // One editor serves every query tab, so `cursorPositions` describes the outgoing tab
             // only until the switch completes. Persistence writes the live caret for the selected
             // tab alone, so a caret not captured here is gone once the editor has consumed the

@@ -38,7 +38,7 @@ final class DataTabGridDelegate: DataGridViewDelegate {
             apply()
             return
         }
-        coordinator.confirmDiscardChangesIfNeeded(action: .displayOrder) { confirmed in
+        coordinator.confirmDiscardRestoringRowsIfNeeded(action: .displayOrder) { confirmed in
             guard confirmed else { return }
             apply()
         }

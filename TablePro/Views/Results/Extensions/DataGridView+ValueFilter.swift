@@ -70,15 +70,32 @@ extension TableViewCoordinator {
     /// Confirmed before the state moves, not after: the alert's whole purpose is to let the reader
     /// keep edits that this change would re-point, so the filter must not be written until they
     /// have said yes.
-    func applyValueFilter(_ filter: ColumnValueFilter?, columnName: String, forColumn dataIndex: Int) {
+    func applyValueFilter(
+        _ filter: ColumnValueFilter?,
+        columnName: String,
+        forColumn dataIndex: Int,
+        onApplied: (() -> Void)? = nil
+    ) {
+        /// Nothing to confirm when the filter lands on the state it already had. Opening the popover
+        /// and pressing Apply without touching anything is an ordinary thing to do, and asking the
+        /// reader to discard their edits for a change that moves no row at all trains them to
+        /// dismiss the alert without reading it.
+        var candidate = valueFilterState
+        if let filter {
+            candidate.set(filter, columnName: columnName, forColumn: dataIndex)
+        } else {
+            candidate.clear(column: dataIndex)
+        }
+        guard candidate != valueFilterState else {
+            onApplied?()
+            return
+        }
+
         confirmDisplayOrderChange { [weak self] in
             guard let self else { return }
-            if let filter {
-                self.valueFilterState.set(filter, columnName: columnName, forColumn: dataIndex)
-            } else {
-                self.valueFilterState.clear(column: dataIndex)
-            }
+            self.valueFilterState = candidate
             self.reloadAfterValueFilterChange()
+            onApplied?()
         }
     }
 
@@ -135,9 +152,16 @@ extension TableViewCoordinator {
                 values: values,
                 loadedRowCount: loadedRowCount,
                 initialFilter: initialFilter,
+                /// Dismissed from inside the applied work, not beside it. The confirmation is a
+                /// sheet and resolves asynchronously, so closing here would put the popover away
+                /// before the reader had answered the alert it raised.
                 onApply: { filter in
-                    self?.applyValueFilter(filter, columnName: columnName, forColumn: dataIndex)
-                    dismiss()
+                    self?.applyValueFilter(
+                        filter,
+                        columnName: columnName,
+                        forColumn: dataIndex,
+                        onApplied: dismiss
+                    )
                 },
                 onCancel: dismiss
             )
