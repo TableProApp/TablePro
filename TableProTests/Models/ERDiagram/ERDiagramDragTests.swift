@@ -171,6 +171,27 @@ struct ERDiagramDragTests {
         #expect(viewModel.nodeRect(for: nodeId).minY >= 0)
     }
 
+    @Test("Reversing after an overshoot past the origin moves the node straight away")
+    func dragFollowsThePointerBackAfterAnOvershoot() {
+        let viewModel = makeViewModel()
+        let nodeId = placeNode(in: viewModel, at: CGPoint(x: 400, y: 300))
+
+        viewModel.beginDrag(at: CGPoint(x: 400, y: 300))
+        viewModel.updateDrag(
+            translation: CGSize(width: -900, height: -900),
+            currentPoint: CGPoint(x: -500, y: -600)
+        )
+        let atTheEdge = viewModel.position(for: nodeId)
+
+        viewModel.updateDrag(
+            translation: CGSize(width: -800, height: -800),
+            currentPoint: CGPoint(x: -400, y: -500)
+        )
+
+        #expect(viewModel.position(for: nodeId).x == atTheEdge.x + 100)
+        #expect(viewModel.position(for: nodeId).y == atTheEdge.y + 100)
+    }
+
     @Test("The clamp only bites at the edge and leaves an ordinary drag alone")
     func clampLeavesInteriorDragsAlone() {
         let viewModel = makeViewModel()

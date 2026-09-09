@@ -51,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Zoom ladder for both diagrams, stepping 5, 10, 25, 33, 50, 67, 75, 100, 150, 200 and 300 per cent, with the buttons disabled at the ends. (#2692)
-- Fit to Window below 25% for a diagram too large to fit at it. (#2692)
+- Fit to Window at whatever scale the diagram needs, instead of stopping at 25%. (#2692)
 - Connection editor rebuilt around a sidebar of four sections, General, Network, Options and Appearance, in place of up to eleven panes.
 - One Connect via picker for SSH, Cloudflare, Cloud SQL Auth Proxy, SOCKS and Tunnel Command, in place of five Enable switches.
 - Save, Cancel and Test Connection on a bottom action bar instead of the titlebar.

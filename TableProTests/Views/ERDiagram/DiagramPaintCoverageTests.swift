@@ -118,22 +118,32 @@ struct DiagramPaintCoverageTests {
         }
     }
 
-    private func makeDiagramView(_ scene: ERDiagramScene) -> ERDiagramSceneView {
-        let view = ERDiagramSceneView(frame: CGRect(origin: .zero, size: scene.size))
-        view.scene = scene
-        return view
+    /// The production shape, not the bare AppKit leaf: `MagnifiableCanvasView` puts an
+    /// `NSHostingView` in as the document view, and the diagram sits inside it as a representable
+    /// carrying the frame and the gesture modifiers. Testing the leaf alone would stay green if the
+    /// representable were reverted to a `Canvas`, which is the whole defect.
+    private func makeDiagramDocument(_ scene: ERDiagramScene) -> NSView {
+        let hosting = NSHostingView(
+            rootView: ERDiagramSceneCanvas(scene: scene)
+                .frame(width: scene.size.width, height: scene.size.height)
+                .contentShape(Rectangle())
+        )
+        hosting.translatesAutoresizingMaskIntoConstraints = true
+        hosting.frame = CGRect(origin: .zero, size: scene.size)
+        return hosting
     }
 
-    /// Every magnification here is low enough to put the far node inside the viewport, which is
-    /// exactly the range where the old drawing surface stopped painting: at 0.41 it gave up at
-    /// document x 1112, and the far node sits at 2200.
+    /// Every magnification here is low enough to put the far node inside the viewport and high
+    /// enough that a node is still more than a pixel, which is exactly the range where the old
+    /// drawing surface stopped painting: at 0.41 it gave up at document x 1112, and the far node
+    /// sits at 2200.
     @Test(
         "The ER diagram paints its far corner at every zoom that can show it",
-        arguments: [DiagramZoom.minimum, 0.1, 0.33, 0.41, 0.5]
+        arguments: [0.05, 0.1, 0.33, 0.41, 0.5]
     )
     func erDiagramPaintsWholeCanvas(magnification: CGFloat) {
         let scene = makeScene()
-        let probe = makeProbe(documentView: makeDiagramView(scene), magnification: magnification)
+        let probe = makeProbe(documentView: makeDiagramDocument(scene), magnification: magnification)
 
         #expect(isPainted(Self.nearNodeCentre, in: probe, magnification: magnification))
         #expect(isPainted(Self.farNodeCentre, in: probe, magnification: magnification))
@@ -142,12 +152,46 @@ struct DiagramPaintCoverageTests {
     @Test("The ER diagram still paints at natural scale")
     func erDiagramPaintsAtNaturalScale() {
         let scene = makeScene()
-        let probe = makeProbe(documentView: makeDiagramView(scene), magnification: 1.0)
+        let probe = makeProbe(documentView: makeDiagramDocument(scene), magnification: 1.0)
 
         #expect(isPainted(Self.nearNodeCentre, in: probe, magnification: 1.0))
     }
 
-    @Test("The query plan paints its arrows at every zoom the app can reach", arguments: [DiagramZoom.minimum, 0.41])
+    /// The badges are SF Symbols, drawn from a cached `NSImage` rather than a cached bitmap so they
+    /// stay sharp at every scale. Sampling for the key's yellow is what proves they still draw at
+    /// all, which a node-fill assertion cannot.
+    @Test("A primary key column carries its badge")
+    func primaryKeyBadgeIsPainted() {
+        let scene = makeScene()
+        let probe = makeProbe(documentView: makeDiagramDocument(scene), magnification: 1.0)
+        let rect = self.rect(centredOn: Self.nearNodeCentre)
+        let badgeCentre = CGPoint(
+            x: rect.minX + 14 * ERDiagramLayout.typeScale,
+            y: rect.minY + ERDiagramLayout.headerHeight + ERDiagramLayout.columnRowHeight / 2
+        )
+
+        guard let rep = probe.scrollView.bitmapImageRepForCachingDisplay(in: probe.scrollView.bounds) else {
+            Issue.record("no bitmap")
+            return
+        }
+        probe.scrollView.cacheDisplay(in: probe.scrollView.bounds, to: rep)
+
+        var foundYellow = false
+        for dx in -4...4 where !foundYellow {
+            for dy in -4...4 where !foundYellow {
+                let x = Int(badgeCentre.x.rounded()) + dx
+                let y = Int(badgeCentre.y.rounded()) + dy
+                guard x >= 0, y >= 0, x < rep.pixelsWide, y < rep.pixelsHigh else { continue }
+                guard let colour = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+                foundYellow = colour.redComponent > 0.5
+                    && colour.greenComponent > 0.4
+                    && colour.blueComponent < 0.4
+            }
+        }
+        #expect(foundYellow)
+    }
+
+    @Test("The query plan paints its arrows at every zoom the app can reach", arguments: [0.05, 0.41])
     func queryPlanPaintsArrows(magnification: CGFloat) {
         let arrow = QueryPlanDiagramLayout.Arrow(
             id: UUID(),

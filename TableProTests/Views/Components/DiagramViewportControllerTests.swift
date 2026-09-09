@@ -138,17 +138,32 @@ struct DiagramViewportControllerTests {
         #expect(scrollView.magnification >= DiagramZoom.minimum)
     }
 
-    @Test("Fit to window fits a diagram too large for the ladder's floor")
-    func fitFitsAVeryLargeDiagram() {
-        let (viewport, scrollView) = makeAttached(
-            content: CGSize(width: 8_000, height: 6_000), visible: CGSize(width: 500, height: 400)
-        )
+    @Test(
+        "Fit to window fits a diagram too large for the ladder's floor",
+        arguments: [CGSize(width: 8_000, height: 6_000), CGSize(width: 25_000, height: 18_000)]
+    )
+    func fitFitsAVeryLargeDiagram(content: CGSize) {
+        let (viewport, scrollView) = makeAttached(content: content, visible: CGSize(width: 500, height: 400))
 
         viewport.fitToWindow()
 
         #expect(scrollView.magnification < 0.25)
-        #expect(scrollView.documentVisibleRect.width >= 8_000)
-        #expect(scrollView.documentVisibleRect.height >= 6_000)
+        #expect(scrollView.documentVisibleRect.width >= content.width)
+        #expect(scrollView.documentVisibleRect.height >= content.height)
+    }
+
+    /// The zoom buttons stop at 5%, but Fit has to be able to go further or a big enough diagram
+    /// opens cropped, which is the whole point of the command.
+    @Test("Fit to window goes below the ladder's own floor when the diagram needs it")
+    func fitGoesBelowTheLadderFloor() {
+        let (viewport, scrollView) = makeAttached(
+            content: CGSize(width: 25_000, height: 18_000), visible: CGSize(width: 500, height: 400)
+        )
+
+        viewport.fitToWindow()
+
+        #expect(scrollView.magnification < DiagramZoom.ladder[0])
+        #expect(scrollView.magnification >= DiagramZoom.minimum)
     }
 
     @Test("Fit to window never zooms past one hundred percent")

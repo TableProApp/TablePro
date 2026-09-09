@@ -67,8 +67,14 @@ enum ERDiagramTextRenderer {
     }
 }
 
-/// Rasterising a symbol resolves its dynamic colour, so a cached bitmap belongs to exactly one
-/// appearance, the same rule `DataGridCellAccessoryGlyph` follows.
+/// Configuring a symbol resolves its dynamic colour, so a cached image belongs to exactly one
+/// appearance and contrast setting, the same rule `DataGridCellAccessoryGlyph` follows.
+///
+/// What is cached is the configured `NSImage`, not a bitmap of it. A symbol is vector art and the
+/// diagram is drawn at whatever scale the scroll view is magnified to, so rasterising once at 1x
+/// and stretching that bitmap would leave every badge soft on a Retina display, in the 2x PNG
+/// export, and worse again at 300%. `NSImage.draw(in:)` renders into the current context at its
+/// resolution instead.
 @MainActor
 enum ERDiagramSymbolRenderer {
     private struct Key: Hashable {
@@ -76,10 +82,11 @@ enum ERDiagramSymbolRenderer {
         let pointSize: CGFloat
         let color: NSColor
         let appearance: NSAppearance.Name
+        let increasedContrast: Bool
     }
 
     private struct Glyph {
-        let image: CGImage
+        let image: NSImage
         let size: CGSize
     }
 
@@ -90,8 +97,7 @@ enum ERDiagramSymbolRenderer {
         pointSize: CGFloat,
         color: NSColor,
         at point: CGPoint,
-        anchor: ERDiagramTextAnchor,
-        in context: CGContext
+        anchor: ERDiagramTextAnchor
     ) {
         guard let glyph = glyph(named: name, pointSize: pointSize, color: color) else { return }
 
@@ -108,25 +114,25 @@ enum ERDiagramSymbolRenderer {
             height: glyph.size.height
         )
 
-        context.saveGState()
-        context.translateBy(x: rect.minX, y: rect.maxY)
-        context.scaleBy(x: 1, y: -1)
-        context.draw(glyph.image, in: CGRect(origin: .zero, size: rect.size))
-        context.restoreGState()
+        glyph.image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
     }
 
     private static func glyph(named name: String, pointSize: CGFloat, color: NSColor) -> Glyph? {
-        let key = Key(name: name, pointSize: pointSize, color: color, appearance: NSAppearance.currentDrawing().name)
+        let key = Key(
+            name: name,
+            pointSize: pointSize,
+            color: color,
+            appearance: NSAppearance.currentDrawing().name,
+            increasedContrast: NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        )
         if let cached = glyphs[key] { return cached }
 
         let configuration = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)
             .applying(.init(hierarchicalColor: color))
         guard let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
             .withSymbolConfiguration(configuration) else { return nil }
-        var rect = CGRect(origin: .zero, size: image.size)
-        guard let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else { return nil }
 
-        let glyph = Glyph(image: cgImage, size: image.size)
+        let glyph = Glyph(image: image, size: image.size)
         glyphs[key] = glyph
         return glyph
     }

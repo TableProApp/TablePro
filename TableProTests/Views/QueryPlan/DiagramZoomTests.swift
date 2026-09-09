@@ -20,7 +20,7 @@ struct DiagramZoomTests {
     @Test("pinch clamps to the supported range")
     func clampsPinchRange() {
         #expect(DiagramZoom.scaled(from: 2.0, by: 2.0) == DiagramZoom.maximum)
-        #expect(DiagramZoom.scaled(from: 0.5, by: 0.01) == DiagramZoom.minimum)
+        #expect(DiagramZoom.scaled(from: 0.5, by: 0.001) == DiagramZoom.minimum)
     }
 
     @Test("invalid pinch values preserve the current zoom")
@@ -72,9 +72,10 @@ struct DiagramZoomTests {
         #expect(DiagramZoom.canStepDown(from: 1.0))
     }
 
-    @Test("the floor is low enough to fit a schema the ladder cannot reach")
+    @Test("the floor sits below the ladder so Fit can reach a diagram the buttons cannot")
     func floorLeavesRoomForFit() {
-        #expect(DiagramZoom.minimum < 0.25)
-        #expect(DiagramZoom.clamped(0.08) == 0.08)
+        #expect(DiagramZoom.minimum < DiagramZoom.ladder[0])
+        #expect(DiagramZoom.clamped(0.02) == 0.02)
+        #expect(DiagramZoom.clamped(0.001) == DiagramZoom.minimum)
     }
 }

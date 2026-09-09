@@ -85,8 +85,7 @@ enum ERDiagramNodeRenderer {
             pointSize: iconPointSize * scale,
             color: .secondaryLabelColor,
             at: CGPoint(x: rect.minX + iconXOffset, y: rect.minY + headerHeight / 2),
-            anchor: .leading,
-            in: context
+            anchor: .leading
         )
 
         let dividerY = rect.minY + headerHeight
@@ -123,8 +122,7 @@ enum ERDiagramNodeRenderer {
                     pointSize: badgePointSize * scale,
                     color: .systemYellow,
                     at: CGPoint(x: rect.minX + badgeXOffset, y: rowY),
-                    anchor: .center,
-                    in: context
+                    anchor: .center
                 )
             } else if column.isForeignKey {
                 ERDiagramSymbolRenderer.draw(
@@ -132,8 +130,7 @@ enum ERDiagramNodeRenderer {
                     pointSize: badgePointSize * scale,
                     color: .systemBlue,
                     at: CGPoint(x: rect.minX + badgeXOffset, y: rowY),
-                    anchor: .center,
-                    in: context
+                    anchor: .center
                 )
             }
 

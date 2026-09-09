@@ -13,8 +13,10 @@ enum DiagramZoom {
     /// floor, so one Zoom Out from a fitted large schema used to skip every level in between.
     static let ladder: [CGFloat] = [0.05, 0.1, 0.25, 0.33, 0.5, 0.67, 0.75, 1.0, 1.5, 2.0, 3.0]
 
-    /// Low enough that Fit to Window can still fit a schema too large for the ladder's floor.
-    static var minimum: CGFloat { ladder[0] }
+    /// Below the ladder's own floor on purpose. Fit to Window routes its computed ratio through
+    /// this clamp, so tying the two together means a diagram larger than the floor can express
+    /// still opens cropped, which is the complaint Fit exists to answer.
+    static let minimum: CGFloat = 0.01
     static var maximum: CGFloat { ladder[ladder.count - 1] }
 
     static func clamped(_ value: CGFloat) -> CGFloat {

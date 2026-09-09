@@ -245,7 +245,8 @@ final class ERDiagramViewModel {
         graph.nodes.reversed().first { cachedNodeRects[$0.id]?.contains(point) ?? false }?.id
     }
 
-    func setPositionOverride(nodeId: UUID, position: CGPoint) {
+    @discardableResult
+    func setPositionOverride(nodeId: UUID, position: CGPoint) -> CGPoint {
         let height = ERDiagramLayout.estimateHeight(columnCount: columnCountByNodeId[nodeId] ?? 1)
         let position = clamped(position, nodeId: nodeId)
         positionOverrides[nodeId] = position
@@ -263,6 +264,7 @@ final class ERDiagramViewModel {
             width: max(cachedCanvasSize.width, rect.maxX + Self.canvasPadding),
             height: max(cachedCanvasSize.height, rect.maxY + Self.canvasPadding)
         )
+        return position
     }
 
     func persistPositions() {
@@ -426,10 +428,16 @@ final class ERDiagramViewModel {
         guard let nodeId = draggingNodeId, let nodeStart = dragNodeStart else { return }
 
         autoPanAccum = .zero
-        setPositionOverride(
+        let applied = setPositionOverride(
             nodeId: nodeId,
             position: CGPoint(x: nodeStart.x + translation.width, y: nodeStart.y + translation.height)
         )
+
+        // Rebasing the drag origin on whatever the clamp gave back is what lets a pointer that
+        // overshot the canvas edge move the node again the moment it comes back, instead of
+        // standing still until the whole overshoot has been unwound. It is a no-op when the clamp
+        // did not bite, because the applied position is then the requested one.
+        dragNodeStart = CGPoint(x: applied.x - translation.width, y: applied.y - translation.height)
         updateAutoPanVelocity(for: currentPoint)
     }
 
