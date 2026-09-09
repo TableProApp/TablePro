@@ -42,6 +42,39 @@ public enum SQLiteColumnReorderPlanner {
         )
     }
 
+    /// The same plan from facts already gathered, with no database to ask.
+    ///
+    /// Published before the general rebuild planner existed, and kept at its exact signature: a
+    /// plugin built against an earlier PluginKit references this symbol by name, and taking it away
+    /// stops that binary loading. It delegates rather than carrying a second copy of the script.
+    public static func plan(
+        tableName: String,
+        createTableSQL: String,
+        desiredOrder: [String],
+        copyableColumns: [String],
+        dependentObjectSQL: [String],
+        autoincrementHighWaterMark: Int64?,
+        foreignKeysWereOn: Bool,
+        isRunnable: Bool
+    ) -> PluginColumnReorderPlan? {
+        guard let parsed = SQLiteTableDDL.parse(createTableSQL: createTableSQL),
+              parsed.columnNames != desiredOrder else { return nil }
+
+        return SQLiteTableRebuildPlanner.plan(
+            tableName: tableName,
+            context: SQLiteTableRebuildPlanner.Context(
+                parsed: parsed,
+                copyableColumns: copyableColumns,
+                dependentObjectSQL: dependentObjectSQL,
+                autoincrementHighWaterMark: autoincrementHighWaterMark,
+                foreignKeysWereOn: foreignKeysWereOn
+            ),
+            respecification: PluginTableRespecification(columnOrder: desiredOrder),
+            renderColumn: { _ in "" },
+            isRunnable: isRunnable
+        )
+    }
+
     /// A fingerprint of everything the rebuild reproduces, so a plan built before a review sheet
     /// opened can be checked against the database before it drops anything.
     public static func schemaFingerprint(
