@@ -143,6 +143,14 @@ internal enum LibSSH2TunnelFactory {
         let resolvedJumps: [ResolvedSSHTarget] = (formJumps.isEmpty ? resolvedPrimary.proxyJump : formJumps)
             .map { SSHConfigResolver.resolve($0, document: document) }
 
+        // A value whose tokens could not be expanded is reported by name. Dialling it anyway is how
+        // `Hostname %h` reached getaddrinfo and came back as a DNS failure for a two-character host.
+        for target in [resolvedPrimary] + resolvedJumps {
+            if let failure = target.expansionFailure {
+                throw SSHTunnelError.configExpansionFailed(failure.explanation)
+            }
+        }
+
         if resolvedPrimary.username.isEmpty {
             throw SSHTunnelError.tunnelCreationFailed(
                 "SSH username not set. Add it to the form or set `User` for `\(config.host)` in ~/.ssh/config."

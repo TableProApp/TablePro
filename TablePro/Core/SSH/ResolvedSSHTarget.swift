@@ -29,4 +29,37 @@ struct ResolvedSSHTarget: Sendable, Hashable {
     let useKeychain: Bool
     let addKeysToAgent: Bool
     let proxyJump: [SSHJumpHost]
+    /// The first `~/.ssh/config` value whose tokens could not be expanded. Resolution keeps going
+    /// so the rest of the target is still built, and the connect path reports this instead of
+    /// dialling whatever half-resolved string came out. It defaults to nil because most callers,
+    /// the tests included, build a target that never went through expansion.
+    var expansionFailure: SSHTokenExpansionError?
+
+    init(
+        originalHost: String,
+        host: String,
+        port: Int,
+        username: String,
+        identityFiles: [String],
+        agentSocketPath: String,
+        agentSocketOrigin: AgentSocketOrigin,
+        identitiesOnly: Bool,
+        useKeychain: Bool,
+        addKeysToAgent: Bool,
+        proxyJump: [SSHJumpHost],
+        expansionFailure: SSHTokenExpansionError? = nil
+    ) {
+        self.originalHost = originalHost
+        self.host = host
+        self.port = port
+        self.username = username
+        self.identityFiles = identityFiles
+        self.agentSocketPath = agentSocketPath
+        self.agentSocketOrigin = agentSocketOrigin
+        self.identitiesOnly = identitiesOnly
+        self.useKeychain = useKeychain
+        self.addKeysToAgent = addKeysToAgent
+        self.proxyJump = proxyJump
+        self.expansionFailure = expansionFailure
+    }
 }

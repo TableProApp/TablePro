@@ -74,6 +74,21 @@ Pick an alias from the **Config Host** picker and `HostName`, `User`, `Port`, `I
   <img className="hidden dark:block" src="/images/ssh-config-hosts-dark.png" alt="Config Host picker" />
 </Frame>
 
+### Tokens
+
+Each keyword takes the tokens `ssh_config(5)` gives it, and no others. `Hostname %h` is the common one: it names the host the connection already asked for, which is what makes a catch-all `Host *.*` block work.
+
+| Keyword | Tokens |
+|---------|--------|
+| `Hostname` | `%%` `%h` |
+| `ProxyJump` | `%%` `%h` `%n` `%p` `%r` |
+| `IdentityFile`, `IdentityAgent`, `Match exec` | `%%` `%C` `%d` `%h` `%i` `%j` `%k` `%L` `%l` `%n` `%p` `%r` `%u` |
+| `Include` | `%%` `%d` `%i` `%L` `%l` `%u` |
+
+`%h` is the host after any `HostName` substitution and `%n` the one the connection named; `%p`, `%r` and `%j` are the port, remote user and jump host in effect; `%d` and `%u` are your home directory and username; `%C` hashes `%l%h%p%r%j`, the way `ControlPath` does. `${VAR}` reads an environment variable in the same places, and a leading `~` or `~user` expands in any keyword naming a file.
+
+A token a keyword does not take stops the connection and names both, rather than reaching the server as literal text. `Include` is the one narrowing: the file is read once for every connection, before any host is known, so a token naming the target is skipped with a note in Console.
+
 ## Jump hosts
 
 For a database behind more than one bastion, expand **Jump Hosts** and add each hop in order. Each hop is an SSH session tunneled through the previous one, with no `ssh` subprocess involved.
