@@ -16,16 +16,20 @@ final class CreateTableGridDelegate: DataGridViewDelegate {
     let connection: DatabaseConnection
     var onSelectedRowsChanged: ((Set<Int>) -> Void)?
     var orderedFields: [StructureColumnField] = []
-    /// The schema the draft is being created in, so the reference menus offer that schema's tables.
-    var schemaName: String?
+    /// The lists behind the Foreign Keys grid's reference cells. Held per delegate, so the column
+    /// cache dies with the tab rather than outliving every connection.
+    let referenceMenus: ForeignKeyReferenceMenus
 
-    /// Columns of each table a foreign key row points at, keyed by connection, schema and table.
-    /// Held per delegate, so it dies with the tab rather than outliving every connection.
-    var referencedColumnCache: [String: [String]] = [:]
-    var referencedColumnRequests: Set<String> = []
-    /// Fired when a referenced table's columns arrive. A menu built before the fetch landed shows
-    /// `Loading…` and nothing else would rebuild it until an unrelated edit.
-    var onReferenceListsChanged: (() -> Void)?
+    /// The schema the draft is being created in, so the reference menus offer that schema's tables.
+    var schemaName: String? {
+        get { referenceMenus.schemaName }
+        set { referenceMenus.schemaName = newValue }
+    }
+
+    var onReferenceListsChanged: (() -> Void)? {
+        get { referenceMenus.onListsChanged }
+        set { referenceMenus.onListsChanged = newValue }
+    }
 
     /// Captured from `DataGridView.updateNSView` so we can ask `NSTableView` to
     /// reload affected rows after a state mutation. Required because the
@@ -42,6 +46,7 @@ final class CreateTableGridDelegate: DataGridViewDelegate {
         self.structureChangeManager = structureChangeManager
         self.structureTab = structureTab
         self.connection = connection
+        self.referenceMenus = ForeignKeyReferenceMenus(connectionId: connection.id)
     }
 
     // MARK: - DataGridViewDelegate
@@ -72,7 +77,9 @@ final class CreateTableGridDelegate: DataGridViewDelegate {
             StructureEditingSupport.updateForeignKey(&fk, at: column, with: newValue ?? "")
             structureChangeManager.updateForeignKey(id: fk.id, with: fk)
             if column == 2 {
-                prefetchReferencedColumns(of: fk.referencedTable, schema: fk.referencedSchema)
+                referenceMenus.prefetchReferencedColumns(
+                    of: fk.referencedTable, schema: fk.referencedSchema
+                )
             }
 
         default:

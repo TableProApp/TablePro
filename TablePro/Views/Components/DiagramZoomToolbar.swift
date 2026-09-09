@@ -21,6 +21,7 @@ struct DiagramZoomToolbar<Extras: View>: View {
             Button(action: viewport.zoomOut) {
                 Image(systemName: "minus.magnifyingglass")
             }
+            .disabled(!viewport.canZoomOut)
             .accessibilityLabel(String(localized: "Zoom Out"))
             .help(String(localized: "Zoom Out"))
 
@@ -37,6 +38,7 @@ struct DiagramZoomToolbar<Extras: View>: View {
             Button(action: viewport.zoomIn) {
                 Image(systemName: "plus.magnifyingglass")
             }
+            .disabled(!viewport.canZoomIn)
             .accessibilityLabel(String(localized: "Zoom In"))
             .help(String(localized: "Zoom In"))
 

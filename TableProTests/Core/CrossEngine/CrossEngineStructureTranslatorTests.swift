@@ -165,13 +165,25 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
         XCTAssertEqual(result.snapshot.columns[0].defaultValue, "CURRENT_TIMESTAMP")
     }
 
-    /// The target's DDL writer quotes whatever it does not recognise, so a default it cannot read
-    /// would become the literal string `'uuid_generate_v4()'` in every row.
+    /// Every writer emits the default verbatim, so a default this cannot translate reaches the
+    /// server in the source's own dialect and breaks the CREATE TABLE.
     func testAnUntranslatableDefaultIsDroppedWithAReason() {
         let source = snapshot(columns: [column("id", "uuid", defaultValue: "uuid_generate_v4()")])
         let result = CrossEngineStructureTranslator.translate(source, from: .postgresql, to: .mysql)
         XCTAssertNil(result.snapshot.columns[0].defaultValue)
         XCTAssertTrue(result.notes.contains { $0.subject == "id" && $0.isLossy })
+    }
+
+    /// A bare word used to be kept, on the premise that the target's writer would quote it. Every
+    /// writer now emits verbatim, so `session_user` reached MySQL as a column reference and the
+    /// CREATE TABLE failed, taking that table's rows out of the copy with it.
+    func testABareKeywordDefaultIsDroppedRatherThanKept() {
+        for keyword in ["session_user", "CURRENT_USER", "current_role", "current_schema", "USER"] {
+            let source = snapshot(columns: [column("owner", "character varying(50)", defaultValue: keyword)])
+            let result = CrossEngineStructureTranslator.translate(source, from: .postgresql, to: .mysql)
+            XCTAssertNil(result.snapshot.columns[0].defaultValue, keyword)
+            XCTAssertTrue(result.notes.contains { $0.subject == "owner" && $0.isLossy }, keyword)
+        }
     }
 
     func testAPostgresCastIsStrippedFromALiteralDefault() {

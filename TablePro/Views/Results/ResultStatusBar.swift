@@ -171,6 +171,8 @@ struct ResultStatusBar: View {
                     removeLabel: structureFooter.removeLabel,
                     canAdd: structureFooter.canAdd,
                     canRemove: structureFooter.canRemove,
+                    addHelp: structureFooter.unavailableReason,
+                    removeHelp: structureFooter.unavailableReason,
                     addIdentifier: "structure-footer-add",
                     removeIdentifier: "structure-footer-remove",
                     onAdd: onStructureAdd,

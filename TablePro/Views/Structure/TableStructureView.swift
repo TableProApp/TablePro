@@ -340,7 +340,20 @@ struct TableStructureView: View {
             canAdd: canAdd(for: selectedTab),
             canRemove: canRemove(for: selectedTab),
             addLabel: labels.add,
-            removeLabel: labels.remove
+            removeLabel: labels.remove,
+            unavailableReason: unavailableReason(for: selectedTab)
+        )
+    }
+
+    /// Whether this engine can add and remove foreign keys, which is not the same question as
+    /// whether it has them. `supportsForeignKeys` answers the second, and reading it as the first
+    /// is what offered an enabled "+" on SQLite over a driver with no statement behind it.
+    var foreignKeyEditAvailability: ForeignKeyEditAvailability {
+        ForeignKeyEditPolicy.resolve(
+            support: PluginManager.shared.foreignKeyEditSupport(for: connection.type),
+            engineName: connection.type.displayName,
+            isTable: !isViewObject,
+            canEditSchema: connection.type.supportsSchemaEditing
         )
     }
 
@@ -348,10 +361,17 @@ struct TableStructureView: View {
         switch tab {
         case .columns: return connection.type.supportsAddColumn
         case .indexes: return connection.type.supportsAddIndex
-        case .foreignKeys: return connection.type.supportsForeignKeys
+        case .foreignKeys: return foreignKeyEditAvailability.isAvailable
         case .checkConstraints: return connection.type.supportsCheckConstraintEditing
         case .ddl, .parts, .triggers: return false
         }
+    }
+
+    /// Why the pair under the list is dimmed, for its tooltip. Nil when it is not, and nil for a
+    /// tab whose absence needs no explaining: DDL and Parts have nothing to add.
+    private func unavailableReason(for tab: StructureTab) -> String? {
+        guard tab == .foreignKeys else { return nil }
+        return foreignKeyEditAvailability.unavailableReason
     }
 
     private func canRemove(for tab: StructureTab) -> Bool {
@@ -359,7 +379,7 @@ struct TableStructureView: View {
         switch tab {
         case .columns: return connection.type.supportsDropColumn
         case .indexes: return connection.type.supportsDropIndex
-        case .foreignKeys: return connection.type.supportsForeignKeys
+        case .foreignKeys: return foreignKeyEditAvailability.isAvailable
         case .checkConstraints: return connection.type.supportsCheckConstraintEditing
         case .ddl, .parts, .triggers: return false
         }

@@ -95,7 +95,7 @@ final class StructureRowProvider {
     /// not loaded is still reachable by typing.
     var rowDependentDropdownColumns: Set<Int> {
         switch tab {
-        case .foreignKeys: [1, 2, 3]
+        case .foreignKeys: ForeignKeyReferenceMenus.rowDependentColumns
         case .columns, .indexes, .checkConstraints, .ddl, .parts, .triggers: []
         }
     }

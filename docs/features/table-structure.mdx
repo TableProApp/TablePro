@@ -43,7 +43,7 @@ Auto-increment has its own **Auto Inc** field.
   <img className="hidden dark:block" src="/images/structure-default-picker-dark.png" alt="The Columns tab of a SQLite table, with a chevron on the right of every Default cell" />
 </Frame>
 
-Not every engine can change the default of a column that already exists. SQLite, libSQL and Cloudflare D1 cannot: their `ALTER TABLE` has no `SET DEFAULT`. Snowflake can only remove one. Saving such a change is refused with **Unsupported schema operation**; set the default when the column is created, or drop the column and add it back.
+Changing the default of a column that already exists takes a different route per engine. Most run `ALTER TABLE … SET DEFAULT`. SQLite, libSQL and Cloudflare D1 have no such statement, so the change is made by recreating the table, reviewed first like any other rebuild. Snowflake can only remove a default, and saving one there is refused with **Unsupported schema operation**.
 
 ### Generated columns
 
@@ -87,18 +87,32 @@ Everything that runs goes to query history rather than the change queue.
 | **Columns** | Indexed columns. Multi-column indexes list several columns in one row. MySQL prefix lengths are written as `email(20)` |
 | **Type** | BTREE, HASH, FULLTEXT, SPATIAL (MySQL), GIN, GIST, BRIN (PostgreSQL) |
 | **Unique** | Whether the index enforces uniqueness |
-| **Condition** | `WHERE` predicate for partial indexes (PostgreSQL) |
+| **Condition** | `WHERE` predicate for partial indexes (PostgreSQL, SQLite, libSQL, Cloudflare D1) |
 
 ## Foreign keys tab
 
 | Field | Description |
 |-------|-------------|
 | **Columns** | Local column(s) |
-| **Ref Table / Ref Columns** | Referenced table and column(s) |
+| **Ref Table / Ref Columns** | Referenced table and column(s), chosen from the database's own names or typed |
 | **Ref Schema** | Referenced schema, for cross-schema references |
-| **On Delete / On Update** | Dropdowns: NO ACTION, RESTRICT, CASCADE, SET NULL, SET DEFAULT |
+| **On Delete / On Update** | Dropdowns listing only the actions the engine takes |
 
 Right-click a foreign key and choose **Open [table]** to jump to the referenced table. Right-click any row in these three grids for **Copy** (the cell under the pointer), **Copy Name**, **Copy Definition**, **Copy As** (CSV, JSON, SQL), **Duplicate**, and **Delete** (`Delete`). A row already marked for deletion offers **Undo Delete**. The same menu appears whether or not the row was already selected, and its row commands act on the whole selection.
+
+**Add Foreign Key** and **Remove Foreign Key** sit under the list. Both are dimmed on a view and on an engine that cannot edit foreign keys, with the reason in the tooltip.
+
+What the save does depends on the engine:
+
+| Engine | What happens |
+|--------|--------------|
+| MySQL, MariaDB, PostgreSQL, PGlite, SQL Server, Oracle, DuckDB, Dameng | Runs `ALTER TABLE … ADD CONSTRAINT` and `DROP CONSTRAINT` alongside the rest of the save |
+| SQLite, local-file libSQL | Shows the rebuild script, and runs it when you confirm. No SQLite version can add or drop a foreign key with `ALTER TABLE`, so the table is recreated carrying the keys you asked for, the rows are copied with their rowids, and the indexes and triggers are put back |
+| Turso, remote libSQL, Cloudflare D1 | Shows the rebuild script for you to read and run. TablePro does not run it: each statement is its own HTTP request, so nothing can hold the rebuild in one transaction |
+
+A rebuild carries everything else staged in the same save, and ends in `PRAGMA foreign_key_check` scoped to the table. Rows that do not match the new key roll the whole rebuild back, and the count comes back in the error.
+
+A column renamed or dropped in the same save runs as its own `ALTER TABLE` after the rebuild, so the new name reaches every index, trigger and view. A drop that would leave one of those naming a column that is gone fails the whole save rather than committing it broken.
 
 ## Constraints tab
 
@@ -165,7 +179,7 @@ Lists partitions and parts from `system.parts`. **Optimize** merges parts; **Dro
 
 Choose **Database > New Table…**, or right-click empty space in the sidebar and choose **New Table…**. The tab holds a **Table Name** field (with Engine, Charset, and Collation pickers on MySQL and MariaDB), the same three editing grids, and a **SQL Preview** tab carrying the live `CREATE TABLE`. **Create Table** (`Cmd+Enter` or `Cmd+S`) executes it and opens the new table.
 
-On the **Foreign Keys** grid, **Columns**, **Ref Table**, and **Ref Columns** open menus of the new table's own columns, the database's tables, and the referenced table's columns. Each menu ends in **Custom…** for a name the list does not carry, and picking a second entry in a comma-separated cell appends to it. **On Delete** and **On Update** list only the actions the engine takes: DuckDB accepts NO ACTION and RESTRICT, Oracle has no ON UPDATE, and SQL Server has no RESTRICT.
+On the **Foreign Keys** grid, **Columns**, **Ref Table**, and **Ref Columns** open menus of the new table's own columns, the database's tables, and the referenced table's columns. Each menu ends in **Custom…** for a name the list does not carry, and picking a second entry in a comma-separated cell appends to it.
 
 **Name** is optional on a foreign key. Left blank, no `CONSTRAINT` clause is written and the engine names the constraint itself.
 
@@ -185,7 +199,6 @@ MongoDB structure is read-only, and inferred from the collection's first 200 doc
 
 - **Changing a primary key on an existing table** works on MySQL, MariaDB, PostgreSQL, PGlite, SQL Server, DuckDB, Snowflake, and Dameng. Elsewhere the dropdown accepts the edit and the save produces nothing for it: rebuild the table by hand.
 - **Check constraints and generated columns** have no field in the grid. Both show in the DDL tab; change them by running DDL yourself.
-- **SQLite**: a column can be added, dropped, and renamed. No other column change generates SQL.
 - **Cassandra / ScyllaDB**: add and drop column only, no index editing, no visual table creation.
 - **Redshift, CockroachDB, BigQuery, Elasticsearch, Typesense, SurrealDB, Beancount**: structure is read-only.
 - **Redis, etcd, DynamoDB**: no table schema to edit.

@@ -16,6 +16,26 @@ public enum PluginColumnReorderCost: Sendable, Equatable {
     case tableRebuild
 }
 
+/// A check a plan runs inside its transaction, whose answer decides whether the plan commits.
+///
+/// The difference from a statement is that the runner reads the result rather than only its
+/// success. SQLite's `PRAGMA foreign_key_check` is the case this exists for: adding a foreign key
+/// that the table's own rows already violate succeeds and commits, leaving a table whose data
+/// breaks its own constraint, and the only way to catch that is to ask and then act on the answer.
+public struct PluginPlanVerification: Sendable, Equatable {
+    /// SQL returning one row per problem, and no rows when there is nothing wrong.
+    public let sql: String
+
+    /// What to tell the user when it returns rows, already localized by the driver that knows what
+    /// the check means. Takes the number of rows as its one `%lld`.
+    public let failureMessageFormat: String
+
+    public init(sql: String, failureMessageFormat: String) {
+        self.sql = sql
+        self.failureMessageFormat = failureMessageFormat
+    }
+}
+
 /// The statements that put a table's columns into a wanted order.
 ///
 /// A plan carries DDL and nothing else: no `BEGIN`, no `COMMIT`, no `ROLLBACK`. Whoever runs it
@@ -48,6 +68,14 @@ public struct PluginColumnReorderPlan: Sendable, Equatable {
     /// does not describe is named here rather than lost quietly.
     public let caveats: [String]
 
+    /// Checks to run inside the transaction, after the statements and before the commit. Any one of
+    /// them returning a row rolls the plan back.
+    ///
+    /// A check that raises rather than returning rows fails the plan the way any statement would,
+    /// which is how SQLite reports a foreign key whose parent columns are not a primary key or a
+    /// unique index.
+    public let verifications: [PluginPlanVerification]
+
     /// Whether TablePro may run this itself.
     ///
     /// False where the engine's catalog cannot describe enough of a table to reproduce it, or where
@@ -64,7 +92,8 @@ public struct PluginColumnReorderPlan: Sendable, Equatable {
         isTransactional: Bool = false,
         cost: PluginColumnReorderCost,
         caveats: [String] = [],
-        isRunnable: Bool = true
+        isRunnable: Bool = true,
+        verifications: [PluginPlanVerification]
     ) {
         self.statements = statements
         self.prologue = prologue
@@ -74,11 +103,43 @@ public struct PluginColumnReorderPlan: Sendable, Equatable {
         self.cost = cost
         self.caveats = caveats
         self.isRunnable = isRunnable
+        self.verifications = verifications
+    }
+
+    /// The initializer as it shipped before plans could carry checks.
+    ///
+    /// Kept at its exact original signature because its mangled symbol is what every plugin built
+    /// against an earlier PluginKit calls. Adding the parameter to it instead would replace that
+    /// symbol and stop all of them loading, which is how 0.49.0 shipped a `PluginQueryResult` init
+    /// that took every registry plugin down. `@_disfavoredOverload` keeps new code resolving to the
+    /// full initializer above while the old symbol stays where those binaries expect it.
+    @_disfavoredOverload
+    public init(
+        statements: [String],
+        prologue: [String] = [],
+        epilogue: [String] = [],
+        compensation: [String] = [],
+        isTransactional: Bool = false,
+        cost: PluginColumnReorderCost,
+        caveats: [String] = [],
+        isRunnable: Bool = true
+    ) {
+        self.init(
+            statements: statements,
+            prologue: prologue,
+            epilogue: epilogue,
+            compensation: compensation,
+            isTransactional: isTransactional,
+            cost: cost,
+            caveats: caveats,
+            isRunnable: isRunnable,
+            verifications: []
+        )
     }
 
     /// Everything the plan runs, in order, for showing the user and for handing to an editor. The
     /// transaction is deliberately absent: the reader's Run All supplies it.
-    public var scriptStatements: [String] { prologue + statements + epilogue }
+    public var scriptStatements: [String] { prologue + statements + verifications.map(\.sql) + epilogue }
 }
 
 /// Turns a wanted column order into the moves an engine's positional primitive can actually make.

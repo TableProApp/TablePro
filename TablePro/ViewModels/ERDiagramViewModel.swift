@@ -76,7 +76,14 @@ final class ERDiagramViewModel {
 
     /// AppKit owns pan and zoom, so every coordinate the view hands over is already in document
     /// space. The viewport is only needed to nudge the scroll position while auto-panning.
-    @ObservationIgnored weak var viewport: DiagramViewportController?
+    ///
+    /// It belongs to the model rather than the view because an editor-tab switch destroys
+    /// `ERDiagramView` and rebuilds it against the same model: a viewport held as view state came
+    /// back at 100% scrolled to the origin every time the user left the tab and returned.
+    @ObservationIgnored let viewport = DiagramViewportController()
+
+    /// Selection outlives the view for the same reason.
+    var selectedNodeId: UUID?
 
     // MARK: - Drag State
 
@@ -216,12 +223,33 @@ final class ERDiagramViewModel {
     // MARK: - Position Management
 
     func position(for nodeId: UUID) -> CGPoint {
-        positionOverrides[nodeId] ?? computedLayout[nodeId] ?? .zero
+        clamped(positionOverrides[nodeId] ?? computedLayout[nodeId] ?? .zero, nodeId: nodeId)
     }
 
-    func setPositionOverride(nodeId: UUID, position: CGPoint) {
-        positionOverrides[nodeId] = position
+    /// The canvas starts at the origin and only ever grows at its far edges, so a node centred
+    /// above or to the left of it lands outside: nothing paints there and the scroll view cannot
+    /// reach it. Clamping on read rather than only on write covers the three ways a node gets
+    /// there: a drag, a position saved by an older build, and a node at the top edge growing
+    /// taller when it leaves compact mode.
+    private func clamped(_ position: CGPoint, nodeId: UUID) -> CGPoint {
         let height = ERDiagramLayout.estimateHeight(columnCount: columnCountByNodeId[nodeId] ?? 1)
+        return CGPoint(
+            x: max(position.x, ERDiagramLayout.nodeWidth / 2),
+            y: max(position.y, height / 2)
+        )
+    }
+
+    /// Paint order, not dictionary order: the node drawn last is the one on top, so an overlapping
+    /// pair resolves to the table the pointer is actually over.
+    func nodeId(at point: CGPoint) -> UUID? {
+        graph.nodes.reversed().first { cachedNodeRects[$0.id]?.contains(point) ?? false }?.id
+    }
+
+    @discardableResult
+    func setPositionOverride(nodeId: UUID, position: CGPoint) -> CGPoint {
+        let height = ERDiagramLayout.estimateHeight(columnCount: columnCountByNodeId[nodeId] ?? 1)
+        let position = clamped(position, nodeId: nodeId)
+        positionOverrides[nodeId] = position
         let rect = CGRect(
             x: position.x - ERDiagramLayout.nodeWidth / 2,
             y: position.y - height / 2,
@@ -236,6 +264,7 @@ final class ERDiagramViewModel {
             width: max(cachedCanvasSize.width, rect.maxX + Self.canvasPadding),
             height: max(cachedCanvasSize.height, rect.maxY + Self.canvasPadding)
         )
+        return position
     }
 
     func persistPositions() {
@@ -388,7 +417,7 @@ final class ERDiagramViewModel {
 
     func beginDrag(at startLocation: CGPoint) {
         isDragging = true
-        draggingNodeId = cachedNodeRects.first { $0.value.contains(startLocation) }?.key
+        draggingNodeId = nodeId(at: startLocation)
         dragNodeStart = draggingNodeId.map { position(for: $0) }
     }
 
@@ -399,10 +428,16 @@ final class ERDiagramViewModel {
         guard let nodeId = draggingNodeId, let nodeStart = dragNodeStart else { return }
 
         autoPanAccum = .zero
-        setPositionOverride(
+        let applied = setPositionOverride(
             nodeId: nodeId,
             position: CGPoint(x: nodeStart.x + translation.width, y: nodeStart.y + translation.height)
         )
+
+        // Rebasing the drag origin on whatever the clamp gave back is what lets a pointer that
+        // overshot the canvas edge move the node again the moment it comes back, instead of
+        // standing still until the whole overshoot has been unwound. It is a no-op when the clamp
+        // did not bite, because the applied position is then the requested one.
+        dragNodeStart = CGPoint(x: applied.x - translation.width, y: applied.y - translation.height)
         updateAutoPanVelocity(for: currentPoint)
     }
 
@@ -420,7 +455,7 @@ final class ERDiagramViewModel {
     /// The edge band and the pan speed are tuned in screen points, so both are divided by the
     /// magnification to reach the document units the viewport scrolls in.
     private func updateAutoPanVelocity(for point: CGPoint) {
-        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, let viewport else {
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
             stopAutoPan()
             return
         }
@@ -468,7 +503,7 @@ final class ERDiagramViewModel {
         }
 
         let delta = CGSize(width: -autoPanVelocity.x, height: -autoPanVelocity.y)
-        viewport?.scrollBy(delta)
+        viewport.scrollBy(delta)
         autoPanAccum.x += delta.width
         autoPanAccum.y += delta.height
 

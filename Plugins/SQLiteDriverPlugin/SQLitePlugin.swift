@@ -876,9 +876,10 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var tableDDLIncludesForeignKeys: Bool { true }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        /// Selected in `PRAGMA foreign_key_list`'s own column order, behind the table name, so the
+        /// rows can be handed to the same grouping the single-table read uses.
         let query = """
-            SELECT m.name AS table_name, p.id, p."table" AS referenced_table,
-                   p."from" AS column_name, p."to" AS referenced_column,
+            SELECT m.name AS table_name, p.id, p.seq, p."table", p."from", p."to",
                    p.on_update, p.on_delete
             FROM sqlite_master m, pragma_foreign_key_list(m.name) p
             WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%'
@@ -886,34 +887,34 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             """
         let result = try await execute(query: query)
 
-        var allForeignKeys: [String: [PluginForeignKeyInfo]] = [:]
-
+        var pragmaRowsByTable: [String: [[PluginCellValue]]] = [:]
         for row in result.rows {
-            guard row.count >= 7,
-                  let tableName = row[0].asText,
-                  let id = row[1].asText,
-                  let refTable = row[2].asText,
-                  let fromCol = row[3].asText,
-                  let toCol = row[4].asText else {
-                continue
-            }
-
-            let onUpdate = row[5].asText ?? "NO ACTION"
-            let onDelete = row[6].asText ?? "NO ACTION"
-
-            let fk = PluginForeignKeyInfo(
-                name: "fk_\(tableName)_\(id)",
-                column: fromCol,
-                referencedTable: refTable,
-                referencedColumn: toCol,
-                onDelete: onDelete,
-                onUpdate: onUpdate
-            )
-
-            allForeignKeys[tableName, default: []].append(fk)
+            guard row.count >= 8, let tableName = row[0].asText else { continue }
+            pragmaRowsByTable[tableName, default: []].append(Array(row.dropFirst()))
         }
+        guard !pragmaRowsByTable.isEmpty else { return [:] }
 
-        return allForeignKeys
+        let createStatements = try await createTableStatements()
+        return pragmaRowsByTable.reduce(into: [:]) { foreignKeys, entry in
+            foreignKeys[entry.key] = SQLiteForeignKeyGrouping.infos(
+                table: entry.key,
+                pragmaRows: entry.value,
+                createTableSQL: createStatements[entry.key]
+            )
+        }
+    }
+
+    /// The stored `CREATE TABLE` text for every ordinary table, keyed by name. Read in one query so
+    /// recovering constraint names costs one round trip rather than one per table.
+    private func createTableStatements() async throws -> [String: String] {
+        let rows = try await execute(query: """
+            SELECT name, sql FROM sqlite_master
+            WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND sql IS NOT NULL
+            """).rows
+        return rows.reduce(into: [:]) { statements, row in
+            guard let name = row[safe: 0]?.asText, let sql = row[safe: 1]?.asText else { return }
+            statements[name] = sql
+        }
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
@@ -941,29 +942,43 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
         let safeTable = escapeStringLiteral(table)
-        let query = "PRAGMA foreign_key_list('\(safeTable)')"
-        let result = try await execute(query: query)
+        let pragmaRows = try await execute(query: "PRAGMA foreign_key_list('\(safeTable)')").rows
+        guard !pragmaRows.isEmpty else { return [] }
 
-        return result.rows.compactMap { row -> PluginForeignKeyInfo? in
-            guard row.count >= 5,
-                  let refTable = row[2].asText,
-                  let fromCol = row[3].asText,
-                  let toCol = row[4].asText else {
-                return nil
-            }
+        let createTableSQL = try await execute(query: """
+            SELECT sql FROM sqlite_master WHERE type = 'table' AND name = '\(safeTable)'
+            """).rows.first?[safe: 0]?.asText
 
-            let id = row[0].asText ?? "0"
-            let onUpdate = row.count >= 6 ? (row[5].asText ?? "NO ACTION") : "NO ACTION"
-            let onDelete = row.count >= 7 ? (row[6].asText ?? "NO ACTION") : "NO ACTION"
-
-            return PluginForeignKeyInfo(
-                name: "fk_\(table)_\(id)",
-                column: fromCol,
-                referencedTable: refTable,
-                referencedColumn: toCol,
-                onDelete: onDelete,
-                onUpdate: onUpdate
+        return SQLiteForeignKeyGrouping.infos(
+            table: table,
+            pragmaRows: pragmaRows,
+            createTableSQL: createTableSQL,
+            primaryKeysByTable: try await primaryKeys(
+                ofTablesReferencedIn: pragmaRows.compactMap { $0[safe: 2]?.asText }
             )
+        )
+    }
+
+    /// The primary key columns of each named table, in key order, keyed by lower-cased table name.
+    ///
+    /// A foreign key written `REFERENCES parent` with no column list points at the parent's primary
+    /// key, and `PRAGMA foreign_key_list` reports null rather than resolving it, so the parent has
+    /// to be asked. One query covers every parent a table references.
+    private func primaryKeys(ofTablesReferencedIn tables: [String]) async throws -> [String: [String]] {
+        let names = Set(tables.map { $0.lowercased() })
+        guard !names.isEmpty else { return [:] }
+        let literals = names.map { "'\(escapeStringLiteral($0))'" }.joined(separator: ", ")
+
+        let rows = try await execute(query: """
+            SELECT m.name, i.name
+            FROM sqlite_master m, pragma_table_info(m.name) i
+            WHERE m.type = 'table' AND lower(m.name) IN (\(literals)) AND i.pk > 0
+            ORDER BY m.name, i.pk
+            """).rows
+
+        return rows.reduce(into: [:]) { keys, row in
+            guard let table = row[safe: 0]?.asText, let column = row[safe: 1]?.asText else { return }
+            keys[table.lowercased(), default: []].append(column)
         }
     }
 
@@ -1119,6 +1134,13 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
         sqliteCreateTableSQL(definition: definition)
+    }
+
+    /// Kept as a method because the table-rebuild path renders its columns through it. The body is
+    /// the extracted free function, so the create path and the rebuild path cannot spell a column
+    /// two different ways.
+    func sqliteColumnDefinition(_ column: PluginColumnDefinition, inlinePK: Bool) -> String {
+        sqliteColumnDefinitionSQL(column, isInlinePrimaryKey: inlinePK && column.isPrimaryKey)
     }
 
     // MARK: - ALTER TABLE DDL

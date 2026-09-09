@@ -129,6 +129,38 @@ internal enum LibSSH2TunnelFactory {
         }
     }
 
+    /// The depth ssh itself stops at, so a `Host a / ProxyJump b` plus `Host b / ProxyJump a` pair
+    /// ends rather than recursing until the stack runs out.
+    private static let maxJumpChainDepth = 10
+
+    /// Resolves the hops in order, following each one's own `ProxyJump` first. A jump host may
+    /// declare a jump host of its own, and ssh walks that recursively: for `target` -> `bee` ->
+    /// `ay`, it connects to `ay`, tunnels to `bee`, then reaches `target`. Reading only the
+    /// target's own `ProxyJump` stopped the chain at `bee`, which is either unreachable or the
+    /// wrong host entirely.
+    internal static func resolveJumpChain(
+        _ jumpHosts: [SSHJumpHost],
+        document: SSHConfigDocument,
+        env: ResolverEnvironment = .live,
+        depth: Int = 0
+    ) -> [ResolvedSSHTarget] {
+        guard depth < maxJumpChainDepth else {
+            logger.warning("SSH ProxyJump chain deeper than \(maxJumpChainDepth) hops, stopping")
+            return []
+        }
+
+        return jumpHosts.flatMap { jumpHost -> [ResolvedSSHTarget] in
+            let resolved = SSHConfigResolver.resolve(jumpHost, document: document, env: env)
+            let earlier = resolveJumpChain(
+                resolved.proxyJump,
+                document: document,
+                env: env,
+                depth: depth + 1
+            )
+            return earlier + [resolved]
+        }
+    }
+
     internal static func buildAuthenticatedChain(
         config: SSHConfiguration,
         credentials: SSHTunnelCredentials,
@@ -140,8 +172,10 @@ internal enum LibSSH2TunnelFactory {
         let resolvedPrimary = SSHConfigResolver.resolve(config, document: document)
 
         let formJumps = config.jumpHosts
-        let resolvedJumps: [ResolvedSSHTarget] = (formJumps.isEmpty ? resolvedPrimary.proxyJump : formJumps)
-            .map { SSHConfigResolver.resolve($0, document: document) }
+        let resolvedJumps = resolveJumpChain(
+            formJumps.isEmpty ? resolvedPrimary.proxyJump : formJumps,
+            document: document
+        )
 
         // A value whose tokens could not be expanded is reported by name. Dialling it anyway is how
         // `Hostname %h` reached getaddrinfo and came back as a DNS failure for a two-character host.

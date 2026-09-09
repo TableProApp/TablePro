@@ -1,6 +1,7 @@
-import SwiftUI
+import AppKit
 
-/// Renders FK edges with crow's foot notation on a Canvas GraphicsContext.
+/// Renders FK edges with crow's foot notation with CoreGraphics into the current drawing context.
+@MainActor
 enum ERDiagramEdgeRenderer {
     private struct ResolvedEdge {
         let edge: EREdge
@@ -10,14 +11,15 @@ enum ERDiagramEdgeRenderer {
         let toRect: CGRect
     }
 
+    private static let strokeWidth: CGFloat = 1.5
+
     static func drawEdges(
-        context: GraphicsContext,
         edges: [EREdge],
         nodeRects: [UUID: CGRect],
-        nodeIndex: [String: UUID]
+        nodeIndex: [String: UUID],
+        in context: CGContext
     ) {
-        let strokeColor = Color.secondary.opacity(0.7)
-        let strokeStyle = StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round)
+        let strokeColor = NSColor.secondaryLabelColor.withAlphaComponent(0.7)
 
         // Resolve edges to IDs and rects, assign port indices sorted by X to minimize crossings
         let resolved: [ResolvedEdge] = edges.compactMap { edge -> ResolvedEdge? in
@@ -66,6 +68,12 @@ enum ERDiagramEdgeRenderer {
             }
         }
 
+        context.saveGState()
+        context.setStrokeColor(strokeColor.cgColor)
+        context.setLineWidth(strokeWidth)
+        context.setLineCap(.round)
+        context.setLineJoin(.round)
+
         for item in resolved {
             let edgeKey = "\(item.edge.fromTable).\(item.edge.fkName).\(item.edge.fromColumn)"
             let si = srcPortIndex[edgeKey] ?? 0
@@ -78,64 +86,64 @@ enum ERDiagramEdgeRenderer {
             )
             let (path, cp1, cp2) = bezierPath(from: srcPort, to: dstPort, verticalPorts: verticalPorts)
 
-            context.stroke(path, with: .color(strokeColor), style: strokeStyle)
-            drawSourceMarker(context: context, cardinality: item.edge.cardinality, at: srcPort, toward: cp1, color: strokeColor)
-            drawDestinationMarker(context: context, cardinality: item.edge.cardinality, at: dstPort, toward: cp2, color: strokeColor)
+            context.addPath(path)
+            context.strokePath()
+            drawSourceMarker(cardinality: item.edge.cardinality, at: srcPort, toward: cp1, in: context)
+            drawDestinationMarker(cardinality: item.edge.cardinality, at: dstPort, toward: cp2, in: context)
         }
+
+        context.restoreGState()
     }
 
     // MARK: - Cardinality Markers
 
     private static func drawSourceMarker(
-        context: GraphicsContext,
         cardinality: ERCardinality,
         at point: CGPoint,
         toward target: CGPoint,
-        color: Color
+        in context: CGContext
     ) {
         switch cardinality {
         case .oneToOne:
-            drawCompoundEndMarker(context: context, at: point, toward: target, isMany: false, isMandatory: true, color: color)
+            drawCompoundEndMarker(at: point, toward: target, isMany: false, isMandatory: true, in: context)
         case .zeroOrOneToOne:
-            drawCompoundEndMarker(context: context, at: point, toward: target, isMany: false, isMandatory: false, color: color)
+            drawCompoundEndMarker(at: point, toward: target, isMany: false, isMandatory: false, in: context)
         case .manyToOne:
-            drawCompoundEndMarker(context: context, at: point, toward: target, isMany: true, isMandatory: true, color: color)
+            drawCompoundEndMarker(at: point, toward: target, isMany: true, isMandatory: true, in: context)
         case .zeroOrManyToOne:
-            drawCompoundEndMarker(context: context, at: point, toward: target, isMany: true, isMandatory: false, color: color)
+            drawCompoundEndMarker(at: point, toward: target, isMany: true, isMandatory: false, in: context)
         case .manyToMany:
-            drawCrowFoot(context: context, at: point, toward: target, color: color)
+            drawCrowFoot(at: point, toward: target, in: context)
         default:
-            drawCompoundEndMarker(context: context, at: point, toward: target, isMany: true, isMandatory: true, color: color)
+            drawCompoundEndMarker(at: point, toward: target, isMany: true, isMandatory: true, in: context)
         }
     }
 
     private static func drawDestinationMarker(
-        context: GraphicsContext,
         cardinality: ERCardinality,
         at point: CGPoint,
         toward target: CGPoint,
-        color: Color
+        in context: CGContext
     ) {
         switch cardinality {
         case .manyToMany:
-            drawCrowFoot(context: context, at: point, toward: target, color: color)
+            drawCrowFoot(at: point, toward: target, in: context)
         default:
-            drawOneBar(context: context, at: point, toward: target, color: color)
+            drawOneBar(at: point, toward: target, in: context)
         }
     }
 
     private static func drawCompoundEndMarker(
-        context: GraphicsContext,
         at point: CGPoint,
         toward target: CGPoint,
         isMany: Bool,
         isMandatory: Bool,
-        color: Color
+        in context: CGContext
     ) {
         if isMany {
-            drawCrowFoot(context: context, at: point, toward: target, color: color)
+            drawCrowFoot(at: point, toward: target, in: context)
         } else {
-            drawOneBar(context: context, at: point, toward: target, color: color)
+            drawOneBar(at: point, toward: target, in: context)
         }
 
         let angle = atan2(target.y - point.y, target.x - point.x)
@@ -143,16 +151,17 @@ enum ERDiagramEdgeRenderer {
         let innerPoint = CGPoint(x: point.x + innerOffset * cos(angle), y: point.y + innerOffset * sin(angle))
 
         if isMandatory {
-            drawOneBar(context: context, at: innerPoint, toward: target, color: color)
+            drawOneBar(at: innerPoint, toward: target, in: context)
         } else {
-            drawCircle(context: context, at: innerPoint, color: color)
+            drawCircle(at: innerPoint, in: context)
         }
     }
 
-    private static func drawCircle(context: GraphicsContext, at point: CGPoint, color: Color) {
+    private static func drawCircle(at point: CGPoint, in context: CGContext) {
         let radius: CGFloat = 3.5
         let rect = CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2)
-        context.stroke(Path(ellipseIn: rect), with: .color(color), style: StrokeStyle(lineWidth: 1.5))
+        context.addEllipse(in: rect)
+        context.strokePath()
     }
 
     // MARK: - Port Selection
@@ -161,7 +170,7 @@ enum ERDiagramEdgeRenderer {
     /// Multiple edges on the same table are spaced evenly along the edge.
     /// Returns (srcPort, dstPort, verticalPorts).
     /// Uses actual port-to-port gap to decide routing direction.
-    private static func computePorts(
+    static func computePorts(
         from fromRect: CGRect, to toRect: CGRect,
         srcIdx: Int, srcTotal: Int,
         dstIdx: Int, dstTotal: Int
@@ -211,7 +220,7 @@ enum ERDiagramEdgeRenderer {
 
     // MARK: - Bezier Path
 
-    private static func bezierPath(from src: CGPoint, to dst: CGPoint, verticalPorts: Bool) -> (Path, CGPoint, CGPoint) {
+    static func bezierPath(from src: CGPoint, to dst: CGPoint, verticalPorts: Bool) -> (CGPath, CGPoint, CGPoint) {
         let cp1: CGPoint
         let cp2: CGPoint
 
@@ -227,7 +236,7 @@ enum ERDiagramEdgeRenderer {
             cp2 = CGPoint(x: dst.x + (src.x > dst.x ? offset : -offset), y: dst.y)
         }
 
-        var path = Path()
+        let path = CGMutablePath()
         path.move(to: src)
         path.addCurve(to: dst, control1: cp1, control2: cp2)
         return (path, cp1, cp2)
@@ -235,34 +244,30 @@ enum ERDiagramEdgeRenderer {
 
     // MARK: - Crow's Foot (Many Side)
 
-    private static func drawCrowFoot(context: GraphicsContext, at point: CGPoint, toward target: CGPoint, color: Color) {
+    private static func drawCrowFoot(at point: CGPoint, toward target: CGPoint, in context: CGContext) {
         let length: CGFloat = 12
         let spread: CGFloat = 8
         let angle = atan2(target.y - point.y, target.x - point.x)
 
-        let tipX = point.x + length * cos(angle)
-        let tipY = point.y + length * sin(angle)
-
+        let tip = CGPoint(x: point.x + length * cos(angle), y: point.y + length * sin(angle))
         let perpAngle = angle + .pi / 2
 
         // Three prongs from the tip back to spread points
         let top = CGPoint(x: point.x + spread * cos(perpAngle), y: point.y + spread * sin(perpAngle))
         let bottom = CGPoint(x: point.x - spread * cos(perpAngle), y: point.y - spread * sin(perpAngle))
 
-        var path = Path()
-        path.move(to: CGPoint(x: tipX, y: tipY))
-        path.addLine(to: top)
-        path.move(to: CGPoint(x: tipX, y: tipY))
-        path.addLine(to: point)
-        path.move(to: CGPoint(x: tipX, y: tipY))
-        path.addLine(to: bottom)
-
-        context.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+        context.move(to: tip)
+        context.addLine(to: top)
+        context.move(to: tip)
+        context.addLine(to: point)
+        context.move(to: tip)
+        context.addLine(to: bottom)
+        context.strokePath()
     }
 
     // MARK: - One Bar (PK Side)
 
-    private static func drawOneBar(context: GraphicsContext, at point: CGPoint, toward target: CGPoint, color: Color) {
+    private static func drawOneBar(at point: CGPoint, toward target: CGPoint, in context: CGContext) {
         let barWidth: CGFloat = 10
         let angle = atan2(target.y - point.y, target.x - point.x)
         let perpAngle = angle + .pi / 2
@@ -270,10 +275,8 @@ enum ERDiagramEdgeRenderer {
         let top = CGPoint(x: point.x + barWidth * cos(perpAngle), y: point.y + barWidth * sin(perpAngle))
         let bottom = CGPoint(x: point.x - barWidth * cos(perpAngle), y: point.y - barWidth * sin(perpAngle))
 
-        var path = Path()
-        path.move(to: top)
-        path.addLine(to: bottom)
-
-        context.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+        context.move(to: top)
+        context.addLine(to: bottom)
+        context.strokePath()
     }
 }

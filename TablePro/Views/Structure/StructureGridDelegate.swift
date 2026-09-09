@@ -13,7 +13,18 @@ final class StructureGridDelegate: DataGridViewDelegate {
     let structureChangeManager: StructureChangeManager
     var selectedTab: StructureTab
     let connection: DatabaseConnection
+
+    /// Whether this engine can add and remove foreign keys, which is not the same question as
+    /// whether it has them. Every path that stages a foreign key change reads this, not just the
+    /// button under the list: a context-menu Delete that stages one on an engine with no way to
+    /// apply it only fails later, at Save.
+    var canEditForeignKeys: Bool {
+        PluginManager.shared.foreignKeyEditSupport(for: connection.type).isEditable
+            && connection.type.supportsSchemaEditing
+    }
     let tableName: String
+    /// The lists behind the Foreign Keys grid's reference cells, shared with the Create Table tab.
+    let referenceMenus: ForeignKeyReferenceMenus
     weak var coordinator: MainContentCoordinator?
     var onSelectedRowsChanged: ((Set<Int>) -> Void)?
 
@@ -53,6 +64,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
         self.connection = connection
         self.tableName = tableName
         self.coordinator = coordinator
+        self.referenceMenus = ForeignKeyReferenceMenus(connectionId: connection.id)
     }
 
     // MARK: - Index Translation
@@ -67,6 +79,26 @@ final class StructureGridDelegate: DataGridViewDelegate {
 
     private func sourceRows(for displayRows: Set<Int>) -> Set<Int> {
         Set(displayRows.map { sourceRow(for: $0) })
+    }
+
+    /// The Foreign Keys grid's Columns, Ref Table and Ref Columns cells offer the database's own
+    /// names, exactly as the Create Table tab does.
+    ///
+    /// `StructureRowProvider` marks those three columns as carrying a chevron for every grid it
+    /// serves, so without this the chevron here would reach the data grid's boolean fallback and
+    /// offer to write `1` into Ref Table. The row is translated first: this grid filters and sorts,
+    /// so a display position is not an index into `workingForeignKeys`.
+    func dataGridMenuOptions(forRow row: Int, columnIndex: Int) -> [GridMenuOption]? {
+        guard selectedTab == .foreignKeys, canEditForeignKeys else { return nil }
+        let sourceRowIndex = sourceRow(for: row)
+        guard sourceRowIndex >= 0, sourceRowIndex < structureChangeManager.workingForeignKeys.count else {
+            return nil
+        }
+        return referenceMenus.options(
+            columnIndex: columnIndex,
+            foreignKey: structureChangeManager.workingForeignKeys[sourceRowIndex],
+            tableColumns: structureChangeManager.workingColumns.map(\.name)
+        )
     }
 
     // MARK: - DataGridViewDelegate
@@ -97,6 +129,11 @@ final class StructureGridDelegate: DataGridViewDelegate {
             var fk = structureChangeManager.workingForeignKeys[sourceRowIndex]
             StructureEditingSupport.updateForeignKey(&fk, at: column, with: newValue ?? "")
             structureChangeManager.updateForeignKey(id: fk.id, with: fk)
+            if column == 2 {
+                referenceMenus.prefetchReferencedColumns(
+                    of: fk.referencedTable, schema: fk.referencedSchema
+                )
+            }
 
         case .checkConstraints:
             guard connection.type.supportsCheckConstraintEditing,
@@ -157,7 +194,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 }
             }
         case .foreignKeys:
-            guard connection.type.supportsForeignKeys else { return }
+            guard canEditForeignKeys else { return }
             structureChangeManager.performAsOneUndoStep {
                 for row in translated.sorted(by: >) {
                     guard row < structureChangeManager.workingForeignKeys.count else { continue }
@@ -349,7 +386,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
             guard connection.type.supportsAddIndex else { return }
             structureChangeManager.addNewIndex()
         case .foreignKeys:
-            guard connection.type.supportsForeignKeys else { return }
+            guard canEditForeignKeys else { return }
             structureChangeManager.addNewForeignKey()
         case .checkConstraints:
             guard connection.type.supportsCheckConstraintEditing else { return }
@@ -552,7 +589,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
             guard connection.type.supportsAddIndex else { return nil }
             label = String(localized: "Add Index")
         case .foreignKeys:
-            guard connection.type.supportsForeignKeys else { return nil }
+            guard canEditForeignKeys else { return nil }
             label = String(localized: "Add Foreign Key")
         case .checkConstraints:
             guard connection.type.supportsCheckConstraintEditing else { return nil }

@@ -538,7 +538,12 @@ extension PluginManager {
 
     func columnReorderSupport(for databaseType: DatabaseType) -> ColumnReorderSupport {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
-            .columnReorder ?? .unsupported
+            .structureEditing.columnReorder ?? .unsupported
+    }
+
+    func foreignKeyEditSupport(for databaseType: DatabaseType) -> ForeignKeyEditSupport {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .structureEditing.foreignKeyEdit ?? .unsupported
     }
 
     func supportsDropDatabase(for databaseType: DatabaseType) -> Bool {

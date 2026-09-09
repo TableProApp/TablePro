@@ -18,17 +18,21 @@ final class DiagramViewportController {
 
     @ObservationIgnored private weak var scrollView: NSScrollView?
     @ObservationIgnored private var magnificationObservation: NSKeyValueObservation?
+    @ObservationIgnored private var savedDocumentOrigin: CGPoint?
 
     var visibleDocumentRect: CGRect {
         scrollView?.documentVisibleRect ?? .zero
     }
 
+    var canZoomIn: Bool { DiagramZoom.canStepUp(from: magnification) }
+    var canZoomOut: Bool { DiagramZoom.canStepDown(from: magnification) }
+
     func zoomIn() {
-        apply(magnification + DiagramZoom.step)
+        apply(DiagramZoom.stepUp(from: magnification))
     }
 
     func zoomOut() {
-        apply(magnification - DiagramZoom.step)
+        apply(DiagramZoom.stepDown(from: magnification))
     }
 
     func resetZoom() {
@@ -64,8 +68,12 @@ final class DiagramViewportController {
         scrollView.reflectScrolledClipView(clipView)
     }
 
+    /// Pushes the retained zoom onto the new scroll view rather than reading the scroll view's
+    /// own 1.0, because a controller outlives the view it is attached to: an editor-tab switch
+    /// tears the diagram down and rebuilds it, and reading would drop the user back to 100%.
     func attach(to scrollView: NSScrollView) {
         self.scrollView = scrollView
+        scrollView.magnification = DiagramZoom.clamped(magnification)
         magnification = scrollView.magnification
         magnificationObservation = scrollView.observe(\.magnification, options: [.new]) { [weak self] _, change in
             guard let value = change.newValue else { return }
@@ -75,7 +83,21 @@ final class DiagramViewportController {
         }
     }
 
+    /// The scroll offset can only be restored once the rebuilt scroll view has a document to
+    /// constrain it against, so it waits for the caller's layout pass instead of riding `attach`.
+    func restoreScrollPosition() {
+        guard let scrollView, let origin = savedDocumentOrigin else { return }
+        savedDocumentOrigin = nil
+        let clipView = scrollView.contentView
+        let proposed = CGRect(origin: origin, size: clipView.bounds.size)
+        clipView.scroll(to: clipView.constrainBoundsRect(proposed).origin)
+        scrollView.reflectScrolledClipView(clipView)
+    }
+
     func detach() {
+        if let scrollView {
+            savedDocumentOrigin = scrollView.contentView.bounds.origin
+        }
         magnificationObservation?.invalidate()
         magnificationObservation = nil
         scrollView = nil

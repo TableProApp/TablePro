@@ -683,6 +683,18 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         )
     }
 
+    func generateTableRebuildPlan(
+        table: String,
+        schema: String?,
+        respecification: PluginTableRespecification
+    ) async throws -> PluginColumnReorderPlan? {
+        try await pluginDriver.generateTableRebuildPlan(
+            table: table,
+            schema: schema,
+            respecification: respecification
+        )
+    }
+
     func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String? {
         try await pluginDriver.columnReorderSchemaFingerprint(table: table, schema: schema)
     }

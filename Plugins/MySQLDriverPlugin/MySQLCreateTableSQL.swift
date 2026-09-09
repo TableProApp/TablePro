@@ -12,10 +12,16 @@ import TableProPluginKit
 /// test target and exercised directly. `MySQLCreateTableTests` used to sit behind
 /// `#if canImport(MySQLDriverPlugin)`, and the XcodeGen target is named `MySQLDriver`, so the module
 /// by that name has never existed and the whole suite compiled to nothing.
-internal func mysqlCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
+/// `isMariaDB` is threaded rather than defaulted. MariaDB and MySQL spell an expression default
+/// differently, the flag is driver state that `PluginCreateTableDefinition` does not carry, and a
+/// default here would silently give every MariaDB table MySQL's parentheses.
+internal func mysqlCreateTableSQL(
+    definition: PluginCreateTableDefinition,
+    isMariaDB: Bool
+) -> String? {
     guard !definition.columns.isEmpty else { return nil }
 
-    var parts = definition.columns.map(mysqlColumnDefinitionSQL)
+    var parts = definition.columns.map { mysqlColumnDefinitionSQL($0, isMariaDB: isMariaDB) }
 
     var keyColumns = definition.primaryKeyColumns
     if keyColumns.isEmpty {

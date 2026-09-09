@@ -115,6 +115,17 @@ struct DeeplinkImportSheet: View {
         return ssh.host
     }
 
+    private func formatJumpHosts(_ ssh: ExportableSSHConfig) -> String? {
+        let hops = (ssh.jumpHosts ?? []).filter { !$0.host.isEmpty }
+        guard !hops.isEmpty else { return nil }
+        return hops
+            .map { hop in
+                let port = hop.port ?? 22
+                return hop.username.isEmpty ? "\(hop.host):\(port)" : "\(hop.username)@\(hop.host):\(port)"
+            }
+            .joined(separator: ", ")
+    }
+
     @ViewBuilder
     private var sshSection: some View {
         if let ssh = connection.sshConfig {
@@ -123,9 +134,21 @@ struct DeeplinkImportSheet: View {
                     Text(formatSSHHost(ssh))
                         .foregroundStyle(.secondary)
                 }
+                if !ssh.username.isEmpty {
+                    LabeledContent(String(localized: "User")) {
+                        Text(ssh.username)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 LabeledContent(String(localized: "Auth")) {
                     Text(ssh.authMethod)
                         .foregroundStyle(.secondary)
+                }
+                if let jumpHosts = formatJumpHosts(ssh) {
+                    LabeledContent(String(localized: "Jump Hosts")) {
+                        Text(jumpHosts)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }

@@ -40,7 +40,7 @@ internal struct CustomValueContentView: View {
         self.onCommit = onCommit
         self.onDismiss = onDismiss
         if let text = SQLStringLiteral.unquoted(initialValue),
-           "'\(escapeStringLiteral(text))'" == initialValue {
+           initialValue == "'\(escapeStringLiteral(text))'" {
             _mode = State(initialValue: .text)
             _text = State(initialValue: text)
         } else {

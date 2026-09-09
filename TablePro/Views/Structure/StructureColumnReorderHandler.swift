@@ -6,25 +6,17 @@
 //
 
 import Foundation
-import os
 import TableProPluginKit
 
 @MainActor
 enum StructureColumnReorderHandler {
-    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "StructureColumnReorderHandler")
-
     enum ReorderError: LocalizedError {
-        case noDriver
         case notSupported
         case invalidIndices
         case sqlGenerationFailed
-        case schemaChanged
-        case executionFailed(String)
 
         var errorDescription: String? {
             switch self {
-            case .noDriver:
-                return String(localized: "No active database connection")
             case .notSupported:
                 return String(localized: "Column reorder is not supported for this database type")
             case .invalidIndices:
@@ -36,15 +28,6 @@ enum StructureColumnReorderHandler {
                         was installed before column reorder shipped, update it in Settings > Plugins.
                         """
                 )
-            case .schemaChanged:
-                return String(
-                    localized: """
-                        The table changed while the script was open. Nothing was run. Close and \
-                        reopen the structure tab, then try again.
-                        """
-                )
-            case .executionFailed(let message):
-                return String(format: String(localized: "Column reorder failed: %@"), message)
             }
         }
     }
@@ -127,97 +110,21 @@ enum StructureColumnReorderHandler {
         return PreparedReorder(plan: prepared.0, fingerprint: prepared.1, scope: scope)
     }
 
-    /// Runs a prepared reorder, once, on the scope it was planned against.
-    ///
-    /// Authorization happens once for the whole plan, before any statement runs, and deliberately
-    /// outside the scoped block: it can await a confirmation sheet and Touch ID, and holding the
-    /// connection's driver across a human prompt would freeze every other tab on it. Asking per
-    /// statement was worse than slow, it was wrong: a user could approve through a rebuild's last
-    /// write and decline the statement after it, by which point there was nothing left to refuse.
+    /// Runs a prepared reorder through the shared plan runner.
     static func execute(
         _ prepared: PreparedReorder,
         tableName: String,
         databaseType: DatabaseType
     ) async throws {
-        let plan = prepared.plan
-        let scope = prepared.scope
-        let combined = plan.scriptStatements.joined(separator: "\n")
-
-        let decision = await ExecutionGateProvider.shared.authorize(
-            OperationRequest(
-                connectionId: scope.connectionId,
-                databaseType: databaseType,
-                sql: combined,
-                kind: plan.cost == .tableRebuild ? .destructiveQuery : .schemaMutation,
-                caller: .userInterface,
-                capabilities: .interactiveUser,
-                operationDescription: String(localized: "Reorder Columns")
-            )
+        try await StructureRebuildPlanRunner.execute(
+            StructureRebuildPlanRunner.Prepared(
+                plan: prepared.plan,
+                fingerprint: prepared.fingerprint,
+                scope: prepared.scope,
+                tableName: tableName
+            ),
+            databaseType: databaseType,
+            operationDescription: String(localized: "Reorder Columns")
         )
-        guard case .authorized = decision else {
-            throw DatabaseError.queryFailed(decision.deniedReason ?? String(localized: "Operation not permitted"))
-        }
-
-        let expectedFingerprint = prepared.fingerprint
-        try await DatabaseManager.shared.withScopedDriver(
-            scope: scope,
-            route: DatabaseManager.shared.executionRoute(for: scope),
-            cancellation: .protectedWrite
-        ) { driver in
-            if let expectedFingerprint,
-               let adapter = driver as? PluginDriverAdapter,
-               let current = try? await adapter.columnReorderSchemaFingerprint(
-                   table: tableName, schema: scope.schema
-               ),
-               current != expectedFingerprint {
-                throw ReorderError.schemaChanged
-            }
-
-            for sql in plan.prologue {
-                _ = try? await driver.execute(query: sql)
-            }
-
-            /// Only the transaction this plan opened is ever rolled back. Rolling back
-            /// unconditionally would discard a transaction the user had already opened on the same
-            /// session and never committed.
-            let usesTransaction = plan.isTransactional && driver.supportsTransactions
-            if usesTransaction {
-                try await driver.beginTransaction(mode: .readWrite)
-            }
-
-            var completed = 0
-            do {
-                for sql in plan.statements {
-                    logger.info("Reordering columns: \(sql, privacy: .public)")
-                    _ = try await driver.execute(query: sql)
-                    completed += 1
-                }
-                if usesTransaction {
-                    try await driver.commitTransaction()
-                }
-            } catch {
-                if usesTransaction {
-                    do {
-                        try await driver.rollbackTransaction()
-                    } catch {
-                        logger.error("Column reorder rollback failed: \(error.localizedDescription, privacy: .public)")
-                    }
-                } else if completed > 0 {
-                    /// An engine whose DDL commits statement by statement has nothing to roll back,
-                    /// so it supplies statements that put back what already ran.
-                    for sql in plan.compensation {
-                        _ = try? await driver.execute(query: sql)
-                    }
-                }
-                for sql in plan.epilogue {
-                    _ = try? await driver.execute(query: sql)
-                }
-                throw ReorderError.executionFailed(error.localizedDescription)
-            }
-
-            for sql in plan.epilogue {
-                _ = try? await driver.execute(query: sql)
-            }
-        }
     }
 }

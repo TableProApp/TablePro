@@ -285,6 +285,27 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
         desiredOrder: [String]
     ) async throws -> PluginColumnReorderPlan?
 
+    /// The statements that apply `respecification` to `table`, for an engine that can only change
+    /// a table by recreating it.
+    ///
+    /// SQLite is the case this exists for. Its `ALTER TABLE` can rename a table, rename a column,
+    /// add a column, drop a column and, since 3.53, add or drop a `CHECK`; it cannot add or drop a
+    /// `FOREIGN KEY` at any version. Measured against 3.54, `ADD CONSTRAINT … FOREIGN KEY` is a
+    /// syntax error and `DROP CONSTRAINT` on a foreign key answers "constraint may not be dropped".
+    ///
+    /// Nil where the engine does not need this, which is every engine whose `ALTER TABLE` can say
+    /// what the save means: those keep answering the per-change `generate…SQL` requirements, and
+    /// nothing asks them for a plan. Nil also for a table the engine cannot reproduce, such as a
+    /// virtual table, where a rebuild would destroy what it was meant to change.
+    ///
+    /// Throws where the respecification is one the engine can describe but must refuse, so the
+    /// reason reaches the user instead of a nil that reads as "not supported".
+    func generateTableRebuildPlan(
+        table: String,
+        schema: String?,
+        respecification: PluginTableRespecification
+    ) async throws -> PluginColumnReorderPlan?
+
     /// A fingerprint of everything a reorder plan reproduces, cheap enough to take twice.
     ///
     /// A rebuild plan is built before its review sheet opens and run after it closes, and it ends
@@ -734,6 +755,12 @@ public extension PluginDatabaseDriver {
         schema: String?,
         columns: [PluginColumnDefinition],
         desiredOrder: [String]
+    ) async throws -> PluginColumnReorderPlan? { nil }
+
+    func generateTableRebuildPlan(
+        table: String,
+        schema: String?,
+        respecification: PluginTableRespecification
     ) async throws -> PluginColumnReorderPlan? { nil }
 
     func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String? { nil }

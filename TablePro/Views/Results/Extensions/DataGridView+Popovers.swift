@@ -234,7 +234,11 @@ extension TableViewCoordinator {
 
         let currentValue = cellValue(at: row, column: columnIndex)
         let isNullable = tableRows.columnNullable[columnName] ?? true
-        let defaultValue = tableRows.columnDefaults[columnName] ?? nil
+        // The picker matches against the enum's own unquoted tokens, so the column default crosses
+        // out of SQL here. It arrives as the exact SQL after DEFAULT, which for a string default is
+        // quoted, and a quoted value matched no entry so the default badge was never drawn.
+        let storedDefault = tableRows.columnDefaults[columnName] ?? nil
+        let defaultValue = storedDefault.flatMap(SQLStringLiteral.unquoted) ?? storedDefault
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
         EnumMenuPicker.presentEnum(
@@ -384,6 +388,12 @@ extension TableViewCoordinator {
         editor.close()
     }
 
+    /// A column the owner listed as a dropdown but supplied no fixed vocabulary for. Its list comes
+    /// from the delegate per row, so a nil answer means "nothing to offer here", not "fall back".
+    private func declaresRowDependentMenu(columnIndex: Int) -> Bool {
+        dropdownColumns?.contains(columnIndex) == true && customDropdownOptions?[columnIndex] == nil
+    }
+
     func showDropdownMenu(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         guard presentsCell(row: row, tableColumnIndex: column) else { return }
         let tableRows = tableRowsProvider()
@@ -396,9 +406,15 @@ extension TableViewCoordinator {
         let custom = delegate?.dataGridMenuOptions(forRow: row, columnIndex: columnIndex)
             ?? customDropdownOptions?[columnIndex]
 
+        /// The boolean pair is the fallback for a cell whose column is a boolean, not for a column
+        /// that declared a chevron and then had no list to show. A schema grid does the latter
+        /// whenever its delegate declines the row, and offering `1` and `0` there writes a digit
+        /// into a name.
         let options: [GridMenuOption]
         if let custom {
             options = custom
+        } else if declaresRowDependentMenu(columnIndex: columnIndex) {
+            return
         } else if let dbType = databaseType, PluginManager.shared.usesTrueFalseBooleans(for: dbType) {
             options = GridMenuOption.values(["true", "false"])
         } else {

@@ -24,7 +24,7 @@ struct MySQLCreateTableTests {
             ]
         )
 
-        let sql = mysqlCreateTableSQL(definition: definition)
+        let sql = mysqlCreateTableSQL(definition: definition, isMariaDB: false)
         #expect(sql != nil)
         #expect(sql!.contains("CREATE TABLE `users`"))
         #expect(sql!.contains("`id` INT NOT NULL"))
@@ -33,7 +33,7 @@ struct MySQLCreateTableTests {
     @Test("empty columns returns nil")
     func emptyColumns() {
         let definition = PluginCreateTableDefinition(tableName: "empty", columns: [])
-        #expect(mysqlCreateTableSQL(definition: definition) == nil)
+        #expect(mysqlCreateTableSQL(definition: definition, isMariaDB: false) == nil)
     }
 
     @Test("auto increment adds PRIMARY KEY")
@@ -46,7 +46,7 @@ struct MySQLCreateTableTests {
             ]
         )
 
-        let sql = mysqlCreateTableSQL(definition: definition)!
+        let sql = mysqlCreateTableSQL(definition: definition, isMariaDB: false)!
         #expect(sql.contains("AUTO_INCREMENT"))
         #expect(sql.contains("PRIMARY KEY (`id`)"))
     }
@@ -62,7 +62,7 @@ struct MySQLCreateTableTests {
             primaryKeyColumns: ["user_id", "role_id"]
         )
 
-        let sql = mysqlCreateTableSQL(definition: definition)!
+        let sql = mysqlCreateTableSQL(definition: definition, isMariaDB: false)!
         #expect(sql.contains("PRIMARY KEY (`user_id`, `role_id`)"))
     }
 
@@ -76,7 +76,7 @@ struct MySQLCreateTableTests {
             collation: "latin1_swedish_ci"
         )
 
-        let sql = mysqlCreateTableSQL(definition: definition)!
+        let sql = mysqlCreateTableSQL(definition: definition, isMariaDB: false)!
         #expect(sql.contains("ENGINE=MyISAM"))
         #expect(sql.contains("DEFAULT CHARSET=latin1"))
         #expect(sql.contains("COLLATE=latin1_swedish_ci"))
@@ -90,7 +90,7 @@ struct MySQLCreateTableTests {
             ifNotExists: true
         )
 
-        let sql = mysqlCreateTableSQL(definition: definition)!
+        let sql = mysqlCreateTableSQL(definition: definition, isMariaDB: false)!
         #expect(sql.contains("CREATE TABLE IF NOT EXISTS"))
     }
 
@@ -110,7 +110,7 @@ struct MySQLCreateTableTests {
             ]
         )
 
-        let sql = mysqlCreateTableSQL(definition: definition)!
+        let sql = mysqlCreateTableSQL(definition: definition, isMariaDB: false)!
         #expect(sql.contains("UNSIGNED"))
         #expect(sql.contains("NOT NULL"))
         #expect(sql.contains("COMMENT"))
@@ -128,7 +128,7 @@ struct MySQLCreateTableTests {
             ]
         )
 
-        let sql = mysqlCreateTableSQL(definition: definition)!
+        let sql = mysqlCreateTableSQL(definition: definition, isMariaDB: false)!
         #expect(sql.contains("UNIQUE INDEX `idx_email` (`email`)"))
     }
 
@@ -151,7 +151,7 @@ struct MySQLCreateTableTests {
             ]
         )
 
-        let sql = mysqlCreateTableSQL(definition: definition)!
+        let sql = mysqlCreateTableSQL(definition: definition, isMariaDB: false)!
         #expect(sql.contains("CONSTRAINT `fk_user` FOREIGN KEY (`user_id`)"))
         #expect(sql.contains("REFERENCES `users` (`id`)"))
         #expect(sql.contains("ON DELETE CASCADE"))
@@ -164,7 +164,7 @@ struct MySQLCreateTableTests {
             columns: [PluginColumnDefinition(name: "col`name", dataType: "INT")]
         )
 
-        let sql = mysqlCreateTableSQL(definition: definition)!
+        let sql = mysqlCreateTableSQL(definition: definition, isMariaDB: false)!
         #expect(sql.contains("`my``table`"))
         #expect(sql.contains("`col``name`"))
     }

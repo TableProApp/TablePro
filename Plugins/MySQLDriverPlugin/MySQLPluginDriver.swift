@@ -1022,13 +1022,13 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Create Table DDL
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
-        mysqlCreateTableSQL(definition: definition)
+        mysqlCreateTableSQL(definition: definition, isMariaDB: isMariaDB)
     }
 
     // MARK: - Definition SQL (clipboard copy)
 
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? {
-        mysqlColumnDefinitionSQL(column)
+        mysqlColumnDefinitionSQL(column, isMariaDB: isMariaDB)
     }
 
     func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String? {
@@ -1042,15 +1042,15 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - ALTER TABLE DDL
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
-        "ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(mysqlColumnDefinitionSQL(column))"
+        "ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(mysqlColumnDefinitionSQL(column, isMariaDB: isMariaDB))"
     }
 
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
         let tableName = quoteIdentifier(table)
         if oldColumn.name != newColumn.name {
-            return "ALTER TABLE \(tableName) CHANGE COLUMN \(quoteIdentifier(oldColumn.name)) \(mysqlColumnDefinitionSQL(newColumn))"
+            return "ALTER TABLE \(tableName) CHANGE COLUMN \(quoteIdentifier(oldColumn.name)) \(mysqlColumnDefinitionSQL(newColumn, isMariaDB: isMariaDB))"
         }
-        return "ALTER TABLE \(tableName) MODIFY COLUMN \(mysqlColumnDefinitionSQL(newColumn))"
+        return "ALTER TABLE \(tableName) MODIFY COLUMN \(mysqlColumnDefinitionSQL(newColumn, isMariaDB: isMariaDB))"
     }
 
     func generateDropColumnSQL(table: String, columnName: String) -> String? {
@@ -1107,7 +1107,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         /// replaces the whole definition, and the attribute list does not carry
         /// `GENERATED ALWAYS AS`, so moving a generated column with it dropped the expression and
         /// left a plain column of stored defaults behind.
-        return "ALTER TABLE \(tableName) MODIFY COLUMN \(mysqlColumnDefinitionSQL(column)) \(position)"
+        return "ALTER TABLE \(tableName) MODIFY COLUMN \(mysqlColumnDefinitionSQL(column, isMariaDB: isMariaDB)) \(position)"
     }
 
     /// `MODIFY COLUMN` replaces the whole definition, so every move restates the column in full.

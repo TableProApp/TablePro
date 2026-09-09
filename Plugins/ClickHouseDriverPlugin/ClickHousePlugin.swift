@@ -159,6 +159,11 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     static let logger = Logger(subsystem: "com.TablePro", category: "ClickHousePluginDriver")
 
+    /// The columns the last schema read found under a kind other than DEFAULT, by name. It is the
+    /// driver's own record of what the server told it, because the kind has nowhere to ride on a
+    /// column definition and `generateModifyColumnSQL` is synchronous, so it cannot ask again.
+    var nonDefaultColumnKinds: Set<String> = []
+
     var serverVersion: String? { _serverVersion }
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }
@@ -805,7 +810,15 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(clickhouseColumnDefinition(column))"
     }
 
+    /// A column whose kind is MATERIALIZED, EPHEMERAL or ALIAS has no default, so a statement that
+    /// gives it one converts it and its stored values stop being computed. The kind reaches the app
+    /// as `extra` and does not survive the round trip back into a column definition, so the driver
+    /// answers from what it read from `system.columns` itself.
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
+        if newColumn.defaultValue != nil, nonDefaultColumnKinds.contains(newColumn.name) {
+            Self.logger.warning("Refusing to set a default on a non-DEFAULT ClickHouse column kind")
+            return nil
+        }
         let tableName = quoteIdentifier(table)
         var stmts: [String] = []
         if oldColumn.name != newColumn.name {

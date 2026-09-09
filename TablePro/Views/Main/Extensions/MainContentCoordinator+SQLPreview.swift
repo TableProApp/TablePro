@@ -56,7 +56,7 @@ extension MainContentCoordinator {
     /// Opened on the scope the plan was built against, not on whatever the connection is browsing.
     /// The script names its table without a database, and PostgreSQL has no way to qualify one, so
     /// running it against another database would rebuild the same-named table there.
-    func openColumnReorderScriptInEditor(_ request: ColumnReorderReviewRequest) {
+    func openTableRebuildScriptInEditor(_ request: TableRebuildReviewRequest) {
         let script = request.scriptStatements
             .map { $0.hasSuffix(";") ? $0 : $0 + ";" }
             .joined(separator: "\n\n")
@@ -71,7 +71,7 @@ extension MainContentCoordinator {
                 tabTitle: String(format: String(localized: "Reorder %@"), request.tableName)
             )
         )
-        columnReorderRequest = nil
+        tableRebuildRequest = nil
         activeSheet = nil
     }
 

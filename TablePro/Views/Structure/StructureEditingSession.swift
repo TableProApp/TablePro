@@ -118,6 +118,7 @@ internal final class StructureEditingSession {
             tableName: tableName,
             coordinator: nil
         )
+        gridDelegate.referenceMenus.schemaName = schemaName
         wrappedChangeManager = AnyChangeManager(changeManager)
     }
 
@@ -146,6 +147,9 @@ internal struct StructureFooterCapability: Equatable {
     internal var canRemove = false
     internal var addLabel = ""
     internal var removeLabel = ""
+
+    /// Why the pair is dimmed, for the tooltip. Empty when it is not.
+    internal var unavailableReason: String?
 
     internal var isActive: Bool {
         !addLabel.isEmpty

@@ -1,7 +1,13 @@
 import AppKit
-import SwiftUI
 
-/// Renders table nodes imperatively on a Canvas GraphicsContext.
+/// Renders table nodes with CoreGraphics into the current flipped drawing context.
+///
+/// This used to draw into a SwiftUI `Canvas`. A `Canvas` cannot be the drawing surface of a
+/// magnifying `NSScrollView`: below 50% magnification SwiftUI truncates the Canvas's own drawing
+/// region to `contentSize * magnification + 128` document points and paints nothing past it, which
+/// is what left the diagram half painted at its fit-to-window zoom (#2692). AppKit draws a plain
+/// view at every scale, so the diagram owns its pixels the way the data grid owns its cells.
+@MainActor
 enum ERDiagramNodeRenderer {
     private static var headerTextXOffset: CGFloat { 28 * ERDiagramLayout.typeScale }
     private static var iconXOffset: CGFloat { 10 * ERDiagramLayout.typeScale }
@@ -10,6 +16,7 @@ enum ERDiagramNodeRenderer {
     private static var typeRightMargin: CGFloat { 8 * ERDiagramLayout.typeScale }
     private static let maxTableNameChars = 24
     private static let maxTypeChars = 18
+    private static let cornerRadius: CGFloat = 6
 
     private static var headerPointSize: CGFloat {
         NSFont.preferredFont(forTextStyle: .caption1).pointSize
@@ -32,93 +39,120 @@ enum ERDiagramNodeRenderer {
     }
 
     static func drawNode(
-        context: inout GraphicsContext,
         node: ERTableNode,
         rect: CGRect,
         isSelected: Bool,
-        clusterColor: Color?
+        clusterColor: NSColor?,
+        in context: CGContext
     ) {
         let scale = ERDiagramLayout.typeScale
-        let cornerRadius: CGFloat = 6
-        let roundedRect = RoundedRectangle(cornerRadius: cornerRadius)
-        let path = Path(roundedRect: rect, cornerRadius: cornerRadius)
+        let body = CGPath(roundedRect: rect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
 
-        context.fill(path, with: .color(Color(nsColor: .controlBackgroundColor)))
+        context.addPath(body)
+        context.setFillColor(NSColor.controlBackgroundColor.cgColor)
+        context.fillPath()
 
-        let borderColor = isSelected ? Color.accentColor : Color(nsColor: .tertiaryLabelColor)
-        context.stroke(path, with: .color(borderColor), lineWidth: isSelected ? 2 : 1)
-
-        let headerHeight: CGFloat = ERDiagramLayout.headerHeight
+        let headerHeight = ERDiagramLayout.headerHeight
         let headerRect = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: headerHeight)
-        let headerPath = Path { p in
-            p.addRoundedRect(
-                in: headerRect,
-                cornerRadii: RectangleCornerRadii(topLeading: cornerRadius, topTrailing: cornerRadius)
-            )
-        }
-        let headerTint = clusterColor ?? Color.accentColor
-        context.fill(headerPath, with: .color(headerTint.opacity(clusterColor == nil ? 0.15 : 0.22)))
+        let headerTint = clusterColor ?? NSColor.controlAccentColor
+
+        context.saveGState()
+        context.addPath(body)
+        context.clip()
+        context.setFillColor(headerTint.withAlphaComponent(clusterColor == nil ? 0.15 : 0.22).cgColor)
+        context.fill(headerRect)
+        context.restoreGState()
+
+        context.addPath(body)
+        context.setStrokeColor((isSelected ? NSColor.controlAccentColor : NSColor.tertiaryLabelColor).cgColor)
+        context.setLineWidth(isSelected ? 2 : 1)
+        context.strokePath()
 
         let displayName = (node.tableName as NSString).length > maxTableNameChars
             ? String(node.tableName.prefix(maxTableNameChars)) + "\u{2026}"
             : node.tableName
-        let headerText = Text(displayName)
-            .font(.system(size: Self.headerPointSize * scale, weight: .semibold, design: .monospaced))
-        context.draw(
-            context.resolve(headerText),
+        ERDiagramTextRenderer.draw(
+            displayName,
+            font: .monospacedSystemFont(ofSize: headerPointSize * scale, weight: .semibold),
+            color: .labelColor,
             at: CGPoint(x: rect.minX + headerTextXOffset, y: rect.minY + headerHeight / 2),
-            anchor: .leading
+            anchor: .leading,
+            in: context
         )
 
-        let iconName = node.isJunctionTable ? "arrow.left.arrow.right" : "tablecells"
-        let iconText = Text(Image(systemName: iconName))
-            .font(.system(size: Self.iconPointSize * scale))
-            .foregroundStyle(.secondary)
-        context.draw(
-            context.resolve(iconText),
+        ERDiagramSymbolRenderer.draw(
+            named: node.isJunctionTable ? "arrow.left.arrow.right" : "tablecells",
+            pointSize: iconPointSize * scale,
+            color: .secondaryLabelColor,
             at: CGPoint(x: rect.minX + iconXOffset, y: rect.minY + headerHeight / 2),
             anchor: .leading
         )
 
         let dividerY = rect.minY + headerHeight
-        var dividerPath = Path()
-        dividerPath.move(to: CGPoint(x: rect.minX, y: dividerY))
-        dividerPath.addLine(to: CGPoint(x: rect.maxX, y: dividerY))
-        context.stroke(dividerPath, with: .color(Color(nsColor: .tertiaryLabelColor)), lineWidth: 0.5)
+        context.setStrokeColor(NSColor.tertiaryLabelColor.cgColor)
+        context.setLineWidth(0.5)
+        context.move(to: CGPoint(x: rect.minX, y: dividerY))
+        context.addLine(to: CGPoint(x: rect.maxX, y: dividerY))
+        context.strokePath()
 
-        // Column rows — use clipped context to prevent long text overflow
-        var clipped = context
-        clipped.clip(to: path)
+        context.saveGState()
+        context.addPath(body)
+        context.clip()
+        drawColumns(node: node, rect: rect, dividerY: dividerY, scale: scale, in: context)
+        context.restoreGState()
+    }
+
+    private static func drawColumns(
+        node: ERTableNode,
+        rect: CGRect,
+        dividerY: CGFloat,
+        scale: CGFloat,
+        in context: CGContext
+    ) {
         let rowHeight = ERDiagramLayout.columnRowHeight
-        for (idx, col) in node.displayColumns.enumerated() {
-            let rowY = dividerY + CGFloat(idx) * rowHeight + rowHeight / 2
+        let nameFont = NSFont.monospacedSystemFont(ofSize: columnNamePointSize * scale, weight: .regular)
+        let typeFont = NSFont.monospacedSystemFont(ofSize: columnTypePointSize * scale, weight: .regular)
 
-            if col.isPrimaryKey {
-                let badge = Text(Image(systemName: "key.fill")).font(.system(size: Self.badgePointSize * scale)).foregroundStyle(.yellow)
-                clipped.draw(clipped.resolve(badge), at: CGPoint(x: rect.minX + badgeXOffset, y: rowY), anchor: .center)
-            } else if col.isForeignKey {
-                let badge = Text(Image(systemName: "link")).font(.system(size: Self.badgePointSize * scale)).foregroundStyle(.blue)
-                clipped.draw(clipped.resolve(badge), at: CGPoint(x: rect.minX + badgeXOffset, y: rowY), anchor: .center)
+        for (index, column) in node.displayColumns.enumerated() {
+            let rowY = dividerY + CGFloat(index) * rowHeight + rowHeight / 2
+
+            if column.isPrimaryKey {
+                ERDiagramSymbolRenderer.draw(
+                    named: "key.fill",
+                    pointSize: badgePointSize * scale,
+                    color: .systemYellow,
+                    at: CGPoint(x: rect.minX + badgeXOffset, y: rowY),
+                    anchor: .center
+                )
+            } else if column.isForeignKey {
+                ERDiagramSymbolRenderer.draw(
+                    named: "link",
+                    pointSize: badgePointSize * scale,
+                    color: .systemBlue,
+                    at: CGPoint(x: rect.minX + badgeXOffset, y: rowY),
+                    anchor: .center
+                )
             }
 
-            let nameText = Text(col.name).font(.system(size: Self.columnNamePointSize * scale, design: .monospaced))
-            clipped.draw(
-                clipped.resolve(nameText),
+            ERDiagramTextRenderer.draw(
+                column.name,
+                font: nameFont,
+                color: .labelColor,
                 at: CGPoint(x: rect.minX + columnNameXOffset, y: rowY),
-                anchor: .leading
+                anchor: .leading,
+                in: context
             )
 
-            // Column type — truncate long types (e.g. enum values) to fit node width
-            let displayType = (col.dataType as NSString).length > maxTypeChars
-                ? String(col.dataType.prefix(maxTypeChars)) + "\u{2026}"
-                : col.dataType
-            let typeText = Text(displayType)
-                .font(.system(size: Self.columnTypePointSize * scale, design: .monospaced))
-                .foregroundStyle(.secondary)
-            clipped.draw(
-                clipped.resolve(typeText),
+            let displayType = (column.dataType as NSString).length > maxTypeChars
+                ? String(column.dataType.prefix(maxTypeChars)) + "\u{2026}"
+                : column.dataType
+            ERDiagramTextRenderer.draw(
+                displayType,
+                font: typeFont,
+                color: .secondaryLabelColor,
                 at: CGPoint(x: rect.maxX - typeRightMargin, y: rowY),
-                anchor: .trailing
+                anchor: .trailing,
+                in: context
             )
         }
     }
