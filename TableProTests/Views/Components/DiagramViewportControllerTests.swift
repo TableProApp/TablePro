@@ -55,10 +55,53 @@ struct DiagramViewportControllerTests {
         let (viewport, scrollView) = makeAttached()
 
         viewport.zoomIn()
-        #expect(scrollView.magnification == 1.0 + DiagramZoom.step)
+        #expect(scrollView.magnification == DiagramZoom.stepUp(from: 1.0))
 
         viewport.resetZoom()
         #expect(scrollView.magnification == 1.0)
+    }
+
+    @Test("Reattaching restores the zoom the controller was left on")
+    func attachRestoresRetainedMagnification() {
+        let (viewport, first) = makeAttached()
+
+        first.magnification = 0.41
+        #expect(viewport.magnification == 0.41)
+        viewport.detach()
+
+        let second = makeScrollView(content: CGSize(width: 1_000, height: 800), visible: CGSize(width: 500, height: 400))
+        viewport.attach(to: second)
+
+        #expect(second.magnification == 0.41)
+        #expect(viewport.magnification == 0.41)
+    }
+
+    @Test("Reattaching restores the scroll offset the controller was left on")
+    func attachRestoresScrollOffset() {
+        let (viewport, first) = makeAttached()
+        viewport.scrollBy(CGSize(width: 120, height: 90))
+        let offset = first.contentView.bounds.origin
+        #expect(offset != .zero)
+        viewport.detach()
+
+        let second = makeScrollView(content: CGSize(width: 1_000, height: 800), visible: CGSize(width: 500, height: 400))
+        viewport.attach(to: second)
+        viewport.restoreScrollPosition()
+
+        #expect(second.contentView.bounds.origin == offset)
+    }
+
+    @Test("The zoom buttons report when there is nowhere left to go")
+    func reportsZoomLimits() {
+        let (viewport, _) = makeAttached()
+
+        for _ in 0..<20 { viewport.zoomIn() }
+        #expect(!viewport.canZoomIn)
+        #expect(viewport.canZoomOut)
+
+        for _ in 0..<40 { viewport.zoomOut() }
+        #expect(!viewport.canZoomOut)
+        #expect(viewport.canZoomIn)
     }
 
     @Test("A magnification set on the scroll view is observed back")
@@ -93,6 +136,19 @@ struct DiagramViewportControllerTests {
 
         #expect(scrollView.magnification < 1.0)
         #expect(scrollView.magnification >= DiagramZoom.minimum)
+    }
+
+    @Test("Fit to window fits a diagram too large for the ladder's floor")
+    func fitFitsAVeryLargeDiagram() {
+        let (viewport, scrollView) = makeAttached(
+            content: CGSize(width: 8_000, height: 6_000), visible: CGSize(width: 500, height: 400)
+        )
+
+        viewport.fitToWindow()
+
+        #expect(scrollView.magnification < 0.25)
+        #expect(scrollView.documentVisibleRect.width >= 8_000)
+        #expect(scrollView.documentVisibleRect.height >= 6_000)
     }
 
     @Test("Fit to window never zooms past one hundred percent")

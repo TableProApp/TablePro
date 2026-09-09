@@ -27,14 +27,55 @@ struct QueryPlanDiagramLayout {
         let parentId: UUID?
     }
 
+    /// A parent-to-child connector, as geometry rather than as a drawn path, so the live diagram
+    /// and the export render the same arrows from one source and a test can measure them.
+    struct Arrow: Identifiable {
+        let id: UUID
+        let start: CGPoint
+        let end: CGPoint
+        let control1: CGPoint
+        let control2: CGPoint
+        let head: [CGPoint]
+    }
+
     let nodes: [Node]
     let canvasSize: CGSize
+    let arrows: [Arrow]
 
     init(root: QueryPlanNode) {
         let rowOffsets = Self.rowOffsets(root)
         let nodes = Self.position(root, depth: 0, xOffset: 0, parentId: nil, rowOffsets: rowOffsets)
         self.nodes = nodes
         canvasSize = Self.canvasSize(of: nodes)
+        arrows = Self.arrows(of: nodes)
+    }
+
+    // MARK: - Arrows
+
+    private static func arrows(of nodes: [Node]) -> [Arrow] {
+        let nodeMap = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0) })
+        let headSize = QueryPlanDiagramMetrics.arrowHeadSize
+
+        return nodes.compactMap { node -> Arrow? in
+            guard let parentId = node.parentId, let parent = nodeMap[parentId] else { return nil }
+
+            let start = CGPoint(x: parent.rect.midX, y: parent.rect.maxY)
+            let end = CGPoint(x: node.rect.midX, y: node.rect.minY)
+            let midY = (start.y + end.y) / 2
+
+            return Arrow(
+                id: node.id,
+                start: start,
+                end: end,
+                control1: CGPoint(x: start.x, y: midY),
+                control2: CGPoint(x: end.x, y: midY),
+                head: [
+                    end,
+                    CGPoint(x: end.x - headSize, y: end.y - headSize),
+                    CGPoint(x: end.x + headSize, y: end.y - headSize)
+                ]
+            )
+        }
     }
 
     // MARK: - Rows

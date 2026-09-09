@@ -13,7 +13,7 @@ import UniformTypeIdentifiers
 
 enum DiagramImageExporter {
     private static let logger = Logger(subsystem: "com.TablePro", category: "DiagramImageExporter")
-    private static let renderScale: CGFloat = 2.0
+    static let renderScale: CGFloat = 2.0
 
     @MainActor
     static func image(of view: some View) -> NSImage? {
@@ -26,13 +26,24 @@ enum DiagramImageExporter {
     /// has bound instead of a hardcoded key handler.
     @MainActor
     static func copyItemProviders(of view: some View) -> [NSItemProvider] {
-        guard let image = image(of: view) else { return [] }
+        copyItemProviders(of: image(of: view))
+    }
+
+    /// The AppKit-drawn diagram renders its own bitmap, so it hands one over instead of a view.
+    @MainActor
+    static func copyItemProviders(of image: NSImage?) -> [NSItemProvider] {
+        guard let image else { return [] }
         return [NSItemProvider(object: image)]
     }
 
     @MainActor
     static func export(_ view: some View, defaultFileName: String, title: String) {
-        guard let image = image(of: view) else {
+        export(image(of: view), defaultFileName: defaultFileName, title: title)
+    }
+
+    @MainActor
+    static func export(_ image: NSImage?, defaultFileName: String, title: String) {
+        guard let image else {
             logger.error("Failed to render diagram to image")
             presentFailure()
             return

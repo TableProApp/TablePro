@@ -109,6 +109,26 @@ struct QueryPlanDiagramLayoutTests {
         #expect(layout.canvasSize.height > maxY)
     }
 
+    @Test("Every child gets one arrow, running from its parent's bottom edge to its own top edge")
+    func buildsOneArrowPerChild() {
+        let layout = QueryPlanDiagramLayout(root: makeMixedHeightPlan())
+        let byId = Dictionary(uniqueKeysWithValues: layout.nodes.map { ($0.id, $0) })
+
+        #expect(layout.arrows.count == layout.nodes.count - 1)
+        #expect(Set(layout.arrows.map(\.id)).count == layout.arrows.count)
+
+        for arrow in layout.arrows {
+            let child = byId[arrow.id]
+            let parent = child?.parentId.flatMap { byId[$0] }
+            #expect(child != nil)
+            #expect(parent != nil)
+            #expect(arrow.start == CGPoint(x: parent?.rect.midX ?? -1, y: parent?.rect.maxY ?? -1))
+            #expect(arrow.end == CGPoint(x: child?.rect.midX ?? -1, y: child?.rect.minY ?? -1))
+            #expect(arrow.head.count == 3)
+            #expect(arrow.head[0] == arrow.end)
+        }
+    }
+
     @Test("Every node in the tree is positioned once")
     func positionsEveryNode() {
         let layout = QueryPlanDiagramLayout(root: makeMixedHeightPlan())

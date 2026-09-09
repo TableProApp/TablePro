@@ -55,9 +55,7 @@ struct QueryPlanDiagramView: View {
 
     private var canvas: some View {
         ZStack(alignment: .topLeading) {
-            Canvas { context, _ in drawArrows(context: context) }
-                .frame(width: layout.canvasSize.width, height: layout.canvasSize.height)
-                .accessibilityHidden(true)
+            arrowLayer
 
             ForEach(layout.nodes) { positioned in
                 QueryPlanDiagramNodeView(
@@ -81,8 +79,17 @@ struct QueryPlanDiagramView: View {
     /// scroll offset or selection.
     private var exportCanvas: some View {
         ZStack(alignment: .topLeading) {
-            Canvas { context, _ in drawArrows(context: context) }
-                .frame(width: layout.canvasSize.width, height: layout.canvasSize.height)
+            Canvas { context, _ in
+                for arrow in layout.arrows {
+                    context.stroke(
+                        QueryPlanArrowsView.curve(arrow),
+                        with: .color(QueryPlanArrowsView.color),
+                        lineWidth: 1
+                    )
+                    context.fill(QueryPlanArrowsView.head(arrow), with: .color(QueryPlanArrowsView.color))
+                }
+            }
+            .frame(width: layout.canvasSize.width, height: layout.canvasSize.height)
 
             ForEach(layout.nodes) { positioned in
                 QueryPlanDiagramNodeView(node: positioned.node, isSelected: false)
@@ -112,29 +119,59 @@ struct QueryPlanDiagramView: View {
 
     // MARK: - Arrows
 
-    private func drawArrows(context: GraphicsContext) {
-        let nodeMap = Dictionary(uniqueKeysWithValues: layout.nodes.map { ($0.id, $0) })
+    private var arrowLayer: some View {
+        QueryPlanArrowsView(arrows: layout.arrows, size: layout.canvasSize)
+    }
+}
 
-        for node in layout.nodes {
-            guard let parentId = node.parentId, let parent = nodeMap[parentId] else { continue }
+// MARK: - Arrow Layer
 
-            let start = CGPoint(x: parent.rect.midX, y: parent.rect.maxY)
-            let end = CGPoint(x: node.rect.midX, y: node.rect.minY)
-            let midY = (start.y + end.y) / 2
+/// Shapes rather than a `Canvas`. A `Canvas` inside a magnifying `NSScrollView` stops painting past
+/// `contentSize * magnification + 128` document points once magnification reaches 0.5, so a plan
+/// zoomed out lost its arrows while its nodes, being ordinary views, stayed (#2692). The export
+/// canvas is never magnified and draws the same arrows from the same geometry.
+struct QueryPlanArrowsView: View {
+    let arrows: [QueryPlanDiagramLayout.Arrow]
+    let size: CGSize
 
-            var path = Path()
-            path.move(to: start)
-            path.addCurve(to: end, control1: CGPoint(x: start.x, y: midY), control2: CGPoint(x: end.x, y: midY))
-            context.stroke(path, with: .color(.secondary.opacity(0.4)), lineWidth: 1)
+    static let color = Color.secondary.opacity(0.4)
 
-            var arrow = Path()
-            let size = QueryPlanDiagramMetrics.arrowHeadSize
-            arrow.move(to: end)
-            arrow.addLine(to: CGPoint(x: end.x - size, y: end.y - size))
-            arrow.addLine(to: CGPoint(x: end.x + size, y: end.y - size))
-            arrow.closeSubpath()
-            context.fill(arrow, with: .color(.secondary.opacity(0.4)))
+    static func curve(_ arrow: QueryPlanDiagramLayout.Arrow) -> Path {
+        var path = Path()
+        path.move(to: arrow.start)
+        path.addCurve(to: arrow.end, control1: arrow.control1, control2: arrow.control2)
+        return path
+    }
+
+    static func head(_ arrow: QueryPlanDiagramLayout.Arrow) -> Path {
+        var path = Path()
+        guard let first = arrow.head.first else { return path }
+        path.move(to: first)
+        for point in arrow.head.dropFirst() { path.addLine(to: point) }
+        path.closeSubpath()
+        return path
+    }
+
+    /// One shape for every curve and one for every head, rather than one view per arrow. A shape
+    /// view is sized to its own path, so a per-arrow view would be laid out at its bounding box and
+    /// centred, which moves the arrow off the node it points at.
+    private struct Combined: Shape {
+        let paths: [Path]
+
+        func path(in rect: CGRect) -> Path {
+            var combined = Path()
+            for path in paths { combined.addPath(path) }
+            return combined
         }
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Combined(paths: arrows.map(Self.curve)).stroke(Self.color, lineWidth: 1)
+            Combined(paths: arrows.map(Self.head)).fill(Self.color)
+        }
+        .frame(width: size.width, height: size.height)
+        .accessibilityHidden(true)
     }
 }
 

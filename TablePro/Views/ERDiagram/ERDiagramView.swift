@@ -4,8 +4,7 @@ import SwiftUI
 struct ERDiagramView: View {
     @Bindable var viewModel: ERDiagramViewModel
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
-    @State private var viewport = DiagramViewportController()
-    @State private var selectedNodeId: UUID?
+    @Environment(\.colorScheme) private var colorScheme
     @State private var currentCursor: NSCursor?
     @State private var lastPanTranslation: CGSize = .zero
 
@@ -13,6 +12,8 @@ struct ERDiagramView: View {
     /// SwiftUI mounts it. The fit retries across a bounded number of main-actor hops rather than
     /// waiting on a wall-clock delay.
     private static let fitLayoutAttempts = 30
+
+    private var viewport: DiagramViewportController { viewModel.viewport }
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -60,84 +61,77 @@ struct ERDiagramView: View {
                 ERDiagramToolbar(viewModel: viewModel, viewport: viewport, onExport: exportDiagram)
             }
         }
-        .onCopyCommand { DiagramImageExporter.copyItemProviders(of: makeExportView()) }
-        .task {
-            viewModel.viewport = viewport
-            await viewModel.loadDiagram()
-        }
-        .task(id: viewModel.loadState) { await fitWhenLaidOut() }
+        .onCopyCommand { DiagramImageExporter.copyItemProviders(of: exportImage()) }
+        .task { await viewModel.loadDiagram() }
+        .task(id: viewModel.loadState) { await settleViewport() }
     }
 
     // MARK: - Diagram Content
 
     private var diagramContent: some View {
-        let nodeRects = viewModel.cachedNodeRects
-        let edges = viewModel.graph.edges
-        let nodes = viewModel.graph.nodes
-        let nodeIndex = viewModel.graph.nodeIndex
-        let selectedId = selectedNodeId
-        let clusterColors = nodeClusterColors(nodes: nodes)
         let canvasSize = viewModel.cachedCanvasSize
 
-        return Canvas { context, _ in
-            ERDiagramEdgeRenderer.drawEdges(
-                context: context,
-                edges: edges,
-                nodeRects: nodeRects,
-                nodeIndex: nodeIndex
+        return ERDiagramSceneCanvas(scene: scene)
+            .frame(width: canvasSize.width, height: canvasSize.height)
+            .contentShape(Rectangle())
+            .accessibilityElement()
+            .accessibilityLabel(
+                Text("\(viewModel.graph.nodes.count) tables, \(viewModel.graph.edges.count) relationships")
             )
+            .accessibilityAddTraits(.isImage)
+            .onTapGesture { location in
+                viewModel.selectedNodeId = viewModel.nodeId(at: location)
+            }
+            .gesture(canvasGesture)
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let location):
+                    guard !viewModel.isDragging else { return }
+                    let desired: NSCursor? = viewModel.nodeId(at: location) != nil ? .openHand : nil
+                    if desired !== currentCursor {
+                        if currentCursor != nil { NSCursor.pop() }
+                        if let cursor = desired { cursor.push() }
+                        currentCursor = desired
+                    }
+                case .ended:
+                    if currentCursor != nil {
+                        NSCursor.pop()
+                        currentCursor = nil
+                    }
+                @unknown default:
+                    break
+                }
+            }
+    }
 
-            for node in nodes {
-                guard let rect = nodeRects[node.id] else { continue }
-                ERDiagramNodeRenderer.drawNode(
-                    context: &context,
-                    node: node,
-                    rect: rect,
-                    isSelected: selectedId == node.id,
-                    clusterColor: clusterColors[node.id]
-                )
-            }
-        }
-        .frame(width: canvasSize.width, height: canvasSize.height)
-        .contentShape(Rectangle())
-        .accessibilityElement()
-        .accessibilityLabel(Text("\(viewModel.graph.nodes.count) tables, \(viewModel.graph.edges.count) relationships"))
-        .accessibilityAddTraits(.isImage)
-        .onTapGesture { location in
-            selectedNodeId = nodeAt(point: location)
-        }
-        .gesture(canvasGesture)
-        .onContinuousHover { phase in
-            switch phase {
-            case .active(let location):
-                guard !viewModel.isDragging else { return }
-                let desired: NSCursor? = nodeAt(point: location) != nil ? .openHand : nil
-                if desired !== currentCursor {
-                    if currentCursor != nil { NSCursor.pop() }
-                    if let cursor = desired { cursor.push() }
-                    currentCursor = desired
-                }
-            case .ended:
-                if currentCursor != nil {
-                    NSCursor.pop()
-                    currentCursor = nil
-                }
-            @unknown default:
-                break
-            }
-        }
+    private var scene: ERDiagramScene {
+        ERDiagramScene(
+            nodes: viewModel.graph.nodes,
+            edges: viewModel.graph.edges,
+            nodeRects: viewModel.cachedNodeRects,
+            nodeIndex: viewModel.graph.nodeIndex,
+            clusterColors: nodeClusterColors(nodes: viewModel.graph.nodes),
+            selectedNodeId: viewModel.selectedNodeId,
+            size: viewModel.cachedCanvasSize
+        )
     }
 
     // MARK: - Initial Fit
 
-    private func fitWhenLaidOut() async {
+    /// The first pass fits the whole diagram. Every later one restores what the viewport was left
+    /// on, because an editor-tab switch rebuilds this view against a model that already loaded.
+    private func settleViewport() async {
         guard viewModel.loadState == .loaded else { return }
         for _ in 0..<Self.fitLayoutAttempts {
-            guard !Task.isCancelled, viewModel.needsInitialFit else { return }
+            guard !Task.isCancelled else { return }
             let visible = viewport.visibleDocumentRect
             if visible.width > 0, visible.height > 0 {
-                viewport.fitToWindow()
-                viewModel.needsInitialFit = false
+                if viewModel.needsInitialFit {
+                    viewport.fitToWindow()
+                    viewModel.needsInitialFit = false
+                } else {
+                    viewport.restoreScrollPosition()
+                }
                 return
             }
             await Task.yield()
@@ -146,21 +140,15 @@ struct ERDiagramView: View {
 
     // MARK: - Cluster Colors
 
-    private func nodeClusterColors(nodes: [ERTableNode]) -> [UUID: Color] {
+    private func nodeClusterColors(nodes: [ERTableNode]) -> [UUID: NSColor] {
         guard !differentiateWithoutColor else { return [:] }
-        var colors: [UUID: Color] = [:]
+        var colors: [UUID: NSColor] = [:]
         for node in nodes {
             if let color = ERClusterPalette.color(for: node.clusterId) {
                 colors[node.id] = color
             }
         }
         return colors
-    }
-
-    // MARK: - Hit Testing
-
-    private func nodeAt(point: CGPoint) -> UUID? {
-        viewModel.cachedNodeRects.first { $0.value.contains(point) }?.key
     }
 
     // MARK: - Canvas Gesture (pan + node drag)
@@ -216,46 +204,17 @@ struct ERDiagramView: View {
 
     // MARK: - Export Rendering
 
-    private func makeExportView() -> some View {
-        let nodeRects = viewModel.cachedNodeRects
-        let nodes = viewModel.graph.nodes
-        let edges = viewModel.graph.edges
-        let nodeIndex = viewModel.graph.nodeIndex
-        let clusterColors = nodeClusterColors(nodes: nodes)
-
-        let padding: CGFloat = 40
-        let bounds = nodeRects.values.reduce(CGRect.null) { $0.union($1) }
-        let exportWidth = bounds.isNull ? 100 : bounds.width + padding * 2
-        let exportHeight = bounds.isNull ? 100 : bounds.height + padding * 2
-        let offsetX = bounds.isNull ? 0 : -bounds.minX + padding
-        let offsetY = bounds.isNull ? 0 : -bounds.minY + padding
-
-        return Canvas { context, _ in
-            context.translateBy(x: offsetX, y: offsetY)
-            ERDiagramEdgeRenderer.drawEdges(
-                context: context,
-                edges: edges,
-                nodeRects: nodeRects,
-                nodeIndex: nodeIndex
-            )
-            for node in nodes {
-                guard let rect = nodeRects[node.id] else { continue }
-                ERDiagramNodeRenderer.drawNode(
-                    context: &context,
-                    node: node,
-                    rect: rect,
-                    isSelected: false,
-                    clusterColor: clusterColors[node.id]
-                )
-            }
-        }
-        .frame(width: exportWidth, height: exportHeight)
-        .background(Color(nsColor: .controlBackgroundColor))
+    private func exportImage() -> NSImage? {
+        ERDiagramSceneRenderer.image(
+            scene,
+            appearance: NSAppearance(named: colorScheme == .dark ? .darkAqua : .aqua) ?? NSApp.effectiveAppearance,
+            scale: DiagramImageExporter.renderScale
+        )
     }
 
     private func exportDiagram() {
         DiagramImageExporter.export(
-            makeExportView(),
+            exportImage(),
             defaultFileName: "er-diagram.png",
             title: String(localized: "Export ER Diagram")
         )
