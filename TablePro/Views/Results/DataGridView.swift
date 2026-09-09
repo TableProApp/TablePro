@@ -588,6 +588,7 @@ struct DataGridView: NSViewRepresentable {
         /// process. `releaseData()` already did this, but it only runs on session teardown.
         coordinator.detachScrollObservers()
         coordinator.detachAccessibilityActivationObserver()
+        coordinator.rowGutter?.detachTableGeometryObserver()
         coordinator.settingsCancellable = nil
         coordinator.themeCancellable = nil
     }

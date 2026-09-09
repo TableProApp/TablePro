@@ -22,9 +22,19 @@ private final class StubSelectAllPersister: ColumnLayoutPersisting {
 }
 
 @MainActor
+private final class RowSelectionBox {
+    var value: Set<Int> = []
+
+    func binding() -> Binding<Set<Int>> {
+        Binding(get: { self.value }, set: { self.value = $0 })
+    }
+}
+
+@MainActor
 private struct SelectAllGrid {
     let tableView: KeyHandlingTableView
     let coordinator: TableViewCoordinator
+    let published: RowSelectionBox
     let rowCount: Int
     let columnCount: Int
 
@@ -39,10 +49,14 @@ private struct SelectAllGrid {
             columnTypes: Array(repeating: ColumnType.text(rawType: nil), count: dataColumns)
         )
 
+        /// A real binding, not `.constant([])`, which swallows every write and would leave the
+        /// suite unable to see whether the row set still reaches the tab.
+        let box = RowSelectionBox()
+        published = box
         coordinator = TableViewCoordinator(
             changeManager: AnyChangeManager(DataChangeManager()),
             isEditable: true,
-            selectedRowIndices: .constant([]),
+            selectedRowIndices: box.binding(),
             delegate: nil,
             layoutPersister: StubSelectAllPersister()
         )
@@ -125,6 +139,18 @@ struct SelectAllCellSelectionTests {
         grid.tableView.cancelOperation(nil)
 
         #expect(grid.coordinator.selectionController.isEmpty)
+    }
+
+    /// Marking the write programmatic suppresses the delegate's `clear()` and nothing else:
+    /// `publishRowSelection` still runs, so every consumer of the published set, the status bar and
+    /// the tab's stored selection included, still sees all the rows.
+    @Test("Command A still publishes every row to the owner")
+    func selectAllStillPublishesEveryRow() {
+        let grid = SelectAllGrid()
+
+        grid.tableView.selectAll(nil)
+
+        #expect(grid.published.value == Set(0..<grid.rowCount))
     }
 
     @Test("an empty grid falls through to the table view's own select all")

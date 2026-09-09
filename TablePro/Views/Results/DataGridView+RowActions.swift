@@ -377,7 +377,16 @@ extension TableViewCoordinator {
         let columnTypes = tableRows.columnTypes
         let rowCount = displayIDs?.count ?? tableRows.rows.count
 
-        let rowRange = rect.rows.lowerBound...min(rect.rows.upperBound, max(0, rowCount - 1))
+        /// The same ceiling the row copy has always had. Copy reads the cell selection first, so a
+        /// Select All that keeps its rectangle now arrives here instead of on the row path, and
+        /// without this a Fetch All over millions of rows builds the whole string on the main
+        /// thread. (#2667)
+        let lastRow = min(
+            rect.rows.upperBound,
+            max(0, rowCount - 1),
+            rect.rows.lowerBound + RowOperationsManager.maxClipboardRows - 1
+        )
+        let rowRange = rect.rows.lowerBound...lastRow
         let positions = Array(rect.columns.lowerBound...rect.columns.upperBound)
             .filter { $0 >= 0 && $0 < presentedColumnCount }
         guard rowRange.lowerBound <= rowRange.upperBound, !positions.isEmpty else { return }
