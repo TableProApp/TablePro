@@ -108,17 +108,36 @@ public struct PluginTableRespecification: Sendable {
             && alteredColumns.isEmpty
     }
 
+    /// A name this save would make the recreated table hold twice, if there is one.
+    ///
+    /// A dropped column stays in the recreated table until its own `ALTER TABLE` runs afterwards,
+    /// so a save that frees a name and takes it in the same breath cannot be expressed as one
+    /// rebuild: renaming `a` to `b` while dropping the existing `b`, or dropping `b` and adding a
+    /// new `b`, both put the name in the definition twice. Each is valid as two saves.
+    public var namingConflict: String? {
+        let retained = droppedColumns.map { $0.lowercased() }
+        guard !retained.isEmpty else { return nil }
+        let taken = renamedColumns.values.map { $0.lowercased() } + addedColumns.map { $0.name.lowercased() }
+        return retained.first { taken.contains($0) }
+    }
+
     /// Whether this respecification rewrites a column's declared type, which re-coerces every
     /// stored value in it through the new affinity.
     public var retypesAColumn: Bool { alteredColumns.contains { $0.type != nil } }
 
-    /// The same respecification with every column named as it is in the table right now, for an
-    /// engine that renames after rebuilding rather than inside the new definition.
+    /// The same respecification as the new table is actually built, for an engine that renames and
+    /// drops after rebuilding rather than inside the new definition.
     ///
-    /// A save names its columns as it wants them to end up, so a foreign key added onto a column
-    /// the same save renames arrives under the new name, which the table does not have yet.
+    /// Two things move. A save names its columns as it wants them to end up, so a foreign key added
+    /// onto a column the same save renames arrives under a name the table does not have yet, and is
+    /// mapped back. And a dropped column stays in the new table, because the drop runs as its own
+    /// `ALTER TABLE` afterwards; leaving it out here would make that statement fail with
+    /// `no such column`.
+    ///
+    /// `alteredColumns` is deliberately not mapped. It is recorded against the column as it stands
+    /// now, and mapping it would send an alteration to the wrong column whenever a save swaps two
+    /// names around.
     public func namedAsBuilt(using currentNames: [String: String]) -> PluginTableRespecification {
-        guard !currentNames.isEmpty else { return self }
         func asBuilt(_ name: String) -> String { currentNames[name.lowercased()] ?? name }
 
         return PluginTableRespecification(
@@ -138,14 +157,7 @@ public struct PluginTableRespecification: Sendable {
                 )
             },
             droppedForeignKeys: droppedForeignKeys,
-            alteredColumns: alteredColumns.map {
-                PluginColumnAlteration(
-                    column: asBuilt($0.column),
-                    type: $0.type,
-                    isNullable: $0.isNullable,
-                    defaultValue: $0.defaultValue
-                )
-            }
+            alteredColumns: alteredColumns
         )
     }
 

@@ -213,6 +213,54 @@ struct SQLiteColumnDeclarationTests {
         #expect(SQLiteColumnDeclaration.parse("a TEXT NOT") == nil)
     }
 
+    /// The tokenizer splits on punctuation, so these literals arrive as several tokens. Consuming
+    /// one would leave the rest to be read as an unknown constraint, refusing every edit on a
+    /// column carrying a very ordinary default.
+    @Test(
+        "A default's literal is consumed whole",
+        arguments: [
+            "a INT DEFAULT 0.5", "a INT DEFAULT -0.5", "a INT DEFAULT 1e3",
+            "a BLOB DEFAULT X'0102'", "a INT DEFAULT TRUE", "a TEXT DEFAULT 'x'"
+        ]
+    )
+    func readsWholeDefaultLiterals(text: String) throws {
+        let declaration = try parse(text)
+        #expect(declaration.first(.defaultValue) != nil)
+        /// One constraint, read whole. A literal consumed in pieces leaves the remainder to be read
+        /// as a second, unknown one.
+        #expect(declaration.constraints.count == 1)
+
+        let literal = String(text.drop(while: { $0 != "T" }).dropFirst(8))
+        let rewritten = try #require(rewrite(text, isNullable: false))
+        #expect(rewritten.contains("NOT NULL"))
+        #expect(rewritten.hasSuffix(literal))
+    }
+
+    /// The range a constraint occupies starts at its `CONSTRAINT name`, so removing one takes the
+    /// name with it. Replacing one must not: the user changed the value, not the name, and on
+    /// SQLite 3.53 and later `DROP CONSTRAINT` still needs it.
+    @Test("Replacing a default keeps the name the constraint was given")
+    func preservesAConstraintName() {
+        #expect(rewrite("a INT CONSTRAINT d DEFAULT 1", defaultValue: "2") == "a INT CONSTRAINT d DEFAULT 2")
+        #expect(rewrite("a INT CONSTRAINT d DEFAULT 1", defaultValue: "") == "a INT")
+    }
+
+    /// The column-level guard cannot see a key written at table level, so the caller supplies it.
+    @Test("A rowid alias declared at table level is protected too")
+    func refusesToRetypeATableLevelAlias() {
+        let text = "id INTEGER"
+        #expect(
+            SQLiteColumnDeclaration.rewritten(
+                text, applying: SQLiteColumnDeclaration.Edit(type: "TEXT"), isRowidAlias: true
+            ) == nil
+        )
+        #expect(
+            SQLiteColumnDeclaration.rewritten(
+                text, applying: SQLiteColumnDeclaration.Edit(type: "TEXT"), isRowidAlias: false
+            ) != nil
+        )
+    }
+
     // MARK: - Quoting
 
     @Test("A quoted type name is a type, not a keyword")

@@ -25,6 +25,7 @@ enum StructureTableRebuildHandler {
     enum RebuildError: LocalizedError {
         case notRebuildable(String)
         case cannotExpress([String])
+        case namingConflict(String)
         case planFailed
 
         var errorDescription: String? {
@@ -49,6 +50,17 @@ enum StructureTableRebuildHandler {
                             """
                     ),
                     descriptions.joined(separator: "\n")
+                )
+            case .namingConflict(let name):
+                return String(
+                    format: String(
+                        localized: """
+                            This save reuses the column name %@ while the table is being recreated, \
+                            and the recreated table would hold it twice. Save the change that frees \
+                            the name first, then the one that takes it.
+                            """
+                    ),
+                    name
                 )
             case .planFailed:
                 return String(
@@ -93,7 +105,20 @@ enum StructureTableRebuildHandler {
         }
 
         let respecification = respecification(from: partition.rebuilt)
+        guard let conflict = respecification.namingConflict else {
+            return try await prepare(respecification, changes: partition, tableName: tableName, scope: scope)
+        }
+        throw RebuildError.namingConflict(conflict)
+    }
+
+    private static func prepare(
+        _ respecification: PluginTableRespecification,
+        changes partition: Partition,
+        tableName: String,
+        scope: DatabaseScope
+    ) async throws -> StructureRebuildPlanRunner.Prepared {
         let schema = scope.schema
+        let partitionTrailing = partition.trailing
 
         let prepared = try await DatabaseManager.shared.withScopedDriver(
             scope: scope,
@@ -115,7 +140,7 @@ enum StructureTableRebuildHandler {
             /// lands after the rebuild has replayed the indexes it inherited, which is what makes it
             /// take effect rather than being undone by the replay.
             let trailing = try SchemaStatementGenerator(tableName: tableName, pluginDriver: pluginDriver)
-                .generate(changes: partition.trailing)
+                .generate(changes: partitionTrailing)
                 .map(\.sql)
 
             let fingerprint = try? await adapter.columnReorderSchemaFingerprint(
@@ -146,9 +171,14 @@ enum StructureTableRebuildHandler {
         var partition = Partition()
         for change in changes {
             switch change {
-            case .addColumn, .deleteColumn, .modifyColumn,
-                 .addForeignKey, .modifyForeignKey, .deleteForeignKey:
+            case .addColumn, .deleteColumn, .addForeignKey, .modifyForeignKey, .deleteForeignKey:
                 partition.rebuilt.append(change)
+            case .modifyColumn(let old, let new):
+                if old.changesFieldsNoRebuildCarries(comparedTo: new) {
+                    partition.unsupported.append(change)
+                } else {
+                    partition.rebuilt.append(change)
+                }
             case .addIndex, .modifyIndex, .deleteIndex,
                  .addCheckConstraint, .modifyCheckConstraint, .deleteCheckConstraint:
                 partition.trailing.append(change)
@@ -241,5 +271,19 @@ internal extension EditableColumnDefinition {
         return PluginColumnAlteration(
             column: name, type: type, isNullable: isNullable, defaultValue: defaultValue
         )
+    }
+
+    /// Whether this edit touches a field the rebuild cannot carry.
+    ///
+    /// A single `.modifyColumn` folds every field the user changed on that row, and the rebuild
+    /// expresses three of them. Applying the three and dropping the rest would report success over
+    /// an edit it never made, which is the defect this whole change exists to remove. Setting
+    /// Primary Key on a nullable column is the case that bites: the editor flips nullability with
+    /// it, so the save would rebuild the table `NOT NULL` and quietly leave the key unset.
+    func changesFieldsNoRebuildCarries(comparedTo other: EditableColumnDefinition) -> Bool {
+        isPrimaryKey != other.isPrimaryKey
+            || autoIncrement != other.autoIncrement
+            || generationExpression != other.generationExpression
+            || generationKind != other.generationKind
     }
 }

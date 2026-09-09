@@ -41,8 +41,14 @@ public struct SQLiteColumnDeclaration: Equatable {
 
     public struct Constraint: Equatable {
         public let kind: ConstraintKind
-        /// The whole constraint, including any `CONSTRAINT name` that introduces it.
+        /// The whole constraint, including any `CONSTRAINT name` that introduces it. Removing one
+        /// has to take the name with it, or the orphan is dead text at best and a parse error at
+        /// worst.
         public let range: Range<String.Index>
+
+        /// The clause without its `CONSTRAINT name`. Replacing a clause writes here, so a key the
+        /// user named keeps the name they gave it and stays droppable by that name.
+        public let clauseRange: Range<String.Index>
     }
 
     /// The column's own name, as written.
@@ -114,9 +120,12 @@ public extension SQLiteColumnDeclaration {
     /// Nil when the edit cannot be made without guessing: a generated column's nullability and
     /// default are the expression's to decide, and a declaration this grammar could not read whole
     /// is never rewritten from a partial understanding.
-    static func rewritten(_ text: String, applying edit: Edit) -> String? {
+    /// - Parameter isRowidAlias: whether this column *is* the table's rowid, which the declaration
+    ///   alone cannot say: the primary key may be written at table level.
+    static func rewritten(_ text: String, applying edit: Edit, isRowidAlias: Bool = false) -> String? {
         guard !edit.isEmpty else { return text }
-        guard let declaration = parse(text), declaration.canApply(edit) else { return nil }
+        guard let declaration = parse(text),
+              declaration.canApply(edit, isRowidAlias: isRowidAlias) else { return nil }
 
         /// Every replacement is computed against the original text and applied last-first, so an
         /// earlier edit never moves the indices a later one was measured from.
@@ -138,7 +147,7 @@ public extension SQLiteColumnDeclaration {
                 /// removing only the `NOT` both land in the same place. The whole clause goes.
                 if let existing, existing.kind == .notNull { replacements.append((existing.range, "")) }
             } else if let existing, existing.kind == .null {
-                replacements.append((existing.range, "NOT NULL"))
+                replacements.append((existing.clauseRange, "NOT NULL"))
             } else if declaration.first(.notNull) == nil {
                 replacements.append((insertionPoint(in: declaration)..<insertionPoint(in: declaration), " NOT NULL"))
             }
@@ -148,7 +157,9 @@ public extension SQLiteColumnDeclaration {
             let rendered = defaultValue.trimmingCharacters(in: .whitespacesAndNewlines)
             let clause = rendered.isEmpty ? "" : "DEFAULT \(rendered)"
             if let existing = declaration.first(.defaultValue) {
-                replacements.append((existing.range, clause))
+                /// Replacing writes inside the clause so a `CONSTRAINT d DEFAULT 1` keeps its name;
+                /// removing takes the whole thing, name included.
+                replacements.append((clause.isEmpty ? existing.range : existing.clauseRange, clause))
             } else if !clause.isEmpty {
                 replacements.append((insertionPoint(in: declaration)..<insertionPoint(in: declaration), " \(clause)"))
             }
@@ -161,7 +172,7 @@ public extension SQLiteColumnDeclaration {
     ///
     /// Every no here is a case where the rewrite would succeed and be wrong, so it refuses and the
     /// user is told to write the SQL themselves.
-    private func canApply(_ edit: Edit) -> Bool {
+    private func canApply(_ edit: Edit, isRowidAlias: Bool) -> Bool {
         /// A generated column's nullability and default belong to its expression, and SQLite
         /// rejects a `DEFAULT` on one outright.
         if isGenerated, edit.isNullable != nil || edit.defaultValue != nil { return false }
@@ -177,7 +188,7 @@ public extension SQLiteColumnDeclaration {
         /// rowid alias. Measured: the key stops generating values and then stores NULL on every
         /// insert that omits it, silently, twice over. `AUTOINCREMENT` is refused by SQLite itself
         /// in that position, but a plain `INTEGER PRIMARY KEY` is not.
-        if let type = edit.type, first(.primaryKey) != nil, isIntegerTyped,
+        if let type = edit.type, isRowidAlias || (first(.primaryKey) != nil && isIntegerTyped),
            !type.trimmingCharacters(in: .whitespaces).isEmpty,
            type.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("INTEGER") != .orderedSame {
             return false
@@ -285,7 +296,8 @@ internal enum SQLiteColumnGrammar {
             found.append(
                 SQLiteColumnDeclaration.Constraint(
                     kind: kind,
-                    range: tokens[start].range.lowerBound..<tokens[end - 1].range.upperBound
+                    range: tokens[start].range.lowerBound..<tokens[end - 1].range.upperBound,
+                    clauseRange: tokens[cursor].range.lowerBound..<tokens[end - 1].range.upperBound
                 )
             )
             cursor = end
@@ -327,10 +339,8 @@ internal enum SQLiteColumnGrammar {
                 guard let close = matchingParen(tokens, from: cursor) else { return nil }
                 return (.defaultValue, close + 1)
             }
-            /// A signed number is two tokens, the sign and the digits.
-            if ["+", "-"].contains(tokens[cursor].text) { cursor += 1 }
-            guard cursor < tokens.count else { return nil }
-            return (.defaultValue, cursor + 1)
+            guard let end = endOfDefaultLiteral(tokens, from: cursor) else { return nil }
+            return (.defaultValue, end)
 
         case "COLLATE":
             guard cursor + 1 < tokens.count else { return nil }
@@ -369,6 +379,36 @@ internal enum SQLiteColumnGrammar {
               let close = matchingParen(tokens, from: cursor) else { return nil }
         cursor = close + 1
         if cursor < tokens.count, ["STORED", "VIRTUAL"].contains(tokens[cursor].keyword) { cursor += 1 }
+        return cursor
+    }
+
+    /// The index just past a default's literal operand.
+    ///
+    /// The tokenizer splits on punctuation, so a single SQLite literal can arrive as several
+    /// tokens: `0.5` comes back as `0`, `.`, `5`, and `X'0102'` as `X` and a string literal.
+    /// Consuming one token would leave the remainder to be read as an unknown constraint, which
+    /// refuses every edit on a column carrying one of these very ordinary defaults.
+    private static func endOfDefaultLiteral(_ tokens: [SQLiteToken], from index: Int) -> Int? {
+        var cursor = index
+        if ["+", "-"].contains(tokens[cursor].text) { cursor += 1 }
+        guard cursor < tokens.count else { return nil }
+
+        /// A blob literal is the letter x followed by a quoted run.
+        if tokens[cursor].keyword == "X", cursor + 1 < tokens.count, tokens[cursor + 1].isStringLiteral {
+            return cursor + 2
+        }
+
+        cursor += 1
+        /// The fractional part and an exponent, each of which the tokenizer has split off.
+        if cursor < tokens.count, tokens[cursor].text == "." {
+            cursor += 1
+            if cursor < tokens.count, !tokens[cursor].isPunctuation { cursor += 1 }
+        }
+        if cursor + 1 < tokens.count, ["E", "e"].contains(tokens[cursor].text) {
+            var lookahead = cursor + 1
+            if ["+", "-"].contains(tokens[lookahead].text) { lookahead += 1 }
+            if lookahead < tokens.count, !tokens[lookahead].isPunctuation { cursor = lookahead + 1 }
+        }
         return cursor
     }
 

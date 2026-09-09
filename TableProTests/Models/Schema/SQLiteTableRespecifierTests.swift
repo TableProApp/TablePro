@@ -272,6 +272,38 @@ struct SQLiteTableRespecifierTests {
         )
     }
 
+    // MARK: - The rowid alias
+
+    /// SQLite's rule is a single-column primary key whose declared type is exactly `INTEGER`, and
+    /// the key may be written on the column or at table level. Reading only the column's own
+    /// constraints misses the second form, where retyping is just as destructive.
+    @Test(
+        "The rowid alias is found wherever the key is written",
+        arguments: [
+            ("CREATE TABLE x(id INTEGER PRIMARY KEY, v TEXT)", "id"),
+            ("CREATE TABLE x(id INTEGER, v TEXT, PRIMARY KEY(id))", "id"),
+            ("CREATE TABLE x(id INTEGER, v TEXT, CONSTRAINT pk PRIMARY KEY(id))", "id")
+        ]
+    )
+    func findsTheRowidAlias(sql: String, expected: String) throws {
+        let parsed = try #require(SQLiteTableDDL.parse(createTableSQL: sql))
+        #expect(SQLiteTableDDL.rowidAliasColumn(parsed) == expected)
+    }
+
+    @Test(
+        "A key that is not the rowid alias is not mistaken for one",
+        arguments: [
+            "CREATE TABLE x(id TEXT PRIMARY KEY, v TEXT)",
+            "CREATE TABLE x(a INT, b INT, PRIMARY KEY(a, b))",
+            "CREATE TABLE x(id INTEGER PRIMARY KEY, v TEXT) WITHOUT ROWID",
+            "CREATE TABLE x(a INT, v TEXT)"
+        ]
+    )
+    func rejectsWhatIsNotTheRowidAlias(sql: String) throws {
+        let parsed = try #require(SQLiteTableDDL.parse(createTableSQL: sql))
+        #expect(SQLiteTableDDL.rowidAliasColumn(parsed) == nil)
+    }
+
     // MARK: - Rowid tables
 
     @Test("WITHOUT ROWID is recognised, and an ordinary table is not mistaken for one")

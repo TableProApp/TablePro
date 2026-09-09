@@ -74,8 +74,8 @@ public enum SQLiteTableRebuildPlanner {
             dependentObjectSQL: [String],
             autoincrementHighWaterMark: Int64?,
             foreignKeysWereOn: Bool,
-            legacyAlterTableWasOn: Bool = true,
-            dependentValidationSQL: [String] = []
+            legacyAlterTableWasOn: Bool,
+            dependentValidationSQL: [String]
         ) {
             self.parsed = parsed
             self.copyableColumns = copyableColumns
@@ -84,6 +84,33 @@ public enum SQLiteTableRebuildPlanner {
             self.foreignKeysWereOn = foreignKeysWereOn
             self.legacyAlterTableWasOn = legacyAlterTableWasOn
             self.dependentValidationSQL = dependentValidationSQL
+        }
+
+        /// The initializer as it shipped before a plan set `legacy_alter_table` or revalidated the
+        /// table's dependents.
+        ///
+        /// Kept at its exact original signature, because a plugin built against the earlier
+        /// PluginKit references that mangled symbol; adding defaulted parameters to it replaces the
+        /// symbol rather than preserving it. The pragma reads as already-on so a plan built this
+        /// way restores the value the connection almost certainly had, and skips the dependent
+        /// checks it has no list for.
+        @_disfavoredOverload
+        public init(
+            parsed: SQLiteTableDDL.Parsed,
+            copyableColumns: [String],
+            dependentObjectSQL: [String],
+            autoincrementHighWaterMark: Int64?,
+            foreignKeysWereOn: Bool
+        ) {
+            self.init(
+                parsed: parsed,
+                copyableColumns: copyableColumns,
+                dependentObjectSQL: dependentObjectSQL,
+                autoincrementHighWaterMark: autoincrementHighWaterMark,
+                foreignKeysWereOn: foreignKeysWereOn,
+                legacyAlterTableWasOn: true,
+                dependentValidationSQL: []
+            )
         }
     }
 
@@ -174,6 +201,11 @@ public enum SQLiteTableRebuildPlanner {
         if !respecification.renamedColumns.isEmpty || !respecification.droppedColumns.isEmpty {
             statements.append("PRAGMA legacy_alter_table = off")
         }
+        /// Drops go first. A save that renames `a` to `b` while dropping the existing `b` is valid,
+        /// and issuing the rename first makes SQLite refuse it as a duplicate column name.
+        for column in respecification.droppedColumns.sorted() {
+            statements.append("ALTER TABLE \(quotedOriginal) DROP COLUMN \(SQLiteTableDDL.quote(column))")
+        }
         for (from, to) in respecification.renamedColumns.sorted(by: { $0.key < $1.key }) {
             statements.append(
                 """
@@ -181,9 +213,6 @@ public enum SQLiteTableRebuildPlanner {
                 TO \(SQLiteTableDDL.quote(to))
                 """
             )
-        }
-        for column in respecification.droppedColumns.sorted() {
-            statements.append("ALTER TABLE \(quotedOriginal) DROP COLUMN \(SQLiteTableDDL.quote(column))")
         }
 
         /// Compiling each dependent object's body catches what the `ALTER`s do not refuse. Measured:
@@ -239,7 +268,12 @@ public enum SQLiteTableRebuildPlanner {
             cost: .tableRebuild,
             caveats: caveats,
             isRunnable: isRunnable,
-            verifications: respecification.touchesForeignKeys ? [foreignKeyCheck(on: quotedOriginal)] : []
+            /// Checked after a retype as well as after a key change. Measured: copying a child's
+            /// TEXT '007' into an INTEGER column stores 7, which no longer matches a parent's TEXT
+            /// '007', and the copy runs with enforcement off so nothing else would notice.
+            verifications: respecification.touchesForeignKeys || respecification.retypesAColumn
+                ? [foreignKeyCheck(on: quotedOriginal)]
+                : []
         )
     }
 
@@ -347,13 +381,16 @@ public extension SQLiteTableRebuildPlanner {
     /// One statement per dependent object that compiles its body without running it.
     ///
     /// `EXPLAIN` prepares a statement and stops, so an object's SQL is checked against the table as
-    /// it now stands and nothing runs. A view is checked by selecting from it; a trigger by
-    /// preparing a write against the table it fires on, which compiles every trigger on that table.
+    /// it now stands and nothing runs. Measured on 3.54, this catches what neither `ALTER TABLE`
+    /// nor `PRAGMA foreign_key_check` reports: a view declared with an explicit column list breaks
+    /// on its count, and a trigger on *another* table that writes a positional row into this one
+    /// breaks on its value count. Both commit silently otherwise.
     ///
-    /// Both are needed, and neither is optional. Measured on 3.54: dropping a column leaves a view
-    /// declared with an explicit column list broken on its count, and leaves a trigger on *another*
-    /// table that writes a positional row into this one broken on its value count. `ALTER TABLE`
-    /// reports neither, `PRAGMA foreign_key_check` cannot see either, and both commit silently.
+    /// Each trigger is probed through the event it actually fires on. Issuing the same
+    /// `INSERT`/`DELETE` pair per table is wrong in both directions: a view carrying only an
+    /// `INSTEAD OF DELETE` trigger fails an `INSERT` probe with "cannot modify v because it is a
+    /// view", which would block every drop on that schema, and an `AFTER UPDATE` trigger is never
+    /// compiled at all.
     private static func dependentValidationSQL(
         execute: (String) async throws -> PluginQueryResult
     ) async throws -> [String] {
@@ -361,17 +398,47 @@ public extension SQLiteTableRebuildPlanner {
             "SELECT name FROM sqlite_master WHERE type = 'view' ORDER BY name"
         ).rows.compactMap { $0[safe: 0]?.asText }
 
-        let triggerTables = try await execute(
-            "SELECT DISTINCT tbl_name FROM sqlite_master WHERE type = 'trigger' ORDER BY tbl_name"
-        ).rows.compactMap { $0[safe: 0]?.asText }
+        let triggers = try await execute(
+            """
+            SELECT tbl_name, sql FROM sqlite_master
+            WHERE type = 'trigger' AND sql IS NOT NULL ORDER BY name
+            """
+        ).rows.compactMap { row -> (String, String)? in
+            guard let table = row[safe: 0]?.asText, let sql = row[safe: 1]?.asText else { return nil }
+            return (table, sql)
+        }
 
-        return views.map { "EXPLAIN SELECT * FROM \(SQLiteTableDDL.quote($0))" }
-            + triggerTables.flatMap { table in
-                [
-                    "EXPLAIN INSERT INTO \(SQLiteTableDDL.quote(table)) DEFAULT VALUES",
-                    "EXPLAIN DELETE FROM \(SQLiteTableDDL.quote(table))"
-                ]
-            }
+        var probes = views.map { "EXPLAIN SELECT * FROM \(SQLiteTableDDL.quote($0))" }
+        var seen = Set<String>()
+        for (table, sql) in triggers {
+            guard let probe = triggerProbe(forTable: table, sql: sql), seen.insert(probe).inserted else { continue }
+            probes.append(probe)
+        }
+        return probes
+    }
+
+    /// The statement that compiles one trigger's body, or nil for a form this cannot probe.
+    ///
+    /// An `INSTEAD OF` trigger belongs to a view, which the view's own `SELECT` probe already
+    /// compiles, so it needs nothing of its own.
+    private static func triggerProbe(forTable table: String, sql: String) -> String? {
+        let tokens = SQLiteTokenizer.tokenize(sql)
+        guard let onIndex = tokens.firstIndex(where: { $0.keyword == "ON" }) else { return nil }
+        let keywords = tokens[..<onIndex].map(\.keyword)
+        guard !keywords.contains("INSTEAD") else { return nil }
+
+        let quoted = SQLiteTableDDL.quote(table)
+        if keywords.contains("DELETE") { return "EXPLAIN DELETE FROM \(quoted)" }
+        if keywords.contains("INSERT") { return "EXPLAIN INSERT INTO \(quoted) DEFAULT VALUES" }
+        guard keywords.contains("UPDATE") else { return nil }
+
+        /// `UPDATE OF col` names the columns it watches, and updating one of them is what compiles
+        /// the body. A bare `UPDATE` trigger fires on any column, so any assignment will do.
+        guard let ofIndex = keywords.firstIndex(of: "OF"), ofIndex + 1 < onIndex else {
+            return "EXPLAIN UPDATE \(quoted) SET rowid = rowid"
+        }
+        let column = SQLiteTableDDL.quote(tokens[ofIndex + 1].text)
+        return "EXPLAIN UPDATE \(quoted) SET \(column) = \(column)"
     }
 
     /// A fingerprint of everything the rebuild reproduces, so a plan built before a review sheet
