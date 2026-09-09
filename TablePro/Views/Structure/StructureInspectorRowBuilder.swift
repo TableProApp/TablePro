@@ -50,13 +50,19 @@ internal enum StructureInspectorRowBuilder {
         )
     }
 
+    /// An option list that carries a `Custom…` entry is an open vocabulary, so the field keeps its
+    /// text editor and puts the list beside it. A closed list becomes the picker it already was;
+    /// giving the Default field one would take away the only way to type an expression.
     private static func editor(
         at index: Int,
-        dropdownOptions: [Int: [String]],
+        dropdownOptions: [Int: [GridMenuOption]],
         typePickerColumns: Set<Int>
     ) -> FieldEditorKind {
         if let options = dropdownOptions[index], !options.isEmpty {
-            return .enumPicker(values: options)
+            if options.contains(where: { if case .custom = $0 { return true } else { return false } }) {
+                return .valuePicker(options: options)
+            }
+            return .enumPicker(values: options.compactMap(\.sql))
         }
         if typePickerColumns.contains(index) {
             return .typePicker

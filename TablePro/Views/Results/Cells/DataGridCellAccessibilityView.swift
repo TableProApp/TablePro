@@ -76,7 +76,14 @@ internal final class DataGridCellAccessibilityView: NSView {
 
     /// Static text inside the `AXCell` that `NSTableView` wraps every cell view in, which is the
     /// shape the row-number column already publishes and the one VoiceOver expects of a table.
-    override internal func accessibilityRole() -> NSAccessibility.Role? { .staticText }
+    ///
+    /// A cell that carries a chevron is a combo box, because it takes typed text and offers a list
+    /// beside it, and that is what `NSComboBoxCell` publishes (measured: AXComboBox, with AXShowMenu
+    /// and AXConfirm). Reporting it as static text would leave the menu unreachable to a client that
+    /// looks for one, which is every client but a sighted pointer.
+    override internal func accessibilityRole() -> NSAccessibility.Role? {
+        coordinator?.presentsComboBoxCell(columnIndex: dataColumn) == true ? .comboBox : .staticText
+    }
 
     override internal func accessibilityValue() -> Any? { text }
 

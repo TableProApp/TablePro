@@ -791,21 +791,12 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         var def = "\(quoteIdentifier(col.name)) \(dataType)"
         if let defaultValue = col.defaultValue {
-            def += " DEFAULT \(clickhouseDefaultValue(defaultValue))"
+            def += " DEFAULT \(defaultValue)"
         }
         if let comment = col.comment, !comment.isEmpty {
             def += " COMMENT '\(escapeStringLiteral(comment))'"
         }
         return def
-    }
-
-    private func clickhouseDefaultValue(_ value: String) -> String {
-        let upper = value.uppercased()
-        if upper == "NULL" || upper == "NOW()" || upper == "TODAY()"
-            || value.hasPrefix("'") || Int64(value) != nil || Double(value) != nil {
-            return value
-        }
-        return "'\(escapeStringLiteral(value))'"
     }
 
     // MARK: - ALTER TABLE DDL
@@ -823,6 +814,12 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if oldColumn.dataType != newColumn.dataType || oldColumn.isNullable != newColumn.isNullable
             || oldColumn.defaultValue != newColumn.defaultValue || oldColumn.comment != newColumn.comment {
             stmts.append("ALTER TABLE \(tableName) MODIFY COLUMN \(clickhouseColumnDefinition(newColumn))")
+        }
+        // MODIFY COLUMN changes only the properties it spells out, so omitting the clause leaves the
+        // old default in place and the save reports a removal that never happened.
+        if oldColumn.defaultValue != nil, newColumn.defaultValue == nil {
+            let column = quoteIdentifier(newColumn.name)
+            stmts.append("ALTER TABLE \(tableName) MODIFY COLUMN \(column) REMOVE DEFAULT")
         }
         return stmts.isEmpty ? nil : stmts.joined(separator: ";\n")
     }

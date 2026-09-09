@@ -30,7 +30,7 @@ final class DamengPluginDriverTests: XCTestCase {
                 PluginColumnDefinition(
                     name: "display name",
                     dataType: "varchar(100)",
-                    defaultValue: "guest's record",
+                    defaultValue: "'guest''s record'",
                     comment: "customer's label"
                 )
             ],

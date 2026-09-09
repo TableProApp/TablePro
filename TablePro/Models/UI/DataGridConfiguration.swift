@@ -10,7 +10,7 @@ import Foundation
 struct DataGridConfiguration: Equatable {
     var dropdownColumns: Set<Int>?
     var typePickerColumns: Set<Int>?
-    var customDropdownOptions: [Int: [String]]?
+    var customDropdownOptions: [Int: [GridMenuOption]]?
     var connectionId: UUID?
     var databaseType: DatabaseType?
     var tableName: String?

@@ -81,49 +81,43 @@ final class StructureRowProvider {
         Array(repeating: .text(rawType: nil), count: columns.count)
     }
 
+    /// Every column whose cell opens a menu, which is every column that has an option list.
     var dropdownColumns: Set<Int> {
-        switch tab {
-        case .columns:
-            var result: Set<Int> = []
-            for field in Self.booleanFields + [.generated] {
-                guard let index = orderedColumnFields.firstIndex(of: field) else { continue }
-                result.insert(index)
-            }
-            return result
-        case .indexes:
-            return [3]
-        case .foreignKeys, .checkConstraints:
-            return []
-        case .ddl, .parts, .triggers:
-            return []
-        }
+        Set(customDropdownOptions.keys)
     }
 
     /// Explicit option lists for every dropdown column, keyed by column index.
     /// Structure flags are schema properties, not data values, so they always offer
     /// the same YES/NO pair the grid displays and never a NULL option.
-    var customDropdownOptions: [Int: [String]] {
+    ///
+    /// The Default column is the one open vocabulary here: it holds the SQL that follows the
+    /// `DEFAULT` keyword, so its list ends in `Custom…` and the cell still takes typed SQL.
+    var customDropdownOptions: [Int: [GridMenuOption]] {
         switch tab {
         case .foreignKeys:
             let actions = EditableForeignKeyDefinition.ReferentialAction.allCases.map(\.rawValue)
-            return [5: actions, 6: actions]
+            return [5: GridMenuOption.values(actions), 6: GridMenuOption.values(actions)]
         case .indexes:
             let types = EditableIndexDefinition.IndexType.allCases.map(\.rawValue)
-            return [2: types, 3: Self.booleanOptions]
+            return [2: GridMenuOption.values(types), 3: GridMenuOption.values(Self.booleanOptions)]
         case .columns:
-            var result: [Int: [String]] = [:]
+            var result: [Int: [GridMenuOption]] = [:]
             for field in Self.booleanFields {
                 guard let index = orderedColumnFields.firstIndex(of: field) else { continue }
-                result[index] = Self.booleanOptions
+                result[index] = GridMenuOption.values(Self.booleanOptions)
             }
             if let index = orderedColumnFields.firstIndex(of: .generated) {
-                result[index] = Self.generationOptions
+                result[index] = GridMenuOption.values(Self.generationOptions)
+            }
+            if let index = orderedColumnFields.firstIndex(of: .defaultValue) {
+                result[index] = ColumnDefaultVocabulary.options(for: databaseType)
             }
             return result
         case .checkConstraints, .ddl, .parts, .triggers:
             return [:]
         }
     }
+
 
     static let booleanOptions = ["YES", "NO"]
 

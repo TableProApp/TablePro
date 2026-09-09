@@ -86,7 +86,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var activeFKPreviewColumnIndex: Int?
     var dropdownColumns: Set<Int>?
     var typePickerColumns: Set<Int>?
-    var customDropdownOptions: [Int: [String]]?
+    var customDropdownOptions: [Int: [GridMenuOption]]?
     var connectionId: UUID?
     var databaseType: DatabaseType?
     var tableName: String?
@@ -1331,6 +1331,15 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         displayCache.removeAll()
         invalidateColumnIndexCache()
         return true
+    }
+
+    /// Whether this column's cells take typed text and offer a list beside it, which is what an
+    /// editable combo box is. Read by the accessibility cell, so a menu a pointer can reach has a
+    /// role a screen reader can reach too.
+    func presentsComboBoxCell(columnIndex: Int) -> Bool {
+        guard isEditable else { return false }
+        return dropdownColumns?.contains(columnIndex) == true
+            || typePickerColumns?.contains(columnIndex) == true
     }
 
     func columnPresentation(

@@ -1187,7 +1187,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             }
         }
         if let defaultValue = col.defaultValue {
-            def += " DEFAULT \(pgDefaultValue(defaultValue))"
+            def += " DEFAULT \(defaultValue)"
         }
         if inlinePK && col.isPrimaryKey {
             def += " PRIMARY KEY"
@@ -1218,17 +1218,6 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     private func pgGenerationKeyword(_ kind: GenerationKind?) -> String {
         guard versionedCapabilities.hasVirtualGeneratedColumns else { return "STORED" }
         return (kind ?? .virtual).rawValue
-    }
-
-    private func pgDefaultValue(_ value: String) -> String {
-        let upper = value.uppercased()
-        if upper == "NULL" || upper == "TRUE" || upper == "FALSE"
-            || upper == "CURRENT_TIMESTAMP" || upper == "NOW()"
-            || value.hasPrefix("'") || Int64(value) != nil || Double(value) != nil
-            || upper.hasSuffix("::REGCLASS") {
-            return value
-        }
-        return "'\(escapeLiteral(value))'"
     }
 
     private func pgIndexDefinition(_ index: PluginIndexDefinition, qualifiedTable: String) -> String {
@@ -1313,7 +1302,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
         if oldColumn.defaultValue != newColumn.defaultValue {
             if let defaultValue = newColumn.defaultValue {
-                stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) SET DEFAULT \(pgDefaultValue(defaultValue))")
+                stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) SET DEFAULT \(defaultValue)")
             } else {
                 stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) DROP DEFAULT")
             }

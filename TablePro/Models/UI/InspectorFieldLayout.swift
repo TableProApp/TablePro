@@ -43,7 +43,7 @@ internal enum InspectorFieldLayout: Equatable {
     /// the other while the user is typing into it.
     private static func dataLayout(for kind: FieldEditorKind) -> InspectorFieldLayout {
         switch kind {
-        case .singleLine, .boolean, .enumPicker, .setPicker, .schemaText, .typePicker,
+        case .singleLine, .boolean, .enumPicker, .setPicker, .schemaText, .typePicker, .valuePicker,
              .multiLine, .json, .phpSerialized, .blobHex, .image:
             return .stacked
         }
@@ -53,7 +53,7 @@ internal enum InspectorFieldLayout: Equatable {
     /// high. The editors that need the pane's width still take it.
     private static func schemaLayout(for kind: FieldEditorKind) -> InspectorFieldLayout {
         switch kind {
-        case .singleLine, .boolean, .enumPicker, .setPicker, .schemaText, .typePicker:
+        case .singleLine, .boolean, .enumPicker, .setPicker, .schemaText, .typePicker, .valuePicker:
             return .inline
         case .multiLine, .json, .phpSerialized, .blobHex, .image:
             return .stacked

@@ -1028,7 +1028,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if typeChanged || nullabilityChanged || defaultChanged {
             var def = "\(colName) \(newColumn.dataType.uppercased())"
             if let defaultValue = newColumn.defaultValue {
-                def += " DEFAULT \(oracleDefaultValue(defaultValue))"
+                def += " DEFAULT \(defaultValue)"
             } else if defaultChanged {
                 def += " DEFAULT NULL"
             }
@@ -1119,7 +1119,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func oracleColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
         var def = "\(quoteIdentifier(col.name)) \(col.dataType.uppercased())"
         if let defaultValue = col.defaultValue {
-            def += " DEFAULT \(oracleDefaultValue(defaultValue))"
+            def += " DEFAULT \(defaultValue)"
         }
         if !col.isNullable {
             def += " NOT NULL"
@@ -1128,16 +1128,6 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             def += " PRIMARY KEY"
         }
         return def
-    }
-
-    private func oracleDefaultValue(_ value: String) -> String {
-        let upper = value.uppercased()
-        if upper == "NULL" || upper == "SYSDATE" || upper == "SYSTIMESTAMP"
-            || upper == "SYS_GUID()" || upper == "USER"
-            || value.hasPrefix("'") || Int64(value) != nil || Double(value) != nil {
-            return value
-        }
-        return "'\(escapeStringLiteral(value))'"
     }
 
     private func oracleIndexDefinition(_ index: PluginIndexDefinition, qualifiedTable: String) -> String {

@@ -51,6 +51,10 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsForeignKeyDisable = false
     static let supportsSSH = true
     static let supportsSSL = true
+    /// CQL has neither. Its column definition is `column_name cql_type [STATIC] [column_mask]
+    /// [PRIMARY KEY]`, with no DEFAULT clause and no auto-increment, so the two cells the
+    /// `DriverPlugin` fallback would give this driver are cells nothing can be written into.
+    static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable, .comment]
     static let columnTypesByCategory: [String: [String]] = [
         "Numeric": ["TINYINT", "SMALLINT", "INT", "BIGINT", "VARINT", "FLOAT", "DOUBLE", "DECIMAL", "COUNTER"],
         "String": ["TEXT", "VARCHAR", "ASCII"],

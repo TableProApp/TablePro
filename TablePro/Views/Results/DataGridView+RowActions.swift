@@ -270,7 +270,7 @@ extension TableViewCoordinator {
         return ordered.isEmpty ? visibleColumnProjection : VisibleColumnProjection(indices: ordered)
     }
 
-    private func resolveDriver() -> (any DatabaseDriver)? {
+    func resolveDriver() -> (any DatabaseDriver)? {
         guard let connectionId else { return nil }
         return DatabaseManager.shared.driver(for: connectionId)
     }

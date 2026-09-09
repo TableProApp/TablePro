@@ -32,7 +32,7 @@ internal struct FieldEditorContent: View {
     /// take away the control that changes it back.
     private var isPicker: Bool {
         switch kind {
-        case .boolean, .enumPicker, .setPicker, .typePicker: return true
+        case .boolean, .enumPicker, .setPicker, .typePicker, .valuePicker: return true
         case .json, .phpSerialized, .image, .blobHex, .schemaText, .multiLine, .singleLine: return false
         }
     }
@@ -44,7 +44,8 @@ internal struct FieldEditorContent: View {
         guard !state.isPending else { return false }
         switch kind {
         case .json, .phpSerialized, .multiLine: return true
-        case .image, .blobHex, .boolean, .enumPicker, .setPicker, .typePicker, .schemaText, .singleLine:
+        case .image, .blobHex, .boolean, .enumPicker, .setPicker, .typePicker, .valuePicker,
+             .schemaText, .singleLine:
             return false
         }
     }
@@ -57,7 +58,8 @@ internal struct FieldEditorContent: View {
         case .image: return 200
         case .blobHex: return 60
         case .multiLine: return ResizableFieldMetrics.defaultTextHeight
-        case .boolean, .enumPicker, .setPicker, .typePicker, .schemaText, .singleLine: return nil
+        case .boolean, .enumPicker, .setPicker, .typePicker, .valuePicker, .schemaText, .singleLine:
+            return nil
         }
     }
 
@@ -80,6 +82,8 @@ internal struct FieldEditorContent: View {
             SetPickerView(context: context, values: values, onSetNull: onSetNull, onSetDefault: onSetDefault)
         case .typePicker:
             TypePickerFieldView(context: context, databaseType: databaseType)
+        case .valuePicker(let options):
+            ValuePickerFieldView(context: context, options: options)
         case .schemaText:
             SchemaTextFieldView(context: context)
         case .multiLine:

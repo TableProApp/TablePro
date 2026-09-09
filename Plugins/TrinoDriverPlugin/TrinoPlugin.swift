@@ -48,7 +48,9 @@ final class TrinoPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsAddIndex = false
     static let supportsDropIndex = false
     static let supportsModifyPrimaryKey = false
-    static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable, .defaultValue, .comment]
+    /// No default. `TrinoColumnSpec` carries name, type, nullability and comment only, so a default
+    /// typed here reached no statement and the save reported success over a change that never ran.
+    static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable, .comment]
     static let postConnectActions: [PostConnectAction] = [.selectSchemaFromLastSession]
 
     static let columnTypesByCategory: [String: [String]] = [

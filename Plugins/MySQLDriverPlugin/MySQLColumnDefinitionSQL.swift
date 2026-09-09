@@ -42,11 +42,60 @@ internal func mysqlCurrentTimestampExpression(_ value: String, dataType: String)
     return "CURRENT_TIMESTAMP" + mysqlFractionalSecondsSuffix(forDataType: dataType)
 }
 
+/// MySQL and MariaDB take a `BLOB`, `TEXT`, `JSON` or `GEOMETRY` default "only if the value is
+/// written as an expression, even if the expression value is a literal", so the parentheses are
+/// required by the grammar rather than chosen by the caller.
+internal func mysqlRequiresParenthesisedDefault(dataType: String) -> Bool {
+    let upper = dataType.uppercased()
+    let base = upper.split(separator: "(", maxSplits: 1).first.map(String.init)?
+        .trimmingCharacters(in: .whitespaces) ?? upper
+    return base.hasSuffix("BLOB") || base.hasSuffix("TEXT") || base == "JSON" || base == "GEOMETRY"
+}
+
+/// The clause the column's `defaultValue` becomes, which is the value itself plus whatever the
+/// grammar demands around it.
+///
+/// Only two things are added. `CURRENT_TIMESTAMP` takes the column's own fractional-second
+/// precision, because MySQL rejects the pair when they differ. And a type that cannot carry a bare
+/// default is given the parentheses it requires. Nothing else is rewritten: the value already holds
+/// the SQL, and re-quoting it is what turned `(UUID())` into the six-character string `uuid()`.
 internal func mysqlDefaultValueLiteral(_ value: String, dataType: String) -> String {
-    if let expression = mysqlCurrentTimestampExpression(value, dataType: dataType) { return expression }
-    if value.uppercased() == "NULL" || value.hasPrefix("'") { return value }
-    if Int64(value) != nil || Double(value) != nil { return value }
-    return "'\(mysqlEscapeStringLiteral(value))'"
+    let normalized = mysqlCurrentTimestampExpression(value, dataType: dataType) ?? value
+    guard mysqlRequiresParenthesisedDefault(dataType: dataType) else { return normalized }
+    return normalized.hasPrefix("(") ? normalized : "(\(normalized))"
+}
+
+/// A column default as the catalog reports it, turned into the SQL that recreates it.
+///
+/// The two servers report it differently and neither says which it is in the value alone. MySQL
+/// leaves a literal bare and marks an expression `DEFAULT_GENERATED` in `EXTRA`. MariaDB from 10.2.7
+/// quotes literals and leaves expressions bare, with `EXTRA` empty; before that it quotes nothing,
+/// so it reads like MySQL without the marker and every default is a literal.
+internal func mysqlDefaultValueFromCatalog(
+    _ value: String?,
+    extra: String?,
+    dataType: String,
+    quotesLiterals: Bool
+) -> String? {
+    guard let value else { return nil }
+    if quotesLiterals { return value }
+    let isExpression = extra?.uppercased().contains("DEFAULT_GENERATED") == true
+    if !isExpression, mysqlTemporalType(dataType),
+       mysqlCurrentTimestampExpression(value, dataType: dataType) != nil {
+        return value
+    }
+    guard isExpression else { return "'\(mysqlEscapeStringLiteral(value))'" }
+    return value.hasPrefix("(") ? value : "(\(value))"
+}
+
+/// The only types on which a bare `CURRENT_TIMESTAMP` is the temporal expression rather than the
+/// seventeen-character string. On a `VARCHAR`, MySQL reports a literal of that text the same way and
+/// with no `DEFAULT_GENERATED` marker, so reading it as the expression turns a stored string into a
+/// clock reading on the next edit to the column.
+internal func mysqlTemporalType(_ dataType: String) -> Bool {
+    let base = dataType.uppercased().split(separator: "(", maxSplits: 1).first.map(String.init)?
+        .trimmingCharacters(in: .whitespaces) ?? dataType.uppercased()
+    return base == "TIMESTAMP" || base == "DATETIME"
 }
 
 internal func mysqlColumnAttributesSQL(_ column: PluginColumnDefinition) -> String {

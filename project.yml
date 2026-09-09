@@ -491,6 +491,9 @@ targets:
       - Plugins/MySQLDriverPlugin/MySQLStatementClassification.swift
       - Plugins/MySQLDriverPlugin/MySQLTransactionStatement.swift
       - Plugins/SQLiteDriverPlugin/SQLiteCheckConstraintParser.swift
+      - Plugins/SQLiteDriverPlugin/SQLiteDefaultValue.swift
+      - Plugins/LibSQLDriverPlugin/LibSQLDefaultValue.swift
+      - Plugins/CloudflareD1DriverPlugin/CloudflareD1DefaultValue.swift
       - Plugins/MSSQLDriverPlugin/MSSQLCheckConstraintDefinition.swift
       - Plugins/PostgreSQLDriverPlugin/ColumnQueryShape.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQByteaDecoder.swift

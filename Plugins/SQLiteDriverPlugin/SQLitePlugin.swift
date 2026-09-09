@@ -778,7 +778,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             // PRAGMA pk column: 0 = not PK, 1+ = position in composite PK
             let pkText = row[5].asText
             let isPrimaryKey = pkText != nil && pkText != "0"
-            let defaultValue = row[4].asText
+            let defaultValue = sqliteDefaultValueFromCatalog(row[4].asText)
             let generationKind: GenerationKind? = hidden == 2 ? .virtual : (hidden == 3 ? .stored : nil)
 
             return PluginColumnInfo(
@@ -842,7 +842,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             guard hidden != 1 else { continue }
 
             let isNullable = row[4].asText == "0"
-            let defaultValue = row[5].asText
+            let defaultValue = sqliteDefaultValueFromCatalog(row[5].asText)
             // PRAGMA table_xinfo pk column: 0 = not PK, 1+ = position in composite PK
             let pkText = row[6].asText
             let isPrimaryKey = pkText != nil && pkText != "0"
@@ -1158,18 +1158,9 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             def += " NOT NULL"
         }
         if let defaultValue = col.defaultValue {
-            def += " DEFAULT \(sqliteDefaultValue(defaultValue))"
+            def += " DEFAULT \(defaultValue)"
         }
         return def
-    }
-
-    private func sqliteDefaultValue(_ value: String) -> String {
-        let upper = value.uppercased()
-        if upper == "NULL" || upper == "CURRENT_TIMESTAMP" || upper == "CURRENT_DATE" || upper == "CURRENT_TIME"
-            || value.hasPrefix("'") || Int64(value) != nil || Double(value) != nil {
-            return value
-        }
-        return "'\(escapeStringLiteral(value))'"
     }
 
     private func sqliteForeignKeyDefinition(_ fk: PluginForeignKeyDefinition) -> String {

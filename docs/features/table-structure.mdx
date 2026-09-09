@@ -22,6 +22,29 @@ Columns are edited in place. **Nullable**, **Primary Key**, and **Auto Inc** are
 
 Which remaining columns appear is the driver's choice. **Comment** is there on most engines and writes the column comment. MySQL and MariaDB add **Charset**, **Collation**, and **On Update**; **On Update** set to YES on a `TIMESTAMP` or `DATETIME` column adds `ON UPDATE CURRENT_TIMESTAMP` at that column's own precision, so `TIMESTAMP(6)` gets `ON UPDATE CURRENT_TIMESTAMP(6)`.
 
+### Default
+
+The cell holds the SQL that follows `DEFAULT`, so a string literal carries its own quotes and an expression is written the way the engine spells it. Click the chevron for the engine's own list.
+
+| Item | What the column gets |
+|-------|----------------------|
+| **No default** | No `DEFAULT` clause at all |
+| **NULL** | `DEFAULT NULL` |
+| **Empty string** | `DEFAULT ''`. Absent on Oracle and Dameng, where a zero-length string is already null |
+| **Expressions** | The engine's own: `CURRENT_TIMESTAMP` and `(UUID())` on MySQL, `now()` and `gen_random_uuid()` on PostgreSQL, `GETDATE()` and `NEWID()` on SQL Server, `SYSTIMESTAMP` on Oracle, `now64(3)` on ClickHouse, `(datetime('now'))` on SQLite |
+| **Custom…** | Whatever the list has no entry for, entered as **Text** or as a **SQL expression** |
+
+Typing straight into the cell is the same as **SQL expression**, so `pending` is a column reference and `'pending'` is the string. **Text** does the quoting and escaping for you.
+
+Auto-increment has its own **Auto Inc** field.
+
+<Frame caption="Every Default cell carries the chevron that opens the list">
+  <img className="block dark:hidden" src="/images/structure-default-picker.png" alt="The Columns tab of a SQLite table, with a chevron on the right of every Default cell" />
+  <img className="hidden dark:block" src="/images/structure-default-picker-dark.png" alt="The Columns tab of a SQLite table, with a chevron on the right of every Default cell" />
+</Frame>
+
+Not every engine can change the default of a column that already exists. SQLite, libSQL and Cloudflare D1 cannot: their `ALTER TABLE` has no `SET DEFAULT`. Snowflake can only remove one. Saving such a change is refused with **Unsupported schema operation**; set the default when the column is created, or drop the column and add it back.
+
 ### Generated columns
 
 PostgreSQL, CockroachDB, PGlite, MySQL, MariaDB and SQLite add two more fields. **Generated** is a menu of Not generated, STORED and VIRTUAL; **Expression** holds the SQL the value is computed from. Set both on a new row and the column is created as `GENERATED ALWAYS AS (expression)`.

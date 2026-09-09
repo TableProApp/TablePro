@@ -21,6 +21,17 @@ public struct PluginColumnInfo: Codable, Sendable {
     public let dataType: String
     public let isNullable: Bool
     public let isPrimaryKey: Bool
+    /// The exact SQL that follows the `DEFAULT` keyword, or nil for no `DEFAULT` clause at all.
+    ///
+    /// A literal carries its own quotes (`'abc'`, `''`), an expression is written the way the engine
+    /// spells it (`now()`, `gen_random_uuid()`, `(datetime('now'))`), and `NULL` means `DEFAULT NULL`
+    /// rather than the absence of a default. A driver emits this verbatim and never re-quotes it.
+    ///
+    /// It used to be untyped text, which left every writer guessing literal from expression against a
+    /// hand-copied allowlist. Measured, that turned `gen_random_uuid()` into an eleven-character
+    /// string and `nextval('t_id_seq'::regclass)` into a value PostgreSQL rejects. Adding required
+    /// syntax the engine's own grammar demands is still the driver's job: MySQL takes a `TEXT`
+    /// default only in parentheses, whatever the value is.
     public let defaultValue: String?
     public let extra: String?
     public let charset: String?

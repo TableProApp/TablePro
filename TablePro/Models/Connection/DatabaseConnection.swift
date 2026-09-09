@@ -52,6 +52,8 @@ extension DatabaseType {
     static let elasticsearch = DatabaseType(rawValue: "Elasticsearch")
     static let surrealdb = DatabaseType(rawValue: "SurrealDB")
     static let typesense = DatabaseType(rawValue: "Typesense")
+    static let teradata = DatabaseType(rawValue: "Teradata")
+    static let trino = DatabaseType(rawValue: "Trino")
 }
 
 extension DatabaseType: Codable {

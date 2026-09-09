@@ -38,6 +38,19 @@ struct StructureColumnFieldRegistrationTests {
         #expect(onUpdateIndex == defaultIndex + 1)
     }
 
+    /// Neither engine declared its own list, so both inherited the `DriverPlugin` fallback and
+    /// showed a Default and an Auto Inc cell for a grammar that has neither. ScyllaDB is registered
+    /// as its own type id with its own curated snapshot, so fixing one does not fix the other.
+    @Test(
+        "CQL engines offer neither a default nor auto increment",
+        arguments: [DatabaseType.cassandra, .scylladb]
+    )
+    func cqlEnginesOfferNoDefault(databaseType: DatabaseType) {
+        let fields = PluginManager.shared.structureColumnFields(for: databaseType)
+        #expect(!fields.contains(.defaultValue), "\(databaseType.rawValue)")
+        #expect(!fields.contains(.autoIncrement), "\(databaseType.rawValue)")
+    }
+
     @Test("Engines that do not support the attribute never offer it")
     func onUpdateIsEngineScoped() {
         for databaseType in [DatabaseType.postgresql, .sqlite, .clickhouse] {

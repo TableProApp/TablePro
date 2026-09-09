@@ -55,21 +55,12 @@ extension MSSQLPluginDriver {
             def += " NOT NULL"
         }
         if let defaultValue = col.defaultValue {
-            def += " DEFAULT \(mssqlDefaultValue(defaultValue))"
+            def += " DEFAULT \(defaultValue)"
         }
         if inlinePK && col.isPrimaryKey {
             def += " PRIMARY KEY"
         }
         return def
-    }
-
-    private func mssqlDefaultValue(_ value: String) -> String {
-        let upper = value.uppercased()
-        if upper == "NULL" || upper == "GETDATE()" || upper == "NEWID()" || upper == "GETUTCDATE()"
-            || value.hasPrefix("'") || value.hasPrefix("(") || Int64(value) != nil || Double(value) != nil {
-            return value
-        }
-        return "'\(escapeStringLiteral(value))'"
     }
 
     private func mssqlIndexDefinition(_ index: PluginIndexDefinition, qualifiedTable: String) -> String {
@@ -140,7 +131,7 @@ extension MSSQLPluginDriver {
         }
 
         if defaultChanged, let defaultValue = newColumn.defaultValue {
-            stmts.append("ALTER TABLE \(qt) ADD DEFAULT \(mssqlDefaultValue(defaultValue)) FOR \(colName)")
+            stmts.append("ALTER TABLE \(qt) ADD DEFAULT \(defaultValue) FOR \(colName)")
         }
 
         return stmts.isEmpty ? nil : stmts.joined(separator: ";\n")

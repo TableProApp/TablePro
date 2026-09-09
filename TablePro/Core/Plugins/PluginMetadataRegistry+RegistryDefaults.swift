@@ -435,7 +435,7 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: ["information_schema"],
                     fileExtensions: [],
                     databaseGroupingStrategy: .hierarchicalSchema,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .comment]
+                    structureColumnFields: [.name, .type, .nullable, .comment]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: SQLDialectDescriptor(
@@ -818,7 +818,7 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .byDatabase,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                    structureColumnFields: [.name, .type, .nullable, .comment]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: cassandraDialect,
@@ -881,7 +881,7 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .byDatabase,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                    structureColumnFields: [.name, .type, .nullable, .comment]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: cassandraDialect,

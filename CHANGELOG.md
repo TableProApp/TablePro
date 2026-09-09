@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Menu of the engine's own default values on the Structure tab's Default cell, with No default, NULL, Empty string and a Custom editor. (#2688)
 - Row-number gutter held at the left edge of the data grid, so whole rows stay selectable when the table is scrolled sideways. (#2664)
 - `Shift+Space` to widen the grid selection to every row it touches. (#2664)
 - Table name proposed from the file name when an import creates the table, with a warning when the name is taken.
@@ -71,6 +72,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Column defaults quoted into string literals, from `gen_random_uuid()` to `NOW()` to `nextval(...)`. (#2688)
+- A MySQL expression default rewritten as a string on any edit to the same column. (#2688)
+- A ClickHouse MATERIALIZED or ALIAS column turned into a plain DEFAULT column by an edit to its comment. (#2688)
+- Default and Auto Inc cells on Cassandra and ScyllaDB, which CQL has no way to express. (#2688)
+- Default cell on Trino, whose generated DDL never carried one. (#2688)
+- Column defaults exported from an ER diagram as quoted strings, including `SYSDATE` and `X'0102'`. (#2688)
 - Unsaved cell edits discarded without asking when a column was hidden, shown or reset. (#2667)
 - Edited values left on screen with nothing tracking them after discarding to change a value filter. (#2667)
 - Discard prompt on applying a value filter that changes nothing. (#2667)

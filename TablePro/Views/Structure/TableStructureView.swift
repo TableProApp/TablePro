@@ -516,7 +516,7 @@ struct TableStructureView: View {
         let provider = makeCurrentProvider()
         let canEdit = connection.type.supportsSchemaEditing
         let customOptions = provider.customDropdownOptions
-        let allDropdownColumns = provider.dropdownColumns.union(Set(customOptions.keys))
+        let allDropdownColumns = provider.dropdownColumns
 
         // Build the row snapshot fresh on every call rather than capturing it
         // once at body-evaluation time. After a cell edit / undo / redo the

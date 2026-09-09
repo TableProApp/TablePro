@@ -57,19 +57,38 @@ struct StructureRowProviderBooleanOptionsTests {
                 Issue.record("Field \(field) missing from the columns tab")
                 continue
             }
-            #expect(options[index] == ["YES", "NO"])
+            #expect(options[index]?.compactMap(\.sql) == ["YES", "NO"])
         }
     }
 
-    @Test("Offered options are exactly what the grid draws")
+    /// A closed vocabulary has to contain whatever the grid drew, or the menu cannot show the
+    /// current value as the selected one. The Default column is deliberately not closed: it holds
+    /// an open-ended SQL expression, which is what its `Custom…` entry marks it as.
+    @Test("A closed column's options are exactly what the grid draws")
     func optionsMatchRenderedValues() {
         let provider = makeProvider()
         let options = provider.customDropdownOptions
 
         for (index, value) in provider.rows[0].enumerated() {
             guard let allowed = options[index], let value else { continue }
-            #expect(allowed.contains(value))
+            guard !allowed.contains(where: { if case .custom = $0 { return true } else { return false } }) else {
+                continue
+            }
+            #expect(allowed.compactMap(\.sql).contains(value))
         }
+    }
+
+    @Test("The Default column is the one open vocabulary, and it can reach a value the menu lacks")
+    func defaultColumnIsOpen() {
+        let provider = makeProvider()
+        guard let index = provider.orderedColumnFields.firstIndex(of: .defaultValue) else {
+            Issue.record("PostgreSQL must offer a Default column")
+            return
+        }
+        let options = provider.customDropdownOptions[index] ?? []
+        #expect(options.contains(where: { if case .custom = $0 { return true } else { return false } }))
+        #expect(options.contains(where: { if case .clear = $0 { return true } else { return false } }))
+        #expect(options.compactMap(\.sql).contains("gen_random_uuid()"))
     }
 
     @Test("Every boolean column is also a dropdown column")
@@ -83,7 +102,7 @@ struct StructureRowProviderBooleanOptionsTests {
     @Test("The index Unique column supplies YES/NO options")
     func indexUniqueSuppliesOptions() {
         let provider = makeProvider(tab: .indexes)
-        #expect(provider.customDropdownOptions[3] == ["YES", "NO"])
+        #expect(provider.customDropdownOptions[3]?.compactMap(\.sql) == ["YES", "NO"])
     }
 
     @Test("No structure column reports itself as nullable, so Set NULL is never offered")

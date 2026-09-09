@@ -1014,22 +1014,12 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             }
         }
         if let defaultValue = col.defaultValue {
-            def += " DEFAULT \(duckdbDefaultValue(defaultValue))"
+            def += " DEFAULT \(defaultValue)"
         }
         if inlinePK && col.isPrimaryKey {
             def += " PRIMARY KEY"
         }
         return def
-    }
-
-    private func duckdbDefaultValue(_ value: String) -> String {
-        let upper = value.uppercased()
-        if upper == "NULL" || upper == "TRUE" || upper == "FALSE"
-            || upper == "CURRENT_TIMESTAMP" || upper == "NOW()"
-            || value.hasPrefix("'") || Int64(value) != nil || Double(value) != nil {
-            return value
-        }
-        return "'\(escapeStringLiteral(value))'"
     }
 
     private func duckdbIndexDefinition(_ index: PluginIndexDefinition, qualifiedTable: String) -> String {
@@ -1084,7 +1074,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         if oldColumn.defaultValue != newColumn.defaultValue {
             if let defaultValue = newColumn.defaultValue {
-                stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) SET DEFAULT \(duckdbDefaultValue(defaultValue))")
+                stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) SET DEFAULT \(defaultValue)")
             } else {
                 stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) DROP DEFAULT")
             }

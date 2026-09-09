@@ -97,12 +97,105 @@ struct MySQLColumnDefinitionSQLTests {
         #expect(!sql.contains("'CURRENT_TIMESTAMP'"))
     }
 
-    @Test("A non-expression default is still quoted and escaped")
-    func plainDefaultStaysQuoted() {
+    @Test("A quoted literal default is emitted as written")
+    func quotedLiteralPassesThrough() {
         let column = PluginColumnDefinition(
-            name: "status", dataType: "VARCHAR(16)", isNullable: false, defaultValue: "it's active"
+            name: "status", dataType: "VARCHAR(16)", isNullable: false, defaultValue: "'it''s active'"
         )
         #expect(mysqlColumnDefinitionSQL(column).contains("DEFAULT 'it''s active'"))
+    }
+
+    @Test("An expression default is emitted as written rather than quoted")
+    func expressionDefaultIsNotQuoted() {
+        let column = PluginColumnDefinition(
+            name: "id", dataType: "VARCHAR(36)", isNullable: false, defaultValue: "(UUID())"
+        )
+        let sql = mysqlColumnDefinitionSQL(column)
+        #expect(sql.contains("DEFAULT (UUID())"))
+        #expect(!sql.contains("'(UUID())'"))
+    }
+
+    @Test(
+        "A type that cannot carry a bare default is given the parentheses the grammar needs",
+        arguments: [
+            (dataType: "TEXT", value: "''", expected: "DEFAULT ('')"),
+            (dataType: "LONGBLOB", value: "''", expected: "DEFAULT ('')"),
+            (dataType: "JSON", value: "'{}'", expected: "DEFAULT ('{}')"),
+            (dataType: "GEOMETRY", value: "ST_GeomFromText('POINT(0 0)')",
+             expected: "DEFAULT (ST_GeomFromText('POINT(0 0)'))"),
+            (dataType: "TEXT", value: "(UUID())", expected: "DEFAULT (UUID())"),
+            (dataType: "VARCHAR(16)", value: "''", expected: "DEFAULT ''")
+        ]
+    )
+    func parenthesisedWhereRequired(dataType: String, value: String, expected: String) {
+        let column = PluginColumnDefinition(
+            name: "payload", dataType: dataType, isNullable: true, defaultValue: value
+        )
+        #expect(mysqlColumnDefinitionSQL(column).contains(expected))
+    }
+
+    // MARK: - Catalog Round Trip
+
+    @Test(
+        "A MySQL catalog default becomes the SQL that recreates it",
+        arguments: [
+            (value: "abc", extra: "", type: "VARCHAR(16)", expected: "'abc'"),
+            (value: "", extra: "", type: "VARCHAR(16)", expected: "''"),
+            (value: "it's", extra: "", type: "VARCHAR(16)", expected: "'it''s'"),
+            (value: "0", extra: "", type: "INT", expected: "'0'"),
+            (value: "CURRENT_TIMESTAMP", extra: "", type: "TIMESTAMP", expected: "CURRENT_TIMESTAMP"),
+            (value: "CURRENT_TIMESTAMP", extra: "", type: "DATETIME(6)", expected: "CURRENT_TIMESTAMP"),
+            (value: "CURRENT_TIMESTAMP", extra: "", type: "VARCHAR(32)", expected: "'CURRENT_TIMESTAMP'"),
+            (value: "uuid()", extra: "DEFAULT_GENERATED", type: "VARCHAR(36)", expected: "(uuid())"),
+            (value: "(curdate() + interval 1 year)", extra: "DEFAULT_GENERATED", type: "DATE",
+             expected: "(curdate() + interval 1 year)")
+        ]
+    )
+    func catalogDefaultRoundTrip(value: String, extra: String, type: String, expected: String) {
+        let resolved = mysqlDefaultValueFromCatalog(value, extra: extra, dataType: type, quotesLiterals: false)
+        #expect(resolved == expected)
+    }
+
+    @Test("A server that quotes its own literals has already produced the SQL")
+    func quotingServerCatalogDefaultPassesThrough() {
+        #expect(
+            mysqlDefaultValueFromCatalog("'abc'", extra: "", dataType: "VARCHAR(16)", quotesLiterals: true) == "'abc'"
+        )
+        #expect(
+            mysqlDefaultValueFromCatalog("uuid()", extra: "", dataType: "VARCHAR(36)", quotesLiterals: true) == "uuid()"
+        )
+    }
+
+    /// MariaDB began quoting `COLUMN_DEFAULT` in 10.2.7. Before that it reads like MySQL without the
+    /// `DEFAULT_GENERATED` marker, so a bare literal has to be quoted rather than passed through.
+    @Test(
+        "Whether the catalog quotes its literals follows the server version",
+        arguments: [
+            (banner: "10.6.16-MariaDB", isMariaDB: true, expected: true),
+            (banner: "10.2.7-MariaDB", isMariaDB: true, expected: true),
+            (banner: "10.2.6-MariaDB", isMariaDB: true, expected: false),
+            (banner: "10.1.48-MariaDB", isMariaDB: true, expected: false),
+            (banner: "10.0.38-MariaDB", isMariaDB: true, expected: false),
+            (banner: "8.4.11", isMariaDB: false, expected: false),
+            (banner: "5.7.44", isMariaDB: false, expected: false)
+        ]
+    )
+    func catalogQuotingFollowsTheVersion(banner: String, isMariaDB: Bool, expected: Bool) {
+        #expect(MySQLServerVersion.quotesColumnDefault(banner: banner, isMariaDB: isMariaDB) == expected)
+    }
+
+    @Test("An older MariaDB literal is quoted rather than passed through")
+    func olderMariaDBLiteralIsQuoted() {
+        #expect(
+            mysqlDefaultValueFromCatalog("active", extra: "", dataType: "VARCHAR(16)", quotesLiterals: false)
+                == "'active'"
+        )
+    }
+
+    @Test("No default at all stays absent")
+    func absentCatalogDefault() {
+        #expect(mysqlDefaultValueFromCatalog(nil, extra: "", dataType: "INT", quotesLiterals: false) == nil)
+        #expect(mysqlDefaultValueFromCatalog(nil, extra: "", dataType: "INT", quotesLiterals: true) == nil)
     }
 
     @Test("A numeric default is unquoted")

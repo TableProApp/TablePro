@@ -390,31 +390,25 @@ extension TableViewCoordinator {
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
 
         let currentValue = cellValue(at: row, column: columnIndex)
-        let context = DropdownMenuContext(row: row, columnIndex: columnIndex)
+        let custom = customDropdownOptions?[columnIndex]
 
-        let options: [String]
-        if let custom = customDropdownOptions?[columnIndex] {
+        let options: [GridMenuOption]
+        if let custom {
             options = custom
         } else if let dbType = databaseType, PluginManager.shared.usesTrueFalseBooleans(for: dbType) {
-            options = ["true", "false"]
+            options = GridMenuOption.values(["true", "false"])
         } else {
-            options = ["1", "0"]
+            options = GridMenuOption.values(["1", "0"])
         }
 
         let menu = NSMenu()
         for option in options {
-            let item = NSMenuItem(title: option, action: #selector(dropdownMenuItemSelected(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = context
-            if option == currentValue {
-                item.state = .on
-            }
-            menu.addItem(item)
+            menu.addItem(menuItem(for: option, row: row, columnIndex: columnIndex, currentValue: currentValue))
         }
 
         let columnName = tableRows.columns[columnIndex]
         let isNullable = tableRows.columnNullable[columnName] ?? true
-        if isNullable && customDropdownOptions?[columnIndex] == nil {
+        if isNullable && custom == nil {
             menu.addItem(.separator())
             let nullItem = NSMenuItem(
                 title: String(localized: "Set NULL"),
@@ -422,7 +416,7 @@ extension TableViewCoordinator {
                 keyEquivalent: ""
             )
             nullItem.target = self
-            nullItem.representedObject = context
+            nullItem.representedObject = DropdownMenuContext(row: row, columnIndex: columnIndex)
             if currentValue == nil {
                 nullItem.state = .on
             }
@@ -433,9 +427,49 @@ extension TableViewCoordinator {
         menu.popUp(positioning: nil, at: NSPoint(x: cellRect.minX, y: cellRect.maxY), in: tableView)
     }
 
+    /// A section header is a menu item AppKit draws itself, not a separator with a label, so the
+    /// grouping reads to VoiceOver as a group rather than as an unselectable entry.
+    private func menuItem(
+        for option: GridMenuOption,
+        row: Int,
+        columnIndex: Int,
+        currentValue: String?
+    ) -> NSMenuItem {
+        switch option {
+        case .sectionHeader(let title):
+            return NSMenuItem.sectionHeader(title: title)
+        case .value(let title, let sql):
+            let item = NSMenuItem(title: title, action: #selector(dropdownMenuItemSelected(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = DropdownMenuContext(row: row, columnIndex: columnIndex, sql: sql)
+            if sql == currentValue {
+                item.state = .on
+            }
+            return item
+        case .clear(let title):
+            let item = NSMenuItem(title: title, action: #selector(dropdownMenuNullSelected(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = DropdownMenuContext(row: row, columnIndex: columnIndex)
+            if currentValue == nil {
+                item.state = .on
+            }
+            return item
+        case .custom(let title):
+            let item = NSMenuItem(title: title, action: #selector(dropdownMenuCustomSelected(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = DropdownMenuContext(row: row, columnIndex: columnIndex)
+            return item
+        }
+    }
+
     @objc func dropdownMenuItemSelected(_ sender: NSMenuItem) {
         guard let context = sender.representedObject as? DropdownMenuContext else { return }
-        commitPopoverEdit(row: context.row, columnIndex: context.columnIndex, newValue: sender.title)
+        commitPopoverEdit(row: context.row, columnIndex: context.columnIndex, newValue: context.sql ?? sender.title)
+    }
+
+    @objc func dropdownMenuCustomSelected(_ sender: NSMenuItem) {
+        guard let context = sender.representedObject as? DropdownMenuContext else { return }
+        showCustomValuePopover(row: context.row, columnIndex: context.columnIndex)
     }
 
     @objc func dropdownMenuNullSelected(_ sender: NSMenuItem) {
@@ -609,9 +643,13 @@ extension TableViewCoordinator {
 private final class DropdownMenuContext {
     let row: Int
     let columnIndex: Int
+    /// What the item sets the cell to. It is not the item's title wherever the value is not its own
+    /// best label, which is every entry a `GridMenuOption.value` gives a separate title.
+    let sql: String?
 
-    init(row: Int, columnIndex: Int) {
+    init(row: Int, columnIndex: Int, sql: String? = nil) {
         self.row = row
         self.columnIndex = columnIndex
+        self.sql = sql
     }
 }

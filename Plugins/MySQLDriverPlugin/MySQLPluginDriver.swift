@@ -63,6 +63,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     var currentSchema: String? { nil }
     var serverVersion: String? { _serverVersion }
+
+    private var catalogQuotesDefaults: Bool {
+        MySQLServerVersion.quotesColumnDefault(banner: _serverVersion, isMariaDB: isMariaDB)
+    }
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { true }
     var requiresBackslashEscapingInLiterals: Bool { true }
@@ -471,7 +475,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let collation = row[safe: 2]?.asText
             let isNullable = (row[safe: 3]?.asText) == "YES"
             let isPrimaryKey = (row[safe: 4]?.asText) == "PRI"
-            let defaultValue = row[safe: 5]?.asText
+            let rawDefault = row[safe: 5]?.asText
             let extra = row[safe: 6]?.asText
             let comment = row[safe: 8]?.asText
 
@@ -484,6 +488,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let normalizedType = (upperType.hasPrefix("ENUM(") || upperType.hasPrefix("SET("))
                 ? dataType : upperType
             let allowedValues = EnumValueParser.parseMySQLEnumOrSet(from: normalizedType)
+            let defaultValue = mysqlDefaultValueFromCatalog(
+                rawDefault, extra: extra, dataType: normalizedType, quotesLiterals: catalogQuotesDefaults
+            )
 
             return PluginColumnInfo(
                 name: name,
@@ -597,7 +604,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let collation = row[safe: 3]?.asText
             let isNullable = (row[safe: 4]?.asText) == "YES"
             let isPrimaryKey = (row[safe: 5]?.asText) == "PRI"
-            let defaultValue = row[safe: 6]?.asText
+            let rawDefault = row[safe: 6]?.asText
             let extra = row[safe: 7]?.asText
             let comment = row[safe: 8]?.asText
 
@@ -610,6 +617,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let normalizedType = (upperType.hasPrefix("ENUM(") || upperType.hasPrefix("SET("))
                 ? dataType : upperType
             let allowedValues = EnumValueParser.parseMySQLEnumOrSet(from: normalizedType)
+            let defaultValue = mysqlDefaultValueFromCatalog(
+                rawDefault, extra: extra, dataType: normalizedType, quotesLiterals: catalogQuotesDefaults
+            )
 
             let column = PluginColumnInfo(
                 name: name,
