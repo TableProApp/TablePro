@@ -74,11 +74,10 @@ struct ERDiagramView: View {
         return ERDiagramSceneCanvas(scene: scene)
             .frame(width: canvasSize.width, height: canvasSize.height)
             .contentShape(Rectangle())
-            .accessibilityElement()
-            .accessibilityLabel(
-                Text("\(viewModel.graph.nodes.count) tables, \(viewModel.graph.edges.count) relationships")
-            )
-            .accessibilityAddTraits(.isImage)
+            // `.contain`, not the default `.ignore`: ignoring hides every child element, which is
+            // what left the whole schema as one image with a count for a label. The scene view
+            // carries the summary and the per-table elements itself.
+            .accessibilityElement(children: .contain)
             .onTapGesture { location in
                 viewModel.selectedNodeId = viewModel.nodeId(at: location)
             }

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- VoiceOver navigation of the ER diagram, table by table and column by column, with what each table is joined to. (#2692)
 - Column type, nullability and default changes for SQLite, libSQL and Cloudflare D1, checked against every dependent view and trigger before the change commits.
 - Column rename and drop alongside a foreign key change in one save.
 - Foreign key add, remove and edit for SQLite, libSQL and Cloudflare D1, applied as a reviewed table rebuild.
@@ -79,6 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Half the ER diagram left unpainted at its fit-to-window zoom, and the query plan's arrows gone below 50%. (#2692)
+- A table's relationship with itself drawn underneath the table, so a `manager_id` style foreign key was invisible. (#2692)
 - Table dragged past the ER diagram's top-left corner disappearing, with the position saved. (#2692)
 - ER diagram back at 100% in the top-left corner after leaving its editor tab and returning. (#2692)
 - "Unsupported schema operation" when adding a foreign key to a SQLite, libSQL or Cloudflare D1 table.
