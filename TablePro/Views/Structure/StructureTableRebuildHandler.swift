@@ -16,9 +16,10 @@ import TableProPluginKit
 /// passes would leave the earlier changes committed when the rebuild failed, and a column the save
 /// renamed would leave the staged foreign key naming a column that no longer exists.
 ///
-/// A column added, an index and a check constraint all travel. A column dropped or renamed does
-/// not: `ALTER TABLE` carries such a change into every trigger, view and referencing table by
-/// itself, and a rebuild cannot, so it is refused with the reason rather than half-applied.
+/// A rename and a drop travel as their own `ALTER TABLE`, appended after the rebuild rather than
+/// folded into the new definition. That is not a shortcut: `ALTER TABLE` rewrites the column's name
+/// through every index, trigger and view itself, measured on 3.54, and a rebuild that reproduced
+/// the table by hand would leave all three naming a column that no longer exists.
 @MainActor
 enum StructureTableRebuildHandler {
     enum RebuildError: LocalizedError {
@@ -68,8 +69,15 @@ enum StructureTableRebuildHandler {
     static func requiresRebuild(changes: [SchemaChange], support: ForeignKeyEditSupport) -> Bool {
         support == .rebuild && changes.contains { change in
             switch change {
-            case .addForeignKey, .modifyForeignKey, .deleteForeignKey: true
-            default: false
+            case .addForeignKey, .modifyForeignKey, .deleteForeignKey:
+                true
+            case .modifyColumn(let old, let new):
+                /// A rename alone is an `ALTER TABLE`, which is cheaper than copying the table and
+                /// carries itself into every dependent object. Anything else about a column needs
+                /// the table recreated, because SQLite has no statement for it.
+                old.alteration(comparedTo: new) != nil
+            default:
+                false
             }
         }
     }
@@ -138,16 +146,9 @@ enum StructureTableRebuildHandler {
         var partition = Partition()
         for change in changes {
             switch change {
-            case .addColumn, .addForeignKey, .modifyForeignKey, .deleteForeignKey:
+            case .addColumn, .deleteColumn, .modifyColumn,
+                 .addForeignKey, .modifyForeignKey, .deleteForeignKey:
                 partition.rebuilt.append(change)
-            case .deleteColumn, .modifyColumn:
-                /// Dropping or renaming a column is safe on its own, through `ALTER TABLE`, which
-                /// carries the change into every trigger, view and referencing table itself. A
-                /// rebuild does not: it replays the dependent SQL verbatim and rewrites only the
-                /// column's own declaration, so the same edit inside one either fails with
-                /// "no such column" or commits a trigger, a view or an incoming foreign key that
-                /// names a column that is gone. Refused rather than half-applied.
-                partition.unsupported.append(change)
             case .addIndex, .modifyIndex, .deleteIndex,
                  .addCheckConstraint, .modifyCheckConstraint, .deleteCheckConstraint:
                 partition.trailing.append(change)
@@ -160,6 +161,9 @@ enum StructureTableRebuildHandler {
 
     private static func respecification(from changes: [SchemaChange]) -> PluginTableRespecification {
         var addedColumns: [PluginColumnDefinition] = []
+        var droppedColumns: [String] = []
+        var renamedColumns: [String: String] = [:]
+        var alteredColumns: [PluginColumnAlteration] = []
         var addedForeignKeys: [PluginForeignKeyDefinition] = []
         var droppedForeignKeys: [PluginForeignKeyDefinition] = []
 
@@ -167,6 +171,16 @@ enum StructureTableRebuildHandler {
             switch change {
             case .addColumn(let column):
                 addedColumns.append(column.toPlugin())
+            case .deleteColumn(let column):
+                droppedColumns.append(column.name)
+            case .modifyColumn(let old, let new):
+                /// A column edit is up to three separate things, and they leave by different doors.
+                /// The type, nullability and default go into the new definition; the rename becomes
+                /// an `ALTER TABLE` after it. One `.modifyColumn` can carry both.
+                if old.name != new.name { renamedColumns[old.name] = new.name }
+                if let alteration = old.alteration(comparedTo: new) {
+                    alteredColumns.append(alteration)
+                }
             case .addForeignKey(let foreignKey):
                 addedForeignKeys.append(foreignKey.toPlugin())
             case .deleteForeignKey(let foreignKey):
@@ -181,8 +195,11 @@ enum StructureTableRebuildHandler {
 
         return PluginTableRespecification(
             addedColumns: addedColumns,
+            droppedColumns: droppedColumns,
+            renamedColumns: renamedColumns,
             addedForeignKeys: addedForeignKeys,
-            droppedForeignKeys: droppedForeignKeys
+            droppedForeignKeys: droppedForeignKeys,
+            alteredColumns: alteredColumns
         )
     }
 }
@@ -200,6 +217,29 @@ private extension PluginColumnReorderPlan {
             caveats: caveats,
             isRunnable: isRunnable,
             verifications: verifications
+        )
+    }
+}
+
+internal extension EditableColumnDefinition {
+    /// What changed about this column beyond its name, or nil when only the name did.
+    ///
+    /// A rename leaves by a different door: `ALTER TABLE RENAME COLUMN` carries it into every
+    /// index, trigger and view, which a rebuilt definition cannot. Everything here has no `ALTER`
+    /// behind it on a rebuild engine, so it travels in the new definition instead.
+    ///
+    /// The default is compared as the user's own text and passed on the same way. A default read
+    /// back from `PRAGMA table_info` has already lost its parentheses, and measured on 3.54 the
+    /// stripped form of `DEFAULT (datetime('now'))` will not parse again, so an unchanged one must
+    /// never be re-rendered from a model.
+    func alteration(comparedTo other: EditableColumnDefinition) -> PluginColumnAlteration? {
+        let type = dataType == other.dataType ? nil : other.dataType
+        let isNullable = self.isNullable == other.isNullable ? nil : other.isNullable
+        let defaultValue = defaultValue == other.defaultValue ? nil : (other.defaultValue ?? "")
+
+        guard type != nil || isNullable != nil || defaultValue != nil else { return nil }
+        return PluginColumnAlteration(
+            column: name, type: type, isNullable: isNullable, defaultValue: defaultValue
         )
     }
 }

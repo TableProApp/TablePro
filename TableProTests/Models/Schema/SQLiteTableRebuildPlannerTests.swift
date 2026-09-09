@@ -65,10 +65,11 @@ struct SQLiteTableRebuildPlannerTests {
     func followsDocumentedProcedure() throws {
         let plan = try plan(reorder)
         #expect(plan.cost == .tableRebuild)
-        #expect(plan.statements[0].hasPrefix("CREATE TABLE \"x_tablepro_rebuild\""))
-        #expect(plan.statements[1].hasPrefix("INSERT INTO \"x_tablepro_rebuild\""))
-        #expect(plan.statements[2] == "DROP TABLE \"x\"")
-        #expect(plan.statements[3] == "ALTER TABLE \"x_tablepro_rebuild\" RENAME TO \"x\"")
+        #expect(plan.statements[0] == "PRAGMA legacy_alter_table = on")
+        #expect(plan.statements[1].hasPrefix("CREATE TABLE \"x_tablepro_rebuild\""))
+        #expect(plan.statements[2].hasPrefix("INSERT INTO \"x_tablepro_rebuild\""))
+        #expect(plan.statements[3] == "DROP TABLE \"x\"")
+        #expect(plan.statements[4] == "ALTER TABLE \"x_tablepro_rebuild\" RENAME TO \"x\"")
         #expect(plan.statements.contains("CREATE INDEX ix_x_b ON x(b)"))
     }
 
@@ -100,7 +101,7 @@ struct SQLiteTableRebuildPlannerTests {
     @Test("The foreign-key pragma is put back the way it was", arguments: [true, false])
     func restoresTheForeignKeyPragma(wasOn: Bool) throws {
         let plan = try plan(reorder, context: try context(foreignKeysWereOn: wasOn))
-        #expect(plan.epilogue == ["PRAGMA foreign_keys = \(wasOn ? "on" : "off")"])
+        #expect(plan.epilogue.contains("PRAGMA foreign_keys = \(wasOn ? "on" : "off")"))
     }
 
     /// `DROP TABLE` takes the table's `sqlite_sequence` row with it, so without this the rebuilt
@@ -173,7 +174,7 @@ struct SQLiteTableRebuildPlannerTests {
         )
         let insert = try #require(plan.statements.first { $0.hasPrefix("INSERT INTO") })
         #expect(!insert.contains("rowid"))
-        #expect(plan.statements[0].hasSuffix("WITHOUT ROWID"))
+        #expect(plan.statements.contains { $0.hasSuffix("WITHOUT ROWID") })
     }
 
     // MARK: - Verification

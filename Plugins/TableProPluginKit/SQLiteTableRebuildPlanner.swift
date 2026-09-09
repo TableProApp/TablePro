@@ -59,18 +59,31 @@ public enum SQLiteTableRebuildPlanner {
         /// than forcing it on.
         public let foreignKeysWereOn: Bool
 
+        /// What `PRAGMA legacy_alter_table` read before the rebuild. The plan sets it both ways and
+        /// it survives the commit, so the epilogue has to put the connection back as it found it.
+        public let legacyAlterTableWasOn: Bool
+
+        /// One statement per dependent view and per table carrying a trigger, which compiles that
+        /// object's body without running it. Run after the column `ALTER`s so an object the edit
+        /// broke fails the transaction instead of being committed broken.
+        public let dependentValidationSQL: [String]
+
         public init(
             parsed: SQLiteTableDDL.Parsed,
             copyableColumns: [String],
             dependentObjectSQL: [String],
             autoincrementHighWaterMark: Int64?,
-            foreignKeysWereOn: Bool
+            foreignKeysWereOn: Bool,
+            legacyAlterTableWasOn: Bool = true,
+            dependentValidationSQL: [String] = []
         ) {
             self.parsed = parsed
             self.copyableColumns = copyableColumns
             self.dependentObjectSQL = dependentObjectSQL
             self.autoincrementHighWaterMark = autoincrementHighWaterMark
             self.foreignKeysWereOn = foreignKeysWereOn
+            self.legacyAlterTableWasOn = legacyAlterTableWasOn
+            self.dependentValidationSQL = dependentValidationSQL
         }
     }
 
@@ -86,10 +99,18 @@ public enum SQLiteTableRebuildPlanner {
         isRunnable: Bool
     ) -> PluginColumnReorderPlan? {
         guard !respecification.isEmpty else { return nil }
+
+        /// A rename and a drop are left out of the new definition on purpose: each runs as its own
+        /// `ALTER TABLE` after the rebuild, which is the only thing that carries the change into
+        /// every index, trigger and view. So the new table is built under the columns' CURRENT
+        /// names, and anything the save expressed in FINAL names is mapped back.
+        let toCurrentName = respecification.renamedColumns.reduce(into: [String: String]()) {
+            $0[$1.value.lowercased()] = $1.key
+        }
         guard let respecified = SQLiteTableDDL.respecified(
             context.parsed,
             tableName: temporaryName(for: tableName),
-            respecification: respecification,
+            respecification: respecification.namedAsBuilt(using: toCurrentName),
             renderColumn: renderColumn
         ) else { return nil }
 
@@ -117,7 +138,14 @@ public enum SQLiteTableRebuildPlanner {
         }
         guard !targetColumns.isEmpty else { return nil }
 
+        /// `legacy_alter_table` is on for the table rename and off for the column ones, and both
+        /// settings are load bearing. Measured on 3.54: at 0 the `RENAME TO` fails with "error in
+        /// view v: no such table: main.t", because the view still points at the table the rebuild
+        /// just dropped; at 1 a later `DROP COLUMN` silently leaves a dependent trigger or view
+        /// broken instead of refusing. Relying on the connection's inherited value is not an
+        /// option either way: Apple's libsqlite3 defaults it to 1 and upstream defaults it to 0.
         var statements = [
+            "PRAGMA legacy_alter_table = on",
             respecified.createTableSQL,
             """
             INSERT INTO \(quotedTemporary) (\(targetColumns.joined(separator: ", "))) \
@@ -139,6 +167,33 @@ public enum SQLiteTableRebuildPlanner {
         }
         statements.append(contentsOf: context.dependentObjectSQL)
 
+        /// Now the edits only `ALTER TABLE` can make correctly. SQLite rewrites the column's name
+        /// through every index, trigger and view itself, which is why they run here rather than
+        /// inside the new definition. Off for `legacy_alter_table`, or a drop that breaks a
+        /// dependent succeeds silently.
+        if !respecification.renamedColumns.isEmpty || !respecification.droppedColumns.isEmpty {
+            statements.append("PRAGMA legacy_alter_table = off")
+        }
+        for (from, to) in respecification.renamedColumns.sorted(by: { $0.key < $1.key }) {
+            statements.append(
+                """
+                ALTER TABLE \(quotedOriginal) RENAME COLUMN \(SQLiteTableDDL.quote(from)) \
+                TO \(SQLiteTableDDL.quote(to))
+                """
+            )
+        }
+        for column in respecification.droppedColumns.sorted() {
+            statements.append("ALTER TABLE \(quotedOriginal) DROP COLUMN \(SQLiteTableDDL.quote(column))")
+        }
+
+        /// Compiling each dependent object's body catches what the `ALTER`s do not refuse. Measured:
+        /// a trigger on ANOTHER table that inserts a positional row into this one keeps compiling
+        /// past a dropped column until its body is prepared, and a view declared with an explicit
+        /// column list breaks on the count. Both commit silently otherwise.
+        if !respecification.droppedColumns.isEmpty {
+            statements.append(contentsOf: context.dependentValidationSQL)
+        }
+
         var caveats = respecified.caveats
         /// A plan TablePro cannot run is handed to the user as a script, and an editor's Run All
         /// treats the check's rows as an ordinary result rather than a refusal. The check still
@@ -154,6 +209,19 @@ public enum SQLiteTableRebuildPlanner {
                 )
             )
         }
+        /// A type change is a data migration, not a metadata edit: the copy re-applies the new
+        /// column's affinity to every value. Measured on 3.54, TEXT '007' copied into an INTEGER
+        /// column becomes 7, and there is no undo.
+        if respecification.retypesAColumn {
+            caveats.append(
+                String(
+                    localized: """
+                        Changing a column's type re-reads every value in it. Text that looks like a \
+                        number becomes one, so '007' is stored as 7.
+                        """
+                )
+            )
+        }
         if respecification.columnOrder != nil {
             caveats.append(
                 String(localized: "A view that selects * from this table will return its columns in the new order.")
@@ -163,7 +231,10 @@ public enum SQLiteTableRebuildPlanner {
         return PluginColumnReorderPlan(
             statements: statements,
             prologue: ["PRAGMA foreign_keys = off"],
-            epilogue: ["PRAGMA foreign_keys = \(context.foreignKeysWereOn ? "on" : "off")"],
+            epilogue: [
+                "PRAGMA legacy_alter_table = \(context.legacyAlterTableWasOn ? "on" : "off")",
+                "PRAGMA foreign_keys = \(context.foreignKeysWereOn ? "on" : "off")"
+            ],
             isTransactional: true,
             cost: .tableRebuild,
             caveats: caveats,
@@ -259,13 +330,48 @@ public extension SQLiteTableRebuildPlanner {
         let foreignKeysWereOn = (try await execute("PRAGMA foreign_keys")
             .rows.first?[safe: 0]?.asText).map { $0 == "1" || $0.lowercased() == "true" } ?? false
 
+        let legacyAlterTableWasOn = (try await execute("PRAGMA legacy_alter_table")
+            .rows.first?[safe: 0]?.asText).map { $0 == "1" || $0.lowercased() == "true" } ?? false
+
         return Context(
             parsed: parsed,
             copyableColumns: copyable,
             dependentObjectSQL: dependents,
             autoincrementHighWaterMark: highWaterMark,
-            foreignKeysWereOn: foreignKeysWereOn
+            foreignKeysWereOn: foreignKeysWereOn,
+            legacyAlterTableWasOn: legacyAlterTableWasOn,
+            dependentValidationSQL: try await dependentValidationSQL(execute: execute)
         )
+    }
+
+    /// One statement per dependent object that compiles its body without running it.
+    ///
+    /// `EXPLAIN` prepares a statement and stops, so an object's SQL is checked against the table as
+    /// it now stands and nothing runs. A view is checked by selecting from it; a trigger by
+    /// preparing a write against the table it fires on, which compiles every trigger on that table.
+    ///
+    /// Both are needed, and neither is optional. Measured on 3.54: dropping a column leaves a view
+    /// declared with an explicit column list broken on its count, and leaves a trigger on *another*
+    /// table that writes a positional row into this one broken on its value count. `ALTER TABLE`
+    /// reports neither, `PRAGMA foreign_key_check` cannot see either, and both commit silently.
+    private static func dependentValidationSQL(
+        execute: (String) async throws -> PluginQueryResult
+    ) async throws -> [String] {
+        let views = try await execute(
+            "SELECT name FROM sqlite_master WHERE type = 'view' ORDER BY name"
+        ).rows.compactMap { $0[safe: 0]?.asText }
+
+        let triggerTables = try await execute(
+            "SELECT DISTINCT tbl_name FROM sqlite_master WHERE type = 'trigger' ORDER BY tbl_name"
+        ).rows.compactMap { $0[safe: 0]?.asText }
+
+        return views.map { "EXPLAIN SELECT * FROM \(SQLiteTableDDL.quote($0))" }
+            + triggerTables.flatMap { table in
+                [
+                    "EXPLAIN INSERT INTO \(SQLiteTableDDL.quote(table)) DEFAULT VALUES",
+                    "EXPLAIN DELETE FROM \(SQLiteTableDDL.quote(table))"
+                ]
+            }
     }
 
     /// A fingerprint of everything the rebuild reproduces, so a plan built before a review sheet

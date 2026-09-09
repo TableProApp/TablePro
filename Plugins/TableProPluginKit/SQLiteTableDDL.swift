@@ -101,6 +101,21 @@ public enum SQLiteTableDDL {
         return "CREATE TABLE \(quote(tableName)) (\(indent)\(body)\n)\(trailingOptions(of: parsed))"
     }
 
+    /// The text with `span` removed and the gap it left closed.
+    ///
+    /// Only the whitespace either side of the cut is touched. Collapsing runs across the whole
+    /// declaration would rewrite text the user typed: a `DEFAULT 'a  b'` elsewhere in the same
+    /// column would come back with one space instead of two.
+    internal static func cuttingSpan(_ span: Range<String.Index>, from text: String) -> String {
+        var head = String(text[text.startIndex..<span.lowerBound])
+        let tail = String(text[span.upperBound...])
+        let headHadSpace = head.last?.isWhitespace ?? false
+        let tailHasSpace = tail.first?.isWhitespace ?? false
+        while head.last?.isWhitespace == true { head.removeLast() }
+        let separator = head.isEmpty || tail.isEmpty || !(headHadSpace || tailHasSpace) ? "" : " "
+        return head + separator + tail.drop(while: { $0.isWhitespace })
+    }
+
     public static func quote(_ identifier: String) -> String {
         "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\""))\""
     }

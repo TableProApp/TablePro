@@ -177,6 +177,103 @@ else
     pass "a WITHOUT ROWID table still rejects a rowid column, so the planner must branch on it"
 fi
 
+# 5. legacy_alter_table decides whether the rebuild's own rename works and whether a later
+#    DROP COLUMN refuses a broken dependent. The plan sets it both ways for that reason, and puts
+#    the connection back afterwards because the setting survives the commit.
+printf '\nlegacy_alter_table\n'
+rebuild_with_view() {
+    local db="$WORK/lat-$1.db"
+    "$SQLITE" "$db" "CREATE TABLE t(a INTEGER PRIMARY KEY, b TEXT); CREATE VIEW v AS SELECT b FROM t;"
+    "$SQLITE" "$db" "PRAGMA foreign_keys=off; PRAGMA legacy_alter_table=$1;
+        BEGIN;
+        CREATE TABLE t_rb(a INTEGER PRIMARY KEY, b TEXT, c INT);
+        INSERT INTO t_rb(rowid,a,b) SELECT rowid,a,b FROM t;
+        DROP TABLE t;
+        ALTER TABLE t_rb RENAME TO t;
+        COMMIT;" >/dev/null 2>&1
+}
+
+if rebuild_with_view 1; then
+    pass "the table rename succeeds at legacy_alter_table=1, which the rebuild sets"
+else
+    fail "the table rename failed even at legacy_alter_table=1"
+fi
+
+if rebuild_with_view 0; then
+    pass "the table rename no longer needs legacy_alter_table=1; the plan may stop setting it"
+else
+    pass "the table rename still fails at 0 over a dependent view, so the plan must set it to 1"
+fi
+
+db="$WORK/dropdep.db"
+"$SQLITE" "$db" "CREATE TABLE t(a INT, b TEXT);
+    CREATE TRIGGER tr AFTER UPDATE OF b ON t BEGIN SELECT new.b; END;"
+if "$SQLITE" "$db" "PRAGMA legacy_alter_table=0; ALTER TABLE t DROP COLUMN b;" >/dev/null 2>&1; then
+    fail "DROP COLUMN no longer refuses a column a trigger needs; the plan's legacy=0 buys nothing"
+else
+    pass "DROP COLUMN refuses a column a trigger needs at legacy_alter_table=0"
+fi
+
+db="$WORK/latpersist.db"
+"$SQLITE" "$db" "CREATE TABLE t(a);"
+if [ "$("$SQLITE" "$db" "PRAGMA legacy_alter_table=1; BEGIN; COMMIT; SELECT * FROM pragma_legacy_alter_table();")" = "1" ]; then
+    pass "legacy_alter_table survives the commit, so the epilogue must restore it"
+else
+    pass "legacy_alter_table no longer survives the commit; restoring it is now belt and braces"
+fi
+
+# 6. EXPLAIN compiles a dependent object's body without running it, which is how the plan catches
+#    what ALTER TABLE and foreign_key_check both miss.
+printf '\nDependent revalidation\n'
+db="$WORK/explain.db"
+"$SQLITE" "$db" "CREATE TABLE t(id INTEGER PRIMARY KEY, keep TEXT, doomed TEXT);
+    CREATE VIEW v(a,b,c) AS SELECT * FROM t;
+    CREATE TABLE inbox(n INT);
+    CREATE TRIGGER tr AFTER INSERT ON inbox BEGIN INSERT INTO t VALUES(NEW.n,'a','d'); END;
+    PRAGMA legacy_alter_table=off;
+    ALTER TABLE t DROP COLUMN doomed;"
+
+if "$SQLITE" "$db" "EXPLAIN SELECT * FROM v;" >/dev/null 2>&1; then
+    fail "EXPLAIN no longer reports a view broken by a dropped column"
+else
+    pass "EXPLAIN reports a view whose declared column list no longer matches"
+fi
+
+if "$SQLITE" "$db" "EXPLAIN INSERT INTO inbox DEFAULT VALUES;" >/dev/null 2>&1; then
+    fail "EXPLAIN no longer reports a trigger on another table broken by a dropped column"
+else
+    pass "EXPLAIN reports a trigger on another table left broken by the drop"
+fi
+
+if [ "$("$SQLITE" "$db" "SELECT count(*) FROM inbox;")" = "0" ]; then
+    pass "EXPLAIN prepares without executing, so the checks write nothing"
+else
+    fail "EXPLAIN executed the statement; the dependent checks are not safe to run"
+fi
+
+# 7. The column-declaration grammar the rewriter walks. Each of these refutes the published
+#    railroad diagrams, and the rewriter slices a declaration wrongly if any of them changes.
+printf '\nColumn declaration grammar\n'
+db="$WORK/grammar.db"
+"$SQLITE" "$db" "CREATE TABLE g(a UNSIGNED BIG INT, b, c NULL, d BIG GENERATED ALWAYS AS (1), e \"DEFAULT\")" 2>/dev/null
+types="$("$SQLITE" "$db" "SELECT group_concat(type, '|') FROM pragma_table_xinfo('g');" 2>/dev/null)"
+if [ "$types" = "UNSIGNED BIG INT|||BIG|DEFAULT" ]; then
+    pass "type names are multi-word, optional, and a bare NULL is a constraint rather than a type"
+else
+    fail "the column grammar moved: types read [$types]"
+fi
+
+db="$WORK/pkretype.db"
+"$SQLITE" "$db" "CREATE TABLE t(id INTEGER PRIMARY KEY, v TEXT); INSERT INTO t(v) VALUES('a');"
+"$SQLITE" "$db" "BEGIN; CREATE TABLE t2(id TEXT PRIMARY KEY, v TEXT);
+    INSERT INTO t2(rowid,id,v) SELECT rowid,id,v FROM t; DROP TABLE t;
+    ALTER TABLE t2 RENAME TO t; COMMIT; INSERT INTO t(v) VALUES('b');" >/dev/null 2>&1
+if [ "$("$SQLITE" "$db" "SELECT count(*) FROM t WHERE id IS NULL;")" = "0" ]; then
+    pass "retyping an INTEGER PRIMARY KEY no longer strands NULLs; the refusal may be liftable"
+else
+    pass "retyping an INTEGER PRIMARY KEY still strands NULLs in the key, so it stays refused"
+fi
+
 printf '\n'
 if [ "$failures" -eq 0 ]; then
     printf 'All rebuild assumptions hold.\n'

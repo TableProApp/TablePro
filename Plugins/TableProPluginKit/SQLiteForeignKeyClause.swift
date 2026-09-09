@@ -232,7 +232,7 @@ internal enum SQLiteForeignKeyParser {
     /// times, so they are read in one repeated loop. Reading them in a fixed order left the tail of
     /// `REFERENCES p(id) MATCH SIMPLE ON DELETE CASCADE` outside the span, and removing the key then
     /// left an orphaned `ON DELETE CASCADE` behind that no `CREATE TABLE` would accept.
-    private static func referenceEnd(_ tokens: [SQLiteToken], from index: Int) -> Int? {
+    internal static func referenceEnd(_ tokens: [SQLiteToken], from index: Int) -> Int? {
         guard index + 1 < tokens.count else { return nil }
         var cursor = index + 2
         var last = index + 1

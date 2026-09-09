@@ -57,16 +57,23 @@ The **Remote File** pane points the connection at a database on an SSH server. I
 
 Where the server has `sqlite3` 3.27 or newer, the copy is a `VACUUM INTO` snapshot, which stays consistent even while other programs write to the database. See [Remote Database Files](/connections/remote-database-files).
 
-## Editing a table's foreign keys
+## Edits that recreate the table
 
-`ALTER TABLE` cannot add or drop a foreign key in any SQLite version, so the Structure tab's **Foreign Keys** tab recreates the table instead: it writes the table again with the keys you asked for, copies the rows across with their rowids, puts the indexes and triggers back, and checks the rows against the new keys before committing. The script is shown in full and runs only when you confirm it. Column changes staged in the same save travel with it. See [Table Structure](/features/table-structure).
+`ALTER TABLE` covers renaming a table or a column, adding a column, dropping a column, and from 3.53 adding or dropping a `CHECK`. Everything else the Structure tab offers is made by writing the table again: a foreign key added or removed, and a column's type, nullability or default changed.
+
+A rebuild writes the table with the definition you asked for, copies the rows across with their rowids, puts the indexes and triggers back, and checks the rows against any new foreign key before committing. The script is shown in full and runs only when you confirm it, and everything staged in the same save travels in the same transaction.
+
+Each column keeps its own stored text, so a `CHECK`, a `COLLATE`, a `GENERATED ALWAYS AS` and a `DEFAULT` containing a comma all survive a rebuild that touched a different column.
+
+Changing a column's type re-reads every value in it through the new affinity. Text that looks like a number becomes one, so `'007'` in a column retyped to `INTEGER` is stored as `7`. The review sheet says so before the script runs.
 
 A virtual table, such as an FTS5 table, cannot be recreated from what SQLite stored for it. The save is refused and names the table.
 
 ## Limitations
 
 - Encrypted databases do not open. The driver uses the system SQLite, which takes no key, and the form has nowhere to put one. Decrypt a SQLCipher file with the `sqlcipher` tool first.
-- A column's type, nullability, and default cannot change. The save is refused and names the columns. Change them by running DDL yourself.
+- A column that is `INTEGER PRIMARY KEY` cannot be retyped: the key would stop generating values and start storing NULL. The save is refused and names the column.
+- A primary key cannot be added, removed or moved.
 
 ## Troubleshooting
 

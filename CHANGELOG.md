@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Column type, nullability and default changes for SQLite, libSQL and Cloudflare D1.
+- Column rename and drop alongside a foreign key change in one save.
 - Foreign key add, remove and edit for SQLite, libSQL and Cloudflare D1, applied as a reviewed table rebuild.
 - Real constraint names for SQLite foreign keys, in place of a positional placeholder.
 - Menu of the engine's own default values on the Structure tab's Default cell, with No default, NULL, Empty string and a Custom editor. (#2688)
@@ -74,6 +76,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Rebuild failing on a table with a dependent view where SQLite defaults `legacy_alter_table` off.
+- A dropped column silently leaving a broken trigger or view behind.
 - "Unsupported schema operation" when adding a foreign key to a SQLite, libSQL or Cloudflare D1 table.
 - Add and Remove offered on the Foreign Keys tab for engines that cannot edit foreign keys.
 - Incomplete foreign keys, indexes and columns reaching the database on Save.

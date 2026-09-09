@@ -54,7 +54,8 @@ public extension SQLiteTableDDL {
         let existingNames = parsed.columnNames
 
         guard respecification.droppedColumns.allSatisfy({ contains(existingNames, $0) }),
-              respecification.renamedColumns.keys.allSatisfy({ contains(existingNames, $0) }) else {
+              respecification.renamedColumns.keys.allSatisfy({ contains(existingNames, $0) }),
+              respecification.alteredColumns.allSatisfy({ contains(existingNames, $0.column) }) else {
             return nil
         }
 
@@ -95,7 +96,24 @@ public extension SQLiteTableDDL {
 
             var text = entry.text
             if let span = removals.spans[index] {
-                text = cutting(span, from: text)
+                text = cuttingSpan(span, from: text)
+            }
+            /// The one place a column's own declaration is rewritten. Its type, nullability and
+            /// default are the only things no `ALTER TABLE` can change, so they travel here; a
+            /// rename and a drop are `ALTER`s of their own, run after the rebuild, and are absent
+            /// from this text on purpose.
+            if let alteration = respecification.alteredColumns.first(
+                where: { $0.column.compare(columnName, options: .caseInsensitive) == .orderedSame }
+            ) {
+                guard let rewritten = SQLiteColumnDeclaration.rewritten(
+                    text,
+                    applying: SQLiteColumnDeclaration.Edit(
+                        type: alteration.type,
+                        isNullable: alteration.isNullable,
+                        defaultValue: alteration.defaultValue
+                    )
+                ) else { return nil }
+                text = rewritten
             }
             let finalName = matchedRename(of: columnName, in: respecification.renamedColumns) ?? columnName
             if finalName != columnName {
@@ -305,21 +323,6 @@ private extension SQLiteTableDDL {
 
     static func matchedRename(of column: String, in renames: [String: String]) -> String? {
         renames.first { $0.key.compare(column, options: .caseInsensitive) == .orderedSame }?.value
-    }
-
-    /// The declaration with `span` removed and the gap it left closed.
-    ///
-    /// Only the whitespace either side of the cut is touched. Collapsing runs across the whole
-    /// declaration would rewrite text the user typed: a `DEFAULT 'a  b'` elsewhere in the same
-    /// column would come back with one space instead of two.
-    static func cutting(_ span: Range<String.Index>, from text: String) -> String {
-        var head = String(text[text.startIndex..<span.lowerBound])
-        let tail = String(text[span.upperBound...])
-        let headHadSpace = head.last?.isWhitespace ?? false
-        let tailHasSpace = tail.first?.isWhitespace ?? false
-        while head.last?.isWhitespace == true { head.removeLast() }
-        let separator = head.isEmpty || tail.isEmpty || !(headHadSpace || tailHasSpace) ? "" : " "
-        return head + separator + tail.drop(while: { $0.isWhitespace })
     }
 
     /// The same column definition under a new name, with everything after the name untouched.
