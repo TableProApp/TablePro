@@ -71,10 +71,11 @@ extension TableStructureView {
         clearTarget: ColumnLayoutClearTarget?
     ) {
         guard let coordinator else { return }
-        coordinator.columnReorderRequest = ColumnReorderReviewRequest(
+        coordinator.tableRebuildRequest = TableRebuildReviewRequest(
             tableName: tableName,
             scope: prepared.scope,
             plan: prepared.plan,
+            actionTitle: String(localized: "Rebuild Table"),
             perform: {
                 do {
                     try await StructureColumnReorderHandler.execute(
@@ -86,7 +87,7 @@ extension TableStructureView {
                 }
             }
         )
-        coordinator.activeSheet = .columnReorderReview
+        coordinator.activeSheet = .tableRebuildReview
     }
 
     private func finishColumnReorder(

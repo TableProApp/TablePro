@@ -100,6 +100,18 @@ Everything that runs goes to query history rather than the change queue.
 
 Right-click a foreign key and choose **Open [table]** to jump to the referenced table. Right-click any row in these three grids for **Copy** (the cell under the pointer), **Copy Name**, **Copy Definition**, **Copy As** (CSV, JSON, SQL), **Duplicate**, and **Delete** (`Delete`). A row already marked for deletion offers **Undo Delete**. The same menu appears whether or not the row was already selected, and its row commands act on the whole selection.
 
+**Add Foreign Key** and **Remove Foreign Key** sit under the list. Both are dimmed on a view and on an engine that cannot edit foreign keys, with the reason in the tooltip.
+
+What the save does depends on the engine:
+
+| Engine | What happens |
+|--------|--------------|
+| MySQL, MariaDB, PostgreSQL, PGlite, SQL Server, Oracle, DuckDB, Dameng | Runs `ALTER TABLE … ADD CONSTRAINT` and `DROP CONSTRAINT` alongside the rest of the save |
+| SQLite, local-file libSQL | Shows the rebuild script, and runs it when you confirm. No SQLite version can add or drop a foreign key with `ALTER TABLE`, so the table is recreated carrying the keys you asked for, the rows are copied with their rowids, and the indexes and triggers are put back |
+| Turso, remote libSQL, Cloudflare D1 | Shows the rebuild script for you to read and run. TablePro does not run it: each statement is its own HTTP request, so nothing can hold the rebuild in one transaction |
+
+A rebuild carries the column changes staged in the same save, and ends in `PRAGMA foreign_key_check` scoped to the table. Rows that do not match the new key roll the whole rebuild back, and the count comes back in the error.
+
 ## Constraints tab
 
 Check constraints are table-level, so a rule spanning two columns is one row here rather than something hidden on a column.
@@ -177,7 +189,7 @@ MongoDB structure is read-only, and inferred from the collection's first 200 doc
 
 - **Changing a primary key on an existing table** works on MySQL, MariaDB, PostgreSQL, PGlite, SQL Server, DuckDB, Snowflake, and Dameng. Elsewhere the dropdown accepts the edit and the save produces nothing for it: rebuild the table by hand.
 - **Check constraints and generated columns** have no field in the grid. Both show in the DDL tab; change them by running DDL yourself.
-- **SQLite**: a column can be added, dropped, and renamed. No other column change generates SQL.
+- **SQLite, libSQL, Cloudflare D1**: a column's type, nullability, and default cannot change. The save is refused and names the columns, with the rest of it left staged. Change them by running DDL yourself.
 - **Cassandra / ScyllaDB**: add and drop column only, no index editing, no visual table creation.
 - **Redshift, CockroachDB, BigQuery, Elasticsearch, Typesense, SurrealDB, Beancount**: structure is read-only.
 - **Redis, etcd, DynamoDB**: no table schema to edit.

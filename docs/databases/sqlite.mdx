@@ -57,9 +57,16 @@ The **Remote File** pane points the connection at a database on an SSH server. I
 
 Where the server has `sqlite3` 3.27 or newer, the copy is a `VACUUM INTO` snapshot, which stays consistent even while other programs write to the database. See [Remote Database Files](/connections/remote-database-files).
 
+## Editing a table's foreign keys
+
+`ALTER TABLE` cannot add or drop a foreign key in any SQLite version, so the Structure tab's **Foreign Keys** tab recreates the table instead: it writes the table again with the keys you asked for, copies the rows across with their rowids, puts the indexes and triggers back, and checks the rows against the new keys before committing. The script is shown in full and runs only when you confirm it. Column changes staged in the same save travel with it. See [Table Structure](/features/table-structure).
+
+A virtual table, such as an FTS5 table, cannot be recreated from what SQLite stored for it. The save is refused and names the table.
+
 ## Limitations
 
 - Encrypted databases do not open. The driver uses the system SQLite, which takes no key, and the form has nowhere to put one. Decrypt a SQLCipher file with the `sqlcipher` tool first.
+- A column's type, nullability, and default cannot change. The save is refused and names the columns. Change them by running DDL yourself.
 
 ## Troubleshooting
 

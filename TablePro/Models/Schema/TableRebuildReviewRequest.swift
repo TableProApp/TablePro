@@ -1,18 +1,18 @@
 //
-//  ColumnReorderReviewRequest.swift
+//  TableRebuildReviewRequest.swift
 //  TablePro
 //
 
 import Foundation
 import TableProPluginKit
 
-/// A reorder whose plan recreates the table, held while the user reads it.
+/// A structure change whose plan recreates the table, held while the user reads it.
 ///
 /// A positional `ALTER` runs on the drop the way any other direct manipulation does. A rebuild
 /// copies every row into a new table and drops the original, so it is shown in full and confirmed
 /// first, and what the rebuild cannot carry over is named beside it.
 @MainActor
-struct ColumnReorderReviewRequest: Identifiable {
+struct TableRebuildReviewRequest: Identifiable {
     let id = UUID()
     let tableName: String
 
@@ -23,6 +23,11 @@ struct ColumnReorderReviewRequest: Identifiable {
     let scope: DatabaseScope
 
     let plan: PluginColumnReorderPlan
+
+    /// What the confirming button says, which is the only thing that differs between a reorder and
+    /// a constraint change: both recreate the table, and the user is reading the same script.
+    let actionTitle: String
+
     let perform: () async -> Void
 
     var warning: String? {

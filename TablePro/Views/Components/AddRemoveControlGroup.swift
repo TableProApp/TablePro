@@ -13,6 +13,10 @@ struct AddRemoveControlGroup: View {
     let removeLabel: String
     var canAdd = true
     var canRemove = true
+    /// What the tooltip says. Defaults to the label; a withheld control sets it to the reason
+    /// instead, which is the only place a disabled button has to explain itself.
+    var addHelp: String?
+    var removeHelp: String?
     var addIdentifier: String?
     var removeIdentifier: String?
     let onAdd: () -> Void
@@ -24,7 +28,7 @@ struct AddRemoveControlGroup: View {
                 Label(addLabel, systemImage: "plus")
                     .labelStyle(.iconOnly)
             }
-            .help(addLabel)
+            .help(addHelp ?? addLabel)
             .accessibilityLabel(addLabel)
             .accessibilityIdentifier(addIdentifier ?? "")
             .disabled(!canAdd)
@@ -33,7 +37,7 @@ struct AddRemoveControlGroup: View {
                 Label(removeLabel, systemImage: "minus")
                     .labelStyle(.iconOnly)
             }
-            .help(removeLabel)
+            .help(removeHelp ?? removeLabel)
             .accessibilityLabel(removeLabel)
             .accessibilityIdentifier(removeIdentifier ?? "")
             .disabled(!canRemove)

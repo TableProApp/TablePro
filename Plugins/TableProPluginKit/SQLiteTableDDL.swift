@@ -131,7 +131,7 @@ public enum SQLiteTableDDL {
 
     /// The opening parenthesis of the column list, skipping any that a quoted table name contains.
     private static func topLevelBodyStart(in sql: String) -> String.Index? {
-        var scanner = Scanner(sql)
+        var scanner = SQLiteSQLScanner(sql)
         while let index = scanner.next() {
             if scanner.isInsideLiteral { continue }
             if sql[index] == "(" { return index }
@@ -140,7 +140,7 @@ public enum SQLiteTableDDL {
     }
 
     private static func matchingCloseParen(in sql: String, from open: String.Index) -> String.Index? {
-        var scanner = Scanner(sql, from: sql.index(after: open))
+        var scanner = SQLiteSQLScanner(sql, from: sql.index(after: open))
         var depth = 1
         while let index = scanner.next() {
             if scanner.isInsideLiteral { continue }
@@ -161,7 +161,7 @@ public enum SQLiteTableDDL {
         var parts: [String] = []
         var current = body.startIndex
         var depth = 0
-        var scanner = Scanner(body)
+        var scanner = SQLiteSQLScanner(body)
         while let index = scanner.next() {
             if scanner.isInsideLiteral { continue }
             switch body[index] {
@@ -219,71 +219,4 @@ public enum SQLiteTableDDL {
         }
     }
 
-    /// Walks a statement one character at a time, reporting whether each one sits inside a string
-    /// literal, a quoted identifier or a comment. Every scan here needs the same answer, so they
-    /// share one implementation rather than three that drift.
-    private struct Scanner {
-        private let text: String
-        private var index: String.Index
-        private var quote: Character?
-        private var comment: Comment?
-
-        private enum Comment { case line, block }
-
-        var isInsideLiteral: Bool { quote != nil || comment != nil }
-
-        init(_ text: String, from start: String.Index? = nil) {
-            self.text = text
-            self.index = start ?? text.startIndex
-        }
-
-        mutating func next() -> String.Index? {
-            guard index < text.endIndex else { return nil }
-            let current = index
-            let character = text[current]
-            index = text.index(after: current)
-
-            switch comment {
-            case .line:
-                if character == "\n" { comment = nil }
-                return current
-            case .block:
-                if character == "*", index < text.endIndex, text[index] == "/" {
-                    comment = nil
-                    index = text.index(after: index)
-                }
-                return current
-            case nil:
-                break
-            }
-
-            if let open = quote {
-                if character == open {
-                    /// A doubled quote escapes itself, so it closes nothing.
-                    if index < text.endIndex, text[index] == open, open != "]" {
-                        index = text.index(after: index)
-                    } else {
-                        quote = nil
-                        /// The closing character is part of the literal, not the text around it.
-                        return current
-                    }
-                }
-                return current
-            }
-
-            switch character {
-            case "'", "\"", "`":
-                quote = character
-            case "[":
-                quote = "]"
-            case "-" where index < text.endIndex && text[index] == "-":
-                comment = .line
-            case "/" where index < text.endIndex && text[index] == "*":
-                comment = .block
-            default:
-                break
-            }
-            return current
-        }
-    }
 }

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Foreign key add, remove and edit for SQLite, libSQL and Cloudflare D1, applied as a reviewed table rebuild.
+- Real constraint names for SQLite foreign keys, in place of a positional placeholder.
 - Menu of the engine's own default values on the Structure tab's Default cell, with No default, NULL, Empty string and a Custom editor. (#2688)
 - Row-number gutter held at the left edge of the data grid, so whole rows stay selectable when the table is scrolled sideways. (#2664)
 - `Shift+Space` to widen the grid selection to every row it touches. (#2664)
@@ -72,6 +74,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- "Unsupported schema operation" when adding a foreign key to a SQLite, libSQL or Cloudflare D1 table.
+- Add and Remove offered on the Foreign Keys tab for engines that cannot edit foreign keys.
+- Incomplete foreign keys, indexes and columns reaching the database on Save.
+- Rows silently renumbered by a SQLite column reorder on a table with no integer primary key.
+- A modified index or foreign key re-created before the columns it covers are added.
 - Column defaults quoted into string literals, from `gen_random_uuid()` to `NOW()` to `nextval(...)`. (#2688)
 - A MySQL expression default rewritten as a string on any edit to the same column. (#2688)
 - A ClickHouse MATERIALIZED or ALIAS column turned into a plain DEFAULT column by an edit to its comment. (#2688)
