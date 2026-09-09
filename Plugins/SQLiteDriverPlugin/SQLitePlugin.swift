@@ -952,8 +952,34 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return SQLiteForeignKeyGrouping.infos(
             table: table,
             pragmaRows: pragmaRows,
-            createTableSQL: createTableSQL
+            createTableSQL: createTableSQL,
+            primaryKeysByTable: try await primaryKeys(
+                ofTablesReferencedIn: pragmaRows.compactMap { $0[safe: 2]?.asText }
+            )
         )
+    }
+
+    /// The primary key columns of each named table, in key order, keyed by lower-cased table name.
+    ///
+    /// A foreign key written `REFERENCES parent` with no column list points at the parent's primary
+    /// key, and `PRAGMA foreign_key_list` reports null rather than resolving it, so the parent has
+    /// to be asked. One query covers every parent a table references.
+    private func primaryKeys(ofTablesReferencedIn tables: [String]) async throws -> [String: [String]] {
+        let names = Set(tables.map { $0.lowercased() })
+        guard !names.isEmpty else { return [:] }
+        let literals = names.map { "'\(escapeStringLiteral($0))'" }.joined(separator: ", ")
+
+        let rows = try await execute(query: """
+            SELECT m.name, i.name
+            FROM sqlite_master m, pragma_table_info(m.name) i
+            WHERE m.type = 'table' AND lower(m.name) IN (\(literals)) AND i.pk > 0
+            ORDER BY m.name, i.pk
+            """).rows
+
+        return rows.reduce(into: [:]) { keys, row in
+            guard let table = row[safe: 0]?.asText, let column = row[safe: 1]?.asText else { return }
+            keys[table.lowercased(), default: []].append(column)
+        }
     }
 
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {

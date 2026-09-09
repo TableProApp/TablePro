@@ -103,6 +103,46 @@ struct SQLiteForeignKeyClauseTests {
         #expect(found.map(\.name) == [nil, "second"])
     }
 
+    /// SQLite accepts `MATCH` and the `ON` actions in either order. Reading them in a fixed order
+    /// left `ON DELETE CASCADE` outside the clause's span, so removing the key left it behind and
+    /// no `CREATE TABLE` would accept the result.
+    @Test("An action after MATCH is still part of the clause")
+    func readsActionsAfterMatch() throws {
+        let found = try clauses("CREATE TABLE t(pid INT REFERENCES p(id) MATCH SIMPLE ON DELETE CASCADE)")
+        #expect(found.count == 1)
+        #expect(found[0].onDelete == "CASCADE")
+    }
+
+    /// The span has to reach the last token of the clause. Ending it at `DEFERRABLE` left
+    /// `INITIALLY DEFERRED` orphaned in the column declaration.
+    @Test("Removing an inline key takes its whole tail with it", arguments: [
+        "REFERENCES p(id) DEFERRABLE INITIALLY DEFERRED",
+        "REFERENCES p(id) NOT DEFERRABLE INITIALLY IMMEDIATE",
+        "REFERENCES p(id) MATCH SIMPLE ON DELETE CASCADE",
+        "REFERENCES p(id) ON UPDATE SET NULL MATCH FULL"
+    ])
+    func removesTheWholeInlineClause(tail: String) throws {
+        let parsed = try #require(SQLiteTableDDL.parse(createTableSQL: "CREATE TABLE t(pid INT \(tail), v TEXT)"))
+        let respecified = try #require(
+            SQLiteTableDDL.respecified(
+                parsed,
+                tableName: "t_new",
+                respecification: PluginTableRespecification(
+                    droppedForeignKeys: [
+                        PluginForeignKeyDefinition(
+                            name: "", columns: ["pid"], referencedTable: "p", referencedColumns: ["id"]
+                        )
+                    ]
+                ),
+                renderColumn: { _ in "" }
+            )
+        )
+        for orphan in ["REFERENCES", "DEFERRABLE", "INITIALLY", "MATCH", "CASCADE", "SET NULL"] {
+            #expect(!respecified.createTableSQL.contains(orphan), "\(orphan) left behind by: \(tail)")
+        }
+        #expect(respecified.createTableSQL.contains("pid INT"))
+    }
+
     // MARK: - Rendering
 
     @Test("A rendered clause quotes every identifier")

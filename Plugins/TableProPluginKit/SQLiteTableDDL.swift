@@ -210,10 +210,14 @@ public enum SQLiteTableDDL {
         return tableConstraintKeywords.contains(word.uppercased()) ? nil : String(word)
     }
 
+    /// Single quotes included. SQLite accepts `CREATE TABLE t('a' TEXT)` and stores it verbatim,
+    /// reporting `a` as an ordinary column; reading that entry as a table constraint instead loses
+    /// the column from the copy a rebuild makes.
     private static func closingQuote(for opening: Character) -> Character? {
         switch opening {
         case "\"": "\""
         case "`": "`"
+        case "'": "'"
         case "[": "]"
         default: nil
         }

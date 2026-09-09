@@ -223,6 +223,30 @@ struct SQLiteTableRespecifierTests {
         )
     }
 
+    /// Collapsing whitespace across the whole declaration rewrote text the user typed: a default
+    /// holding two spaces came back with one.
+    @Test("Removing an inline key leaves the rest of the declaration byte for byte")
+    func preservesLiteralWhitespaceAroundTheCut() throws {
+        let sql = try respecify(
+            PluginTableRespecification(
+                droppedForeignKeys: [foreignKey("", ["pid"], "p", ["id"])]
+            ),
+            sql: "CREATE TABLE x(pid INT DEFAULT 'a  b' REFERENCES p(id) NOT NULL, v TEXT)"
+        ).createTableSQL
+        #expect(sql.contains("DEFAULT 'a  b'"))
+        #expect(!sql.contains("REFERENCES"))
+        #expect(sql.contains("NOT NULL"))
+    }
+
+    /// SQLite accepts a single-quoted token where a column name goes, and stores it verbatim. Read
+    /// as a table constraint instead, the column vanished from the copy and every value in it was
+    /// replaced with NULL.
+    @Test("A single-quoted column name is a column, not a table constraint")
+    func readsSingleQuotedColumnNames() throws {
+        let parsed = try #require(SQLiteTableDDL.parse(createTableSQL: "CREATE TABLE t('a' TEXT, b INT)"))
+        #expect(parsed.columnNames == ["a", "b"])
+    }
+
     // MARK: - Order
 
     @Test("A wanted order rearranges the columns and the copy list together")

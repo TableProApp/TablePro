@@ -98,10 +98,20 @@ public enum SQLiteTableRebuildPlanner {
 
         let copyable = Set(context.copyableColumns.map { $0.lowercased() })
         let carried = respecified.carriedColumns.filter { copyable.contains($0.sourceName.lowercased()) }
+
+        /// Every column the engine reports must be carried or explicitly dropped.
+        ///
+        /// A column the parser did not recognise is absent from `carriedColumns`, so the rebuilt
+        /// table would still declare it while the `INSERT` never named it, replacing every value
+        /// with NULL. Refusing here turns any gap between what the engine reports and what the
+        /// parser understood into a failure to plan rather than silent data loss.
+        let dropped = Set(respecification.droppedColumns.map { $0.lowercased() })
+        let accountedFor = Set(carried.map { $0.sourceName.lowercased() }).union(dropped)
+        guard copyable.isSubset(of: accountedFor) else { return nil }
         var targetColumns = carried.map { SQLiteTableDDL.quote($0.name) }
         var sourceColumns = carried.map { SQLiteTableDDL.quote($0.sourceName) }
 
-        if carriesRowid(context: context, respecified: respecified) {
+        if carriesRowid(context: context, respecified: respecified, respecification: respecification) {
             targetColumns.insert("rowid", at: 0)
             sourceColumns.insert("rowid", at: 0)
         }
@@ -130,6 +140,20 @@ public enum SQLiteTableRebuildPlanner {
         statements.append(contentsOf: context.dependentObjectSQL)
 
         var caveats = respecified.caveats
+        /// A plan TablePro cannot run is handed to the user as a script, and an editor's Run All
+        /// treats the check's rows as an ordinary result rather than a refusal. The check still
+        /// reports the problem; nothing stops the commit but the person reading it.
+        if !isRunnable, respecification.touchesForeignKeys {
+            caveats.append(
+                String(
+                    localized: """
+                        Read the foreign key check at the end of this script before committing. Run \
+                        in an editor it reports the rows that break the new key, but it does not \
+                        stop the script.
+                        """
+                )
+            )
+        }
         if respecification.columnOrder != nil {
             caveats.append(
                 String(localized: "A view that selects * from this table will return its columns in the new order.")
@@ -176,9 +200,16 @@ public enum SQLiteTableRebuildPlanner {
     /// deciding not to name it cannot be done safely, because `INTEGER PRIMARY KEY DESC` is **not**
     /// an alias (its rowid runs independently) and `PRAGMA table_xinfo` reports it identically to
     /// one that is. Skipping the copy on that table renumbers every row.
-    private static func carriesRowid(context: Context, respecified: SQLiteRespecifiedTable) -> Bool {
+    private static func carriesRowid(
+        context: Context,
+        respecified: SQLiteRespecifiedTable,
+        respecification: PluginTableRespecification
+    ) -> Bool {
         guard SQLiteTableDDL.isRowidTable(context.parsed) else { return false }
+        /// A column the save *adds* under one of these names shadows the alias in the new table just
+        /// as an existing one does, so it counts here too.
         let names = respecified.carriedColumns.flatMap { [$0.name, $0.sourceName] }
+            + respecification.addedColumns.map(\.name)
         return !names.contains { rowidAliases.contains($0.uppercased()) }
     }
 }

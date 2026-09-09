@@ -11,10 +11,14 @@ import TableProPluginKit
 /// Builds the plan for a save on an engine that changes a table by recreating it.
 ///
 /// SQLite and its derivatives are the case. Their `ALTER TABLE` cannot add or drop a foreign key at
-/// any version, so a save that touches one has to recreate the table, and the column edits staged
-/// alongside it have to travel in the same rebuild rather than running as separate `ALTER`s first.
-/// Two passes would leave the column changes committed when the rebuild failed, and a column the
-/// save renames would leave the staged foreign key naming a column that no longer exists.
+/// any version, so a save that touches one has to recreate the table, and the edits staged
+/// alongside it travel in the same rebuild rather than running as separate `ALTER`s first. Two
+/// passes would leave the earlier changes committed when the rebuild failed, and a column the save
+/// renamed would leave the staged foreign key naming a column that no longer exists.
+///
+/// A column added, an index and a check constraint all travel. A column dropped or renamed does
+/// not: `ALTER TABLE` carries such a change into every trigger, view and referencing table by
+/// itself, and a rebuild cannot, so it is refused with the reason rather than half-applied.
 @MainActor
 enum StructureTableRebuildHandler {
     enum RebuildError: LocalizedError {
@@ -39,8 +43,8 @@ enum StructureTableRebuildHandler {
                 return String(
                     format: String(
                         localized: """
-                            This database cannot make these changes through the structure editor:\n\n%@\
-                            \n\nRemove them from this save, or write the SQL yourself in a query tab.
+                            A foreign key change recreates the table, and these cannot travel with \
+                            it:\n\n%@\n\nSave them on their own first, then change the foreign key.
                             """
                     ),
                     descriptions.joined(separator: "\n")
@@ -134,17 +138,16 @@ enum StructureTableRebuildHandler {
         var partition = Partition()
         for change in changes {
             switch change {
-            case .addColumn, .deleteColumn, .addForeignKey, .modifyForeignKey, .deleteForeignKey:
+            case .addColumn, .addForeignKey, .modifyForeignKey, .deleteForeignKey:
                 partition.rebuilt.append(change)
-            case .modifyColumn(let old, let new):
-                /// A rename is a new name on the same definition, which the rebuild writes into the
-                /// column's own stored text. Anything else means rewriting a definition the stored
-                /// text is the only full record of, which needs a column parser this does not have.
-                if old.isRenameOnly(comparedTo: new) {
-                    partition.rebuilt.append(change)
-                } else {
-                    partition.unsupported.append(change)
-                }
+            case .deleteColumn, .modifyColumn:
+                /// Dropping or renaming a column is safe on its own, through `ALTER TABLE`, which
+                /// carries the change into every trigger, view and referencing table itself. A
+                /// rebuild does not: it replays the dependent SQL verbatim and rewrites only the
+                /// column's own declaration, so the same edit inside one either fails with
+                /// "no such column" or commits a trigger, a view or an incoming foreign key that
+                /// names a column that is gone. Refused rather than half-applied.
+                partition.unsupported.append(change)
             case .addIndex, .modifyIndex, .deleteIndex,
                  .addCheckConstraint, .modifyCheckConstraint, .deleteCheckConstraint:
                 partition.trailing.append(change)
@@ -157,8 +160,6 @@ enum StructureTableRebuildHandler {
 
     private static func respecification(from changes: [SchemaChange]) -> PluginTableRespecification {
         var addedColumns: [PluginColumnDefinition] = []
-        var droppedColumns: [String] = []
-        var renamedColumns: [String: String] = [:]
         var addedForeignKeys: [PluginForeignKeyDefinition] = []
         var droppedForeignKeys: [PluginForeignKeyDefinition] = []
 
@@ -166,10 +167,6 @@ enum StructureTableRebuildHandler {
             switch change {
             case .addColumn(let column):
                 addedColumns.append(column.toPlugin())
-            case .deleteColumn(let column):
-                droppedColumns.append(column.name)
-            case .modifyColumn(let old, let new):
-                renamedColumns[old.name] = new.name
             case .addForeignKey(let foreignKey):
                 addedForeignKeys.append(foreignKey.toPlugin())
             case .deleteForeignKey(let foreignKey):
@@ -184,8 +181,6 @@ enum StructureTableRebuildHandler {
 
         return PluginTableRespecification(
             addedColumns: addedColumns,
-            droppedColumns: droppedColumns,
-            renamedColumns: renamedColumns,
             addedForeignKeys: addedForeignKeys,
             droppedForeignKeys: droppedForeignKeys
         )
@@ -206,18 +201,5 @@ private extension PluginColumnReorderPlan {
             isRunnable: isRunnable,
             verifications: verifications
         )
-    }
-}
-
-internal extension EditableColumnDefinition {
-    /// Whether `other` differs from this column in nothing but its name.
-    ///
-    /// The identifier is excluded because an edit keeps the row it was made on, so the two always
-    /// carry the same one.
-    func isRenameOnly(comparedTo other: EditableColumnDefinition) -> Bool {
-        var renamed = self
-        renamed.name = other.name
-        renamed.id = other.id
-        return renamed == other && name != other.name
     }
 }

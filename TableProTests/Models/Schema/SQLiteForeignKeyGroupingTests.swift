@@ -132,6 +132,74 @@ struct SQLiteForeignKeyGroupingTests {
         #expect(infos[0].onDelete == "SET NULL")
     }
 
+    /// Measured on 3.54: the pragma reports `to` as null for `REFERENCES parent` written without a
+    /// column list, even when the parent has a primary key. Falling back to the child's own column
+    /// name showed the wrong target and stopped the key being matched for removal.
+    @Test("An omitted parent column comes from the parent's primary key")
+    func resolvesAnOmittedParentColumn() {
+        let infos = SQLiteForeignKeyGrouping.infos(
+            table: "t",
+            pragmaRows: [[.text("0"), .text("0"), .text("p"), .text("pid"), .null, .text("NO ACTION"), .text("NO ACTION")]],
+            createTableSQL: "CREATE TABLE t(pid INT REFERENCES p)",
+            primaryKeysByTable: ["p": ["id"]]
+        )
+        #expect(infos.count == 1)
+        #expect(infos[0].referencedColumn == "id")
+    }
+
+    @Test("A composite omitted parent key resolves in key order")
+    func resolvesACompositeOmittedParentKey() {
+        let infos = SQLiteForeignKeyGrouping.infos(
+            table: "t",
+            pragmaRows: [
+                [.text("0"), .text("0"), .text("p"), .text("a"), .null, .text("NO ACTION"), .text("NO ACTION")],
+                [.text("0"), .text("1"), .text("p"), .text("b"), .null, .text("NO ACTION"), .text("NO ACTION")]
+            ],
+            createTableSQL: nil,
+            primaryKeysByTable: ["p": ["x", "y"]]
+        )
+        #expect(infos.map(\.referencedColumn) == ["x", "y"])
+    }
+
+    /// SQLite lets two constraints share a name, and the schema editor groups its rows by name, so
+    /// a recovered name that collides would merge two unrelated keys into one composite key.
+    @Test("Colliding declared names fall back to the positional name")
+    func fallsBackWhenDeclaredNamesCollide() {
+        let infos = SQLiteForeignKeyGrouping.infos(
+            table: "t",
+            pragmaRows: [
+                row(id: 0, seq: 0, table: "p", from: "a", to: "id"),
+                row(id: 1, seq: 0, table: "p", from: "b", to: "id")
+            ],
+            createTableSQL: """
+                CREATE TABLE t(a INT, b INT,
+                  CONSTRAINT same FOREIGN KEY (a) REFERENCES p (id),
+                  CONSTRAINT same FOREIGN KEY (b) REFERENCES p (id))
+                """
+        )
+        #expect(Set(infos.map(\.name)) == ["fk_t_0", "fk_t_1"])
+    }
+
+    /// Two keys from one column to different columns of the same parent are legal. Ignoring the
+    /// parent columns made both clauses look equivalent and swapped their names.
+    @Test("Explicit parent columns decide which name belongs to which key")
+    func matchesOnExplicitParentColumns() {
+        let infos = SQLiteForeignKeyGrouping.infos(
+            table: "t",
+            pragmaRows: [
+                row(id: 0, seq: 0, table: "p", from: "x", to: "b"),
+                row(id: 1, seq: 0, table: "p", from: "x", to: "a")
+            ],
+            createTableSQL: """
+                CREATE TABLE t(x INT,
+                  CONSTRAINT to_a FOREIGN KEY (x) REFERENCES p (a),
+                  CONSTRAINT to_b FOREIGN KEY (x) REFERENCES p (b))
+                """
+        )
+        #expect(infos.first { $0.referencedColumn == "a" }?.name == "to_a")
+        #expect(infos.first { $0.referencedColumn == "b" }?.name == "to_b")
+    }
+
     @Test("A table with no foreign keys reports none")
     func handlesNoKeys() {
         #expect(

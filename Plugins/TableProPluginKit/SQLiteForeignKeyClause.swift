@@ -182,14 +182,38 @@ internal enum SQLiteForeignKeyParser {
             cursor = next
         }
 
+        /// `ON`, `MATCH` and `DEFERRABLE` are alternatives SQLite accepts in any order, so they are
+        /// read in one loop. Stopping at the first `MATCH` missed the actions after it:
+        /// `REFERENCES p(id) MATCH SIMPLE ON DELETE CASCADE` is legal and its action is real.
         var onDelete: String?
         var onUpdate: String?
-        while cursor + 1 < tokens.count, tokens[cursor].keyword == "ON" {
-            let target = tokens[cursor + 1].keyword
-            guard target == "DELETE" || target == "UPDATE",
-                  let (action, next) = referentialAction(tokens, from: cursor + 2) else { break }
-            if target == "DELETE" { onDelete = action } else { onUpdate = action }
-            cursor = next
+        while cursor < tokens.count {
+            if cursor + 1 < tokens.count, tokens[cursor].keyword == "ON" {
+                let target = tokens[cursor + 1].keyword
+                guard target == "DELETE" || target == "UPDATE",
+                      let (action, next) = referentialAction(tokens, from: cursor + 2) else { break }
+                if target == "DELETE" { onDelete = action } else { onUpdate = action }
+                cursor = next
+                continue
+            }
+            if cursor + 1 < tokens.count, tokens[cursor].keyword == "MATCH" {
+                cursor += 2
+                continue
+            }
+            if tokens[cursor].keyword == "NOT", cursor + 1 < tokens.count,
+               tokens[cursor + 1].keyword == "DEFERRABLE" {
+                cursor += 1
+                continue
+            }
+            if tokens[cursor].keyword == "DEFERRABLE" {
+                cursor += 1
+                if cursor + 1 < tokens.count, tokens[cursor].keyword == "INITIALLY" {
+                    let when = tokens[cursor + 1].keyword
+                    if when == "DEFERRED" || when == "IMMEDIATE" { cursor += 2 }
+                }
+                continue
+            }
+            break
         }
 
         return SQLiteForeignKeyClause(
@@ -203,6 +227,11 @@ internal enum SQLiteForeignKeyParser {
     }
 
     /// The index of the clause's last token, so a column-level clause can be cut out precisely.
+    ///
+    /// `ON`, `MATCH` and `DEFERRABLE` are alternatives SQLite accepts in any order and any number of
+    /// times, so they are read in one repeated loop. Reading them in a fixed order left the tail of
+    /// `REFERENCES p(id) MATCH SIMPLE ON DELETE CASCADE` outside the span, and removing the key then
+    /// left an orphaned `ON DELETE CASCADE` behind that no `CREATE TABLE` would accept.
     private static func referenceEnd(_ tokens: [SQLiteToken], from index: Int) -> Int? {
         guard index + 1 < tokens.count else { return nil }
         var cursor = index + 2
@@ -213,31 +242,42 @@ internal enum SQLiteForeignKeyParser {
             last = next - 1
             cursor = next
         }
-        while cursor + 1 < tokens.count, tokens[cursor].keyword == "ON" {
-            let target = tokens[cursor + 1].keyword
-            guard target == "DELETE" || target == "UPDATE",
-                  let (_, next) = referentialAction(tokens, from: cursor + 2) else { break }
-            last = next - 1
-            cursor = next
-        }
-        /// `MATCH FULL` and a `DEFERRABLE` clause are carried along so a rewrite removes all of the
-        /// key rather than leaving an orphaned tail behind. TablePro does not model either, and a
-        /// key that has one keeps it only while it is untouched.
-        if cursor + 1 < tokens.count, tokens[cursor].keyword == "MATCH" {
-            last = cursor + 1
-            cursor += 2
-        }
-        if cursor < tokens.count, tokens[cursor].keyword == "NOT", cursor + 1 < tokens.count,
-           tokens[cursor + 1].keyword == "DEFERRABLE" {
-            cursor += 1
-        }
-        if cursor < tokens.count, tokens[cursor].keyword == "DEFERRABLE" {
-            last = cursor
-            cursor += 1
-            if cursor + 2 < tokens.count, tokens[cursor].keyword == "INITIALLY" {
-                let when = tokens[cursor + 1].keyword
-                if when == "DEFERRED" || when == "IMMEDIATE" { last = cursor + 1 }
+
+        while cursor < tokens.count {
+            if cursor + 1 < tokens.count, tokens[cursor].keyword == "ON" {
+                let target = tokens[cursor + 1].keyword
+                guard target == "DELETE" || target == "UPDATE",
+                      let (_, next) = referentialAction(tokens, from: cursor + 2) else { break }
+                last = next - 1
+                cursor = next
+                continue
             }
+            /// `MATCH` and `DEFERRABLE` are carried along so a rewrite removes all of the key rather
+            /// than leaving an orphaned tail behind. TablePro does not model either, and a key that
+            /// has one keeps it only while it is untouched.
+            if cursor + 1 < tokens.count, tokens[cursor].keyword == "MATCH" {
+                last = cursor + 1
+                cursor += 2
+                continue
+            }
+            if tokens[cursor].keyword == "NOT", cursor + 1 < tokens.count,
+               tokens[cursor + 1].keyword == "DEFERRABLE" {
+                cursor += 1
+                continue
+            }
+            if tokens[cursor].keyword == "DEFERRABLE" {
+                last = cursor
+                cursor += 1
+                if cursor + 1 < tokens.count, tokens[cursor].keyword == "INITIALLY" {
+                    let when = tokens[cursor + 1].keyword
+                    if when == "DEFERRED" || when == "IMMEDIATE" {
+                        last = cursor + 1
+                        cursor += 2
+                    }
+                }
+                continue
+            }
+            break
         }
         return last
     }

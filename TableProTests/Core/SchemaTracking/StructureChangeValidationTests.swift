@@ -17,7 +17,7 @@ import Testing
 @Suite("Structure Change Validation")
 @MainActor
 struct StructureChangeValidationTests {
-    private func loadedManager() -> StructureChangeManager {
+    private func loadedManager(foreignKeys: [ForeignKeyInfo] = []) -> StructureChangeManager {
         let manager = StructureChangeManager()
         manager.loadSchema(
             tableName: "orders",
@@ -32,7 +32,7 @@ struct StructureChangeValidationTests {
                 )
             ],
             indexes: [],
-            foreignKeys: [],
+            foreignKeys: foreignKeys,
             primaryKey: ["id"]
         )
         return manager
@@ -108,6 +108,48 @@ struct StructureChangeValidationTests {
     func referenceToAnotherTableIsNotCheckedLocally() {
         let manager = loadedManager()
         manager.addForeignKey(validForeignKey(referencedColumns: ["not_in_orders"]))
+        #expect(manager.canCommit)
+    }
+
+    /// Turning on a gate that had never run is where a regression hides. An untouched foreign key
+    /// still names the column's old spelling after a rename, and every engine's `RENAME COLUMN`
+    /// carries the dependency over itself, so blocking here would refuse a save that works today.
+    @Test("Renaming a column an untouched foreign key uses does not block the save")
+    func renameDoesNotBlockAnUntouchedForeignKey() {
+        let manager = loadedManager(foreignKeys: [
+            ForeignKeyInfo(
+                name: "fk_orders_customer", column: "customer_id",
+                referencedTable: "customers", referencedColumn: "id"
+            )
+        ])
+        var renamed = manager.workingColumns[1]
+        renamed.name = "buyer_id"
+        manager.updateColumn(id: manager.workingColumns[1].id, with: renamed)
+
+        #expect(manager.hasChanges)
+        #expect(manager.canCommit)
+    }
+
+    /// A struck-through foreign key is on its way out, so demanding that it name a column that is
+    /// going with it would refuse the very edit the user made.
+    @Test("Deleting a column and its foreign key together does not block the save")
+    func compoundDeleteDoesNotBlockTheSave() {
+        let manager = loadedManager()
+        manager.addForeignKey(validForeignKey())
+        let staged = manager.workingForeignKeys.last
+        if let staged { manager.deleteForeignKey(id: staged.id) }
+        manager.deleteColumn(id: manager.workingColumns[1].id)
+        #expect(manager.canCommit)
+    }
+
+    /// SQLite accepts a column declared `ID` referenced as `id`, and reports each spelling as
+    /// written. An exact comparison refused a valid self-referencing key.
+    @Test("A self-referencing key matches its column whatever the case")
+    func selfReferenceComparesCaseInsensitively() {
+        let manager = loadedManager()
+        manager.addForeignKey(
+            validForeignKey(columns: ["CUSTOMER_ID"], referencedTable: "ORDERS", referencedColumns: ["ID"])
+        )
         #expect(manager.canCommit)
     }
 

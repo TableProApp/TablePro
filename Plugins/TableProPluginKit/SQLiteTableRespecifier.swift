@@ -65,6 +65,15 @@ public extension SQLiteTableDDL {
             droppedColumns: respecification.droppedColumns
         ) else { return nil }
 
+        /// A key is edited by removing its clause and writing a new one from the editable model,
+        /// which carries the columns, the table and the two actions and nothing else. A key that
+        /// also declared `MATCH` or `DEFERRABLE` loses it, so it is named rather than lost quietly.
+        if removals.carriesUnmodelledClause(in: parsed) {
+            caveats.append(
+                String(localized: "A replaced foreign key does not keep its MATCH or DEFERRABLE clause.")
+            )
+        }
+
         var carried: [SQLiteRespecifiedTable.CarriedColumn] = []
         var columnEntries: [String] = []
         var constraintEntries: [String] = []
@@ -147,6 +156,21 @@ private extension SQLiteTableDDL {
     struct ForeignKeyRemovals {
         var wholeEntries: Set<Int> = []
         var spans: [Int: Range<String.Index>] = [:]
+
+        /// Whether any clause being removed declared something the editable model cannot carry.
+        func carriesUnmodelledClause(in parsed: Parsed) -> Bool {
+            let whole = wholeEntries.compactMap { index in
+                parsed.entries.indices.contains(index) ? parsed.entries[index].text : nil
+            }
+            let partial = spans.compactMap { index, span -> String? in
+                guard parsed.entries.indices.contains(index) else { return nil }
+                return String(parsed.entries[index].text[span])
+            }
+            return (whole + partial).contains { text in
+                text.range(of: "MATCH", options: .caseInsensitive) != nil
+                    || text.range(of: "DEFERRABLE", options: .caseInsensitive) != nil
+            }
+        }
     }
 
     /// Which entries a foreign key drop removes, and which column definitions lose a span.
@@ -283,10 +307,19 @@ private extension SQLiteTableDDL {
         renames.first { $0.key.compare(column, options: .caseInsensitive) == .orderedSame }?.value
     }
 
+    /// The declaration with `span` removed and the gap it left closed.
+    ///
+    /// Only the whitespace either side of the cut is touched. Collapsing runs across the whole
+    /// declaration would rewrite text the user typed: a `DEFAULT 'a  b'` elsewhere in the same
+    /// column would come back with one space instead of two.
     static func cutting(_ span: Range<String.Index>, from text: String) -> String {
-        var result = text
-        result.removeSubrange(span)
-        return result.replacingOccurrences(of: "  ", with: " ")
+        var head = String(text[text.startIndex..<span.lowerBound])
+        let tail = String(text[span.upperBound...])
+        let headHadSpace = head.last?.isWhitespace ?? false
+        let tailHasSpace = tail.first?.isWhitespace ?? false
+        while head.last?.isWhitespace == true { head.removeLast() }
+        let separator = head.isEmpty || tail.isEmpty || !(headHadSpace || tailHasSpace) ? "" : " "
+        return head + separator + tail.drop(while: { $0.isWhitespace })
     }
 
     /// The same column definition under a new name, with everything after the name untouched.

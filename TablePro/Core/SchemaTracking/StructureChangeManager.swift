@@ -433,18 +433,14 @@ final class StructureChangeManager: ChangeManaging {
             }
         }
 
-        for index in workingIndexes {
-            if !index.isValid {
-                validationErrors[.index(index.id)] = String(localized: "Index must have a name and at least one column")
-            }
+        for index in workingIndexes where isStaged(.index(index.id)) && !index.isValid {
+            validationErrors[.index(index.id)] = String(localized: "Index must have a name and at least one column")
         }
 
-        for fk in workingForeignKeys {
-            if !fk.isValid {
-                validationErrors[.foreignKey(fk.id)] = String(
-                    localized: "Foreign key must have a name, at least one column, and a referenced table"
-                )
-            }
+        for fk in workingForeignKeys where isStaged(.foreignKey(fk.id)) && !fk.isValid {
+            validationErrors[.foreignKey(fk.id)] = String(
+                localized: "Foreign key must have a name, at least one column, and a referenced table"
+            )
         }
 
         let indexNames = workingIndexes.filter { $0.isValid }.map { $0.name }
@@ -460,18 +456,23 @@ final class StructureChangeManager: ChangeManaging {
             }
         }
 
-        for index in workingIndexes.filter({ $0.isValid }) {
-            for columnName in index.columns {
-                if !columnNames.contains(columnName) {
-                    validationErrors[.index(index.id)] = String(
-                        format: String(localized: "Index references a column that does not exist: %@"), columnName
-                    )
-                }
+        /// Only a row this save actually edits is checked against the columns.
+        ///
+        /// An untouched index or foreign key names whatever it named when the table was read, and
+        /// a rename in the same save leaves that name stale in the working copy without the user
+        /// having done anything wrong: every engine's `RENAME COLUMN` carries the dependency over
+        /// itself. Checking those rows would refuse a rename that works today. What this catches is
+        /// a row the user is *editing* into a state the database will reject.
+        for index in workingIndexes where isStaged(.index(index.id)) && index.isValid {
+            for columnName in index.columns where !namesAColumn(columnName, in: columnNames) {
+                validationErrors[.index(index.id)] = String(
+                    format: String(localized: "Index references a column that does not exist: %@"), columnName
+                )
             }
         }
 
-        for fk in workingForeignKeys.filter({ $0.isValid }) {
-            for columnName in fk.columns where !columnNames.contains(columnName) {
+        for fk in workingForeignKeys where isStaged(.foreignKey(fk.id)) && fk.isValid {
+            for columnName in fk.columns where !namesAColumn(columnName, in: columnNames) {
                 validationErrors[.foreignKey(fk.id)] = String(
                     format: String(localized: "Foreign key references a column that does not exist: %@"), columnName
                 )
@@ -481,14 +482,14 @@ final class StructureChangeManager: ChangeManaging {
             /// instead, when the change runs.
             guard let tableName,
                   fk.referencedTable.compare(tableName, options: .caseInsensitive) == .orderedSame else { continue }
-            for columnName in fk.referencedColumns where !columnNames.contains(columnName) {
+            for columnName in fk.referencedColumns where !namesAColumn(columnName, in: columnNames) {
                 validationErrors[.foreignKey(fk.id)] = String(
                     format: String(localized: "Foreign key points at a column that does not exist: %@"), columnName
                 )
             }
         }
 
-        for constraint in workingCheckConstraints where !constraint.isValid {
+        for constraint in workingCheckConstraints where isStaged(.checkConstraint(constraint.id)) && !constraint.isValid {
             validationErrors[.checkConstraint(constraint.id)] = String(
                 localized: "Check constraint must have a name and an expression"
             )
@@ -514,6 +515,23 @@ final class StructureChangeManager: ChangeManaging {
                 )
             }
         }
+    }
+
+    /// Whether this save changes the row, and is not simply removing it.
+    ///
+    /// A row on its way out is not held to being complete: the user struck through a foreign key
+    /// whose column is going with it, and demanding that it name a column that no longer exists
+    /// would refuse the very edit they made.
+    private func isStaged(_ key: SchemaChangeIdentifier) -> Bool {
+        guard let change = pendingChanges[key] else { return false }
+        return !change.isDelete
+    }
+
+    /// Identifiers compare case insensitively, the way every engine TablePro edits resolves them.
+    /// SQLite accepts a column declared `ID` and referenced as `id`, and its pragmas report each
+    /// spelling as written.
+    private func namesAColumn(_ name: String, in columnNames: [String]) -> Bool {
+        columnNames.contains { $0.compare(name, options: .caseInsensitive) == .orderedSame }
     }
 
     private func isColumnPendingDeletion(_ id: UUID) -> Bool {
