@@ -47,11 +47,19 @@ protocol DataGridViewDelegate: AnyObject {
     func dataGridAttach(tableViewCoordinator: TableViewCoordinator)
     func dataGridDisplayOrderChanged()
     func dataGridDisplayFormatChanged()
+    /// The menu this particular cell should offer, when the list depends on the row rather than
+    /// only on the column.
+    ///
+    /// `DataGridConfiguration.customDropdownOptions` is keyed by column alone, which cannot express
+    /// a foreign key's Ref Columns: the list is the columns of whatever table that row's Ref Table
+    /// names. Returning nil falls back to that dictionary.
+    func dataGridMenuOptions(forRow row: Int, columnIndex: Int) -> [GridMenuOption]?
 }
 
 extension DataGridViewDelegate {
     func dataGridDisplayOrderChanged() {}
     func dataGridDisplayFormatChanged() {}
+    func dataGridMenuOptions(forRow row: Int, columnIndex: Int) -> [GridMenuOption]? { nil }
     func dataGridDidEditCell(row: Int, column: Int, newValue: String?) {}
     func dataGridDeleteRows(_ indices: Set<Int>) {}
     func dataGridCopyRows(_ indices: Set<Int>) {}

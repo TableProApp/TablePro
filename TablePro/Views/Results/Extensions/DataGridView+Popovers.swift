@@ -390,7 +390,11 @@ extension TableViewCoordinator {
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
 
         let currentValue = cellValue(at: row, column: columnIndex)
-        let custom = customDropdownOptions?[columnIndex]
+        /// The delegate is asked first, because a list that depends on the row cannot be held in a
+        /// dictionary keyed by column. Either answer counts as custom, so a curated vocabulary never
+        /// gains a `Set NULL` the schema grids have no use for.
+        let custom = delegate?.dataGridMenuOptions(forRow: row, columnIndex: columnIndex)
+            ?? customDropdownOptions?[columnIndex]
 
         let options: [GridMenuOption]
         if let custom {

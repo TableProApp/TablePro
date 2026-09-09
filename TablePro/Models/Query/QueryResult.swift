@@ -124,6 +124,15 @@ struct TableInfo: Identifiable, Hashable, Sendable {
         case partitionedTable = "PARTITIONED TABLE"
         case externalTable = "EXTERNAL TABLE"
 
+        /// Whether a foreign key may point at this object. A view has no rows of its own to
+        /// constrain, so a key that names one is a statement the server refuses.
+        var isForeignKeyTarget: Bool {
+            switch self {
+            case .table, .partitionedTable: true
+            case .view, .materializedView, .foreignTable, .systemTable, .externalTable: false
+            }
+        }
+
         /// An external table lives in a catalog outside the database, has no
         /// primary key and no row identifier to target, and rejects UPDATE and
         /// DELETE, so the grid must not offer row editing for one.

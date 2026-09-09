@@ -5,22 +5,18 @@
 //  Tests for MySQL generateCreateTableSQL implementation.
 //
 
-#if canImport(MySQLDriverPlugin)
 import Foundation
 import TableProPluginKit
 import Testing
 
-@testable import MySQLDriverPlugin
-
+/// The suite used to sit behind `#if canImport(MySQLDriverPlugin)`. The XcodeGen target is named
+/// `MySQLDriver`, so no module by that name has ever existed and every case here compiled to
+/// nothing. It now runs against the extracted generator, which the test target compiles directly.
 @Suite("MySQL CREATE TABLE SQL Generation")
 struct MySQLCreateTableTests {
-    private func makeDriver() -> MySQLPluginDriver {
-        MySQLPluginDriver()
-    }
 
     @Test("basic table with single column")
     func basicSingleColumn() {
-        let driver = makeDriver()
         let definition = PluginCreateTableDefinition(
             tableName: "users",
             columns: [
@@ -28,7 +24,7 @@ struct MySQLCreateTableTests {
             ]
         )
 
-        let sql = driver.generateCreateTableSQL(definition: definition)
+        let sql = mysqlCreateTableSQL(definition: definition)
         #expect(sql != nil)
         #expect(sql!.contains("CREATE TABLE `users`"))
         #expect(sql!.contains("`id` INT NOT NULL"))
@@ -36,14 +32,12 @@ struct MySQLCreateTableTests {
 
     @Test("empty columns returns nil")
     func emptyColumns() {
-        let driver = makeDriver()
         let definition = PluginCreateTableDefinition(tableName: "empty", columns: [])
-        #expect(driver.generateCreateTableSQL(definition: definition) == nil)
+        #expect(mysqlCreateTableSQL(definition: definition) == nil)
     }
 
     @Test("auto increment adds PRIMARY KEY")
     func autoIncrementPK() {
-        let driver = makeDriver()
         let definition = PluginCreateTableDefinition(
             tableName: "posts",
             columns: [
@@ -52,14 +46,13 @@ struct MySQLCreateTableTests {
             ]
         )
 
-        let sql = driver.generateCreateTableSQL(definition: definition)!
+        let sql = mysqlCreateTableSQL(definition: definition)!
         #expect(sql.contains("AUTO_INCREMENT"))
         #expect(sql.contains("PRIMARY KEY (`id`)"))
     }
 
     @Test("explicit primary key columns")
     func explicitPrimaryKey() {
-        let driver = makeDriver()
         let definition = PluginCreateTableDefinition(
             tableName: "composite",
             columns: [
@@ -69,13 +62,12 @@ struct MySQLCreateTableTests {
             primaryKeyColumns: ["user_id", "role_id"]
         )
 
-        let sql = driver.generateCreateTableSQL(definition: definition)!
+        let sql = mysqlCreateTableSQL(definition: definition)!
         #expect(sql.contains("PRIMARY KEY (`user_id`, `role_id`)"))
     }
 
     @Test("table options: engine, charset, collation")
     func tableOptions() {
-        let driver = makeDriver()
         let definition = PluginCreateTableDefinition(
             tableName: "t",
             columns: [PluginColumnDefinition(name: "id", dataType: "INT")],
@@ -84,7 +76,7 @@ struct MySQLCreateTableTests {
             collation: "latin1_swedish_ci"
         )
 
-        let sql = driver.generateCreateTableSQL(definition: definition)!
+        let sql = mysqlCreateTableSQL(definition: definition)!
         #expect(sql.contains("ENGINE=MyISAM"))
         #expect(sql.contains("DEFAULT CHARSET=latin1"))
         #expect(sql.contains("COLLATE=latin1_swedish_ci"))
@@ -92,20 +84,18 @@ struct MySQLCreateTableTests {
 
     @Test("IF NOT EXISTS flag")
     func ifNotExists() {
-        let driver = makeDriver()
         let definition = PluginCreateTableDefinition(
             tableName: "t",
             columns: [PluginColumnDefinition(name: "id", dataType: "INT")],
             ifNotExists: true
         )
 
-        let sql = driver.generateCreateTableSQL(definition: definition)!
+        let sql = mysqlCreateTableSQL(definition: definition)!
         #expect(sql.contains("CREATE TABLE IF NOT EXISTS"))
     }
 
     @Test("column with UNSIGNED, DEFAULT, COMMENT")
     func fullColumnDefinition() {
-        let driver = makeDriver()
         let definition = PluginCreateTableDefinition(
             tableName: "products",
             columns: [
@@ -120,7 +110,7 @@ struct MySQLCreateTableTests {
             ]
         )
 
-        let sql = driver.generateCreateTableSQL(definition: definition)!
+        let sql = mysqlCreateTableSQL(definition: definition)!
         #expect(sql.contains("UNSIGNED"))
         #expect(sql.contains("NOT NULL"))
         #expect(sql.contains("COMMENT"))
@@ -128,7 +118,6 @@ struct MySQLCreateTableTests {
 
     @Test("index generation")
     func indexGeneration() {
-        let driver = makeDriver()
         let definition = PluginCreateTableDefinition(
             tableName: "t",
             columns: [
@@ -139,13 +128,12 @@ struct MySQLCreateTableTests {
             ]
         )
 
-        let sql = driver.generateCreateTableSQL(definition: definition)!
+        let sql = mysqlCreateTableSQL(definition: definition)!
         #expect(sql.contains("UNIQUE INDEX `idx_email` (`email`)"))
     }
 
     @Test("foreign key generation")
     func foreignKeyGeneration() {
-        let driver = makeDriver()
         let definition = PluginCreateTableDefinition(
             tableName: "orders",
             columns: [
@@ -163,7 +151,7 @@ struct MySQLCreateTableTests {
             ]
         )
 
-        let sql = driver.generateCreateTableSQL(definition: definition)!
+        let sql = mysqlCreateTableSQL(definition: definition)!
         #expect(sql.contains("CONSTRAINT `fk_user` FOREIGN KEY (`user_id`)"))
         #expect(sql.contains("REFERENCES `users` (`id`)"))
         #expect(sql.contains("ON DELETE CASCADE"))
@@ -171,15 +159,13 @@ struct MySQLCreateTableTests {
 
     @Test("backtick in table name is escaped")
     func backtickEscaping() {
-        let driver = makeDriver()
         let definition = PluginCreateTableDefinition(
             tableName: "my`table",
             columns: [PluginColumnDefinition(name: "col`name", dataType: "INT")]
         )
 
-        let sql = driver.generateCreateTableSQL(definition: definition)!
+        let sql = mysqlCreateTableSQL(definition: definition)!
         #expect(sql.contains("`my``table`"))
         #expect(sql.contains("`col``name`"))
     }
 }
-#endif

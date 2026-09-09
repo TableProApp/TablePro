@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Menus of the connection's own tables and columns for a foreign key's Columns, Ref Table and Ref Columns.
+- The reason Create Table is unavailable, next to the button.
 - Menu of the engine's own default values on the Structure tab's Default cell, with No default, NULL, Empty string and a Custom editor. (#2688)
 - Row-number gutter held at the left edge of the data grid, so whole rows stay selectable when the table is scrolled sideways. (#2664)
 - `Shift+Space` to widen the grid selection to every row it touches. (#2664)
@@ -72,6 +74,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Condition dropped from an index added on SQLite, libSQL and Cloudflare D1, turning a partial index into a full one.
+- Foreign keys and indexes dropped from a new table when their name was left blank.
+- Foreign keys never created with a new table on Snowflake and Teradata.
+- Indexes never created with a new table on SQLite, libSQL, Cloudflare D1, ClickHouse, Snowflake, Trino and Teradata.
+- Constraint name discarded from a foreign key on SQLite, libSQL and Cloudflare D1.
+- Invalid `REFERENCES table ()` from a foreign key that named no referenced columns.
+- Referential actions the engine rejects offered on the Foreign Keys tab.
+- Foreign key resolved against the wrong schema on SQL Server.
+- Auto-increment column not made the primary key on SQLite.
+- Create Table tab closed without a prompt when it held only indexes or foreign keys.
+- `Cmd+Z` doing nothing in the Create Table tab.
 - Column defaults quoted into string literals, from `gen_random_uuid()` to `NOW()` to `nextval(...)`. (#2688)
 - A MySQL expression default rewritten as a string on any edit to the same column. (#2688)
 - A ClickHouse MATERIALIZED or ALIAS column turned into a plain DEFAULT column by an edit to its comment. (#2688)

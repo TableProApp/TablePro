@@ -23,7 +23,15 @@ internal final class CreateTableDraft {
     /// Whether the draft holds anything worth losing. A tab that has only just opened does not: the
     /// editor seeds one blank column so the grid has a row to show, which registers as a pending
     /// change without the user having typed anything.
+    ///
+    /// Indexes and foreign keys count for the same reason columns do. While they did not, a tab
+    /// holding nothing but foreign keys closed on Cmd+W with no prompt and the draft was dropped.
     internal var holdsWork: Bool {
-        !tableName.isEmpty || changeManager.workingColumns.contains { !$0.name.isEmpty }
+        !tableName.isEmpty
+            || changeManager.workingColumns.contains { !$0.name.isEmpty }
+            || changeManager.workingIndexes.contains { !$0.name.isEmpty || !$0.columns.isEmpty }
+            || changeManager.workingForeignKeys.contains {
+                !$0.name.isEmpty || !$0.columns.isEmpty || !$0.referencedTable.isEmpty
+            }
     }
 }

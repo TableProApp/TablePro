@@ -15,7 +15,8 @@ internal enum StructureInspectorRowBuilder {
         atDisplayRow displayRow: Int,
         tab: StructureTab,
         provider: StructureRowProvider,
-        canEditSchema: Bool
+        canEditSchema: Bool,
+        rowOptions: (Int) -> [GridMenuOption]? = { _ in nil }
     ) -> InspectorRow? {
         switch tab {
         case .columns, .indexes, .foreignKeys, .checkConstraints:
@@ -37,7 +38,7 @@ internal enum StructureInspectorRowBuilder {
                 value: index < values.count ? values[index] : nil,
                 editor: editor(
                     at: index,
-                    dropdownOptions: dropdownOptions,
+                    options: rowOptions(index) ?? dropdownOptions[index],
                     typePickerColumns: typePickerColumns
                 ),
                 isModified: modified.contains(index)
@@ -55,10 +56,10 @@ internal enum StructureInspectorRowBuilder {
     /// giving the Default field one would take away the only way to type an expression.
     private static func editor(
         at index: Int,
-        dropdownOptions: [Int: [GridMenuOption]],
+        options: [GridMenuOption]?,
         typePickerColumns: Set<Int>
     ) -> FieldEditorKind {
-        if let options = dropdownOptions[index], !options.isEmpty {
+        if let options, !options.isEmpty {
             if options.contains(where: { if case .custom = $0 { return true } else { return false } }) {
                 return .valuePicker(options: options)
             }

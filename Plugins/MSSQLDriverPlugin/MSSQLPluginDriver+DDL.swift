@@ -75,10 +75,20 @@ extension MSSQLPluginDriver {
         return def
     }
 
+    /// The referenced table is schema-qualified. An unqualified name resolves against the caller's
+    /// own default schema rather than the schema the table is being created in, so a foreign key
+    /// pointing at `sales.orders` used to be created against whatever `orders` that login could see,
+    /// or to fail with nothing naming the schema as the reason.
     private func mssqlForeignKeyDefinition(_ fk: PluginForeignKeyDefinition) -> String {
         let cols = fk.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
         let refCols = fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        var def = "CONSTRAINT \(quoteIdentifier(fk.name)) FOREIGN KEY (\(cols)) REFERENCES \(quoteIdentifier(fk.referencedTable)) (\(refCols))"
+        let refSchema = fk.referencedSchema.flatMap { $0.isEmpty ? nil : $0 } ?? _currentSchema
+        let refTable = "\(quoteIdentifier(refSchema)).\(quoteIdentifier(fk.referencedTable))"
+        let constraint = fk.name.isEmpty ? "" : "CONSTRAINT \(quoteIdentifier(fk.name)) "
+        var def = "\(constraint)FOREIGN KEY (\(cols)) REFERENCES \(refTable)"
+        if !refCols.isEmpty {
+            def += " (\(refCols))"
+        }
         if fk.onDelete != "NO ACTION" {
             def += " ON DELETE \(fk.onDelete)"
         }

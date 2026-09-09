@@ -778,7 +778,12 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
         let uniqueStr = index.isUnique ? "UNIQUE " : ""
         let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        return "CREATE \(uniqueStr)INDEX \(quoteIdentifier(index.name)) ON \(quoteIdentifier(table)) (\(cols))"
+        var statement = "CREATE \(uniqueStr)INDEX \(quoteIdentifier(index.name)) "
+            + "ON \(quoteIdentifier(table)) (\(cols))"
+        if let predicate = index.whereClause?.nilIfEmpty {
+            statement += " WHERE \(predicate)"
+        }
+        return statement
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
@@ -821,8 +826,11 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private func foreignKeyDefinition(_ fk: PluginForeignKeyDefinition) -> String {
         let cols = fk.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let refCols = fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        var def = "FOREIGN KEY (\(cols)) REFERENCES \(quoteIdentifier(fk.referencedTable)) (\(refCols))"
+        let constraint = fk.name.isEmpty ? "" : "CONSTRAINT \(quoteIdentifier(fk.name)) "
+        var def = "\(constraint)FOREIGN KEY (\(cols)) REFERENCES \(quoteIdentifier(fk.referencedTable))"
+        if !fk.referencedColumns.isEmpty {
+            def += " (\(fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")))"
+        }
         if fk.onDelete != "NO ACTION" {
             def += " ON DELETE \(fk.onDelete)"
         }

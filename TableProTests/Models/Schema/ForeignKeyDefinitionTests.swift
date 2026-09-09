@@ -47,8 +47,11 @@ struct ForeignKeyDefinitionTests {
         #expect(fk.isValid == true)
     }
 
-    @Test("isValid returns false when name is whitespace only")
-    func invalidWhenNameIsWhitespace() {
+    /// The name used to be required here, and that rule is what dropped every foreign key the user
+    /// entered on the Create Table tab: a new row's name is empty and nothing fills it. `CONSTRAINT
+    /// name` is optional in every dialect TablePro speaks, so a nameless key is a real key.
+    @Test("isValid ignores the constraint name")
+    func validWithoutAName() {
         let fk = EditableForeignKeyDefinition(
             id: UUID(),
             name: "   ",
@@ -58,7 +61,7 @@ struct ForeignKeyDefinitionTests {
             onDelete: .noAction,
             onUpdate: .noAction
         )
-        #expect(fk.isValid == false)
+        #expect(fk.isValid == true)
     }
 
     @Test("isValid returns false when columns is empty")

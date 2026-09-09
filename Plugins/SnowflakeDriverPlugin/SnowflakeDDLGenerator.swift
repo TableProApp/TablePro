@@ -84,8 +84,32 @@ struct SnowflakeDDLGenerator {
         if !pkColumns.isEmpty {
             parts.append("PRIMARY KEY (\(pkColumns.map(quoteIdentifier).joined(separator: ", ")))")
         }
+        parts.append(contentsOf: definition.foreignKeys.map(foreignKeyDefinitionSQL))
         let ifNotExists = definition.ifNotExists ? "IF NOT EXISTS " : ""
         return "CREATE TABLE \(ifNotExists)\(qualifiedTable(definition.tableName)) (\n  \(parts.joined(separator: ",\n  "))\n)"
+    }
+
+    /// Snowflake takes the whole referential vocabulary and enforces none of it: a foreign key is
+    /// metadata the optimizer may use, not a constraint. It is still declared, because the plugin
+    /// advertises `supportsForeignKeys` and the editor offers the tab, and dropping every key the
+    /// user entered is the one answer that cannot be right.
+    func foreignKeyDefinitionSQL(_ foreignKey: PluginForeignKeyDefinition) -> String {
+        let columns = foreignKey.columns.map(quoteIdentifier).joined(separator: ", ")
+        let constraint = foreignKey.name.isEmpty ? "" : "CONSTRAINT \(quoteIdentifier(foreignKey.name)) "
+        let referenced = foreignKey.referencedSchema.flatMap { $0.isEmpty ? nil : $0 }
+            .map { "\(quoteIdentifier($0)).\(quoteIdentifier(foreignKey.referencedTable))" }
+            ?? qualifiedTable(foreignKey.referencedTable)
+        var definition = "\(constraint)FOREIGN KEY (\(columns)) REFERENCES \(referenced)"
+        if !foreignKey.referencedColumns.isEmpty {
+            definition += " (\(foreignKey.referencedColumns.map(quoteIdentifier).joined(separator: ", ")))"
+        }
+        if foreignKey.onDelete != "NO ACTION" {
+            definition += " ON DELETE \(foreignKey.onDelete)"
+        }
+        if foreignKey.onUpdate != "NO ACTION" {
+            definition += " ON UPDATE \(foreignKey.onUpdate)"
+        }
+        return definition
     }
 
     func columnDefinitionSQL(_ column: PluginColumnDefinition) -> String {

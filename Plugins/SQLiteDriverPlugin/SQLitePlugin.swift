@@ -1118,62 +1118,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Create Table DDL
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
-        guard !definition.columns.isEmpty else { return nil }
-
-        let tableName = quoteIdentifier(definition.tableName)
-        let pkColumns = definition.columns.filter { $0.isPrimaryKey }
-        let inlinePK = pkColumns.count == 1
-        var parts: [String] = definition.columns.map { sqliteColumnDefinition($0, inlinePK: inlinePK) }
-
-        if pkColumns.count > 1 {
-            let pkCols = pkColumns.map { quoteIdentifier($0.name) }.joined(separator: ", ")
-            parts.append("PRIMARY KEY (\(pkCols))")
-        }
-
-        for fk in definition.foreignKeys {
-            parts.append(sqliteForeignKeyDefinition(fk))
-        }
-
-        let sql = "CREATE TABLE \(tableName) (\n  " +
-            parts.joined(separator: ",\n  ") +
-            "\n);"
-
-        return sql
-    }
-
-    private func sqliteColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
-        var def = "\(quoteIdentifier(col.name)) \(col.dataType)"
-        if let expression = col.generationExpression?.nilIfEmpty {
-            def += " GENERATED ALWAYS AS (\(expression)) \((col.generationKind ?? .virtual).rawValue)"
-            if !col.isNullable { def += " NOT NULL" }
-            return def
-        }
-        if inlinePK && col.isPrimaryKey {
-            def += " PRIMARY KEY"
-            if col.autoIncrement {
-                def += " AUTOINCREMENT"
-            }
-        }
-        if !col.isNullable {
-            def += " NOT NULL"
-        }
-        if let defaultValue = col.defaultValue {
-            def += " DEFAULT \(defaultValue)"
-        }
-        return def
-    }
-
-    private func sqliteForeignKeyDefinition(_ fk: PluginForeignKeyDefinition) -> String {
-        let cols = fk.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let refCols = fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        var def = "FOREIGN KEY (\(cols)) REFERENCES \(quoteIdentifier(fk.referencedTable)) (\(refCols))"
-        if fk.onDelete != "NO ACTION" {
-            def += " ON DELETE \(fk.onDelete)"
-        }
-        if fk.onUpdate != "NO ACTION" {
-            def += " ON UPDATE \(fk.onUpdate)"
-        }
-        return def
+        sqliteCreateTableSQL(definition: definition)
     }
 
     // MARK: - ALTER TABLE DDL
@@ -1192,7 +1137,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
-        let colDef = sqliteColumnDefinition(addableColumn(column), inlinePK: false)
+        let colDef = sqliteColumnDefinitionSQL(addableColumn(column), isInlinePrimaryKey: false)
         return "ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(colDef)"
     }
 
@@ -1271,9 +1216,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
-        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let unique = index.isUnique ? "UNIQUE " : ""
-        return "CREATE \(unique)INDEX \(quoteIdentifier(index.name)) ON \(quoteIdentifier(table)) (\(cols))"
+        sqliteAddIndexSQL(table: table, index: index)
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {

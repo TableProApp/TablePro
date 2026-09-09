@@ -315,7 +315,8 @@ extension DamengPluginDriver {
         let referencedTable = qualifiedName(schema: foreignKey.referencedSchema, object: foreignKey.referencedTable)
         let constraint = foreignKey.name.isEmpty ? "" : "CONSTRAINT \(quoteIdentifier(foreignKey.name)) "
         let onDelete = foreignKey.onDelete.uppercased() == "NO ACTION" ? "" : " ON DELETE \(foreignKey.onDelete)"
-        return "\(constraint)FOREIGN KEY (\(columns)) REFERENCES \(referencedTable) (\(referencedColumns))\(onDelete)"
+        let references = referencedColumns.isEmpty ? "" : " (\(referencedColumns))"
+        return "\(constraint)FOREIGN KEY (\(columns)) REFERENCES \(referencedTable)\(references)\(onDelete)"
     }
 
     /// Routes through the driver's single escaping seam. `replacingOccurrences` matches whole

@@ -81,9 +81,23 @@ final class StructureRowProvider {
         Array(repeating: .text(rawType: nil), count: columns.count)
     }
 
-    /// Every column whose cell opens a menu, which is every column that has an option list.
+    /// Every column whose cell opens a menu: the ones with a fixed option list, plus the ones whose
+    /// list the delegate builds per row.
     var dropdownColumns: Set<Int> {
-        Set(customDropdownOptions.keys)
+        Set(customDropdownOptions.keys).union(rowDependentDropdownColumns)
+    }
+
+    /// Columns whose list is a function of the row, so it cannot live in `customDropdownOptions`.
+    ///
+    /// On the Foreign Keys grid these are Columns (1), Ref Table (2) and Ref Columns (3): the first
+    /// offers the table's own columns, the second the database's tables, and the third the columns
+    /// of whichever table that row names. Every list keeps a `Custom…` entry, so a table the app has
+    /// not loaded is still reachable by typing.
+    var rowDependentDropdownColumns: Set<Int> {
+        switch tab {
+        case .foreignKeys: [1, 2, 3]
+        case .columns, .indexes, .checkConstraints, .ddl, .parts, .triggers: []
+        }
     }
 
     /// Explicit option lists for every dropdown column, keyed by column index.
@@ -95,8 +109,18 @@ final class StructureRowProvider {
     var customDropdownOptions: [Int: [GridMenuOption]] {
         switch tab {
         case .foreignKeys:
-            let actions = EditableForeignKeyDefinition.ReferentialAction.allCases.map(\.rawValue)
-            return [5: GridMenuOption.values(actions), 6: GridMenuOption.values(actions)]
+            /// Offering every action to every engine is how a DuckDB user reached
+            /// `Parser Error: FOREIGN KEY constraints cannot use CASCADE, SET NULL or SET DEFAULT`
+            /// from a menu that presented CASCADE as valid. An engine with no `ON UPDATE` clause at
+            /// all, Oracle among them, still offers NO ACTION so the cell keeps a closed list rather
+            /// than falling back to free text.
+            let dialect = ForeignKeyDialect.forType(databaseType)
+            let deleteActions = dialect.deleteActions.isEmpty ? [.noAction] : dialect.deleteActions
+            let updateActions = dialect.updateActions.isEmpty ? [.noAction] : dialect.updateActions
+            return [
+                5: GridMenuOption.values(deleteActions.map(\.rawValue)),
+                6: GridMenuOption.values(updateActions.map(\.rawValue))
+            ]
         case .indexes:
             let types = EditableIndexDefinition.IndexType.allCases.map(\.rawValue)
             return [2: GridMenuOption.values(types), 3: GridMenuOption.values(Self.booleanOptions)]

@@ -1244,7 +1244,11 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         } else {
             refTable = quoteIdentifier(fk.referencedTable)
         }
-        var def = "CONSTRAINT \(quoteIdentifier(fk.name)) FOREIGN KEY (\(cols)) REFERENCES \(refTable) (\(refCols))"
+        let constraint = fk.name.isEmpty ? "" : "CONSTRAINT \(quoteIdentifier(fk.name)) "
+        var def = "\(constraint)FOREIGN KEY (\(cols)) REFERENCES \(refTable)"
+        if !refCols.isEmpty {
+            def += " (\(refCols))"
+        }
         if fk.onDelete != "NO ACTION" {
             def += " ON DELETE \(fk.onDelete)"
         }

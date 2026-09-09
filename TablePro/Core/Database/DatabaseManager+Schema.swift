@@ -122,6 +122,88 @@ extension DatabaseManager {
         AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: scope.connectionId, scope: scope))
     }
 
+    /// Run a Create Table draft's statements, on the same isolated route and in the same shape as
+    /// `executeSchemaChanges`.
+    ///
+    /// The route is what matters. The view used to reach for `driver(for:)`, which is the session
+    /// driver, so a `BEGIN` opened here joined whatever transaction a query tab had left open and
+    /// the matching `COMMIT` took that tab's uncommitted work with it. `schemaChangeRoute` exists
+    /// for exactly that, and the app's own DDL has no business on the user's connection.
+    func executeCreateTable(
+        statements: [String],
+        databaseType: DatabaseType,
+        scope: DatabaseScope
+    ) async throws {
+        guard !statements.isEmpty else { return }
+        let route = schemaChangeRoute(for: scope)
+        let script = statements.map { $0.hasSuffix(";") ? $0 : $0 + ";" }.joined(separator: "\n\n")
+
+        let authorization = await ExecutionGateProvider.shared.authorize(
+            OperationRequest(
+                connectionId: scope.connectionId,
+                databaseType: databaseType,
+                sql: script,
+                kind: .schemaMutation,
+                caller: .userInterface,
+                capabilities: .interactiveUser,
+                operationDescription: String(localized: "Create Table")
+            )
+        )
+        guard case .authorized = authorization else {
+            throw DatabaseError.queryFailed(
+                authorization.deniedReason ?? String(localized: "Operation not permitted")
+            )
+        }
+
+        let executionTimes: [TimeInterval] = try await withScopedDriver(
+            scope: scope,
+            route: route,
+            cancellation: .protectedWrite
+        ) { driver in
+            let useTransaction = driver.supportsTransactions && statements.count > 1
+            if useTransaction {
+                try await driver.beginTransaction(mode: .readWrite)
+            }
+            do {
+                var measured: [TimeInterval] = []
+                for statement in statements {
+                    let startedAt = Date()
+                    _ = try await driver.execute(query: statement)
+                    measured.append(Date().timeIntervalSince(startedAt))
+                }
+                if useTransaction {
+                    try await driver.commitTransaction()
+                }
+                return measured
+            } catch {
+                if useTransaction {
+                    do {
+                        try await driver.rollbackTransaction()
+                    } catch {
+                        Self.logger.error("Rollback failed after create table error: \(error.localizedDescription)")
+                    }
+                }
+                throw error
+            }
+        }
+
+        for (index, statement) in statements.enumerated() {
+            await historyRecorder.record(
+                QueryHistoryRecordRequest(
+                    query: statement.hasSuffix(";") ? statement : statement + ";",
+                    connectionId: scope.connectionId,
+                    databaseName: scope.database,
+                    databaseType: databaseType,
+                    schemaName: scope.schema,
+                    source: .structureDDL,
+                    executionTime: executionTimes.indices.contains(index) ? executionTimes[index] : 0,
+                    rowCount: -1,
+                    wasSuccessful: true
+                )
+            )
+        }
+    }
+
     /// Query the actual primary key constraint name for PostgreSQL.
     /// Returns nil if the database is not PostgreSQL, no PK modification is pending,
     /// or the query fails (caller falls back to `{table}_pkey` convention).

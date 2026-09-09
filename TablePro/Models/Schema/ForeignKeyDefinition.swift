@@ -41,10 +41,13 @@ struct EditableForeignKeyDefinition: Hashable, Codable, Identifiable {
         )
     }
 
-    /// Check if this definition is valid (not a placeholder)
+    /// Whether this describes a constraint rather than a placeholder row.
+    ///
+    /// The name is deliberately not part of it. `CONSTRAINT name` is optional in every dialect
+    /// TablePro speaks, and requiring it here is the same rule that deleted the user's foreign keys
+    /// on the way to `CREATE TABLE`.
     var isValid: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty &&
-            !columns.isEmpty &&
+        !columns.isEmpty &&
             !referencedTable.trimmingCharacters(in: .whitespaces).isEmpty &&
             !referencedColumns.isEmpty
     }

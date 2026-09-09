@@ -165,6 +165,14 @@ Lists partitions and parts from `system.parts`. **Optimize** merges parts; **Dro
 
 Choose **Database > New Table…**, or right-click empty space in the sidebar and choose **New Table…**. The tab holds a **Table Name** field (with Engine, Charset, and Collation pickers on MySQL and MariaDB), the same three editing grids, and a **SQL Preview** tab carrying the live `CREATE TABLE`. **Create Table** (`Cmd+Enter` or `Cmd+S`) executes it and opens the new table.
 
+On the **Foreign Keys** grid, **Columns**, **Ref Table**, and **Ref Columns** open menus of the new table's own columns, the database's tables, and the referenced table's columns. Each menu ends in **Custom…** for a name the list does not carry, and picking a second entry in a comma-separated cell appends to it. **On Delete** and **On Update** list only the actions the engine takes: DuckDB accepts NO ACTION and RESTRICT, Oracle has no ON UPDATE, and SQL Server has no RESTRICT.
+
+**Name** is optional on a foreign key. Left blank, no `CONSTRAINT` clause is written and the engine names the constraint itself.
+
+A row that is started and unfinished is never dropped from the generated SQL. **Create Table** dims and the reason sits beside it, naming the grid and the row: a foreign key with no referenced table, an index with no name, two columns sharing a name. Delete the row or finish it.
+
+Indexes run as their own `CREATE INDEX` statements after the table, in one transaction where the engine has transactional DDL.
+
 <Info>
 Visual table creation is supported for MySQL, MariaDB, PostgreSQL, PGlite, SQLite, SQL Server, ClickHouse, DuckDB, Oracle, Snowflake, libSQL, Cloudflare D1, Trino, Teradata, and Dameng.
 </Info>

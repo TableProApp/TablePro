@@ -16,6 +16,16 @@ final class CreateTableGridDelegate: DataGridViewDelegate {
     let connection: DatabaseConnection
     var onSelectedRowsChanged: ((Set<Int>) -> Void)?
     var orderedFields: [StructureColumnField] = []
+    /// The schema the draft is being created in, so the reference menus offer that schema's tables.
+    var schemaName: String?
+
+    /// Columns of each table a foreign key row points at, keyed by connection, schema and table.
+    /// Held per delegate, so it dies with the tab rather than outliving every connection.
+    var referencedColumnCache: [String: [String]] = [:]
+    var referencedColumnRequests: Set<String> = []
+    /// Fired when a referenced table's columns arrive. A menu built before the fetch landed shows
+    /// `Loading…` and nothing else would rebuild it until an unrelated edit.
+    var onReferenceListsChanged: (() -> Void)?
 
     /// Captured from `DataGridView.updateNSView` so we can ask `NSTableView` to
     /// reload affected rows after a state mutation. Required because the
@@ -61,6 +71,9 @@ final class CreateTableGridDelegate: DataGridViewDelegate {
             var fk = structureChangeManager.workingForeignKeys[row]
             StructureEditingSupport.updateForeignKey(&fk, at: column, with: newValue ?? "")
             structureChangeManager.updateForeignKey(id: fk.id, with: fk)
+            if column == 2 {
+                prefetchReferencedColumns(of: fk.referencedTable, schema: fk.referencedSchema)
+            }
 
         default:
             break

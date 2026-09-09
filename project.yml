@@ -480,6 +480,7 @@ targets:
       - Plugins/MongoDBDriverPlugin/MongoStreamProjection.swift
       - Plugins/OracleDriverPlugin/OracleObjectQueries.swift
       - Plugins/MySQLDriverPlugin/MySQLColumnDefinitionSQL.swift
+      - Plugins/MySQLDriverPlugin/MySQLCreateTableSQL.swift
       - Plugins/MySQLDriverPlugin/MySQLIdleRelease.swift
       - Plugins/MySQLDriverPlugin/MySQLSessionFootprint.swift
       - Plugins/MySQLDriverPlugin/MySQLGeneratedColumnClassification.swift
@@ -491,6 +492,7 @@ targets:
       - Plugins/MySQLDriverPlugin/MySQLStatementClassification.swift
       - Plugins/MySQLDriverPlugin/MySQLTransactionStatement.swift
       - Plugins/SQLiteDriverPlugin/SQLiteCheckConstraintParser.swift
+      - Plugins/SQLiteDriverPlugin/SQLiteCreateTableDDL.swift
       - Plugins/SQLiteDriverPlugin/SQLiteDefaultValue.swift
       - Plugins/LibSQLDriverPlugin/LibSQLDefaultValue.swift
       - Plugins/CloudflareD1DriverPlugin/CloudflareD1DefaultValue.swift
