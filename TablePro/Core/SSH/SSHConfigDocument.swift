@@ -28,7 +28,7 @@ struct HostPattern: Sendable, Hashable {
     let negated: Bool
 }
 
-enum MatchCondition: Sendable, Hashable {
+enum MatchTest: Sendable, Hashable {
     case all
     case canonical
     case final
@@ -37,6 +37,19 @@ enum MatchCondition: Sendable, Hashable {
     case user(patterns: [HostPattern])
     case localUser(patterns: [HostPattern])
     case exec(command: String)
+}
+
+/// A `Match` criterion and whether a leading `!` negated it. ssh evaluates the criterion and then
+/// inverts the answer, which is not the same as negating each pattern in the list: `Match !host a,b`
+/// has to match every host except `a` and `b`, where a list of negated patterns matches nothing.
+struct MatchCondition: Sendable, Hashable {
+    let test: MatchTest
+    let negated: Bool
+
+    init(test: MatchTest, negated: Bool = false) {
+        self.test = test
+        self.negated = negated
+    }
 }
 
 enum CanonicalizeMode: String, Sendable, Hashable {
@@ -49,6 +62,7 @@ enum SSHDirective: Sendable, Hashable {
     case hostName(String)
     case port(Int)
     case user(String)
+    case hostKeyAlias(String)
     case identityFile(String)
     case identityAgent(String)
     case identitiesOnly(Bool)

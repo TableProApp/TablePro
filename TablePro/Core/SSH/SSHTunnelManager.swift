@@ -77,6 +77,7 @@ private extension AgentSocketOrigin {
 /// Error types for SSH tunnel operations
 enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
     case tunnelCreationFailed(String)
+    case configExpansionFailed(String)
     case tunnelAlreadyExists(UUID)
     case noAvailablePort
     case authenticationFailed(reason: AuthFailureReason)
@@ -91,6 +92,8 @@ enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
         switch self {
         case .tunnelCreationFailed(let message):
             return String(format: String(localized: "SSH tunnel creation failed: %@"), message)
+        case .configExpansionFailed(let message):
+            return message
         case .tunnelAlreadyExists(let id):
             return String(format: String(localized: "SSH tunnel already exists for connection: %@"), id.uuidString)
         case .noAvailablePort:

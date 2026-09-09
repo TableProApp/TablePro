@@ -78,39 +78,55 @@ enum SSHConfigParser {
         parse(path: path).first { $0.host.lowercased() == host.lowercased() }
     }
 
-    static func parseProxyJump(_ value: String) -> [SSHJumpHost] {
-        let hops = value.components(separatedBy: ",")
+    /// Splits a `ProxyJump` value into its hops. Kept separate from parsing because the hops have
+    /// to be split before their tokens are expanded, which is the order ssh uses: expanding first
+    /// lets a value carrying a comma, `%r` with a username like `bob,evil.example.net`, turn one
+    /// configured hop into two and route the session through a host the config never named.
+    static func splitProxyJumpHops(_ value: String) -> [String] {
+        value
+            .components(separatedBy: ",")
             .map { $0.trimmingCharacters(in: .whitespaces) }
-        var jumpHosts: [SSHJumpHost] = []
+            .filter { !$0.isEmpty }
+    }
 
-        for hop in hops where !hop.isEmpty {
-            var jumpHost = SSHJumpHost()
-            var remaining = hop
+    static func parseProxyJump(_ value: String) -> [SSHJumpHost] {
+        splitProxyJumpHops(value).compactMap(parseProxyJumpHop)
+    }
 
-            if let atIndex = remaining.firstIndex(of: "@") {
-                jumpHost.username = String(remaining[remaining.startIndex..<atIndex])
-                remaining = String(remaining[remaining.index(after: atIndex)...])
-            }
+    static func parseProxyJumpHop(_ hop: String) -> SSHJumpHost? {
+        guard !hop.isEmpty else { return nil }
 
-            if remaining.hasPrefix("["), let closeBracket = remaining.firstIndex(of: "]") {
-                jumpHost.host = String(remaining[remaining.index(after: remaining.startIndex)..<closeBracket])
-                let afterBracket = remaining.index(after: closeBracket)
-                if afterBracket < remaining.endIndex,
-                   remaining[afterBracket] == ":",
-                   let port = Int(String(remaining[remaining.index(after: afterBracket)...])) {
-                    jumpHost.port = port
-                }
-            } else if let colonIndex = remaining.lastIndex(of: ":"),
-                      let port = Int(String(remaining[remaining.index(after: colonIndex)...])) {
-                jumpHost.host = String(remaining[remaining.startIndex..<colonIndex])
-                jumpHost.port = port
-            } else {
-                jumpHost.host = remaining
-            }
+        var jumpHost = SSHJumpHost()
+        var remaining = hop
 
-            jumpHosts.append(jumpHost)
+        // The LAST `@` separates the user: `%r` expands to the remote username, and a
+        // UPN-style one carries its own `@`, which splitting on the first left inside the host.
+        if let atIndex = remaining.lastIndex(of: "@") {
+            jumpHost.username = String(remaining[remaining.startIndex..<atIndex])
+            remaining = String(remaining[remaining.index(after: atIndex)...])
         }
-        return jumpHosts
+
+        if remaining.hasPrefix("["), let closeBracket = remaining.firstIndex(of: "]") {
+            jumpHost.host = String(remaining[remaining.index(after: remaining.startIndex)..<closeBracket])
+            let afterBracket = remaining.index(after: closeBracket)
+            if afterBracket < remaining.endIndex,
+               remaining[afterBracket] == ":",
+               let port = Int(String(remaining[remaining.index(after: afterBracket)...])) {
+                jumpHost.port = port
+            }
+        } else if let colonIndex = remaining.lastIndex(of: ":"),
+                  !remaining[remaining.startIndex..<colonIndex].contains(":"),
+                  let port = Int(String(remaining[remaining.index(after: colonIndex)...])) {
+            // An unbracketed address with more than one colon is an IPv6 literal, which ssh
+            // accepts from an expanded `%h`. Reading its last group as a port left `::` as
+            // the host and `1` as the port.
+            jumpHost.host = String(remaining[remaining.startIndex..<colonIndex])
+            jumpHost.port = port
+        } else {
+            jumpHost.host = remaining
+        }
+
+        return jumpHost
     }
 
     // MARK: - File parsing
@@ -121,29 +137,63 @@ enum SSHConfigParser {
         sources: inout [String],
         depth: Int
     ) -> [SSHConfigBlock] {
+        var pending = PendingBlock(criteria: .global)
+        var blocks: [SSHConfigBlock] = []
+        appendFile(
+            path: path,
+            into: &blocks,
+            pending: &pending,
+            visited: &visited,
+            sources: &sources,
+            depth: depth
+        )
+        pending.flush(into: &blocks)
+        return blocks
+    }
+
+    /// Reads one file and folds its directives into the block list, carrying `pending` across the
+    /// call so an `Include` behaves the way ssh does: as if the included lines were written where
+    /// the `Include` stands, inside whatever `Host` or `Match` block encloses it.
+    ///
+    /// `visited` is an ancestor stack, not a set of every file ever read. A file is only a cycle
+    /// while it is still being read, and the same snippet legitimately gets included from several
+    /// blocks: keeping it in the set after the read returned made every occurrence after the first
+    /// contribute nothing.
+    private static func appendFile(
+        path: String,
+        into blocks: inout [SSHConfigBlock],
+        pending: inout PendingBlock,
+        visited: inout Set<String>,
+        sources: inout [String],
+        depth: Int
+    ) {
         guard depth <= maxIncludeDepth else {
             logger.warning("SSH config Include depth exceeded at: \(path, privacy: .public)")
-            return []
+            return
         }
 
         let canonical = (path as NSString).standardizingPath
 
         guard !visited.contains(canonical) else {
             logger.warning("SSH config circular Include: \(path, privacy: .public)")
-            return []
+            return
         }
 
         guard let content = try? String(contentsOfFile: path, encoding: .utf8) else {
-            return []
+            return
         }
 
         visited.insert(canonical)
-        sources.append(canonical)
+        defer { visited.remove(canonical) }
+        if !sources.contains(canonical) {
+            sources.append(canonical)
+        }
 
-        let baseDir = URL(fileURLWithPath: path).deletingLastPathComponent()
-        return parseLines(
+        appendLines(
             content.components(separatedBy: .newlines),
-            baseDir: baseDir,
+            baseDir: URL(fileURLWithPath: path).deletingLastPathComponent(),
+            into: &blocks,
+            pending: &pending,
             visited: &visited,
             sources: &sources,
             depth: depth
@@ -159,10 +209,31 @@ enum SSHConfigParser {
     ) -> [SSHConfigBlock] {
         var blocks: [SSHConfigBlock] = []
         var pending = PendingBlock(criteria: .global)
+        appendLines(
+            lines,
+            baseDir: baseDir,
+            into: &blocks,
+            pending: &pending,
+            visited: &visited,
+            sources: &sources,
+            depth: depth
+        )
+        pending.flush(into: &blocks)
+        return blocks
+    }
 
+    private static func appendLines(
+        _ lines: [String],
+        baseDir: URL?,
+        into blocks: inout [SSHConfigBlock],
+        pending: inout PendingBlock,
+        visited: inout Set<String>,
+        sources: inout [String],
+        depth: Int
+    ) {
         for rawLine in lines {
-            let trimmed = rawLine.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
+            let trimmed = stripComment(from: rawLine).trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty { continue }
 
             let (key, value) = splitKeyValue(trimmed)
             guard !key.isEmpty else { continue }
@@ -170,23 +241,22 @@ enum SSHConfigParser {
             switch key.lowercased() {
             case "host":
                 pending.flush(into: &blocks)
-                pending = PendingBlock(criteria: .host(patterns: SSHHostPatternMatcher.parsePatternList(value)))
+                pending = PendingBlock(criteria: .host(patterns: SSHHostPatternMatcher.parseHostPatternList(value)))
 
             case "match":
                 pending.flush(into: &blocks)
-                let conditions = parseMatchConditions(value)
-                pending = PendingBlock(criteria: .match(conditions: conditions))
+                pending = PendingBlock(criteria: .match(conditions: parseMatchConditions(value)))
 
             case "include":
-                let resolved = resolveIncludePaths(value, baseDir: baseDir)
-                for includePath in resolved {
-                    let included = parseFile(
+                for includePath in resolveIncludePaths(value, baseDir: baseDir) {
+                    appendFile(
                         path: includePath,
+                        into: &blocks,
+                        pending: &pending,
                         visited: &visited,
                         sources: &sources,
                         depth: depth + 1
                     )
-                    blocks.append(contentsOf: included)
                 }
 
             default:
@@ -195,9 +265,29 @@ enum SSHConfigParser {
                 }
             }
         }
+    }
 
-        pending.flush(into: &blocks)
-        return blocks
+    /// Drops a trailing comment. A `#` only opens one where it starts a whitespace-delimited
+    /// argument and stands outside quotes, measured: `HostName db.example.com#one` keeps its `#`,
+    /// `HostName db.example.com #one` does not, and `HostName "db#1.example.com"` keeps it too.
+    /// Cutting at the first `#` instead sent `db.example.com   # production` to `getaddrinfo`.
+    private static func stripComment(from line: String) -> String {
+        var inQuotes = false
+        var previousWasSeparator = true
+
+        for index in line.indices {
+            let character = line[index]
+            if character == "\"" {
+                inQuotes.toggle()
+                previousWasSeparator = false
+                continue
+            }
+            if character == "#", !inQuotes, previousWasSeparator {
+                return String(line[line.startIndex..<index])
+            }
+            previousWasSeparator = character == " " || character == "\t"
+        }
+        return line
     }
 
     // MARK: - Directive parsing
@@ -223,6 +313,8 @@ enum SSHConfigParser {
             return Int(value).map { .port($0) }
         case "user":
             return .user(value)
+        case "hostkeyalias":
+            return .hostKeyAlias(value)
         case "identityfile":
             return .identityFile(value)
         case "identityagent":
@@ -264,49 +356,58 @@ enum SSHConfigParser {
         }
     }
 
+    /// Any criterion may be negated with a leading `!`, per ssh_config(5). Dropping the negation
+    /// turned `Match !host prod-db` into a block with no conditions at all, which then matched
+    /// every host including the one it was written to exclude.
     private static func parseMatchConditions(_ value: String) -> [MatchCondition] {
         var tokens = tokenize(value)
         var conditions: [MatchCondition] = []
 
         while !tokens.isEmpty {
-            let keyword = tokens.removeFirst().lowercased()
+            var keyword = tokens.removeFirst().lowercased()
+            var negated = false
+            if keyword.hasPrefix("!") {
+                negated = true
+                keyword = String(keyword.dropFirst())
+            }
+
+            let test: MatchTest?
             switch keyword {
             case "all":
-                conditions.append(.all)
+                test = .all
             case "canonical":
-                conditions.append(.canonical)
+                test = .canonical
             case "final":
-                conditions.append(.final)
+                test = .final
             case "host":
-                if let arg = tokens.first {
-                    tokens.removeFirst()
-                    conditions.append(.host(patterns: SSHHostPatternMatcher.parsePatternList(arg)))
-                }
+                test = takeArgument(&tokens).map { .host(patterns: matchPatterns($0)) }
             case "originalhost":
-                if let arg = tokens.first {
-                    tokens.removeFirst()
-                    conditions.append(.originalHost(patterns: SSHHostPatternMatcher.parsePatternList(arg)))
-                }
+                test = takeArgument(&tokens).map { .originalHost(patterns: matchPatterns($0)) }
             case "user":
-                if let arg = tokens.first {
-                    tokens.removeFirst()
-                    conditions.append(.user(patterns: SSHHostPatternMatcher.parsePatternList(arg)))
-                }
+                test = takeArgument(&tokens).map { .user(patterns: matchPatterns($0)) }
             case "localuser":
-                if let arg = tokens.first {
-                    tokens.removeFirst()
-                    conditions.append(.localUser(patterns: SSHHostPatternMatcher.parsePatternList(arg)))
-                }
+                test = takeArgument(&tokens).map { .localUser(patterns: matchPatterns($0)) }
             case "exec":
-                if let arg = tokens.first {
-                    tokens.removeFirst()
-                    conditions.append(.exec(command: arg))
-                }
+                test = takeArgument(&tokens).map { .exec(command: $0) }
             default:
                 if !tokens.isEmpty { tokens.removeFirst() }
+                test = nil
+            }
+
+            if let test {
+                conditions.append(MatchCondition(test: test, negated: negated))
             }
         }
         return conditions
+    }
+
+    private static func takeArgument(_ tokens: inout [String]) -> String? {
+        guard !tokens.isEmpty else { return nil }
+        return tokens.removeFirst()
+    }
+
+    private static func matchPatterns(_ argument: String) -> [HostPattern] {
+        SSHHostPatternMatcher.parseMatchPatternList(argument)
     }
 
     private static func tokenize(_ value: String) -> [String] {
@@ -341,8 +442,29 @@ enum SSHConfigParser {
 
     // MARK: - Include resolution
 
+    /// `Include` takes several whitespace-separated paths, and each is globbed on its own. Passing
+    /// the whole line to `glob(3)` as one pattern made it return `GLOB_NOMATCH`, so a line naming
+    /// two files silently contributed neither.
+    ///
+    /// Only the host-independent tokens are expanded. The parsed document is cached once and shared
+    /// by every connection, so no host is known at this point; `%h` and its neighbours are left
+    /// alone rather than resolved against the wrong target.
     private static func resolveIncludePaths(_ value: String, baseDir: URL?) -> [String] {
-        let expanded = SSHPathUtilities.expandTilde(value)
+        tokenize(value).flatMap { resolveIncludePath($0, baseDir: baseDir) }
+    }
+
+    private static func resolveIncludePath(_ path: String, baseDir: URL?) -> [String] {
+        let substituted: String
+        do {
+            substituted = try SSHTokenContext().expand(path, scope: .includePath, keyword: "Include")
+        } catch {
+            logger.warning(
+                "Skipping Include \(path, privacy: .public): TablePro reads ~/.ssh/config once for every connection, so a token that names the target cannot be resolved here"
+            )
+            return []
+        }
+        let expanded = SSHPathUtilities.expandTilde(substituted)
+
         let resolved: String
         if expanded.hasPrefix("/") {
             resolved = expanded
@@ -429,19 +551,23 @@ enum SSHConfigParser {
                     identityFiles: identityFiles.map {
                         SSHPathUtilities.expandSSHTokens(
                             $0,
-                            hostname: hostname,
+                            keyword: "IdentityFile",
+                            hostname: hostname ?? glob,
                             originalHost: glob,
                             port: port,
-                            remoteUser: user
+                            remoteUser: user,
+                            jumpHost: proxyJump
                         )
                     },
                     identityAgent: identityAgent.map {
                         SSHPathUtilities.expandSSHTokens(
                             $0,
-                            hostname: hostname,
+                            keyword: "IdentityAgent",
+                            hostname: hostname ?? glob,
                             originalHost: glob,
                             port: port,
-                            remoteUser: user
+                            remoteUser: user,
+                            jumpHost: proxyJump
                         )
                     },
                     proxyJump: proxyJump,

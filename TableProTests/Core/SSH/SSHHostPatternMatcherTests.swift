@@ -55,18 +55,32 @@ struct SSHHostPatternMatcherTests {
         #expect(!SSHHostPatternMatcher.matches(host: "internal", patterns: patterns))
     }
 
-    @Test("Pattern list parsing")
-    func testParsePatternList() {
-        let parsed = SSHHostPatternMatcher.parsePatternList("*.aws !*.dev.aws prod-*")
+    @Test("Host pattern list parsing")
+    func testParseHostPatternList() {
+        let parsed = SSHHostPatternMatcher.parseHostPatternList("*.aws !*.dev.aws prod-*")
         #expect(parsed.count == 3)
         #expect(parsed[0].glob == "*.aws" && !parsed[0].negated)
         #expect(parsed[1].glob == "*.dev.aws" && parsed[1].negated)
         #expect(parsed[2].glob == "prod-*" && !parsed[2].negated)
     }
 
-    @Test("Pattern list parsing with commas")
-    func testParsePatternListCommas() {
-        let parsed = SSHHostPatternMatcher.parsePatternList("a,b, c")
-        #expect(parsed.map(\.glob) == ["a", "b", "c"])
+    /// A `Host` line splits on whitespace only. `ssh -G a` on `Host a,b` reported the default port,
+    /// so the comma is an ordinary character there and the pattern names a host called `a,b`.
+    @Test("A Host line keeps a comma as part of the pattern")
+    func testHostPatternListKeepsCommas() {
+        #expect(SSHHostPatternMatcher.parseHostPatternList("a,b").map(\.glob) == ["a,b"])
+    }
+
+    /// A `Match host` argument splits on commas only, and folds case on both sides.
+    @Test("A Match host argument splits on commas")
+    func testParseMatchPatternList() {
+        #expect(SSHHostPatternMatcher.parseMatchPatternList("a,b").map(\.glob) == ["a", "b"])
+    }
+
+    @Test("Match host comparison ignores case")
+    func testMatchHostIsCaseInsensitive() {
+        let patterns = SSHHostPatternMatcher.parseMatchPatternList("real.EXAMPLE.com")
+        #expect(SSHHostPatternMatcher.matches(host: "REAL.example.com", patterns: patterns, caseSensitive: false))
+        #expect(!SSHHostPatternMatcher.matches(host: "REAL.example.com", patterns: patterns))
     }
 }
