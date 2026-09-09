@@ -45,6 +45,11 @@ extension ClickHousePluginDriver {
             ORDER BY position
             """
         let result = try await execute(query: sql)
+        nonDefaultColumnKinds = Set(result.rows.compactMap { row -> String? in
+            guard let name = row[safe: 0]?.asText else { return nil }
+            guard let kind = row[safe: 2]?.asText, !kind.isEmpty, kind != "DEFAULT" else { return nil }
+            return name
+        })
         return result.rows.compactMap { row -> PluginColumnInfo? in
             guard let name = row[safe: 0]?.asText else { return nil }
             let dataType = (row[safe: 1]?.asText) ?? "String"

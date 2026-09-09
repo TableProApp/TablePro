@@ -234,7 +234,11 @@ extension TableViewCoordinator {
 
         let currentValue = cellValue(at: row, column: columnIndex)
         let isNullable = tableRows.columnNullable[columnName] ?? true
-        let defaultValue = tableRows.columnDefaults[columnName] ?? nil
+        // The picker matches against the enum's own unquoted tokens, so the column default crosses
+        // out of SQL here. It arrives as the exact SQL after DEFAULT, which for a string default is
+        // quoted, and a quoted value matched no entry so the default badge was never drawn.
+        let storedDefault = tableRows.columnDefaults[columnName] ?? nil
+        let defaultValue = storedDefault.flatMap(SQLStringLiteral.unquoted) ?? storedDefault
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
         EnumMenuPicker.presentEnum(

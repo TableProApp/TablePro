@@ -17,36 +17,56 @@ struct ColumnDefaultRoundTripTests {
         ColumnDefaultVocabulary.options(for: type).compactMap(\.sql)
     }
 
-    @Test("Every MySQL menu value survives the column definition builder unchanged")
-    func mysqlMenuValuesSurviveTheWriter() {
-        for sql in menuSQL(.mysql) {
+    /// The writer adds the syntax an engine's grammar demands and rewrites nothing else, so a menu
+    /// value comes back as itself or as itself in parentheses, and never as a string literal.
+    /// Quoting one is what turned `(UUID())` into the six-character text `uuid()`.
+    @Test(
+        "Every menu value survives its own engine's column definition builder",
+        arguments: [(type: DatabaseType.mysql, isMariaDB: false), (type: .mariadb, isMariaDB: true)]
+    )
+    func menuValuesSurviveTheWriter(type: DatabaseType, isMariaDB: Bool) {
+        for sql in menuSQL(type) {
             let column = PluginColumnDefinition(
                 name: "c", dataType: "VARCHAR(64)", isNullable: true, defaultValue: sql
             )
-            #expect(mysqlColumnDefinitionSQL(column).contains("DEFAULT \(sql)"), "\(sql)")
+            let emitted = mysqlColumnDefinitionSQL(column, isMariaDB: isMariaDB)
+            let survives = emitted.contains("DEFAULT \(sql)") || emitted.contains("DEFAULT (\(sql))")
+            #expect(survives, "\(type.rawValue): \(sql) -> \(emitted)")
+            #expect(!emitted.contains("DEFAULT '\(sql)'"), "\(type.rawValue): \(sql)")
         }
     }
 
-    @Test("Every MariaDB menu value survives the column definition builder unchanged")
-    func mariaDBMenuValuesSurviveTheWriter() {
-        for sql in menuSQL(.mariadb) {
+    /// MariaDB writes an expression default bare and MySQL will not accept it that way, so one
+    /// engine's menu value is not the other's statement. Copy To crosses exactly this line.
+    @Test("MariaDB's own expressions are parenthesised when they reach MySQL")
+    func mariaDBExpressionsAreParenthesisedForMySQL() {
+        for sql in menuSQL(.mariadb) where sql.hasSuffix(")") && !sql.hasPrefix("(") {
             let column = PluginColumnDefinition(
                 name: "c", dataType: "VARCHAR(64)", isNullable: true, defaultValue: sql
             )
-            #expect(mysqlColumnDefinitionSQL(column).contains("DEFAULT \(sql)"), "\(sql)")
+            #expect(
+                mysqlColumnDefinitionSQL(column, isMariaDB: false).contains("DEFAULT (\(sql))"),
+                "\(sql)"
+            )
         }
     }
 
     /// A `TEXT` column is the one place MySQL's grammar adds something, and it adds it to every
     /// value rather than to the ones the writer happens to recognise.
-    @Test("A MySQL TEXT column parenthesises every menu value exactly once")
-    func mysqlTextColumnParenthesisesOnce() {
-        for sql in menuSQL(.mysql) {
+    @Test(
+        "A MySQL TEXT column parenthesises every menu value exactly once",
+        arguments: [(type: DatabaseType.mysql, isMariaDB: false), (type: .mariadb, isMariaDB: true)]
+    )
+    func mysqlTextColumnParenthesisesOnce(type: DatabaseType, isMariaDB: Bool) {
+        for sql in menuSQL(type) {
             let column = PluginColumnDefinition(
                 name: "c", dataType: "TEXT", isNullable: true, defaultValue: sql
             )
             let expected = sql.hasPrefix("(") ? sql : "(\(sql))"
-            #expect(mysqlColumnDefinitionSQL(column).contains("DEFAULT \(expected)"), "\(sql)")
+            #expect(
+                mysqlColumnDefinitionSQL(column, isMariaDB: isMariaDB).contains("DEFAULT \(expected)"),
+                "\(type.rawValue): \(sql)"
+            )
         }
     }
 
