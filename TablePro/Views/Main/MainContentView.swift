@@ -184,7 +184,7 @@ struct MainContentView: View {
                     /// holds this coordinator; leaving it set after a cancel keeps the cycle alive
                     /// for the window's life and offers a stale plan to whatever opens the sheet
                     /// next.
-                    coordinator.columnReorderRequest = nil
+                    coordinator.tableRebuildRequest = nil
                 }
             }
         )
@@ -235,8 +235,8 @@ struct MainContentView: View {
                     await coordinator.applyRewind()
                 }
             }
-        case .columnReorderReview:
-            if let request = coordinator.columnReorderRequest {
+        case .tableRebuildReview:
+            if let request = coordinator.tableRebuildRequest {
                 SQLReviewSheet(
                     isPresented: dismissBinding,
                     statements: request.scriptStatements,
@@ -244,17 +244,17 @@ struct MainContentView: View {
                     warning: request.warning,
                     primaryAction: request.isRunnable
                         ? SQLReviewSheet.PrimaryAction(
-                            title: String(localized: "Rebuild Table"),
+                            title: request.actionTitle,
                             isDestructive: true,
                             perform: {
                                 await request.perform()
-                                coordinator.columnReorderRequest = nil
+                                coordinator.tableRebuildRequest = nil
                                 coordinator.activeSheet = nil
                             }
                         )
                         : nil,
                     onOpenInEditor: {
-                        coordinator.openColumnReorderScriptInEditor(request)
+                        coordinator.openTableRebuildScriptInEditor(request)
                     }
                 )
             }

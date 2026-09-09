@@ -156,39 +156,37 @@ final class StructureChangeManager: ChangeManaging {
     // MARK: - Add New Rows
 
     func addNewColumn() {
-        stageAddition(EditableColumnDefinition.placeholder(), using: Self.columnOperations, revalidating: true)
+        stageAddition(EditableColumnDefinition.placeholder(), using: Self.columnOperations)
     }
 
     func addNewIndex() {
-        stageAddition(EditableIndexDefinition.placeholder(), using: Self.indexOperations, revalidating: true)
+        stageAddition(EditableIndexDefinition.placeholder(), using: Self.indexOperations)
     }
 
     func addNewForeignKey() {
-        stageAddition(EditableForeignKeyDefinition.placeholder(), using: Self.foreignKeyOperations, revalidating: true)
+        stageAddition(EditableForeignKeyDefinition.placeholder(), using: Self.foreignKeyOperations)
     }
 
     func addNewCheckConstraint() {
-        stageAddition(
-            EditableCheckConstraintDefinition.placeholder(), using: Self.checkConstraintOperations, revalidating: true
-        )
+        stageAddition(EditableCheckConstraintDefinition.placeholder(), using: Self.checkConstraintOperations)
     }
 
     // MARK: - Paste Operations (public methods for adding copied items)
 
     func addColumn(_ column: EditableColumnDefinition) {
-        stageAddition(column, using: Self.columnOperations, revalidating: false)
+        stageAddition(column, using: Self.columnOperations)
     }
 
     func addIndex(_ index: EditableIndexDefinition) {
-        stageAddition(index, using: Self.indexOperations, revalidating: false)
+        stageAddition(index, using: Self.indexOperations)
     }
 
     func addForeignKey(_ foreignKey: EditableForeignKeyDefinition) {
-        stageAddition(foreignKey, using: Self.foreignKeyOperations, revalidating: false)
+        stageAddition(foreignKey, using: Self.foreignKeyOperations)
     }
 
     func addCheckConstraint(_ constraint: EditableCheckConstraintDefinition) {
-        stageAddition(constraint, using: Self.checkConstraintOperations, revalidating: false)
+        stageAddition(constraint, using: Self.checkConstraintOperations)
     }
 
     // MARK: - Column Operations
@@ -237,10 +235,13 @@ final class StructureChangeManager: ChangeManaging {
     /// supplies only what differs. Before this existed the block below was written out per kind,
     /// which is how `charset`/`collation` came to be dropped in one copy and not the others: a
     /// fix applied to one hand-written copy has no way to reach its three siblings.
+    ///
+    /// Every addition revalidates, the pasted ones included. Save reads `canCommit`, which reads
+    /// the errors this leaves behind, so a path that stages without validating puts a row into the
+    /// save that nothing has checked.
     private func stageAddition<Entity>(
         _ entity: Entity,
-        using operations: SchemaEntityOperations<Entity>,
-        revalidating: Bool
+        using operations: SchemaEntityOperations<Entity>
     ) {
         self[keyPath: operations.working].append(entity)
         let key = operations.identifier(entity.id)
@@ -249,7 +250,7 @@ final class StructureChangeManager: ChangeManaging {
         registerUndo(operations.addActionName) { target in
             target.applySchemaUndo(operations.additionUndo(entity))
         }
-        if revalidating { validate() }
+        validate()
     }
 
     private func stageEdit<Entity>(
@@ -413,7 +414,7 @@ final class StructureChangeManager: ChangeManaging {
 
         for column in workingColumns {
             if !column.isValid {
-                validationErrors[.column(column.id)] = "Column must have a name and data type"
+                validationErrors[.column(column.id)] = String(localized: "Column must have a name and a data type")
             }
         }
 
@@ -426,20 +427,20 @@ final class StructureChangeManager: ChangeManaging {
 
         for duplicate in duplicateColumns {
             for column in workingColumns.filter({ $0.name == duplicate && !isColumnPendingDeletion($0.id) }) {
-                validationErrors[.column(column.id)] = "Duplicate column name: \(duplicate)"
+                validationErrors[.column(column.id)] = String(
+                    format: String(localized: "Duplicate column name: %@"), duplicate
+                )
             }
         }
 
-        for index in workingIndexes {
-            if !index.isValid {
-                validationErrors[.index(index.id)] = "Index must have a name and at least one column"
-            }
+        for index in workingIndexes where isStaged(.index(index.id)) && !index.isValid {
+            validationErrors[.index(index.id)] = String(localized: "Index must have a name and at least one column")
         }
 
-        for fk in workingForeignKeys {
-            if !fk.isValid {
-                validationErrors[.foreignKey(fk.id)] = "Foreign key must have name, columns, and referenced table"
-            }
+        for fk in workingForeignKeys where isStaged(.foreignKey(fk.id)) && !fk.isValid {
+            validationErrors[.foreignKey(fk.id)] = String(
+                localized: "Foreign key must have a name, at least one column, and a referenced table"
+            )
         }
 
         let indexNames = workingIndexes.filter { $0.isValid }.map { $0.name }
@@ -449,29 +450,49 @@ final class StructureChangeManager: ChangeManaging {
 
         for duplicate in duplicateIndexes {
             for index in workingIndexes.filter({ $0.name == duplicate }) {
-                validationErrors[.index(index.id)] = "Duplicate index name: \(duplicate)"
+                validationErrors[.index(index.id)] = String(
+                    format: String(localized: "Duplicate index name: %@"), duplicate
+                )
             }
         }
 
-        for index in workingIndexes.filter({ $0.isValid }) {
-            for columnName in index.columns {
-                if !columnNames.contains(columnName) {
-                    validationErrors[.index(index.id)] = "Index references non-existent column: \(columnName)"
-                }
+        /// Only a row this save actually edits is checked against the columns.
+        ///
+        /// An untouched index or foreign key names whatever it named when the table was read, and
+        /// a rename in the same save leaves that name stale in the working copy without the user
+        /// having done anything wrong: every engine's `RENAME COLUMN` carries the dependency over
+        /// itself. Checking those rows would refuse a rename that works today. What this catches is
+        /// a row the user is *editing* into a state the database will reject.
+        for index in workingIndexes where isStaged(.index(index.id)) && index.isValid {
+            for columnName in index.columns where !namesAColumn(columnName, in: columnNames) {
+                validationErrors[.index(index.id)] = String(
+                    format: String(localized: "Index references a column that does not exist: %@"), columnName
+                )
             }
         }
 
-        for fk in workingForeignKeys.filter({ $0.isValid }) {
-            for columnName in fk.columns {
-                if !columnNames.contains(columnName) {
-                    validationErrors[.foreignKey(fk.id)] = "Foreign key references non-existent column: \(columnName)"
-                }
+        for fk in workingForeignKeys where isStaged(.foreignKey(fk.id)) && fk.isValid {
+            for columnName in fk.columns where !namesAColumn(columnName, in: columnNames) {
+                validationErrors[.foreignKey(fk.id)] = String(
+                    format: String(localized: "Foreign key references a column that does not exist: %@"), columnName
+                )
+            }
+            /// Only checkable when the key points back at the table being edited. For any other
+            /// table the referenced columns are not in this editor, and the database is asked
+            /// instead, when the change runs.
+            guard let tableName,
+                  fk.referencedTable.compare(tableName, options: .caseInsensitive) == .orderedSame else { continue }
+            for columnName in fk.referencedColumns where !namesAColumn(columnName, in: columnNames) {
+                validationErrors[.foreignKey(fk.id)] = String(
+                    format: String(localized: "Foreign key points at a column that does not exist: %@"), columnName
+                )
             }
         }
 
-        for constraint in workingCheckConstraints where !constraint.isValid {
-            validationErrors[.checkConstraint(constraint.id)] =
-                "Check constraint must have a name and an expression"
+        for constraint in workingCheckConstraints where isStaged(.checkConstraint(constraint.id)) && !constraint.isValid {
+            validationErrors[.checkConstraint(constraint.id)] = String(
+                localized: "Check constraint must have a name and an expression"
+            )
         }
 
         let constraintNames = workingCheckConstraints.filter { $0.isValid }.map { $0.name }
@@ -481,15 +502,36 @@ final class StructureChangeManager: ChangeManaging {
 
         for duplicate in duplicateConstraints {
             for constraint in workingCheckConstraints.filter({ $0.name == duplicate }) {
-                validationErrors[.checkConstraint(constraint.id)] = "Duplicate constraint name: \(duplicate)"
+                validationErrors[.checkConstraint(constraint.id)] = String(
+                    format: String(localized: "Duplicate constraint name: %@"), duplicate
+                )
             }
         }
 
         for columnName in workingPrimaryKey {
             if !columnNames.contains(columnName) {
-                validationErrors[.primaryKey] = "Primary key references non-existent column: \(columnName)"
+                validationErrors[.primaryKey] = String(
+                    format: String(localized: "Primary key references a column that does not exist: %@"), columnName
+                )
             }
         }
+    }
+
+    /// Whether this save changes the row, and is not simply removing it.
+    ///
+    /// A row on its way out is not held to being complete: the user struck through a foreign key
+    /// whose column is going with it, and demanding that it name a column that no longer exists
+    /// would refuse the very edit they made.
+    private func isStaged(_ key: SchemaChangeIdentifier) -> Bool {
+        guard let change = pendingChanges[key] else { return false }
+        return !change.isDelete
+    }
+
+    /// Identifiers compare case insensitively, the way every engine TablePro edits resolves them.
+    /// SQLite accepts a column declared `ID` and referenced as `id`, and its pragmas report each
+    /// spelling as written.
+    private func namesAColumn(_ name: String, in columnNames: [String]) -> Bool {
+        columnNames.contains { $0.compare(name, options: .caseInsensitive) == .orderedSame }
     }
 
     private func isColumnPendingDeletion(_ id: UUID) -> Bool {
@@ -503,6 +545,14 @@ final class StructureChangeManager: ChangeManaging {
 
     var canCommit: Bool {
         hasChanges && validationErrors.isEmpty
+    }
+
+    /// Every validation message, in one block, for the sheet that refuses the save.
+    ///
+    /// Sorted so the same set of problems reads the same way twice; the dictionary these come from
+    /// is keyed by identifier and has no order of its own.
+    var validationSummary: String {
+        validationErrors.values.sorted().joined(separator: "\n")
     }
 
     func discardChanges() {

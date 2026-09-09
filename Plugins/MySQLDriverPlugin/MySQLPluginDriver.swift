@@ -1072,7 +1072,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func buildColumnDefinitionSQL(_ column: PluginColumnDefinition) -> String {
-        mysqlColumnDefinitionSQL(column)
+        mysqlColumnDefinitionSQL(column, isMariaDB: isMariaDB)
     }
 
     private func buildIndexDefinitionSQL(_ index: PluginIndexDefinition) -> String {

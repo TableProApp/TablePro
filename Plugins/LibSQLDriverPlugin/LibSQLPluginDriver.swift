@@ -736,12 +736,16 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
+        "ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(libSQLColumnDefinition(column))"
+    }
+
+    private func libSQLColumnDefinition(_ column: PluginColumnDefinition) -> String {
         var def = "\(quoteIdentifier(column.name)) \(column.dataType)"
         if !column.isNullable { def += " NOT NULL" }
         if let defaultValue = column.defaultValue, !defaultValue.isEmpty {
             def += " DEFAULT \(defaultValue)"
         }
-        return "ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(def)"
+        return def
     }
 
     func generateDropColumnSQL(table: String, columnName: String) -> String? {
@@ -765,6 +769,28 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             desiredOrder: desiredOrder,
             isRunnable: isLocalMode,
             execute: { try await self.execute(query: $0) }
+        )
+    }
+
+    /// Foreign keys change the same way, and for the same reason: no SQLite `ALTER TABLE` can add
+    /// or drop one, so the table is recreated with the keys the save asks for.
+    func generateTableRebuildPlan(
+        table: String,
+        schema: String?,
+        respecification: PluginTableRespecification
+    ) async throws -> PluginColumnReorderPlan? {
+        guard !respecification.isEmpty,
+              let context = try await SQLiteTableRebuildPlanner.context(
+                  tableName: table,
+                  execute: { try await self.execute(query: $0) }
+              ) else { return nil }
+
+        return SQLiteTableRebuildPlanner.plan(
+            tableName: table,
+            context: context,
+            respecification: respecification,
+            renderColumn: { self.libSQLColumnDefinition($0) },
+            isRunnable: isLocalMode
         )
     }
 

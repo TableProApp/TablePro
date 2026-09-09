@@ -130,7 +130,10 @@ extension MSSQLPluginDriver {
             stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) \(newColumn.dataType) \(nullable)")
         }
 
-        if defaultChanged, let defaultValue = newColumn.defaultValue {
+        // The re-add mirrors the drop above. A type or nullability change drops the constraint too,
+        // so re-adding only on a default change left a column the user never touched with no
+        // default at all, and every later INSERT that omitted it failed.
+        if defaultChanged || needsTypeChange, let defaultValue = newColumn.defaultValue {
             stmts.append("ALTER TABLE \(qt) ADD DEFAULT \(defaultValue) FOR \(colName)")
         }
 

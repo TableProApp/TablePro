@@ -4,11 +4,11 @@
 //
 //  What a column's default becomes on the other engine.
 //
-//  A default is the source's own SQL text and the target's DDL writer quotes
-//  whatever it does not recognise, so an untranslated `now()` does not fail: it
-//  becomes the literal string `'now()'` in every row, which is worse than
-//  failing because nothing reports it. Everything here is therefore either
-//  translated to the target's own spelling or dropped with a reason.
+//  A default is the exact SQL that follows the source's own `DEFAULT` keyword,
+//  and the target's DDL writer emits what it is given verbatim. So a default
+//  this cannot translate must be dropped with a reason rather than passed on:
+//  passed on, it reaches the server as the source's dialect and either breaks
+//  the CREATE TABLE or means something else there.
 //
 //  `nextval(...)` is the one that is not a default at all. PostgreSQL renders a
 //  `SERIAL` as an ordinary integer whose default calls its sequence, and the
@@ -46,7 +46,6 @@ internal enum CrossEngineDefaultValue {
         if let boolean = booleanLiteral(upper, kind: kind, target: target) { return .keep(boolean) }
         if isNumericLiteral(stripped) { return .keep(stripped) }
         if let literal = stringLiteral(stripped) { return .keep(literal) }
-        if isBareWord(stripped) { return .keep(stripped) }
 
         return .drop(reason: String(
             format: String(localized: "The default %@ is not written in a form this engine shares."),
@@ -129,14 +128,5 @@ internal enum CrossEngineDefaultValue {
             index = inner.index(after: next)
         }
         return value
-    }
-
-    /// MySQL reports a string default without its quotes, so `active` on a `VARCHAR` arrives as a
-    /// bare word. Every target's DDL writer quotes an unrecognised word, which is the right answer
-    /// for it; what must not reach them is a word with a bracket or a space in it, because that is
-    /// an expression and quoting one turns it into a string.
-    private static func isBareWord(_ value: String) -> Bool {
-        guard !value.isEmpty, value.count <= 128 else { return false }
-        return value.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" || $0 == "." }
     }
 }

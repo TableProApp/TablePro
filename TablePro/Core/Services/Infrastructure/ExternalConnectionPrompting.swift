@@ -69,6 +69,30 @@ internal struct ExternalConnectionAlertPrompt: ExternalConnectionPrompting {
         if !connection.database.isEmpty {
             details.append(String(format: String(localized: "Database: %@"), connection.database))
         }
+        details.append(contentsOf: sshDetails(for: connection))
+        return details
+    }
+
+    /// The database host of a tunnelled connection is the far end of the tunnel, usually
+    /// `localhost`, so listing it alone describes none of the machines the session actually
+    /// crosses. The alert asks the user to decide whether they trust the link; it has to name the
+    /// SSH server and every hop for that to mean anything.
+    private static func sshDetails(for connection: DatabaseConnection) -> [String] {
+        let ssh = connection.sshConfig
+        guard ssh.enabled, !ssh.host.isEmpty else { return [] }
+
+        let port = ssh.port ?? 22
+        let target = ssh.username.isEmpty ? "\(ssh.host):\(port)" : "\(ssh.username)@\(ssh.host):\(port)"
+        var details = [String(format: String(localized: "SSH Tunnel: %@"), target)]
+
+        let hops = ssh.jumpHosts.filter { !$0.host.isEmpty }
+        guard !hops.isEmpty else { return details }
+
+        let described = hops.map { hop -> String in
+            let hopPort = hop.port ?? 22
+            return hop.username.isEmpty ? "\(hop.host):\(hopPort)" : "\(hop.username)@\(hop.host):\(hopPort)"
+        }
+        details.append(String(format: String(localized: "Jump Hosts: %@"), described.joined(separator: ", ")))
         return details
     }
 

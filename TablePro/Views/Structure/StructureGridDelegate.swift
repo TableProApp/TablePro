@@ -13,6 +13,15 @@ final class StructureGridDelegate: DataGridViewDelegate {
     let structureChangeManager: StructureChangeManager
     var selectedTab: StructureTab
     let connection: DatabaseConnection
+
+    /// Whether this engine can add and remove foreign keys, which is not the same question as
+    /// whether it has them. Every path that stages a foreign key change reads this, not just the
+    /// button under the list: a context-menu Delete that stages one on an engine with no way to
+    /// apply it only fails later, at Save.
+    var canEditForeignKeys: Bool {
+        PluginManager.shared.foreignKeyEditSupport(for: connection.type).isEditable
+            && connection.type.supportsSchemaEditing
+    }
     let tableName: String
     weak var coordinator: MainContentCoordinator?
     var onSelectedRowsChanged: ((Set<Int>) -> Void)?
@@ -157,7 +166,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 }
             }
         case .foreignKeys:
-            guard connection.type.supportsForeignKeys else { return }
+            guard canEditForeignKeys else { return }
             structureChangeManager.performAsOneUndoStep {
                 for row in translated.sorted(by: >) {
                     guard row < structureChangeManager.workingForeignKeys.count else { continue }
@@ -349,7 +358,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
             guard connection.type.supportsAddIndex else { return }
             structureChangeManager.addNewIndex()
         case .foreignKeys:
-            guard connection.type.supportsForeignKeys else { return }
+            guard canEditForeignKeys else { return }
             structureChangeManager.addNewForeignKey()
         case .checkConstraints:
             guard connection.type.supportsCheckConstraintEditing else { return }
@@ -552,7 +561,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
             guard connection.type.supportsAddIndex else { return nil }
             label = String(localized: "Add Index")
         case .foreignKeys:
-            guard connection.type.supportsForeignKeys else { return nil }
+            guard canEditForeignKeys else { return nil }
             label = String(localized: "Add Foreign Key")
         case .checkConstraints:
             guard connection.type.supportsCheckConstraintEditing else { return nil }

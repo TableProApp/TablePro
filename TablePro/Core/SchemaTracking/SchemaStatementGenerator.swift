@@ -105,10 +105,20 @@ struct SchemaStatementGenerator {
                 }
             case .addCheckConstraint:
                 constraintAdds.append(change)
-            case .deleteForeignKey, .modifyForeignKey:
+            case .deleteForeignKey:
                 fkDeletes.append(change)
-            case .deleteIndex, .modifyIndex:
+            case .modifyForeignKey(let old, let new):
+                /// Split for the same reason a modified check constraint is: the replacement may
+                /// reference a column this save adds and the old one may reference a column it
+                /// drops, so the two halves belong on opposite sides of the column work. Keeping
+                /// them contiguous fails whenever either is true.
+                fkDeletes.append(.deleteForeignKey(old))
+                fkAdds.append(.addForeignKey(new))
+            case .deleteIndex:
                 indexDeletes.append(change)
+            case .modifyIndex(let old, let new):
+                indexDeletes.append(.deleteIndex(old))
+                indexAdds.append(.addIndex(new))
             case .deleteColumn:
                 columnDeletes.append(change)
             case .modifyColumn:

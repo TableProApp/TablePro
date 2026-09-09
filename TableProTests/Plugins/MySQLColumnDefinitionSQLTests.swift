@@ -115,6 +115,39 @@ struct MySQLColumnDefinitionSQLTests {
         #expect(!sql.contains("'(UUID())'"))
     }
 
+    /// MySQL requires parentheses around an expression default from 8.0.13; MariaDB takes them
+    /// either way and writes them bare itself. Copying a MariaDB table to MySQL is what turned an
+    /// unparenthesised `uuid()` into a statement the server rejects.
+    @Test(
+        "An expression default is parenthesised for MySQL and left bare for MariaDB",
+        arguments: [
+            (value: "uuid()", type: "CHAR(36)", mysql: "(uuid())", mariadb: "uuid()"),
+            (value: "curdate()", type: "DATE", mysql: "(curdate())", mariadb: "curdate()"),
+            (value: "(UUID())", type: "CHAR(36)", mysql: "(UUID())", mariadb: "(UUID())"),
+            (value: "'abc'", type: "VARCHAR(8)", mysql: "'abc'", mariadb: "'abc'"),
+            (value: "0", type: "INT", mysql: "0", mariadb: "0"),
+            (value: "-1.5", type: "DECIMAL(4,1)", mysql: "-1.5", mariadb: "-1.5"),
+            (value: "NULL", type: "INT", mysql: "NULL", mariadb: "NULL"),
+            (value: "b'1'", type: "BIT(1)", mysql: "b'1'", mariadb: "b'1'"),
+            (value: "0x61", type: "VARBINARY(8)", mysql: "0x61", mariadb: "0x61")
+        ]
+    )
+    func expressionsAreParenthesisedForMySQLOnly(value: String, type: String, mysql: String, mariadb: String) {
+        #expect(mysqlDefaultValueLiteral(value, dataType: type, isMariaDB: false) == mysql, "\(value)")
+        #expect(mysqlDefaultValueLiteral(value, dataType: type, isMariaDB: true) == mariadb, "\(value)")
+    }
+
+    /// The one expression MySQL insists on bare, and only on the types that can carry it.
+    @Test("CURRENT_TIMESTAMP stays bare on a temporal column and is parenthesised elsewhere")
+    func currentTimestampParenthesisation() {
+        #expect(mysqlDefaultValueLiteral("CURRENT_TIMESTAMP", dataType: "TIMESTAMP", isMariaDB: false)
+            == "CURRENT_TIMESTAMP")
+        #expect(mysqlDefaultValueLiteral("CURRENT_TIMESTAMP", dataType: "DATETIME(6)", isMariaDB: false)
+            == "CURRENT_TIMESTAMP(6)")
+        #expect(mysqlDefaultValueLiteral("CURRENT_TIMESTAMP", dataType: "VARCHAR(32)", isMariaDB: false)
+            == "(CURRENT_TIMESTAMP)")
+    }
+
     @Test(
         "A type that cannot carry a bare default is given the parentheses the grammar needs",
         arguments: [
@@ -142,10 +175,19 @@ struct MySQLColumnDefinitionSQLTests {
             (value: "abc", extra: "", type: "VARCHAR(16)", expected: "'abc'"),
             (value: "", extra: "", type: "VARCHAR(16)", expected: "''"),
             (value: "it's", extra: "", type: "VARCHAR(16)", expected: "'it''s'"),
-            (value: "0", extra: "", type: "INT", expected: "'0'"),
+            (value: "0", extra: "", type: "INT", expected: "0"),
+            (value: "-1.5", extra: "", type: "DECIMAL(4,1)", expected: "-1.5"),
+            (value: "b'1'", extra: "", type: "BIT(1)", expected: "b'1'"),
+            (value: "0x61", extra: "", type: "VARBINARY(8)", expected: "0x61"),
+            (value: "1", extra: "", type: "TINYINT(1)", expected: "1"),
             (value: "CURRENT_TIMESTAMP", extra: "", type: "TIMESTAMP", expected: "CURRENT_TIMESTAMP"),
+            (value: "CURRENT_TIMESTAMP", extra: "DEFAULT_GENERATED", type: "TIMESTAMP",
+             expected: "CURRENT_TIMESTAMP"),
+            (value: "CURRENT_TIMESTAMP", extra: "DEFAULT_GENERATED", type: "DATETIME(6)",
+             expected: "CURRENT_TIMESTAMP"),
             (value: "CURRENT_TIMESTAMP", extra: "", type: "DATETIME(6)", expected: "CURRENT_TIMESTAMP"),
             (value: "CURRENT_TIMESTAMP", extra: "", type: "VARCHAR(32)", expected: "'CURRENT_TIMESTAMP'"),
+            (value: "active", extra: "", type: "enum('active','inactive')", expected: "'active'"),
             (value: "uuid()", extra: "DEFAULT_GENERATED", type: "VARCHAR(36)", expected: "(uuid())"),
             (value: "(curdate() + interval 1 year)", extra: "DEFAULT_GENERATED", type: "DATE",
              expected: "(curdate() + interval 1 year)")

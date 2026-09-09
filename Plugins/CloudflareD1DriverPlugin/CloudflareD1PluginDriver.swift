@@ -751,6 +751,29 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         )
     }
 
+    /// Also never run by TablePro, for the same reason: no SQLite `ALTER TABLE` can add or drop a
+    /// foreign key, so the table has to be recreated, and D1 cannot hold that rebuild's transaction
+    /// open across its per-statement HTTP requests. The script is handed to the user instead.
+    func generateTableRebuildPlan(
+        table: String,
+        schema: String?,
+        respecification: PluginTableRespecification
+    ) async throws -> PluginColumnReorderPlan? {
+        guard !respecification.isEmpty,
+              let context = try await SQLiteTableRebuildPlanner.context(
+                  tableName: table,
+                  execute: { try await self.execute(query: $0) }
+              ) else { return nil }
+
+        return SQLiteTableRebuildPlanner.plan(
+            tableName: table,
+            context: context,
+            respecification: respecification,
+            renderColumn: { self.d1ColumnDefinition($0, inlinePK: false) },
+            isRunnable: false
+        )
+    }
+
     func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String? {
         try await SQLiteColumnReorderPlanner.schemaFingerprint(
             tableName: table,
