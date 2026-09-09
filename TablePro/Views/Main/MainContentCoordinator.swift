@@ -23,6 +23,7 @@ enum DiscardAction {
     case resultSwitch
     case navigation
     case displayOrder
+    case columnVisibility
 }
 
 struct DisplayFormatsCacheEntry {
