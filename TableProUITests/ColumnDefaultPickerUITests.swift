@@ -15,7 +15,7 @@ final class ColumnDefaultPickerUITests: UITestCase {
         let window = try mainWindow(of: app)
         try selectFirstColumnRow(in: app, window: window)
 
-        let chooser = window.buttons["Choose Value"].firstMatch
+        let chooser = defaultValueMenu(in: window)
         XCTAssertTrue(
             chooser.waitToExist(timeout: 30),
             "The Default field carries its own menu. Without it the only way to set a default is to "
@@ -55,7 +55,7 @@ final class ColumnDefaultPickerUITests: UITestCase {
         let window = try mainWindow(of: app)
         try selectFirstColumnRow(in: app, window: window)
 
-        let chooser = window.buttons["Choose Value"].firstMatch
+        let chooser = defaultValueMenu(in: window)
         XCTAssertTrue(chooser.waitToExist(timeout: 30), "The Default field must carry its menu")
         chooser.click()
 
@@ -69,6 +69,14 @@ final class ColumnDefaultPickerUITests: UITestCase {
             },
             "Choosing Empty string must put '' in the field, not the words Empty string"
         )
+    }
+
+    /// Matched by identifier and without a type filter. The control is a SwiftUI `Menu`, which
+    /// macOS backs with an `NSPopUpButton`: it publishes `menuButton` or `popUpButton`, so
+    /// `window.buttons` can never match it, and which of the two it picks is not something a test
+    /// should depend on. The same shape reaches the inspector's own value menu.
+    private func defaultValueMenu(in window: XCUIElement) -> XCUIElement {
+        window.descendants(matching: .any)["column-default-menu"].firstMatch
     }
 
     private func selectFirstColumnRow(in app: XCUIApplication, window: XCUIElement) throws {

@@ -46,7 +46,12 @@ final class StructureForeignKeyEditUITests: UITestCase {
         let sheet = app.sheets.firstMatch
         XCTAssertTrue(sheet.waitToExist(timeout: 20), "An incomplete foreign key must stop the save")
 
-        let text = sheet.staticTexts.allElementsBoundByIndex.map { $0.label }.joined(separator: " ")
+        /// `value`, not `label`. An `NSAlert`'s messageText and informativeText reach XCUITest as the
+        /// static text's value and leave its label empty, so reading the label alone found the right
+        /// sheet and reported it as blank.
+        let text = sheet.staticTexts.allElementsBoundByIndex
+            .map { ($0.value as? String) ?? $0.label }
+            .joined(separator: " ")
         XCTAssertFalse(
             text.contains("Unsupported schema operation"),
             "The blank row must be refused by validation, not by the DDL generator"

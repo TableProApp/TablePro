@@ -34,6 +34,11 @@ internal struct ValuePickerFieldView: View {
             .fixedSize()
             .disabled(context.isReadOnly)
             .accessibilityLabel(String(localized: "Choose Value"))
+            /// A SwiftUI `Menu` is an `NSPopUpButton` on macOS, so it publishes `menuButton` or
+            /// `popUpButton` and never `button`, and no suite has ever resolved one by its label.
+            /// The identifier is the hook `InspectorFieldRow`'s own value menu already carries, and
+            /// unlike the label it does not move with the display language.
+            .accessibilityIdentifier("column-default-menu")
             .popover(isPresented: $isCustomPresented) {
                 CustomValueContentView(
                     initialValue: context.value.wrappedValue,
