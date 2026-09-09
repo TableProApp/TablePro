@@ -33,6 +33,9 @@ Edges use crow's foot notation. The referenced end always carries a single bar, 
 | Not unique, NOT NULL | fork + bar | Many-to-one |
 | Not unique, nullable | fork + circle | Zero-or-many-to-one |
 
+A foreign key that points at its own table, `employees.manager_id` to `employees.id`, is drawn as a
+loop out of the table's right edge and back, with the same two markers.
+
 ## Navigation
 
 | Action | Input |
@@ -45,6 +48,11 @@ Edges use crow's foot notation. The referenced end always carries a single bar, 
 | Copy diagram | `Cmd+C` |
 
 Drag a node to move it, toward the edge of the viewport to auto-scroll. Positions are saved and survive across sessions; **Reset Layout**, the circular arrow button, puts every table back where the automatic layout had it.
+
+VoiceOver reads the diagram as a layout area of tables. Each table announces its name, its column
+count and what it is joined to; step into one to hear each column with its type and whether it is a
+primary key, a foreign key, or optional. Selecting a table in the diagram moves the VoiceOver cursor
+to it.
 
 ## Compact mode
 

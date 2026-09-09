@@ -23,8 +23,14 @@ import SwiftUI
 
 final class ERDiagramSceneView: NSView {
     var scene = ERDiagramScene() {
-        didSet { needsDisplay = true }
+        didSet {
+            needsDisplay = true
+            accessibilityTree.invalidate()
+            announceSelectionChange(from: oldValue.selectedNodeId)
+        }
     }
+
+    private let accessibilityTree = ERDiagramAccessibilityTree()
 
     override var isFlipped: Bool { true }
 
@@ -36,6 +42,49 @@ final class ERDiagramSceneView: NSView {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         ERDiagramSceneRenderer.draw(scene, dirtyRect: dirtyRect, in: context)
     }
+
+    // MARK: - Accessibility
+
+    /// The diagram is a canvas of tables rather than one picture, so it is published as a layout
+    /// area with an element per table. Nothing is mounted for it: a plain `NSView` publishes
+    /// `NSAccessibilityElement` children directly, which is the part of the data grid's rule that
+    /// does not generalise (`NSTableView` builds its cell tree from cell views alone, and this is
+    /// not a table view). Measured on macOS 27: those children reach an assistive client through
+    /// the enclosing `NSHostingView`, and a pointer query descends into them.
+    override func isAccessibilityElement() -> Bool { true }
+
+    override func accessibilityRole() -> NSAccessibility.Role? { .layoutArea }
+
+    override func accessibilityLabel() -> String? {
+        ERDiagramAccessibilityTree.summary(of: scene)
+    }
+
+    override func accessibilityChildren() -> [Any]? {
+        accessibilityTree.elements(for: scene, owner: self)
+    }
+
+    override func accessibilitySelectedChildren() -> [Any]? {
+        selectedElement.map { [$0] } ?? []
+    }
+
+    /// A layout area answers for its focus as well as its selection, or VoiceOver never moves to
+    /// the table a click just selected.
+    override var accessibilityFocusedUIElement: Any? {
+        selectedElement ?? self
+    }
+
+    private var selectedElement: ERDiagramNodeElement? {
+        guard let selected = scene.selectedNodeId else { return nil }
+        _ = accessibilityTree.elements(for: scene, owner: self)
+        return accessibilityTree.element(for: selected)
+    }
+
+    private func announceSelectionChange(from previous: UUID?) {
+        guard accessibilityTree.hasBeenAsked, previous != scene.selectedNodeId else { return }
+        NSAccessibility.post(element: self, notification: .selectedChildrenChanged)
+        guard let element = selectedElement else { return }
+        NSAccessibility.post(element: element, notification: .focusedUIElementChanged)
+    }
 }
 
 struct ERDiagramSceneCanvas: NSViewRepresentable {
@@ -43,7 +92,6 @@ struct ERDiagramSceneCanvas: NSViewRepresentable {
 
     func makeNSView(context: Context) -> ERDiagramSceneView {
         let view = ERDiagramSceneView()
-        view.setAccessibilityElement(false)
         view.scene = scene
         return view
     }

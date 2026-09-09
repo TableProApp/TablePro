@@ -23,6 +23,22 @@ struct ERDiagramScene {
 enum ERDiagramSceneRenderer {
     static let exportPadding: CGFloat = 40
 
+    /// Everything the scene puts on the canvas, which is more than the tables: a self-referencing
+    /// table loops out past its own trailing edge, and cropping the export to the table rects alone
+    /// cuts the apex off.
+    static func drawnBounds(of scene: ERDiagramScene) -> CGRect {
+        var bounds = scene.nodeRects.values.reduce(CGRect.null) { $0.union($1) }
+
+        var selfLoopIndex: [UUID: Int] = [:]
+        for edge in scene.edges where edge.fromTable == edge.toTable {
+            guard let nodeId = scene.nodeIndex[edge.fromTable], let rect = scene.nodeRects[nodeId] else { continue }
+            let index = selfLoopIndex[nodeId, default: 0]
+            selfLoopIndex[nodeId] = index + 1
+            bounds = bounds.union(ERDiagramEdgeRenderer.selfLoopBounds(in: rect, index: index))
+        }
+        return bounds
+    }
+
     /// The context is expected to be flipped, which is what both callers hand it: the diagram view
     /// is `isFlipped`, and the export builds a flipped `NSGraphicsContext` over its bitmap.
     static func draw(_ scene: ERDiagramScene, dirtyRect: CGRect, in context: CGContext) {
@@ -52,7 +68,7 @@ enum ERDiagramSceneRenderer {
     /// bitmap has none of its own, so the caller's appearance is made current for the whole render
     /// or a dark window exports light chrome.
     static func image(_ scene: ERDiagramScene, appearance: NSAppearance, scale: CGFloat) -> NSImage? {
-        let bounds = scene.nodeRects.values.reduce(CGRect.null) { $0.union($1) }
+        let bounds = drawnBounds(of: scene)
         let size = bounds.isNull
             ? CGSize(width: 100, height: 100)
             : CGSize(width: bounds.width + exportPadding * 2, height: bounds.height + exportPadding * 2)

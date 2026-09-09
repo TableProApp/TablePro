@@ -78,6 +78,10 @@ struct DiagramPaintCoverageTests {
             backing: .buffered,
             defer: false
         )
+        // Every assertion here samples a colour, and a dynamic NSColor resolves against whatever
+        // appearance is current while drawing. Left to the machine's own setting these pass in
+        // Light and fail in Dark.
+        window.appearance = NSAppearance(named: .aqua)
         window.contentView?.addSubview(scrollView)
 
         scrollView.magnification = magnification
@@ -176,16 +180,27 @@ struct DiagramPaintCoverageTests {
         }
         probe.scrollView.cacheDisplay(in: probe.scrollView.bounds, to: rep)
 
+        // The badge is a small antialiased glyph over the node's own fill, so an absolute colour
+        // threshold only holds for one appearance: the blend carries the fill's blue up on a light
+        // background and down on a dark one. What survives either is that yellow ink leaves the
+        // pixel far redder than it is blue, which the fill alone never does.
+        // The bitmap is at the display's backing scale, so a document point is not a pixel.
+        let scale = CGFloat(rep.pixelsWide) / probe.scrollView.bounds.width
+        // The badge is a small antialiased glyph over the node's own fill, so an absolute colour
+        // threshold only holds for one appearance: the blend carries the fill's blue up on a light
+        // background and down on a dark one. What survives either is that yellow ink leaves the
+        // pixel far redder than it is blue, which neither the fill nor the text ever does.
         var foundYellow = false
-        for dx in -4...4 where !foundYellow {
-            for dy in -4...4 where !foundYellow {
-                let x = Int(badgeCentre.x.rounded()) + dx
-                let y = Int(badgeCentre.y.rounded()) + dy
+        let centre = CGPoint(x: badgeCentre.x * scale, y: badgeCentre.y * scale)
+        let radius = Int((6 * scale).rounded())
+        for dx in -radius...radius where !foundYellow {
+            for dy in -radius...radius where !foundYellow {
+                let x = Int(centre.x.rounded()) + dx
+                let y = Int(centre.y.rounded()) + dy
                 guard x >= 0, y >= 0, x < rep.pixelsWide, y < rep.pixelsHigh else { continue }
                 guard let colour = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
-                foundYellow = colour.redComponent > 0.5
-                    && colour.greenComponent > 0.4
-                    && colour.blueComponent < 0.4
+                foundYellow = colour.redComponent - colour.blueComponent > 0.15
+                    && colour.greenComponent - colour.blueComponent > 0.1
             }
         }
         #expect(foundYellow)
