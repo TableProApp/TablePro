@@ -466,16 +466,16 @@ final class TextViewControllerTests: XCTestCase {
     func test_minimapToggle() {
         XCTAssertFalse(controller.minimapView.isHidden)
         XCTAssertEqual(controller.minimapView.frame.width, MinimapView.maxWidth)
-        XCTAssertEqual(controller.textViewInsets.right, MinimapView.maxWidth)
+        XCTAssertEqual(controller.floatingSubviewInsets.right, MinimapView.maxWidth)
 
         controller.configuration.peripherals.showMinimap = false
         XCTAssertTrue(controller.minimapView.isHidden)
-        XCTAssertEqual(controller.textViewInsets.right, 0)
+        XCTAssertEqual(controller.floatingSubviewInsets.right, 0)
 
         controller.configuration.peripherals.showMinimap = true
         XCTAssertFalse(controller.minimapView.isHidden)
         XCTAssertEqual(controller.minimapView.frame.width, MinimapView.maxWidth)
-        XCTAssertEqual(controller.textViewInsets.right, MinimapView.maxWidth)
+        XCTAssertEqual(controller.floatingSubviewInsets.right, MinimapView.maxWidth)
     }
 
     // MARK: Folding Ribbon

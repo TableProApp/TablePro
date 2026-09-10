@@ -53,13 +53,12 @@ extension TextView {
         }
         NotificationCenter.default.post(name: Self.textDidChangeNotification, object: self)
 
-        // `scrollSelectionToVisible` is a little expensive to call every time. Instead we just check if the caret
-        // the edit left behind is visible. `.contains` checks that all points in the rect are inside.
-        if let selection = selectionManager.textSelections.first,
-           let caretRect = layoutManager.rectForOffset(selection.range.max),
-           !visibleRect.contains(caretRect) {
-            scrollSelectionToVisible()
-        }
+        // Whether the caret is still in view cannot be read off `rectForOffset` here: the edit left the caret's line
+        // waiting to be laid out, and until it is, the rect is the line's start. Pasting a long line then read as
+        // visible and left the caret off the trailing edge, and typing in a long line scrolled horizontally read as
+        // hidden and moved the view on every keystroke. `scrollSelectionToVisible` lays the line out first, and it
+        // leaves the view alone when the caret is already showing.
+        scrollSelectionToVisible()
     }
 
     /// Replace the characters in a range with a new string.

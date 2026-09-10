@@ -34,6 +34,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Window rebuilding its own layout three times while a connection opens.
 - Connecting screen naming the wrong step for the first half second of a connect.
 - Spinner flash in the object browser on Oracle, Snowflake, BigQuery, Trino and Dameng.
+- Start of every line hidden in the SQL editor after a long line was removed. (#2709)
+- Start of a line hidden under the line numbers after moving to it in a horizontally scrolled editor.
+- Editor jumping sideways on each keystroke in a long line while scrolled horizontally.
+- Cursor left off screen after pasting a long line.
+- Line number column keeping a stale width after the line count drops below 1,000 or the font size changes.
 
 ## [0.73.0] - 2026-09-09
 

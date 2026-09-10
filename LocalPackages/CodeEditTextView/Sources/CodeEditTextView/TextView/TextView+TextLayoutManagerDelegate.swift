@@ -21,13 +21,10 @@ extension TextView: TextLayoutManagerDelegate {
     }
 
     public func textViewportSize() -> CGSize {
-        if let scrollView = scrollView {
-            var size = scrollView.contentSize
-            size.height -= scrollView.contentInsets.top + scrollView.contentInsets.bottom
-            return size
-        } else {
+        guard scrollView != nil else {
             return CGSize(width: CGFloat.infinity, height: CGFloat.infinity)
         }
+        return unobscuredContentSize
     }
 
     public func layoutManagerYAdjustment(_ yAdjustment: CGFloat) {

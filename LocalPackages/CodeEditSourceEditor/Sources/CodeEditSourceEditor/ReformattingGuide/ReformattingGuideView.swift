@@ -55,34 +55,27 @@ class ReformattingGuideView: NSView {
             NSColor.black.withAlphaComponent(0.025) :
             NSColor.white.withAlphaComponent(0.025)
 
-        // Draw the vertical line (accounting for inverted Y coordinate system)
+        // Draw the vertical line along the view's leading edge. The view's frame already stands on the column, so
+        // drawing is done in bounds: using the frame's origin here would offset the line by the column a second time.
         lineColor.setStroke()
         let linePath = NSBezierPath()
-        linePath.move(to: NSPoint(x: frame.minX, y: frame.maxY))  // Start at top
-        linePath.line(to: NSPoint(x: frame.minX, y: frame.minY))  // Draw down to bottom
+        let lineX = bounds.minX + 0.5
+        linePath.move(to: NSPoint(x: lineX, y: bounds.maxY))
+        linePath.line(to: NSPoint(x: lineX, y: bounds.minY))
         linePath.lineWidth = 1.0
         linePath.stroke()
 
         // Draw the shaded area to the right of the line
         shadedColor.setFill()
-        let shadedRect = NSRect(
-            x: frame.minX,
-            y: frame.minY,
-            width: frame.width,
-            height: frame.height
-        )
-        shadedRect.fill()
+        bounds.fill()
     }
 
     func updatePosition(in controller: TextViewController) {
-        // Calculate the x position based on the font's character width and column number
-        let xPosition = (
-            CGFloat(column) * (controller.font.charWidth / 2) // Divide by 2 to account for coordinate system
-            + (controller.textViewInsets.left / 2)
-        )
-
-        // Get the scroll view's content size
-        guard let scrollView = controller.scrollView else { return }
+        // The column's x in the text view, converted into the floating container this view is drawn in, so the guide
+        // lands on the column however that container is offset from the document.
+        guard let scrollView = controller.scrollView, let container = superview else { return }
+        let columnX = controller.textView.layoutManager.edgeInsets.left + CGFloat(column) * controller.font.charWidth
+        let xPosition = container.convert(NSPoint(x: columnX, y: 0), from: controller.textView).x
         let contentSize = scrollView.documentVisibleRect.size
 
         // Ensure we don't create an invalid frame

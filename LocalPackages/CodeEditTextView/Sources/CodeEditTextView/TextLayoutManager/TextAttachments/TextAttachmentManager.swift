@@ -54,6 +54,13 @@ public final class TextAttachmentManager {
             layoutManager?.lineStorage.update(atOffset: range.max, delta: 0, deltaHeight: -trailingLine.height)
         }
 
+        // The lines the attachment covers are no longer drawn, or are drawn as part of its first line, so none of their
+        // measured widths describe what is on screen any more.
+        layoutManager?.forgetWidths(ofLinesIn: range)
+        if getNextOne, let trailingLine = layoutManager?.lineStorage.getLine(atOffset: range.max) {
+            layoutManager?.lineStorage.setWidth(0, forLineAt: trailingLine.index)
+        }
+
         layoutManager?.setNeedsLayout()
 
         delegate?.textAttachmentDidAdd(attachment.attachment, for: range)
@@ -67,6 +74,9 @@ public final class TextAttachmentManager {
         guard !orderedAttachments.isEmpty else { return }
         let removed = orderedAttachments
         orderedAttachments.removeAll()
+        for attachment in removed {
+            layoutManager?.forgetWidths(ofLinesIn: attachment.range)
+        }
         layoutManager?.setNeedsLayout()
         for attachment in removed {
             delegate?.textAttachmentDidRemove(attachment.attachment, for: attachment.range)
@@ -85,6 +95,7 @@ public final class TextAttachmentManager {
         }
 
         let attachment = orderedAttachments.remove(at: index)
+        layoutManager?.forgetWidths(ofLinesIn: attachment.range)
         layoutManager?.invalidateLayoutForRange(attachment.range)
 
         delegate?.textAttachmentDidRemove(attachment.attachment, for: attachment.range)

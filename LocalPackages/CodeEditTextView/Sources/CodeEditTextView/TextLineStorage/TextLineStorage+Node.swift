@@ -63,6 +63,10 @@ extension TextLineStorage {
         var leftSubtreeHeight: CGFloat
         // The number of nodes in the left subtree
         var leftSubtreeCount: Int
+        // The measured width of this line, zero until the line is laid out
+        var width: CGFloat = 0
+        // The widest measured line in this node's subtree, this node included
+        var subtreeWidth: CGFloat = 0
 
         var left: Node<NodeData>?
         var right: Node<NodeData>?
@@ -103,6 +107,20 @@ extension TextLineStorage {
                 height: height,
                 color: .black
             )
+        }
+
+        /// Recomputes ``subtreeWidth`` from this node's own width and the aggregates of its children.
+        ///
+        /// A maximum cannot be maintained by passing deltas up the tree the way the sums are: removing the widest line
+        /// does not say how wide the next widest one is. It is recomputed from the children instead, which only holds
+        /// while every child's aggregate is already correct, so callers work from the bottom of a change upwards.
+        /// - Returns: Whether the aggregate changed.
+        @discardableResult
+        func updateSubtreeWidth() -> Bool {
+            let newValue = Swift.max(width, left?.subtreeWidth ?? 0, right?.subtreeWidth ?? 0)
+            guard newValue != subtreeWidth else { return false }
+            subtreeWidth = newValue
+            return true
         }
 
         func sibling() -> Node<NodeData>? {

@@ -168,7 +168,7 @@ extension SourceEditor {
             guard let controller = notification.object as? TextViewController else {
                 return
             }
-            let currentPosition = controller.scrollView.contentView.bounds.origin
+            let currentPosition = controller.scrollPosition
             if editorState.scrollPosition != currentPosition {
                 updateState { $0.scrollPosition = currentPosition }
             }

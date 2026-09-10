@@ -47,7 +47,12 @@ struct LineFoldChunkBoundaryTests {
         controller.foldProvider = provider
         let model = LineFoldModel(controller: controller, foldView: NSView())
 
-        try await Task.sleep(for: .milliseconds(200))
+        // The calculation runs on the main actor, which other suites share, so wait for it to reach the last line
+        // rather than for a fixed time.
+        let deadline = ContinuousClock.now + .seconds(5)
+        while provider.previousDepths[100] == nil, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
         _ = model
 
         #expect(provider.previousDepths[49] == 1)
