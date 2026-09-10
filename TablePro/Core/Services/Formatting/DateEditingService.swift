@@ -9,10 +9,16 @@
 
 import Foundation
 
-enum TemporalComponents: Equatable {
-    case dateOnly
-    case timeOnly
-    case dateAndTime
+/// Which fields a temporal column offers. The editor asks it to decide which steppers to show and
+/// which parts to write back; the grid asks it to pick a pattern and to decide whether an offset
+/// belongs on the rendered text. One vocabulary, because two would have to agree.
+///
+/// The raw values key the display formatter's cache, so a value formatted for one column shape is
+/// never served to another.
+enum TemporalComponents: String {
+    case dateOnly = "d"
+    case timeOnly = "t"
+    case dateAndTime = "dt"
 }
 
 enum DateEditingService {

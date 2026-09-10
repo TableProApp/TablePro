@@ -16,7 +16,7 @@ final class DateFormattingService {
     // MARK: - Properties
 
     /// Cached formatter for current user-selected format
-    private var formatter: DateFormatter
+    private var dateTimeFormatter: DateFormatter
     private var dateOnlyFormatter: DateFormatter
     private var timeOnlyFormatter: DateFormatter
 
@@ -31,9 +31,9 @@ final class DateFormattingService {
     private init() {
         // Will be updated by AppSettingsManager after it completes initialization
         self.currentFormat = .iso8601
-        self.formatter = Self.createFormatter(format: DateFormatOption.iso8601.formatString)
-        self.dateOnlyFormatter = Self.createFormatter(format: DateFormatOption.iso8601.dateOnlyFormatString)
-        self.timeOnlyFormatter = Self.createFormatter(format: DateFormatOption.iso8601.timeOnlyFormatString)
+        self.dateTimeFormatter = Self.createFormatter(for: .iso8601, components: .dateAndTime)
+        self.dateOnlyFormatter = Self.createFormatter(for: .iso8601, components: .dateOnly)
+        self.timeOnlyFormatter = Self.createFormatter(for: .iso8601, components: .timeOnly)
         formatCache.countLimit = 100_000
     }
 
@@ -43,9 +43,9 @@ final class DateFormattingService {
     func updateFormat(_ format: DateFormatOption) {
         guard format != currentFormat else { return }
         currentFormat = format
-        formatter = Self.createFormatter(format: format.formatString)
-        dateOnlyFormatter = Self.createFormatter(format: format.dateOnlyFormatString)
-        timeOnlyFormatter = Self.createFormatter(format: format.timeOnlyFormatString)
+        dateTimeFormatter = Self.createFormatter(for: format, components: .dateAndTime)
+        dateOnlyFormatter = Self.createFormatter(for: format, components: .dateOnly)
+        timeOnlyFormatter = Self.createFormatter(for: format, components: .timeOnly)
         // Clear cache when format changes since all cached values are now stale
         formatCache.removeAllObjects()
     }
@@ -54,8 +54,8 @@ final class DateFormattingService {
     /// - Parameter date: The date to format
     /// - Returns: Formatted date string
     func format(_ date: Date) -> String {
-        formatter.timeZone = .current
-        return formatter.string(from: date)
+        dateTimeFormatter.timeZone = .current
+        return dateTimeFormatter.string(from: date)
     }
 
     /// Format a string date value (parse then format).
@@ -66,13 +66,18 @@ final class DateFormattingService {
     /// with no offset is naive and parses in the reader's own zone, so this is the same zone it
     /// always used.
     ///
+    /// The offset itself is printed with it, because a wall clock alone does not name an instant.
+    /// It is the literal text the value arrived with, off the same layout the write-back reads. A
+    /// pattern token cannot serve: it prints the formatter's own zone, which for a value carrying
+    /// no offset is the reader's, so a `DATETIME` would gain an offset the database never held.
+    ///
     /// The cache key needs no zone: the zone is read off the value, so the string determines it.
     /// - Parameter dateString: Date string from database (ISO 8601, MySQL timestamp, etc.)
     /// - Parameter columnType: Column type, used to pick date-only / time-only / datetime variant
     /// - Returns: Formatted date string, or nil if unparseable
     func format(dateString: String, columnType: ColumnType? = nil) -> String? {
-        let targetFormatter = formatter(for: columnType)
-        let cacheKey = "\(formatBucket(for: columnType))|\(dateString)" as NSString
+        let components = temporalComponents(for: columnType)
+        let cacheKey = "\(components.rawValue)|\(dateString)" as NSString
         if let cached = formatCache.object(forKey: cacheKey) {
             return cached.length == 0 ? nil : cached as String
         }
@@ -81,28 +86,28 @@ final class DateFormattingService {
             formatCache.setObject("" as NSString, forKey: cacheKey)
             return nil
         }
+        let targetFormatter = formatter(for: components)
         targetFormatter.timeZone = parsed.timeZone
-        let result = targetFormatter.string(from: parsed.date)
+        var result = targetFormatter.string(from: parsed.date)
+        if currentFormat.rendersTime(for: components), let suffix = parsed.layout.timeZoneSuffix {
+            result += suffix
+        }
         formatCache.setObject(result as NSString, forKey: cacheKey)
         return result
     }
 
-    private func formatter(for columnType: ColumnType?) -> DateFormatter {
-        switch columnType {
-        case .date:
-            return dateOnlyFormatter
-        case .timestamp, .datetime:
-            return columnType?.isTimeOnly == true ? timeOnlyFormatter : formatter
-        default:
-            return formatter
-        }
+    /// A column with no type at all is read as a full timestamp, which is what the grid's own
+    /// fallback did before the editor and the formatter shared this vocabulary.
+    private func temporalComponents(for columnType: ColumnType?) -> TemporalComponents {
+        guard let columnType else { return .dateAndTime }
+        return DateEditingService.components(for: columnType)
     }
 
-    private func formatBucket(for columnType: ColumnType?) -> String {
-        switch columnType {
-        case .date: return "d"
-        case .timestamp, .datetime: return columnType?.isTimeOnly == true ? "t" : "dt"
-        default: return "dt"
+    private func formatter(for components: TemporalComponents) -> DateFormatter {
+        switch components {
+        case .dateOnly: return dateOnlyFormatter
+        case .timeOnly: return timeOnlyFormatter
+        case .dateAndTime: return dateTimeFormatter
         }
     }
 
@@ -113,9 +118,12 @@ final class DateFormattingService {
     /// Japanese calendar and reformats the very value the grid round-trips back to SQL.
     private static let fixedPatternLocale = Locale(identifier: "en_US_POSIX")
 
-    private static func createFormatter(format: String) -> DateFormatter {
+    private static func createFormatter(
+        for format: DateFormatOption,
+        components: TemporalComponents
+    ) -> DateFormatter {
         let formatter = DateFormatter()
-        formatter.dateFormat = format
+        formatter.dateFormat = format.formatString(for: components)
         formatter.locale = fixedPatternLocale
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.timeZone = TimeZone.current
