@@ -25,7 +25,7 @@ struct ConnectionWindowPaneResolverTests {
     ]
 
     private static let everyPane: [ConnectionWindowPane] =
-        [.content, .preparing, .connecting, .empty] + everyUnavailableReason.map { .unavailable($0) }
+        [.content, .connecting, .empty] + everyUnavailableReason.map { .unavailable($0) }
 
     @Test("A failed connection shows its own pane, never a spinner and never a blank window")
     func failureResolvesToUnavailablePane() {
@@ -40,50 +40,19 @@ struct ConnectionWindowPaneResolverTests {
         #expect(pane != .empty)
     }
 
-    @Test("A wait the user can see costs the chrome; one they cannot does not")
-    func chromeHiddenForEveryNonContentPaneExceptPreparing() {
-        #expect(!ConnectionWindowPaneResolver.hidesChrome(for: .content))
-        #expect(
-            !ConnectionWindowPaneResolver.hidesChrome(for: .preparing),
-            "collapsing for a 40ms connect only to put it back is the flash the pane exists to stop"
-        )
-        #expect(ConnectionWindowPaneResolver.hidesChrome(for: .connecting))
-        #expect(ConnectionWindowPaneResolver.hidesChrome(for: .empty))
+    /// The pane used to decide whether the window had a sidebar and an inspector at all, which is
+    /// what made a connect slower than half a second rebuild the window twice. It answers for the
+    /// detail pane's content and for nothing else now; the only thing left reading it is the strip,
+    /// through this one property.
+    @Test("Only content counts as content")
+    func onlyContentHasContent() {
+        #expect(ConnectionWindowPane.content.hasContent)
+        #expect(!ConnectionWindowPane.connecting.hasContent)
+        #expect(!ConnectionWindowPane.empty.hasContent)
 
-        let reasons: [ConnectionUnavailableReason] = [
-            .notConnected,
-            .cancelled,
-            .disconnected(nil),
-            .failed(Self.failure),
-            .pluginMissing(Self.failure)
-        ]
-        for reason in reasons {
-            #expect(ConnectionWindowPaneResolver.hidesChrome(for: .unavailable(reason)))
+        for reason in Self.everyUnavailableReason {
+            #expect(!ConnectionWindowPane.unavailable(reason).hasContent)
         }
-    }
-
-    @Test("A window hosting a rail keeps it when its own connection has nothing to show")
-    func railSurvivesEveryNonContentPane() {
-        let reasons: [ConnectionUnavailableReason] = [
-            .notConnected,
-            .cancelled,
-            .disconnected(nil),
-            .disconnectedByUser,
-            .failed(Self.failure),
-            .pluginMissing(Self.failure)
-        ]
-        let panes: [ConnectionWindowPane] = [.connecting, .empty] + reasons.map { .unavailable($0) }
-
-        for pane in panes {
-            #expect(ConnectionWindowPaneResolver.sidebarChromeMode(for: pane, hasRail: true) == .railOnly)
-            #expect(ConnectionWindowPaneResolver.sidebarChromeMode(for: pane, hasRail: false) == .hidden)
-        }
-    }
-
-    @Test("Content reveals the whole sidebar whether or not a rail is in it")
-    func contentAlwaysRevealsTheSidebar() {
-        #expect(ConnectionWindowPaneResolver.sidebarChromeMode(for: .content, hasRail: true) == .revealed)
-        #expect(ConnectionWindowPaneResolver.sidebarChromeMode(for: .content, hasRail: false) == .revealed)
     }
 
     @Test("A lone workspace never earns a strip, whatever its pane is doing")
@@ -166,146 +135,97 @@ struct ConnectionWindowPaneResolverTests {
         }
     }
 
-    @Test("Only the revealed sidebar carries an object browser")
-    func objectBrowserBelongsToTheRevealedModeAlone() {
-        #expect(SidebarChromeMode.revealed.showsObjectBrowser)
-        #expect(!SidebarChromeMode.railOnly.showsObjectBrowser)
-        #expect(!SidebarChromeMode.hidden.showsObjectBrowser)
-    }
+    // MARK: - Dialling
 
-    // MARK: - The grace
-
-    @Test("A connect too young to report shows nothing rather than a card")
-    func connectingInsideTheGraceIsPreparing() {
-        let pane = ConnectionWindowPaneResolver.pane(
+    /// There is no timer in here any more. A connect reports itself from the moment it starts, and
+    /// the wait that decides whether a card is ever drawn lives in the view, where it changes what
+    /// is revealed rather than what the window is built from.
+    @Test("A connect resolves to its own pane from the first frame")
+    func connectingResolvesImmediately() {
+        #expect(ConnectionWindowPaneResolver.pane(
             phase: .connecting,
             hasConnection: true,
-            hasRenderableSession: false,
-            hasOutlastedGrace: false
-        )
-
-        #expect(pane == .preparing)
-    }
-
-    @Test("A connect that outlasts the grace gets its card back, Cancel and all")
-    func connectingPastTheGraceIsUnchanged() {
-        let pane = ConnectionWindowPaneResolver.pane(
-            phase: .connecting,
-            hasConnection: true,
-            hasRenderableSession: false,
-            hasOutlastedGrace: true
-        )
-
-        #expect(pane == .connecting)
+            hasRenderableSession: false
+        ) == .connecting)
     }
 
     /// `.idle` answers for a window that has finished dialling and for one that has not begun, and
-    /// only the caller knows which. Reporting the second as "not connected" is what put a pane on
-    /// screen for 38ms before the connecting one it was replaced by.
+    /// only the caller knows which. `awaitsAutoConnect` is that answer, known when the workspace is
+    /// built, so the window says it is coming up instead of reporting a failure that has not
+    /// happened and then correcting itself half a second later.
     @Test("A window about to dial is not a window that failed to")
-    func idleAwaitingAutoConnectIsPreparing() {
-        let pane = ConnectionWindowPaneResolver.pane(
+    func idleAwaitingAutoConnectIsConnecting() {
+        #expect(ConnectionWindowPaneResolver.pane(
             phase: .idle,
             hasConnection: true,
             hasRenderableSession: false,
-            awaitsAutoConnect: true,
-            hasOutlastedGrace: false
-        )
-
-        #expect(pane == .preparing)
-    }
-
-    /// The exit from `.preparing`. `startActivationConnectIfNeeded` returns without dialling when
-    /// the phase disallows it or the connection record has gone, and without this the window would
-    /// sit blank with no route out.
-    @Test("A dial that never starts falls back to the not-connected pane once the grace expires")
-    func idleThatNeverDialledResolvesOnceTheGraceExpires() {
-        let pane = ConnectionWindowPaneResolver.pane(
-            phase: .idle,
-            hasConnection: true,
-            hasRenderableSession: false,
-            awaitsAutoConnect: true,
-            hasOutlastedGrace: true
-        )
-
-        #expect(pane == .unavailable(.notConnected))
+            awaitsAutoConnect: true
+        ) == .connecting)
     }
 
     @Test("A window the user has to connect by hand says so at once")
-    func idleWithoutAutoConnectNeverPrepares() {
-        for hasOutlastedGrace in [false, true] {
-            let pane = ConnectionWindowPaneResolver.pane(
-                phase: .idle,
-                hasConnection: true,
-                hasRenderableSession: false,
-                awaitsAutoConnect: false,
-                hasOutlastedGrace: hasOutlastedGrace
-            )
-
-            #expect(pane == .unavailable(.notConnected))
-        }
+    func idleWithoutAutoConnectOffersToConnect() {
+        #expect(ConnectionWindowPaneResolver.pane(
+            phase: .idle,
+            hasConnection: true,
+            hasRenderableSession: false,
+            awaitsAutoConnect: false
+        ) == .unavailable(.notConnected))
     }
 
-    /// The grace may not delay a failure. A server that refuses in 20ms is an answer, not a wait.
-    @Test("The grace never holds back a settled outcome")
-    func settledPhasesIgnoreTheGrace() {
-        for hasOutlastedGrace in [false, true] {
-            #expect(ConnectionWindowPaneResolver.pane(
-                phase: .unavailable(.failed(Self.failure)),
-                hasConnection: true,
-                hasRenderableSession: false,
-                awaitsAutoConnect: true,
-                hasOutlastedGrace: hasOutlastedGrace
-            ) == .unavailable(.failed(Self.failure)))
-
-            #expect(ConnectionWindowPaneResolver.pane(
-                phase: .connected,
-                hasConnection: true,
-                hasRenderableSession: true,
-                awaitsAutoConnect: true,
-                hasOutlastedGrace: hasOutlastedGrace
-            ) == .content)
-
-            #expect(ConnectionWindowPaneResolver.pane(
-                phase: .closing,
-                hasConnection: true,
-                hasRenderableSession: true,
-                awaitsAutoConnect: true,
-                hasOutlastedGrace: hasOutlastedGrace
-            ) == .empty)
-        }
-    }
-
-    @Test("The timer runs over exactly the phases the grace can answer differently")
-    func graceIsArmedForDiallingPhasesAlone() {
-        #expect(ConnectionWindowPaneResolver.awaitsProgressGrace(phase: .connecting, awaitsAutoConnect: false))
-        #expect(ConnectionWindowPaneResolver.awaitsProgressGrace(phase: .idle, awaitsAutoConnect: true))
-        #expect(!ConnectionWindowPaneResolver.awaitsProgressGrace(phase: .idle, awaitsAutoConnect: false))
-        #expect(!ConnectionWindowPaneResolver.awaitsProgressGrace(phase: .connected, awaitsAutoConnect: true))
-        #expect(!ConnectionWindowPaneResolver.awaitsProgressGrace(phase: .closing, awaitsAutoConnect: true))
-        #expect(!ConnectionWindowPaneResolver.awaitsProgressGrace(
-            phase: .unavailable(.failed(Self.failure)),
+    /// A session that is already up outranks the intent to dial, so a window adopting one never
+    /// shows a connecting card over content it already has.
+    @Test("A renderable session outranks the intent to dial")
+    func renderableSessionWinsOverAutoConnect() {
+        #expect(ConnectionWindowPaneResolver.pane(
+            phase: .idle,
+            hasConnection: true,
+            hasRenderableSession: true,
             awaitsAutoConnect: true
-        ))
+        ) == .content)
     }
 
-    /// A window with no connection record has nothing to prepare for, so the grace cannot turn an
-    /// empty window into one that looks like it is working.
-    @Test("Preparing needs a connection to be preparing for")
-    func noConnectionStaysEmptyThroughTheGrace() {
+    /// A window with no connection record has nothing to dial, so the intent cannot turn an empty
+    /// window into one that looks like it is working.
+    @Test("Connecting needs a connection to be connecting to")
+    func noConnectionStaysEmpty() {
         #expect(ConnectionWindowPaneResolver.pane(
             phase: .connecting,
             hasConnection: false,
-            hasRenderableSession: false,
-            hasOutlastedGrace: false
+            hasRenderableSession: false
         ) == .empty)
 
         #expect(ConnectionWindowPaneResolver.pane(
             phase: .idle,
             hasConnection: false,
             hasRenderableSession: false,
-            awaitsAutoConnect: true,
-            hasOutlastedGrace: false
+            awaitsAutoConnect: true
+        ) == .empty)
+    }
+
+    /// A server that refuses in 20ms is an answer, not a wait, and the intent to dial cannot hold
+    /// a settled phase back.
+    @Test("A settled phase ignores the intent to dial")
+    func settledPhasesIgnoreTheIntentToDial() {
+        #expect(ConnectionWindowPaneResolver.pane(
+            phase: .unavailable(.failed(Self.failure)),
+            hasConnection: true,
+            hasRenderableSession: false,
+            awaitsAutoConnect: true
+        ) == .unavailable(.failed(Self.failure)))
+
+        #expect(ConnectionWindowPaneResolver.pane(
+            phase: .connected,
+            hasConnection: true,
+            hasRenderableSession: true,
+            awaitsAutoConnect: true
+        ) == .content)
+
+        #expect(ConnectionWindowPaneResolver.pane(
+            phase: .closing,
+            hasConnection: true,
+            hasRenderableSession: true,
+            awaitsAutoConnect: true
         ) == .empty)
     }
 
@@ -391,10 +311,11 @@ struct ConnectionWindowPaneResolverTests {
         }
     }
 
+    /// `.idle` is left out on purpose: it is the one phase that can resolve to a card, and only
+    /// for a window whose intent to dial is already recorded. Its own rules are above.
     @Test("No combination of inputs shows a spinner for a phase that is not connecting")
     func spinnerOnlyForConnecting() {
         let phases: [ConnectionWindowPhase] = [
-            .idle,
             .connected,
             .closing,
             .unavailable(.cancelled),
@@ -406,13 +327,16 @@ struct ConnectionWindowPaneResolverTests {
         for phase in phases {
             for hasConnection in [true, false] {
                 for hasRenderableSession in [true, false] {
-                    let pane = ConnectionWindowPaneResolver.pane(
-                        phase: phase,
-                        hasConnection: hasConnection,
-                        hasRenderableSession: hasRenderableSession
-                    )
+                    for awaitsAutoConnect in [true, false] {
+                        let pane = ConnectionWindowPaneResolver.pane(
+                            phase: phase,
+                            hasConnection: hasConnection,
+                            hasRenderableSession: hasRenderableSession,
+                            awaitsAutoConnect: awaitsAutoConnect
+                        )
 
-                    #expect(pane != .connecting, "\(phase) must never resolve to a spinner")
+                        #expect(pane != .connecting, "\(phase) must never resolve to a spinner")
+                    }
                 }
             }
         }

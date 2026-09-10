@@ -17,7 +17,7 @@ The tab is app-wide, so these values apply to every connection you open; filters
 | Setting | Default | Notes |
 |---------|---------|-------|
 | Row height | Normal | Compact, Normal, Comfortable, Spacious |
-| Date format | ISO 8601 | ISO 8601, ISO Date, US Long, US Short, EU Long, EU Short |
+| Date format | ISO 8601 | ISO 8601, ISO Date, US Long, US Short, EU Long, EU Short. A UTC offset stored with the value is printed wherever the format renders a time, as the server wrote it: `2024-12-31 23:59:59+07`. A value stored without one, such as a MySQL `DATETIME`, never gains one |
 | NULL display | `NULL` | Text shown for NULL cells, up to 20 characters |
 | Show alternate row backgrounds | On | |
 | Show row numbers | On | |

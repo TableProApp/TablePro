@@ -33,6 +33,7 @@ final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let isDownloadable = false
     static let pathFieldRole: PathFieldRole = .filePath
     static let connectionMode: ConnectionMode = .fileBased
+    static let supportsHealthMonitor = false
     static let urlSchemes: [String] = ["sqlite"]
     static let fileExtensions: [String] = ["db", "db3", "s3db", "sl3", "sqlite", "sqlite3", "sqlitedb"]
     static let brandColorHex = "#003B57"

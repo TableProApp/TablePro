@@ -22,6 +22,23 @@ internal enum SidebarObjectListPresentation: Equatable {
     case empty
     case list
 
+    /// The schema tree draws its own empty and no-match states, so only the load itself is
+    /// resolved for it. Reaching for the state enum directly instead is what left the tree with a
+    /// spinner on no gate at all, flashing it on every engine that groups by schema while the two
+    /// flat shapes beside it held theirs back.
+    internal static func resolveDeferringEmptyStates(
+        state: SchemaState,
+        hasOutlastedGrace: Bool = true
+    ) -> SidebarObjectListPresentation {
+        resolve(
+            state: state,
+            hasActiveFilter: false,
+            hasAnyMatch: true,
+            hasSideObjects: true,
+            hasOutlastedGrace: hasOutlastedGrace
+        )
+    }
+
     /// `hasSideObjects` is whether any non-table kind returned rows: routines, triggers, types.
     /// A database with no tables but a stored procedure is a list, not an empty state.
     internal static func resolve(

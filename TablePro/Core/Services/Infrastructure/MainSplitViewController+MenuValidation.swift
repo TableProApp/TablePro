@@ -57,9 +57,6 @@ struct MenuValidationContext: Equatable {
     var canNavigateForward = false
     var canSaveAsFavorite = false
     var canSwitchSidebarLayout = false
-    /// False while the sidebar is collapsed or narrowed to the workspace rail, where there is no
-    /// object browser for either tab to select.
-    var showsObjectBrowser = false
     var canToggleWorkspaceRail = false
     /// Whether the connection's driver is holding an operating-system resource it can hand back
     /// without ending the session. Only the embedded engines that lock their database file answer
@@ -267,7 +264,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(useFlatSidebarLayout(_:)), #selector(useTreeSidebarLayout(_:)):
             return context.canSwitchSidebarLayout
         case #selector(showTablesSidebarTab(_:)), #selector(showFavoritesSidebarTab(_:)):
-            return context.isConnected && context.showsObjectBrowser
+            return context.isConnected
         case #selector(toggleWorkspaceRail(_:)),
              #selector(showPreviousWorkspace(_:)),
              #selector(showNextWorkspace(_:)):
@@ -285,7 +282,6 @@ extension MainSplitViewController: NSMenuItemValidation {
         guard let actions = commandActions else {
             return MenuValidationContext(
                 hasSelectedWorkspace: workspaces.selectedConnectionId != nil,
-                showsObjectBrowser: sidebarChromeMode.showsObjectBrowser,
                 canToggleWorkspaceRail: canToggleWorkspaceRail
             )
         }
@@ -318,7 +314,6 @@ extension MainSplitViewController: NSMenuItemValidation {
             canNavigateForward: actions.canNavigateForward,
             canSaveAsFavorite: actions.canSaveAsFavorite,
             canSwitchSidebarLayout: actions.canSwitchSidebarLayout,
-            showsObjectBrowser: sidebarChromeMode.showsObjectBrowser,
             canToggleWorkspaceRail: canToggleWorkspaceRail,
             canReleaseFileLock: canReleaseFileLock,
             canShowTableStructure: actions.canShowTableStructure,
@@ -349,13 +344,16 @@ extension MainSplitViewController: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         applyDynamicTitle(to: menuItem)
         guard let action = menuItem.action else { return false }
-        if action == #selector(toggleSidebar(_:)) || action == #selector(toggleInspector(_:)) {
-            return currentPane == .content
-        }
+        /// AppKit asks this method for the View menu and `validateUserInterfaceItem` for everything
+        /// else, so a rule that lives in only one of them holds for only half the routes to the
+        /// command. The sidebar is the window's and stands in every phase; the two trailing
+        /// surfaces need a session to open and none to close.
+        if action == #selector(toggleSidebar(_:)) { return true }
+        if action == #selector(toggleInspector(_:)) { return canToggleTrailingPane }
         /// The assistant is the one surface a setting can take away, so its command goes with it
         /// rather than staying enabled over a pane that would refuse to open.
         if action == #selector(toggleAssistant(_:)) {
-            return currentPane == .content && AppSettingsManager.shared.ai.enabled
+            return isAssistantVisible || (currentPane == .content && AppSettingsManager.shared.ai.enabled)
         }
         if action == #selector(setResultView(_:)) { return canShowResultView(menuItem) }
         if action == #selector(requestDisconnect) { return canDisconnect }

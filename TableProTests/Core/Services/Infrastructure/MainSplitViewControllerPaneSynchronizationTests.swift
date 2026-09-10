@@ -32,14 +32,11 @@ struct MainSplitViewControllerPaneSynchronizationTests {
     }
 
     @Test("A connect that fails in the background renders the unavailable pane")
-    func backgroundConnectFailureRendersUnavailablePane() async throws {
+    func backgroundConnectFailureRendersUnavailablePane() throws {
         let harness = try Harness()
         defer { harness.tearDown() }
 
         harness.controller.transition(to: .connecting, for: harness.background.connectionId)
-        #expect(harness.background.panes.renderedKey?.pane == .preparing)
-
-        await harness.revealConnectingProgress(of: harness.background)
         #expect(harness.background.panes.renderedKey?.pane == .connecting)
 
         let failure = ConnectionUnavailableReason.failed(ConnectionFailureInfo(message: "refused"))
@@ -66,7 +63,7 @@ struct MainSplitViewControllerPaneSynchronizationTests {
     }
 
     @Test("A reconnect in the background renders connecting, returns to content, and adopts the new driver")
-    func backgroundReconnectRendersConnectingThenContent() async throws {
+    func backgroundReconnectRendersConnectingThenContent() throws {
         let harness = try Harness()
         defer { harness.tearDown() }
 
@@ -78,9 +75,6 @@ struct MainSplitViewControllerPaneSynchronizationTests {
         harness.injectSession(status: .connecting, driver: false)
         harness.controller.refreshFromActiveSessions()
         #expect(harness.background.phase == .connecting)
-        #expect(harness.background.panes.renderedKey?.pane == .preparing)
-
-        await harness.revealConnectingProgress(of: harness.background)
         #expect(harness.background.panes.renderedKey?.pane == .connecting)
 
         let replacement = harness.injectSession(status: .connected, driver: true)
@@ -175,20 +169,6 @@ struct MainSplitViewControllerPaneSynchronizationTests {
             session.status = status
             DatabaseManager.shared.injectSession(session, for: backgroundConnection.id)
             return mock
-        }
-
-        /// A connect younger than `LoadingRevealPolicy.grace` resolves to `.preparing`, so a test
-        /// that asks what a dialling window reports has to say which side of the grace it means.
-        /// This waits out the timer the controller arms, which is what turns `.preparing` into
-        /// `.connecting` and repaints the panes.
-        /// The wait suspends rather than spinning a run loop, because the reveal runs on the main
-        /// actor and a synchronous test holds that actor for its whole body: no amount of run loop
-        /// would let the timer's continuation in.
-        func revealConnectingProgress(of workspace: ConnectionWorkspace) async {
-            let deadline = Date(timeIntervalSinceNow: 5)
-            while !workspace.hasOutlastedConnectGrace, Date() < deadline {
-                try? await Task.sleep(for: .milliseconds(20))
-            }
         }
 
         /// SwiftUI mounts a pane on the next layout pass, so a test that asks whether it mounted has

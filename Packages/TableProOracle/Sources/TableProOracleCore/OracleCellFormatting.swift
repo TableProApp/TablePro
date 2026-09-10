@@ -5,6 +5,11 @@ public enum OracleCellFormatting {
     public static let maxHexBytes = 4_096
 
     public enum TimestampStyle {
+        /// Oracle's plain `TIMESTAMP` holds a wall clock and no zone, so the text carries none
+        /// either. It used to be stamped `Z`, which claimed a zone the column does not have; the
+        /// grid dropped the suffix on the way to the cell, so the claim was invisible until the
+        /// grid started printing the offset a value arrives with. (#2702)
+        case naive
         case utc
         case local
         case zoned
@@ -15,6 +20,15 @@ public enum OracleCellFormatting {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    private static let naiveFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS"
         return formatter
     }()
 
@@ -46,6 +60,8 @@ public enum OracleCellFormatting {
 
     public static func formatTimestamp(_ date: Date, style: TimestampStyle) -> String {
         switch style {
+        case .naive:
+            return naiveFormatter.string(from: date)
         case .utc:
             return utcFormatter.withLockUnchecked { $0.string(from: date) }
         case .local:

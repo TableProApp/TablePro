@@ -25,6 +25,17 @@ internal final class SidebarContainerViewController: NSViewController {
         searchField.nextKeyView = controller?.view ?? listHost.view
     }
 
+    /// Whether the filter field answers, and what it currently holds. The object list below it
+    /// belongs to a connection; the field belongs to the window and stands whether or not one is
+    /// up, so both of these have to be true of a window with no session as well as one with.
+    internal var isFilterEnabled: Bool {
+        searchField.isEnabled
+    }
+
+    internal var filterText: String {
+        searchField.stringValue
+    }
+
     init() {
         super.init(nibName: nil, bundle: nil)
     }
@@ -38,7 +49,11 @@ internal final class SidebarContainerViewController: NSViewController {
         view = NSView()
 
         searchField.translatesAutoresizingMaskIntoConstraints = false
-        searchField.isHidden = true
+        /// Standing from the window's first frame, disabled until a connection is up. It used to
+        /// be hidden until then, so the sidebar was a bare column for the length of a connect and
+        /// the field arrived with the object list. The HIG's answer to a control that does not
+        /// apply yet is to dim it, not to take it away.
+        searchField.isEnabled = false
         searchField.placeholderString = String(localized: "Filter")
         searchField.controlSize = .regular
         searchField.sendsSearchStringImmediately = true
@@ -121,11 +136,16 @@ internal final class SidebarContainerViewController: NSViewController {
         filterPopover = nil
         self.sidebarState = state
         guard let state else {
-            searchField.isHidden = true
+            /// `syncFromState` is the only writer of these, and it cannot run without a state, so
+            /// the field would otherwise keep the filter text of the connection it just left.
+            searchField.isEnabled = false
+            searchField.stringValue = ""
+            searchField.placeholderString = String(localized: "Filter")
+            searchField.setAccessibilityLabel(String(localized: "Filter"))
             viewOptionsButton.isHidden = true
             return
         }
-        searchField.isHidden = false
+        searchField.isEnabled = true
         /// Set here rather than left to the observation task, which runs on the next main-actor
         /// turn: the button would show over the favorites filter for a turn on the way in, and
         /// linger for a turn on the way out, with the stack view re-laying the row each time.

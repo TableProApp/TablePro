@@ -23,6 +23,12 @@ internal final class ConnectionStageObserver {
 
     internal init(connectionId: UUID?) {
         guard let connectionId else { return }
+        /// Seeded before subscribing, because the subject has no replay: a step sent before this
+        /// existed is gone, and reporting the generic fallback over a tunnel handshake that had
+        /// already said what it was doing is worse than saying nothing. A window opening onto a
+        /// connect that is already running is the case that needs it; the ordinary one is covered
+        /// by the connecting surface now being mounted from the window's first frame.
+        stage = DatabaseManager.shared.currentStage(for: connectionId)
         cancellable = AppEvents.shared.connectionStageChanged
             .filter { $0.connectionId == connectionId }
             .receive(on: RunLoop.main)

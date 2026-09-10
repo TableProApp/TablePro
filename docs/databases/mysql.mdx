@@ -68,7 +68,9 @@ Table and column comments show in the UI: dimmed after a table's name in the sid
 
 ## Releasing an idle connection
 
-A connection holds a server thread and one slot against `max_connections` for as long as it is open, and MySQL's `wait_timeout` never reclaims it because the 30-second health check counts as activity. **Release the Server Connection After**, in **Options**, hands the connection back after that many minutes of no queries and takes a new one on the next query. `0`, the default, keeps it.
+A connection holds a server thread and one slot against `max_connections` for as long as it is open, and MySQL's `wait_timeout` rarely reclaims it because the connection check counts as activity on the server. **Release the Server Connection After**, in **Options**, hands the connection back after that many minutes of no queries and takes a new one on the next query. `0`, the default, keeps it.
+
+To stop the check itself, set **Check connections** to **Only when I use the connection** in Settings > General. That is the connection-wide setting; this one is per connection and closes the connection rather than quietening it.
 
 Reconnecting costs a TCP connect, the TLS handshake and authentication: measured at 2ms against a server on the same machine and 800ms to 1.9s across the internet. That cost lands on the first query after an idle period, so leave this at `0` for a remote server unless the slot matters more than the wait.
 

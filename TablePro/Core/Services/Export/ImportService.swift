@@ -62,7 +62,13 @@ final class ImportService {
             throw PluginImportError.importFailed("Import format '\(formatId)' not found")
         }
 
-        guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
+        /// An import is often the first thing done after a long idle spell, and it writes. With
+        /// scheduled checks turned down or off nothing else would have noticed the socket had gone,
+        /// so it is checked here rather than discovered partway through a batch of inserts.
+        await DatabaseManager.shared.verifyBeforeUse(connection.id)
+        guard DatabaseManager.shared.isUsable(connection.id),
+              let driver = DatabaseManager.shared.driver(for: connection.id)
+        else {
             throw DatabaseError.notConnected
         }
 

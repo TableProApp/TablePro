@@ -14,7 +14,9 @@ extension DatabaseManager {
     ) async throws {
         /// An installed driver is only a reason to skip while it still answers. A reconnect that
         /// gave up leaves one behind, and returning here made Reconnect a button that did nothing
-        /// on the one connection that needed it.
+        /// on the one connection that needed it. A driver nobody has heard from in a while is the
+        /// same problem one step earlier, which is what the check answers.
+        await verifyBeforeUse(connection.id)
         if let session = activeSessions[connection.id], session.driver != nil, session.liveness == .live {
             return
         }
@@ -29,10 +31,12 @@ extension DatabaseManager {
 
     func invalidateConnectionAttempt(_ connectionId: UUID) {
         connectionAttempts.invalidate(for: connectionId)
+        clearConnectionStage(for: connectionId)
     }
 
     func cancelEnsureConnected(_ connectionId: UUID) async {
         connectionAttempts.invalidate(for: connectionId)
+        clearConnectionStage(for: connectionId)
         await ensureConnectedDedup.cancel(key: connectionId)
         if let session = activeSessions[connectionId], session.driver == nil {
             if let tunnelManager = activeTunnelManager(for: session.connection) {

@@ -16,6 +16,9 @@ final class AppSettingsManager {
             if oldValue.showWorkspaceRail != general.showWorkspaceRail {
                 appEvents.workspaceRailVisibilityChanged.send(())
             }
+            if oldValue.connectionHealthCheck != general.connectionHealthCheck {
+                appEvents.connectionHealthCheckChanged.send(())
+            }
             syncTracker.markDirty(.settings, id: AppSettingsCategory.general)
         }
     }

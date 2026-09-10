@@ -116,6 +116,10 @@ internal actor DatabaseAccessBridge {
         if let pending {
             try await DatabaseManager.shared.ensureConnected(pending)
         }
+        /// An automation client is the likeliest thing to reach a connection nobody has touched
+        /// for hours, and it never passes through `ensureConnected` once a session exists, so this
+        /// is where the check has to be for MCP and for Cocoa Scripting.
+        await DatabaseManager.shared.verifyBeforeUse(connectionId)
         return try await MainActor.run {
             switch DatabaseManager.shared.connectionState(connectionId) {
             case .live(let driver, let session):

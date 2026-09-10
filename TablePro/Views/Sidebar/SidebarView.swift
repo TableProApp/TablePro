@@ -218,22 +218,34 @@ struct SidebarView: View {
 
     @ViewBuilder
     private var hierarchicalContent: some View {
-        switch schemaService.state(for: connectionId) {
-        case .idle, .loading:
-            loadingState
-        case .failed(let message):
-            errorState(message: message)
-        case .loaded:
-            SidebarTreeView(
-                connectionId: connectionId,
-                viewModel: viewModel,
-                windowState: windowState,
-                sidebarState: sidebarState,
-                pendingTruncates: $pendingTruncates,
-                pendingDeletes: $pendingDeletes,
-                coordinator: coordinator
-            )
+        let presentation = SidebarObjectListPresentation.resolveDeferringEmptyStates(
+            state: schemaService.state(for: connectionId),
+            hasOutlastedGrace: showsSchemaProgress
+        )
+        Group {
+            switch presentation {
+            case .preparing:
+                Color.clear
+            case .failed(let message):
+                errorState(message: message)
+            case .loading:
+                loadingState
+            case .noMatch, .empty, .list:
+                SidebarTreeView(
+                    connectionId: connectionId,
+                    viewModel: viewModel,
+                    windowState: windowState,
+                    sidebarState: sidebarState,
+                    pendingTruncates: $pendingTruncates,
+                    pendingDeletes: $pendingDeletes,
+                    coordinator: coordinator
+                )
+            }
         }
+        .loadingRevealGate(
+            isActive: presentation == .preparing || presentation == .loading,
+            isRevealed: $showsSchemaProgress
+        )
     }
 
     private var objectListPresentation: SidebarObjectListPresentation {
