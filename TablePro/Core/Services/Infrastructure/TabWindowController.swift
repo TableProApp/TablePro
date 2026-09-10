@@ -234,7 +234,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
             "[switch] windowDidBecomeKey seq=\(seq) controllerId=\(self.controllerId, privacy: .public) connId=\(coordinator.connectionId, privacy: .public)"
         )
         if let splitVC = window.contentViewController as? MainSplitViewController {
-            splitVC.installToolbar(coordinator: coordinator)
+            splitVC.pointToolbar(at: coordinator)
         }
         Self.lifecycleLogger.debug("[switch] windowDidBecomeKey seq=\(seq) installToolbar ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
         updateUserActivity(coordinator: coordinator)

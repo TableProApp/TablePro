@@ -5,45 +5,42 @@
 
 import Foundation
 
+/// What the window puts in its detail pane for one connection, and nothing else.
+///
+/// The window's own shape is deliberately not a function of this. It used to be: a `hidesChrome`
+/// arm collapsed the sidebar and the inspector for every pane with no session behind it, so a
+/// connect slower than half a second made the window rebuild itself twice, once on the way into
+/// the wait and once on the way out. Measured on a PostgreSQL connection reached through an SSH
+/// jump host: a blank window for 0.5s, a collapsed-chrome progress screen for 1.0s, then the
+/// chrome back with the toolbar's twelve items arriving at once. The HIG asks for the opposite of
+/// all three, and Console and Music both open on a full sidebar and toolbar with the content area
+/// empty.
 internal enum ConnectionWindowPane: Equatable {
-    /// A connect too young to be worth saying anything about. It draws nothing and, unlike every
-    /// other contentless pane, it leaves the window's chrome alone: a local file opens in about
-    /// 40ms, and collapsing the sidebar and inspector for that long only to put them back is a
-    /// layout cycle nobody asked for and a flash the HIG names outright.
-    case preparing
     case connecting
     case unavailable(ConnectionUnavailableReason)
     case content
     case empty
-}
 
-/// What the window's one sidebar item holds. `railOnly` is the state that exists because the
-/// workspace rail and the object browser share that item and answer to different owners.
-internal enum SidebarChromeMode: Equatable {
-    case revealed
-    case railOnly
-    case hidden
-
-    internal var showsObjectBrowser: Bool { self == .revealed }
+    /// Whether a session is behind this pane. The rail reads it, because a connection with nothing
+    /// to show is a connection whose object browser and tab strip name nothing, and the strip is
+    /// then the only thing on screen pointing at the others the window holds.
+    internal var hasContent: Bool {
+        self == .content
+    }
 }
 
 internal enum ConnectionWindowPaneResolver {
-    /// `hasOutlastedGrace` is false for the first `LoadingRevealPolicy.grace` of a connect and of
-    /// the moment before one starts. Neither is a state worth reporting: the first has not lasted
-    /// long enough to be worth a word, and the second is not "not connected", it is "about to
-    /// dial", a distinction `.idle` alone cannot draw because it answers for both. Measured on the
-    /// SQLite sample, reporting them built three pane hierarchies and ran a whole chrome collapse
-    /// and reveal inside the first 103ms of a window's life, for a 39ms connect.
-    ///
-    /// The grace expiring is the exit from `.preparing` in both directions, which is why `.idle`
-    /// reads it too. A connect that never starts, because the phase disallowed it or the record
-    /// went missing, would otherwise leave the window silently empty for good.
+    /// `awaitsAutoConnect` is the window's own intent to dial, known at the moment the workspace is
+    /// built, so it is answered as `.connecting` rather than as "not connected yet". The distinction
+    /// used to be drawn by a timer: `.idle` reported nothing for half a second and fell back to
+    /// `.notConnected` if a dial never started. A state reached by a timeout is a state nothing
+    /// transitions into, so `startActivationConnectIfNeeded` now settles every path that declines to
+    /// dial, and the resolver answers from facts alone.
     internal static func pane(
         phase: ConnectionWindowPhase,
         hasConnection: Bool,
         hasRenderableSession: Bool,
-        awaitsAutoConnect: Bool = false,
-        hasOutlastedGrace: Bool = true
+        awaitsAutoConnect: Bool = false
     ) -> ConnectionWindowPane {
         switch phase {
         case .closing:
@@ -53,63 +50,13 @@ internal enum ConnectionWindowPaneResolver {
         case .idle:
             if hasRenderableSession { return .content }
             guard hasConnection else { return .empty }
-            guard awaitsAutoConnect, !hasOutlastedGrace else { return .unavailable(.notConnected) }
-            return .preparing
+            return awaitsAutoConnect ? .connecting : .unavailable(.notConnected)
         case .connecting:
             guard hasConnection else { return .empty }
-            return hasOutlastedGrace ? .connecting : .preparing
+            return .connecting
         case .unavailable(let reason):
             return hasConnection ? .unavailable(reason) : .empty
         }
-    }
-
-    /// Whether this phase is one the grace timer runs over, so a caller knows when to arm it and
-    /// when to let it go. It is the exact set of phases `pane` answers differently for depending
-    /// on `showsProgress`, plus the pre-dial `.idle` that resolves to `.preparing` on its own.
-    internal static func awaitsProgressGrace(
-        phase: ConnectionWindowPhase,
-        awaitsAutoConnect: Bool
-    ) -> Bool {
-        switch phase {
-        case .connecting:
-            return true
-        case .idle:
-            return awaitsAutoConnect
-        case .connected, .closing, .unavailable:
-            return false
-        }
-    }
-
-    /// An object browser and an inspector with nothing to put in them are not chrome, they are two
-    /// empty columns that promise a session the window does not have yet.
-    ///
-    /// That argument holds for a wait the user can see and not for one they cannot. `.preparing`
-    /// is the sub-grace case and keeps the chrome, so the window that opens is the window that
-    /// stays: on the happy path nothing collapses, nothing is put back, and the panes are built
-    /// once. Collapsing for 40ms costs `splitView.autosaveName`, both split items and a
-    /// `recalculateKeyViewLoop()` in each direction, all of it to show an empty column briefly.
-    internal static func hidesChrome(for pane: ConnectionWindowPane) -> Bool {
-        switch pane {
-        case .content, .preparing:
-            return false
-        case .connecting, .unavailable, .empty:
-            return true
-        }
-    }
-
-    /// How much of the window's sidebar survives the pane it is standing next to.
-    ///
-    /// The rule above is right about the object browser and wrong about the workspace rail, which
-    /// lists every connection the window hosts and belongs to the window rather than to any one of
-    /// them. They share a split item because AppKit grants full-height sidebar layout to exactly one
-    /// leading sidebar, so collapsing for an empty object browser took the switcher with it and left
-    /// the window's other connections with no way in.
-    internal static func sidebarChromeMode(
-        for pane: ConnectionWindowPane,
-        hasRail: Bool
-    ) -> SidebarChromeMode {
-        guard hidesChrome(for: pane) else { return .revealed }
-        return hasRail ? .railOnly : .hidden
     }
 
     /// The tab strip's band is a list of tabs, so it appears only when there is a list worth
@@ -122,12 +69,9 @@ internal enum ConnectionWindowPaneResolver {
     /// Whether the connections strip stands, given the preference that normally governs it.
     ///
     /// The preference hides a switcher the user reaches other ways: the object browser sits beside
-    /// it, the tab strip runs under the toolbar, and Switch Connection is in the Database menu. A
-    /// pane with no content takes every one of those with it, and the strip is then the only thing
-    /// on screen pointing at the connections the window still has, so the preference stops applying
-    /// for as long as that lasts. `railOnly` preserves a strip that is already up; without this
-    /// nothing brings one back, and a user who had hidden it was left with a window whose every
-    /// route out was a menu command or a keystroke.
+    /// it and the tab strip runs under the toolbar. A pane with no content leaves both of those
+    /// empty, so the strip is the only thing on screen naming the connections the window still has,
+    /// and the preference stops applying for as long as that lasts.
     ///
     /// Closing is passed in rather than read off the pane. A window that is tearing down resolves
     /// to `empty`, but so does a workspace whose connection never resolved, and a `connected` one
@@ -141,6 +85,6 @@ internal enum ConnectionWindowPaneResolver {
         isClosing: Bool
     ) -> Bool {
         guard workspaceCount > 1, !isClosing else { return false }
-        return preferenceEnabled || hidesChrome(for: pane)
+        return preferenceEnabled || !pane.hasContent
     }
 }

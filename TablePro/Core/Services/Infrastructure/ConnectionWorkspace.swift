@@ -206,42 +206,8 @@ internal final class ConnectionWorkspace {
             phase: phase,
             hasConnection: connection != nil,
             hasRenderableSession: session != nil && trailingPaneState != nil && sessionState != nil,
-            awaitsAutoConnect: autoConnect,
-            hasOutlastedGrace: hasOutlastedConnectGrace
+            awaitsAutoConnect: autoConnect
         )
-    }
-
-    /// Whether this connection's dialling has lasted long enough to be worth reporting.
-    ///
-    /// It belongs to the workspace and not to the window, for the same reason `attemptToken` does:
-    /// a window hosts several connections and each dials on its own clock, so a window-wide flag
-    /// would let one connection's slow server put a progress screen over another's finished one.
-    internal private(set) var hasOutlastedConnectGrace = false
-
-    @ObservationIgnored private var progressGraceTask: Task<Void, Never>?
-
-    /// Starts, or leaves running, the wait that decides whether this connect ever says so.
-    ///
-    /// `onReveal` is how the timer reaches the renderer, because the workspace owns the state and
-    /// the controller owns the panes. Re-arming while a wait is already running is a no-op, so the
-    /// phase churn of a reconnect cannot keep pushing the reveal further out.
-    internal func armConnectingProgressGrace(onReveal: @escaping @MainActor () -> Void) {
-        guard !hasOutlastedConnectGrace, progressGraceTask == nil else { return }
-        progressGraceTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: LoadingRevealPolicy.grace)
-            guard !Task.isCancelled, let self, !self.isReleased else { return }
-            self.progressGraceTask = nil
-            self.hasOutlastedConnectGrace = true
-            onReveal()
-        }
-    }
-
-    /// Ends the wait and takes the reveal with it, so the next connect starts its own grace rather
-    /// than inheriting a flag the last one set.
-    internal func cancelConnectingProgressGrace() {
-        progressGraceTask?.cancel()
-        progressGraceTask = nil
-        hasOutlastedConnectGrace = false
     }
 
     /// Everything the panes are built from, compared against `panes.renderedKey` to decide whether
@@ -288,7 +254,6 @@ internal final class ConnectionWorkspace {
     /// coordinator this tears down, and a coordinator only leaves the app-wide registry on deinit.
     internal func teardown() {
         isReleased = true
-        cancelConnectingProgressGrace()
         browseCancellable = nil
         statusCancellable = nil
         tabsCancellable = nil

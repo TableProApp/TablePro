@@ -268,7 +268,7 @@ extension MainContentView {
         commandActions?.window = window
 
         if let splitVC = window.contentViewController as? MainSplitViewController {
-            splitVC.installToolbar(coordinator: coordinator)
+            splitVC.pointToolbar(at: coordinator)
         }
 
         ScreenshotEnvironment.pinWindowSize(window)

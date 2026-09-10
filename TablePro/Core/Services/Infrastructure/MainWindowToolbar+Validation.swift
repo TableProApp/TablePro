@@ -24,11 +24,6 @@ extension MainWindowToolbar: NSToolbarItemValidation {
         let supportsServerDashboard: Bool
         let canNavigateBack: Bool
         let canNavigateForward: Bool
-        /// Separate from `connected` because a connection that is still dialing counts as alive
-        /// while its sidebar is narrowed to the workspace rail, and a segment that toggles an
-        /// object browser the window is not showing has nothing to toggle. Defaulted, because a
-        /// context built for a connected pane is describing a window that has one.
-        var showsObjectBrowser = true
     }
 
     /// Listed exhaustively so a new state has to choose a side instead of inheriting "alive".
@@ -61,10 +56,8 @@ extension MainWindowToolbar: NSToolbarItemValidation {
             /// that sets it answers for as long as the session does. A window with no session has
             /// nothing to protect and nothing to write it to.
             return context.connected
-        case Self.refresh, Self.quickSwitcher, Self.newTab, Self.exportTables:
+        case Self.refresh, Self.quickSwitcher, Self.newTab, Self.exportTables, Self.sidebarToggle:
             return context.connected
-        case Self.sidebarToggle:
-            return context.connected && context.showsObjectBrowser
         case Self.addRow:
             return context.connected && context.canAddRow
         case Self.restorePreviousValues:
@@ -103,8 +96,7 @@ extension MainWindowToolbar: NSToolbarItemValidation {
             supportsImport: PluginManager.shared.supportsImport(for: state.databaseType),
             supportsServerDashboard: coordinator?.commandActions?.supportsServerDashboard ?? false,
             canNavigateBack: coordinator?.canNavigateBack ?? false,
-            canNavigateForward: coordinator?.canNavigateForward ?? false,
-            showsObjectBrowser: coordinator?.splitViewController?.sidebarChromeMode.showsObjectBrowser ?? false
+            canNavigateForward: coordinator?.canNavigateForward ?? false
         )
     }
 
@@ -112,6 +104,12 @@ extension MainWindowToolbar: NSToolbarItemValidation {
     /// item here needs the coordinator that presents it, and enabling one of those without a
     /// subject would leave a live-looking button that does nothing, so no subject still disables
     /// the rest of the toolbar.
+    ///
+    /// The sidebar item is not an exception, however window-owned the sidebar itself now is: it is
+    /// the Tables/Favorites segmented control, `sidebarSegmentChanged` reaches
+    /// `coordinator?.splitViewController`, and the tab it selects is per-connection state that a
+    /// window with no session has nowhere to write. Show/Hide Sidebar is the command that answers
+    /// in every phase, and it lives in the View menu and on the divider rather than here.
     static func isWindowScoped(_ itemIdentifier: NSToolbarItem.Identifier) -> Bool {
         itemIdentifier == Self.connection
     }

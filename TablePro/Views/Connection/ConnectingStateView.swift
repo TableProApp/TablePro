@@ -11,11 +11,18 @@ import TableProPluginKit
 /// that cannot be shown, a network error or an empty list, and every case it names is a state
 /// the operation has already settled into. UIKit ships a separate `loading()` configuration for
 /// work in flight and macOS ships no equivalent, so a connecting surface is assembled here.
+///
+/// Mounted from the moment the window opens, and holding its own card back until the connect
+/// outlasts `LoadingRevealPolicy.grace`. The window used to hold the whole view back instead,
+/// through a pane case that drew nothing, which cost the connect its first stages: the stage
+/// subject has no replay, and an observer that does not exist yet cannot hear one. Mounting early
+/// and revealing late is what puts the tunnel's own step on screen instead of the fallback.
 internal struct ConnectingStateView: View {
     internal let connection: DatabaseConnection
     internal let onCancel: () -> Void
 
     @State private var observer: ConnectionStageObserver
+    @State private var showsCard = false
 
     internal init(connection: DatabaseConnection, onCancel: @escaping () -> Void) {
         self.connection = connection
@@ -24,6 +31,30 @@ internal struct ConnectingStateView: View {
     }
 
     internal var body: some View {
+        Group {
+            if showsCard {
+                card
+            } else {
+                /// The pane draws nothing for the first `LoadingRevealPolicy.grace`, and draws it
+                /// as a full-size empty colour rather than as nothing at all. `LoadingReveal`
+                /// renders no content while it is held back, and measured in this position, as the
+                /// root of a pane's `rootView`, that leaves the hosting controller with no view to
+                /// attach a `frame` or a `task` to: the reveal never armed and the card never came.
+                Color.clear
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .loadingRevealGate(isActive: true, isRevealed: $showsCard)
+        /// Attached out here rather than to the card, so a step that lands before the card does is
+        /// still spoken. VoiceOver is told what is happening from the first stage; the card is held
+        /// back only because a picture nobody has time to read is worth less than a still window.
+        .onChange(of: observer.stage) { _, newStage in
+            guard let newStage else { return }
+            announce(newStage)
+        }
+    }
+
+    private var card: some View {
         VStack(spacing: 18) {
             ConnectionTypeIcon(type: connection.type, pulses: true)
                 .font(.system(size: 40))
@@ -73,10 +104,6 @@ internal struct ConnectingStateView: View {
         }
         .frame(maxWidth: 420)
         .multilineTextAlignment(.center)
-        .onChange(of: observer.stage) { _, newStage in
-            guard let newStage else { return }
-            announce(newStage)
-        }
     }
 
     private var stepLabel: String {

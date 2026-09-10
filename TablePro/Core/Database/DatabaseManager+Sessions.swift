@@ -52,7 +52,7 @@ extension DatabaseManager {
         let effectiveConnection: DatabaseConnection
         do {
             if !resolvedConnection.enabledTunnelKinds.isEmpty {
-                reportStage(.resolvingTunnel, for: connection.id)
+                reportStage(.resolvingTunnel, attempt: attempt, for: connection.id)
             }
             effectiveConnection = try await buildEffectiveConnection(
                 for: resolvedConnection,
@@ -62,7 +62,8 @@ extension DatabaseManager {
             finalizeConnectionFailure(
                 for: connection.id,
                 cancelled: isAttemptCancelled(attempt, for: connection.id),
-                error: error
+                error: error,
+                attempt: attempt
             )
             throw error
         }
@@ -71,13 +72,14 @@ extension DatabaseManager {
            !script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         {
             do {
-                reportStage(.runningPreConnectScript, for: connection.id)
+                reportStage(.runningPreConnectScript, attempt: attempt, for: connection.id)
                 try await PreConnectHookRunner.run(script: script)
             } catch {
                 finalizeConnectionFailure(
                     for: connection.id,
                     cancelled: isAttemptCancelled(attempt, for: connection.id),
-                    error: error
+                    error: error,
+                    attempt: attempt
                 )
                 throw error
             }
@@ -89,7 +91,7 @@ extension DatabaseManager {
                 passwordOverride = cached
             } else {
                 let isApiOnly = pluginManager.connectionMode(for: connection.type) == .apiOnly
-                reportStage(.awaitingCredentials, for: connection.id)
+                reportStage(.awaitingCredentials, attempt: attempt, for: connection.id)
                 guard let prompted = await PasswordPromptHelper.prompt(
                     connectionName: connection.name,
                     isAPIToken: isApiOnly,
@@ -97,7 +99,8 @@ extension DatabaseManager {
                 ) else {
                     finalizeConnectionFailure(
                         for: connection.id,
-                        cancelled: isAttemptCancelled(attempt, for: connection.id)
+                        cancelled: isAttemptCancelled(attempt, for: connection.id),
+                        attempt: attempt
                     )
                     throw CancellationError()
                 }
@@ -117,17 +120,17 @@ extension DatabaseManager {
             if !cancelled {
                 closeActiveTunnel(for: connection)
             }
-            finalizeConnectionFailure(for: connection.id, cancelled: cancelled, error: error)
+            finalizeConnectionFailure(for: connection.id, cancelled: cancelled, error: error, attempt: attempt)
             throw error
         }
 
         do {
-            reportStage(.openingConnection, for: connection.id)
-            try await driver.connectReporting(stage: stageReporter(for: connection.id))
+            reportStage(.openingConnection, attempt: attempt, for: connection.id)
+            try await driver.connectReporting(stage: stageReporter(for: connection.id, attempt: attempt))
             try Task.checkCancellation()
             try ensureAttemptIsCurrent(attempt, for: connection.id, driver: driver)
 
-            reportStage(.preparingSession, for: connection.id)
+            reportStage(.preparingSession, attempt: attempt, for: connection.id)
             await applyTimeoutAndStartupCommands(
                 on: driver,
                 startupCommands: resolvedConnection.startupCommands,
@@ -164,6 +167,8 @@ extension DatabaseManager {
                 setSession(session, for: connection.id)
             }
 
+            /// Before `finish`, so the clear is still the current attempt's to make.
+            clearConnectionStage(for: connection.id)
             connectionAttempts.finish(attempt, for: connection.id)
 
             MacAnalyticsProvider.shared.markConnectionSucceeded()
@@ -188,7 +193,12 @@ extension DatabaseManager {
                 closeActiveTunnel(for: connection)
             }
 
-            finalizeConnectionFailure(for: connection.id, cancelled: cancelled, error: reportedError)
+            finalizeConnectionFailure(
+                for: connection.id,
+                cancelled: cancelled,
+                error: reportedError,
+                attempt: attempt
+            )
             throw reportedError
         }
     }
@@ -219,7 +229,20 @@ extension DatabaseManager {
     /// started an attempt learns the outcome directly, so without this a connect kicked off from
     /// anywhere else leaves the window to infer "the connection was closed" from an empty slot
     /// while the real reason is thrown away.
-    internal func finalizeConnectionFailure(for connectionId: UUID, cancelled: Bool, error: Error? = nil) {
+    /// `attempt` is what keeps a late failure from clearing a newer attempt's step. A cancelled
+    /// connect blocked in a C call returns after the retry has already begun and reported its own
+    /// step, and a clear keyed on the connection alone would take that one away, leaving a window
+    /// that joins the retry seeding nothing. Omitting it means the caller owns no attempt, which
+    /// is the tunnel teardown path.
+    internal func finalizeConnectionFailure(
+        for connectionId: UUID,
+        cancelled: Bool,
+        error: Error? = nil,
+        attempt: Int? = nil
+    ) {
+        if attempt.map({ connectionAttempts.isCurrent($0, for: connectionId) }) ?? true {
+            clearConnectionStage(for: connectionId)
+        }
         guard !cancelled else { return }
         if let error, !ConnectionFailureClassifier.isUserCancelled(error) {
             recordDisconnectReason(ConnectionFailureClassifier.info(for: error), for: connectionId)
@@ -589,20 +612,35 @@ extension DatabaseManager {
         setSession(session, for: connection.id)
     }
 
-    internal func reportStage(_ stage: ConnectionStage, for connectionId: UUID) {
+    /// Records the step and announces it, refusing both to an attempt that has been superseded.
+    /// A driver blocked in a C call outlives the attempt that started it and reports its steps
+    /// late, and a late step written over a newer attempt's is what a joining window would seed
+    /// itself from.
+    internal func reportStage(_ stage: ConnectionStage, attempt: Int, for connectionId: UUID) {
+        guard connectionAttempts.isCurrent(attempt, for: connectionId) else { return }
+        connectionStages[connectionId] = stage
         AppEvents.shared.connectionStageChanged.send(
             ConnectionStageChange(connectionId: connectionId, stage: stage)
         )
     }
 
+    /// The step an in-flight connect last reported, or nil when none is running.
+    internal func currentStage(for connectionId: UUID) -> ConnectionStage? {
+        connectionStages[connectionId]
+    }
+
+    /// Ends the record with the attempt. A settled connect has no step, and leaving the last one
+    /// behind would seed the next window that opens on this connection with a stale one.
+    internal func clearConnectionStage(for connectionId: UUID) {
+        connectionStages.removeValue(forKey: connectionId)
+    }
+
     /// Handed to a driver, so it is called from whatever thread the handshake runs on and has
     /// to hop back before touching the main-actor event bus.
-    internal func stageReporter(for connectionId: UUID) -> ConnectionStageReporter {
+    internal func stageReporter(for connectionId: UUID, attempt: Int) -> ConnectionStageReporter {
         { stage in
             Task { @MainActor in
-                AppEvents.shared.connectionStageChanged.send(
-                    ConnectionStageChange(connectionId: connectionId, stage: stage)
-                )
+                DatabaseManager.shared.reportStage(stage, attempt: attempt, for: connectionId)
             }
         }
     }

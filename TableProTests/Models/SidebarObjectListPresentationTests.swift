@@ -101,4 +101,41 @@ struct SidebarObjectListPresentationTests {
         #expect(resolve(.loaded([]), hasOutlastedGrace: false) == .empty)
         #expect(resolve(.loaded([table("users")]), hasOutlastedGrace: false) == .list)
     }
+
+    // MARK: - The schema tree
+
+    /// The tree used to read the state enum directly and map it straight onto a spinner, on no
+    /// gate at all, so every engine that groups by schema flashed one while the two flat shapes
+    /// beside it held theirs back. Oracle, Snowflake, BigQuery, Trino and Dameng are the five.
+    @Test("The schema tree holds its spinner back on the same grace as the flat list")
+    func treeHonoursTheSameGrace() {
+        #expect(SidebarObjectListPresentation.resolveDeferringEmptyStates(
+            state: .idle,
+            hasOutlastedGrace: false
+        ) == .preparing)
+        #expect(SidebarObjectListPresentation.resolveDeferringEmptyStates(
+            state: .loading,
+            hasOutlastedGrace: false
+        ) == .preparing)
+        #expect(SidebarObjectListPresentation.resolveDeferringEmptyStates(state: .loading) == .loading)
+    }
+
+    /// The tree draws its own empty and no-match states, so a loaded read is a list to it whether
+    /// or not anything came back. Answering `.empty` here would put a second empty state over the
+    /// one the tree already has.
+    @Test("A loaded schema is always a list to the tree, empty or not")
+    func treeDefersItsOwnEmptyStates() {
+        #expect(SidebarObjectListPresentation.resolveDeferringEmptyStates(state: .loaded([])) == .list)
+        #expect(
+            SidebarObjectListPresentation.resolveDeferringEmptyStates(state: .loaded([table("users")])) == .list
+        )
+    }
+
+    @Test("A refused schema read reaches the tree at once")
+    func treeReportsFailureImmediately() {
+        #expect(SidebarObjectListPresentation.resolveDeferringEmptyStates(
+            state: .failed("boom"),
+            hasOutlastedGrace: false
+        ) == .failed("boom"))
+    }
 }

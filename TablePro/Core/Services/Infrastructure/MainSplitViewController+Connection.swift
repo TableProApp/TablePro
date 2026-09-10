@@ -24,11 +24,27 @@ internal extension MainSplitViewController {
         Logger(subsystem: "com.TablePro", category: "ConnectionWindow")
     }
 
+    /// Every path out of here settles the workspace, because a window that declines to dial and
+    /// says nothing is a window the resolver can only answer for with a timeout, and a state
+    /// reached by a timeout is a state nothing transitions into. That used to be the pane
+    /// resolver's job: it reported nothing for half a second and then fell back to
+    /// `.notConnected`, which is also what put a blank window on screen for the first half second
+    /// of every connect.
     func startActivationConnectIfNeeded() {
         guard autoConnect else { return }
         guard ConnectionWindowPhaseMachine.allowsActivationConnect(phase: phase) else { return }
-        guard let connection = payloadConnection else { return }
-        guard DatabaseManager.shared.activeSessions[connection.id]?.driver == nil else { return }
+        /// A workspace whose record has gone still names a connection through its session, so the
+        /// pane has something to draw and nothing to dial with.
+        guard let connection = payloadConnection else {
+            transition(to: .unavailable(.notConnected))
+            return
+        }
+        /// A session that is already up is not a dial to skip quietly: the phase still says the
+        /// window is coming up, and only a status pass moves it onto the session it already has.
+        guard DatabaseManager.shared.activeSessions[connection.id]?.driver == nil else {
+            refreshFromActiveSessions()
+            return
+        }
 
         /// Reopening a session at launch is the app's gesture, not the user's, so it never runs a
         /// saved script on its own. The window waits in its not-connected state instead, where

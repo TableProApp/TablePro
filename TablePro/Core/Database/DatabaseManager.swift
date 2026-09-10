@@ -91,6 +91,14 @@ final class DatabaseManager {
     /// before touching shared session state and discards its driver when it lost.
     @ObservationIgnored internal var connectionAttempts = ConnectionAttemptRegistry()
 
+    /// The step each in-flight connect last reported, so a window that joins one already running
+    /// can seed itself. `AppEvents.connectionStageChanged` is a `PassthroughSubject`, so it holds
+    /// nothing: an observer built after a step was sent could only report the generic fallback,
+    /// which is how a connection dialling through an SSH jump host announced itself as "Opening
+    /// the connection" for the whole of the tunnel handshake. Written only by the current attempt,
+    /// for the same reason every other shared write here is generation-checked.
+    @ObservationIgnored internal var connectionStages: [UUID: ConnectionStage] = [:]
+
     /// Orders operations that move the shared driver, so two windows cannot interleave
     /// their pins and each run against the other's database.
     @ObservationIgnored internal let sessionDriverGate = SessionDriverGate()

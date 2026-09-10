@@ -196,9 +196,14 @@ struct MainWindowToolbarValidationTests {
     ///  said Switch Connection stays enabled and the runtime disagreed: validation
     /// returned false before reaching that case whenever the connection had gone, which is the one
     /// state the command exists for. It answers off the window now, ahead of any session context.
+    /// The sidebar item stays out of it, however window-owned the sidebar itself is: it is the
+    /// Tables/Favorites segmented control, its action reaches `coordinator?.splitViewController`,
+    /// and the tab it selects is per-connection state. Marking it window-scoped would enable a
+    /// control whose clicks go nowhere.
     @Test("Switch Connection answers without a connection behind the toolbar")
     func connectionItemIsWindowScoped() {
         #expect(MainWindowToolbar.isWindowScoped(MainWindowToolbar.connection))
+        #expect(!MainWindowToolbar.isWindowScoped(MainWindowToolbar.sidebarToggle))
     }
 
     /// Everything else here acts on the connection that is showing, so no subject still disables
