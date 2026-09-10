@@ -34,6 +34,7 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     var fetchSchemaTablesCalls: [String] = []
     var applyQueryTimeoutValues: [Int] = []
     var cancelQueryCallCount = 0
+    var disconnectCallCount = 0
     var connectDelaySeconds: Double = 0
     var switchSchemaDelaySeconds: Double = 0
     var executeDelaySeconds: Double = 0
@@ -59,6 +60,7 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     }
 
     func disconnect() {
+        disconnectCallCount += 1
         hangContinuation?.resume()
         hangContinuation = nil
     }

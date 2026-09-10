@@ -151,6 +151,101 @@ private final class PoolBodyFlag: @unchecked Sendable {
     var value = false
 }
 
+@Suite("MetadataConnectionPool idle eviction", .serialized)
+@MainActor
+struct MetadataConnectionPoolIdleEvictionTests {
+    private func scope(_ connectionId: UUID, database: String) -> DatabaseScope {
+        DatabaseScope(connectionId: connectionId, database: database, schema: nil)
+    }
+
+    @Test("an entry nobody has used for the idle timeout is closed and dropped")
+    func sweepClosesIdleEntries() {
+        let connectionId = UUID()
+        let driver = MockDatabaseDriver()
+        let pool = MetadataConnectionPool.shared
+        defer { pool.closeAll(connectionId: connectionId) }
+
+        pool.injectEntry(driver, scope: scope(connectionId, database: "shop"))
+        pool.sweepIdleEntries(now: Date().addingTimeInterval(MetadataConnectionPool.idleTimeout + 1))
+
+        #expect(pool.pooledDriverCount(for: connectionId) == 0)
+        #expect(driver.disconnectCallCount == 1)
+    }
+
+    @Test("an entry used inside the idle timeout is left alone")
+    func sweepSparesRecentEntries() {
+        let connectionId = UUID()
+        let driver = MockDatabaseDriver()
+        let pool = MetadataConnectionPool.shared
+        defer { pool.closeAll(connectionId: connectionId) }
+
+        pool.injectEntry(driver, scope: scope(connectionId, database: "shop"))
+        pool.sweepIdleEntries(now: Date().addingTimeInterval(MetadataConnectionPool.idleTimeout - 1))
+
+        #expect(pool.pooledDriverCount(for: connectionId) == 1)
+        #expect(driver.disconnectCallCount == 0)
+    }
+
+    @Test("an entry with work on it survives the sweep however old it looks")
+    func sweepSparesEntriesWithWorkInFlight() {
+        let connectionId = UUID()
+        let driver = MockDatabaseDriver()
+        let pool = MetadataConnectionPool.shared
+        defer { pool.closeAll(connectionId: connectionId) }
+
+        pool.injectEntry(driver, scope: scope(connectionId, database: "shop"))
+        pool.markInFlight(scope: scope(connectionId, database: "shop"))
+        pool.sweepIdleEntries(now: Date().addingTimeInterval(MetadataConnectionPool.idleTimeout * 10))
+
+        #expect(pool.pooledDriverCount(for: connectionId) == 1)
+        #expect(driver.disconnectCallCount == 0)
+    }
+
+    @Test("only the idle entries go, not every entry the connection holds")
+    func sweepIsPerEntryNotPerConnection() {
+        let connectionId = UUID()
+        let stale = MockDatabaseDriver()
+        let fresh = MockDatabaseDriver()
+        let pool = MetadataConnectionPool.shared
+        defer { pool.closeAll(connectionId: connectionId) }
+
+        let now = Date()
+        pool.injectEntry(
+            stale,
+            scope: scope(connectionId, database: "shop"),
+            lastUsed: now.addingTimeInterval(-MetadataConnectionPool.idleTimeout - 1)
+        )
+        pool.injectEntry(fresh, scope: scope(connectionId, database: "reports"), lastUsed: now)
+
+        pool.sweepIdleEntries(now: now)
+
+        #expect(pool.pooledDriverCount(for: connectionId) == 1)
+        #expect(stale.disconnectCallCount == 1)
+        #expect(fresh.disconnectCallCount == 0)
+    }
+
+    @Test("a sweep that empties the pool stops the sweeper")
+    func sweepStopsWhenThePoolEmpties() {
+        let connectionId = UUID()
+        let pool = MetadataConnectionPool.shared
+        defer { pool.closeAll(connectionId: connectionId) }
+
+        pool.injectEntry(MockDatabaseDriver(), scope: scope(connectionId, database: "shop"))
+        pool.sweepIdleEntries(now: Date().addingTimeInterval(MetadataConnectionPool.idleTimeout + 1))
+
+        #expect(!pool.hasSweeper)
+    }
+
+    @Test("staleness is measured against the idle timeout, not the count cap")
+    func stalenessIsTimeBased() {
+        let used = Date()
+
+        #expect(!MetadataConnectionPool.isStale(used, now: used))
+        #expect(!MetadataConnectionPool.isStale(used, now: used.addingTimeInterval(MetadataConnectionPool.idleTimeout - 1)))
+        #expect(MetadataConnectionPool.isStale(used, now: used.addingTimeInterval(MetadataConnectionPool.idleTimeout)))
+    }
+}
+
 @Suite("MetadataConnectionPool connection plan")
 @MainActor
 struct MetadataConnectionPoolPlanTests {

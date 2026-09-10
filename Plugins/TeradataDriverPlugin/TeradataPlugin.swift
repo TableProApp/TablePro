@@ -51,6 +51,7 @@ final class TeradataPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let queryLanguageName = "SQL"
     static let supportsDatabaseSwitching = true
     static let supportsSchemaSwitching = false
+    static let supportsHealthMonitor = false
     static let requiresReconnectForDatabaseSwitch = false
     static let databaseGroupingStrategy: GroupingStrategy = .byDatabase
     static let containerEntityName = "Database"
