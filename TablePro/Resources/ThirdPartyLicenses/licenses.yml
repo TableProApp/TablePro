@@ -406,7 +406,8 @@
   notes: 'VERSION SET, deliberately divergent: the app pins 1.5.1, TableProOracle and TableProMobile pin
     1.7.1. LICENSE.txt is byte-identical (11359 bytes) at both tags and is PLAIN Apache-2.0 with no Runtime
     Library Exception. NOTICE.txt present at both tags and unchanged; its attribution must be reproduced
-    under section 4(d). Transitive via swift-certificates. Confirmed shipping: 6204 `$s9SwiftASN1` symbols.'
+    under section 4(d). Transitive via oracle-nio, through swift-crypto. Reaches users in the Oracle
+    plugin and the iOS app; the macOS app links none of it, confirmed by its link map.'
 - id: swift-async-algorithms
   name: swift-async-algorithms
   version: 1.1.5
@@ -433,23 +434,6 @@
   patched: false
   notes: '11751 bytes: Apache 2.0 plus the Runtime Library Exception section (verified by reading the
     file). No NOTICE.txt. Copyright from a source header.'
-- id: swift-certificates
-  name: swift-certificates
-  version: 1.19.0
-  spdx: Apache-2.0
-  copyrights:
-  - Copyright 2022 The SwiftCertificates Project
-  - Copyright (c) 2022 Apple Inc. and the SwiftCertificates project authors
-  homepageURL: https://github.com/apple/swift-certificates
-  licenseTextURL: https://github.com/apple/swift-certificates/blob/1.19.0/LICENSE.txt
-  textFile: texts/swift-certificates.txt
-  source: spm:swift-certificates
-  patched: false
-  notes: 'PLAIN Apache-2.0, NOT the Swift exception variant. LICENSE.txt is 11359 bytes and contains no
-    Runtime Library Exception section (verified by reading the file). Ships a NOTICE.txt whose attribution
-    lines MUST be reproduced under Apache 2.0 section 4(d). NOTICE content: "The SwiftCertificates Project"
-    / homepage https://github.com/apple/swift-certificates / "Copyright 2022 The SwiftCertificates Project".
-    Declared directly in project.yml. Confirmed shipping: 25520 `$s4X509` symbols.'
 - id: swift-collections
   name: swift-collections
   version: 1.6.0
@@ -487,7 +471,8 @@
     along - test vectors from Google''s wycheproof project (Apache-2.0) and a derivation of files from
     SwiftNIO (Apache-2.0). swift-crypto also vendors BoringSSL as CCryptoBoringSSL; that C code carries
     its own combination ISC/OpenSSL licensing and is NOT covered by this record. Flag it to whoever owns
-    the C-library records. Confirmed shipping: 124 `$s6Crypto` symbols. Transitive via swift-certificates.'
+    the C-library records. Transitive via oracle-nio. Reaches users in the Oracle plugin and the iOS
+    app; the macOS app links none of it, confirmed by its link map.'
 - id: swift-distributed-tracing
   name: swift-distributed-tracing
   version: 1.4.1
