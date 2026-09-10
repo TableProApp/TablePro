@@ -48,9 +48,15 @@ actor ConnectionHealthMonitor {
     // MARK: - Dependencies
 
     private let connectionId: UUID
-    /// How long to wait between checks. Injected rather than fixed, because how often TablePro
-    /// talks to a database nobody is using is the user's call, not this actor's (#2700).
-    private let pingInterval: Duration
+    /// How long to wait between checks, asked again on every pass rather than captured once.
+    ///
+    /// How often TablePro talks to a database nobody is using is the user's call, not this actor's
+    /// (#2700), and a captured interval makes that call reach only connections opened afterwards.
+    /// Re-reading it also means nothing has to stop and rebuild a monitor to apply a change, which
+    /// is what made a change arriving mid-reconnect able to strand a session or leave a second
+    /// monitor running outside the manager's dictionary. Nil ends the loop: the user asked for no
+    /// scheduled checks at all.
+    private let pingInterval: @Sendable () async -> Duration?
     private let pingHandler: @Sendable () async -> Bool
     private let reconnectHandler: @Sendable () async -> ReconnectOutcome
     private let onStateChanged: @Sendable (UUID, HealthState) async -> Void
@@ -68,7 +74,7 @@ actor ConnectionHealthMonitor {
     ///
     /// - Parameters:
     ///   - connectionId: The unique identifier of the connection to monitor.
-    ///   - pingInterval: How long to wait between checks.
+    ///   - pingInterval: How long to wait between checks, or nil to stop checking.
     ///   - pingHandler: Closure that executes a lightweight query (e.g., `SELECT 1`)
     ///     and returns `true` if the connection is alive.
     ///   - reconnectHandler: Closure that attempts to re-establish the connection
@@ -76,7 +82,7 @@ actor ConnectionHealthMonitor {
     ///   - onStateChanged: Closure invoked whenever the health state transitions.
     init(
         connectionId: UUID,
-        pingInterval: Duration,
+        pingInterval: @escaping @Sendable () async -> Duration?,
         pingHandler: @escaping @Sendable () async -> Bool,
         reconnectHandler: @escaping @Sendable () async -> ReconnectOutcome,
         onStateChanged: @escaping @Sendable (UUID, HealthState) async -> Void
@@ -111,7 +117,7 @@ actor ConnectionHealthMonitor {
 
         Self.logger.trace("Starting health monitoring for connection \(self.connectionId)")
 
-        let interval = pingInterval
+        let intervalForPass = pingInterval
         monitoringTask = Task { [weak self] in
             guard let self else { return }
 
@@ -120,8 +126,12 @@ actor ConnectionHealthMonitor {
             guard !Task.isCancelled else { return }
 
             while !Task.isCancelled {
+                guard let interval = await intervalForPass() else { break }
                 try? await Task.sleep(for: interval)
                 guard !Task.isCancelled else { break }
+                /// Asked again after the sleep as well, so turning scheduled checks off during a
+                /// long interval stops the next one rather than the one after it.
+                guard await intervalForPass() != nil else { break }
                 await self.performHealthCheck()
                 /// A monitor that has given up has nothing left to ask. Without this it woke on
                 /// every interval for the life of the app to fail its own healthy-state guard and

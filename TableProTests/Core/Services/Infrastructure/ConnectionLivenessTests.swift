@@ -236,7 +236,7 @@ struct ConnectionHealthMonitorAbortTests {
     func abortEndsTheMonitoringLoop() async {
         let monitor = ConnectionHealthMonitor(
             connectionId: UUID(),
-            pingInterval: .seconds(30),
+            pingInterval: { .seconds(30) },
             pingHandler: { false },
             reconnectHandler: { .abort },
             onStateChanged: { _, _ in }
@@ -252,7 +252,7 @@ struct ConnectionHealthMonitorAbortTests {
     func successReturnsToHealthy() async {
         let monitor = ConnectionHealthMonitor(
             connectionId: UUID(),
-            pingInterval: .seconds(30),
+            pingInterval: { .seconds(30) },
             pingHandler: { false },
             reconnectHandler: { .success },
             onStateChanged: { _, _ in }

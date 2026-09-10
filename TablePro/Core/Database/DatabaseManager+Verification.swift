@@ -78,13 +78,29 @@ extension DatabaseManager {
         }
     }
 
-    /// A monitor is built once, when its connection opens, so a change to how often TablePro
-    /// checks its connections reaches nothing already open without this.
+    /// Whether the connection is usable right now, for a caller about to run the user's own work
+    /// on it. A check that failed and could not recover leaves the driver installed but
+    /// disconnected, so "a driver is present" is not the question worth asking.
+    internal func isUsable(_ connectionId: UUID) -> Bool {
+        guard let session = activeSessions[connectionId], session.driver != nil else { return false }
+        switch session.liveness {
+        case .live, .recovering: return true
+        case .unreachable: return false
+        }
+    }
+
+    /// Applies a change to how often TablePro checks its connections.
     ///
-    /// The restarts run one after another rather than one task per event. `startHealthMonitor`
-    /// awaits the outgoing monitor's task, so two changes in quick succession could otherwise
-    /// install two monitors and leave the first running outside `healthMonitors`, where nothing
-    /// can ever stop it again.
+    /// It only ever *starts* a monitor, never stops or rebuilds one. A running monitor reads the
+    /// interval afresh on every pass, so turning checks down or off reaches it wherever it is,
+    /// including mid-ping and mid-reconnect, and ends its loop on its own. That is what removes
+    /// the three ways a restart could go wrong: stranding a session whose reconnect was cancelled
+    /// without a state transition, orphaning a monitor outside `healthMonitors` when two changes
+    /// raced, and skipping a session that happened not to be idle at the moment the user chose.
+    ///
+    /// The one thing the monitor cannot do for itself is come back, because turning checks off
+    /// ends its task. So a change back to a polling interval starts one for every session that has
+    /// none.
     internal func observeHealthCheckSetting() {
         healthCheckSettingCancellable = AppEvents.shared.connectionHealthCheckChanged
             .receive(on: RunLoop.main)
@@ -93,34 +109,22 @@ extension DatabaseManager {
                 let previous = self.healthMonitorRestart
                 self.healthMonitorRestart = Task { @MainActor in
                     await previous?.value
-                    await self.restartHealthMonitors()
+                    await self.startMissingHealthMonitors()
                 }
             }
     }
 
-    /// Only sessions that are working right now are re-armed.
-    ///
-    /// Stopping a monitor inside its reconnect backoff cancels the attempt without any state
-    /// transition, and the manager has already written `.connecting` and `.recovering` by then, so
-    /// a session caught mid-reconnect would be left in that state with nothing left to move it. It
-    /// keeps the monitor it has and picks the new interval up the next time it connects. A session
-    /// whose monitor gave up is skipped for the same reason in reverse: the give-up was
-    /// deliberate, and a fresh monitor would resume retries it was meant to end.
-    private func restartHealthMonitors() async {
+    private func startMissingHealthMonitors() async {
+        guard AppSettingsManager.shared.general.connectionHealthCheck.interval != nil else { return }
         for connectionId in Array(activeSessions.keys) {
-            guard let session = activeSessions[connectionId],
+            guard healthMonitors[connectionId] == nil,
+                  let session = activeSessions[connectionId],
                   session.driver != nil,
                   session.isConnected,
-                  session.liveness == .live,
-                  await monitorIsHealthy(connectionId)
+                  session.liveness == .live
             else { continue }
             await startHealthMonitor(for: connectionId)
         }
-    }
-
-    private func monitorIsHealthy(_ connectionId: UUID) async -> Bool {
-        guard let monitor = healthMonitors[connectionId] else { return true }
-        return await monitor.currentState == .healthy
     }
 
     /// `driver` is the handle the check was made against, and every outcome is fenced on it still
@@ -130,7 +134,13 @@ extension DatabaseManager {
     /// would report a connection healthy on the strength of a handle nobody uses any more.
     private func runVerification(_ connectionId: UUID, driver: DatabaseDriver) async {
         do {
-            try await driver.ping()
+            /// Counted as an operation for the length of the check, so the scheduled monitor's own
+            /// ping skips at its `queriesInFlight` guard rather than entering the same driver
+            /// alongside this one. Drivers are not thread-safe and the two paths have separate
+            /// schedules, so nothing else stops them meeting.
+            try await trackOperation(sessionId: connectionId) {
+                try await driver.ping()
+            }
             guard activeSessions[connectionId]?.driver === driver else { return }
             markSessionLive(connectionId)
         } catch {
@@ -142,9 +152,13 @@ extension DatabaseManager {
             /// holding a handle that cannot work. Saying so is the whole point: `ensureConnected`
             /// and the window both read liveness, and leaving it `.live` puts the user's own
             /// operation on a dead socket with nothing scheduled to notice.
+            ///
+            /// Fenced on the driver this check was made against, not on whatever the session holds
+            /// now: reading it back would compare the value to itself and mark a replacement
+            /// unreachable on the strength of an attempt that lost.
             markSessionUnreachable(
                 connectionId,
-                startedWith: activeSessions[connectionId]?.driver,
+                startedWith: driver,
                 info: Self.unreachableBeforeUseInfo
             )
         }

@@ -38,7 +38,7 @@ extension DatabaseManager {
         /// whichever path happens to open it.
         guard supportsHealthChecks(connectionId) else { return }
 
-        guard let interval = AppSettingsManager.shared.general.connectionHealthCheck.interval else {
+        guard AppSettingsManager.shared.general.connectionHealthCheck.interval != nil else {
             Self.logger.info("Health monitoring is on demand, starting no monitor for \(connectionId)")
             return
         }
@@ -47,7 +47,7 @@ extension DatabaseManager {
 
         let monitor = ConnectionHealthMonitor(
             connectionId: connectionId,
-            pingInterval: interval,
+            pingInterval: { await AppSettingsManager.shared.general.connectionHealthCheck.interval },
             pingHandler: { [weak self] in
                 guard let self else { return false }
                 // Skip ping while a user query is in-flight to avoid racing
@@ -138,6 +138,14 @@ extension DatabaseManager {
                     session.status = .disconnected
                 }
                 markSessionUnreachable(connectionId, startedWith: attemptedDriver, info: Self.declinedReconnectInfo)
+                return .abort
+            }
+            /// The same fence the give-up sites carry. A reconnect blocked in a C call cannot be
+            /// cancelled, so a losing attempt finishes late: adopting its driver here would install
+            /// it over the one a manual reconnect or a reopen had already put in place, and the
+            /// window would then be talking to a server nobody selected.
+            guard activeSessions[connectionId]?.driver === attemptedDriver else {
+                result.driver.disconnect()
                 return .abort
             }
             updateSession(connectionId) { session in

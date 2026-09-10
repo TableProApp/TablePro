@@ -243,6 +243,35 @@ struct ConnectionVerificationTests {
         await cleanUp(connectionId)
     }
 
+    /// A check that failed and could not recover leaves the driver installed and disconnected, so
+    /// the caller has to be told rather than handed it.
+    @Test("a connection whose check failed and could not recover is not usable")
+    func aFailedRecoveryLeavesTheConnectionUnusable() async {
+        Self.registerUnreachableTypeIfNeeded()
+        let driver = MockDatabaseDriver()
+        let connection = makeSession(driver: driver, typeId: Self.unreachableTypeId)
+        driver.pingError = DatabaseError.notConnected
+        DatabaseManager.shared.markSessionVerified(connection.id, at: .distantPast)
+
+        await DatabaseManager.shared.verifyBeforeUse(connection.id)
+
+        #expect(!DatabaseManager.shared.isUsable(connection.id))
+        await cleanUp(connection.id)
+    }
+
+    @Test("a working connection is usable, and a recovering one still is")
+    func aWorkingConnectionIsUsable() async {
+        let driver = MockDatabaseDriver()
+        let connection = makeSession(driver: driver)
+
+        #expect(DatabaseManager.shared.isUsable(connection.id))
+
+        DatabaseManager.shared.markSessionRecovering(connection.id)
+        #expect(DatabaseManager.shared.isUsable(connection.id), "A blip that is repairing itself is not a failure")
+
+        await cleanUp(connection.id)
+    }
+
     @Test("ending a session forgets when it last answered")
     func removingASessionForgetsItsAnswer() async {
         let driver = MockDatabaseDriver()

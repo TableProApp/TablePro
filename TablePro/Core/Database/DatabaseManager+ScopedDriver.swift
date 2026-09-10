@@ -182,6 +182,12 @@ extension DatabaseManager {
         /// reconnect, which restores the schema and the database on the new driver, and doing that
         /// while holding the gate would deadlock the very thing waiting to be pinned.
         await verifyBeforeUse(scope.connectionId)
+        /// A check that failed and could not recover left the driver installed and disconnected,
+        /// so the presence of a driver below is not enough. Refusing here is the point of checking
+        /// at all: without it the user's own work runs on a handle the app already knows is dead.
+        guard isUsable(scope.connectionId) else {
+            throw DatabaseError.notConnected
+        }
         return try await sessionDriverGate.withExclusiveAccess(scope.connectionId) {
             try await trackOperation(sessionId: scope.connectionId) {
                 try Task.checkCancellation()
