@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Check connections** in Settings > General, including Only when I use the connection. (#2700)
+
 ### Changed
 
 - 5 MB smaller app bundle.

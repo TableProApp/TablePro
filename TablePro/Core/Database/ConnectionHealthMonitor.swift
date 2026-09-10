@@ -43,12 +43,14 @@ actor ConnectionHealthMonitor {
 
     // MARK: - Configuration
 
-    private static let pingInterval: TimeInterval = 30.0
     private static let maxBackoffDelay: TimeInterval = 120.0
 
     // MARK: - Dependencies
 
     private let connectionId: UUID
+    /// How long to wait between checks. Injected rather than fixed, because how often TablePro
+    /// talks to a database nobody is using is the user's call, not this actor's (#2700).
+    private let pingInterval: Duration
     private let pingHandler: @Sendable () async -> Bool
     private let reconnectHandler: @Sendable () async -> ReconnectOutcome
     private let onStateChanged: @Sendable (UUID, HealthState) async -> Void
@@ -66,6 +68,7 @@ actor ConnectionHealthMonitor {
     ///
     /// - Parameters:
     ///   - connectionId: The unique identifier of the connection to monitor.
+    ///   - pingInterval: How long to wait between checks.
     ///   - pingHandler: Closure that executes a lightweight query (e.g., `SELECT 1`)
     ///     and returns `true` if the connection is alive.
     ///   - reconnectHandler: Closure that attempts to re-establish the connection
@@ -73,11 +76,13 @@ actor ConnectionHealthMonitor {
     ///   - onStateChanged: Closure invoked whenever the health state transitions.
     init(
         connectionId: UUID,
+        pingInterval: Duration,
         pingHandler: @escaping @Sendable () async -> Bool,
         reconnectHandler: @escaping @Sendable () async -> ReconnectOutcome,
         onStateChanged: @escaping @Sendable (UUID, HealthState) async -> Void
     ) {
         self.connectionId = connectionId
+        self.pingInterval = pingInterval
         self.pingHandler = pingHandler
         self.reconnectHandler = reconnectHandler
         self.onStateChanged = onStateChanged
@@ -96,7 +101,7 @@ actor ConnectionHealthMonitor {
 
     /// Starts periodic health monitoring.
     ///
-    /// Creates a long-running task that pings the connection every 30 seconds.
+    /// Creates a long-running task that pings the connection on `pingInterval`.
     /// If monitoring is already active, this method does nothing.
     func startMonitoring() {
         guard monitoringTask == nil else {
@@ -106,6 +111,7 @@ actor ConnectionHealthMonitor {
 
         Self.logger.trace("Starting health monitoring for connection \(self.connectionId)")
 
+        let interval = pingInterval
         monitoringTask = Task { [weak self] in
             guard let self else { return }
 
@@ -114,11 +120,11 @@ actor ConnectionHealthMonitor {
             guard !Task.isCancelled else { return }
 
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(Self.pingInterval))
+                try? await Task.sleep(for: interval)
                 guard !Task.isCancelled else { break }
                 await self.performHealthCheck()
-                /// A monitor that has given up has nothing left to ask. Without this it woke every
-                /// 30 seconds for the life of the app to fail its own healthy-state guard and
+                /// A monitor that has given up has nothing left to ask. Without this it woke on
+                /// every interval for the life of the app to fail its own healthy-state guard and
                 /// return, and only a fresh connect ever replaced it.
                 guard await !self.hasAborted else { break }
             }
@@ -239,7 +245,7 @@ actor ConnectionHealthMonitor {
         state = newState
 
         if oldState != newState {
-            // Skip logging and callback for routine healthy ↔ checking ping cycles (every 30s).
+            // Skip logging and callback for routine healthy ↔ checking ping cycles.
             // These produce no meaningful state change for the UI.
             let isRoutineCycle = (oldState == .healthy && newState == .checking)
                 || (oldState == .checking && newState == .healthy)

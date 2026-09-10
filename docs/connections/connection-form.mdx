@@ -93,9 +93,15 @@ A statement that fails is logged and skipped, and the connection still opens.
 
 ## Connection health
 
-Every active connection is pinged every 30 seconds, skipping the ping while one of your own queries is running. A failed ping starts a reconnect at 2s, then 4s, 8s, doubling to a 120-second ceiling, and keeps going until the connection comes back or you close it. An authentication failure stops the retries and leaves the session in error. A reconnect rebuilds the tunnel, restores the selected database and schema, and re-runs the startup commands; the session reads as connecting throughout.
+Every active connection is checked on the interval set by **Check connections** in Settings > General, every 30 seconds by default, and the check is skipped while one of your own queries is running. A failed check starts a reconnect at 2s, then 4s, 8s, doubling to a 120-second ceiling, and keeps going until the connection comes back or you close it. An authentication failure stops the retries and leaves the session in error. A reconnect rebuilds the tunnel, restores the selected database and schema, and re-runs the startup commands; the session reads as connecting throughout.
 
-SQLite, DuckDB, Beancount, Snowflake, and Teradata are not monitored.
+The check is a query, so on a database that sleeps when idle or bills per query it is not free. **Only when I use the connection** stops it: TablePro sends nothing on its own, and instead checks the connection the first time you use it after five quiet minutes. Waking the Mac from sleep counts as a quiet period, so the first thing you do after opening the lid checks too.
+
+A Server Dashboard tab keeps its own refresh running on its own interval, which **Check connections** does not change. Close the tab or set its interval to Off.
+
+SQLite, DuckDB, Beancount, Snowflake, and Teradata are not checked.
+
+Metadata connections, the extra ones TablePro opens to read a database's object list, are closed after 10 minutes unused and reopened on the next read.
 
 ## Which drivers get which transports
 

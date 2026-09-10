@@ -230,12 +230,13 @@ struct ReconnectDegradationTests {
 
 @Suite("Health monitor give-up")
 struct ConnectionHealthMonitorAbortTests {
-    /// The abort used to leave the state latched mid-reconnect, so the 30-second loop woke for the
-    /// life of the app to fail its own guard and return.
+    /// The abort used to leave the state latched mid-reconnect, so the loop woke on every interval
+    /// for the life of the app to fail its own guard and return.
     @Test("A monitor that gives up stops asking")
     func abortEndsTheMonitoringLoop() async {
         let monitor = ConnectionHealthMonitor(
             connectionId: UUID(),
+            pingInterval: .seconds(30),
             pingHandler: { false },
             reconnectHandler: { .abort },
             onStateChanged: { _, _ in }
@@ -251,6 +252,7 @@ struct ConnectionHealthMonitorAbortTests {
     func successReturnsToHealthy() async {
         let monitor = ConnectionHealthMonitor(
             connectionId: UUID(),
+            pingInterval: .seconds(30),
             pingHandler: { false },
             reconnectHandler: { .success },
             onStateChanged: { _, _ in }

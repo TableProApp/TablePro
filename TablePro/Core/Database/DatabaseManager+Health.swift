@@ -20,13 +20,34 @@ extension DatabaseManager {
         case abort
     }
 
-    /// Start health monitoring for a connection
+    /// Start health monitoring for a connection.
+    ///
+    /// The interval is the user's, and one of its values is "never". On that setting no monitor is
+    /// built at all rather than one with a very long interval, because a task that wakes up to
+    /// decide it has nothing to do is still traffic on someone's battery. What replaces it is
+    /// `verifyBeforeUse`, which checks the connection when the user reaches for it.
     internal func startHealthMonitor(for connectionId: UUID) async {
-        Self.logger.info("startHealthMonitor called for \(connectionId) (existing monitors: \(self.healthMonitors.count))")
         await stopHealthMonitor(for: connectionId)
+
+        /// A session with no driver has nothing to check, which is what a placeholder registered
+        /// before its connect finishes is. Pinging one turns into a reconnect competing with the
+        /// connect already in flight.
+        guard activeSessions[connectionId]?.driver != nil else { return }
+        /// The driver's own answer, asked here rather than at each call site so they cannot drift:
+        /// an engine that says it holds no connection to check must not be given a monitor by
+        /// whichever path happens to open it.
+        guard supportsHealthChecks(connectionId) else { return }
+
+        guard let interval = AppSettingsManager.shared.general.connectionHealthCheck.interval else {
+            Self.logger.info("Health monitoring is on demand, starting no monitor for \(connectionId)")
+            return
+        }
+
+        Self.logger.info("startHealthMonitor called for \(connectionId) (existing monitors: \(self.healthMonitors.count))")
 
         let monitor = ConnectionHealthMonitor(
             connectionId: connectionId,
+            pingInterval: interval,
             pingHandler: { [weak self] in
                 guard let self else { return false }
                 // Skip ping while a user query is in-flight to avoid racing
@@ -48,6 +69,7 @@ extension DatabaseManager {
                 }
                 do {
                     try await mainDriver.ping()
+                    await self.markSessionVerified(connectionId)
                     return true
                 } catch {
                     Self.logger.debug("Ping failed for \(connectionId): \(error.localizedDescription)")
@@ -373,14 +395,7 @@ extension DatabaseManager {
             }
             markSessionLive(sessionId)
 
-            // Restart health monitoring if the plugin supports it
-            let supportsHealthReconnect = PluginMetadataRegistry.shared.snapshot(
-                for: session.connection.type
-            )?.supportsHealthMonitor ?? true
-
-            if supportsHealthReconnect {
-                await startHealthMonitor(for: sessionId)
-            }
+            await startHealthMonitor(for: sessionId)
 
             AppEvents.shared.databaseDidConnect.send(DatabaseDidConnect(connectionId: sessionId))
 

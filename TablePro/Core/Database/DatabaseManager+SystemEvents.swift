@@ -29,6 +29,10 @@ extension DatabaseManager {
 
         Task { @MainActor [weak self] in
             guard let self else { return }
+            /// Sleep is the one gap the freshness window cannot see: the clock moved but nothing
+            /// here observed it, so every answer the app is holding was given before a period the
+            /// server may well have closed the socket in.
+            self.forgetAllVerifications()
             await self.validateTunneledSessions()
         }
     }

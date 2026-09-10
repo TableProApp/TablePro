@@ -60,6 +60,21 @@ final class DatabaseManager {
     /// Tracks when the first query started for each session (used for staleness detection).
     @ObservationIgnored internal var queryStartTimes: [UUID: Date] = [:]
 
+    /// When each connection's server last answered, whether that was the connect itself, a health
+    /// check, or a check made because the user was about to use it.
+    ///
+    /// It lives beside the other per-connection bookkeeping rather than on `ConnectionSession`
+    /// because it is not connection state the UI renders, and putting it there would have made it
+    /// unwritable in practice: `updateSession` discards a write that leaves
+    /// `isContentViewEquivalent` unchanged, which is exactly a timestamp-only write, and going
+    /// around that through `setSession` broadcasts a status change nothing happened to.
+    @ObservationIgnored internal var lastVerifiedAt: [UUID: Date] = [:]
+
+    /// Collapses concurrent verifications of one connection into a single check, so a window
+    /// waking up with several tabs pointed at the same connection asks once. Separate from
+    /// `ensureConnectedDedup` because a verification can run while a connect is in flight.
+    @ObservationIgnored internal let verificationDedup = OnceTask<UUID, Void>()
+
     /// Connection IDs currently undergoing SSH tunnel recovery.
     /// Prevents duplicate concurrent recovery when both the keepalive death handler
     /// and the wake-from-sleep handler fire for the same connection.
@@ -83,6 +98,9 @@ final class DatabaseManager {
     @ObservationIgnored internal var tabStatePersister: (any SessionTabStatePersisting)?
 
     @ObservationIgnored internal var connectionUpdatedCancellable: AnyCancellable?
+    @ObservationIgnored internal var healthCheckSettingCancellable: AnyCancellable?
+    /// The tail of the serialized monitor restarts. See `observeHealthCheckSetting`.
+    @ObservationIgnored internal var healthMonitorRestart: Task<Void, Never>?
 
     @ObservationIgnored internal let ensureConnectedDedup = OnceTask<UUID, Void>()
 
@@ -146,5 +164,6 @@ final class DatabaseManager {
         self.appSettingsStorage = appSettingsStorage
         self.pluginManager = pluginManager
         observeConnectionUpdates()
+        observeHealthCheckSetting()
     }
 }

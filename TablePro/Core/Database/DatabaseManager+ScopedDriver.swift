@@ -178,7 +178,11 @@ extension DatabaseManager {
         scope: DatabaseScope,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
-        try await sessionDriverGate.withExclusiveAccess(scope.connectionId) {
+        /// Outside the gate on purpose. A verification that has to reconnect runs the whole
+        /// reconnect, which restores the schema and the database on the new driver, and doing that
+        /// while holding the gate would deadlock the very thing waiting to be pinned.
+        await verifyBeforeUse(scope.connectionId)
+        return try await sessionDriverGate.withExclusiveAccess(scope.connectionId) {
             try await trackOperation(sessionId: scope.connectionId) {
                 try Task.checkCancellation()
                 guard let driver = driver(for: scope.connectionId) else {

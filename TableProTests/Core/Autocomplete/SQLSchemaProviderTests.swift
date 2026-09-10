@@ -35,6 +35,9 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     var applyQueryTimeoutValues: [Int] = []
     var cancelQueryCallCount = 0
     var disconnectCallCount = 0
+    var pingCallCount = 0
+    var pingError: Error?
+    var pingDelaySeconds: Double = 0
     var connectDelaySeconds: Double = 0
     var switchSchemaDelaySeconds: Double = 0
     var executeDelaySeconds: Double = 0
@@ -74,6 +77,16 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     }
 
     func testConnection() async throws -> Bool { true }
+
+    func ping() async throws {
+        pingCallCount += 1
+        if pingDelaySeconds > 0 {
+            try? await Task.sleep(nanoseconds: UInt64(pingDelaySeconds * 1_000_000_000))
+        }
+        if let pingError {
+            throw pingError
+        }
+    }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
         applyQueryTimeoutValues.append(seconds)
