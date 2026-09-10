@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 5 MB smaller app bundle.
 - 7 MB smaller DMG download.
+- Connect progress reads as a labelled bar, with a step named only where the app is waiting on something outside itself.
 
 ### Fixed
 

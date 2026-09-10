@@ -24,6 +24,10 @@ internal struct ConnectingStateView: View {
     @State private var observer: ConnectionStageObserver
     @State private var showsCard = false
 
+    /// The description line keeps its height whether or not it has anything to say, so the bar
+    /// under it and the Cancel button under that never move when a step arrives or goes.
+    @ScaledMetric(relativeTo: .callout) private var descriptionHeight: CGFloat = 16
+
     internal init(connection: DatabaseConnection, onCancel: @escaping () -> Void) {
         self.connection = connection
         self.onCancel = onCancel
@@ -85,16 +89,26 @@ internal struct ConnectingStateView: View {
         .accessibilityLabel(accessibilityStatus)
     }
 
+    /// A bar rather than a spinner, and the description above it rather than beside it.
+    ///
+    /// Measured on macOS 27: Finder's Connect to Server draws "Connecting to smb://… " over a
+    /// horizontal `AXOrientation=AXHorizontalOrientation` busy indicator, and Screen Sharing
+    /// repeats it. That is the shape the HIG's two rules leave standing: "Avoid labeling a
+    /// spinning progress indicator" rules out text next to a spinner, so an operation that has
+    /// something to say uses the control that can carry it. Apple never labels a spinner because
+    /// Apple never reaches for one here.
     @ViewBuilder
     private var progressLine: some View {
         VStack(spacing: 6) {
-            HStack(spacing: 8) {
-                ProgressView()
-                    .controlSize(.small)
-                Text(stepLabel)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
+            Text(stepDescription ?? "")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(height: descriptionHeight)
+
+            ProgressView()
+                .progressViewStyle(.linear)
 
             if observer.isTakingLonger {
                 Text(String(localized: "This is taking longer than usual."))
@@ -106,9 +120,9 @@ internal struct ConnectingStateView: View {
         .multilineTextAlignment(.center)
     }
 
-    private var stepLabel: String {
-        guard let stage = observer.stage else { return String(localized: "Opening the connection") }
-        return ConnectionStageLabelFormatter.stepLabel(for: stage, connection: connection)
+    private var stepDescription: String? {
+        guard let stage = observer.stage else { return nil }
+        return ConnectionStageLabelFormatter.description(for: stage, connection: connection)
     }
 
     private var accessibilityStatus: String {
