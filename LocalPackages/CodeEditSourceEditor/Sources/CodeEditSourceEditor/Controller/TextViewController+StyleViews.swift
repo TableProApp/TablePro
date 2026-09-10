@@ -82,6 +82,10 @@ extension TextViewController {
         // Update scrollview tiling
         scrollView.reflectScrolledClipView(scrollView.contentView)
         minimapView.scrollView.reflectScrolledClipView(minimapView.scrollView.contentView)
+
+        // The host's insets change the width the text has to fill, and a change on the trailing side alone reaches the
+        // text view through no other route.
+        textView.updateFrameIfNeeded()
     }
 
     /// Reserves the gutter's and the minimap's widths on the scroll view. See ``floatingSubviewInsets``.

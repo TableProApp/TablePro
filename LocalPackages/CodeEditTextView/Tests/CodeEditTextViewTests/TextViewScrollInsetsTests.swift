@@ -180,6 +180,18 @@ struct TextViewScrollInsetsTests {
         #expect(origin == 1_000)
     }
 
+    @Test("One step of a batch edit, which skips the selection update, leaves the view where it is")
+    func batchEditStepDoesNotScroll() {
+        load(longLine + "\n" + longLine)
+        textView.scroll(NSPoint(x: 300, y: 0))
+        textView.selectionManager.setSelectedRange(NSRange(location: 0, length: 0))
+
+        let secondLine = (longLine as NSString).length + 1
+        textView.replaceCharacters(in: NSRange(location: secondLine, length: 0), with: "    ", skipUpdateSelection: true)
+
+        #expect(origin == 300)
+    }
+
     @Test("Pasting a long line follows the caret to the end of it")
     func pastingALongLineRevealsTheCaret() throws {
         load("SELECT 1\n")

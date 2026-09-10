@@ -58,6 +58,10 @@ extension TextView {
         // visible and left the caret off the trailing edge, and typing in a long line scrolled horizontally read as
         // hidden and moved the view on every keystroke. `scrollSelectionToVisible` lays the line out first, and it
         // leaves the view alone when the caret is already showing.
+        //
+        // A caller that skips the selection update is applying one step of a batch, an indent or a grouped undo, whose
+        // selection still describes the text before the edit. It reveals the final selection once the batch is done.
+        guard !skipUpdateSelection else { return }
         scrollSelectionToVisible()
     }
 

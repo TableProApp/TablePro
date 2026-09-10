@@ -75,7 +75,7 @@ public final class TextAttachmentManager {
         let removed = orderedAttachments
         orderedAttachments.removeAll()
         for attachment in removed {
-            layoutManager?.forgetWidths(ofLinesIn: attachment.range)
+            forgetWidthOfFirstLine(of: attachment)
         }
         layoutManager?.setNeedsLayout()
         for attachment in removed {
@@ -95,12 +95,24 @@ public final class TextAttachmentManager {
         }
 
         let attachment = orderedAttachments.remove(at: index)
-        layoutManager?.forgetWidths(ofLinesIn: attachment.range)
+        forgetWidthOfFirstLine(of: attachment)
         layoutManager?.invalidateLayoutForRange(attachment.range)
 
         delegate?.textAttachmentDidRemove(attachment.attachment, for: attachment.range)
 
         return attachment
+    }
+
+    /// Forgets the width the attachment's first line measured with the attachment drawn in it.
+    ///
+    /// The lines the attachment covered were forgotten when it was added and have not been laid out since, so the
+    /// first line is the only one whose width still describes the attachment rather than the text.
+    private func forgetWidthOfFirstLine(of attachment: AnyTextAttachment) {
+        guard let layoutManager,
+              let firstLine = layoutManager.lineStorage.getLine(atOffset: attachment.range.location) else {
+            return
+        }
+        layoutManager.lineStorage.setWidth(0, forLineAt: firstLine.index)
     }
 
     /// Finds attachments starting in the given line range, and returns them as an array.

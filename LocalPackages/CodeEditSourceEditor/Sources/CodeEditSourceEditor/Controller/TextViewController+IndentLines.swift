@@ -82,6 +82,8 @@ extension TextViewController {
             selectionIndex += 1
         }
         textView.undoManager?.endUndoGrouping()
+        // Each line's edit skips revealing the selection, which is only final once every line is done.
+        textView.scrollSelectionToVisible()
     }
 
     private func updateSelection(

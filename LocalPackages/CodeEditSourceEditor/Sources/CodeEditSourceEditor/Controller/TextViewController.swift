@@ -229,6 +229,11 @@ public class TextViewController: NSViewController {
             return CGPoint(x: origin.x + scrollView.floatingSubviewInsets.left, y: origin.y)
         }
         set {
+            // The document is only as wide as the lines laid out so far, so the lines at the new vertical position are
+            // laid out before the horizontal position is applied, or it would be clamped to a width they have not
+            // reported yet.
+            textView.scroll(CGPoint(x: scrollView.contentView.bounds.minX, y: newValue.y))
+            textView.layoutManager.layoutLines()
             textView.scroll(CGPoint(x: newValue.x - scrollView.floatingSubviewInsets.left, y: newValue.y))
             scrollView.reflectScrolledClipView(scrollView.contentView)
         }

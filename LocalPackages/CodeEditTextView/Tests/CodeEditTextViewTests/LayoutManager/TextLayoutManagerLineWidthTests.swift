@@ -169,6 +169,20 @@ struct TextLayoutManagerLineWidthTests {
         #expect(widthOf(textView) == wide)
     }
 
+    @Test("Removing every fold at once lets the folded lines count again once they are laid out")
+    func removingEveryFoldRestoresTheWidths() {
+        let textView = makeTextView(["SELECT 1", longLine, "SELECT 2"].joined(separator: "\n"))
+        let wide = widthOf(textView)
+        let foldStart = ("SELECT 1" as NSString).length
+        textView.layoutManager.attachments.add(DemoTextAttachment(), for: NSRange(location: foldStart, length: 401))
+        textView.layoutManager.layoutLines(in: everything)
+
+        textView.layoutManager.attachments.removeAll()
+        textView.layoutManager.layoutLines(in: everything)
+
+        #expect(widthOf(textView) == wide)
+    }
+
     @Test("Scrolling a line out of the layout window keeps its width")
     func layingOutElsewhereKeepsMeasuredWidths() {
         let textView = makeTextView(([longLine] + Array(repeating: "short", count: 300)).joined(separator: "\n"))

@@ -229,6 +229,32 @@ struct TextViewControllerFloatingInsetsTests {
         #expect(isAtLeadingEdge, "Restoring the start left the view at \(origin)")
     }
 
+    @Test("Restoring a position on a long line that has not been laid out yet keeps its horizontal offset")
+    func restoringAPositionOnAnUnmeasuredLine() throws {
+        let lines = Array(repeating: "SELECT 1", count: 150) + [longLine] + Array(repeating: "SELECT 2", count: 50)
+        load(lines.joined(separator: "\n"))
+        let longLineY = try #require(controller.textView.layoutManager.lineStorage.getLine(atIndex: 150)).yPos
+
+        controller.scrollPosition = CGPoint(x: 600, y: longLineY)
+
+        #expect(abs(controller.scrollPosition.x - 600) <= 0.5, "Restored to \(controller.scrollPosition.x)")
+    }
+
+    @Test("Changing only the host's trailing inset resizes the text to the width left for it")
+    func trailingHostInsetResizesTheText() {
+        load("SELECT 1")
+        let before = controller.textView.frame.width
+
+        controller.configuration.layout.contentInsets = NSEdgeInsets(
+            top: hostInsets.top,
+            left: hostInsets.left,
+            bottom: hostInsets.bottom,
+            right: hostInsets.right + 38
+        )
+
+        #expect(controller.textView.frame.width == before - 38)
+    }
+
     @Test("Reloading the same configuration keeps the widths already measured")
     func reloadingKeepsWidths() {
         load(longLine)
