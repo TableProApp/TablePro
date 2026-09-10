@@ -22,6 +22,18 @@ public enum SyncRecordMapper {
         SyncRecordType.parse(recordName: recordName)
     }
 
+    /// Reads the colour from the field both platforms now write, falling back to the hex `colorTag`
+    /// that iOS wrote before they converged.
+    private static func color(from fields: SyncRecordFields<ConnectionSyncField>) -> ConnectionColor {
+        if let stored = fields[.color] as? String {
+            return ConnectionColor(storedValue: stored)
+        }
+        if let legacy = fields[.colorTag] as? String {
+            return ConnectionColor(storedValue: legacy)
+        }
+        return .none
+    }
+
     // MARK: - Connection -> CKRecord
 
     public static func toRecord(_ connection: DatabaseConnection, zoneID: CKRecordZone.ID) -> CKRecord {
@@ -42,9 +54,7 @@ public enum SyncRecordMapper {
         fields[.sshEnabled] = Int64(connection.sshEnabled ? 1 : 0) as CKRecordValue
         fields[.sslEnabled] = Int64(connection.sslEnabled ? 1 : 0) as CKRecordValue
 
-        if let colorTag = connection.colorTag {
-            fields[.colorTag] = colorTag as CKRecordValue
-        }
+        fields[.color] = connection.color.rawValue as CKRecordValue
         if let groupId = connection.groupId {
             fields[.groupId] = groupId.uuidString as CKRecordValue
         }
@@ -109,7 +119,7 @@ public enum SyncRecordMapper {
         let port = (fields[.port] as? Int64).map { Int($0) } ?? 3306
         let database = fields[.database] as? String ?? ""
         let username = fields[.username] as? String ?? ""
-        let colorTag = fields[.colorTag] as? String
+        let color = Self.color(from: fields)
         let groupId = (fields[.groupId] as? String).flatMap { UUID(uuidString: $0) }
         let tagIds: [UUID]
         if let rawIds = fields[.tagIds] as? [String], !rawIds.isEmpty {
@@ -160,7 +170,7 @@ public enum SyncRecordMapper {
             port: port,
             username: username,
             database: database,
-            colorTag: colorTag,
+            color: color,
             isReadOnly: isReadOnly,
             safeModeLevel: safeModeLevel,
             queryTimeoutSeconds: queryTimeout,
@@ -201,7 +211,7 @@ public enum SyncRecordMapper {
         fields[.safeModeLevel] = connection.safeModeLevel.rawValue as CKRecordValue
         fields[.sshEnabled] = Int64(connection.sshEnabled ? 1 : 0) as CKRecordValue
         fields[.sslEnabled] = Int64(connection.sslEnabled ? 1 : 0) as CKRecordValue
-        fields[.colorTag] = connection.colorTag as CKRecordValue?
+        fields[.color] = connection.color.rawValue as CKRecordValue
         fields[.groupId] = connection.groupId?.uuidString as CKRecordValue?
 
         if !connection.tagIds.isEmpty {

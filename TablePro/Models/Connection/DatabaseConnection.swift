@@ -335,6 +335,32 @@ enum ConnectionColor: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
+    /// Reads a colour written either as this enum's own name or as the hex iOS used before the two
+    /// platforms converged on the `color` sync field. Kept byte-for-byte in step with
+    /// `ConnectionColor(storedValue:)` in `TableProModels`, which is the same enum for the iOS app.
+    init(storedValue: String) {
+        if let named = ConnectionColor(rawValue: storedValue) {
+            self = named
+            return
+        }
+        if let named = ConnectionColor.allCases.first(where: {
+            $0.rawValue.caseInsensitiveCompare(storedValue) == .orderedSame
+        }) {
+            self = named
+            return
+        }
+        switch storedValue.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "# ")) {
+        case "ff0000", "ff3b30", "cc0000": self = .red
+        case "ff9500", "ff8c00", "ffa500": self = .orange
+        case "ffcc00", "ffff00", "ffd700": self = .yellow
+        case "34c759", "28cd41", "00ff00", "008000": self = .green
+        case "007aff", "0000ff", "5856d6": self = .blue
+        case "af52de", "800080", "9b59b6": self = .purple
+        case "ff2d55", "ff69b4", "ffc0cb": self = .pink
+        default: self = .none
+        }
+    }
+
     var displayName: String {
         switch self {
         case .none: return String(localized: "None")

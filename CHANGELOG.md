@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- 5 MB smaller app bundle.
+- 7 MB smaller DMG download.
+
+### Fixed
+
+- Connection colour set on an iPhone not showing on the Mac, and the reverse.
+- Connection still reading as read-only on an iPhone after read-only was turned off on the Mac.
+
 ## [0.73.0] - 2026-09-09
 
 ### Added
