@@ -52,9 +52,6 @@ packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     majorVersion: 2.9.5
-  swift-certificates:
-    url: https://github.com/apple/swift-certificates
-    majorVersion: 1.19.0
   Yams:
     url: https://github.com/jpsim/Yams
     majorVersion: 5.1.0
@@ -235,8 +232,6 @@ targets:
       - package: CodeEditTextView
       - package: Sparkle
       - package: Yams
-      - package: swift-certificates
-        product: X509
       - package: TableProCore
         products: [TableProAnalytics, TableProImport, TableProNumberFormatting, TableProSyncTransport]
     settings:

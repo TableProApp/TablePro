@@ -131,6 +131,9 @@ if command -v create-dmg &> /dev/null; then
         --icon "Applications" 450 190
         --hide-extension "$APP_NAME.app"
         --no-internet-enable
+        # LZMA over the zlib default. Measured on 0.73.0: 27.4 MB -> 20.3 MB.
+        # hdiutil has read ULMO since macOS 10.15, five releases below the app's floor.
+        --format ULMO
     )
 
     # Add volume icon if available
@@ -228,8 +231,7 @@ EOF
 
     # Convert to compressed read-only DMG
     hdiutil convert "$TEMP_DMG" \
-        -format UDZO \
-        -imagekey zlib-level=9 \
+        -format ULMO \
         -o "$FINAL_DMG"
 
     # Clean up temp DMG
