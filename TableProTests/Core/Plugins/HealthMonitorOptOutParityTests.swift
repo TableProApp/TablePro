@@ -15,22 +15,25 @@ import Testing
 
 @Suite("Health monitor opt-out parity")
 struct HealthMonitorOptOutParityTests {
+    /// Reads the curated table, not the live registry. Other suites register synthetic engines
+    /// into the same shared registry, several with the monitor off, and none of them has a plugin
+    /// source to find: reading the live snapshots made this fail or pass by suite order.
     @Test("every type curated as health-monitor-free says so on its plugin too")
     func curatedOptOutsAreDeclaredOnTheirPlugins() throws {
-        let optedOut = DatabaseType.allKnownTypes.filter { type in
-            PluginMetadataRegistry.shared.snapshot(for: type)?.supportsHealthMonitor == false
-        }
+        let optedOut = PluginMetadataRegistry.shared.builtInDefaults()
+            .filter { $0.snapshot.supportsHealthMonitor == false }
+            .map(\.typeId)
         #expect(!optedOut.isEmpty, "The curated table opts at least SQLite and DuckDB out")
 
         let sources = try Self.pluginSources()
         var missing: [String] = []
-        for type in optedOut {
-            guard let source = sources.first(where: { $0.declaresTypeId(type.rawValue) }) else {
-                missing.append("\(type.rawValue) (no plugin source declares this type id)")
+        for typeId in optedOut {
+            guard let source = sources.first(where: { $0.declaresTypeId(typeId) }) else {
+                missing.append("\(typeId) (no plugin source declares this type id)")
                 continue
             }
             if !source.text.contains("static let supportsHealthMonitor = false") {
-                missing.append("\(type.rawValue) (\(source.url.lastPathComponent))")
+                missing.append("\(typeId) (\(source.url.lastPathComponent))")
             }
         }
 

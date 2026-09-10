@@ -59,6 +59,7 @@ final class ConnectionWindowChromeUITests: UITestCase {
     func testTheDetailPaneNeverDrawsNothingWhileConnecting() throws {
         let app = try launchApp()
         XCTAssertTrue(app.windows.firstMatch.waitToExist(timeout: 20))
+        dismissOnboarding(in: app)
 
         try openProbeConnection(in: app)
 
@@ -122,11 +123,14 @@ final class ConnectionWindowChromeUITests: UITestCase {
         save.click()
         XCTAssertTrue(waitForPredicate(timeout: 15) { !form.exists }, "Save should close the form")
 
-        let list = app.windows.firstMatch.outlines.firstMatch
-        XCTAssertTrue(waitForPredicate(timeout: 15) { list.outlineRows.count > 0 })
-        list.outlineRows.element(boundBy: 0)
-            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-            .doubleClick()
+        /// Found by what it says rather than by its role: the row combines its children into one
+        /// element, and a list row's role is not the same on every macOS build the suite runs on.
+        let row = app.windows["welcome"].descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "Probe"))
+            .firstMatch
+        XCTAssertTrue(row.waitToExist(timeout: 15), "The saved connection must be listed on the welcome window")
+        XCTAssertTrue(waitUntilHittable(row, timeout: 10))
+        row.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).doubleClick()
     }
 
     private func disconnect(in app: XCUIApplication) {

@@ -350,9 +350,17 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         registerBuiltInDefaults()
     }
 
+    /// The curated table the app ships, before any plugin or test registers over it.
+    ///
+    /// The live snapshots are not that table: a loaded plugin replaces its entry, and a test can
+    /// register a synthetic engine into the same shared registry. Anything that means to check the
+    /// table itself reads this instead of iterating `allRegisteredTypeIds()`.
+    func builtInDefaults() -> [(typeId: String, snapshot: PluginMetadataSnapshot)] {
+        Self.curatedDefaults() + registryPluginDefaults()
+    }
+
     private func registerBuiltInDefaults() {
-        let allDefaults = Self.curatedDefaults() + registryPluginDefaults()
-        for entry in allDefaults {
+        for entry in builtInDefaults() {
             snapshots[entry.typeId] = entry.snapshot
             defaultSnapshots[entry.typeId] = entry.snapshot
             for scheme in entry.snapshot.urlSchemes {
