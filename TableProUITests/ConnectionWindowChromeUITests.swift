@@ -123,10 +123,10 @@ final class ConnectionWindowChromeUITests: UITestCase {
         save.click()
         XCTAssertTrue(waitForPredicate(timeout: 15) { !form.exists }, "Save should close the form")
 
-        /// Found by what it says rather than by its role: the row combines its children into one
-        /// element, and a list row's role is not the same on every macOS build the suite runs on.
-        let row = app.windows["welcome"].descendants(matching: .any)
-            .matching(NSPredicate(format: "label BEGINSWITH %@", "Probe"))
+        /// The row combines its children into one static text whose value carries the name and the
+        /// host, `Probe, 192.0.2.1`, and no label; the runner's element tree shows it that way.
+        let row = app.windows["welcome"].staticTexts
+            .matching(NSPredicate(format: "value BEGINSWITH %@", "Probe"))
             .firstMatch
         XCTAssertTrue(row.waitToExist(timeout: 15), "The saved connection must be listed on the welcome window")
         XCTAssertTrue(waitUntilHittable(row, timeout: 10))

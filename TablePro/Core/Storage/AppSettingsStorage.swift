@@ -38,7 +38,12 @@ final class AppSettingsStorage: Sendable {
         static let legacyJsonFieldHeight = "rightSidebar.jsonFieldHeight"
     }
 
-    init(userDefaults: UserDefaults = .standard) {
+    /// The storage environment's defaults, not `.standard`. A UI test runs against a per-sandbox
+    /// suite, and reading the standard domain here put every setting, the onboarding flag among
+    /// them, in the machine's real preferences: a developer who had finished onboarding never saw
+    /// it under test, a fresh runner saw it until the first case skipped it, and every case after
+    /// that inherited the skip.
+    init(userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
         self.defaults = userDefaults
     }
 
