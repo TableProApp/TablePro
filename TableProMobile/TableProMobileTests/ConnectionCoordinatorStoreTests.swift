@@ -37,7 +37,7 @@ struct ConnectionRedialTests {
         #expect(tagged.dialsTheSameWay(as: original))
 
         var coloured = original
-        coloured.colorTag = "red"
+        coloured.color = .red
         #expect(coloured.dialsTheSameWay(as: original))
     }
 

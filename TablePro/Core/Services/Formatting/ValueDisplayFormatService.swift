@@ -2,13 +2,17 @@
 //  ValueDisplayFormatService.swift
 //  TablePro
 //
-//  Applies display format transformations to raw cell values
-//  and manages the effective format per column (auto-detected vs. user override).
+//  Resolves the effective display format per column: user override, else auto-detected.
 //
 
 import Foundation
 import os
 
+/// Owns which format a column is shown in, and where a user's choice is persisted.
+///
+/// Rendering a value under a format is a separate job that must not reach the preference layer;
+/// it lives in `ValueDisplayFormatter`. Keeping the two apart is what lets the data grid's per
+/// cell path stay free of storage, and it is why this type no longer exposes `applyFormat`.
 @MainActor
 final class ValueDisplayFormatService {
     static let shared = ValueDisplayFormatService()
@@ -22,47 +26,6 @@ final class ValueDisplayFormatService {
 
     init(storage: ValueDisplayFormatStorage = .shared) {
         self.storage = storage
-    }
-
-    // MARK: - Format Application
-
-    /// nil where the format cannot render this value, so the caller falls back to how the column
-    /// would have read without it rather than showing a value the format did not actually produce.
-    static func applyFormat(
-        _ rawValue: String,
-        format: ValueDisplayFormat,
-        columnType: ColumnType? = nil
-    ) -> String? {
-        switch format {
-        case .raw:
-            return rawValue
-        case .text:
-            return BinaryTextDecoder.decode(isoLatin1: rawValue, columnType: columnType)
-        case .uuid:
-            return formatAsUuid(rawValue)
-        case .unixTimestamp:
-            return formatAsTimestamp(rawValue, divideBy: 1)
-        case .unixTimestampMillis:
-            return formatAsTimestamp(rawValue, divideBy: 1_000)
-        case .json, .phpSerialized:
-            return rawValue
-        }
-    }
-
-    static func applyFormat(
-        _ rawValue: Data,
-        format: ValueDisplayFormat,
-        columnType: ColumnType? = nil
-    ) -> String? {
-        switch format {
-        case .text:
-            return BinaryTextDecoder.decode(rawValue, columnType: columnType)
-        case .uuid:
-            guard rawValue.count == 16 else { return nil }
-            return formatAsUuid(rawValue.hexEncoded)
-        case .raw, .unixTimestamp, .unixTimestampMillis, .json, .phpSerialized:
-            return nil
-        }
     }
 
     // MARK: - Effective Format Resolution
@@ -127,46 +90,5 @@ final class ValueDisplayFormatService {
         }
 
         overridesVersion &+= 1
-    }
-
-    // MARK: - Private Formatting
-
-    private static func formatAsUuid(_ rawValue: String) -> String {
-        // Try raw binary bytes (isoLatin1 encoding from MySQL)
-        if let data = rawValue.data(using: .isoLatin1), data.count == 16 {
-            let bytes = [UInt8](data)
-            let hex = bytes.hexEncoded
-            return insertUuidHyphens(hex)
-        }
-
-        // Try hex string (with or without 0x prefix)
-        var hex = rawValue
-        if hex.hasPrefix("0x") || hex.hasPrefix("0X") {
-            hex = String(hex.dropFirst(2))
-        }
-        hex = hex.replacingOccurrences(of: "-", with: "")
-
-        guard (hex as NSString).length == 32, hex.allSatisfy({ $0.isHexDigit }) else {
-            return rawValue
-        }
-
-        return insertUuidHyphens(hex.lowercased())
-    }
-
-    private static func insertUuidHyphens(_ hex: String) -> String {
-        let ns = hex as NSString
-        let p1 = ns.substring(with: NSRange(location: 0, length: 8))
-        let p2 = ns.substring(with: NSRange(location: 8, length: 4))
-        let p3 = ns.substring(with: NSRange(location: 12, length: 4))
-        let p4 = ns.substring(with: NSRange(location: 16, length: 4))
-        let p5 = ns.substring(with: NSRange(location: 20, length: 12))
-        return "\(p1)-\(p2)-\(p3)-\(p4)-\(p5)"
-    }
-
-    private static func formatAsTimestamp(_ rawValue: String, divideBy divisor: Double) -> String {
-        guard let numericValue = Double(rawValue) else { return rawValue }
-        let seconds = numericValue / divisor
-        let date = Date(timeIntervalSince1970: seconds)
-        return DateFormattingService.shared.format(date)
     }
 }

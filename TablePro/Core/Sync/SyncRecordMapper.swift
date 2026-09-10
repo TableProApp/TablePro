@@ -87,6 +87,11 @@ struct SyncRecordMapper {
         fields[.type] = connection.type.rawValue
         fields[.color] = connection.color.rawValue
         fields[.safeModeLevel] = connection.safeModeLevel.rawValue
+        /// `safeModeLevel` superseded `isReadOnly`, but both are still on the wire and this mapper
+        /// still reads the old one when the new one is absent. Writing only the new one left the
+        /// old one holding whatever it last held, so a connection taken out of read-only on a Mac
+        /// stayed read-only for anything reading the legacy field.
+        fields[.isReadOnly] = Int64(connection.safeModeLevel == .readOnly ? 1 : 0)
         fields[.modifiedAtLocal] = Date()
         fields[.schemaVersion] = schemaVersion
         fields[.sortOrder] = Int64(connection.sortOrder)
@@ -172,7 +177,11 @@ struct SyncRecordMapper {
         let port = (fields[.port] as? Int64).map { Int($0) } ?? 0
         let database = fields[.database] as? String ?? ""
         let username = fields[.username] as? String ?? ""
-        let colorRaw = fields[.color] as? String ?? ConnectionColor.none.rawValue
+        /// `colorTag` is where iOS wrote a connection's colour as hex before the two platforms
+        /// converged on this enum, so a colour set on an iPhone shows up here rather than nowhere.
+        let colorRaw = fields[.color] as? String
+            ?? fields[.colorTag] as? String
+            ?? ConnectionColor.none.rawValue
         let isReadOnly = (fields[.isReadOnly] as? Int64 ?? 0) != 0
         let safeModeLevel = Self.safeModeLevel(fromWire: fields[.safeModeLevel] as? String, isReadOnly: isReadOnly)
         let tagIds: [UUID]
@@ -233,7 +242,7 @@ struct SyncRecordMapper {
             type: connectionType,
             sshConfig: sshConfig,
             sslConfig: sslConfig,
-            color: ConnectionColor(rawValue: colorRaw) ?? .none,
+            color: ConnectionColor(storedValue: colorRaw),
             tagIds: tagIds,
             groupId: groupId,
             sshProfileId: sshProfileId,

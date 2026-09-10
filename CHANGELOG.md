@@ -11,8 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Empty state in the inspector and the assistant for a connection that is not up.
 
+### Changed
+
+- 5 MB smaller app bundle.
+- 7 MB smaller DMG download.
+
 ### Fixed
 
+- Connection colour set on an iPhone not showing on the Mac, and the reverse.
+- Connection still reading as read-only on an iPhone after read-only was turned off on the Mac.
 - Window rebuilding its own layout three times while a connection opens.
 - Connecting screen naming the wrong step for the first half second of a connect.
 - Spinner flash in the object browser on Oracle, Snowflake, BigQuery, Trino and Dameng.

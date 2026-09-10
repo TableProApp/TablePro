@@ -1217,7 +1217,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         case .bytes(let data):
             guard let format = column < columnDisplayFormats.count ? columnDisplayFormats[column] : nil,
                   format.isApplicable(to: columnType, databaseType: databaseType) else { return false }
-            return ValueDisplayFormatService.applyFormat(data, format: format, columnType: columnType) != nil
+            return ValueDisplayFormatter.apply(data, format: format, columnType: columnType) != nil
         }
     }
 
