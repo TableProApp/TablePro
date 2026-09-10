@@ -18,6 +18,18 @@ struct StringHexDumpTests {
         #expect("".formattedAsHexDump() == nil)
     }
 
+    /// `HexDumpLayout` states the line width so a view can size itself around one, and nothing at
+    /// runtime makes the two agree. A dump line that grew a column would leave every such view a
+    /// character short with no other symptom than wrapped, misaligned output.
+    @Test("Every full line is exactly the width HexDumpLayout states")
+    func fullLinesMatchTheStatedWidth() throws {
+        let bytes = String(repeating: "A", count: HexDumpLayout.bytesPerLine * 3)
+        let dump = try #require(bytes.formattedAsHexDump())
+        let widths = Set(dump.split(separator: "\n").map(\.count))
+
+        #expect(widths == [HexDumpLayout.lineWidthInCharacters])
+    }
+
     @Test("Basic ASCII produces correct hex and ASCII column")
     func basicASCII() {
         let result = "Hello".formattedAsHexDump()

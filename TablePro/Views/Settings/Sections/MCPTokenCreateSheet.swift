@@ -113,13 +113,11 @@ struct MCPTokenCreateSheet: View {
     }
 
     private var actionBar: some View {
-        HStack {
+        DialogFooter {
             Button(String(localized: "Cancel"), role: .cancel) {
                 dismiss()
             }
             .keyboardShortcut(.cancelAction)
-
-            Spacer()
 
             Button(String(localized: "Generate")) {
                 let connectionIds: Set<UUID>? = connectionAccess == .selected ? selectedConnectionIds : nil

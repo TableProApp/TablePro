@@ -9,7 +9,7 @@ import Foundation
 import os
 
 /// HTTP client for the TablePro license API
-final class LicenseAPIClient {
+final class LicenseAPIClient: Sendable {
     static let shared = LicenseAPIClient()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "LicenseAPIClient")
@@ -70,6 +70,24 @@ final class LicenseAPIClient {
         return try await post(url: url, body: body)
     }
 
+    /// List the seats and members of a Team license.
+    ///
+    /// Authenticated the same way validation is, by a credential plus an activated machine id, so
+    /// it needs nothing the app does not already hold. Member invites and removals live behind a
+    /// separate token-authenticated API the app has no way to authenticate against, which is why
+    /// this is the read half only.
+    func teamInfo(licenseKey: String, machineId: String) async throws -> LicenseTeamResponse {
+        let url = baseURL.appendingPathComponent("team")
+        let body = LicenseValidationRequest(
+            licenseKey: licenseKey,
+            machineId: machineId,
+            machineName: LicenseStorage.shared.machineName,
+            appVersion: Bundle.main.appVersion,
+            osVersion: ProcessInfo.processInfo.operatingSystemVersionString
+        )
+        return try await post(url: url, body: body)
+    }
+
     /// Deactivate a license key from this machine
     func deactivate(request: LicenseDeactivationRequest) async throws {
         let url = baseURL.appendingPathComponent("deactivate")
@@ -111,6 +129,11 @@ final class LicenseAPIClient {
             }
 
         case 404:
+            // Only a body this API produced counts as the server rejecting the key. A captive
+            // portal or proxy answering 404 is a transport failure, not a revoked license.
+            guard (try? decoder.decode(LicenseAPIErrorResponse.self, from: data)) != nil else {
+                throw LicenseError.serverError(404, "Not Found")
+            }
             throw LicenseError.invalidKey
 
         case 409:

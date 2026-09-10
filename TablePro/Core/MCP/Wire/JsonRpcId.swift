@@ -41,3 +41,16 @@ public enum JsonRpcId: Codable, Equatable, Hashable, Sendable {
         }
     }
 }
+
+public extension JsonRpcId {
+    var asJsonValue: JsonValue {
+        switch self {
+        case .string(let value):
+            return .string(value)
+        case .number(let value):
+            return .int(Int(clamping: value))
+        case .null:
+            return .null
+        }
+    }
+}

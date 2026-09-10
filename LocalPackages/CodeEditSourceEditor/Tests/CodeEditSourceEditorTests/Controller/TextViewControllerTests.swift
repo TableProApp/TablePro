@@ -391,6 +391,26 @@ final class TextViewControllerTests: XCTestCase {
         XCTAssertEqual(controller.cursorPositions[1].start.column, 2)
     }
 
+    func test_setCursorPositionsClampsARangeBeyondTheText() {
+        controller.setText("Hello")
+
+        controller.setCursorPositions([CursorPosition(range: NSRange(location: 2, length: 500))])
+
+        XCTAssertEqual(controller.cursorPositions.count, 1)
+        XCTAssertEqual(controller.cursorPositions[0].range.location, 2)
+        XCTAssertEqual(controller.cursorPositions[0].range.length, 3)
+    }
+
+    func test_setCursorPositionsClampsALocationBeyondTheText() {
+        controller.setText("Hello")
+
+        controller.setCursorPositions([CursorPosition(range: NSRange(location: 900, length: 0))])
+
+        XCTAssertEqual(controller.cursorPositions.count, 1)
+        XCTAssertEqual(controller.cursorPositions[0].range.location, 5)
+        XCTAssertEqual(controller.cursorPositions[0].range.length, 0)
+    }
+
     func test_cursorPositionRowColInit() {
         _ = controller.textView.becomeFirstResponder()
         controller.setText("Hello World")
@@ -446,16 +466,16 @@ final class TextViewControllerTests: XCTestCase {
     func test_minimapToggle() {
         XCTAssertFalse(controller.minimapView.isHidden)
         XCTAssertEqual(controller.minimapView.frame.width, MinimapView.maxWidth)
-        XCTAssertEqual(controller.textViewInsets.right, MinimapView.maxWidth)
+        XCTAssertEqual(controller.floatingSubviewInsets.right, MinimapView.maxWidth)
 
         controller.configuration.peripherals.showMinimap = false
         XCTAssertTrue(controller.minimapView.isHidden)
-        XCTAssertEqual(controller.textViewInsets.right, 0)
+        XCTAssertEqual(controller.floatingSubviewInsets.right, 0)
 
         controller.configuration.peripherals.showMinimap = true
         XCTAssertFalse(controller.minimapView.isHidden)
         XCTAssertEqual(controller.minimapView.frame.width, MinimapView.maxWidth)
-        XCTAssertEqual(controller.textViewInsets.right, MinimapView.maxWidth)
+        XCTAssertEqual(controller.floatingSubviewInsets.right, MinimapView.maxWidth)
     }
 
     // MARK: Folding Ribbon

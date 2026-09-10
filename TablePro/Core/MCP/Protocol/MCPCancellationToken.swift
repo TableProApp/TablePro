@@ -1,36 +1,63 @@
 import Foundation
 
+public enum MCPCancellationReason: Sendable, Equatable {
+    case clientRequested(String?)
+    case clientDisconnected
+    case deadlineExceeded
+    case credentialRevoked
+    case serverShuttingDown
+
+    public var label: String {
+        switch self {
+        case .clientRequested:
+            return "client_requested"
+        case .clientDisconnected:
+            return "client_disconnected"
+        case .deadlineExceeded:
+            return "deadline_exceeded"
+        case .credentialRevoked:
+            return "credential_revoked"
+        case .serverShuttingDown:
+            return "server_shutting_down"
+        }
+    }
+}
+
 public actor MCPCancellationToken {
-    private var cancelled: Bool = false
-    private var handlers: [@Sendable () async -> Void] = []
+    public typealias CancellationHandler = @Sendable (MCPCancellationReason) async -> Void
+
+    private var cancellation: MCPCancellationReason?
+    private var handlers: [CancellationHandler] = []
 
     public init() {}
 
-    public func cancel() async {
-        guard !cancelled else { return }
-        cancelled = true
-        let toRun = handlers
+    public var isCancelled: Bool {
+        cancellation != nil
+    }
+
+    public var reason: MCPCancellationReason? {
+        cancellation
+    }
+
+    public func cancel(reason: MCPCancellationReason = .clientRequested(nil)) async {
+        guard cancellation == nil else { return }
+        cancellation = reason
+        let pending = handlers
         handlers.removeAll()
-        for handler in toRun {
-            await handler()
+        for handler in pending {
+            await handler(reason)
         }
     }
 
-    public func isCancelled() async -> Bool {
-        cancelled
-    }
-
-    public func onCancel(_ handler: @Sendable @escaping () async -> Void) async {
-        if cancelled {
-            await handler()
+    public func onCancel(_ handler: @escaping CancellationHandler) async {
+        guard let cancellation else {
+            handlers.append(handler)
             return
         }
-        handlers.append(handler)
+        await handler(cancellation)
     }
 
-    public func throwIfCancelled() async throws {
-        if cancelled {
-            throw CancellationError()
-        }
+    public func throwIfCancelled() throws {
+        guard cancellation == nil else { throw CancellationError() }
     }
 }

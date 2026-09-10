@@ -60,6 +60,25 @@ final class MetadataConnectionPool {
     private var pending: [Key: Task<Void, Error>] = [:]
     private let maxPerConnection = 6
     private let operationTimeoutSeconds: Double = 15
+    private let preparationTimeoutSeconds: Double = 60
+    private var sweeper: Task<Void, Never>?
+
+    /// How long a pooled connection may sit unused before it is handed back.
+    ///
+    /// These are connections the user never opened: the pool takes one per database the sidebar
+    /// touches, up to six, and the only thing that ever closed one was the count cap at acquire
+    /// time or the whole connection going away. Browsing six databases and then leaving the app
+    /// open left six idle server connections held for as long as it ran (#2700).
+    ///
+    /// Ten minutes rather than something tighter, because re-taking one is a whole connect,
+    /// measured at 1.7-5.8ms on loopback but 800-1900ms across the internet, and someone still
+    /// working must never pay that. Ten minutes of silence is nobody still working.
+    static let idleTimeout: TimeInterval = 600
+
+    /// The sweeper wakes more often than the timeout so a connection that goes idle just after a
+    /// tick does not wait a whole second timeout, and never so often that an idle app spends the
+    /// day waking up.
+    private static let sweepInterval: Duration = .seconds(60)
 
     private init() {}
 
@@ -75,6 +94,22 @@ final class MetadataConnectionPool {
         return try await entry.runSerially(body)
     }
 
+    /// Closes only the leases attached to one database, which is what a rename of that database
+    /// needs: PostgreSQL refuses `ALTER DATABASE ... RENAME` while any backend is connected to it,
+    /// and an expanded row or a tab that ran a query there leaves one here.
+    func closeAll(connectionId: UUID, database: String) {
+        for key in pending.keys
+        where key.scope.connectionId == connectionId && key.scope.database == database {
+            pending[key]?.cancel()
+            pending.removeValue(forKey: key)
+        }
+        for key in entries.keys
+        where key.scope.connectionId == connectionId && key.scope.database == database {
+            closeOrDeferEntry(forKey: key)
+        }
+        stopSweeperIfEmpty()
+    }
+
     func closeAll(connectionId: UUID) {
         for key in pending.keys where key.scope.connectionId == connectionId {
             pending[key]?.cancel()
@@ -83,7 +118,35 @@ final class MetadataConnectionPool {
         for key in entries.keys where key.scope.connectionId == connectionId {
             closeOrDeferEntry(forKey: key)
         }
+        stopSweeperIfEmpty()
     }
+
+    #if DEBUG
+    /// Seeds a connected driver as the pooled connection for `scope`, so a test can observe
+    /// what runs on the pool without a plugin to open a real connection.
+    internal func injectEntry(
+        _ driver: DatabaseDriver,
+        scope: DatabaseScope,
+        workload: Workload = .interactive,
+        lastUsed: Date = Date()
+    ) {
+        let entry = Entry(driver: driver)
+        entry.lastUsed = lastUsed
+        entries[Key(scope: scope, workload: workload)] = entry
+    }
+
+    internal func pooledDriverCount(for connectionId: UUID) -> Int {
+        entries.keys.filter { $0.scope.connectionId == connectionId }.count
+    }
+
+    internal func markInFlight(scope: DatabaseScope, workload: Workload = .interactive) {
+        entries[Key(scope: scope, workload: workload)]?.inFlightCount += 1
+    }
+
+    internal var hasSweeper: Bool {
+        sweeper != nil
+    }
+    #endif
 
     private func releaseEntry(_ entry: Entry) {
         entry.inFlightCount -= 1
@@ -104,8 +167,16 @@ final class MetadataConnectionPool {
     private func acquireEntry(scope: DatabaseScope, workload: Workload) async throws -> Entry {
         let connectionId = scope.connectionId
         let key = Key(scope: scope, workload: workload)
-        if let entry = entries[key], entry.driver.status == .connected {
-            return entry
+        /// A cached entry is only worth reusing while it is both connected and recent. The
+        /// staleness half matters even with the sweeper running, because a Mac that slept comes
+        /// back with entries the sweeper never got to and sockets the server has long since
+        /// closed. The old entry is closed rather than left behind: overwriting `entries[key]`
+        /// with a fresh one used to leak the driver it replaced.
+        if let entry = entries[key] {
+            if entry.driver.status == .connected, !Self.isStale(entry.lastUsed) {
+                return entry
+            }
+            closeOrDeferEntry(forKey: key)
         }
 
         if let inFlight = pending[key] {
@@ -127,6 +198,7 @@ final class MetadataConnectionPool {
                 return
             }
             entries[key] = entry
+            startSweeperIfNeeded()
         }
         pending[key] = task
         defer { if pending[key] == task { pending.removeValue(forKey: key) } }
@@ -155,9 +227,12 @@ final class MetadataConnectionPool {
         )
         do {
             try await Self.connect(driver, database: plan.connectDatabase, timeoutSeconds: operationTimeoutSeconds)
-            try? await driver.applyQueryTimeout(AppSettingsManager.shared.general.queryTimeoutSeconds)
-            await DatabaseManager.shared.executeStartupCommands(
-                session.connection.startupCommands, on: driver, connectionName: session.connection.name
+            try await Self.prepareSession(
+                driver,
+                queryTimeoutSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds,
+                startupCommands: session.connection.startupCommands,
+                connectionName: session.connection.name,
+                timeoutSeconds: preparationTimeoutSeconds
             )
             if let database = plan.switchDatabase {
                 try await Self.switchDatabase(driver, to: database, timeoutSeconds: operationTimeoutSeconds)
@@ -218,7 +293,30 @@ final class MetadataConnectionPool {
             timeoutSeconds: timeoutSeconds,
             timeoutMessage: String(format: String(localized: "Switching to schema '%@' timed out."), schema)
         ) {
-            try await switchable.switchSchema(to: schema)
+            try await switchable.switchSchemaIfNeeded(to: schema)
+        }
+    }
+
+    /// The startup commands are the user's own SQL and the query timeout can be a statement of its own,
+    /// so neither belongs under the single-round-trip budget the other steps use. They still need a
+    /// deadline: a hang here never resolves `pending[key]`, and a later reader joining that entry stays
+    /// suspended with no error and no log line at all.
+    static func prepareSession(
+        _ driver: DatabaseDriver,
+        queryTimeoutSeconds: Int,
+        startupCommands: String?,
+        connectionName: String,
+        timeoutSeconds: Double
+    ) async throws {
+        try await bounded(
+            driver: driver,
+            timeoutSeconds: timeoutSeconds,
+            timeoutMessage: String(localized: "Preparing the metadata connection timed out.")
+        ) {
+            try? await driver.applyQueryTimeout(queryTimeoutSeconds)
+            await DatabaseManager.shared.executeStartupCommands(
+                startupCommands, on: driver, connectionName: connectionName
+            )
         }
     }
 
@@ -239,6 +337,41 @@ final class MetadataConnectionPool {
         } catch is TimeoutError {
             throw DatabaseError.connectionFailed(timeoutMessage)
         }
+    }
+
+    static func isStale(_ lastUsed: Date, now: Date = Date()) -> Bool {
+        now.timeIntervalSince(lastUsed) >= idleTimeout
+    }
+
+    /// Runs only while the pool is holding something, so an app with nothing pooled schedules
+    /// nothing at all. One task for the whole pool rather than one per connection, because the
+    /// pool is one map and a sweep reads all of it.
+    private func startSweeperIfNeeded() {
+        guard sweeper == nil, !entries.isEmpty else { return }
+        sweeper = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: Self.sweepInterval)
+                guard !Task.isCancelled else { return }
+                self?.sweepIdleEntries()
+            }
+        }
+    }
+
+    private func stopSweeperIfEmpty() {
+        guard entries.isEmpty, pending.isEmpty else { return }
+        sweeper?.cancel()
+        sweeper = nil
+    }
+
+    /// Hands back every connection nobody has used for `idleTimeout`. An entry with work on it is
+    /// left alone whatever its age: `lastUsed` is stamped when the work starts, so a long export
+    /// would otherwise have its own connection closed underneath it.
+    internal func sweepIdleEntries(now: Date = Date()) {
+        for (key, entry) in entries where entry.inFlightCount == 0 && Self.isStale(entry.lastUsed, now: now) {
+            entries.removeValue(forKey: key)
+            entry.driver.disconnect()
+        }
+        stopSweeperIfEmpty()
     }
 
     private func evictIdleIfNeeded(for connectionId: UUID) {

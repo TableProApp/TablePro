@@ -10,7 +10,10 @@ import Carbon.HIToolbox
 
 extension TextView {
     override public func keyDown(with event: NSEvent) {
-        guard isEditable else {
+        // A selectable but non-editable view still moves its insertion point and extends its selection from the
+        // keyboard, the same as `NSTextView` with `isEditable = false` and `isSelectable = true`. Bailing on
+        // `isEditable` alone left the read-only editors with no arrow keys and no Shift+Arrow at all.
+        guard isEditable || isSelectable else {
             super.keyDown(with: event)
             return
         }

@@ -34,8 +34,21 @@ internal struct JSONCodeEditor: View {
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onChange(of: colorScheme) {
-            configuration = Self.makeConfiguration(isEditable: isEditable)
+            rebuildConfiguration()
         }
+        .onChange(of: AppSettingsManager.shared.editor) {
+            rebuildConfiguration()
+        }
+        .onReceive(AppEvents.shared.accessibilityTextSizeChanged) { _ in
+            rebuildConfiguration()
+        }
+        .onReceive(AppEvents.shared.themeChanged) { _ in
+            rebuildConfiguration()
+        }
+    }
+
+    private func rebuildConfiguration() {
+        configuration = Self.makeConfiguration(isEditable: isEditable)
     }
 
     private static func makeConfiguration(isEditable: Bool) -> SourceEditorConfiguration {
@@ -51,10 +64,8 @@ internal struct JSONCodeEditor: View {
             layout: .init(
                 contentInsets: NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
             ),
-            peripherals: .init(
-                showGutter: false,
-                showMinimap: false,
-                showFoldingRibbon: false
+            peripherals: EditorPeripherals.preview(
+                folding: AppSettingsManager.shared.editor.codeFoldingEnabled
             )
         )
     }

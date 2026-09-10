@@ -44,6 +44,10 @@ final class DataBrowserViewModel {
     @ObservationIgnored private var session: ConnectionSession?
     @ObservationIgnored private var table: TableInfo?
     @ObservationIgnored private var databaseType: DatabaseType = .mysql
+    /// The schema the rows on screen were fetched with. Every statement the browser and its
+    /// children issue reads this one value, so an edit cannot target a schema the visible rows did
+    /// not come from.
+    private(set) var schema: String?
     @ObservationIgnored private var host: String = ""
     @ObservationIgnored private var fetchTask: Task<Void, Never>?
     @ObservationIgnored private var searchTask: Task<Void, Never>?
@@ -72,11 +76,18 @@ final class DataBrowserViewModel {
 
     // MARK: - Attach
 
-    func attach(session: ConnectionSession?, table: TableInfo, databaseType: DatabaseType, host: String) {
+    func attach(
+        session: ConnectionSession?,
+        table: TableInfo,
+        databaseType: DatabaseType,
+        host: String,
+        schema: String? = nil
+    ) {
         self.session = session
         self.table = table
         self.databaseType = databaseType
         self.host = host
+        self.schema = schema
     }
 
     // MARK: - Load
@@ -157,7 +168,7 @@ final class DataBrowserViewModel {
         let activeSort = effectiveSortState()
         if hasActiveSearch {
             return SQLBuilder.buildSearchSelect(
-                table: table.name, type: databaseType,
+                table: table.name, schema: schema, type: databaseType,
                 searchText: activeSearchText, searchColumns: searchableColumns(),
                 filters: filters, logicMode: filterLogicMode,
                 sortState: activeSort,
@@ -166,7 +177,7 @@ final class DataBrowserViewModel {
         }
         if hasActiveFilters {
             return SQLBuilder.buildFilteredSelect(
-                table: table.name, type: databaseType,
+                table: table.name, schema: schema, type: databaseType,
                 filters: filters, logicMode: filterLogicMode,
                 sortState: activeSort,
                 limit: pagination.pageSize, offset: pagination.currentOffset
@@ -174,13 +185,13 @@ final class DataBrowserViewModel {
         }
         if activeSort.isSorting {
             return SQLBuilder.buildSelect(
-                table: table.name, type: databaseType,
+                table: table.name, schema: schema, type: databaseType,
                 sortState: activeSort,
                 limit: pagination.pageSize, offset: pagination.currentOffset
             )
         }
         return SQLBuilder.buildSelect(
-            table: table.name, type: databaseType,
+            table: table.name, schema: schema, type: databaseType,
             limit: pagination.pageSize, offset: pagination.currentOffset
         )
     }
@@ -190,7 +201,7 @@ final class DataBrowserViewModel {
     /// so paging is deterministic across requests. Other databases tolerate an empty ORDER BY.
     private func effectiveSortState() -> SortState {
         if sortState.isSorting { return sortState }
-        guard databaseType == .mssql else { return sortState }
+        guard databaseType == .mssql || databaseType == .oracle else { return sortState }
         let fallback = columnDetails.first(where: \.isPrimaryKey)?.name ?? columnDetails.first?.name
         guard let fallback else { return sortState }
         return SortState(columns: [SortColumn(name: fallback, ascending: true)])
@@ -209,17 +220,17 @@ final class DataBrowserViewModel {
             let countQuery: String
             if hasActiveSearch {
                 countQuery = SQLBuilder.buildSearchCount(
-                    table: table.name, type: databaseType,
+                    table: table.name, schema: schema, type: databaseType,
                     searchText: activeSearchText, searchColumns: searchableColumns(),
                     filters: filters, logicMode: filterLogicMode
                 )
             } else if hasActiveFilters {
                 countQuery = SQLBuilder.buildFilteredCount(
-                    table: table.name, type: databaseType,
+                    table: table.name, schema: schema, type: databaseType,
                     filters: filters, logicMode: filterLogicMode
                 )
             } else {
-                countQuery = SQLBuilder.buildCount(table: table.name, type: databaseType)
+                countQuery = SQLBuilder.buildCount(table: table.name, schema: schema, type: databaseType)
             }
             let countResult = try await session.driver.execute(query: countQuery)
             if let firstRow = countResult.rows.first, let firstCol = firstRow.first {
@@ -321,7 +332,13 @@ final class DataBrowserViewModel {
         guard let session, let table, !pkValues.isEmpty else { return false }
         do {
             _ = try await session.driver.execute(
-                query: SQLBuilder.buildDelete(table: table.name, type: databaseType, primaryKeys: pkValues)
+                query: SQLBuilder.buildDelete(
+                    table: table.name,
+                    schema: schema,
+                    type: databaseType,
+                    driver: session.driver,
+                    primaryKeys: pkValues
+                )
             )
             await load()
             return true
@@ -348,7 +365,7 @@ final class DataBrowserViewModel {
 
     func loadFullValue(driver: DatabaseDriver, ref: CellRef, databaseType: DatabaseType) async throws -> String? {
         let predicates = ref.primaryKey.map { component in
-            "\(SQLBuilder.quoteIdentifier(component.column, for: databaseType)) = '\(component.value.replacingOccurrences(of: "'", with: "''"))'"
+            "\(SQLBuilder.quoteIdentifier(component.column, for: databaseType)) = '\(driver.escapeStringLiteral(component.value))'"
         }
         let predicate = predicates.joined(separator: " AND ")
         let column = SQLBuilder.quoteIdentifier(ref.column, for: databaseType)
@@ -357,6 +374,8 @@ final class DataBrowserViewModel {
         switch databaseType {
         case .mssql:
             query = "SELECT TOP 1 \(column) FROM \(table) WHERE \(predicate)"
+        case .oracle:
+            query = "SELECT \(column) FROM \(table) WHERE \(predicate) FETCH FIRST 1 ROWS ONLY"
         default:
             query = "SELECT \(column) FROM \(table) WHERE \(predicate) LIMIT 1"
         }

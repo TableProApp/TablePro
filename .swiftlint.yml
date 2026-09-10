@@ -178,4 +178,16 @@ colon:
 comma: warning
 
 # No print statements is now disabled - use Logger in the future
-custom_rules: {}
+custom_rules:
+  storage_environment_directory:
+    name: "Storage Environment Directory"
+    regex: 'applicationSupportDirectory'
+    excluded: ".*/AppStorageEnvironment\\.swift"
+    message: "Resolve the directory through AppStorageEnvironment.shared, or a UI test writes to the developer's own store."
+    severity: error
+  storage_environment_defaults:
+    name: "Storage Environment Defaults"
+    regex: 'UserDefaults\.standard'
+    excluded: ".*/(AppStorageEnvironment|GeneralSettings|WorkspaceRailViewController)\\.swift"
+    message: "Resolve preferences through AppStorageEnvironment.shared.defaults. Only a macOS-owned system preference reads the standard domain."
+    severity: error

@@ -9,7 +9,13 @@ import AppKit
 final class SortableHeaderCell: NSTableHeaderCell {
     var sortDirection: SortDirection?
     var sortPriority: Int?
+    /// The order came from the Default row sort setting, not from a click.
+    ///
+    /// Drawn muted and without a priority number, so the grid can say the rows are ordered without
+    /// claiming the user ordered them.
+    var isDefaultSort: Bool = false
     var isColumnSelected: Bool = false
+    var isEmphasized: Bool = true
     var isValueFiltered: Bool = false
     var isFunnelVisible: Bool = false
     var supportsValueFilter: Bool = true
@@ -20,6 +26,7 @@ final class SortableHeaderCell: NSTableHeaderCell {
     private static let commentFontSize: CGFloat = 10
     private static let commentLineSpacing: CGFloat = 1
     private static let defaultIndicatorSize = NSSize(width: 9, height: 6)
+    private static let defaultSortIndicatorAlpha: CGFloat = 0.45
     private static let funnelSize = NSSize(width: 13, height: 13)
     private static let funnelPointSize: CGFloat = 11
 
@@ -54,17 +61,20 @@ final class SortableHeaderCell: NSTableHeaderCell {
 
     override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
         if isColumnSelected {
-            NSColor.selectedContentBackgroundColor.setFill()
+            let fill: NSColor = isEmphasized
+                ? .selectedContentBackgroundColor
+                : .unemphasizedSelectedContentBackgroundColor
+            fill.setFill()
             cellFrame.fill()
         }
 
-        let foreground = foregroundColor(emphasized: isColumnSelected)
+        let foreground = foregroundColor(emphasized: isColumnSelected && isEmphasized)
         drawTitle(
             in: titleRect(forBounds: cellFrame),
-            font: titleFont(isSorted: sortDirection != nil),
+            font: titleFont(isSorted: sortDirection != nil && !isDefaultSort),
             color: foreground,
             comment: visibleComment(in: controlView),
-            commentColor: commentColor(emphasized: isColumnSelected)
+            commentColor: commentColor(emphasized: isColumnSelected && isEmphasized)
         )
 
         var trailingCursorX = cellFrame.maxX - Self.indicatorPadding
@@ -89,7 +99,10 @@ final class SortableHeaderCell: NSTableHeaderCell {
 
         guard let direction = sortDirection else { return }
 
-        let indicatorImage = Self.indicatorImage(for: direction, color: foreground)
+        let indicatorColor = isDefaultSort
+            ? foreground.withAlphaComponent(Self.defaultSortIndicatorAlpha)
+            : foreground
+        let indicatorImage = Self.indicatorImage(for: direction, color: indicatorColor)
         let indicatorSize = indicatorImage?.size ?? Self.defaultIndicatorSize
         let indicatorOriginX = trailingCursorX - indicatorSize.width
         let indicatorOriginY = cellFrame.midY - indicatorSize.height / 2

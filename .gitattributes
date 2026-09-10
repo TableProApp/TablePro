@@ -3,7 +3,6 @@
 # Swift files
 *.swift text diff=swift
 # Xcode project files
-*.pbxproj binary merge=union
 *.storyboard binary
 *.xib binary
 *.xcassets binary

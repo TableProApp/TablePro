@@ -152,6 +152,43 @@ struct MainContentCoordinatorLazyLoadTests {
         #expect(coordinator.pendingLoadTrigger == nil)
     }
 
+    /// The task slot stops answering once the load hands off to an execution: `executeQueryInternal`
+    /// supersedes, and `supersedeExecution` nils the slot held by the task it is running inside.
+    /// Every later trigger for the same navigation then found an empty slot and started a second
+    /// identical query, and the pair collided (#2342). The registry owns the other half.
+    @Test("Returns early when the tab already has an execution in flight")
+    func skipsWhenTheTabIsAlreadyExecuting() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager)
+        let claim = coordinator.tabExecution.claim(tabId)
+        let inFlight = Task<Void, Never> { _ = try? await Task.sleep(for: .seconds(60)) }
+        defer { inFlight.cancel() }
+        coordinator.currentQueryTask = inFlight
+
+        coordinator.lazyLoadCurrentTabIfNeeded()
+
+        #expect(coordinator.tabExecution.isCurrent(claim))
+        #expect(coordinator.tableLoadTasks[tabId] == nil)
+        #expect(coordinator.pendingLoadTrigger == nil)
+    }
+
+    /// Fetch All runs without claiming the tab, so the narrower `isExecuting` would let a second
+    /// load through beside it.
+    @Test("Returns early when unclaimed work is running on the tab")
+    func skipsWhenUnclaimedWorkIsRunning() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager)
+        _ = coordinator.tabExecution.beginUnclaimedWork(for: tabId)
+        let inFlight = Task<Void, Never> { _ = try? await Task.sleep(for: .seconds(60)) }
+        defer { inFlight.cancel() }
+        coordinator.currentQueryTask = inFlight
+
+        coordinator.lazyLoadCurrentTabIfNeeded()
+
+        #expect(coordinator.tableLoadTasks[tabId] == nil)
+        #expect(coordinator.pendingLoadTrigger == nil)
+    }
+
     // MARK: - Connection guard
 
     @Test("Sets pendingLoadTrigger when a fresh table tab is not connected")
@@ -237,7 +274,7 @@ struct MainContentCoordinatorLazyLoadTests {
         #expect(coordinator.pendingLoadTrigger == nil)
     }
 
-    @Test("Clears an abandoned executing flag when no in-flight task remains")
+    @Test("Clears an abandoned claim when no in-flight task remains")
     func recoversAbandonedExecutingFlag() {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addTableTab(to: tabManager)
@@ -245,39 +282,62 @@ struct MainContentCoordinatorLazyLoadTests {
             Issue.record("expected tab to exist")
             return
         }
-        tabManager.tabs[idx].execution.isExecuting = true
+        _ = coordinator.tabExecution.claim(tabId)
         coordinator.currentQueryTask = nil
 
         coordinator.lazyLoadCurrentTabIfNeeded()
 
-        #expect(tabManager.tabs[idx].execution.isExecuting == false)
+        #expect(coordinator.tabExecution.isExecuting(tabId) == false)
         #expect(coordinator.pendingLoadTrigger == .userInitiated)
     }
 
     // MARK: - loadEpoch bump triggers reload after eviction
 
-    @Test("Eviction bumps the tab's loadEpoch so .task(id:) re-fires")
+    /// `.task(id:)` keys on the tab's own `loadEpoch`, so that is the one the eviction path has to
+    /// move. This used to assert on a copy held by the session that nothing reads, which would
+    /// have stayed green with the reload broken.
+    @Test("Evicting a background tab bumps the tab's loadEpoch so .task(id:) re-fires")
     func evictionBumpsLoadEpoch() {
         let (coordinator, tabManager) = makeCoordinator()
-        let tabId = addTableTab(to: tabManager, tableName: "orders")
-        seedRows(coordinator, for: tabId, rowCount: 7)
-        guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+        let background = addTableTab(to: tabManager, tableName: "orders")
+        seedRows(coordinator, for: background, rowCount: 7)
+        let foreground = addTableTab(to: tabManager, tableName: "customers")
+        tabManager.selectedTabId = foreground
+        guard let idx = tabManager.tabs.firstIndex(where: { $0.id == background }) else {
             Issue.record("expected tab to exist")
             return
         }
         tabManager.tabs[idx].execution.lastExecutedAt = Date()
-        #expect(coordinator.tabSessionRegistry.tableRows(for: tabId).rows.count == 7)
+        let initialEpoch = tabManager.tabs[idx].loadEpoch
+        #expect(coordinator.tabSessionRegistry.tableRows(for: background).rows.count == 7)
 
-        guard let session = coordinator.tabSessionRegistry.session(for: tabId) else {
-            Issue.record("expected session to exist after seedRows")
+        coordinator.evictInactiveRowData()
+
+        guard let evictedTab = tabManager.tabs.first(where: { $0.id == background }) else {
+            Issue.record("expected tab to exist")
             return
         }
-        let initialEpoch = session.loadEpoch
+        #expect(evictedTab.loadEpoch != initialEpoch)
+        #expect(coordinator.tabSessionRegistry.isEvicted(background) == true)
+        #expect(coordinator.tabSessionRegistry.isEvicted(foreground) == false)
+    }
 
-        coordinator.tabSessionRegistry.evict(for: tabId)
+    /// A claim with no task behind it is healed on the next lazy load. That heal never lowered the
+    /// window's stored busy flag, so the titlebar kept reporting a query that had no task and no way
+    /// to finish, and only Stop could clear it (#2342). The window's state is derived now, so the
+    /// heal is the whole fix.
+    @Test("Healing an abandoned claim leaves the window reporting idle")
+    func abandonedClaimLeavesTheWindowIdle() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager)
+        let claim = coordinator.tabExecution.claim(tabId)
+        #expect(coordinator.currentQueryTask == nil)
+        #expect(coordinator.tabExecution.isAnyExecuting)
 
-        #expect(session.loadEpoch != initialEpoch)
-        #expect(coordinator.tabSessionRegistry.isEvicted(tabId) == true)
+        coordinator.lazyLoadCurrentTabIfNeeded()
+
+        #expect(coordinator.tabExecution.isCurrent(claim) == false)
+        #expect(coordinator.tabExecution.isAnyExecuting == false)
     }
 
     // MARK: - Regression: handleWindowDidBecomeKey does NOT trigger query work
@@ -290,15 +350,15 @@ struct MainContentCoordinatorLazyLoadTests {
             Issue.record("expected tab to exist")
             return
         }
-        let executingBefore = tabManager.tabs[idx].execution.isExecuting
+        let executingBefore = coordinator.tabExecution.isExecuting(tabId)
         let executedAtBefore = tabManager.tabs[idx].execution.lastExecutedAt
-        let toolbarBefore = coordinator.toolbarState.isExecuting
+        let toolbarBefore = coordinator.tabExecution.isAnyExecuting
 
         coordinator.handleWindowDidBecomeKey()
 
-        let executingAfter = tabManager.tabs[idx].execution.isExecuting
+        let executingAfter = coordinator.tabExecution.isExecuting(tabId)
         let executedAtAfter = tabManager.tabs[idx].execution.lastExecutedAt
-        let toolbarAfter = coordinator.toolbarState.isExecuting
+        let toolbarAfter = coordinator.tabExecution.isAnyExecuting
 
         #expect(executingAfter == executingBefore)
         #expect(executedAtAfter == executedAtBefore)

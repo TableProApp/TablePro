@@ -31,7 +31,8 @@ struct DataChangeManagerTests {
             tableName: "users",
             columns: ["id", "name", "email"],
             primaryKeyColumns: ["id"],
-            databaseType: .postgresql
+            databaseType: .postgresql,
+            generatedColumns: []
         )
 
         #expect(manager.tableName == "users")
@@ -64,7 +65,8 @@ struct DataChangeManagerTests {
             tableName: "users",
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
 
         manager.recordCellChange(
@@ -80,7 +82,8 @@ struct DataChangeManagerTests {
             tableName: "products",
             columns: ["id", "title"],
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
 
         #expect(!manager.hasChanges)
@@ -106,7 +109,8 @@ struct DataChangeManagerTests {
             tableName: "users",
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
 
         manager.recordCellChange(
@@ -127,7 +131,8 @@ struct DataChangeManagerTests {
             tableName: "users",
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
 
         manager.recordCellChange(
@@ -154,7 +159,8 @@ struct DataChangeManagerTests {
             tableName: "users",
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
 
         manager.recordCellChange(
@@ -176,7 +182,8 @@ struct DataChangeManagerTests {
             tableName: "users",
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
 
         manager.recordCellChange(
@@ -208,7 +215,8 @@ struct DataChangeManagerTests {
             tableName: "users",
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
 
         manager.recordCellChange(
@@ -239,7 +247,8 @@ struct DataChangeManagerTests {
             tableName: "users",
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
 
         manager.recordCellChange(
@@ -272,7 +281,8 @@ struct DataChangeManagerTests {
             tableName: "users",
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
 
         manager.recordRowDeletion(rowIndex: 0, originalRow: ["1", "Alice"])
@@ -287,7 +297,8 @@ struct DataChangeManagerTests {
             tableName: "users",
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
 
         manager.recordCellChange(
@@ -314,7 +325,8 @@ struct DataChangeManagerTests {
             tableName: "users",
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
 
         manager.recordRowDeletion(rowIndex: 2, originalRow: ["3", "Charlie"])
@@ -332,7 +344,8 @@ struct DataChangeManagerTests {
             tableName: "users",
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
 
         let rows: [(rowIndex: Int, originalRow: [PluginCellValue])] = [
@@ -357,7 +370,8 @@ struct DataChangeManagerTests {
             tableName: "users",
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
 
         manager.recordCellChange(
@@ -383,7 +397,8 @@ struct DataChangeManagerTests {
             tableName: "users",
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
 
         manager.recordCellChange(
@@ -409,7 +424,8 @@ struct DataChangeManagerTests {
             tableName: "users",
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
 
         manager.recordCellChange(
@@ -430,7 +446,8 @@ struct DataChangeManagerTests {
             tableName: "users",
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
 
         manager.recordCellChange(
@@ -455,7 +472,8 @@ struct DataChangeManagerTests {
             tableName: "users",
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
 
         manager.recordCellChange(
@@ -478,7 +496,8 @@ struct DataChangeManagerTests {
             tableName: "users",
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
 
         manager.recordCellChange(
@@ -514,13 +533,19 @@ struct DataChangeManagerTests {
     // MARK: - Reload Version Tests
 
     @Test("reloadVersion increments on change")
-    func reloadVersionIncrementsOnChange() async {
+    /// `reloadVersion` is the signal that tells the grid to throw away what it is showing and fetch
+    /// again. It increments on `clearChanges`, `discardChanges` and `configureForTable`, and
+    /// deliberately not on recording an edit: a reload there would discard the very edit the user
+    /// just made. These asserted the opposite, which is why they sat in the quarantine file, so
+    /// each now pins the real contract from both sides.
+    func reloadVersionTracksReloadsNotEdits() async {
         let manager = DataChangeManager()
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
 
         let initialVersion = manager.reloadVersion
@@ -533,6 +558,10 @@ struct DataChangeManagerTests {
             newValue: "Bob"
         )
 
+        #expect(manager.reloadVersion == initialVersion)
+
+        manager.clearChanges()
+
         #expect(manager.reloadVersion == initialVersion + 1)
     }
 
@@ -543,7 +572,8 @@ struct DataChangeManagerTests {
             tableName: "users",
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
 
         manager.recordCellChange(
@@ -559,5 +589,102 @@ struct DataChangeManagerTests {
         manager.clearChanges()
 
         #expect(manager.reloadVersion == versionBeforeClear + 1)
+    }
+}
+
+/// Paste, Fill Column and the row inspector all reach `recordCellChange` directly, without passing
+/// the grid's own writability check. A server-owned column could be staged there, silently filtered
+/// out during statement generation, and then cleared by a save that reported success.
+@MainActor
+@Suite("Data Change Manager - non-writable columns")
+struct DataChangeManagerNonWritableTests {
+    private func makeManager(generatedColumns: Set<String>) -> DataChangeManager {
+        let manager = DataChangeManager()
+        manager.configureForTable(
+            tableName: "users",
+            columns: ["id", "name"],
+            primaryKeyColumns: ["id"],
+            databaseType: .postgresql,
+            generatedColumns: generatedColumns
+        )
+        return manager
+    }
+
+    @Test("An edit to a server-owned column is refused")
+    func refusesServerOwnedColumn() {
+        let manager = makeManager(generatedColumns: ["id"])
+
+        manager.recordCellChange(
+            rowIndex: 0, columnIndex: 0, columnName: "id",
+            oldValue: .text("1"), newValue: .text("99")
+        )
+
+        #expect(!manager.hasChanges)
+        #expect(manager.rowChanges.isEmpty)
+    }
+
+    @Test("An edit to a writable column is still recorded")
+    func recordsWritableColumn() {
+        let manager = makeManager(generatedColumns: ["id"])
+
+        manager.recordCellChange(
+            rowIndex: 0, columnIndex: 1, columnName: "name",
+            oldValue: .text("Alice"), newValue: .text("Bob")
+        )
+
+        #expect(manager.hasChanges)
+    }
+
+    /// The refusal must not leave the other edits of the same save behind.
+    @Test("A refused edit does not disturb a legitimate one recorded alongside it")
+    func refusalLeavesOtherEditsIntact() {
+        let manager = makeManager(generatedColumns: ["id"])
+
+        manager.recordCellChange(
+            rowIndex: 0, columnIndex: 1, columnName: "name",
+            oldValue: .text("Alice"), newValue: .text("Bob")
+        )
+        manager.recordCellChange(
+            rowIndex: 0, columnIndex: 0, columnName: "id",
+            oldValue: .text("1"), newValue: .text("99")
+        )
+
+        #expect(manager.hasChanges)
+        let edited = manager.rowChanges.flatMap(\.cellChanges).map(\.columnName)
+        #expect(edited == ["name"])
+    }
+}
+
+/// `immutableColumns` is the driver's own list, such as MongoDB's `_id`. The grid consults it and
+/// the model boundary did not, so the row inspector could still stage a change the backend rejects.
+@MainActor
+@Suite("Data Change Manager - immutable columns")
+struct DataChangeManagerImmutableColumnTests {
+    @Test("A writable column with no generated set is accepted")
+    func writableColumnAccepted() {
+        let manager = DataChangeManager()
+        manager.configureForTable(
+            tableName: "orders",
+            columns: ["id", "total"],
+            primaryKeyColumns: ["id"],
+            databaseType: .postgresql,
+            generatedColumns: []
+        )
+
+        #expect(manager.isColumnWritable("total"))
+    }
+
+    @Test("A generated column is not writable")
+    func generatedColumnNotWritable() {
+        let manager = DataChangeManager()
+        manager.configureForTable(
+            tableName: "orders",
+            columns: ["id", "total"],
+            primaryKeyColumns: ["id"],
+            databaseType: .postgresql,
+            generatedColumns: ["total"]
+        )
+
+        #expect(!manager.isColumnWritable("total"))
     }
 }

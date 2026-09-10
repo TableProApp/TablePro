@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 
 import PackageDescription
 
@@ -21,9 +21,15 @@ let package = Package(
         .library(name: "TableProMSSQLCore", targets: ["TableProMSSQLCore"]),
         .library(name: "TableProTeradataCore", targets: ["TableProTeradataCore"]),
         .library(name: "TableProTrinoCore", targets: ["TableProTrinoCore"]),
+        .library(name: "TableProNumberFormatting", targets: ["TableProNumberFormatting"]),
         .library(name: "TableProR2SQLCore", targets: ["TableProR2SQLCore"])
     ],
     targets: [
+        .target(
+            name: "TableProNumberFormatting",
+            dependencies: [],
+            path: "Sources/TableProNumberFormatting"
+        ),
         .target(
             name: "TableProCoreTypes",
             dependencies: [],
@@ -32,8 +38,7 @@ let package = Package(
         .target(
             name: "TableProPluginKit",
             dependencies: [],
-            path: "Sources/TableProPluginKit",
-            exclude: ["Info.plist"]
+            path: "Sources/TableProPluginKit"
         ),
         .target(
             name: "TableProModels",
@@ -89,6 +94,11 @@ let package = Package(
             name: "TableProR2SQLCore",
             dependencies: [],
             path: "Sources/TableProR2SQLCore"
+        ),
+        .testTarget(
+            name: "TableProNumberFormattingTests",
+            dependencies: ["TableProNumberFormatting"],
+            path: "Tests/TableProNumberFormattingTests"
         ),
         .testTarget(
             name: "TableProModelsTests",

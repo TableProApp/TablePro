@@ -13,10 +13,12 @@ extension MainContentView {
     // MARK: - Helper Methods
 
     func loadTableMetadataIfNeeded() async {
-        guard let tableName = currentTab?.tableContext.tableName,
-            coordinator.tableMetadata?.tableName != tableName
+        guard let tab = currentTab,
+            let tableName = tab.tableContext.tableName,
+            !(coordinator.tableMetadata?.tableName == tableName
+                && coordinator.hasCurrentTableMetadata(for: tab, tableName: tableName))
         else { return }
-        await coordinator.loadTableMetadata(tableName: tableName)
+        await coordinator.loadTableMetadata(tableName: tableName, for: tab)
     }
 
     func handleConnectionStatusChange() {
@@ -35,10 +37,7 @@ extension MainContentView {
                 coordinator.lazyLoadCurrentTabIfNeeded()
             }
         }
-        let mappedState = mapSessionStatus(session.status)
-        if mappedState != toolbarState.connectionState {
-            toolbarState.connectionState = mappedState
-        }
+        toolbarState.updateConnectionState(from: session.reportedStatus)
         toolbarState.syncFromSession(for: connection)
     }
 
@@ -50,15 +49,6 @@ extension MainContentView {
             coordinator.lazyLoadCurrentTabIfNeeded(trigger: trigger)
         } else {
             coordinator.runQuery(trigger: trigger)
-        }
-    }
-
-    private func mapSessionStatus(_ status: ConnectionStatus) -> ToolbarConnectionState {
-        switch status {
-        case .connected: return .connected
-        case .connecting: return .executing
-        case .disconnected: return .disconnected
-        case .error: return .error("")
         }
     }
 
@@ -75,14 +65,52 @@ extension MainContentView {
     }
 
     func updateInspectorContext() {
-        rightPanelState.inspectorContext = InspectorContext(
-            tableName: currentTab?.tableContext.tableName,
-            tableMetadata: coordinator.tableMetadata,
-            selectedRowData: selectedRowDataForSidebar,
+        trailingPaneState.inspector.context = RowInspectorContext(
+            subject: inspectorSubject,
+            hasRow: hasInspectableRow,
             isEditable: isSidebarEditable,
             isRowDeleted: isSelectedRowDeleted,
+            tableMetadata: tableMetadataForCurrentTab,
+            jsonRow: jsonRowSnapshotForSidebar,
+            userDefinedTypeScope: structureTypeScope
+        )
+        updateAssistantContext()
+    }
+
+    /// Built only once the assistant exists. The grid summary is for the chat, and a window whose
+    /// assistant was never revealed has nothing to tell.
+    func updateAssistantContext() {
+        guard trailingPaneState.assistant.isActivated else { return }
+        trailingPaneState.assistant.context = AssistantContext(
             currentQuery: coordinator.tabManager.selectedTab?.content.query,
             queryResults: cachedQueryResultsSummary()
+        )
+    }
+
+    /// Nil on a tab that has no table of its own.
+    ///
+    /// `coordinator.tableMetadata` is a single latest-wins slot, written by `loadTableMetadata` and
+    /// cleared only by `teardown()`. Handing it over unconditionally meant a query tab, a
+    /// dashboard, an ER diagram or a Users & Roles tab showed the size, row count and engine of
+    /// whichever table had been opened last, labelled as if they described what was on screen, and
+    /// closing that table's tab did not clear it.
+    private var tableMetadataForCurrentTab: TableMetadata? {
+        guard let tableName = currentTab?.tableContext.tableName,
+              let metadata = coordinator.tableMetadata,
+              metadata.tableName == tableName
+        else { return nil }
+        return metadata
+    }
+
+    /// The scope a structure row's type picker looks types up in: the tab's own database and
+    /// schema, never the sidebar's, because a tab bound to another database edits that one.
+    private var structureTypeScope: DatabaseScope? {
+        guard let tab = currentTab, tab.tabType == .table || tab.tabType == .createTable else { return nil }
+        let database = tab.tableContext.databaseName ?? coordinator.browseDatabaseName
+        return DatabaseScope(
+            connectionId: coordinator.connection.id,
+            database: database,
+            schema: tab.tableContext.schemaName
         )
     }
 
@@ -123,7 +151,7 @@ extension MainContentView {
                 case .bytes(let data):
                     raw = BlobFormattingService.shared.format(data, for: .copy) ?? ""
                 }
-                return (raw as NSString).length > 200 ? String(raw.prefix(200)) + "..." : raw
+                return (raw as NSString).length > 200 ? String(raw.prefix(200)) + "…" : raw
             }
             lines.append(values.joined(separator: " | "))
         }

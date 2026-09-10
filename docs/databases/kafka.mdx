@@ -1,0 +1,169 @@
+---
+title: Kafka
+description: Browse Kafka topics and messages in the grid, check consumer group lag, and produce test messages
+---
+
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
+
+A log is not a table. Topics are tables here and a message is a row, but the log has no sort, no
+`WHERE`, and no way to change a message once it is written, so the grid drops those affordances
+instead of pretending to honor them. What replaces them is a start position: read the newest
+hundred messages, or the oldest, or everything after an offset or a timestamp.
+
+## Quick setup
+
+Click **Create Connection…**, select **Kafka**, enter one broker's host and port, and connect. Any
+broker in the cluster works as the bootstrap: the rest are discovered from it. The driver speaks
+Kafka's binary protocol directly and needs Kafka 0.11 or later, the release that introduced the
+record format every message has used since.
+
+<RegistryPlugin name="Kafka" plugin="Kafka Driver" />
+
+## Connection settings
+
+| Field | Description |
+|-------|-------------|
+| **Host** / **Port** | One broker to bootstrap from. Default port `9092` |
+| **Additional Bootstrap Servers** | More brokers to try if the first does not answer |
+| **Security Protocol** | `PLAINTEXT`, `SSL`, `SASL_PLAINTEXT`, or `SASL_SSL` |
+| **SASL Mechanism** | `PLAIN`, `SCRAM-SHA-256`, or `SCRAM-SHA-512`, for the two SASL protocols |
+| **Username** / **Password** | The SASL credentials |
+| **Broker Addresses** | Whether to dial the addresses the cluster advertises, or stay on the bootstrap |
+| **Connect Timeout** | Seconds to wait for a broker. Default `10` |
+
+There is no Database field. A connection is one cluster, and the sidebar shows its topics directly.
+
+## Connection URL
+
+```text
+kafka://user:pass@broker:9092
+```
+
+The scheme is registered with macOS, so a link like that opens the connection form pre-filled. See
+[Connection URL Reference](/connections/urls).
+
+## Authentication
+
+Leave **Security Protocol** on `PLAINTEXT` for a broker with no authentication, which is the usual
+local Docker setup. Managed Kafka nearly always wants `SASL_SSL`.
+
+| Mechanism | Use it for |
+|-------|-------------|
+| **PLAIN** | Confluent Cloud, and any broker configured with a username and password |
+| **SCRAM-SHA-256** | Self-hosted brokers with SCRAM credentials, and Amazon MSK |
+| **SCRAM-SHA-512** | The same, where the cluster was set up for SHA-512 |
+
+Pick `SCRAM-SHA-512` when the cluster offers both. If the mechanism is wrong the broker names the
+ones it accepts in the error.
+
+## Reading messages
+
+Opening a topic shows its most recent hundred messages, newest last. Columns are `partition`,
+`offset`, `timestamp`, `key`, `value`, `headers`, `key_size`, and `value_size`.
+
+Messages from different partitions are interleaved by timestamp. Kafka orders messages only within a
+partition, so that ordering is a reading convenience and not a property of the log; `partition` and
+`offset` together are what identify a message.
+
+A `key` or `value` that is not valid UTF-8 is shown as hex. A null value is a tombstone and renders
+empty but distinct from a zero-length message, which matters on a compacted topic.
+
+## KafkaQL
+
+The query editor takes a small command language.
+
+```text
+CONSUME "orders" FROM NEWEST LIMIT 100
+CONSUME "orders" FROM OLDEST LIMIT 500
+CONSUME "orders" FROM OFFSET 1000 LIMIT 100
+CONSUME "orders" FROM TIME "2026-08-01T00:00:00Z" LIMIT 100
+CONSUME "orders" PARTITION (0,2) FROM NEWEST LIMIT 50
+```
+
+`FROM TIME` takes an ISO 8601 instant or milliseconds since the epoch, and resolves to the first
+message at or after it in each partition.
+
+```text
+SHOW TOPICS
+SHOW BROKERS
+SHOW GROUPS
+SHOW CLUSTER
+DESCRIBE TOPIC "orders"
+DESCRIBE GROUP "order-processor"
+```
+
+`DESCRIBE GROUP` is the lag report: committed offset, end offset, and the gap, per partition. A
+partition the group has never committed shows an empty lag rather than a number counted from zero.
+
+## Producing a message
+
+```text
+PRODUCE INTO "orders" KEY "order-1" VALUE "{\"id\":1}"
+PRODUCE INTO "orders" VALUE "no key" PARTITION 2
+PRODUCE INTO "orders" KEY "k" VALUE "v" HEADER "source" "tablepro"
+```
+
+Without `PARTITION`, a keyed message is placed by the same hash Kafka's own producer uses, so it
+lands with the rest of that key's messages. A message with no key goes to partition 0.
+
+## Compression
+
+Messages are decompressed as they are read. gzip, snappy, lz4, and zstd all work, and no setting
+selects them: each batch declares its own codec and brokers hand back whatever the producer stored.
+
+## SSL/TLS
+
+**Security Protocol** decides whether the connection is encrypted, and the SSL mode decides how
+strictly the certificate is checked. Setting the protocol to `SSL` or `SASL_SSL` with no mode chosen
+verifies the chain and the hostname. A private CA goes in the **CA Certificate** field; mutual TLS
+also needs the client certificate and key.
+
+Setting the protocol to `PLAINTEXT` or `SASL_PLAINTEXT` turns encryption off whatever the SSL mode
+says, so a mode left over from an earlier edit cannot silently encrypt a plaintext listener.
+
+## Limitations
+
+Editing a cell, deleting a row, and sorting a column are all unavailable, and the grid dims them
+rather than failing at save time. Kafka has no update primitive, no per-message delete, and no
+server-side sort. To change what a consumer sees, produce a new message.
+
+Paging jumps are unavailable. Page two continues from where page one stopped, so a topic being
+written to while you read it will not repeat or skip a message.
+
+Row counts are approximate. The count is the end offset minus the start offset, which overcounts
+where retention has removed messages from the middle of a compacted topic.
+
+Schema Registry is not read. A topic whose values are Avro or Protobuf shows the raw bytes,
+including the five-byte Confluent wire-format prefix.
+
+Creating and deleting topics, editing topic configuration, and resetting consumer group offsets are
+not available.
+
+## Troubleshooting
+
+### Could not reach the Kafka cluster: the connection was refused
+
+Nothing is listening on that address. Check the port: `9092` is the usual plaintext listener and
+`9093` is often the controller, which does not answer client requests.
+
+### Could not reach the Kafka cluster: the TLS handshake failed
+
+**Security Protocol** is `SSL` or `SASL_SSL` but the port is a plaintext listener. Brokers expose
+one protocol per port, so use the port configured for TLS.
+
+### Kafka authentication failed: the broker does not offer PLAIN, only …
+
+The mechanism does not match the cluster. Set **SASL Mechanism** to one of the names in the message.
+
+### Requests time out, or a topic loads on a tunnel but its messages do not
+
+The cluster is advertising addresses that are not reachable from here. Behind an
+[SSH tunnel](/connections/ssh-tunneling) this is handled: the driver is pinned to the bootstrap
+address automatically. On a direct connection to brokers behind NAT or inside Docker, set **Broker
+Addresses** to only use the bootstrap address.
+
+## Related
+
+- [SSH Tunneling](/connections/ssh-tunneling)
+- [SSL/TLS](/connections/ssl)
+- [Plugins & Themes](/features/plugins)

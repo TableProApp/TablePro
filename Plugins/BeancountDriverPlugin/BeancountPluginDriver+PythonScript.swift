@@ -8,11 +8,39 @@ import Foundation
 extension BeancountPluginDriver {
     static let pythonProjectionScript = """
 import json
+import os
 import sys
+import tempfile
 from collections import defaultdict
 from decimal import Decimal
 
+cache_directory = tempfile.TemporaryDirectory(prefix="tablepro-beancount-")
+os.environ["BEANCOUNT_DISABLE_LOAD_CACHE"] = "1"
+os.environ["BEANCOUNT_LOAD_CACHE_FILENAME"] = os.path.join(cache_directory.name, "disabled.picklecache")
+
 from beancount import loader
+
+allow_ledger_plugins = os.environ.get("TABLEPRO_BEANCOUNT_RUN_LEDGER_PLUGINS") == "1"
+suppressed_plugins = []
+original_run_transformations = loader.run_transformations
+
+def ships_with_beancount(name):
+    return name == "beancount" or name.startswith("beancount.")
+
+if not allow_ledger_plugins:
+    def run_transformations_without_ledger_plugins(entries, parse_errors, options_map, log_timings):
+        declared = options_map.get("plugin", [])
+        bundled = [plugin for plugin in declared if ships_with_beancount(plugin[0])]
+        suppressed_plugins.extend(
+            plugin[0] for plugin in declared if not ships_with_beancount(plugin[0])
+        )
+        if len(bundled) == len(declared):
+            return original_run_transformations(entries, parse_errors, options_map, log_timings)
+        safe_options_map = options_map.copy()
+        safe_options_map["plugin"] = bundled
+        return original_run_transformations(entries, parse_errors, safe_options_map, log_timings)
+
+    loader.run_transformations = run_transformations_without_ledger_plugins
 
 def date_value(value):
     return value.isoformat() if value is not None else None
@@ -28,48 +56,194 @@ def amount_value(amount):
         "currency": getattr(amount, "currency", None),
     }
 
+META_INTERNAL_KEYS = ("filename", "lineno", "__automatic__", "__residual__", "__tolerances__")
+
+def source_file(meta):
+    if not meta:
+        return None
+    value = meta.get("filename")
+    return str(value) if value is not None else None
+
+def source_line(meta):
+    if not meta:
+        return None
+    value = meta.get("lineno")
+    return int(value) if value is not None else None
+
+def source_location(meta):
+    path = source_file(meta)
+    line = source_line(meta)
+    if path is None or line is None:
+        return None
+    return path + ":" + str(line)
+
+def user_meta(meta):
+    if not meta:
+        return None
+    pairs = {}
+    for key, value in meta.items():
+        if key in META_INTERNAL_KEYS or key.startswith("__"):
+            continue
+        if value is None:
+            pairs[key] = None
+        elif isinstance(value, (str, bool, int, float)):
+            pairs[key] = value
+        elif isinstance(value, Decimal):
+            pairs[key] = decimal_value(value)
+        else:
+            pairs[key] = str(value)
+    return pairs or None
+
+def name_list(values):
+    return sorted(str(value) for value in (values or []))
+
 entries, errors, options_map = loader.load_file(sys.argv[1])
+suppressed = sorted(set(suppressed_plugins))
 if errors:
+    if suppressed:
+        print(
+            "TablePro did not run these ledger-declared plugins: " + ", ".join(suppressed),
+            file=sys.stderr,
+        )
+        print(
+            'Turn on "Run Ledger Plugins" for this connection if you trust this ledger.',
+            file=sys.stderr,
+        )
     for error in errors:
         print(str(error), file=sys.stderr)
     sys.exit(1)
 
 rows = {
-    "transactions_and_postings": [],
+    "transactions": [],
+    "postings": [],
     "accounts": [],
     "prices": [],
     "balances": [],
     "balance_assertions": [],
+    "commodities": [],
+    "documents": [],
+    "notes": [],
+    "events": [],
+    "pads": [],
+    "closes": [],
+    "directives": [],
+    "diagnostics": [],
 }
 balances = defaultdict(Decimal)
 transaction_id = 0
 
+for plugin_name in suppressed:
+    rows["diagnostics"].append({
+        "severity": "warning",
+        "phase": "security",
+        "message": "Ledger-declared Python plugin not run: " + plugin_name,
+    })
+
+directive_id = 0
+
 for entry in entries:
     entry_type = type(entry).__name__
+    if entry_type != "Transaction":
+        directive_id += 1
+        rows["directives"].append({
+            "id": directive_id,
+            "type": entry_type.lower(),
+            "date": date_value(getattr(entry, "date", None)),
+            "filename": source_file(entry.meta),
+            "lineno": source_line(entry.meta),
+            "location": source_location(entry.meta),
+            "_entry_meta": user_meta(entry.meta),
+        })
     if entry_type == "Transaction":
         transaction_id += 1
+        entry_meta = user_meta(entry.meta)
+        tags = name_list(entry.tags)
+        links = name_list(entry.links)
+        rows["transactions"].append({
+            "id": transaction_id,
+            "date": date_value(entry.date),
+            "flag": str(entry.flag),
+            "payee": entry.payee,
+            "narration": entry.narration,
+            "filename": source_file(entry.meta),
+            "lineno": source_line(entry.meta),
+            "location": source_location(entry.meta),
+            "tags": tags,
+            "links": links,
+            "_entry_meta": entry_meta,
+        })
         for posting in entry.postings:
             units = getattr(posting, "units", None)
             cost = getattr(posting, "cost", None)
+            price = getattr(posting, "price", None)
+            posting_flag = getattr(posting, "flag", None)
+            posting_meta = getattr(posting, "meta", None)
             if units is not None and getattr(units, "number", None) is not None and getattr(units, "currency", None):
                 balances[(posting.account, units.currency)] += units.number
-            rows["transactions_and_postings"].append({
-                "id": transaction_id,
+            rows["postings"].append({
+                "transaction_id": transaction_id,
                 "date": date_value(entry.date),
-                "flag": str(entry.flag),
-                "payee": entry.payee,
-                "narration": entry.narration,
                 "account": posting.account,
                 "number": decimal_value(getattr(units, "number", None)) if units is not None else None,
                 "currency": getattr(units, "currency", None) if units is not None else None,
+                "posting_flag": str(posting_flag) if posting_flag is not None else None,
                 "cost_number": decimal_value(getattr(cost, "number", None)) if cost is not None else None,
                 "cost_currency": getattr(cost, "currency", None) if cost is not None else None,
+                "cost_date": date_value(getattr(cost, "date", None)) if cost is not None else None,
+                "cost_label": getattr(cost, "label", None) if cost is not None else None,
+                "price": amount_value(price),
+                "filename": source_file(posting_meta) or source_file(entry.meta),
+                "lineno": source_line(posting_meta) or source_line(entry.meta),
+                "location": source_location(posting_meta) or source_location(entry.meta),
+                "_posting_meta": user_meta(posting_meta),
             })
+    elif entry_type == "Commodity":
+        rows["commodities"].append({
+            "date": date_value(entry.date),
+            "name": entry.currency,
+        })
+    elif entry_type == "Document":
+        rows["documents"].append({
+            "date": date_value(entry.date),
+            "account": entry.account,
+            "filename": entry.filename,
+            "tags": name_list(getattr(entry, "tags", None)),
+            "links": name_list(getattr(entry, "links", None)),
+        })
+    elif entry_type == "Note":
+        rows["notes"].append({
+            "date": date_value(entry.date),
+            "account": entry.account,
+            "comment": entry.comment,
+            "tags": name_list(getattr(entry, "tags", None)),
+            "links": name_list(getattr(entry, "links", None)),
+        })
+    elif entry_type == "Event":
+        rows["events"].append({
+            "date": date_value(entry.date),
+            "type": entry.type,
+            "description": entry.description,
+        })
+    elif entry_type == "Pad":
+        rows["pads"].append({
+            "date": date_value(entry.date),
+            "account": entry.account,
+            "source_account": entry.source_account,
+            "filename": source_file(entry.meta),
+            "lineno": source_line(entry.meta),
+            "location": source_location(entry.meta),
+        })
+    elif entry_type == "Close":
+        rows["closes"].append({
+            "account": entry.account,
+            "close": date_value(entry.date),
+        })
     elif entry_type == "Open":
         rows["accounts"].append({
             "account": entry.account,
             "open": date_value(entry.date),
             "currencies": list(entry.currencies or []),
+            "booking": getattr(getattr(entry, "booking", None), "value", None),
         })
     elif entry_type == "Price":
         rows["prices"].append({

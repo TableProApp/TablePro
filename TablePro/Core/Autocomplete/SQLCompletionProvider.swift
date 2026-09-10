@@ -76,13 +76,28 @@ final class SQLCompletionProvider {
         cursorPosition: Int,
         forcedTableReferences: [TableReference]? = nil
     ) async -> (items: [SQLCompletionItem], context: SQLContext) {
+        let session = await completionSession(
+            text: text,
+            cursorPosition: cursorPosition,
+            forcedTableReferences: forcedTableReferences
+        )
+        return (session.items, session.context)
+    }
+
+    /// The completions for the cursor position, as both what the popup shows and the wider pool
+    /// it re-ranks against while it stays open.
+    func completionSession(
+        text: String,
+        cursorPosition: Int,
+        forcedTableReferences: [TableReference]? = nil
+    ) async -> (items: [SQLCompletionItem], candidates: [SQLCompletionItem], context: SQLContext) {
         var context = contextAnalyzer.analyze(query: text, cursorPosition: cursorPosition)
         if let forcedTableReferences {
             context = context.replacingTableReferences(forcedTableReferences)
         }
 
         if context.isInsideString || context.isInsideComment {
-            return ([], context)
+            return ([], [], context)
         }
 
         var candidates = await getCandidates(for: context)
@@ -93,10 +108,35 @@ final class SQLCompletionProvider {
 
         candidates = rankResults(candidates, prefix: context.prefix, context: context)
 
-        let limited = Array(candidates.prefix(maxSuggestions(for: context.clauseType)))
+        let limit = maxSuggestions(for: context.clauseType)
 
-        return (limited, context)
+        return (Array(candidates.prefix(limit)), Array(candidates.prefix(sessionPool(for: limit))), context)
     }
+
+    /// Filter, rank and cut a session's candidates down to what the popup shows.
+    ///
+    /// The popup shows `maxSuggestions`, but the session holds `sessionPool` of them, because an
+    /// open popup re-ranks against what it kept rather than asking again. A candidate cut at the
+    /// opening prefix can never lead for a longer one however well the survivors are ordered, and
+    /// PostgreSQL declares more `T`-prefixed functions than the popup shows rows, every one of
+    /// them outranking the `TRUE` keyword for the single letter `t`.
+    func filterRankAndLimit(
+        _ items: [SQLCompletionItem],
+        prefix: String,
+        context: SQLContext
+    ) -> [SQLCompletionItem] {
+        Array(filterAndRank(items, prefix: prefix, context: context).prefix(maxSuggestions(for: context.clauseType)))
+    }
+
+    /// Ten times what the popup shows. Ranking is linear in the pool and the filter beside it
+    /// already walks every candidate: measured at 36us for 40 candidates and 340us for 400, against
+    /// 4ms at 5,000, which is why the pool is bounded rather than kept whole.
+    private func sessionPool(for limit: Int) -> Int { limit * 10 }
+
+    /// The ceiling for a session built without going through `completionSession`. The seeded
+    /// window is statement keywords plus every saved favorite, which has no natural bound, and it
+    /// is replaced by an analyzed session as soon as the request lands.
+    var seedPoolLimit: Int { sessionPool(for: maxSuggestions(for: .unknown)) }
 
     /// Generic SQL functions plus the active dialect's own functions (deduplicated).
     /// Cached per dialect; invalidated in `setDatabaseType`.
@@ -223,6 +263,7 @@ final class SQLCompletionProvider {
             }
 
         case .on:
+            items += await allowedValueItems(for: context)
             // HP-3: ON clause — prioritize columns from joined tables
             items += await columnItems(for: context.tableReferences)
             for ref in context.tableReferences {
@@ -240,6 +281,7 @@ final class SQLCompletionProvider {
                 }
             }
             items += SQLKeywords.operatorItems()
+            items += dialectOperatorItems()
             items += filterKeywords([
                 "AND", "OR", "NOT", "IS", "NULL", "TRUE", "FALSE"
             ])
@@ -256,8 +298,10 @@ final class SQLCompletionProvider {
 
         case .where_, .and, .having:
             // HP-8: Columns, operators, logical keywords + clause transitions
+            items += await allowedValueItems(for: context)
             items += await columnItems(for: context.tableReferences)
             items += SQLKeywords.operatorItems()
+            items += dialectOperatorItems()
             items += filterKeywords([
                 "AND", "OR", "NOT", "IN", "LIKE", "ILIKE", "BETWEEN", "IS",
                 "NULL", "NOT NULL", "TRUE", "FALSE", "EXISTS", "NOT EXISTS",
@@ -334,6 +378,7 @@ final class SQLCompletionProvider {
             items += await columnItems(for: context.tableReferences)
             items += filterKeywords(["WHEN", "THEN", "ELSE", "END", "AND", "OR", "IS", "NULL", "TRUE", "FALSE"])
             items += SQLKeywords.operatorItems()
+            items += dialectOperatorItems()
             items += functionItems()
 
         case .inList:
@@ -429,6 +474,9 @@ final class SQLCompletionProvider {
             items = filterKeywords(["SELECT", "AS"])
             items += await schemaProvider?.tableCompletionItems() ?? []
 
+        case .castTarget:
+            items = castTargetCompletionItems()
+
         case .unknown:
             items = statementStartCompletionItems()
             items += await schemaProvider?.tableCompletionItems() ?? []
@@ -452,6 +500,52 @@ final class SQLCompletionProvider {
             .filter { $0.key.lowercased().hasPrefix(lowerPrefix) }
             .sorted { $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending }
             .map { SQLCompletionItem.favorite(keyword: $0.key, name: $0.value.name, query: $0.value.query) }
+    }
+
+    /// Values a compared column is restricted to, offered as quoted literals ahead of everything
+    /// else. Nothing is offered for an ordinary column.
+    private func allowedValueItems(for context: SQLContext) async -> [SQLCompletionItem] {
+        guard let column = context.comparisonColumn, let schemaProvider else { return [] }
+
+        let values = await schemaProvider.allowedValues(forColumn: column, in: context.tableReferences)
+        return values.map { value in
+            var item = SQLCompletionItem(
+                label: "'\(value)'",
+                kind: .keyword,
+                insertText: "'\(value)'",
+                detail: column,
+                filterText: value.lowercased()
+            )
+            item.sortPriority = 10
+            return item
+        }
+    }
+
+    /// Operators the connected dialect declares, with their documented meaning.
+    private func dialectOperatorItems() -> [SQLCompletionItem] {
+        guard let descriptor = cachedDialect else { return [] }
+        return descriptor.operators.map { operatorDescriptor in
+            SQLCompletionItem(
+                label: operatorDescriptor.symbol,
+                kind: .operator,
+                insertText: operatorDescriptor.symbol,
+                detail: operatorDescriptor.appliesToTypes.isEmpty
+                    ? nil
+                    : operatorDescriptor.appliesToTypes.joined(separator: ", "),
+                documentation: operatorDescriptor.summary
+            )
+        }
+    }
+
+    /// Type names offered directly after a `::` cast operator, in the spelling users write.
+    private func castTargetCompletionItems() -> [SQLCompletionItem] {
+        guard let descriptor = cachedDialect, !descriptor.dataTypes.isEmpty else { return [] }
+        return descriptor.dataTypes.sorted().map { typeName in
+            let lowercased = typeName.lowercased()
+            var item = SQLCompletionItem(label: lowercased, kind: .keyword, insertText: lowercased)
+            item.sortPriority = 300
+            return item
+        }
     }
 
     /// SQL data type keywords (database-aware), with a slight priority boost
@@ -662,15 +756,24 @@ final class SQLCompletionProvider {
 
     // MARK: - Ranking
 
-    /// Rank results by relevance
+    /// Rank results by relevance, lowest score first.
+    ///
+    /// Scores are resolved once per candidate rather than inside the comparator, which called
+    /// `calculateScore` twice per comparison. Ranking runs on every keystroke of an open popup,
+    /// so the candidate set is walked once and the sort then compares integers.
+    ///
+    /// Equal scores fall back to the candidate's own position, which is the order the generator
+    /// emitted it in and carries meaning `sorted(by:)` would otherwise be free to discard: the
+    /// standard library documents the sort as not stable.
     func rankResults(_ items: [SQLCompletionItem], prefix: String, context: SQLContext) -> [SQLCompletionItem] {
         let lowerPrefix = prefix.lowercased()
-
-        return items.sorted { a, b in
-            let aScore = calculateScore(for: a, prefix: lowerPrefix, context: context)
-            let bScore = calculateScore(for: b, prefix: lowerPrefix, context: context)
-            return aScore < bScore // Lower score = higher priority
+        let scored = items.enumerated().map { position, item in
+            (position: position, item: item, score: calculateScore(for: item, prefix: lowerPrefix, context: context))
         }
+
+        return scored.sorted { lhs, rhs in
+            lhs.score == rhs.score ? lhs.position < rhs.position : lhs.score < rhs.score
+        }.map(\.item)
     }
 
     /// Calculate ranking score for an item (lower = better).

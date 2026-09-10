@@ -101,7 +101,7 @@ struct ConnectionExportOptionsSheet: View {
                         .toggleStyle(.checkbox)
                         .disabled(!isProAvailable)
                     if !isProAvailable {
-                        ProBadge()
+                        ProBadge(feature: .encryptedExport)
                     }
                 }
                 Text("Off by default. Turn it on to encrypt saved passwords with a passphrase.")
@@ -157,11 +157,10 @@ struct ConnectionExportOptionsSheet: View {
     }
 
     private var footer: some View {
-        HStack {
+        DialogFooter {
             Button("Cancel") { dismiss() }
                 .keyboardShortcut(.cancelAction)
-            Spacer()
-            Button("Export...") { performExport() }
+            Button("Export…") { performExport() }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
                 .disabled(!canExport)

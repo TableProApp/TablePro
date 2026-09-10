@@ -34,7 +34,7 @@ enum WelcomeActiveSheet: Identifiable {
 
 @MainActor @Observable
 final class WelcomeViewModel {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "WelcomeViewModel")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "WelcomeViewModel")
 
     @ObservationIgnored let services: AppServices
     private var storage: ConnectionStorage { services.connectionStorage }
@@ -53,6 +53,7 @@ final class WelcomeViewModel {
     var connectionsToDelete: [DatabaseConnection] = []
     var showDeleteConfirmation = false
     var pendingDeleteHasFavorites = false
+    private var deleteRequestToken = UUID()
     var showDeleteGroupConfirmation = false
     var groupToDelete: ConnectionGroup?
     var pendingMoveToNewGroup: [DatabaseConnection] = []
@@ -68,6 +69,11 @@ final class WelcomeViewModel {
     var renameGroupName = ""
     var showRenameGroupAlert = false
 
+    /// Why a group change was refused. Renaming, recolouring and moving are commands with no
+    /// surface of their own to report into, so the window presents this; creating a group has its
+    /// own sheet and reports there instead.
+    var groupErrorMessage: String?
+
     var connectionError: String?
     var showConnectionError = false
     var pluginDiagnostic: PluginDiagnosticItem?
@@ -80,14 +86,14 @@ final class WelcomeViewModel {
     var pendingImportResultCount: Int?
 
     var expandedGroupIds: Set<UUID> = {
-        let strings = UserDefaults.standard.stringArray(forKey: "com.TablePro.expandedGroupIds") ?? []
+        let strings = AppStorageEnvironment.shared.defaults.stringArray(forKey: "com.TablePro.expandedGroupIds") ?? []
         if strings.isEmpty {
-            UserDefaults.standard.removeObject(forKey: "com.TablePro.collapsedGroupIds")
+            AppStorageEnvironment.shared.defaults.removeObject(forKey: "com.TablePro.collapsedGroupIds")
         }
         return Set(strings.compactMap { UUID(uuidString: $0) })
     }() {
         didSet {
-            UserDefaults.standard.set(
+            AppStorageEnvironment.shared.defaults.set(
                 Array(expandedGroupIds.map(\.uuidString)),
                 forKey: "com.TablePro.expandedGroupIds"
             )
@@ -155,7 +161,10 @@ final class WelcomeViewModel {
     }
 
     var flatVisibleConnections: [DatabaseConnection] {
-        flattenVisibleConnections(tree: treeItems, expandedGroupIds: expandedGroupIds)
+        let inTree = flattenVisibleConnections(tree: treeItems, expandedGroupIds: expandedGroupIds)
+        guard searchText.isEmpty, !favoriteConnections.isEmpty else { return inTree }
+        var seen = Set<UUID>()
+        return (favoriteConnections + inTree).filter { seen.insert($0.id).inserted }
     }
 
     var selectedConnections: [DatabaseConnection] {
@@ -310,7 +319,6 @@ final class WelcomeViewModel {
     // MARK: - Connection Actions
 
     func connectToDatabase(_ connection: DatabaseConnection) {
-        WindowOpener.shared.orderOutWelcome()
         Task {
             do {
                 try await TabRouter.shared.route(.openConnection(connection.id))
@@ -334,7 +342,13 @@ final class WelcomeViewModel {
             username: linked.connection.username,
             type: DatabaseType(rawValue: linked.connection.type)
         )
-        connectToDatabase(connection)
+        Task {
+            do {
+                try await TabRouter.shared.openTransientConnection(connection)
+            } catch {
+                handleConnectError(error, connection: connection)
+            }
+        }
     }
 
     private static let teamLibraryFolderId = UUID(uuidString: "00000000-0000-0000-0000-000000000000") ?? UUID()
@@ -344,7 +358,10 @@ final class WelcomeViewModel {
         let placeholderURL = URL(fileURLWithPath: "/")
         return TeamLibrarySyncCoordinator.shared.library.connections.map { connection in
             LinkedConnection(
-                id: UUID(uuidString: connection.sourceConnectionId ?? "") ?? UUID(),
+                id: LinkedFolderWatcher.stableId(
+                    folderId: teamLibraryFolderId,
+                    connection: connection.payload
+                ),
                 connection: connection.payload,
                 folderId: teamLibraryFolderId,
                 sourceFileURL: placeholderURL
@@ -384,17 +401,26 @@ final class WelcomeViewModel {
 
     func requestDeleteConnections(_ targets: [DatabaseConnection]) {
         guard !targets.isEmpty else { return }
+        let token = UUID()
+        deleteRequestToken = token
         connectionsToDelete = targets
         pendingDeleteHasFavorites = false
-        showDeleteConfirmation = true
         Task {
-            pendingDeleteHasFavorites = await services.sqlFavoriteManager.hasFavorites(for: targets.map(\.id))
+            let hasFavorites = await services.sqlFavoriteManager.hasFavorites(for: targets.map(\.id))
+            guard deleteRequestToken == token else { return }
+            pendingDeleteHasFavorites = hasFavorites
+            showDeleteConfirmation = true
         }
     }
 
     func deleteSelectedConnections() {
         let idsToDelete = Set(connectionsToDelete.map(\.id))
-        storage.deleteConnections(connectionsToDelete)
+        guard storage.deleteConnections(connectionsToDelete) else {
+            connectionsToDelete = []
+            connections = storage.loadConnections()
+            rebuildTree()
+            return
+        }
         connections.removeAll { idsToDelete.contains($0.id) }
         selectedConnectionIds.subtract(idsToDelete)
         connectionsToDelete = []
@@ -439,21 +465,20 @@ final class WelcomeViewModel {
         let isDuplicate = siblings.contains {
             $0.id != target.id && $0.name.lowercased() == newName.lowercased()
         }
-        guard !isDuplicate else { return }
+        guard !isDuplicate else {
+            groupErrorMessage = GroupStorageError.duplicateName(newName).localizedDescription
+            return
+        }
         var updated = target
         updated.name = newName
-        groupStorage.updateGroup(updated)
-        groups = groupStorage.loadGroups()
-        rebuildTree()
+        guard applyGroupUpdate(updated) else { return }
         renameGroupTarget = nil
     }
 
     func updateGroupColor(_ group: ConnectionGroup, color: ConnectionColor) {
         var updated = group
         updated.color = color
-        groupStorage.updateGroup(updated)
-        groups = groupStorage.loadGroups()
-        rebuildTree()
+        applyGroupUpdate(updated)
     }
 
     func moveConnections(_ targets: [DatabaseConnection], toGroup groupId: UUID) {
@@ -486,11 +511,10 @@ final class WelcomeViewModel {
         rebuildTree()
     }
 
-    func createGroup(name: String, color: ConnectionColor, parentId: UUID?) {
+    func createGroup(name: String, color: ConnectionColor, parentId: UUID?) throws {
         let group = ConnectionGroup(name: name, color: color, parentId: parentId)
-        groupStorage.addGroup(group)
+        try groupStorage.addGroup(group)
         groups = groupStorage.loadGroups()
-        guard groups.contains(where: { $0.id == group.id }) else { return }
         expandedGroupIds.insert(group.id)
         if let parentId {
             expandedGroupIds.insert(parentId)
@@ -506,18 +530,26 @@ final class WelcomeViewModel {
         activeSheet = .newGroup(parentId: parentId)
     }
 
+    /// The placement rule lives in the storage that enforces it, so this no longer pre-checks what
+    /// it would only have to keep in step. The menu dims an impossible target through the same
+    /// `canPlaceGroup`, which leaves the throw for a graph that changed under the open menu.
     func moveGroup(_ group: ConnectionGroup, toParent newParentId: UUID?) {
-        guard !wouldCreateCircle(movingGroupId: group.id, toParentId: newParentId, groups: groups) else { return }
-
-        let newParentDepth = depthOf(groupId: newParentId, groups: groups)
-        let subtreeDepth = maxDescendantDepth(groupId: group.id, groups: groups)
-        guard newParentDepth + 1 + subtreeDepth <= 3 else { return }
-
         var updated = group
         updated.parentId = newParentId
-        groupStorage.updateGroup(updated)
+        applyGroupUpdate(updated)
+    }
+
+    @discardableResult
+    private func applyGroupUpdate(_ group: ConnectionGroup) -> Bool {
+        do {
+            try groupStorage.updateGroup(group)
+        } catch {
+            groupErrorMessage = error.localizedDescription
+            return false
+        }
         groups = groupStorage.loadGroups()
         rebuildTree()
+        return true
     }
 
     // MARK: - Import / Export
@@ -571,7 +603,7 @@ final class WelcomeViewModel {
               let connection = connections.first(where: { $0.id == id }),
               let groupId = connection.groupId,
               expandedGroupIds.contains(groupId) else { return }
-        withAnimation(.easeInOut(duration: 0.2)) {
+        withMotion(.easeInOut(duration: 0.2)) {
             expandedGroupIds.remove(groupId)
         }
     }
@@ -581,47 +613,48 @@ final class WelcomeViewModel {
               let connection = connections.first(where: { $0.id == id }),
               let groupId = connection.groupId,
               !expandedGroupIds.contains(groupId) else { return }
-        withAnimation(.easeInOut(duration: 0.2)) {
+        withMotion(.easeInOut(duration: 0.2)) {
             expandedGroupIds.insert(groupId)
         }
     }
 
     // MARK: - Reorder
 
-    func moveUngroupedConnections(from source: IndexSet, to destination: Int) {
-        let validGroupIds = Set(groups.map(\.id))
-        let ungroupedIndices = connections.indices.filter { index in
-            guard let groupId = connections[index].groupId else { return true }
-            return !validGroupIds.contains(groupId)
-        }
+    /// Reorder the rows the list actually drew.
+    ///
+    /// `.onMove` reports positions in the rendered node list, and that list is not `connections`:
+    /// a top level hides every favorite, and a tag filter hides whatever it does not match. Mapping
+    /// those offsets into the unfiltered array moved a different connection than the one dragged,
+    /// so the ids come in from the view and the offsets are only ever applied to them.
+    ///
+    /// Connections the list did not draw keep the slots they held, so a drag between two visible
+    /// rows cannot reshuffle the rows around them.
+    func moveConnections(renderedIds: [UUID], from source: IndexSet, to destination: Int, inGroup groupId: UUID?) {
+        guard source.allSatisfy({ $0 < renderedIds.count }), destination <= renderedIds.count else { return }
 
-        guard source.allSatisfy({ $0 < ungroupedIndices.count }),
-              destination <= ungroupedIndices.count else { return }
+        var reordered = renderedIds
+        reordered.move(fromOffsets: source, toOffset: destination)
 
-        let globalSource = IndexSet(source.map { ungroupedIndices[$0] })
-        let globalDestination: Int
-        if destination < ungroupedIndices.count {
-            globalDestination = ungroupedIndices[destination]
-        } else if let last = ungroupedIndices.last {
-            globalDestination = last + 1
-        } else {
-            globalDestination = 0
-        }
+        let renderedSet = Set(renderedIds)
+        let scope = sortConnections(connections.filter { isInScope($0, groupId: groupId) })
+        guard scope.filter({ renderedSet.contains($0.id) }).count == renderedIds.count else { return }
 
-        connections.move(fromOffsets: globalSource, toOffset: globalDestination)
-
-        let updatedValidGroupIds = Set(groups.map(\.id))
-        var order = 0
-        var updated: [DatabaseConnection] = []
-        for i in connections.indices {
-            let isUngrouped = connections[i].groupId.map { !updatedValidGroupIds.contains($0) } ?? true
-            if isUngrouped {
-                if connections[i].sortOrder != order {
-                    connections[i].sortOrder = order
-                    updated.append(connections[i])
-                }
-                order += 1
+        var cursor = 0
+        var rankById: [UUID: Int] = [:]
+        for (rank, connection) in scope.enumerated() {
+            if renderedSet.contains(connection.id) {
+                rankById[reordered[cursor]] = rank
+                cursor += 1
+            } else {
+                rankById[connection.id] = rank
             }
+        }
+
+        var updated: [DatabaseConnection] = []
+        for index in connections.indices {
+            guard let rank = rankById[connections[index].id], connections[index].sortOrder != rank else { continue }
+            connections[index].sortOrder = rank
+            updated.append(connections[index])
         }
 
         guard storage.updateConnections(updated) else {
@@ -632,40 +665,14 @@ final class WelcomeViewModel {
         rebuildTree()
     }
 
-    func moveGroupedConnections(in group: ConnectionGroup, from source: IndexSet, to destination: Int) {
-        let groupIndices = connections.indices.filter { connections[$0].groupId == group.id }
-
-        guard source.allSatisfy({ $0 < groupIndices.count }),
-              destination <= groupIndices.count else { return }
-
-        let globalSource = IndexSet(source.map { groupIndices[$0] })
-        let globalDestination: Int
-        if destination < groupIndices.count {
-            globalDestination = groupIndices[destination]
-        } else if let last = groupIndices.last {
-            globalDestination = last + 1
-        } else {
-            globalDestination = 0
+    /// A connection with a `groupId` no group answers to is ungrouped, which is where the tree
+    /// draws it.
+    private func isInScope(_ connection: DatabaseConnection, groupId: UUID?) -> Bool {
+        guard let groupId else {
+            guard let assigned = connection.groupId else { return true }
+            return !groups.contains { $0.id == assigned }
         }
-
-        connections.move(fromOffsets: globalSource, toOffset: globalDestination)
-
-        var order = 0
-        var updated: [DatabaseConnection] = []
-        for i in connections.indices where connections[i].groupId == group.id {
-            if connections[i].sortOrder != order {
-                connections[i].sortOrder = order
-                updated.append(connections[i])
-            }
-            order += 1
-        }
-
-        guard storage.updateConnections(updated) else {
-            connections = storage.loadConnections()
-            rebuildTree()
-            return
-        }
-        rebuildTree()
+        return connection.groupId == groupId
     }
 
     // MARK: - Private Helpers

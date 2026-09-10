@@ -223,4 +223,29 @@ final class TextSelectionManagerTests: XCTestCase {
         selectionManager.setSelectedRange(NSRange(location: 6, length: 0)) // Beyond text.length, end of doc
         XCTAssertNotNil(selectionManager.textSelections.first?.suggestedXPos)
     }
+
+    func test_setSelectedRangesClampsBeyondStorageInsteadOfDropping() {
+        let selectionManager = selectionManager("short")
+
+        selectionManager.setSelectedRanges([NSRange(location: 50, length: 0)])
+
+        XCTAssertEqual(selectionManager.textSelections.count, 1)
+        XCTAssertEqual(selectionManager.textSelections.first?.range, NSRange(location: 5, length: 0))
+    }
+
+    func test_setSelectedRangesClampsAnOverlongRangeToTheStorage() {
+        let selectionManager = selectionManager("short")
+
+        selectionManager.setSelectedRanges([NSRange(location: 2, length: 40)])
+
+        XCTAssertEqual(selectionManager.textSelections.first?.range, NSRange(location: 2, length: 3))
+    }
+
+    func test_setSelectedRangeClampsBeyondStorage() {
+        let selectionManager = selectionManager("short")
+
+        selectionManager.setSelectedRange(NSRange(location: 50, length: 10))
+
+        XCTAssertEqual(selectionManager.textSelections.first?.range, NSRange(location: 5, length: 0))
+    }
 }

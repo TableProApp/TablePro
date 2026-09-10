@@ -127,6 +127,8 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
             try await columns(in: database, table: table)
         case .server, .schema, .column:
             []
+        @unknown default:
+            []
         }
     }
 
@@ -238,6 +240,8 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
             "\(quoteIdentifier(database)).\(quoteIdentifier(table))"
         case let .column(database, _, table, _):
             "\(quoteIdentifier(database)).\(quoteIdentifier(table))"
+        @unknown default:
+            nil
         }
     }
 

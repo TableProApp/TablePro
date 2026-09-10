@@ -190,11 +190,25 @@ extension PluginManager {
 
     // MARK: - Local bundle / zip install
 
+    /// A manual install is the only place a user can grant trust, so this is the one path that
+    /// asks. Declining aborts before anything is copied into the plugins directory.
+    private func requireTrust(for bundle: Bundle, pluginName: String) async throws {
+        let trust = try PluginCodeSignatureVerifier.evaluate(bundle: bundle)
+        guard case .developerID(let identity) = trust else { return }
+        guard !PluginDeveloperTrustStore.shared.isTrusted(identity) else { return }
+
+        let decision = await PluginDeveloperTrustAlertPrompt().prompt(for: identity, pluginName: pluginName)
+        guard decision == .trust else {
+            throw PluginError.developerNotTrusted(identity: identity)
+        }
+        PluginDeveloperTrustStore.shared.trust(identity)
+    }
+
     private func installLooseBundle(from url: URL) async throws -> PluginEntry {
         guard let sourceBundle = Bundle(url: url) else {
             throw PluginError.invalidBundle("Cannot create bundle from \(url.lastPathComponent)")
         }
-        try PluginCodeSignatureVerifier.verify(bundle: sourceBundle)
+        try await requireTrust(for: sourceBundle, pluginName: url.deletingPathExtension().lastPathComponent)
         let bundleId = sourceBundle.bundleIdentifier ?? url.lastPathComponent
 
         try FileManager.default.createDirectory(at: userPluginsDir, withIntermediateDirectories: true)
@@ -223,7 +237,7 @@ extension PluginManager {
         guard let bundle = Bundle(url: bundleURL) else {
             throw PluginError.invalidBundle("Cannot create bundle from \(bundleURL.lastPathComponent)")
         }
-        try PluginCodeSignatureVerifier.verify(bundle: bundle)
+        try await requireTrust(for: bundle, pluginName: bundleURL.deletingPathExtension().lastPathComponent)
         try PluginInstaller.validateStagedABI(
             bundleURL: bundleURL,
             currentKit: Self.currentPluginKitVersion,

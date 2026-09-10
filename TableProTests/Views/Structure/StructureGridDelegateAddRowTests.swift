@@ -102,12 +102,17 @@ struct StructureGridDelegateAddRowTests {
         #expect(manager.workingForeignKeys.count == fksBefore)
     }
 
-    @Test("Indexes sub-tab on SQLite: dataGridAddRow is a no-op (supportsAddIndex == false)")
-    func sqliteIndexes_isNoOp() {
+    /// SQLite's curated snapshot overrides neither `supportsAddIndex` nor `supportsDropIndex`, so
+    /// both default to true, which matches an engine that has `CREATE INDEX` and `DROP INDEX`.
+    /// These two asserted the opposite and were quarantined for it.
+    @Test("Indexes sub-tab on SQLite: dataGridAddRow appends an index")
+    func sqliteIndexesAddsAnIndex() {
         let (delegate, manager) = makeDelegate(selectedTab: .indexes, type: .sqlite)
         let before = manager.workingIndexes.count
+
         delegate.dataGridAddRow()
-        #expect(manager.workingIndexes.count == before)
+
+        #expect(manager.workingIndexes.count == before + 1)
     }
 
     @Test("Delete: ddl sub-tab is a no-op")
@@ -165,11 +170,13 @@ struct StructureGridDelegateAddRowTests {
     }
 
     @Test("Indexes sub-tab on SQLite: dataGridDeleteRows is a no-op (supportsDropIndex == false)")
-    func sqliteIndexes_deleteIsNoOp() {
+    func sqliteIndexesDeletesAnIndex() {
         let (delegate, manager) = makeDelegate(selectedTab: .indexes, type: .sqlite)
         manager.addIndex(.placeholder())
         let before = manager.workingIndexes.count
+
         delegate.dataGridDeleteRows([before - 1])
-        #expect(manager.workingIndexes.count == before)
+
+        #expect(manager.workingIndexes.count == before - 1)
     }
 }

@@ -15,6 +15,11 @@ import TableProPluginKit
 struct PendingChanges: Equatable {
     private(set) var changes: [RowChange] = []
     private(set) var deletedRowIndices: Set<Int> = []
+
+    /// Stamped onto every change so statement generation can recover the order the user worked in.
+    /// `changes` cannot carry that order itself: a cancelled change is removed by swapping the last
+    /// element into its slot.
+    private var nextSequence = 0
     private(set) var insertedRowIndices: Set<Int> = []
     private(set) var modifiedCells: [Int: Set<Int>] = [:]
     private(set) var insertedRowData: [Int: [PluginCellValue]] = [:]
@@ -67,7 +72,6 @@ struct PendingChanges: Equatable {
         }
 
         let cellChange = CellChange(
-            rowIndex: rowIndex,
             columnIndex: columnIndex,
             columnName: columnName,
             oldValue: oldValue,
@@ -137,16 +141,11 @@ struct PendingChanges: Equatable {
     mutating func undoBatchRowInsertion(rowIndices: [Int], columnCount: Int) -> [[PluginCellValue]] {
         let validRows = rowIndices.filter { insertedRowIndices.contains($0) }
 
-        var rowValues: [[PluginCellValue]] = []
-        for rowIndex in validRows {
-            if let idx = changeIndex[RowChangeKey(rowIndex: rowIndex, type: .insert)] {
-                let values = changes[idx].cellChanges
-                    .sorted { $0.columnIndex < $1.columnIndex }
-                    .map { $0.newValue }
-                rowValues.append(values)
-            } else {
-                rowValues.append(Array(repeating: .null, count: columnCount))
-            }
+        /// `insertedRowData` holds the whole row. `cellChanges` holds only the columns the user
+        /// typed, so rebuilding from it drops the untouched ones and slides the rest left: a name
+        /// typed into the third column comes back in the first.
+        let rowValues = validRows.map { rowIndex in
+            insertedRowData[rowIndex] ?? Array(repeating: PluginCellValue.null, count: columnCount)
         }
 
         for rowIndex in validRows {
@@ -155,20 +154,7 @@ struct PendingChanges: Equatable {
             insertedRowData.removeValue(forKey: rowIndex)
         }
 
-        let sortedRemoved = validRows.sorted()
-
-        var newInserted = Set<Int>()
-        for idx in insertedRowIndices {
-            newInserted.insert(idx - Self.countLessThan(idx, in: sortedRemoved))
-        }
-        insertedRowIndices = newInserted
-
-        for i in 0..<changes.count {
-            let rowIndex = changes[i].rowIndex
-            changes[i].rowIndex = rowIndex - Self.countLessThan(rowIndex, in: sortedRemoved)
-        }
-
-        rebuildChangeIndex()
+        shiftRowIndicesDown(atSortedRows: validRows.sorted())
         return rowValues
     }
 
@@ -195,7 +181,6 @@ struct PendingChanges: Equatable {
         originalRow: [PluginCellValue]?
     ) {
         let cellChange = CellChange(
-            rowIndex: rowIndex,
             columnIndex: columnIndex,
             columnName: columnName,
             oldValue: originalDBValue,
@@ -256,7 +241,6 @@ struct PendingChanges: Equatable {
             }
         } else {
             changes[updateIdx].cellChanges[cellIdx] = CellChange(
-                rowIndex: rowIndex,
                 columnIndex: columnIndex,
                 columnName: columnName,
                 oldValue: originalOldValue,
@@ -271,7 +255,7 @@ struct PendingChanges: Equatable {
         insertedRowIndices.insert(rowIndex)
         let cellChanges = columns.enumerated().map { index, columnName in
             CellChange(
-                rowIndex: rowIndex, columnIndex: index, columnName: columnName,
+                columnIndex: index, columnName: columnName,
                 oldValue: nil, newValue: savedValues?[safe: index] ?? nil
             )
         }
@@ -293,12 +277,12 @@ struct PendingChanges: Equatable {
             let values = rowValues[index]
             let cellChanges = values.enumerated().map { colIndex, value in
                 CellChange(
-                    rowIndex: rowIndex, columnIndex: colIndex,
+                    columnIndex: colIndex,
                     columnName: columns[safe: colIndex] ?? "",
                     oldValue: nil, newValue: value
                 )
             }
-            changes.append(RowChange(rowIndex: rowIndex, type: .insert, cellChanges: cellChanges))
+            appendChange(RowChange(rowIndex: rowIndex, type: .insert, cellChanges: cellChanges))
             insertedRowIndices.insert(rowIndex)
             insertedRowData[rowIndex] = values
         }
@@ -318,6 +302,7 @@ struct PendingChanges: Equatable {
     // MARK: - Reset / persistence
 
     mutating func clear() {
+        nextSequence = 0
         changes.removeAll()
         changeIndex.removeAll()
         deletedRowIndices.removeAll()
@@ -332,6 +317,7 @@ struct PendingChanges: Equatable {
         insertedRowIndices = snapshot.insertedRowIndices
         modifiedCells = snapshot.modifiedCells
         insertedRowData = snapshot.insertedRowData
+        nextSequence = (changes.map(\.sequence).max() ?? -1) + 1
         rebuildChangeIndex()
     }
 
@@ -350,8 +336,11 @@ struct PendingChanges: Equatable {
     // MARK: - Internals
 
     private mutating func appendChange(_ change: RowChange) {
-        changes.append(change)
-        changeIndex[RowChangeKey(rowIndex: change.rowIndex, type: change.type)] = changes.count - 1
+        var stamped = change
+        stamped.sequence = nextSequence
+        nextSequence += 1
+        changes.append(stamped)
+        changeIndex[RowChangeKey(rowIndex: stamped.rowIndex, type: stamped.type)] = changes.count - 1
     }
 
     @discardableResult
@@ -392,7 +381,7 @@ struct PendingChanges: Equatable {
         }
 
         let replacement = CellChange(
-            rowIndex: rowIndex, columnIndex: columnIndex, columnName: columnName,
+            columnIndex: columnIndex, columnName: columnName,
             oldValue: nil, newValue: newValue
         )
         if let cellIdx = changes[insertIdx].cellChanges.firstIndex(where: { $0.columnIndex == columnIndex }) {
@@ -409,7 +398,6 @@ struct PendingChanges: Equatable {
         }) {
             let originalOldValue = changes[updateIdx].cellChanges[cellIdx].oldValue
             let merged = CellChange(
-                rowIndex: rowIndex,
                 columnIndex: cellChange.columnIndex,
                 columnName: cellChange.columnName,
                 oldValue: originalOldValue,
@@ -454,46 +442,50 @@ struct PendingChanges: Equatable {
         return true
     }
 
-    private mutating func shiftRowIndicesUp(from insertionPoint: Int) {
-        for i in 0..<changes.count where changes[i].rowIndex >= insertionPoint {
-            changes[i].rowIndex += 1
+    /// Renumbers every collection this type keys by row index, in one place.
+    ///
+    /// The state is six things that have to agree: `changes[].rowIndex`, `changeIndex`,
+    /// `insertedRowIndices`, `deletedRowIndices`, `insertedRowData` and `modifiedCells`. There used
+    /// to be three renumbering paths handling three different subsets of them, and the gaps were
+    /// invisible: undoing one row of a pasted batch left the surviving rows' values filed under
+    /// their old indices, so Save wrote one row with another row's values and dropped the rest
+    /// without reporting anything. A single primitive is what makes that class of omission
+    /// impossible rather than merely absent.
+    ///
+    /// A new row always lands at the end of the grid, so nothing pending is ever below an inserted
+    /// one and the delete and modified-cell arms do not fire today. They are here because the
+    /// alternative is three renumbering paths covering three different subsets again, which is
+    /// what this replaced.
+    private mutating func reindex(_ transform: (Int) -> Int) {
+        for i in 0 ..< changes.count {
+            changes[i].rowIndex = transform(changes[i].rowIndex)
         }
-        insertedRowIndices = Set(insertedRowIndices.map { $0 >= insertionPoint ? $0 + 1 : $0 })
-        deletedRowIndices = Set(deletedRowIndices.map { $0 >= insertionPoint ? $0 + 1 : $0 })
-
-        var newInsertedRowData: [Int: [PluginCellValue]] = [:]
-        for (key, value) in insertedRowData {
-            newInsertedRowData[key >= insertionPoint ? key + 1 : key] = value
-        }
-        insertedRowData = newInsertedRowData
-
-        var newModifiedCells: [Int: Set<Int>] = [:]
-        for (key, value) in modifiedCells {
-            newModifiedCells[key >= insertionPoint ? key + 1 : key] = value
-        }
-        modifiedCells = newModifiedCells
-
+        insertedRowIndices = Set(insertedRowIndices.map(transform))
+        deletedRowIndices = Set(deletedRowIndices.map(transform))
+        insertedRowData = Dictionary(
+            uniqueKeysWithValues: insertedRowData.map { (transform($0.key), $0.value) }
+        )
+        modifiedCells = Dictionary(
+            uniqueKeysWithValues: modifiedCells.map { (transform($0.key), $0.value) }
+        )
         rebuildChangeIndex()
     }
 
+    private mutating func shiftRowIndicesUp(from insertionPoint: Int) {
+        reindex { $0 >= insertionPoint ? $0 + 1 : $0 }
+    }
+
     private mutating func shiftRowIndicesDown(at removedRow: Int) {
-        for i in 0..<changes.count where changes[i].rowIndex > removedRow {
-            changes[i].rowIndex -= 1
-        }
-        insertedRowIndices = Set(insertedRowIndices.map { $0 > removedRow ? $0 - 1 : $0 })
+        modifiedCells.removeValue(forKey: removedRow)
+        reindex { $0 > removedRow ? $0 - 1 : $0 }
+    }
 
-        var newInsertedRowData: [Int: [PluginCellValue]] = [:]
-        for (key, value) in insertedRowData {
-            newInsertedRowData[key > removedRow ? key - 1 : key] = value
+    /// The same renumbering for a whole batch removed at once.
+    private mutating func shiftRowIndicesDown(atSortedRows removedRows: [Int]) {
+        for removedRow in removedRows {
+            modifiedCells.removeValue(forKey: removedRow)
         }
-        insertedRowData = newInsertedRowData
-
-        var newModifiedCells: [Int: Set<Int>] = [:]
-        for (key, value) in modifiedCells where key != removedRow {
-            newModifiedCells[key > removedRow ? key - 1 : key] = value
-        }
-        modifiedCells = newModifiedCells
-        rebuildChangeIndex()
+        reindex { $0 - Self.countLessThan($0, in: removedRows) }
     }
 
     /// Binary search: count of elements strictly less than `target` in a sorted array.

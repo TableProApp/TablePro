@@ -269,6 +269,7 @@ struct SQLFileParserTests {
         #expect(SqlDialect.from(databaseTypeId: "AlloyDB") == .postgres)
         #expect(SqlDialect.from(databaseTypeId: "Citus") == .postgres)
         #expect(SqlDialect.from(databaseTypeId: "CockroachDB") == .postgres)
+        #expect(SqlDialect.from(databaseTypeId: "PGlite") == .postgres)
         #expect(SqlDialect.from(databaseTypeId: "MySQL") == .mysql)
         #expect(SqlDialect.from(databaseTypeId: "MariaDB") == .mysql)
         #expect(SqlDialect.from(databaseTypeId: "SQLite") == .sqlite)

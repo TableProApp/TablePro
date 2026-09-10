@@ -177,6 +177,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 sortAscending: parsed.sortAscending,
                 filterType: parsed.filterType,
                 filterValue: parsed.filterValue,
+                isCaseSensitive: parsed.isCaseSensitive,
                 client: client,
                 continuation: continuation
             )
@@ -200,6 +201,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         sortAscending: Bool,
         filterType: EtcdFilterType,
         filterValue: String,
+        isCaseSensitive: Bool,
         client: EtcdHttpClient,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
@@ -227,7 +229,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             if needsClientFilter {
                 let key = EtcdHttpClient.base64Decode(kv.key)
                 let value = kv.value.map { EtcdHttpClient.base64Decode($0) }
-                if !matchesFilter(key: key, value: value, filterType: filterType, filterValue: filterValue) {
+                if !matchesFilter(key: key, value: value, filterType: filterType, filterValue: filterValue, isCaseSensitive: isCaseSensitive) {
                     continue
                 }
             }
@@ -426,12 +428,14 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func buildFilteredQuery(
         table: String,
-        filters: [(column: String, op: String, value: String)],
+        schema: String?,
+        queryFilters filters: [PluginQueryFilter],
         logicMode: String,
         sortColumns: [(columnIndex: Int, ascending: Bool)],
         columns: [String],
         limit: Int,
-        offset: Int
+        offset: Int,
+        columnKinds: [String: PluginColumnKind]
     ) -> String? {
         let prefix = resolvedPrefix(for: table)
         return EtcdQueryBuilder().buildFilteredQuery(
@@ -872,13 +876,17 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 sortAscending: parsed.sortAscending,
                 filterType: parsed.filterType,
                 filterValue: parsed.filterValue,
+                isCaseSensitive: parsed.isCaseSensitive,
                 client: client,
                 startTime: startTime
             )
         }
 
         if let parsed = EtcdQueryBuilder.parseCountQuery(query) {
-            let count = try await countKeys(prefix: parsed.prefix, filterType: parsed.filterType, filterValue: parsed.filterValue, client: client)
+            let count = try await countKeys(
+                prefix: parsed.prefix, filterType: parsed.filterType, filterValue: parsed.filterValue,
+                isCaseSensitive: parsed.isCaseSensitive, client: client
+            )
             return PluginQueryResult(
                 columns: ["Count"],
                 columnTypeNames: ["Int64"],
@@ -900,6 +908,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         sortAscending: Bool,
         filterType: EtcdFilterType,
         filterValue: String,
+        isCaseSensitive: Bool,
         client: EtcdHttpClient,
         startTime: Date
     ) async throws -> PluginQueryResult {
@@ -922,7 +931,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             kvs = kvs.filter { kv in
                 let key = EtcdHttpClient.base64Decode(kv.key)
                 let value = kv.value.map { EtcdHttpClient.base64Decode($0) }
-                return matchesFilter(key: key, value: value, filterType: filterType, filterValue: filterValue)
+                return matchesFilter(key: key, value: value, filterType: filterType, filterValue: filterValue, isCaseSensitive: isCaseSensitive)
             }
         }
 
@@ -940,6 +949,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         prefix: String,
         filterType: EtcdFilterType,
         filterValue: String,
+        isCaseSensitive: Bool = true,
         client: EtcdHttpClient
     ) async throws -> Int {
         let (b64Key, b64RangeEnd) = Self.allKeysRange(for: prefix)
@@ -960,7 +970,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return kvs.filter { kv in
             let key = EtcdHttpClient.base64Decode(kv.key)
             let value = kv.value.map { EtcdHttpClient.base64Decode($0) }
-            return matchesFilter(key: key, value: value, filterType: filterType, filterValue: filterValue)
+            return matchesFilter(key: key, value: value, filterType: filterType, filterValue: filterValue, isCaseSensitive: isCaseSensitive)
         }.count
     }
 
@@ -1001,25 +1011,28 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return key
     }
 
-    private func matchesFilter(key: String, value: String? = nil, filterType: EtcdFilterType, filterValue: String) -> Bool {
+    private func matchesFilter(
+        key: String,
+        value: String? = nil,
+        filterType: EtcdFilterType,
+        filterValue: String,
+        isCaseSensitive: Bool
+    ) -> Bool {
+        let fold = { (text: String) in isCaseSensitive ? text : text.lowercased() }
+        let needle = fold(filterValue)
+        let foldedKey = fold(key)
+        let foldedValue = value.map(fold)
         switch filterType {
         case .none:
             return true
         case .contains:
-            if key.localizedCaseInsensitiveContains(filterValue) {
-                return true
-            }
-            return value?.localizedCaseInsensitiveContains(filterValue) ?? false
+            return foldedKey.contains(needle) || (foldedValue?.contains(needle) ?? false)
         case .startsWith:
-            let lowerFilter = filterValue.lowercased()
-            if key.lowercased().hasPrefix(lowerFilter) {
-                return true
-            }
-            return value?.lowercased().hasPrefix(lowerFilter) ?? false
+            return foldedKey.hasPrefix(needle) || (foldedValue?.hasPrefix(needle) ?? false)
         case .endsWith:
-            return key.lowercased().hasSuffix(filterValue.lowercased())
+            return foldedKey.hasSuffix(needle)
         case .equals:
-            return key == filterValue
+            return foldedKey == needle
         }
     }
 

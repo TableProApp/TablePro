@@ -21,7 +21,7 @@ import os
 final class VimCursorManager {
     // MARK: - Properties
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "VimCursor")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "VimCursor")
 
     private weak var textView: TextView?
     private var blockCursorLayer: CALayer?

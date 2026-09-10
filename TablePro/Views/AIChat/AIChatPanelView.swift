@@ -98,14 +98,7 @@ struct AIChatPanelView: View {
 
     private var messageList: some View {
         let visibleMessages = viewModel.messages.filter { isVisibleInMessageList($0) }
-        let spacedMessageIDs: Set<UUID> = {
-            var ids = Set<UUID>()
-            for i in 1..<visibleMessages.count
-                where visibleMessages[i].role == .user && visibleMessages[i - 1].role == .assistant {
-                ids.insert(visibleMessages[i].id)
-            }
-            return ids
-        }()
+        let spacedMessageIDs = AIChatMessageSpacing.spacedMessageIDs(for: visibleMessages)
 
         let lastMessageID = visibleMessages.last?.id
         let isUserScrolledUp = !pinnedToBottom && bottomVisibleMessageID != nil
@@ -132,6 +125,7 @@ struct AIChatPanelView: View {
                             pausedToolCallCount: shouldShowContinue(for: message)
                                 ? viewModel.toolLimitPauseCount : nil
                         )
+                        .equatable()
                         .padding(.vertical, 4)
                         .id(message.id)
                     }
@@ -166,7 +160,7 @@ struct AIChatPanelView: View {
             if isUserScrolledUp {
                 Button {
                     pinnedToBottom = true
-                    withAnimation(.easeOut(duration: 0.2)) {
+                    withMotion(.easeOut(duration: 0.2)) {
                         bottomVisibleMessageID = lastMessageID
                     }
                 } label: {
@@ -227,7 +221,7 @@ struct AIChatPanelView: View {
 
                 ChatComposerView(
                     text: $viewModel.inputText,
-                    placeholder: String(localized: "Ask about your database..."),
+                    placeholder: String(localized: "Ask about your database…"),
                     minLines: 1,
                     maxLines: 5,
                     mentionState: mentionState,

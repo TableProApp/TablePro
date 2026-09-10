@@ -7,6 +7,25 @@ import Foundation
 import TableProPluginKit
 
 extension MainContentCoordinator {
+    /// Whether the selected tab can take a new row.
+    ///
+    /// One definition, because the answer now drives two controls: the toolbar item that inserts the
+    /// row and the data grid delegate that the Edit menu and the grid's own shortcut route through.
+    var canAddRow: Bool {
+        guard let tab = tabManager.selectedTab else { return false }
+        guard tab.tableContext.tableName != nil else { return false }
+        /// Only the data grid takes a row. `addNewRow()` resolves its target through
+        /// `GridSelectionOwner`, which answers `.none` in Chart mode and `.schemaGrid` in Structure
+        /// mode, so without this the command is either inert or adds a column under a row's name.
+        guard tab.display.resultsViewMode == .data else { return false }
+        /// A new row is pre-filled from the schema's account of which columns the server fills in,
+        /// so the command waits for that account rather than staging NULL into an identity column.
+        guard tabSessionRegistry.tableRows(for: tab.id).hasAuthoritativeSchema else { return false }
+        return tab.tableContext.isEditable
+            && !tab.tableContext.isView
+            && !safeModeLevel.blocksAllWrites
+    }
+
     func addNewRow() {
         rowEditingCoordinator.addNewRow()
     }

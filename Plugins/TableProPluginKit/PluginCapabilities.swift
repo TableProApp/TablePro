@@ -22,4 +22,6 @@ public struct PluginCapabilities: OptionSet, Sendable {
     public static let batchExecute          = PluginCapabilities(rawValue: 1 << 10)
     public static let transactions          = PluginCapabilities(rawValue: 1 << 11)
     public static let userManagement        = PluginCapabilities(rawValue: 1 << 12)
+    public static let schemaCompare         = PluginCapabilities(rawValue: 1 << 13)
+    public static let dataCompare           = PluginCapabilities(rawValue: 1 << 14)
 }

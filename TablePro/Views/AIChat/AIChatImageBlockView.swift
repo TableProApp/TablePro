@@ -16,7 +16,7 @@ struct AIChatImageBlockView: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .overlay(
                 RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1)
+                    .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
             )
     }
 }

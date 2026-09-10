@@ -7,7 +7,33 @@
 //
 
 import Foundation
+import os
+import TableProNumberFormatting
 import TableProPluginKit
+
+enum BsonValueKind: Hashable {
+    case double
+    case string
+    case document
+    case array
+    case binary(subtype: UInt8)
+    case boolean
+    case date
+    case null
+    case int32
+    case int64
+    case decimal128
+    case objectId
+    case uuid
+    case legacyUuid
+
+    var isUuid: Bool {
+        switch self {
+        case .uuid, .legacyUuid: return true
+        default: return false
+        }
+    }
+}
 
 struct BsonDocumentFlattener {
     // MARK: - Public API
@@ -42,29 +68,77 @@ struct BsonDocumentFlattener {
 
     /// Flatten documents into a grid. Missing fields become nil cells.
     /// Nested objects/arrays are serialized as compact JSON strings.
-    static func flatten(documents: [[String: Any]], columns: [String]) -> [[PluginCellValue]] {
+    static func flatten(
+        documents: [[String: Any]],
+        columns: [String],
+        kinds: [BsonValueKind],
+        representation: MongoDBUuidRepresentation
+    ) -> [[PluginCellValue]] {
         documents.map { doc in
-            columns.map { column in
+            columns.enumerated().map { index, column in
                 guard let value = doc[column] else { return PluginCellValue.null }
-                if let data = value as? Data {
-                    return .bytes(data)
-                }
-                return PluginCellValue.fromOptional(stringValue(for: value))
+                let kind = index < kinds.count ? kinds[index] : .string
+                return cellValue(for: value, kind: kind, representation: representation)
             }
         }
     }
 
-    /// Infer ColumnType for each column by majority-vote over document values.
-    static func columnTypes(for columns: [String], documents: [[String: Any]]) -> [Int32] {
+    /// Infer the dominant value kind for each column by majority-vote over document values.
+    static func columnKinds(
+        for columns: [String],
+        documents: [[String: Any]],
+        representation: MongoDBUuidRepresentation
+    ) -> [BsonValueKind] {
         columns.map { column in
-            inferBsonType(for: column, in: documents)
+            inferValueKind(for: column, in: documents, representation: representation)
+        }
+    }
+
+    static func cellValue(
+        for value: Any,
+        kind: BsonValueKind,
+        representation: MongoDBUuidRepresentation
+    ) -> PluginCellValue {
+        if let binary = value as? MongoDBBinaryValue {
+            guard kind.isUuid,
+                  let text = MongoDBUuidCodec.decodedText(for: binary, representation: representation) else {
+                return .bytes(binary.data)
+            }
+            return .text(text)
+        }
+        if let data = value as? Data {
+            return .bytes(data)
+        }
+        return PluginCellValue.fromOptional(stringValue(for: value, representation: representation))
+    }
+
+    static func typeName(for kind: BsonValueKind, representation: MongoDBUuidRepresentation) -> String {
+        switch kind {
+        case .double: return "FLOAT"
+        case .decimal128: return MongoDBDecimal128.columnTypeName
+        case .string, .null: return "VARCHAR"
+        case .document, .array: return "JSON"
+        case .binary(let subtype): return MongoDBUuidCodec.columnTypeName(forSubtype: subtype)
+        case .boolean: return "BOOLEAN"
+        case .date: return "TIMESTAMP"
+        case .int32: return "INTEGER"
+        case .int64: return "BIGINT"
+        case .objectId: return "ObjectId"
+        case .uuid:
+            return MongoDBUuidCodec.wrapperTag(
+                forSubtype: MongoDBUuidCodec.standardUuidSubtype, representation: representation
+            ) ?? "BLOB"
+        case .legacyUuid:
+            return MongoDBUuidCodec.wrapperTag(
+                forSubtype: MongoDBUuidCodec.legacyUuidSubtype, representation: representation
+            ) ?? "BLOB"
         }
     }
 
     // MARK: - Value Serialization
 
     /// Serialize a single value to its display string representation
-    static func stringValue(for value: Any?) -> String? {
+    static func stringValue(for value: Any?, representation: MongoDBUuidRepresentation) -> String? {
         guard let value = value else { return nil }
 
         if value is NSNull { return nil }
@@ -75,61 +149,77 @@ struct BsonDocumentFlattener {
         case let num as NSNumber:
             return displayString(for: num)
         case let date as Date:
-            return iso8601Formatter.string(from: date)
+            return iso8601Text(for: date)
+        case let objectId as MongoDBObjectId:
+            return objectId.hex
+        case let decimal as MongoDBDecimal128:
+            return decimal.digits
+        case let binary as MongoDBBinaryValue:
+            return binaryString(for: binary, representation: representation)
         case let data as Data:
-            return formatBinaryData(data)
+            return MongoDBUuidCodec.binaryText(for: MongoDBBinaryValue(data: data, subtype: 0))
         case let dict as [String: Any]:
             // Code type: {"$code": "function() {...}"}
             if let code = dict["$code"] as? String {
                 if let scope = dict["$scope"] as? [String: Any] {
-                    return "Code(\"\(code)\", \(serializeToJson(scope)))"
+                    return "Code(\"\(code)\", \(serializeToJson(scope, representation: representation)))"
                 }
                 return "Code(\"\(code)\")"
             }
             // DBRef convention: {"$ref": "collection", "$id": "..."}
             if let ref = dict["$ref"] as? String, let id = dict["$id"] {
-                let idStr = stringValue(for: id) ?? String(describing: id)
+                let idStr = stringValue(for: id, representation: representation) ?? String(describing: id)
                 if let db = dict["$db"] as? String {
                     return "DBRef(\"\(ref)\", \(idStr), \"\(db)\")"
                 }
                 return "DBRef(\"\(ref)\", \(idStr))"
             }
-            return serializeToJson(dict)
+            return serializeToJson(dict, representation: representation)
         case let array as [Any]:
-            return serializeToJson(array)
+            return serializeToJson(array, representation: representation)
         default:
             return String(describing: value)
         }
     }
 
+    private static func binaryString(
+        for binary: MongoDBBinaryValue,
+        representation: MongoDBUuidRepresentation
+    ) -> String {
+        MongoDBUuidCodec.decodedText(for: binary, representation: representation)
+            ?? MongoDBUuidCodec.binaryText(for: binary)
+    }
+
     // MARK: - JSON Serialization
 
     /// Serialize a dictionary or array to compact JSON string
-    static func serializeToJson(_ value: Any) -> String {
-        let sanitized = sanitizeForJson(value)
-        guard JSONSerialization.isValidJSONObject(sanitized),
-              let data = try? JSONSerialization.data(withJSONObject: sanitized, options: [.sortedKeys]),
-              let json = String(data: data, encoding: .utf8) else {
+    static func serializeToJson(_ value: Any, representation: MongoDBUuidRepresentation) -> String {
+        let sanitized = sanitizeForJson(value, representation: representation)
+        guard let json = NumberText.json(from: sanitized, preservesFloatingPointForm: true) else {
             return String(describing: value)
         }
-        let nsJson = json as NSString
-        if nsJson.length > 10_000 {
-            return String(json.prefix(10_000)) + "..."
-        }
-        return json
+        return JSONTruncation.truncate(json, maxLength: maxNestedJsonLength)
     }
 
+    static let maxNestedJsonLength = 10_000
+
     /// Recursively convert every value into a JSON-safe representation
-    static func sanitizeForJson(_ value: Any) -> Any {
+    static func sanitizeForJson(_ value: Any, representation: MongoDBUuidRepresentation) -> Any {
         switch value {
         case let dict as [String: Any]:
-            return dict.mapValues { sanitizeForJson($0) }
+            return dict.mapValues { sanitizeForJson($0, representation: representation) }
         case let array as [Any]:
-            return array.map { sanitizeForJson($0) }
+            return array.map { sanitizeForJson($0, representation: representation) }
+        case let objectId as MongoDBObjectId:
+            return objectId.hex
+        case let decimal as MongoDBDecimal128:
+            return NumberText.RawNumber(decimal.digits) ?? decimal.digits
+        case let binary as MongoDBBinaryValue:
+            return binaryString(for: binary, representation: representation)
         case let data as Data:
-            return formatBinaryData(data)
+            return MongoDBUuidCodec.binaryText(for: MongoDBBinaryValue(data: data, subtype: 0))
         case let date as Date:
-            return iso8601Formatter.string(from: date)
+            return iso8601Text(for: date)
         case is NSNull:
             return value
         case let str as String:
@@ -141,7 +231,11 @@ struct BsonDocumentFlattener {
         }
     }
 
-    private static let iso8601Formatter = ISO8601DateFormatter()
+    private static let iso8601Formatter = OSAllocatedUnfairLock(uncheckedState: ISO8601DateFormatter())
+
+    private static func iso8601Text(for date: Date) -> String {
+        iso8601Formatter.withLockUnchecked { $0.string(from: date) }
+    }
 
     private static func displayString(for num: NSNumber) -> String {
         if isBoolean(num) {
@@ -150,7 +244,7 @@ struct BsonDocumentFlattener {
         if isFloatingPoint(num), !num.doubleValue.isFinite {
             return nonFiniteToken(num.doubleValue)
         }
-        return num.stringValue
+        return NumberText.text(for: num)
     }
 
     private static func sanitizeNumber(_ num: NSNumber) -> Any {
@@ -173,66 +267,160 @@ struct BsonDocumentFlattener {
         return value > 0 ? "Infinity" : "-Infinity"
     }
 
-    /// Format binary data: 16-byte values as UUID, otherwise as hex string
-    private static func formatBinaryData(_ data: Data) -> String {
-        if data.count == 16 {
-            let uuid = UUID(uuid: (
-                data[0], data[1], data[2], data[3],
-                data[4], data[5], data[6], data[7],
-                data[8], data[9], data[10], data[11],
-                data[12], data[13], data[14], data[15]
-            ))
-            return "UUID(\"\(uuid.uuidString.lowercased())\")"
+    // MARK: - Nested Field Paths
+
+    /// Dotted paths across the sampled documents, including paths inside nested objects and
+    /// inside the objects an array holds. This is deliberately separate from `unionColumns`,
+    /// which stays flat because the grid renders a nested object as one JSON column.
+    ///
+    /// A key that holds a literal `.` or opens with `$` is skipped along with everything beneath
+    /// it: the server reads the dot as a path separator, so a query naming such a key addresses
+    /// a different field, and no prefix built through it can be trusted either.
+    static func fieldPaths(
+        from documents: [[String: Any]],
+        representation: MongoDBUuidRepresentation,
+        maxDepth: Int = 4
+    ) -> [PluginFieldPath] {
+        sampledPaths(from: documents, representation: representation, maxDepth: maxDepth)
+            .map { sampled in
+                PluginFieldPath(
+                    path: sampled.path,
+                    typeName: typeName(for: sampled.kind, representation: representation),
+                    depth: sampled.depth,
+                    arrayPrefixes: sampled.arrayPrefixes
+                )
+            }
+    }
+
+    /// Dominant BSON kind per dotted path, for the value coercion a filter on that path needs.
+    /// Derived from the same walk `fieldPaths` uses, so the kind a path reports and the type name
+    /// it displays can never disagree. Call one or the other; calling both walks twice.
+    static func fieldPathKinds(
+        from documents: [[String: Any]],
+        representation: MongoDBUuidRepresentation,
+        maxDepth: Int = 4
+    ) -> [String: BsonValueKind] {
+        sampledPaths(from: documents, representation: representation, maxDepth: maxDepth)
+            .reduce(into: [:]) { result, sampled in result[sampled.path] = sampled.kind }
+    }
+
+    /// MongoDB reads a `.` as a path separator and reserves a leading `$`, so a key spelled with
+    /// either cannot be addressed by an ordinary query document.
+    static func isAddressableSegment(_ key: String) -> Bool {
+        !key.contains(".") && !key.hasPrefix("$") && !key.isEmpty
+    }
+
+    struct SampledPath {
+        let path: String
+        let kind: BsonValueKind
+        let depth: Int
+        let arrayPrefixes: [String]
+    }
+
+    private static func sampledPaths(
+        from documents: [[String: Any]],
+        representation: MongoDBUuidRepresentation,
+        maxDepth: Int
+    ) -> [SampledPath] {
+        var kinds: [String: [BsonValueKind: Int]] = [:]
+        var depths: [String: Int] = [:]
+        var arrayPrefixes: [String: [String]] = [:]
+        var order: [String] = []
+
+        func visit(_ document: [String: Any], prefix: String, depth: Int, arrays: [String]) {
+            guard depth <= maxDepth else { return }
+
+            for key in document.keys.sorted() {
+                guard isAddressableSegment(key) else { continue }
+                guard let value = document[key], !(value is NSNull) else { continue }
+                let path = prefix.isEmpty ? key : "\(prefix).\(key)"
+
+                if depths[path] == nil {
+                    depths[path] = depth
+                    arrayPrefixes[path] = arrays
+                    order.append(path)
+                }
+                kinds[path, default: [:]][valueKind(for: value, representation: representation), default: 0] += 1
+
+                if let nested = value as? [String: Any] {
+                    visit(nested, prefix: path, depth: depth + 1, arrays: arrays)
+                } else if let array = value as? [Any] {
+                    for element in array.prefix(20) {
+                        guard let nested = element as? [String: Any] else { continue }
+                        visit(nested, prefix: path, depth: depth + 1, arrays: arrays + [path])
+                    }
+                }
+            }
         }
-        return "BinData(\(data.count), \"\(data.base64EncodedString())\")"
+
+        for document in documents {
+            visit(document, prefix: "", depth: 1, arrays: [])
+        }
+
+        return order.compactMap { path in
+            guard let winner = kinds[path]?.max(by: { $0.value < $1.value })?.key,
+                  let depth = depths[path] else { return nil }
+            return SampledPath(
+                path: path,
+                kind: winner,
+                depth: depth,
+                arrayPrefixes: arrayPrefixes[path] ?? []
+            )
+        }
     }
 
     // MARK: - Type Inference
 
-    /// Infer the most common BSON type code for a field across all documents.
-    /// Returns BSON type integer: 1=Double, 2=String, 3=Document, 4=Array,
-    /// 5=Binary, 7=ObjectId, 8=Boolean, 9=Date, 10=Null, 16=Int32, 18=Int64
-    private static func inferBsonType(for field: String, in documents: [[String: Any]]) -> Int32 {
-        var typeCounts: [Int32: Int] = [:]
+    private static func inferValueKind(
+        for field: String,
+        in documents: [[String: Any]],
+        representation: MongoDBUuidRepresentation
+    ) -> BsonValueKind {
+        var counts: [BsonValueKind: Int] = [:]
 
         for doc in documents {
             guard let value = doc[field] else { continue }
             if value is NSNull { continue }
-
-            let type = bsonTypeCode(for: value)
-            typeCounts[type, default: 0] += 1
+            counts[valueKind(for: value, representation: representation), default: 0] += 1
         }
 
-        // Return most common type, default to String (2) if no values found
-        return typeCounts.max(by: { $0.value < $1.value })?.key ?? 2
+        return counts.max(by: { $0.value < $1.value })?.key ?? .string
     }
 
-    /// Map a Swift value to its approximate BSON type code
-    private static func bsonTypeCode(for value: Any) -> Int32 {
-        if value is NSNull { return 10 } // Null
+    private static func valueKind(for value: Any, representation: MongoDBUuidRepresentation) -> BsonValueKind {
+        if value is NSNull { return .null }
 
         switch value {
         case let num as NSNumber:
             if isBoolean(num) {
-                return 8 // Boolean
+                return .boolean
             }
             if isFloatingPoint(num) {
-                return 1 // Double
+                return .double
             }
             let objCType = String(cString: num.objCType)
-            return objCType == "q" || objCType == "l" ? 18 : 16 // Int64 : Int32
+            return objCType == "q" || objCType == "l" ? .int64 : .int32
         case is String:
-            return 2 // String
+            return .string
+        case is MongoDBObjectId:
+            return .objectId
+        case is MongoDBDecimal128:
+            return .decimal128
         case is Date:
-            return 9 // Date
+            return .date
+        case let binary as MongoDBBinaryValue:
+            guard MongoDBUuidCodec.isDecodableUuid(binary, representation: representation) else {
+                return .binary(subtype: binary.subtype)
+            }
+            return binary.subtype == MongoDBUuidCodec.standardUuidSubtype ? .uuid : .legacyUuid
         case is Data:
-            return 5 // Binary
+            return .binary(subtype: 0)
         case is [String: Any]:
-            return 3 // Document
+            return .document
         case is [Any]:
-            return 4 // Array
+            return .array
         default:
-            return 2 // Default to String
+            return .string
         }
     }
 }

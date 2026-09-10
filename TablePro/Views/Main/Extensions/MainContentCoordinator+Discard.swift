@@ -11,8 +11,8 @@ extension MainContentCoordinator {
     }
 
     func handleDiscard(
-        pendingTruncates: inout Set<String>,
-        pendingDeletes: inout Set<String>
+        pendingTruncates: inout Set<DatabaseTreeTableRef>,
+        pendingDeletes: inout Set<DatabaseTreeTableRef>
     ) {
         rowEditingCoordinator.handleDiscard(
             pendingTruncates: &pendingTruncates,

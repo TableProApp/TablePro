@@ -5,7 +5,7 @@
 
 import Foundation
 
-protocol KeyValueStore: AnyObject {
+protocol KeyValueStore: AnyObject, Sendable {
     func dataValue(forKey key: String) -> Data?
     func setDataValue(_ data: Data?, forKey key: String)
 }

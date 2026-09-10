@@ -138,7 +138,7 @@ extension TextView {
     }
 
     override open func accessibilityRange(for index: Int) -> NSRange {
-        guard index < documentRange.length else { return .notFound }
+        guard index >= 0, index < documentRange.length else { return .notFound }
         return textStorage.mutableString.rangeOfComposedCharacterSequence(at: index)
     }
 
@@ -148,7 +148,8 @@ extension TextView {
 
     /// The line index for a given character offset.
     override open func accessibilityLine(for index: Int) -> Int {
-        guard index <= textStorage.length,
+        guard index >= 0,
+              index <= textStorage.length,
               let textLine = layoutManager.textLineForOffset(index) else {
             return -1
         }

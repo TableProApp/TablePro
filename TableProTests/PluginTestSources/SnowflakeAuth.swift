@@ -1,1 +1,0 @@
-../../Plugins/SnowflakeDriverPlugin/SnowflakeAuth.swift

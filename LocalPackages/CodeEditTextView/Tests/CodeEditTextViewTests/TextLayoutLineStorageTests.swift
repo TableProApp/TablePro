@@ -29,13 +29,14 @@ final class TextLayoutLineStorageTests: XCTestCase { // swiftlint:disable:this t
         let length: Int
         let count: Int
         let height: CGFloat
+        let maxWidth: CGFloat
     }
 
     /// Recursively checks that the given tree has the correct metadata everywhere.
     /// - Parameter tree: The tree to check.
     fileprivate func assertTreeMetadataCorrect<T: Identifiable>(_ tree: TextLineStorage<T>) throws {
         func checkChildren(_ node: TextLineStorage<T>.Node<T>?) -> ChildData {
-            guard let node else { return ChildData(length: 0, count: 0, height: 0.0) }
+            guard let node else { return ChildData(length: 0, count: 0, height: 0.0, maxWidth: 0.0) }
             let leftSubtreeData = checkChildren(node.left)
             let rightSubtreeData = checkChildren(node.right)
 
@@ -43,10 +44,14 @@ final class TextLayoutLineStorageTests: XCTestCase { // swiftlint:disable:this t
             XCTAssert(leftSubtreeData.count == node.leftSubtreeCount, "Left subtree node count incorrect")
             XCTAssert(leftSubtreeData.height.approxEqual(node.leftSubtreeHeight), "Left subtree height incorrect")
 
+            let subtreeWidth = max(node.width, leftSubtreeData.maxWidth, rightSubtreeData.maxWidth)
+            XCTAssertEqual(node.subtreeWidth, subtreeWidth, "Subtree width incorrect")
+
             return ChildData(
                 length: node.length + leftSubtreeData.length + rightSubtreeData.length,
                 count: 1 + leftSubtreeData.count + rightSubtreeData.count,
-                height: node.height + leftSubtreeData.height + rightSubtreeData.height
+                height: node.height + leftSubtreeData.height + rightSubtreeData.height,
+                maxWidth: subtreeWidth
             )
         }
 
@@ -55,6 +60,7 @@ final class TextLayoutLineStorageTests: XCTestCase { // swiftlint:disable:this t
         XCTAssert(rootData.count == tree.count, "Node count incorrect")
         XCTAssert(rootData.length == tree.length, "Length incorrect")
         XCTAssert(rootData.height.approxEqual(tree.height), "Height incorrect")
+        XCTAssertEqual(rootData.maxWidth, tree.maxWidth, "Max width incorrect")
 
         var lastIdx = -1
         for line in tree {
@@ -221,6 +227,110 @@ final class TextLayoutLineStorageTests: XCTestCase { // swiftlint:disable:this t
         }
     }
 
+    /// A balanced tree whose line at index `i` is `i + 1` characters long and `widths[i]` wide.
+    fileprivate func createMeasuredTree(widths: [CGFloat]) -> TextLineStorage<TextLine> {
+        let tree = TextLineStorage<TextLine>()
+        tree.build(
+            from: widths.indices.map { .init(data: TextLine(), length: $0 + 1, height: 1.0) },
+            estimatedLineHeight: 1.0
+        )
+        for (index, width) in widths.enumerated() {
+            tree.setWidth(width, forLineAt: index)
+        }
+        return tree
+    }
+
+    fileprivate func lineStart(ofLineAt index: Int, in tree: TextLineStorage<TextLine>) throws -> Int {
+        try XCTUnwrap(tree.getLine(atIndex: index)).range.location
+    }
+
+    func test_maxWidthIsTheWidestMeasuredLine() throws {
+        let tree = createMeasuredTree(widths: [10, 40, 25, 5, 30])
+        XCTAssertEqual(tree.maxWidth, 40)
+        try assertTreeMetadataCorrect(tree)
+
+        XCTAssertEqual(TextLineStorage<TextLine>().maxWidth, 0, "An empty tree has no width")
+    }
+
+    func test_narrowingTheWidestLineLowersMaxWidth() throws {
+        let tree = createMeasuredTree(widths: [10, 40, 25, 5, 30])
+
+        tree.setWidth(12, forLineAt: 1)
+        XCTAssertEqual(tree.maxWidth, 30, "The next widest line takes over")
+        try assertTreeMetadataCorrect(tree)
+
+        tree.setWidth(0, forLineAt: 4)
+        XCTAssertEqual(tree.maxWidth, 25, "A forgotten width counts as zero")
+        try assertTreeMetadataCorrect(tree)
+    }
+
+    func test_deletingTheWidestLineLowersMaxWidth() throws {
+        for index in 0..<15 {
+            var widths = (0..<15).map { CGFloat($0 + 1) }
+            widths[index] = 1_000
+            let tree = createMeasuredTree(widths: widths)
+            XCTAssertEqual(tree.maxWidth, 1_000)
+
+            tree.delete(lineAt: try lineStart(ofLineAt: index, in: tree))
+
+            widths.remove(at: index)
+            XCTAssertEqual(tree.maxWidth, widths.max(), "Deleting line \(index) left a stale width")
+            try assertTreeMetadataCorrect(tree)
+        }
+    }
+
+    func test_resetWidthsForgetsEveryWidth() throws {
+        let tree = createMeasuredTree(widths: [10, 40, 25, 5, 30])
+
+        tree.resetWidths()
+
+        XCTAssertEqual(tree.maxWidth, 0)
+        try assertTreeMetadataCorrect(tree)
+        tree.setWidth(7, forLineAt: 2)
+        XCTAssertEqual(tree.maxWidth, 7, "Widths recorded after a reset count again")
+    }
+
+    /// Runs a long, reproducible sequence of inserts, deletes, length changes and width changes against a plain array,
+    /// checking after every step that the tree's width aggregate and its per-node invariant agree with the array.
+    ///
+    /// Rotations and the two-child delete are where a width aggregate goes wrong, and a hand-written case reaches only
+    /// the few shapes it was written for.
+    func test_widthAggregateMatchesAModelThroughRandomEdits() throws {
+        var generator = SeededGenerator(seed: 2709)
+        let tree = TextLineStorage<TextLine>()
+        var model: [(length: Int, width: CGFloat)] = []
+
+        for _ in 0..<4_000 {
+            let operation = model.isEmpty ? 0 : Int.random(in: 0..<4, using: &generator)
+            switch operation {
+            case 0:
+                let index = Int.random(in: 0...model.count, using: &generator)
+                let offset = model[..<index].reduce(0) { $0 + $1.length }
+                let length = Int.random(in: 1...20, using: &generator)
+                tree.insert(line: TextLine(), atOffset: offset, length: length, height: 1.0)
+                model.insert((length, 0), at: index)
+            case 1:
+                let index = Int.random(in: 0..<model.count, using: &generator)
+                tree.delete(lineAt: try lineStart(ofLineAt: index, in: tree))
+                model.remove(at: index)
+            case 2:
+                let index = Int.random(in: 0..<model.count, using: &generator)
+                let delta = Int.random(in: 1...5, using: &generator)
+                tree.update(atOffset: try lineStart(ofLineAt: index, in: tree), delta: delta, deltaHeight: 0)
+                model[index].length += delta
+            default:
+                let index = Int.random(in: 0..<model.count, using: &generator)
+                let width = CGFloat(Int.random(in: 0...500, using: &generator))
+                tree.setWidth(width, forLineAt: index)
+                model[index].width = width
+            }
+
+            XCTAssertEqual(tree.maxWidth, model.map(\.width).max() ?? 0)
+            XCTAssertEqual(tree.map(\.range.length), model.map(\.length), "Lines out of order")
+            try assertTreeMetadataCorrect(tree)
+        }
+    }
+
     func test_insertPerformance() {
         let tree = TextLineStorage<TextLine>()
         var lines: [TextLineStorage<TextLine>.BuildItem] = []
@@ -383,5 +493,22 @@ final class TextLayoutLineStorageTests: XCTestCase { // swiftlint:disable:this t
         storage.delete(lineAt: 7) // Delete the root
 
         try assertTreeMetadataCorrect(storage)
+    }
+}
+
+/// A small deterministic generator, so a failing random sequence can be replayed exactly.
+private struct SeededGenerator: RandomNumberGenerator {
+    private var state: UInt64
+
+    init(seed: UInt64) {
+        state = seed
+    }
+
+    mutating func next() -> UInt64 {
+        state &+= 0x9E37_79B9_7F4A_7C15
+        var value = state
+        value = (value ^ (value >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        value = (value ^ (value >> 27)) &* 0x94D0_49BB_1331_11EB
+        return value ^ (value >> 31)
     }
 }

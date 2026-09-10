@@ -46,14 +46,15 @@ struct SyncRecordMapperConnectionTests {
         #expect(Set(record.allKeys()).isSubset(of: ConnectionSyncField.declaredKeys))
     }
 
-    @Test("isFavorite stays off the wire until the production schema is verified")
-    func favoriteIsNotWritten() {
+    @Test("isFavorite reaches the wire and round-trips now that the field is deployed")
+    func favoriteRoundTrips() throws {
         var connection = DatabaseConnection(name: "Local")
         connection.isFavorite = true
 
         let record = SyncRecordMapper.toCKRecord(connection, in: zoneID)
 
-        #expect(record["isFavorite"] == nil)
+        #expect(record["isFavorite"] as? Int64 == 1)
+        #expect(try SyncRecordMapper.toConnection(record).isFavorite)
     }
 
     @Test("A verified field still reaches the wire")

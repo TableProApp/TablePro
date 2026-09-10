@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -eo pipefail
 
 # Build static libpq for iOS using xcodebuild/xcrun clang directly.
@@ -15,7 +15,6 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LIBS_DIR="$PROJECT_DIR/Libs/ios"
 BUILD_DIR="$(mktemp -d)"
-NCPU=$(sysctl -n hw.ncpu)
 
 cleanup() {
     echo "   Cleaning up build directory..."
@@ -165,9 +164,12 @@ setup_openssl() {
     local PLATFORM_KEY=$1
     local PREFIX="$BUILD_DIR/openssl-$PLATFORM_KEY"
 
-    local SSL_LIB=$(find "$LIBS_DIR/OpenSSL-SSL.xcframework" -path "*$PLATFORM_KEY*/libssl.a" | head -1)
-    local CRYPTO_LIB=$(find "$LIBS_DIR/OpenSSL-Crypto.xcframework" -path "*$PLATFORM_KEY*/libcrypto.a" | head -1)
-    local HEADERS=$(find "$LIBS_DIR/OpenSSL-SSL.xcframework" -path "*$PLATFORM_KEY*/Headers" -type d | head -1)
+    local SSL_LIB
+    SSL_LIB=$(find "$LIBS_DIR/OpenSSL-SSL.xcframework" -path "*$PLATFORM_KEY*/libssl.a" | head -1)
+    local CRYPTO_LIB
+    CRYPTO_LIB=$(find "$LIBS_DIR/OpenSSL-Crypto.xcframework" -path "*$PLATFORM_KEY*/libcrypto.a" | head -1)
+    local HEADERS
+    HEADERS=$(find "$LIBS_DIR/OpenSSL-SSL.xcframework" -path "*$PLATFORM_KEY*/Headers" -type d | head -1)
 
     if [ -z "$SSL_LIB" ] || [ -z "$CRYPTO_LIB" ]; then
         echo "ERROR: OpenSSL not found for $PLATFORM_KEY"
@@ -194,10 +196,14 @@ build_slice() {
 
     setup_openssl "$PLATFORM_KEY"
 
-    local SDK=$(xcrun --sdk "$SDK_NAME" --show-sdk-path)
-    local CC=$(xcrun --sdk "$SDK_NAME" -f cc)
-    local AR=$(xcrun --sdk "$SDK_NAME" -f ar)
-    local RANLIB=$(xcrun --sdk "$SDK_NAME" -f ranlib)
+    local SDK
+    SDK=$(xcrun --sdk "$SDK_NAME" --show-sdk-path)
+    local CC
+    CC=$(xcrun --sdk "$SDK_NAME" -f cc)
+    local AR
+    AR=$(xcrun --sdk "$SDK_NAME" -f ar)
+    local RANLIB
+    RANLIB=$(xcrun --sdk "$SDK_NAME" -f ranlib)
 
     local TARGET_FLAG
     if [ "$SDK_NAME" = "iphonesimulator" ]; then
@@ -206,7 +212,7 @@ build_slice() {
         TARGET_FLAG="-target arm64-apple-ios${IOS_DEPLOY_TARGET}"
     fi
 
-    local -a CFLAGS=(-arch "$ARCH" -isysroot "$SDK" $TARGET_FLAG -mios-version-min="$IOS_DEPLOY_TARGET" -O2 -DHAVE_STRCHRNUL=1 -Wno-int-conversion -Wno-ignored-attributes -Wno-implicit-function-declaration -Wno-error -w)
+    local -a CFLAGS=(-arch "$ARCH" -isysroot "$SDK" "$TARGET_FLAG" -mios-version-min="$IOS_DEPLOY_TARGET" -O2 -DHAVE_STRCHRNUL=1 -Wno-int-conversion -Wno-ignored-attributes -Wno-implicit-function-declaration -Wno-error -w)
     local -a PG_INCLUDES=(-I"$NATIVE_DIR/src/include" -I"$NATIVE_DIR/src/include/port/darwin" -I"$NATIVE_DIR/src/interfaces/libpq" -I"$NATIVE_DIR/src/port" -I"$OPENSSL_PREFIX/include" -I"$NATIVE_DIR/src/common")
 
     local OBJ_DIR="$BUILD_DIR/obj-$SDK_NAME-$ARCH"
@@ -253,7 +259,6 @@ build_slice() {
         src/common/psprintf.c
         src/common/logging.c
         src/common/percentrepl.c
-        src/common/md5_common.c
         src/common/sha1.c
         src/common/sha1_int.c
         src/common/sha2.c
@@ -274,7 +279,6 @@ build_slice() {
         src/port/strerror.c
         src/port/thread.c
         src/port/path.c
-        src/port/pg_strong_random.c
         src/port/pgstrcasecmp.c
         src/port/explicit_bzero.c
         src/port/user.c
@@ -286,18 +290,34 @@ build_slice() {
     # Compile all source files
     local ALL_OBJS=()
     local FAILED_SRCS=()
+    local MISSING_SRCS=()
     for src in "${LIBPQ_SRCS[@]}" "${COMMON_SRCS[@]}" "${PORT_SRCS[@]}"; do
-        local obj_name=$(basename "${src%.c}.o")
-        if [ -f "$src" ]; then
-            if "$CC" "${CFLAGS[@]}" "${PG_INCLUDES[@]}" -DFRONTEND -c "$src" -o "$OBJ_DIR/$obj_name" 2>"$OBJ_DIR/${obj_name}.err"; then
-                ALL_OBJS+=("$OBJ_DIR/$obj_name")
-            else
-                FAILED_SRCS+=("$src")
-                echo "   FAILED: $src"
-                cat "$OBJ_DIR/${obj_name}.err"
-            fi
+        local obj_name
+        obj_name=$(basename "${src%.c}.o")
+        # A source that is not there used to be skipped in silence, so a PostgreSQL bump that
+        # renamed or moved a file produced a libpq.a quietly missing that object. Only a
+        # compile failure was ever reported.
+        if [ ! -f "$src" ]; then
+            MISSING_SRCS+=("$src")
+            continue
+        fi
+        if "$CC" "${CFLAGS[@]}" "${PG_INCLUDES[@]}" -DFRONTEND -c "$src" -o "$OBJ_DIR/$obj_name" 2>"$OBJ_DIR/${obj_name}.err"; then
+            ALL_OBJS+=("$OBJ_DIR/$obj_name")
+        else
+            FAILED_SRCS+=("$src")
+            echo "   FAILED: $src"
+            cat "$OBJ_DIR/${obj_name}.err"
         fi
     done
+
+    if [ ${#MISSING_SRCS[@]} -gt 0 ]; then
+        echo ""
+        echo "ERROR: ${#MISSING_SRCS[@]} source file(s) listed here are not in PostgreSQL $PG_VERSION:"
+        printf '   %s\n' "${MISSING_SRCS[@]}"
+        echo ""
+        echo "Update the source lists in this script to match the version being built."
+        exit 1
+    fi
 
     if [ ${#FAILED_SRCS[@]} -gt 0 ]; then
         echo ""

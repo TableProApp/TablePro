@@ -9,7 +9,7 @@ import os
 @Observable
 @MainActor
 final class CloudflareTunnelPaneViewModel {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "CloudflareTunnelPane")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CloudflareTunnelPane")
 
     var state = CloudflareTunnelFormState()
 
@@ -41,14 +41,6 @@ final class CloudflareTunnelPaneViewModel {
                 || state.serviceTokenSecret.trimmingCharacters(in: .whitespaces).isEmpty {
                 issues.append(String(localized: "Service token ID and secret are required"))
             }
-        }
-
-        for other in coordinator?.value?.otherEnabledTunnels(excluding: .cloudflare) ?? [] {
-            issues.append(String(
-                format: String(localized: "Cannot use %@ and %@ at the same time"),
-                other.kind.displayName,
-                ConnectionTunnelKind.cloudflare.displayName
-            ))
         }
 
         return issues

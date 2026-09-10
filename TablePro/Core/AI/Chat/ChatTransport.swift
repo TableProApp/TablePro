@@ -11,7 +11,7 @@ protocol ChatTransport: AnyObject, Sendable {
         options: ChatTransportOptions
     ) -> AsyncThrowingStream<ChatStreamEvent, Error>
 
-    func fetchAvailableModels() async throws -> [String]
+    func fetchAvailableModels() async throws -> [AIModelInfo]
 
     func testConnection() async throws -> Bool
 }

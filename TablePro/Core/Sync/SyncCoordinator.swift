@@ -16,7 +16,7 @@ import TableProSyncTransport
 @MainActor @Observable
 final class SyncCoordinator {
     static let shared = SyncCoordinator()
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SyncCoordinator")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SyncCoordinator")
 
     private(set) var syncStatus: SyncStatus = .disabled(.userDisabled)
     private(set) var lastSyncDate: Date?
@@ -27,11 +27,15 @@ final class SyncCoordinator {
     @ObservationIgnored private let changeTracker: SyncChangeTracker
     @ObservationIgnored private let metadataStorage: SyncMetadataStorage
     @ObservationIgnored private let recordCache = SyncRecordCache()
-    @ObservationIgnored private var accountObserver: NSObjectProtocol?
+    @ObservationIgnored private let accountObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
     @ObservationIgnored private var changeCancellable: AnyCancellable?
     @ObservationIgnored private var licenseCancellable: AnyCancellable?
     @ObservationIgnored private var syncTask: Task<Void, Never>?
     @ObservationIgnored private var hasStarted = false
+
+    /// Bumped every time something other than a sync run decides the status, so a run that has been
+    /// suspended across the network can tell whether its outcome is still the current answer.
+    @ObservationIgnored private var statusGeneration = 0
 
     init(services: AppServices = .live) {
         self.services = services
@@ -41,7 +45,7 @@ final class SyncCoordinator {
     }
 
     deinit {
-        if let accountObserver { NotificationCenter.default.removeObserver(accountObserver) }
+        if let observer = accountObserver.withLockUnchecked({ $0 }) { NotificationCenter.default.removeObserver(observer) }
         syncTask?.cancel()
     }
 
@@ -93,6 +97,7 @@ final class SyncCoordinator {
             return
         }
 
+        let generation = statusGeneration
         syncStatus = .syncing
 
         do {
@@ -109,21 +114,36 @@ final class SyncCoordinator {
             await performPull()
 
             if let pushError {
-                syncStatus = .error(SyncError.from(pushError))
+                settle(.error(SyncError.from(pushError)), from: generation)
                 return
             }
 
             lastSyncDate = Date()
             metadataStorage.lastSyncDate = lastSyncDate
-            syncStatus = .idle
+            settle(.idle, from: generation)
             metadataStorage.pruneTombstones(olderThan: 30)
 
             Self.logger.info("Sync completed successfully")
         } catch {
             let syncError = SyncError.from(error)
-            syncStatus = .error(syncError)
+            settle(.error(syncError), from: generation)
             Self.logger.error("Sync failed: \(error.localizedDescription)")
         }
+    }
+
+    /// Publishes the outcome of a sync run, unless something decided the status while it was in
+    /// flight.
+    ///
+    /// A run reads `canSync()` once on entry and then suspends across the whole CloudKit round
+    /// trip, so turning sync off, or losing the license, used to be overwritten by the returning
+    /// run: the indicator went back to "Synced" for a sync that would now be refused. Whoever
+    /// decided last wins, and a stale run reports nothing.
+    private func settle(_ outcome: SyncStatus, from generation: Int) {
+        guard generation == statusGeneration else {
+            Self.logger.info("Discarding a sync outcome the status moved on from")
+            return
+        }
+        syncStatus = outcome
     }
 
     /// Triggered by remote push notification
@@ -162,51 +182,50 @@ final class SyncCoordinator {
     /// because the favorite store is an actor and must be read asynchronously.
     private func markSQLFavoritesDirty() async {
         let favorites = await services.sqlFavoriteManager.fetchFavorites()
-        for favorite in favorites {
-            changeTracker.markDirty(.favorite, id: favorite.id.uuidString)
-        }
+        changeTracker.markDirty(.favorite, ids: favorites.map { $0.id.uuidString })
+
         let folders = await services.sqlFavoriteManager.fetchFolders()
-        for folder in folders {
-            changeTracker.markDirty(.favoriteFolder, id: folder.id.uuidString)
-        }
+        changeTracker.markDirty(.favoriteFolder, ids: folders.map { $0.id.uuidString })
     }
 
-    /// Marks all existing local data as dirty so it will be pushed on the next sync.
-    /// Called when sync is first enabled to upload existing connections/groups/tags/settings.
+    /// Marks every synced record dirty so the first sync after enabling pushes the lot.
+    ///
+    /// Every type is marked as one batch. Marking record by record posted a change notification per
+    /// record, and the observer cancels the in-flight sync and awaits it before scheduling the next,
+    /// so an account with a few hundred saved column layouts built a chain of hundreds of tasks each
+    /// waiting on its predecessor and the app stopped responding to the switch that started it.
     private func markAllLocalDataDirty() {
         let connections = services.connectionStorage.loadConnections()
-        for connection in connections where !connection.localOnly {
-            changeTracker.markDirty(.connection, id: connection.id.uuidString)
-        }
+        changeTracker.markDirty(
+            .connection,
+            ids: connections.filter { !$0.localOnly }.map { $0.id.uuidString }
+        )
 
         let groups = services.groupStorage.loadGroups()
-        for group in groups {
-            changeTracker.markDirty(.group, id: group.id.uuidString)
-        }
+        changeTracker.markDirty(.group, ids: groups.map { $0.id.uuidString })
 
         let tags = services.tagStorage.loadTags()
-        for tag in tags {
-            changeTracker.markDirty(.tag, id: tag.id.uuidString)
-        }
+        changeTracker.markDirty(.tag, ids: tags.map { $0.id.uuidString })
 
         let sshProfiles = services.sshProfileStorage.loadProfiles()
-        for profile in sshProfiles {
-            changeTracker.markDirty(.sshProfile, id: profile.id.uuidString)
-        }
+        changeTracker.markDirty(.sshProfile, ids: sshProfiles.map { $0.id.uuidString })
 
         let favoriteTables = services.favoriteTablesStorage.loadFavorites()
-        for entry in favoriteTables {
-            changeTracker.markDirty(.tableFavorite, id: FavoriteTablesStorage.syncId(for: entry))
-        }
+        changeTracker.markDirty(
+            .tableFavorite,
+            ids: favoriteTables.map { FavoriteTablesStorage.syncId(for: $0) }
+        )
 
-        for category in ["general", "appearance", "editor", "dataGrid", "history", "tabs", "keyboard", "ai",
-                         CustomSlashCommandStorage.syncCategory] {
-            changeTracker.markDirty(.settings, id: category)
-        }
+        let favoriteDatabases = services.favoriteDatabasesStorage.loadFavorites()
+        changeTracker.markDirty(
+            .favoriteDatabase,
+            ids: favoriteDatabases.map { FavoriteDatabasesStorage.syncId(for: $0) }
+        )
 
-        for storageKey in FileColumnLayoutPersister.shared.customizedStorageKeys() {
-            changeTracker.markDirty(.settings, id: FileColumnLayoutPersister.syncCategory(for: storageKey))
-        }
+        let settingsCategories = AppSettingsCategory.synced + [CustomSlashCommandStorage.syncCategory]
+        let columnLayoutCategories = FileColumnLayoutPersister.shared.customizedStorageKeys()
+            .map { FileColumnLayoutPersister.syncCategory(for: $0) }
+        changeTracker.markDirty(.settings, ids: settingsCategories + columnLayoutCategories)
 
         let summary = [
             "connections=\(connections.count)",
@@ -214,7 +233,7 @@ final class SyncCoordinator {
             "tags=\(tags.count)",
             "sshProfiles=\(sshProfiles.count)",
             "favoriteTables=\(favoriteTables.count)",
-            "settings=8"
+            "settings=\(AppSettingsCategory.synced.count + 1)"
         ].joined(separator: ", ")
         Self.logger.info("Marked all local data dirty: \(summary, privacy: .public)")
     }
@@ -222,7 +241,7 @@ final class SyncCoordinator {
     /// Called when user disables sync in settings
     func disableSync() {
         syncTask?.cancel()
-        syncStatus = .disabled(.userDisabled)
+        decide(.disabled(.userDisabled))
     }
 
     // MARK: - Status
@@ -231,29 +250,51 @@ final class SyncCoordinator {
         let licenseManager = services.licenseManager
 
         guard licenseManager.isFeatureAvailable(.iCloudSync) else {
-            switch licenseManager.status {
-            case .expired:
-                syncStatus = .disabled(.licenseExpired)
-            default:
-                syncStatus = .disabled(.licenseRequired)
-            }
+            decide(.disabled(Self.licenseDisableReason(for: licenseManager.status)))
             return
         }
 
         let syncSettings = services.appSettingsStorage.loadSync()
         guard syncSettings.enabled else {
-            syncStatus = .disabled(.userDisabled)
+            decide(.disabled(.userDisabled))
             return
         }
 
         guard iCloudAccountAvailable else {
-            syncStatus = .disabled(.noAccount)
+            decide(.disabled(.noAccount))
             return
         }
 
         // If we were in an error or disabled state, transition to idle
         if !syncStatus.isSyncing {
-            syncStatus = .idle
+            decide(.idle)
+        }
+    }
+
+    /// Settles the status from outside a sync run, and retires whatever run is in flight.
+    ///
+    /// The branch that leaves a running sync alone deliberately does not come through here: it has
+    /// decided nothing, so invalidating the run would leave the status stuck on Syncing with
+    /// nothing left to move it.
+    private func decide(_ status: SyncStatus) {
+        statusGeneration += 1
+        syncStatus = status
+    }
+
+    /// Why sync is off, for a license that does not currently unlock it.
+    ///
+    /// Exhaustive on purpose. The arm that used to be `default:` swallowed `.validationFailed`,
+    /// which is a paying customer the app has not reached the server about, and told them a license
+    /// was required. A new `LicenseStatus` case has to be answered here rather than inheriting the
+    /// wrong answer.
+    nonisolated static func licenseDisableReason(for status: LicenseStatus) -> DisableReason {
+        switch status {
+        case .expired:
+            return .licenseExpired
+        case .validationFailed:
+            return .licenseUnverified
+        case .active, .unlicensed, .suspended, .deactivated:
+            return .licenseRequired
         }
     }
 
@@ -337,6 +378,10 @@ final class SyncCoordinator {
             collectDirtyTableFavorites(into: &recordsToSave, deletions: &recordIDsToDelete, zoneID: zoneID)
         }
 
+        if settings.syncDatabaseFavorites {
+            collectDirtyDatabaseFavorites(into: &recordsToSave, deletions: &recordIDsToDelete, zoneID: zoneID)
+        }
+
         if settings.syncSQLFavorites {
             await collectDirtySQLFavorites(into: &recordsToSave, deletions: &recordIDsToDelete, zoneID: zoneID)
         }
@@ -346,19 +391,20 @@ final class SyncCoordinator {
 
         guard !recordsToSave.isEmpty || !uniqueDeletions.isEmpty else { return }
 
+        let identities = SyncRecordMapper.identities(for: pushedLocalIds(), in: zoneID)
         let outcome = try await engine.push(records: recordsToSave, deletions: uniqueDeletions)
 
         recordCache.store(Array(outcome.savedRecords.values))
         recordCache.remove(Array(outcome.deletedRecordIDs))
 
         for recordID in outcome.savedRecords.keys {
-            guard let parsed = SyncRecordMapper.parse(recordName: recordID.recordName) else { continue }
-            changeTracker.clearDirty(parsed.type, id: parsed.id)
+            guard let identity = identities[recordID] else { continue }
+            changeTracker.clearDirty(identity.type, id: identity.id)
         }
 
         for recordID in outcome.deletedRecordIDs {
-            guard let parsed = SyncRecordMapper.parse(recordName: recordID.recordName) else { continue }
-            metadataStorage.removeTombstone(parsed.id, type: parsed.type)
+            guard let identity = identities[recordID] else { continue }
+            metadataStorage.removeTombstone(identity.id, type: identity.type)
         }
 
         let savedCount = outcome.savedRecords.count
@@ -370,6 +416,20 @@ final class SyncCoordinator {
 
         guard let firstFailure = outcome.failures.values.first else { return }
         throw SyncError.pushRejected(count: outcome.failures.count, detail: firstFailure.message)
+    }
+
+    /// Every local identifier this push can have sent. `SyncChangeTracker` is not isolated to this
+    /// actor, so the sets can move under an await; a record whose identifier is missing from the
+    /// snapshot is left dirty and pushed again rather than cleared against the wrong entry.
+    private func pushedLocalIds() -> [SyncRecordType: Set<String>] {
+        var localIds: [SyncRecordType: Set<String>] = [:]
+        for type in SyncRecordType.allCases {
+            let ids = changeTracker.dirtyRecords(for: type)
+                .union(metadataStorage.tombstones(for: type).map(\.id))
+            guard !ids.isEmpty else { continue }
+            localIds[type] = ids
+        }
+        return localIds
     }
 
     // MARK: - Pull
@@ -401,11 +461,21 @@ final class SyncCoordinator {
     }
 
     private func applyPullResult(_ result: PullResult) {
+        let persisted = applyRemoteChanges(result)
+
+        /// The token and the cache are the record of what this device holds, so neither is
+        /// committed over a batch a store refused. Saving the token first acknowledged records that
+        /// were never written and the server never sent them again, and the cached record then
+        /// stood in as the merge base for an edit that had no local base at all. Not saving it
+        /// means the next pull replays the batch, which every apply here is written to survive.
+        guard persisted else {
+            Self.logger.error("Pull not acknowledged: a store refused to persist part of the batch")
+            return
+        }
+
         if let newToken = result.newToken {
             metadataStorage.saveToken(newToken)
         }
-
-        applyRemoteChanges(result)
 
         recordCache.store(result.changedRecords)
         recordCache.remove(result.deletedRecordIDs)
@@ -418,7 +488,10 @@ final class SyncCoordinator {
     // Performance: storage reads here (loadSync, loadConnections, loadGroups, etc.) run on
     // @MainActor and can block the UI on large sync batches. Consider moving to Task.detached
     // for large payloads.
-    private func applyRemoteChanges(_ result: PullResult) {
+    /// Reports whether every record that can say so was persisted. A pull that answers false must
+    /// not commit its token: the batch has to arrive again.
+    @discardableResult
+    private func applyRemoteChanges(_ result: PullResult) -> Bool {
         let settings = services.appSettingsStorage.loadSync()
 
         services.connectionStorage.invalidateCache()
@@ -430,12 +503,14 @@ final class SyncCoordinator {
 
         var actualConnectionChanges = false
         var groupsOrTagsChanged = false
+        var persistenceFailed = false
 
         let connectionTombstoneIds = Set(metadataStorage.tombstones(for: .connection).map(\.id))
         let groupTombstoneIds = Set(metadataStorage.tombstones(for: .group).map(\.id))
         let tagTombstoneIds = Set(metadataStorage.tombstones(for: .tag).map(\.id))
         let sshTombstoneIds = Set(metadataStorage.tombstones(for: .sshProfile).map(\.id))
         let tableFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .tableFavorite).map(\.id))
+        let databaseFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .favoriteDatabase).map(\.id))
         let sqlFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .favorite).map(\.id))
         let sqlFolderTombstoneIds = Set(metadataStorage.tombstones(for: .favoriteFolder).map(\.id))
         var remoteFavorites: [SQLFavorite] = []
@@ -444,16 +519,22 @@ final class SyncCoordinator {
         for record in result.changedRecords {
             switch record.recordType {
             case SyncRecordType.connection.rawValue where settings.syncConnections:
-                if applyRemoteConnection(record, tombstoneIds: connectionTombstoneIds) {
-                    actualConnectionChanges = true
+                switch applyRemoteConnection(record, tombstoneIds: connectionTombstoneIds) {
+                case .applied: actualConnectionChanges = true
+                case .failed: persistenceFailed = true
+                case .skipped: break
                 }
             case SyncRecordType.group.rawValue where settings.syncGroupsAndTags:
-                if applyRemoteGroup(record, tombstoneIds: groupTombstoneIds) {
-                    groupsOrTagsChanged = true
+                switch applyRemoteGroup(record, tombstoneIds: groupTombstoneIds) {
+                case .applied: groupsOrTagsChanged = true
+                case .failed: persistenceFailed = true
+                case .skipped: break
                 }
             case SyncRecordType.tag.rawValue where settings.syncGroupsAndTags:
-                if applyRemoteTag(record, tombstoneIds: tagTombstoneIds) {
-                    groupsOrTagsChanged = true
+                switch applyRemoteTag(record, tombstoneIds: tagTombstoneIds) {
+                case .applied: groupsOrTagsChanged = true
+                case .failed: persistenceFailed = true
+                case .skipped: break
                 }
             case SyncRecordType.sshProfile.rawValue where settings.syncSSHProfiles:
                 applyRemoteSSHProfile(record, tombstoneIds: sshTombstoneIds)
@@ -461,6 +542,8 @@ final class SyncCoordinator {
                 applyRemoteSettings(record)
             case SyncRecordType.tableFavorite.rawValue where settings.syncTableFavorites:
                 applyRemoteTableFavorite(record, tombstoneIds: tableFavoriteTombstoneIds)
+            case SyncRecordType.favoriteDatabase.rawValue where settings.syncDatabaseFavorites:
+                applyRemoteDatabaseFavorite(record, tombstoneIds: databaseFavoriteTombstoneIds)
             case SyncRecordType.favorite.rawValue where settings.syncSQLFavorites:
                 if let favorite = try? SyncRecordMapper.sqlFavorite(from: record),
                    !sqlFavoriteTombstoneIds.contains(favorite.id.uuidString) {
@@ -518,7 +601,7 @@ final class SyncCoordinator {
             if !services.connectionStorage.saveConnections(connections) {
                 Self.logger.error("Failed to apply remote connection deletions: persistence error")
             } else {
-                FilterSettingsStorage.shared.removeFilters(for: connectionIdsToDelete)
+                ConnectionLocalState.purge(connectionIds: connectionIdsToDelete, origin: .remote)
                 let favoriteManager = services.sqlFavoriteManager
                 Task {
                     for id in connectionIdsToDelete {
@@ -569,9 +652,18 @@ final class SyncCoordinator {
             }
         }
 
+        /// After the batch, never per record: a pull carries no dependency order, so a legal
+        /// hierarchy change spread over two records passes through a state that reads as a cycle
+        /// until both have landed.
+        if groupsOrTagsChanged {
+            services.groupStorage.repairHierarchy()
+        }
+
         if actualConnectionChanges || groupsOrTagsChanged {
             services.appEvents.connectionUpdated.send(nil)
         }
+
+        return !persistenceFailed
     }
 
     @discardableResult
@@ -581,9 +673,12 @@ final class SyncCoordinator {
         let localRecord = SyncRecordMapper.toCKRecord(localConnection, in: remoteRecord.recordID.zoneID)
         guard let merged = remoteRecord.copy() as? CKRecord else { return nil }
 
+        let localFields = localRecord.fields(ConnectionSyncField.self)
+        let baseFields = base.fields(ConnectionSyncField.self)
+        let mergedFields = merged.fields(ConnectionSyncField.self)
         for field in ConnectionSyncField.allCases where field != .modifiedAtLocal {
-            guard !CKRecord.isEqualRecordValue(localRecord[field], base[field]) else { continue }
-            merged[field] = localRecord[field]
+            guard !CKRecord.isEqualRecordValue(localFields[field], baseFields[field]) else { continue }
+            mergedFields[field] = localFields[field]
         }
 
         do {
@@ -594,17 +689,17 @@ final class SyncCoordinator {
         }
     }
 
-    private func applyRemoteConnection(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
+    private func applyRemoteConnection(_ record: CKRecord, tombstoneIds: Set<String>) -> RemoteApplyOutcome {
         let remoteConnection: DatabaseConnection
         do {
             remoteConnection = try SyncRecordMapper.toConnection(record)
         } catch {
             Self.logger.error("Skipping remote connection \(record.recordID.recordName, privacy: .public): \(error.localizedDescription, privacy: .public)")
-            return false
+            return .skipped
         }
 
         if tombstoneIds.contains(remoteConnection.id.uuidString) {
-            return false
+            return .skipped
         }
 
         var connections = services.connectionStorage.loadConnections()
@@ -615,7 +710,7 @@ final class SyncCoordinator {
                     into: record,
                     localConnection: connections[index]
                 ) else {
-                    return false
+                    return .skipped
                 }
                 incoming = reconciled
             }
@@ -628,39 +723,24 @@ final class SyncCoordinator {
         }
         guard services.connectionStorage.saveConnections(connections) else {
             Self.logger.error("Failed to apply remote connection update: persistence error for \(remoteConnection.id, privacy: .public)")
-            return false
+            return .failed
         }
-        return true
+        return .applied
+    }
+
+    private func applyRemoteGroup(_ record: CKRecord, tombstoneIds: Set<String>) -> RemoteApplyOutcome {
+        guard let remoteGroup = SyncRecordMapper.toGroup(record) else { return .skipped }
+        if tombstoneIds.contains(remoteGroup.id.uuidString) { return .skipped }
+
+        return services.groupStorage.applyRemoteGroup(remoteGroup)
     }
 
     @discardableResult
-    private func applyRemoteGroup(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
-        guard let remoteGroup = SyncRecordMapper.toGroup(record) else { return false }
-        if tombstoneIds.contains(remoteGroup.id.uuidString) { return false }
+    private func applyRemoteTag(_ record: CKRecord, tombstoneIds: Set<String>) -> RemoteApplyOutcome {
+        guard let remoteTag = SyncRecordMapper.toTag(record) else { return .skipped }
+        if tombstoneIds.contains(remoteTag.id.uuidString) { return .skipped }
 
-        var groups = services.groupStorage.loadGroups()
-        if let index = groups.firstIndex(where: { $0.id == remoteGroup.id }) {
-            groups[index] = remoteGroup
-        } else {
-            groups.append(remoteGroup)
-        }
-        services.groupStorage.saveGroups(groups)
-        return true
-    }
-
-    @discardableResult
-    private func applyRemoteTag(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
-        guard let remoteTag = SyncRecordMapper.toTag(record) else { return false }
-        if tombstoneIds.contains(remoteTag.id.uuidString) { return false }
-
-        var tags = services.tagStorage.loadTags()
-        if let index = tags.firstIndex(where: { $0.id == remoteTag.id }) {
-            tags[index] = remoteTag
-        } else {
-            tags.append(remoteTag)
-        }
-        services.tagStorage.saveTags(tags)
-        return true
+        return services.tagStorage.applyRemoteTag(remoteTag)
     }
 
     private func applyRemoteSSHProfile(_ record: CKRecord, tombstoneIds: Set<String>) {
@@ -714,10 +794,28 @@ final class SyncCoordinator {
         return services.favoriteTablesStorage.addFavoriteWithoutSync(entry)
     }
 
+    /// Upserts rather than inserts. A database favorite carries a mutable payload, the environment
+    /// tag, so an insert-if-absent apply would keep the local tag and silently drop the remote one.
+    private func applyRemoteDatabaseFavorite(_ record: CKRecord, tombstoneIds: Set<String>) {
+        let entry: FavoriteDatabaseEntry
+        do {
+            entry = try SyncRecordMapper.favoriteDatabase(from: record)
+        } catch {
+            let recordName = record.recordID.recordName
+            let message = error.localizedDescription
+            Self.logger.error(
+                "Skipping remote favorite database \(recordName, privacy: .public): \(message, privacy: .public)"
+            )
+            return
+        }
+        guard !tombstoneIds.contains(FavoriteDatabasesStorage.syncId(for: entry)) else { return }
+        services.favoriteDatabasesStorage.setFavoriteWithoutSync(entry)
+    }
+
     // MARK: - Observers
 
     private func observeAccountChanges() {
-        accountObserver = NotificationCenter.default.addObserver(
+        let observer = NotificationCenter.default.addObserver(
             forName: .CKAccountChanged,
             object: nil,
             queue: .main
@@ -736,6 +834,7 @@ final class SyncCoordinator {
                 }
             }
         }
+        accountObserver.withLockUnchecked { $0 = observer }
     }
 
     private func observeLocalChanges() {
@@ -801,14 +900,15 @@ final class SyncCoordinator {
 
         do {
             switch category {
-            case "general": return try encoder.encode(storage.loadGeneral())
-            case "appearance": return try encoder.encode(storage.loadAppearance())
-            case "editor": return try encoder.encode(storage.loadEditor())
-            case "dataGrid": return try encoder.encode(storage.loadDataGrid())
-            case "history": return try encoder.encode(storage.loadHistory())
-            case "tabs": return try encoder.encode(storage.loadTabs())
-            case "keyboard": return try encoder.encode(storage.loadKeyboard())
-            case "ai": return try encoder.encode(storage.loadAI())
+            case AppSettingsCategory.general: return try encoder.encode(storage.loadGeneral())
+            case AppSettingsCategory.appearance: return try encoder.encode(storage.loadAppearance())
+            case AppSettingsCategory.editor: return try encoder.encode(storage.loadEditor())
+            case AppSettingsCategory.dataGrid: return try encoder.encode(storage.loadDataGrid())
+            case AppSettingsCategory.history: return try encoder.encode(storage.loadHistory())
+            case AppSettingsCategory.tabs: return try encoder.encode(storage.loadTabs())
+            case AppSettingsCategory.keyboard: return try encoder.encode(storage.loadKeyboard())
+            case AppSettingsCategory.ai: return try encoder.encode(storage.loadAI())
+            case AppSettingsCategory.notifications: return try encoder.encode(storage.loadNotifications())
             case CustomSlashCommandStorage.syncCategory:
                 return try encoder.encode(CustomSlashCommandStorage.shared.commands)
             case let category where category.hasPrefix(FileColumnLayoutPersister.syncCategoryPrefix):
@@ -829,14 +929,17 @@ final class SyncCoordinator {
 
         do {
             switch category {
-            case "general": manager.general = try decoder.decode(GeneralSettings.self, from: data)
-            case "appearance": manager.appearance = try decoder.decode(AppearanceSettings.self, from: data)
-            case "editor": manager.editor = try decoder.decode(EditorSettings.self, from: data)
-            case "dataGrid": manager.dataGrid = try decoder.decode(DataGridSettings.self, from: data)
-            case "history": manager.history = try decoder.decode(HistorySettings.self, from: data)
-            case "tabs": manager.tabs = try decoder.decode(TabSettings.self, from: data)
-            case "keyboard": manager.keyboard = try decoder.decode(KeyboardSettings.self, from: data)
-            case "ai": manager.ai = try decoder.decode(AISettings.self, from: data)
+            case AppSettingsCategory.general: manager.general = try decoder.decode(GeneralSettings.self, from: data)
+            case AppSettingsCategory.appearance:
+                manager.appearance = try decoder.decode(AppearanceSettings.self, from: data)
+            case AppSettingsCategory.editor: manager.editor = try decoder.decode(EditorSettings.self, from: data)
+            case AppSettingsCategory.dataGrid: manager.dataGrid = try decoder.decode(DataGridSettings.self, from: data)
+            case AppSettingsCategory.history: manager.history = try decoder.decode(HistorySettings.self, from: data)
+            case AppSettingsCategory.tabs: manager.tabs = try decoder.decode(TabSettings.self, from: data)
+            case AppSettingsCategory.keyboard: manager.keyboard = try decoder.decode(KeyboardSettings.self, from: data)
+            case AppSettingsCategory.ai: manager.ai = try decoder.decode(AISettings.self, from: data)
+            case AppSettingsCategory.notifications:
+                manager.notifications = try decoder.decode(NotificationSettings.self, from: data)
             case CustomSlashCommandStorage.syncCategory:
                 CustomSlashCommandStorage.shared.applyRemote(try decoder.decode([CustomSlashCommand].self, from: data))
             case let category where category.hasPrefix(FileColumnLayoutPersister.syncCategoryPrefix):
@@ -973,6 +1076,34 @@ final class SyncCoordinator {
         for tombstone in metadataStorage.tombstones(for: .tableFavorite) {
             deletions.append(
                 SyncRecordMapper.recordID(type: .tableFavorite, id: tombstone.id, in: zoneID)
+            )
+        }
+    }
+
+    /// A connection the user marked local only never reaches iCloud, and neither do the database
+    /// names hanging off it. Tombstones are not filtered: a deletion only ever removes something,
+    /// and a connection can be marked local only after its favorites were already pushed.
+    private func collectDirtyDatabaseFavorites(
+        into records: inout [CKRecord],
+        deletions: inout [CKRecord.ID],
+        zoneID: CKRecordZone.ID
+    ) {
+        let dirtyIds = changeTracker.dirtyRecords(for: .favoriteDatabase)
+        if !dirtyIds.isEmpty {
+            let localOnlyIds = Set(
+                services.connectionStorage.loadConnections().filter(\.localOnly).map(\.id)
+            )
+            let favorites = services.favoriteDatabasesStorage.loadFavorites()
+            for entry in favorites
+            where dirtyIds.contains(FavoriteDatabasesStorage.syncId(for: entry))
+                && !localOnlyIds.contains(entry.connectionId) {
+                records.append(SyncRecordMapper.toCKRecord(favoriteDatabase: entry, in: zoneID))
+            }
+        }
+
+        for tombstone in metadataStorage.tombstones(for: .favoriteDatabase) {
+            deletions.append(
+                SyncRecordMapper.recordID(type: .favoriteDatabase, id: tombstone.id, in: zoneID)
             )
         }
     }

@@ -9,7 +9,7 @@ struct IntentDatabaseSession {
 
     static func supportsTabularInsert(_ type: DatabaseType) -> Bool {
         switch type {
-        case .mysql, .mariadb, .postgresql, .redshift, .mssql, .sqlite, .duckdb:
+        case .mysql, .mariadb, .postgresql, .redshift, .mssql, .sqlite, .duckdb, .oracle:
             return true
         default:
             return false
@@ -28,7 +28,6 @@ struct IntentDatabaseSession {
             sshProvider: sshProvider
         )
         if connection.sshEnabled {
-            await sshProvider.setPendingConnectionId(connection.id)
         }
         do {
             let session = try await manager.connect(connection)
@@ -87,8 +86,14 @@ struct IntentDatabaseSession {
             table: table,
             type: connection.type,
             schema: schema,
+            qualifier: pickedSchema(namespace: namespace),
             rows: rows
         )
+    }
+
+    private func pickedSchema(namespace: String?) -> String? {
+        guard let namespace, !namespace.isEmpty, session.driver.supportsSchemas else { return nil }
+        return namespace
     }
 
     private func resolveSchema(namespace: String?) async throws -> String? {

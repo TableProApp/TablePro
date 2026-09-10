@@ -5,6 +5,7 @@ import TableProModels
 struct ConnectionInfoView: View {
     @Environment(ConnectionCoordinator.self) private var coordinator
     @Environment(AppState.self) private var appState
+    @Environment(ConnectionCoordinatorStore.self) private var coordinatorStore
 
     private var connection: DatabaseConnection { coordinator.connection }
 
@@ -52,6 +53,7 @@ struct ConnectionInfoView: View {
         )) {
             ConnectionFormView(editing: connection) { updated in
                 appState.updateConnection(updated)
+                coordinatorStore.invalidate(updated.id)
                 coordinator.showingEditSheet = false
             }
         }
@@ -83,7 +85,12 @@ struct ConnectionInfoView: View {
                 }
             }
             if !activeDatabaseLabel.isEmpty {
-                LabeledContent(coordinator.activeDatabase.isEmpty ? "Default DB" : "Active DB", value: activeDatabaseLabel)
+                LabeledContent(
+                    coordinator.activeDatabase.isEmpty
+                        ? String(localized: "Default DB")
+                        : String(localized: "Active DB"),
+                    value: activeDatabaseLabel
+                )
             }
             if coordinator.supportsSchemas, !coordinator.activeSchema.isEmpty {
                 LabeledContent("Schema", value: coordinator.activeSchema)
@@ -104,7 +111,12 @@ struct ConnectionInfoView: View {
                     .textSelection(.enabled)
             }
             LabeledContent("SSH Username", value: ssh.username)
-            LabeledContent("Auth", value: ssh.authMethod == .password ? "Password" : "Private Key")
+            LabeledContent(
+                "Auth",
+                value: ssh.authMethod == .password
+                    ? String(localized: "Password")
+                    : String(localized: "Private Key")
+            )
         }
     }
 

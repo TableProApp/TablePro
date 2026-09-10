@@ -7,12 +7,23 @@ import AppKit
 import Combine
 
 extension MainWindowToolbar {
+    /// Straight to the window, because the switcher is the window's. Every other item here needs
+    /// the connection on screen; this one is the way off it, so it cannot be reached through that
+    /// connection's coordinator, which a disconnect nils.
     @objc func performOpenConnectionSwitcher(_ sender: Any?) {
-        coordinator?.commandActions?.openConnectionSwitcher()
+        windowController?.openConnectionSwitcher()
     }
 
     @objc func performOpenDatabaseSwitcher(_ sender: Any?) {
         coordinator?.commandActions?.openDatabaseSwitcher()
+    }
+
+    @objc func performNavigateBack(_ sender: Any?) {
+        coordinator?.commandActions?.navigateBack()
+    }
+
+    @objc func performNavigateForward(_ sender: Any?) {
+        coordinator?.commandActions?.navigateForward()
     }
 
     @objc func performRefresh(_ sender: Any?) {
@@ -27,8 +38,16 @@ extension MainWindowToolbar {
         coordinator?.commandActions?.openQuickSwitcher()
     }
 
+    @objc func performAddRow(_ sender: Any?) {
+        NSApp.sendAction(#selector(MainSplitViewController.addRow(_:)), to: nil, from: nil)
+    }
+
+    @objc func performRestorePreviousValues(_ sender: Any?) {
+        NSApp.sendAction(#selector(MainSplitViewController.restorePreviousValues(_:)), to: nil, from: nil)
+    }
+
     @objc func performNewTab(_ sender: Any?) {
-        NSApp.sendAction(#selector(NSWindow.newWindowForTab(_:)), to: nil, from: nil)
+        NSApp.sendAction(#selector(MainSplitViewController.newEditorTab(_:)), to: nil, from: nil)
     }
 
     @objc func performPreviewSQL(_ sender: Any?) {
@@ -41,6 +60,10 @@ extension MainWindowToolbar {
 
     @objc func performShowDashboard(_ sender: Any?) {
         coordinator?.commandActions?.showServerDashboard()
+    }
+
+    @objc func performToggleAssistant(_ sender: Any?) {
+        coordinator?.trailingPaneProxy?.toggleAssistant()
     }
 
     @objc func performToggleHistory(_ sender: Any?) {

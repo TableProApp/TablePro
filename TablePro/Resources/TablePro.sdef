@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+
+<dictionary title="TablePro Terminology" xmlns:xi="http://www.w3.org/2003/XInclude">
+
+    <xi:include href="file:///System/Library/ScriptingDefinitions/CocoaStandard.sdef" xpointer="xpointer(/dictionary/suite)"/>
+
+    <suite name="TablePro Suite" code="TPro" description="Connections, tabs and query results.">
+
+        <enumeration name="safe mode level" code="TPel" description="How much a write has to clear before it runs.">
+            <enumerator name="silent" code="TPm1" description="Writes run without asking."/>
+            <enumerator name="alert" code="TPm2" description="Writes ask for confirmation."/>
+            <enumerator name="alert full" code="TPm3" description="Every statement asks for confirmation."/>
+            <enumerator name="authenticate" code="TPm4" description="Writes ask for confirmation and authentication. Safe Mode in the app."/>
+            <enumerator name="authenticate full" code="TPm5" description="Every statement asks for confirmation and authentication. Safe Mode (Full) in the app."/>
+            <enumerator name="read only" code="TPm6" description="Writes are refused."/>
+        </enumeration>
+
+        <enumeration name="external access level" code="TPea" description="What a client outside the app may do with a connection.">
+            <enumerator name="blocked" code="TPa1" description="The connection is not visible outside the app."/>
+            <enumerator name="read only" code="TPm6" description="Only statements that read are allowed."/>
+            <enumerator name="read write" code="TPa3" description="Statements that write are allowed."/>
+        </enumeration>
+
+        <enumeration name="tab kind" code="TPtk" description="What a tab is showing.">
+            <enumerator name="query editor" code="TPk1" description="A SQL editor and its result."/>
+            <enumerator name="table" code="TPk2" description="The rows of one table or view."/>
+            <enumerator name="create table" code="TPk3" description="The new table editor."/>
+            <enumerator name="diagram" code="TPk4" description="An entity relationship diagram."/>
+            <enumerator name="server dashboard" code="TPk5" description="Server activity."/>
+            <enumerator name="users and roles" code="TPk6" description="Users, roles and grants."/>
+            <enumerator name="query insights" code="TPk7" description="Query history statistics."/>
+            <enumerator name="object source" code="TPk8" description="The source of a routine or trigger."/>
+        </enumeration>
+
+        <record-type name="result row" code="TPrr" description="One row of a query result.">
+            <property name="values" code="TPvl" description="The row's cells, in column order. A null is empty text and binary is Base64.">
+                <cocoa key="scriptValues"/>
+                <type type="text" list="yes"/>
+            </property>
+        </record-type>
+
+        <record-type name="query result" code="TPqr" description="The rows a statement produced.">
+            <property name="columns" code="TPco" description="The column names.">
+                <cocoa key="scriptColumns"/>
+                <type type="text" list="yes"/>
+            </property>
+            <property name="rows" code="TPrw" description="The rows.">
+                <cocoa key="scriptRows"/>
+                <type type="result row" list="yes"/>
+            </property>
+            <property name="row count" code="TPrc" type="integer" description="How many rows came back.">
+                <cocoa key="scriptRowCount"/>
+            </property>
+            <property name="rows affected" code="TPra" type="integer" description="How many rows the statement changed.">
+                <cocoa key="scriptRowsAffected"/>
+            </property>
+            <property name="truncated" code="TPtc" type="boolean" description="Whether the row limit cut the result short.">
+                <cocoa key="scriptTruncated"/>
+            </property>
+            <property name="execution time" code="TPex" type="real" description="How long the statement took, in milliseconds.">
+                <cocoa key="scriptExecutionTime"/>
+            </property>
+            <property name="status message" code="TPsg" type="text" description="What the server said, when it said anything.">
+                <cocoa key="scriptStatusMessage"/>
+            </property>
+        </record-type>
+
+        <class-extension extends="application" description="TablePro.">
+            <cocoa class="NSApplication"/>
+            <element type="connection">
+                <cocoa key="scriptConnections"/>
+            </element>
+            <property name="current connection" code="TPcc" type="connection" access="r" description="The connection the front window is showing.">
+                <cocoa key="scriptCurrentConnection"/>
+            </property>
+            <property name="current tab" code="TPct" type="tab" access="r" description="The selected tab of the front window.">
+                <cocoa key="scriptCurrentTab"/>
+            </property>
+        </class-extension>
+
+        <class name="connection" code="TPcn" plural="connections" description="A saved database connection.">
+            <cocoa class="TPScriptConnection"/>
+            <property name="id" code="ID  " type="text" access="r" description="A stable identifier.">
+                <cocoa key="uniqueId"/>
+            </property>
+            <property name="name" code="pnam" type="text" access="r" description="The name shown in the app."/>
+            <property name="database type" code="TPdt" type="text" access="r" description="The driver, such as PostgreSQL or MySQL.">
+                <cocoa key="databaseType"/>
+            </property>
+            <property name="host" code="TPho" type="text" access="r" description="The server address."/>
+            <property name="port" code="TPpt" type="integer" access="r" description="The server port."/>
+            <property name="current database" code="TPcd" type="text" access="r" description="The database in use.">
+                <cocoa key="currentDatabase"/>
+            </property>
+            <property name="current schema" code="TPcs" type="text" access="r" description="The schema in use, on engines that have them.">
+                <cocoa key="currentSchema"/>
+            </property>
+            <property name="connected" code="TPcx" type="boolean" access="r" description="Whether the connection is open.">
+                <cocoa key="isConnected"/>
+            </property>
+            <property name="safe mode" code="TPsm" type="safe mode level" access="r" description="What a write on this connection has to clear.">
+                <cocoa key="safeMode"/>
+            </property>
+            <property name="external access" code="TPxa" type="external access level" access="r" description="What a script may do with this connection.">
+                <cocoa key="externalAccess"/>
+            </property>
+            <element type="tab">
+                <cocoa key="scriptTabs"/>
+            </element>
+            <responds-to command="connect">
+                <cocoa method="handleConnectCommand:"/>
+            </responds-to>
+            <responds-to command="disconnect">
+                <cocoa method="handleDisconnectCommand:"/>
+            </responds-to>
+            <responds-to command="show">
+                <cocoa method="handleShowCommand:"/>
+            </responds-to>
+        </class>
+
+        <class name="tab" code="TPtb" plural="tabs" description="An open editor tab.">
+            <cocoa class="TPScriptTab"/>
+            <property name="id" code="ID  " type="text" access="r" description="A stable identifier.">
+                <cocoa key="uniqueId"/>
+            </property>
+            <property name="name" code="pnam" type="text" access="r" description="The tab's label."/>
+            <property name="kind" code="TPkd" type="tab kind" access="r" description="What the tab is showing."/>
+            <property name="table name" code="TPtn" type="text" access="r" description="The table a table tab shows.">
+                <cocoa key="tableName"/>
+            </property>
+            <property name="database name" code="TPdn" type="text" access="r" description="The database the tab is on.">
+                <cocoa key="databaseName"/>
+            </property>
+            <property name="schema name" code="TPsn" type="text" access="r" description="The schema the tab is on.">
+                <cocoa key="schemaName"/>
+            </property>
+            <property name="query" code="TPqy" type="text" access="r" description="The SQL text of a query tab."/>
+            <property name="current result" code="TPcu" type="query result" access="r" description="The rows the tab is showing.">
+                <cocoa key="currentResult"/>
+            </property>
+            <property name="selection" code="TPsx" type="query result" access="r" description="The rows selected in the tab's grid.">
+                <cocoa key="selection"/>
+            </property>
+            <responds-to command="focus">
+                <cocoa method="handleFocusCommand:"/>
+            </responds-to>
+        </class>
+
+        <command name="connect" code="TProconn" description="Open a connection without opening a window.">
+            <cocoa class="TPScriptConnectCommand"/>
+            <direct-parameter type="specifier" description="The connection to open."/>
+            <result type="connection" description="The connection, now open."/>
+        </command>
+
+        <command name="disconnect" code="TProdisc" description="Close a connection.">
+            <cocoa class="TPScriptDisconnectCommand"/>
+            <direct-parameter type="specifier" description="The connection to close."/>
+            <result type="connection" description="The connection, now closed."/>
+        </command>
+
+        <command name="show" code="TProshow" description="Bring a connection's window forward, opening one if it has none.">
+            <cocoa class="TPScriptShowConnectionCommand"/>
+            <direct-parameter type="specifier" description="The connection to show."/>
+            <result type="connection" description="The connection."/>
+        </command>
+
+        <command name="focus" code="TProfocs" description="Select a tab and bring its window forward.">
+            <cocoa class="TPScriptFocusTabCommand"/>
+            <direct-parameter type="specifier" description="The tab to focus."/>
+            <result type="tab" description="The tab."/>
+        </command>
+
+        <command name="run query" code="TProrunq" description="Run one statement and return its rows. Safe Mode and the connection's External Clients level both apply.">
+            <cocoa class="TPScriptRunQueryCommand"/>
+            <direct-parameter type="text" description="The statement to run. One statement, not several."/>
+            <parameter name="in" code="TPki" type="connection" description="The connection to run it on.">
+                <cocoa key="ScriptConnectionArgument"/>
+            </parameter>
+            <parameter name="database" code="TPkb" type="text" optional="yes" description="The database to run against, if not the current one.">
+                <cocoa key="ScriptDatabaseArgument"/>
+            </parameter>
+            <parameter name="schema" code="TPkh" type="text" optional="yes" description="The schema to run against, if not the current one.">
+                <cocoa key="ScriptSchemaArgument"/>
+            </parameter>
+            <parameter name="row limit" code="TPkr" type="integer" optional="yes" description="How many rows to return at most. 500 by default, 10000 at most.">
+                <cocoa key="ScriptRowLimitArgument"/>
+            </parameter>
+            <parameter name="timeout" code="TPkt" type="integer" optional="yes" description="Seconds to wait before giving up. 30 by default.">
+                <cocoa key="ScriptTimeoutArgument"/>
+            </parameter>
+            <result type="query result" description="The rows the statement produced."/>
+        </command>
+
+        <command name="open table" code="TProoptb" description="Open a table in a tab and bring it forward.">
+            <cocoa class="TPScriptOpenTableCommand"/>
+            <direct-parameter type="text" description="The table to open."/>
+            <parameter name="in" code="TPki" type="connection" description="The connection the table is on.">
+                <cocoa key="ScriptConnectionArgument"/>
+            </parameter>
+            <parameter name="database" code="TPkb" type="text" optional="yes" description="The database the table is in.">
+                <cocoa key="ScriptDatabaseArgument"/>
+            </parameter>
+            <parameter name="schema" code="TPkh" type="text" optional="yes" description="The schema the table is in.">
+                <cocoa key="ScriptSchemaArgument"/>
+            </parameter>
+            <result type="tab" description="The tab the table opened in."/>
+        </command>
+
+    </suite>
+
+</dictionary>

@@ -15,11 +15,12 @@ import TableProPluginKit
 @MainActor @Observable
 final class DatabaseManager {
     static let shared = DatabaseManager()
-    internal static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseManager")
+    nonisolated internal static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseManager")
 
     @ObservationIgnored internal let connectionStorage: ConnectionStorage
     @ObservationIgnored internal let appSettingsStorage: AppSettingsStorage
     @ObservationIgnored internal let pluginManager: PluginManager
+    @ObservationIgnored internal var historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared
 
     /// All active connection sessions
     internal(set) var activeSessions: [UUID: ConnectionSession] = [:] {
@@ -59,12 +60,47 @@ final class DatabaseManager {
     /// Tracks when the first query started for each session (used for staleness detection).
     @ObservationIgnored internal var queryStartTimes: [UUID: Date] = [:]
 
+    /// When each connection's server last answered, whether that was the connect itself, a health
+    /// check, or a check made because the user was about to use it.
+    ///
+    /// It lives beside the other per-connection bookkeeping rather than on `ConnectionSession`
+    /// because it is not connection state the UI renders, and putting it there would have made it
+    /// unwritable in practice: `updateSession` discards a write that leaves
+    /// `isContentViewEquivalent` unchanged, which is exactly a timestamp-only write, and going
+    /// around that through `setSession` broadcasts a status change nothing happened to.
+    @ObservationIgnored internal var lastVerifiedAt: [UUID: Date] = [:]
+
+    /// Collapses concurrent verifications of one connection into a single check, so a window
+    /// waking up with several tabs pointed at the same connection asks once. Separate from
+    /// `ensureConnectedDedup` because a verification can run while a connect is in flight.
+    @ObservationIgnored internal let verificationDedup = OnceTask<UUID, Void>()
+
     /// Connection IDs currently undergoing SSH tunnel recovery.
     /// Prevents duplicate concurrent recovery when both the keepalive death handler
     /// and the wake-from-sleep handler fire for the same connection.
     @ObservationIgnored internal var recoveringConnectionIds = Set<UUID>()
 
+    /// Why a session was torn down, kept past the session entry so a window that only observes
+    /// the entry disappearing can still name the cause. Cleared when a fresh attempt begins.
+    @ObservationIgnored internal var disconnectReasons: [UUID: ConnectionFailureInfo] = [:]
+
+    /// Connections the user disconnected on purpose. Kept past the session entry for the same
+    /// reason `disconnectReasons` is: the window learns the session went away by watching the
+    /// entry disappear, and a deliberate disconnect is not the same event as losing a connection.
+    @ObservationIgnored internal var userRequestedDisconnects = Set<UUID>()
+
+    /// Sessions currently being torn down, so a second disconnect cannot run the teardown again and
+    /// finish it against a session the user has since reconnected.
+    @ObservationIgnored internal var disconnectsInFlight = Set<UUID>()
+
+    /// Installed at launch. Every disconnect writes the connection's tabs to disk through this
+    /// before the session entry goes away, because the window can outlive the session.
+    @ObservationIgnored internal var tabStatePersister: (any SessionTabStatePersisting)?
+
     @ObservationIgnored internal var connectionUpdatedCancellable: AnyCancellable?
+    @ObservationIgnored internal var healthCheckSettingCancellable: AnyCancellable?
+    /// The tail of the serialized monitor restarts. See `observeHealthCheckSetting`.
+    @ObservationIgnored internal var healthMonitorRestart: Task<Void, Never>?
 
     @ObservationIgnored internal let ensureConnectedDedup = OnceTask<UUID, Void>()
 
@@ -73,6 +109,14 @@ final class DatabaseManager {
     /// before touching shared session state and discards its driver when it lost.
     @ObservationIgnored internal var connectionAttempts = ConnectionAttemptRegistry()
 
+    /// The step each in-flight connect last reported, so a window that joins one already running
+    /// can seed itself. `AppEvents.connectionStageChanged` is a `PassthroughSubject`, so it holds
+    /// nothing: an observer built after a step was sent could only report the generic fallback,
+    /// which is how a connection dialling through an SSH jump host announced itself as "Opening
+    /// the connection" for the whole of the tunnel handshake. Written only by the current attempt,
+    /// for the same reason every other shared write here is generation-checked.
+    @ObservationIgnored internal var connectionStages: [UUID: ConnectionStage] = [:]
+
     /// Orders operations that move the shared driver, so two windows cannot interleave
     /// their pins and each run against the other's database.
     @ObservationIgnored internal let sessionDriverGate = SessionDriverGate()
@@ -80,7 +124,7 @@ final class DatabaseManager {
     /// The drivers each connection is currently executing user SQL on, keyed by an
     /// operation token so a finishing operation can only release its own handle. Stop
     /// reaches the right one even when a cross-database tab runs on a pooled connection.
-    @ObservationIgnored internal var runningDrivers: [UUID: [UUID: DatabaseDriver]] = [:]
+    @ObservationIgnored internal var runningDrivers: [UUID: [UUID: RunningDriver]] = [:]
 
     /// Session for `lastActiveSessionId`, subject to the same caveats.
     var lastActiveSession: ConnectionSession? {
@@ -128,5 +172,6 @@ final class DatabaseManager {
         self.appSettingsStorage = appSettingsStorage
         self.pluginManager = pluginManager
         observeConnectionUpdates()
+        observeHealthCheckSetting()
     }
 }

@@ -49,6 +49,126 @@ struct JsonRowConverterTests {
         #expect(result.contains("\"abc\""))
     }
 
+    @Test("Integer literals outside Int64 preserve their exact JSON number")
+    func integerOutsideInt64() {
+        let converter = makeConverter(
+            columns: ["uint64", "belowInt64", "uint128"],
+            columnTypes: Array(repeating: ColumnType.integer(rawType: nil), count: 3)
+        )
+
+        let result = converter.generateJson(rows: [[
+            "18446744073709551615",
+            "-9223372036854775809",
+            "340282366920938463463374607431768211455",
+        ]])
+
+        #expect(result == """
+        [
+          {
+            "uint64": 18446744073709551615,
+            "belowInt64": -9223372036854775809,
+            "uint128": 340282366920938463463374607431768211455
+          }
+        ]
+        """)
+    }
+
+    @Test("Integral decimal and exponent spellings still normalize")
+    func integerIntegralSpellings() {
+        let converter = makeConverter(
+            columns: [
+                "decimal", "exponent", "signedExponent", "shiftedDecimal",
+                "negativeExponent", "trailingPoint", "leadingPoint",
+            ],
+            columnTypes: Array(repeating: ColumnType.integer(rawType: nil), count: 7)
+        )
+
+        let result = converter.generateJson(rows: [[
+            "42.0", "1e3", "+1e3", "1.2e1", "1000e-3", "1.", "-.0",
+        ]])
+
+        #expect(result == """
+        [
+          {
+            "decimal": 42,
+            "exponent": 1000,
+            "signedExponent": 1000,
+            "shiftedDecimal": 12,
+            "negativeExponent": 1,
+            "trailingPoint": 1,
+            "leadingPoint": 0
+          }
+        ]
+        """)
+    }
+
+    @Test("Integral spellings outside Int64 stay numbers and only fractions become strings")
+    func integerWideSpellings() {
+        let converter = makeConverter(
+            columns: ["decimal", "exponent", "negative", "fraction"],
+            columnTypes: Array(repeating: ColumnType.integer(rawType: nil), count: 4)
+        )
+
+        let result = converter.generateJson(rows: [[
+            "9223372036854775808.0",
+            "9.223372036854776e18",
+            "-9223372036854775809.0",
+            "42.0000000000000000001",
+        ]])
+
+        #expect(result == """
+        [
+          {
+            "decimal": 9223372036854775808,
+            "exponent": 9223372036854776000,
+            "negative": -9223372036854775809,
+            "fraction": "42.0000000000000000001"
+          }
+        ]
+        """)
+    }
+
+    @Test("A wide integer serializes the same whichever spelling the driver used")
+    func integerSpellingDoesNotChangeTheJsonType() {
+        let converter = makeConverter(
+            columns: ["plain", "trailingZero", "exponent", "paddedExponent"],
+            columnTypes: Array(repeating: ColumnType.integer(rawType: nil), count: 4)
+        )
+
+        let result = converter.generateJson(rows: [[
+            "18446744073709551615",
+            "18446744073709551615.0",
+            "1844674407370955.1615e4",
+            "184467440737095516150e-1",
+        ]])
+
+        #expect(result == """
+        [
+          {
+            "plain": 18446744073709551615,
+            "trailingZero": 18446744073709551615,
+            "exponent": 18446744073709551615,
+            "paddedExponent": 18446744073709551615
+          }
+        ]
+        """)
+    }
+
+    @Test("Large integral decimal spellings normalize without rounding")
+    func integerLargeDecimalSpelling() {
+        let converter = makeConverter(columns: ["id"], columnTypes: [.integer(rawType: nil)])
+
+        let result = converter.generateJson(rows: [["9007199254740993.0"]])
+
+        #expect(result == """
+        [
+          {
+            "id": 9007199254740993
+          }
+        ]
+        """)
+    }
+
     // MARK: - Decimal
 
     @Test("Decimal column produces unquoted number")
@@ -64,6 +184,32 @@ struct JsonRowConverterTests {
         let converter = makeConverter(columns: ["amount"], columnTypes: [.decimal(rawType: nil)])
         let result = converter.generateJson(rows: [["123456.789"]])
         #expect(result.contains(": 123456.789"))
+    }
+
+    @Test("Decimal spellings JSON rejects keep every digit instead of narrowing")
+    func decimalNonJsonSpellingsKeepPrecision() {
+        let converter = makeConverter(
+            columns: ["leadingPlus", "leadingPoint", "trailingPoint", "paddedScale"],
+            columnTypes: Array(repeating: ColumnType.decimal(rawType: nil), count: 4)
+        )
+
+        let result = converter.generateJson(rows: [[
+            "+12345678901234567890.12345",
+            ".123456789012345678901234567890",
+            "9.",
+            "007.5000",
+        ]])
+
+        #expect(result == """
+        [
+          {
+            "leadingPlus": 12345678901234567890.12345,
+            "leadingPoint": 0.123456789012345678901234567890,
+            "trailingPoint": 9,
+            "paddedScale": 7.5000
+          }
+        ]
+        """)
     }
 
     @Test("Decimal infinity and NaN produce quoted strings")
@@ -224,5 +370,32 @@ struct JsonRowConverterTests {
         let expected = bytes.base64EncodedString()
         #expect(result.contains("\"\(expected)\""))
         #expect(!result.contains("null"))
+    }
+
+    // MARK: - Default-value marker
+
+    /// A pending inserted row carries the default marker for columns the server fills in. The grid
+    /// draws it as a placeholder, so JSON has to agree instead of printing the internal token.
+    @Test("The default-value marker renders as null, not as literal text")
+    func defaultMarkerRendersAsNull() {
+        let converter = makeConverter(
+            columns: ["id", "name"],
+            columnTypes: [.integer(rawType: nil), .text(rawType: nil)]
+        )
+        let result = converter.generateJson(
+            rows: [[.text(PluginCellValue.defaultMarkerText), .text("Ada")]]
+        )
+
+        #expect(!result.contains(PluginCellValue.defaultMarkerText))
+        #expect(result.contains("\"id\": null"))
+        #expect(result.contains("\"Ada\""))
+    }
+
+    @Test("A value that merely resembles the marker is untouched")
+    func markerLookalikeIsPreserved() {
+        let converter = makeConverter(columns: ["name"], columnTypes: [.text(rawType: nil)])
+        let result = converter.generateJson(rows: [[.text("__DEFAULT")]])
+
+        #expect(result.contains("\"__DEFAULT\""))
     }
 }

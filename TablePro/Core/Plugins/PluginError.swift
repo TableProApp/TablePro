@@ -8,6 +8,7 @@ import Foundation
 enum PluginError: LocalizedError {
     case invalidBundle(String)
     case signatureInvalid(detail: String)
+    case developerNotTrusted(identity: PluginDeveloperIdentity)
     case checksumMismatch
     case incompatibleVersion(required: Int, current: Int)
     case pluginOutdated(pluginVersion: Int, requiredVersion: Int)
@@ -30,6 +31,11 @@ enum PluginError: LocalizedError {
             return String(format: String(localized: "Invalid plugin bundle: %@"), reason)
         case .signatureInvalid(let detail):
             return String(format: String(localized: "Plugin code signature verification failed: %@"), detail)
+        case .developerNotTrusted(let identity):
+            return String(
+                format: String(localized: "This plugin is signed by %@, a developer you have not trusted yet."),
+                identity.name
+            )
         case .checksumMismatch:
             return String(localized: "Plugin checksum does not match expected value")
         case .incompatibleVersion(let required, let current):

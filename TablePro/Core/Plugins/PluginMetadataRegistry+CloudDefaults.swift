@@ -20,7 +20,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#4053D6",
                 queryLanguageName: "PartiQL", editorLanguage: .sql,
                 connectionMode: .apiOnly, supportsDatabaseSwitching: false,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: false,
@@ -59,7 +58,8 @@ extension PluginMetadataRegistry {
                             "begins_with", "contains", "size", "attribute_type",
                             "attribute_exists", "attribute_not_exists",
                         ],
-                        dataTypes: ["S", "N", "B", "BOOL", "NULL", "L", "M", "SS", "NS", "BS"]
+                        dataTypes: ["S", "N", "B", "BOOL", "NULL", "L", "M", "SS", "NS", "BS"],
+                        caseSensitivityStyle: .driverManaged
                     ),
                     statementCompletions: [
                         CompletionEntry(label: "SELECT", insertText: "SELECT"),
@@ -166,7 +166,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#4285F4",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .apiOnly, supportsDatabaseSwitching: false,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
                     supportsImport: false,
@@ -238,8 +237,9 @@ extension PluginMetadataRegistry {
                         ],
                         regexSyntax: .unsupported,
                         booleanLiteralStyle: .truefalse,
-                        likeEscapeStyle: .explicit,
-                        paginationStyle: .limit
+                        likeEscapeStyle: .implicit,
+                        paginationStyle: .limit,
+                        caseSensitivityStyle: .caseFoldFunction
                     ),
                     statementCompletions: [
                         CompletionEntry(label: "SELECT", insertText: "SELECT"),
@@ -357,7 +357,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#29B5E8",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .apiOnly, supportsDatabaseSwitching: true,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
                     supportsImport: true,
@@ -482,7 +481,9 @@ extension PluginMetadataRegistry {
                         regexSyntax: .regexpLike,
                         booleanLiteralStyle: .truefalse,
                         likeEscapeStyle: .explicit,
-                        paginationStyle: .limit
+                        paginationStyle: .limit,
+                        requiresBackslashEscaping: true,
+                        caseSensitivityStyle: .ilikeOperator
                     ),
                     statementCompletions: [
                         CompletionEntry(label: "SELECT", insertText: "SELECT"),

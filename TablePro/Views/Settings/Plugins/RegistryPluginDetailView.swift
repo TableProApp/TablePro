@@ -119,7 +119,7 @@ struct RegistryPluginDetailView: View {
                 HStack(spacing: 8) {
                     ProgressView()
                         .controlSize(.small)
-                    Text("Installing...")
+                    Text("Installing…")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -165,7 +165,7 @@ struct RegistryPluginDetailView: View {
                 HStack(spacing: 8) {
                     ProgressView()
                         .controlSize(.small)
-                    Text("Updating...")
+                    Text("Updating…")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }

@@ -39,7 +39,7 @@ struct UndoResult {
 /// when multiple queries complete simultaneously (e.g., rapid sorting over SSH tunnel)
 @MainActor @Observable
 final class DataChangeManager: ChangeManaging {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "DataChangeManager")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "DataChangeManager")
 
     private(set) var pending = PendingChanges()
     var hasChanges: Bool = false
@@ -101,6 +101,7 @@ final class DataChangeManager: ChangeManaging {
         columns: [String],
         primaryKeyColumns: [String],
         databaseType: DatabaseType,
+        generatedColumns: Set<String>,
         triggerReload: Bool = true
     ) {
         self.tableName = tableName
@@ -108,7 +109,7 @@ final class DataChangeManager: ChangeManaging {
         self.columns = columns
         self.primaryKeyColumns = primaryKeyColumns
         self.databaseType = databaseType
-        self.generatedColumns = []
+        self.generatedColumns = generatedColumns
 
         pending.clear()
         undoManagerProvider?()?.removeAllActions(withTarget: self)
@@ -127,6 +128,16 @@ final class DataChangeManager: ChangeManaging {
         self.generatedColumns = generatedColumns
     }
 
+    /// Whether the app may send a value for this column at all: the server computes or allocates it,
+    /// or the driver declares it immutable, as MongoDB does for `_id`. Both halves belong here,
+    /// because this is the boundary every staging path crosses and the grid's own copy of the
+    /// question does not cover the paths that reach the model directly.
+    func isColumnWritable(_ columnName: String) -> Bool {
+        guard !generatedColumns.contains(columnName) else { return false }
+        guard let databaseType else { return true }
+        return !PluginManager.shared.immutableColumns(for: databaseType).contains(columnName)
+    }
+
     // MARK: - Change Tracking
 
     func recordCellChange(
@@ -137,6 +148,17 @@ final class DataChangeManager: ChangeManaging {
         newValue: PluginCellValue,
         originalRow: [PluginCellValue]? = nil
     ) {
+        /// The last gate before a change becomes pending, and the only one every path crosses. The
+        /// grid's own check covers the inline editor and the Set Value menu; paste, Fill Column and
+        /// the row inspector reach here directly, so a column the server owns could be staged, be
+        /// filtered out again during statement generation, and be cleared by a save that reported
+        /// success over the changes it did write.
+        guard isColumnWritable(columnName) else {
+            Self.logger.warning(
+                "Refusing an edit to server-owned column '\(columnName, privacy: .public)' in table '\(self.tableName, privacy: .public)'"
+            )
+            return
+        }
         let recorded = pending.recordCellChange(
             rowIndex: rowIndex,
             columnIndex: columnIndex,
@@ -270,7 +292,8 @@ final class DataChangeManager: ChangeManaging {
             )
         } else {
             pending.reapplyCellChange(
-                rowIndex: rowIndex, columnIndex: columnIndex, columnName: columnName,
+                rowIndex: rowIndex,
+                columnIndex: columnIndex, columnName: columnName,
                 originalDBValue: newValue, newValue: previousValue, originalRow: originalRow
             )
         }
@@ -392,87 +415,74 @@ final class DataChangeManager: ChangeManaging {
         deletedRowIndices: Set<Int> = [],
         insertedRowIndices: Set<Int> = []
     ) throws -> [ParameterizedStatement] {
-        if let pluginDriver {
-            let pluginChanges = changes.map { change -> PluginRowChange in
-                PluginRowChange(
-                    rowIndex: change.rowIndex,
-                    type: {
-                        switch change.type {
-                        case .insert: return .insert
-                        case .update: return .update
-                        case .delete: return .delete
-                        }
-                    }(),
-                    cellChanges: change.cellChanges.map { c -> (columnIndex: Int, columnName: String, oldValue: PluginCellValue, newValue: PluginCellValue) in
-                        (c.columnIndex, c.columnName, c.oldValue, c.newValue)
-                    },
-                    originalRow: change.originalRow
-                )
-            }
-            let pluginInsertedRowData: [Int: [PluginCellValue]] = insertedRowData
-            if let statements = pluginDriver.generateStatements(
-                table: tableName,
-                schema: schemaName,
-                columns: columns,
-                primaryKeyColumns: primaryKeyColumns,
-                changes: pluginChanges,
-                insertedRowData: pluginInsertedRowData,
-                deletedRowIndices: deletedRowIndices,
-                insertedRowIndices: insertedRowIndices
-            ) {
-                return statements.map { ParameterizedStatement(sql: $0.statement, parameters: $0.parameters.map { $0.asAny }) }
-            }
-        }
-
-        guard let databaseType else {
-            throw DatabaseError.queryFailed(
-                "Cannot generate statements: table dialect not configured"
-            )
-        }
-
-        if PluginManager.shared.editorLanguage(for: databaseType) != .sql {
-            throw DatabaseError.queryFailed(
-                "Cannot generate statements for \(databaseType.rawValue): plugin driver not initialized"
-            )
-        }
-
-        let generator = try SQLStatementGenerator(
-            tableName: tableName,
-            columns: columns,
-            primaryKeyColumns: primaryKeyColumns,
-            databaseType: databaseType,
-            generatedColumns: generatedColumns,
-            dialect: PluginManager.shared.sqlDialect(for: databaseType),
-            quoteIdentifier: pluginDriver?.quoteIdentifier
-        )
-        let statements = generator.generateStatements(
-            from: changes,
+        try statementFactory().statements(
+            for: changes,
             insertedRowData: insertedRowData,
             deletedRowIndices: deletedRowIndices,
             insertedRowIndices: insertedRowIndices
         )
+    }
 
-        let expectedUpdates = changes.count(where: { $0.type == .update })
-        let actualUpdates = statements.count(where: { $0.sql.hasPrefix("UPDATE") })
+    /// How the pending changes reach the database, and what each row looked like on either side.
+    ///
+    /// The steps are what runs. The operations are what a rewind would need, and they are built
+    /// from the change set rather than read back off the statements, so a driver that writes its
+    /// own statements still produces a complete record.
+    func buildRowWrites(database: String, schema: String?, containsTableOperation: Bool) throws -> RowWriteBuild {
+        let factory = try statementFactory()
+        let operations = RowWriteOperationBuilder.operations(
+            from: pending.changes,
+            insertedRowData: pending.insertedRowData,
+            deletedRowIndices: pending.deletedRowIndices,
+            insertedRowIndices: pending.insertedRowIndices,
+            target: DataWriteTarget(database: database, schema: schema, table: tableName),
+            columns: columns,
+            primaryKeyColumns: primaryKeyColumns,
+            generatedColumns: generatedColumns,
+            containsTableOperation: containsTableOperation
+        )
 
-        if expectedUpdates > 0 && actualUpdates < expectedUpdates {
-            throw DatabaseError.queryFailed(
-                "Cannot save UPDATE changes to table '\(tableName)'. " +
-                    "Some rows could not be identified for updating. Please verify the table data."
-            )
+        if let attributed = try factory.attributedStatements(
+            for: pending.changes,
+            insertedRowData: pending.insertedRowData,
+            deletedRowIndices: pending.deletedRowIndices,
+            insertedRowIndices: pending.insertedRowIndices
+        ) {
+            let steps = attributed.map {
+                DataWriteStep(
+                    kind: .rowWrite,
+                    statement: $0.statement,
+                    expectedRowCount: $0.rowCount,
+                    tableName: tableName
+                )
+            }
+            return RowWriteBuild(steps: steps, operations: operations)
         }
 
-        let deletableChanges = changes.filter { $0.type == .delete && deletedRowIndices.contains($0.rowIndex) }
-        let deletableWithOriginalRow = deletableChanges.filter { $0.originalRow != nil }
-
-        if !deletableChanges.isEmpty && deletableWithOriginalRow.isEmpty {
-            throw DatabaseError.queryFailed(
-                "Cannot save DELETE changes to table '\(tableName)'. " +
-                    "Some rows could not be identified for deletion. Please verify the table data."
-            )
+        let steps = try factory.statements(
+            for: pending.changes,
+            insertedRowData: pending.insertedRowData,
+            deletedRowIndices: pending.deletedRowIndices,
+            insertedRowIndices: pending.insertedRowIndices
+        ).map {
+            DataWriteStep(kind: .rowWrite, statement: $0, expectedRowCount: nil, tableName: tableName)
         }
+        return RowWriteBuild(steps: steps, operations: operations)
+    }
 
-        return statements
+    func statementFactory() throws -> RowChangeStatementFactory {
+        guard let databaseType else {
+            throw DatabaseError.queryFailed("Cannot generate statements: table dialect not configured")
+        }
+        return RowChangeStatementFactory(
+            tableName: tableName,
+            schemaName: schemaName,
+            columns: columns,
+            primaryKeyColumns: primaryKeyColumns,
+            generatedColumns: generatedColumns,
+            databaseType: databaseType,
+            pluginDriver: pluginDriver
+        )
     }
 
     // MARK: - Actions
@@ -503,12 +513,19 @@ final class DataChangeManager: ChangeManaging {
         pending.snapshot(primaryKeyColumns: primaryKeyColumns, columns: columns)
     }
 
-    func restoreState(from state: TabChangeSnapshot, tableName: String, schemaName: String? = nil, databaseType: DatabaseType) {
+    func restoreState(
+        from state: TabChangeSnapshot,
+        tableName: String,
+        schemaName: String? = nil,
+        databaseType: DatabaseType,
+        generatedColumns: Set<String>
+    ) {
         self.tableName = tableName
         self.schemaName = schemaName
         self.columns = state.columns
         self.primaryKeyColumns = state.primaryKeyColumns
         self.databaseType = databaseType
+        self.generatedColumns = generatedColumns
         pending.restore(from: state)
         self.hasChanges = !pending.isEmpty
     }

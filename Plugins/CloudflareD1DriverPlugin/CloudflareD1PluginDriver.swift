@@ -45,6 +45,8 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
             .foreignKeyToggle,
             .truncateTable,
             .cancelQuery,
+            .schemaCompare,
+            .dataCompare,
         ]
     }
 
@@ -85,11 +87,11 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
             }
             databaseId = match.uuid
 
-            lock.lock()
-            for db in databases {
-                databaseNameToUuid[db.name] = db.uuid
+            lock.withLock {
+                for db in databases {
+                    databaseNameToUuid[db.name] = db.uuid
+                }
             }
-            lock.unlock()
         }
 
         let client = D1HttpClient(accountId: accountId, apiToken: apiToken, databaseId: databaseId)
@@ -97,18 +99,14 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
         do {
             let details = try await client.getDatabaseDetails()
-            lock.lock()
-            _serverVersion = details.version ?? "D1"
-            lock.unlock()
+            lock.withLock { _serverVersion = details.version ?? "D1" }
         } catch {
             client.invalidateSession()
             Self.logger.error("Connection test failed: \(error.localizedDescription)")
             throw CloudflareD1Error(message: String(localized: "Failed to connect to Cloudflare D1"))
         }
 
-        lock.lock()
-        httpClient = client
-        lock.unlock()
+        lock.withLock { httpClient = client }
 
         Self.logger.debug("Connected to Cloudflare D1 database: \(databaseName)")
     }
@@ -183,9 +181,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
-        lock.lock()
-        let client = httpClient
-        lock.unlock()
+        let client = lock.withLock { httpClient }
         client?.setQueryTimeout(seconds)
     }
 
@@ -268,7 +264,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
             let isNullable = row[3].asText == "0"
             let isPrimaryKey = row[5].asText != nil && row[5].asText != "0"
-            let defaultValue = row[4].asText
+            let defaultValue = cloudflareD1DefaultValueFromCatalog(row[4].asText)
 
             return PluginColumnInfo(
                 name: name,
@@ -300,7 +296,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
             }
 
             let isNullable = row[4].asText == "0"
-            let defaultValue = row[5].asText
+            let defaultValue = cloudflareD1DefaultValueFromCatalog(row[5].asText)
             let isPrimaryKey = row[6].asText != nil && row[6].asText != "0"
 
             let column = PluginColumnInfo(
@@ -316,6 +312,10 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
         return allColumns
     }
+
+    var providesBulkForeignKeyFetch: Bool { true }
+
+    var tableDDLIncludesForeignKeys: Bool { true }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         let query = """
@@ -434,24 +434,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
     }
 
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
-        let safeTable = escapeStringLiteral(table)
-        let query = """
-            SELECT name, sql FROM sqlite_master
-            WHERE type = 'trigger' AND tbl_name = '\(safeTable)'
-                AND name NOT GLOB '_cf_*'
-            ORDER BY name
-            """
-        let result = try await execute(query: query)
-
-        return result.rows.compactMap { row -> PluginTriggerInfo? in
-            guard row.count >= 2,
-                  let name = row[0].asText,
-                  let sql = row[1].asText else {
-                return nil
-            }
-            let (timing, event) = TriggerSQLParser.timingAndEvent(from: sql)
-            return PluginTriggerInfo(name: name, timing: timing, event: event, statement: sql)
-        }
+        try await sqliteTriggerList(table: table)
     }
 
     func createTriggerTemplate(table: String, schema: String?) -> String? {
@@ -483,6 +466,22 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
         let formatted = formatDDL(ddl)
         return formatted.hasSuffix(";") ? formatted : formatted + ";"
+    }
+
+    /// `sqlite_master` stores each index's own `CREATE INDEX` text, which is what `sqlite3 .dump`
+    /// replays and which carries a partial predicate, an expression key, a collation and a sort
+    /// direction exactly as written. An index SQLite created for itself to back a UNIQUE or PRIMARY
+    /// KEY constraint has a null `sql`, so testing for that is what keeps `sqlite_autoindex_*` out
+    /// of the dump: those come back with the constraint inside `CREATE TABLE`.
+    func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
+        let result = try await execute(query: """
+            SELECT sql FROM sqlite_master
+            WHERE type = 'index'
+              AND tbl_name = '\(escapeStringLiteral(table))'
+              AND sql IS NOT NULL
+            ORDER BY name
+            """)
+        return result.rows.compactMap { $0[safe: 0]?.asText }
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
@@ -526,12 +525,12 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
         let databases = try await client.listDatabases()
 
-        lock.lock()
-        databaseNameToUuid.removeAll()
-        for db in databases {
-            databaseNameToUuid[db.name] = db.uuid
+        lock.withLock {
+            databaseNameToUuid.removeAll()
+            for db in databases {
+                databaseNameToUuid[db.name] = db.uuid
+            }
         }
-        lock.unlock()
 
         return databases.map(\.name)
     }
@@ -551,9 +550,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
         let newDb = try await client.createDatabase(name: request.name)
 
-        lock.lock()
-        databaseNameToUuid[newDb.name] = newDb.uuid
-        lock.unlock()
+        lock.withLock { databaseNameToUuid[newDb.name] = newDb.uuid }
     }
 
     func dropDatabase(name: String) async throws {
@@ -561,9 +558,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
             throw CloudflareD1Error.notConnected
         }
 
-        lock.lock()
-        let uuid = databaseNameToUuid[name]
-        lock.unlock()
+        let uuid = lock.withLock { databaseNameToUuid[name] }
 
         guard let databaseId = uuid ?? (isUuid(name) ? name : nil) else {
             throw CloudflareD1Error(message: String(format: String(localized: "Database '%@' not found"), name))
@@ -571,15 +566,11 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
         try await client.deleteDatabase(databaseId: databaseId)
 
-        lock.lock()
-        databaseNameToUuid.removeValue(forKey: name)
-        lock.unlock()
+        lock.withLock { _ = databaseNameToUuid.removeValue(forKey: name) }
     }
 
     func switchDatabase(to database: String) async throws {
-        lock.lock()
-        var uuid = databaseNameToUuid[database]
-        lock.unlock()
+        var uuid = lock.withLock { databaseNameToUuid[database] }
 
         if uuid == nil && isUuid(database) {
             uuid = database
@@ -592,13 +583,13 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
             let databases = try await client.listDatabases()
 
-            lock.lock()
-            databaseNameToUuid.removeAll()
-            for db in databases {
-                databaseNameToUuid[db.name] = db.uuid
+            uuid = lock.withLock {
+                databaseNameToUuid.removeAll()
+                for db in databases {
+                    databaseNameToUuid[db.name] = db.uuid
+                }
+                return databaseNameToUuid[database]
             }
-            uuid = databaseNameToUuid[database]
-            lock.unlock()
         }
 
         guard let resolvedUuid = uuid else {
@@ -607,9 +598,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
             )
         }
 
-        lock.lock()
-        httpClient?.databaseId = resolvedUuid
-        lock.unlock()
+        lock.withLock { httpClient?.databaseId = resolvedUuid }
     }
 
     // MARK: - Identifier Quoting
@@ -734,7 +723,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         var def = "\(quoteIdentifier(column.name)) \(column.dataType)"
         if !column.isNullable { def += " NOT NULL" }
         if let defaultValue = column.defaultValue, !defaultValue.isEmpty {
-            def += " DEFAULT \(d1DefaultValue(defaultValue))"
+            def += " DEFAULT \(defaultValue)"
         }
         return "ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(def)"
     }
@@ -743,10 +732,64 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         "ALTER TABLE \(quoteIdentifier(table)) DROP COLUMN \(quoteIdentifier(columnName))"
     }
 
+    /// SQLite has no positional `ALTER`, so the order changes by rebuilding the table, using the
+    /// shared recipe every SQLite-derived driver follows.
+    ///
+    /// Never run by TablePro. D1 answers each statement over its own HTTP request, so nothing can
+    /// hold the rebuild's transaction open across them, and a half-applied rebuild is data loss.
+    func generateColumnReorderPlan(
+        table: String,
+        schema: String?,
+        columns: [PluginColumnDefinition],
+        desiredOrder: [String]
+    ) async throws -> PluginColumnReorderPlan? {
+        try await SQLiteColumnReorderPlanner.plan(
+            tableName: table,
+            desiredOrder: desiredOrder,
+            isRunnable: false,
+            execute: { try await self.execute(query: $0) }
+        )
+    }
+
+    /// Also never run by TablePro, for the same reason: no SQLite `ALTER TABLE` can add or drop a
+    /// foreign key, so the table has to be recreated, and D1 cannot hold that rebuild's transaction
+    /// open across its per-statement HTTP requests. The script is handed to the user instead.
+    func generateTableRebuildPlan(
+        table: String,
+        schema: String?,
+        respecification: PluginTableRespecification
+    ) async throws -> PluginColumnReorderPlan? {
+        guard !respecification.isEmpty,
+              let context = try await SQLiteTableRebuildPlanner.context(
+                  tableName: table,
+                  execute: { try await self.execute(query: $0) }
+              ) else { return nil }
+
+        return SQLiteTableRebuildPlanner.plan(
+            tableName: table,
+            context: context,
+            respecification: respecification,
+            renderColumn: { self.d1ColumnDefinition($0, inlinePK: false) },
+            isRunnable: false
+        )
+    }
+
+    func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String? {
+        try await SQLiteColumnReorderPlanner.schemaFingerprint(
+            tableName: table,
+            execute: { try await self.execute(query: $0) }
+        )
+    }
+
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
         let uniqueStr = index.isUnique ? "UNIQUE " : ""
         let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        return "CREATE \(uniqueStr)INDEX \(quoteIdentifier(index.name)) ON \(quoteIdentifier(table)) (\(cols))"
+        var statement = "CREATE \(uniqueStr)INDEX \(quoteIdentifier(index.name)) "
+            + "ON \(quoteIdentifier(table)) (\(cols))"
+        if let predicate = index.whereClause?.nilIfEmpty {
+            statement += " WHERE \(predicate)"
+        }
+        return statement
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
@@ -782,24 +825,18 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
             def += " NOT NULL"
         }
         if let defaultValue = col.defaultValue {
-            def += " DEFAULT \(d1DefaultValue(defaultValue))"
+            def += " DEFAULT \(defaultValue)"
         }
         return def
     }
 
-    private func d1DefaultValue(_ value: String) -> String {
-        let upper = value.uppercased()
-        if upper == "NULL" || upper == "CURRENT_TIMESTAMP" || upper == "CURRENT_DATE" || upper == "CURRENT_TIME"
-            || value.hasPrefix("'") || Int64(value) != nil || Double(value) != nil {
-            return value
-        }
-        return "'\(escapeStringLiteral(value))'"
-    }
-
     private func d1ForeignKeyDefinition(_ fk: PluginForeignKeyDefinition) -> String {
         let cols = fk.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let refCols = fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        var def = "FOREIGN KEY (\(cols)) REFERENCES \(quoteIdentifier(fk.referencedTable)) (\(refCols))"
+        let constraint = fk.name.isEmpty ? "" : "CONSTRAINT \(quoteIdentifier(fk.name)) "
+        var def = "\(constraint)FOREIGN KEY (\(cols)) REFERENCES \(quoteIdentifier(fk.referencedTable))"
+        if !fk.referencedColumns.isEmpty {
+            def += " (\(fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")))"
+        }
         if fk.onDelete != "NO ACTION" {
             def += " ON DELETE \(fk.onDelete)"
         }

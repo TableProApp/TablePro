@@ -77,7 +77,12 @@ final class MinimapLineFragmentView: LineFragmentView {
         textStorage: NSTextStorage,
         fragmentRange: NSRange
     ) {
-        while position < max {
+        // The minimap runs its own layout manager, so its fragments can name text a newer edit has
+        // already removed. Every one of the reads below raises on an index past the storage.
+        let limit = Swift.min(max, textStorage.length)
+        position = Swift.max(position, 0)
+
+        while position < limit {
             var longestRange: NSRange = .notFound
             defer { position = longestRange.max }
 
@@ -85,7 +90,7 @@ final class MinimapLineFragmentView: LineFragmentView {
                 .foregroundColor,
                 at: position,
                 longestEffectiveRange: &longestRange,
-                in: NSRange(start: position, end: max)
+                in: NSRange(start: position, end: limit)
             ) as? NSColor else {
                 continue
             }

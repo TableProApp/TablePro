@@ -23,13 +23,27 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var currentSchema: String? = nil
     var supportsTransactions: Bool = true
     var serverVersion: String? = "Mock 1.0"
+    var holdsSuspensionBlockingResource: Bool = false
+    var usesBackslashEscaping: Bool = false
+
+    func escapeStringLiteral(_ value: String) -> String {
+        usesBackslashEscaping
+            ? SQLEscaping.backslashStringLiteral(value)
+            : SQLEscaping.ansiStringLiteral(value)
+    }
+
+    var beforeDisconnect: (@Sendable () async -> Void)?
+    var beforeExecute: (@Sendable () async -> Void)?
 
     func connect() async throws {}
-    func disconnect() async throws {}
+    func disconnect() async throws {
+        await beforeDisconnect?()
+    }
     func ping() async throws -> Bool { true }
     func cancelCurrentQuery() async throws {}
 
     func execute(query: String) async throws -> QueryResult {
+        await beforeExecute?()
         executedQueries.append(query)
         guard !scriptedExecuteResults.isEmpty else {
             return QueryResult(columns: [], rows: [], rowsAffected: 0, executionTime: 0)

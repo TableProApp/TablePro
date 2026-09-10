@@ -45,10 +45,10 @@ extension WelcomeViewModel {
     }
 
     private func presentTeamCatalogError(_ error: Error) {
-        let alert = NSAlert()
-        alert.messageText = String(localized: "Couldn't publish to the team catalog")
-        alert.informativeText = error.localizedDescription
-        alert.alertStyle = .warning
-        alert.runModal()
+        AlertHelper.showErrorSheet(
+            title: String(localized: "Couldn't publish to the team catalog"),
+            message: error.localizedDescription,
+            window: nil
+        )
     }
 }

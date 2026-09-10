@@ -11,7 +11,6 @@ import Foundation
 enum ResultTabBarPolicy {
     static func showsTabBar(tabType: TabType, display: TabDisplayState) -> Bool {
         guard tabType == .query else { return false }
-        guard display.explainText == nil else { return false }
         guard display.resultsViewMode != .structure else { return false }
         return !display.resultSets.isEmpty
     }

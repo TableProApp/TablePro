@@ -49,6 +49,11 @@ struct TableStructureLoader {
         return try await perform { try await $0.fetchForeignKeys(table: table) }
     }
 
+    func checkConstraints() async throws -> [CheckConstraintInfo] {
+        let table = tableName
+        return try await perform { try await $0.fetchCheckConstraints(table: table) }
+    }
+
     func triggers() async throws -> [TriggerInfo] {
         let table = tableName
         return try await perform { try await $0.fetchTriggers(table: table) }

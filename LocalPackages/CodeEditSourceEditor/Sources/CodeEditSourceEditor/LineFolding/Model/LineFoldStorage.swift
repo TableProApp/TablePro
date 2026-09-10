@@ -78,6 +78,11 @@ struct LineFoldStorage: Sendable {
         store.storageUpdated(editedRange: editedRange, changeInLength: delta)
     }
 
+    /// The collapse state of a fold by id, or `nil` when the fold is no longer in the store.
+    func isCollapsed(_ id: FoldRange.FoldIdentifier) -> Bool? {
+        foldRanges[id]?.isCollapsed
+    }
+
     mutating func toggleCollapse(forFold fold: FoldRange) {
         guard var existingRange = foldRanges[fold.id] else { return }
         existingRange.isCollapsed.toggle()

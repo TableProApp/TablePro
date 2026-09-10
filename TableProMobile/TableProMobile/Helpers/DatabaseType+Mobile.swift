@@ -9,6 +9,7 @@ extension DatabaseType {
         case .redshift: return "5439"
         case .redis: return "6379"
         case .mssql: return "1433"
+        case .oracle: return "1521"
         case .sqlite, .duckdb: return ""
         default: return "3306"
         }
@@ -24,6 +25,7 @@ extension DatabaseType {
         case .duckdb: "DuckDB"
         case .redis: "Redis"
         case .mssql: "SQL Server"
+        case .oracle: "Oracle"
         default: rawValue.uppercased()
         }
     }
@@ -35,6 +37,7 @@ extension DatabaseType {
         .sqlite,
         .duckdb,
         .redis,
-        .mssql
+        .mssql,
+        .oracle
     ]
 }

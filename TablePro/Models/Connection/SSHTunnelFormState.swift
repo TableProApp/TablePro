@@ -37,6 +37,9 @@ struct SSHTunnelFormState {
     var totpDigits: Int = 6
     var totpPeriod: Int = 30
 
+    // Remote database file
+    var remoteFilePath: String = ""
+
     // MARK: - Computed Properties
 
     var selectedProfile: SSHProfile? {
@@ -63,15 +66,21 @@ struct SSHTunnelFormState {
             totpMode: totpMode,
             totpAlgorithm: totpAlgorithm,
             totpDigits: totpDigits,
-            totpPeriod: totpPeriod
+            totpPeriod: totpPeriod,
+            remoteFilePath: remoteFilePath
         )
     }
 
+    /// A profile describes a server, not a file, so the remote path is overlaid onto whichever
+    /// configuration is in play. Two connections through one bastion routinely name two different
+    /// databases, so the path cannot live on the profile.
     func buildSSHConfig() -> SSHConfiguration {
-        if let profileId, let profile = profiles.first(where: { $0.id == profileId }) {
-            return profile.toSSHConfiguration()
+        guard let profileId, let profile = profiles.first(where: { $0.id == profileId }) else {
+            return buildInlineConfig()
         }
-        return buildInlineConfig()
+        var config = profile.toSSHConfiguration()
+        config.remoteFilePath = remoteFilePath
+        return config
     }
 
     // MARK: - Load Methods
@@ -85,10 +94,12 @@ struct SSHTunnelFormState {
             enabled = true
             profileId = nil
             populateFields(from: config)
+            remoteFilePath = config.remoteFilePath
         case .profile(let id, let snapshot):
             enabled = true
             profileId = id
             populateFields(from: snapshot)
+            remoteFilePath = connection.sshConfig.remoteFilePath
         }
     }
 
@@ -111,7 +122,9 @@ struct SSHTunnelFormState {
     func buildTunnelMode() -> SSHTunnelMode {
         guard enabled else { return .disabled }
         if let profileId, let profile = profiles.first(where: { $0.id == profileId }) {
-            return .profile(id: profileId, snapshot: profile.toSSHConfiguration())
+            var snapshot = profile.toSSHConfiguration()
+            snapshot.remoteFilePath = remoteFilePath
+            return .profile(id: profileId, snapshot: snapshot)
         }
         return .inline(buildInlineConfig())
     }

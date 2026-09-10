@@ -94,8 +94,8 @@ extension ChatContentBlock {
     }
 }
 
-@MainActor
-struct ChatTurn: Identifiable {
+@MainActor @Observable
+final class ChatTurn: Identifiable {
     let id: UUID
     let role: ChatRole
     var blocks: [ChatContentBlock]
@@ -154,7 +154,7 @@ struct ChatTurn: Identifiable {
         )
     }
 
-    mutating func appendStreamingToken(_ chunk: String) {
+    func appendStreamingToken(_ chunk: String) {
         guard !chunk.isEmpty else { return }
         if let last = blocks.last, case .text = last.kind, last.isStreaming {
             last.appendText(chunk)
@@ -163,19 +163,19 @@ struct ChatTurn: Identifiable {
         }
     }
 
-    mutating func finishStreamingTextBlock() {
+    func finishStreamingTextBlock() {
         if let last = blocks.last, case .text = last.kind, last.isStreaming {
             last.finishStreaming()
         }
     }
 
-    mutating func appendBlock(_ block: ChatContentBlock) {
+    func appendBlock(_ block: ChatContentBlock) {
         finishStreamingTextBlock()
         blocks.append(block)
     }
 
     @discardableResult
-    mutating func appendReasoningDelta(providerBlockID: String, text: String, idMap: inout [String: UUID]) -> UUID {
+    func appendReasoningDelta(providerBlockID: String, text: String, idMap: inout [String: UUID]) -> UUID {
         if let existingUUID = idMap[providerBlockID],
            let existingBlock = blocks.first(where: { $0.id == existingUUID }) {
             existingBlock.appendReasoningText(text)
@@ -189,7 +189,7 @@ struct ChatTurn: Identifiable {
         return newUUID
     }
 
-    mutating func startReasoningBlock(providerBlockID: String, idMap: inout [String: UUID]) {
+    func startReasoningBlock(providerBlockID: String, idMap: inout [String: UUID]) {
         if idMap[providerBlockID] != nil { return }
         finishStreamingTextBlock()
         let newUUID = UUID()
@@ -197,7 +197,7 @@ struct ChatTurn: Identifiable {
         blocks.append(ChatContentBlock(id: newUUID, kind: .reasoning(ReasoningBlock()), isStreaming: true))
     }
 
-    mutating func finalizeReasoningBlock(providerBlockID: String, opaque: ReasoningOpaque?, idMap: inout [String: UUID]) {
+    func finalizeReasoningBlock(providerBlockID: String, opaque: ReasoningOpaque?, idMap: inout [String: UUID]) {
         guard let blockUUID = idMap.removeValue(forKey: providerBlockID),
               let block = blocks.first(where: { $0.id == blockUUID }) else { return }
         block.setReasoningOpaque(opaque)

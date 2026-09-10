@@ -8,6 +8,7 @@
 
 import AppKit
 import Foundation
+import os
 
 extension MainContentCommandActions {
     /// AppKit matches a menu key equivalent before the first responder ever sees
@@ -21,13 +22,13 @@ extension MainContentCommandActions {
     }
 
     func updateTextInputFocusTracking() {
-        if let textInputFocusObserver {
-            NotificationCenter.default.removeObserver(textInputFocusObserver)
-            self.textInputFocusObserver = nil
+        if let observer = textInputFocusObserver.withLockUnchecked({ $0 }) {
+            NotificationCenter.default.removeObserver(observer)
+            textInputFocusObserver.withLockUnchecked { $0 = nil }
         }
         refreshFocusOwnsTextInput()
         guard let window else { return }
-        textInputFocusObserver = NotificationCenter.default.addObserver(
+        let observer = NotificationCenter.default.addObserver(
             forName: NSWindow.didUpdateNotification,
             object: window,
             queue: .main
@@ -37,6 +38,7 @@ extension MainContentCommandActions {
                 self.scheduleTextInputFocusCheck()
             }
         }
+        textInputFocusObserver.withLockUnchecked { $0 = observer }
     }
 
     /// `didUpdateNotification` fires once per event-loop pass, so the check is
@@ -56,9 +58,17 @@ extension MainContentCommandActions {
     /// field editor over a grid cell, and the sidebar filter field. It excludes
     /// `NSTableView` and `NSOutlineView`, so selecting rows or sidebar tables keeps
     /// the grid commands enabled.
+    ///
+    /// The transition guard carries the sync too, because `didUpdateNotification` fires
+    /// on every event-loop pass and `focusOwnsTextInput` is observed. Skipping is safe:
+    /// every writer resolves the yield from the key window's stored flag, so an unchanged
+    /// flag cannot leave a stale menu. The key-window guard is the same argument from the
+    /// other side, since a background window's focus decides nothing about the menu bar.
     private func refreshFocusOwnsTextInput() {
         let owns = window?.firstResponder is NSTextInputClient
         guard owns != focusOwnsTextInput else { return }
         focusOwnsTextInput = owns
+        guard let window, window.isKeyWindow else { return }
+        MainMenuBuilder.syncKeyEquivalents()
     }
 }

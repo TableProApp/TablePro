@@ -150,8 +150,16 @@ public final class EmphasisManager {
                 forStyle: emphasis.emphasis.style,
                 range: emphasis.emphasis.range
             ) else {
+                // An emphasis marks specific text. Once that text is gone there is no shape to
+                // draw, and the layer would otherwise keep painting the last one it had, over
+                // whatever now occupies that place. Hiding rather than clearing is what lets the
+                // shape come back when the range lays out again.
+                emphasis.layer.isHidden = true
+                emphasis.textLayer?.isHidden = true
                 continue
             }
+            emphasis.layer.isHidden = false
+            emphasis.textLayer?.isHidden = false
             if #available(macOS 14.0, *) {
                 emphasis.layer.path = shapePath.cgPath
             } else {
@@ -166,8 +174,7 @@ public final class EmphasisManager {
             }
 
             // Update text layer if it exists
-            if let textLayer = emphasis.textLayer {
-                var bounds = shapePath.bounds
+            if let textLayer = emphasis.textLayer, var bounds = shapePath.drawableBounds {
                 bounds.origin.y += 1 // Move down by 1 pixel
                 textLayer.frame = bounds
             }
@@ -195,6 +202,15 @@ public final class EmphasisManager {
     }
 
     private func makeShapePath(forStyle emphasisStyle: EmphasisStyle, range: NSRange) -> NSBezierPath? {
+        // A range that no longer fits the document names text an edit has removed. Drawing it
+        // anyway puts the emphasis somewhere it does not belong: `roundedPathForRange` answers a
+        // range past the end with the caret rect at the end of the document, so a stale search
+        // highlight would reappear there rather than disappear.
+        guard let documentLength = textView?.textStorage.length,
+              range.resolved(inDocumentOfLength: documentLength) == range else {
+            return nil
+        }
+
         switch emphasisStyle {
         case .standard, .outline:
             return textView?.layoutManager.roundedPathForRange(range, cornerRadius: emphasisStyle.shapeRadius)
@@ -209,7 +225,7 @@ public final class EmphasisManager {
                 path.move(to: NSPoint(x: rect.minX, y: rect.maxY - lineBottomPadding))
                 path.line(to: NSPoint(x: rect.maxX, y: rect.maxY - lineBottomPadding))
             }
-            return path
+            return path.isEmpty ? nil : path
         }
     }
 
@@ -261,12 +277,15 @@ public final class EmphasisManager {
     private func createTextLayer(for emphasis: Emphasis) -> CATextLayer? {
         guard let textView = textView,
               let layoutManager = textView.layoutManager,
+              let textStorage = textView.textStorage,
+              emphasis.range.length > 0,
+              emphasis.range.upperBound <= textStorage.length,
               let shapePath = layoutManager.roundedPathForRange(emphasis.range),
-              let originalString = textView.textStorage?.attributedSubstring(from: emphasis.range) else {
+              var bounds = shapePath.drawableBounds else {
             return nil
         }
 
-        var bounds = shapePath.bounds
+        let originalString = textStorage.attributedSubstring(from: emphasis.range)
         bounds.origin.y += 1 // Move down by 1 pixel
 
         // Create text layer

@@ -10,7 +10,6 @@ struct CreateDatabaseSheet: View {
     @State private var loadState: LoadState = .loading
     @State private var databaseName = ""
     @State private var values: [String: String] = [:]
-    @State private var groupSourceFieldIds: Set<String> = []
     @State private var isCreating = false
     @State private var errorMessage: String?
 
@@ -74,13 +73,7 @@ struct CreateDatabaseSheet: View {
             case .loading:
                 loadingRow
             case .ready(let spec):
-                textInputsList(spec: spec)
-                fieldsList(spec: spec)
-                if let footnote = spec.footnote {
-                    Text(footnote)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
+                CreateDatabaseOptionsView(spec: spec, values: $values)
             case .unsupported:
                 Text(String(localized: "This engine does not support creating databases."))
                     .foregroundStyle(.secondary)
@@ -147,116 +140,10 @@ struct CreateDatabaseSheet: View {
         .padding(.vertical, 14)
     }
 
-    @ViewBuilder
-    private func textInputsList(spec: CreateDatabaseFormSpec) -> some View {
-        ForEach(spec.textInputs) { input in
-            TextField(
-                input.label,
-                text: textInputBinding(for: input),
-                prompt: input.placeholder.map { Text($0) }
-            )
-        }
-    }
-
-    private func textInputBinding(for input: CreateDatabaseFormSpec.TextInput) -> Binding<String> {
-        Binding<String>(
-            get: { values[input.id] ?? "" },
-            set: { values[input.id] = $0 }
-        )
-    }
-
-    @ViewBuilder
-    private func fieldsList(spec: CreateDatabaseFormSpec) -> some View {
-        ForEach(visibleFields(in: spec)) { field in
-            fieldRow(field: field, spec: spec)
-        }
-    }
-
-    private func fieldRow(field: CreateDatabaseFormSpec.Field, spec: CreateDatabaseFormSpec) -> some View {
-        picker(for: field, spec: spec)
-            .pickerStyle(.menu)
-    }
-
-    private func picker(for field: CreateDatabaseFormSpec.Field, spec: CreateDatabaseFormSpec) -> some View {
-        let binding = Binding<String>(
-            get: { values[field.id] ?? "" },
-            set: { newValue in
-                values[field.id] = newValue
-                if groupSourceFieldIds.contains(field.id) {
-                    resetGroupedFields(after: field.id, in: spec)
-                }
-            }
-        )
-        let options = filteredOptions(for: field)
-        return Picker(field.label, selection: binding) {
-            ForEach(options, id: \.value) { option in
-                Text(displayLabel(for: option)).tag(option.value)
-            }
-        }
-    }
-
     private var canSubmit: Bool {
         guard !databaseName.isEmpty, !isCreating else { return false }
         guard case .ready(let spec) = loadState else { return false }
-        return spec.textInputs.allSatisfy { input in
-            guard input.isRequired else { return true }
-            return !(values[input.id] ?? "").trimmingCharacters(in: .whitespaces).isEmpty
-        }
-    }
-
-    private func visibleFields(in spec: CreateDatabaseFormSpec) -> [CreateDatabaseFormSpec.Field] {
-        spec.fields.filter(isVisible(_:))
-    }
-
-    private func isVisible(_ field: CreateDatabaseFormSpec.Field) -> Bool {
-        guard let visibility = field.visibleWhen else { return true }
-        return values[visibility.fieldId] == visibility.equals
-    }
-
-    private func shouldSubmit(_ fieldId: String, in spec: CreateDatabaseFormSpec) -> Bool {
-        if spec.textInputs.contains(where: { $0.id == fieldId }) { return true }
-        guard let field = spec.fields.first(where: { $0.id == fieldId }) else { return false }
-        return isVisible(field)
-    }
-
-    private func filteredOptions(for field: CreateDatabaseFormSpec.Field) -> [CreateDatabaseFormSpec.Option] {
-        let allOptions = options(from: field.kind)
-        guard allOptions.contains(where: { $0.group != nil }) else { return allOptions }
-        guard let sourceId = field.groupedBy,
-              let groupValue = values[sourceId] else {
-            return allOptions
-        }
-        return allOptions.filter { $0.group == groupValue }
-    }
-
-    private func resetGroupedFields(after sourceId: String, in spec: CreateDatabaseFormSpec) {
-        for field in spec.fields where field.groupedBy == sourceId {
-            let visible = filteredOptions(for: field).map(\.value)
-            if let preferred = defaultValue(from: field.kind), visible.contains(preferred) {
-                values[field.id] = preferred
-            } else {
-                values[field.id] = visible.first ?? ""
-            }
-        }
-    }
-
-    private func options(from kind: CreateDatabaseFormSpec.FieldKind) -> [CreateDatabaseFormSpec.Option] {
-        switch kind {
-        case .picker(let options, _), .searchable(let options, _):
-            return options
-        }
-    }
-
-    private func defaultValue(from kind: CreateDatabaseFormSpec.FieldKind) -> String? {
-        switch kind {
-        case .picker(_, let defaultValue), .searchable(_, let defaultValue):
-            return defaultValue
-        }
-    }
-
-    private func displayLabel(for option: CreateDatabaseFormSpec.Option) -> String {
-        guard let subtitle = option.subtitle, !subtitle.isEmpty else { return option.label }
-        return "\(option.label) \(subtitle)"
+        return !CreateDatabaseFormRules.missingRequiredInput(in: spec, values: values)
     }
 
     private func load() async {
@@ -267,29 +154,11 @@ struct CreateDatabaseSheet: View {
                 loadState = .unsupported
                 return
             }
-            initializeValues(from: spec)
+            values = CreateDatabaseFormRules.initialValues(for: spec)
             loadState = .ready(spec)
         } catch {
             loadState = .failed(error.localizedDescription)
         }
-    }
-
-    private func initializeValues(from spec: CreateDatabaseFormSpec) {
-        var initial: [String: String] = [:]
-        var sources: Set<String> = []
-        for field in spec.fields {
-            let optionValues = options(from: field.kind).map(\.value)
-            if let preferred = defaultValue(from: field.kind), optionValues.contains(preferred) {
-                initial[field.id] = preferred
-            } else if let first = optionValues.first {
-                initial[field.id] = first
-            }
-            if let sourceId = field.groupedBy {
-                sources.insert(sourceId)
-            }
-        }
-        values = initial
-        groupSourceFieldIds = sources
     }
 
     private func submit() {
@@ -300,7 +169,7 @@ struct CreateDatabaseSheet: View {
         errorMessage = nil
 
         let name = databaseName
-        let submissionValues = values.filter { shouldSubmit($0.key, in: spec) }
+        let submissionValues = CreateDatabaseFormRules.submissionValues(from: values, spec: spec)
 
         Task {
             do {

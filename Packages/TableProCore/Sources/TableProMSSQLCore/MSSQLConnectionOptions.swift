@@ -14,6 +14,16 @@ public struct MSSQLConnectionOptions: Sendable, Equatable {
     public var kerberosCachePath: String?
     public var kerberosServicePrincipal: String?
 
+    /// How far to check the server certificate. Set after init by the plugin from the
+    /// connection's SSL mode, so the existing initializer keeps its signature.
+    public var certificateVerification: MSSQLCertificateVerification = .none
+    public var caCertificatePath: String?
+
+    /// Microsoft Entra ID access token, sent in place of a user name and password. Set after
+    /// init for the same reason as `certificateVerification`. Only read when
+    /// `authMethod == .entra`.
+    public var fedAuthToken: String?
+
     public static let defaultPort = 1433
     public static let defaultSchema = "dbo"
     public static let defaultApplicationName = "TablePro"
@@ -43,7 +53,7 @@ public struct MSSQLConnectionOptions: Sendable, Equatable {
         case .sqlServer:
             self.user = user
             self.password = password
-        case .windows:
+        case .windows, .entra:
             self.user = ""
             self.password = ""
         }

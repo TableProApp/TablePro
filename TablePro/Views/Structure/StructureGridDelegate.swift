@@ -13,12 +13,27 @@ final class StructureGridDelegate: DataGridViewDelegate {
     let structureChangeManager: StructureChangeManager
     var selectedTab: StructureTab
     let connection: DatabaseConnection
+
+    /// Whether this engine can add and remove foreign keys, which is not the same question as
+    /// whether it has them. Every path that stages a foreign key change reads this, not just the
+    /// button under the list: a context-menu Delete that stages one on an engine with no way to
+    /// apply it only fails later, at Save.
+    var canEditForeignKeys: Bool {
+        PluginManager.shared.foreignKeyEditSupport(for: connection.type).isEditable
+            && connection.type.supportsSchemaEditing
+    }
     let tableName: String
+    /// The lists behind the Foreign Keys grid's reference cells, shared with the Create Table tab.
+    let referenceMenus: ForeignKeyReferenceMenus
     weak var coordinator: MainContentCoordinator?
     var onSelectedRowsChanged: ((Set<Int>) -> Void)?
 
     // Column reorder callback (set externally by the view when conditions allow)
     var moveRowHandler: ((Int, Int) -> Void)?
+
+    /// Whether a column may be moved right now, and why not when it may not. Carried so the row's
+    /// contextual menu can offer the same reorder the drag offers, and name the same reason.
+    var columnReorder: DataGridRowReorder = .disabled
 
     // Sort callback (set by TableStructureView to update its @State)
     var sortHandler: ((Int, Bool) -> Void)?
@@ -49,6 +64,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
         self.connection = connection
         self.tableName = tableName
         self.coordinator = coordinator
+        self.referenceMenus = ForeignKeyReferenceMenus(connectionId: connection.id)
     }
 
     // MARK: - Index Translation
@@ -63,6 +79,26 @@ final class StructureGridDelegate: DataGridViewDelegate {
 
     private func sourceRows(for displayRows: Set<Int>) -> Set<Int> {
         Set(displayRows.map { sourceRow(for: $0) })
+    }
+
+    /// The Foreign Keys grid's Columns, Ref Table and Ref Columns cells offer the database's own
+    /// names, exactly as the Create Table tab does.
+    ///
+    /// `StructureRowProvider` marks those three columns as carrying a chevron for every grid it
+    /// serves, so without this the chevron here would reach the data grid's boolean fallback and
+    /// offer to write `1` into Ref Table. The row is translated first: this grid filters and sorts,
+    /// so a display position is not an index into `workingForeignKeys`.
+    func dataGridMenuOptions(forRow row: Int, columnIndex: Int) -> [GridMenuOption]? {
+        guard selectedTab == .foreignKeys, canEditForeignKeys else { return nil }
+        let sourceRowIndex = sourceRow(for: row)
+        guard sourceRowIndex >= 0, sourceRowIndex < structureChangeManager.workingForeignKeys.count else {
+            return nil
+        }
+        return referenceMenus.options(
+            columnIndex: columnIndex,
+            foreignKey: structureChangeManager.workingForeignKeys[sourceRowIndex],
+            tableColumns: structureChangeManager.workingColumns.map(\.name)
+        )
     }
 
     // MARK: - DataGridViewDelegate
@@ -93,6 +129,18 @@ final class StructureGridDelegate: DataGridViewDelegate {
             var fk = structureChangeManager.workingForeignKeys[sourceRowIndex]
             StructureEditingSupport.updateForeignKey(&fk, at: column, with: newValue ?? "")
             structureChangeManager.updateForeignKey(id: fk.id, with: fk)
+            if column == 2 {
+                referenceMenus.prefetchReferencedColumns(
+                    of: fk.referencedTable, schema: fk.referencedSchema
+                )
+            }
+
+        case .checkConstraints:
+            guard connection.type.supportsCheckConstraintEditing,
+                  sourceRowIndex < structureChangeManager.workingCheckConstraints.count else { return }
+            var constraint = structureChangeManager.workingCheckConstraints[sourceRowIndex]
+            StructureEditingSupport.updateCheckConstraint(&constraint, at: column, with: newValue ?? "")
+            structureChangeManager.updateCheckConstraint(id: constraint.id, with: constraint)
 
         case .ddl, .parts, .triggers:
             break
@@ -129,24 +177,39 @@ final class StructureGridDelegate: DataGridViewDelegate {
         switch selectedTab {
         case .columns:
             guard connection.type.supportsDropColumn else { return }
-            for row in translated.sorted(by: >) {
-                guard row < structureChangeManager.workingColumns.count else { continue }
-                let column = structureChangeManager.workingColumns[row]
-                structureChangeManager.deleteColumn(id: column.id)
+            structureChangeManager.performAsOneUndoStep {
+                for row in translated.sorted(by: >) {
+                    guard row < structureChangeManager.workingColumns.count else { continue }
+                    let column = structureChangeManager.workingColumns[row]
+                    structureChangeManager.deleteColumn(id: column.id)
+                }
             }
         case .indexes:
             guard connection.type.supportsDropIndex else { return }
-            for row in translated.sorted(by: >) {
-                guard row < structureChangeManager.workingIndexes.count else { continue }
-                let index = structureChangeManager.workingIndexes[row]
-                structureChangeManager.deleteIndex(id: index.id)
+            structureChangeManager.performAsOneUndoStep {
+                for row in translated.sorted(by: >) {
+                    guard row < structureChangeManager.workingIndexes.count else { continue }
+                    let index = structureChangeManager.workingIndexes[row]
+                    structureChangeManager.deleteIndex(id: index.id)
+                }
             }
         case .foreignKeys:
-            guard connection.type.supportsForeignKeys else { return }
-            for row in translated.sorted(by: >) {
-                guard row < structureChangeManager.workingForeignKeys.count else { continue }
-                let fk = structureChangeManager.workingForeignKeys[row]
-                structureChangeManager.deleteForeignKey(id: fk.id)
+            guard canEditForeignKeys else { return }
+            structureChangeManager.performAsOneUndoStep {
+                for row in translated.sorted(by: >) {
+                    guard row < structureChangeManager.workingForeignKeys.count else { continue }
+                    let fk = structureChangeManager.workingForeignKeys[row]
+                    structureChangeManager.deleteForeignKey(id: fk.id)
+                }
+            }
+        case .checkConstraints:
+            guard connection.type.supportsCheckConstraintEditing else { return }
+            structureChangeManager.performAsOneUndoStep {
+                for row in translated.sorted(by: >) {
+                    guard row < structureChangeManager.workingCheckConstraints.count else { continue }
+                    let constraint = structureChangeManager.workingCheckConstraints[row]
+                    structureChangeManager.deleteCheckConstraint(id: constraint.id)
+                }
             }
         case .parts, .ddl, .triggers:
             onSelectedRowsChanged?([])
@@ -195,6 +258,11 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 guard row < structureChangeManager.workingForeignKeys.count else { continue }
                 copiedItems.append(structureChangeManager.workingForeignKeys[row])
             }
+        case .checkConstraints:
+            for row in translated.sorted() {
+                guard row < structureChangeManager.workingCheckConstraints.count else { continue }
+                copiedItems.append(structureChangeManager.workingCheckConstraints[row])
+            }
         case .ddl, .parts, .triggers:
             break
         }
@@ -210,6 +278,9 @@ final class StructureGridDelegate: DataGridViewDelegate {
             jsonString = String(data: encoded, encoding: .utf8)
         } else if let fks = copiedItems as? [EditableForeignKeyDefinition],
                   let encoded = try? JSONEncoder().encode(fks) {
+            jsonString = String(data: encoded, encoding: .utf8)
+        } else if let constraints = copiedItems as? [EditableCheckConstraintDefinition],
+                  let encoded = try? JSONEncoder().encode(constraints) {
             jsonString = String(data: encoded, encoding: .utf8)
         }
 
@@ -237,6 +308,10 @@ final class StructureGridDelegate: DataGridViewDelegate {
         pasteboard.writeObjects([item])
     }
 
+    func dataGridCanPasteRows() -> Bool {
+        TableStructureView.canPasteStructureRows
+    }
+
     func dataGridPasteRows() {
         guard let data = NSPasteboard.general.data(forType: TableStructureView.structurePasteboardType),
               let jsonString = String(data: data, encoding: .utf8) else {
@@ -251,22 +326,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 return
             }
             for item in columns {
-                let newColumn = EditableColumnDefinition(
-                    id: UUID(),
-                    name: item.name,
-                    dataType: item.dataType,
-                    isNullable: item.isNullable,
-                    defaultValue: item.defaultValue,
-                    autoIncrement: item.autoIncrement,
-                    unsigned: item.unsigned,
-                    comment: item.comment,
-                    collation: item.collation,
-                    onUpdate: item.onUpdate,
-                    charset: item.charset,
-                    extra: item.extra,
-                    isPrimaryKey: item.isPrimaryKey
-                )
-                structureChangeManager.addColumn(newColumn)
+                structureChangeManager.addColumn(item.withNewIdentity())
             }
 
         case .indexes:
@@ -274,18 +334,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 return
             }
             for item in indexes {
-                let newIndex = EditableIndexDefinition(
-                    id: UUID(),
-                    name: item.name,
-                    columns: item.columns,
-                    type: item.type,
-                    isUnique: item.isUnique,
-                    isPrimary: item.isPrimary,
-                    comment: item.comment,
-                    columnPrefixes: item.columnPrefixes,
-                    whereClause: item.whereClause
-                )
-                structureChangeManager.addIndex(newIndex)
+                structureChangeManager.addIndex(item.withNewIdentity())
             }
 
         case .foreignKeys:
@@ -293,17 +342,18 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 return
             }
             for item in fks {
-                let newFK = EditableForeignKeyDefinition(
-                    id: UUID(),
-                    name: item.name,
-                    columns: item.columns,
-                    referencedTable: item.referencedTable,
-                    referencedColumns: item.referencedColumns,
-                    referencedSchema: item.referencedSchema,
-                    onDelete: item.onDelete,
-                    onUpdate: item.onUpdate
-                )
-                structureChangeManager.addForeignKey(newFK)
+                structureChangeManager.addForeignKey(item.withNewIdentity())
+            }
+
+        case .checkConstraints:
+            guard connection.type.supportsCheckConstraintEditing,
+                  let constraints = try? decoder.decode(
+                      [EditableCheckConstraintDefinition].self, from: Data(jsonString.utf8)
+                  ) else {
+                return
+            }
+            for item in constraints {
+                structureChangeManager.addCheckConstraint(item.withNewIdentity())
             }
 
         case .ddl, .parts, .triggers:
@@ -336,8 +386,11 @@ final class StructureGridDelegate: DataGridViewDelegate {
             guard connection.type.supportsAddIndex else { return }
             structureChangeManager.addNewIndex()
         case .foreignKeys:
-            guard connection.type.supportsForeignKeys else { return }
+            guard canEditForeignKeys else { return }
             structureChangeManager.addNewForeignKey()
+        case .checkConstraints:
+            guard connection.type.supportsCheckConstraintEditing else { return }
+            structureChangeManager.addNewCheckConstraint()
         case .ddl, .parts, .triggers:
             break
         }
@@ -386,6 +439,12 @@ final class StructureGridDelegate: DataGridViewDelegate {
             let working = structureChangeManager.workingForeignKeys[sourceRow]
             guard let original = structureChangeManager.currentForeignKeys.first(where: { $0.id == working.id }) else { return [] }
             return StructureEditingSupport.foreignKeyModifiedIndices(old: original, new: working)
+        case .checkConstraints:
+            guard sourceRow < structureChangeManager.workingCheckConstraints.count else { return [] }
+            let working = structureChangeManager.workingCheckConstraints[sourceRow]
+            guard let original = structureChangeManager.currentCheckConstraints
+                .first(where: { $0.id == working.id }) else { return [] }
+            return StructureEditingSupport.checkConstraintModifiedIndices(old: original, new: working)
         case .ddl, .parts, .triggers:
             return []
         }
@@ -461,6 +520,61 @@ final class StructureGridDelegate: DataGridViewDelegate {
         return rowView
     }
 
+    /// Move Column Up and Move Column Down, for whichever of the grid's two contextual menus is
+    /// asking. Dragging is the usual way to move a column and it is also the only way that needs a
+    /// pointer; these give the same reorder to the keyboard and to VoiceOver, which reaches a menu
+    /// but cannot perform a drag.
+    ///
+    /// Built here rather than in the row view because a column row raises two different menus.
+    /// `KeyHandlingTableView.rightMouseDown` intercepts a click inside the selection and answers
+    /// from `DataGridRowView.contextMenu(for:)`, which is this method's caller; a click outside it
+    /// falls through to `StructureRowViewWithMenu.menu(for:)`, which asks for the same items. One
+    /// builder, so select-then-right-click and right-click-elsewhere cannot offer different
+    /// commands.
+    func dataGridRowStructureMenuItems(forRow displayRow: Int) -> [NSMenuItem] {
+        guard selectedTab == .columns else { return [] }
+        guard columnReorder.isEnabled || columnReorder.unavailableReason != nil else { return [] }
+
+        /// The working set, not the displayed rows: a reorder is withheld under a filter or a sort
+        /// precisely so that the two are the same list, and the plan names every column.
+        let count = structureChangeManager.workingColumns.count
+        var items = [
+            columnMoveItem(String(localized: "Move Column Up"), row: displayRow, .up, count: count),
+            columnMoveItem(String(localized: "Move Column Down"), row: displayRow, .down, count: count),
+        ]
+
+        /// Spelled out under the two dead commands rather than left to the help tag on the row
+        /// number. A menu the user opened because a drag did nothing is where the answer belongs.
+        guard let reason = columnReorder.unavailableReason else { return items }
+        let explanation = NSMenuItem(title: reason, action: nil, keyEquivalent: "")
+        explanation.isEnabled = false
+        items.append(explanation)
+        return items
+    }
+
+    /// A nil action is what disables the item: both menus autoenable, and neither the row view nor
+    /// this delegate is in the responder chain to answer `validateMenuItem(_:)` for itself. The
+    /// target is held by `representedObject` so it outlives the menu that is showing it.
+    private func columnMoveItem(
+        _ title: String,
+        row: Int,
+        _ direction: ColumnMove.Direction,
+        count: Int
+    ) -> NSMenuItem {
+        let isEnabled = columnReorder.isEnabled
+            && ColumnMove.isPossible(movingRow: row, direction, columnCount: count)
+        guard isEnabled else {
+            return NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        }
+        let item = NSMenuItem(title: title, action: #selector(StructureMenuTarget.runAction), keyEquivalent: "")
+        let target = StructureMenuTarget { [weak self] in
+            self?.moveRowHandler?(row, ColumnMove.dropIndex(movingRow: row, direction))
+        }
+        item.target = target
+        item.representedObject = target
+        return item
+    }
+
     private func makeEmptySpaceMenu() -> NSMenu? {
         guard selectedTab != .ddl, selectedTab != .parts, selectedTab != .triggers else { return nil }
         guard connection.type.supportsSchemaEditing else { return nil }
@@ -475,14 +589,17 @@ final class StructureGridDelegate: DataGridViewDelegate {
             guard connection.type.supportsAddIndex else { return nil }
             label = String(localized: "Add Index")
         case .foreignKeys:
-            guard connection.type.supportsForeignKeys else { return nil }
+            guard canEditForeignKeys else { return nil }
             label = String(localized: "Add Foreign Key")
+        case .checkConstraints:
+            guard connection.type.supportsCheckConstraintEditing else { return nil }
+            label = String(localized: "Add Check Constraint")
         case .ddl, .parts, .triggers:
             return nil
         }
 
         let target = StructureMenuTarget { [weak self] in self?.dataGridAddRow() }
-        let item = NSMenuItem(title: label, action: #selector(StructureMenuTarget.addNewItem), keyEquivalent: "")
+        let item = NSMenuItem(title: label, action: #selector(StructureMenuTarget.runAction), keyEquivalent: "")
         item.target = target
         item.representedObject = target
         menu.addItem(item)
@@ -525,6 +642,11 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 if let sql = driver.generateForeignKeyDefinitionSQL(fk: fk.toPlugin()) {
                     definitions.append(sql)
                 }
+            case .checkConstraints:
+                guard row < structureChangeManager.workingCheckConstraints.count else { continue }
+                let constraint = structureChangeManager.workingCheckConstraints[row]
+                let quoted = driver.quoteIdentifier(constraint.name)
+                definitions.append("CONSTRAINT \(quoted) CHECK (\(constraint.expression))")
             case .ddl, .parts, .triggers:
                 break
             }
@@ -596,12 +718,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
             case .columns:
                 guard row < structureChangeManager.workingColumns.count else { continue }
                 let copy = structureChangeManager.workingColumns[row]
-                structureChangeManager.addColumn(EditableColumnDefinition(
-                    id: UUID(), name: copy.name, dataType: copy.dataType, isNullable: copy.isNullable,
-                    defaultValue: copy.defaultValue, autoIncrement: copy.autoIncrement, unsigned: copy.unsigned,
-                    comment: copy.comment, collation: copy.collation, onUpdate: copy.onUpdate,
-                    charset: copy.charset, extra: copy.extra, isPrimaryKey: copy.isPrimaryKey
-                ))
+                structureChangeManager.addColumn(copy.withNewIdentity())
             case .indexes:
                 guard row < structureChangeManager.workingIndexes.count else { continue }
                 let copy = structureChangeManager.workingIndexes[row]
@@ -613,12 +730,12 @@ final class StructureGridDelegate: DataGridViewDelegate {
             case .foreignKeys:
                 guard row < structureChangeManager.workingForeignKeys.count else { continue }
                 let copy = structureChangeManager.workingForeignKeys[row]
-                structureChangeManager.addForeignKey(EditableForeignKeyDefinition(
-                    id: UUID(), name: copy.name, columns: copy.columns,
-                    referencedTable: copy.referencedTable, referencedColumns: copy.referencedColumns,
-                    referencedSchema: copy.referencedSchema,
-                    onDelete: copy.onDelete, onUpdate: copy.onUpdate
-                ))
+                structureChangeManager.addForeignKey(copy.withNewIdentity())
+            case .checkConstraints:
+                guard connection.type.supportsCheckConstraintEditing,
+                      row < structureChangeManager.workingCheckConstraints.count else { continue }
+                let copy = structureChangeManager.workingCheckConstraints[row]
+                structureChangeManager.addCheckConstraint(copy.withNewIdentity())
             case .ddl, .parts, .triggers:
                 break
             }

@@ -24,17 +24,21 @@ DEFINE SCHEMA
         "___modifiedBy"      REFERENCE,
         "___recordID"        REFERENCE QUERYABLE,
         additionalFieldsJson BYTES QUERYABLE SORTABLE,
+        aiAlwaysAllowedTools LIST<STRING>,
         aiPolicy             STRING QUERYABLE SEARCHABLE SORTABLE,
+        aiRules              STRING QUERYABLE SEARCHABLE SORTABLE,
         color                STRING QUERYABLE SEARCHABLE SORTABLE,
         colorTag             STRING QUERYABLE SEARCHABLE SORTABLE,
         connectionId         STRING QUERYABLE SEARCHABLE SORTABLE,
         database             STRING QUERYABLE SEARCHABLE SORTABLE,
         groupId              STRING QUERYABLE SEARCHABLE SORTABLE,
         host                 STRING QUERYABLE SEARCHABLE SORTABLE,
+        isFavorite           INT64 QUERYABLE SORTABLE,
         isReadOnly           INT64 QUERYABLE SORTABLE,
         modifiedAtLocal      TIMESTAMP QUERYABLE SORTABLE,
         name                 STRING QUERYABLE SEARCHABLE SORTABLE,
         port                 INT64 QUERYABLE SORTABLE,
+        queryTimeoutSeconds  INT64 QUERYABLE SORTABLE,
         redisDatabase        INT64 QUERYABLE SORTABLE,
         safeModeLevel        STRING QUERYABLE SEARCHABLE SORTABLE,
         schemaVersion        INT64 QUERYABLE SORTABLE,
@@ -46,6 +50,7 @@ DEFINE SCHEMA
         sslEnabled           INT64 QUERYABLE SORTABLE,
         startupCommands      STRING QUERYABLE SEARCHABLE SORTABLE,
         tagId                STRING QUERYABLE SEARCHABLE SORTABLE,
+        tagIds               LIST<STRING>,
         type                 STRING QUERYABLE SEARCHABLE SORTABLE,
         username             STRING QUERYABLE SEARCHABLE SORTABLE,
         GRANT WRITE TO "_creator",
@@ -90,6 +95,24 @@ DEFINE SCHEMA
         GRANT READ TO "_world"
     );
 
+    RECORD TYPE FavoriteTable (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        connectionId    STRING QUERYABLE SEARCHABLE SORTABLE,
+        database        STRING QUERYABLE SEARCHABLE SORTABLE,
+        modifiedAtLocal TIMESTAMP QUERYABLE SORTABLE,
+        name            STRING QUERYABLE SEARCHABLE SORTABLE,
+        schema          STRING QUERYABLE SEARCHABLE SORTABLE,
+        schemaVersion   INT64 QUERYABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
     RECORD TYPE QueryHistory (
         "___createTime" TIMESTAMP,
         "___createdBy"  REFERENCE,
@@ -112,6 +135,50 @@ DEFINE SCHEMA
         GRANT READ TO "_world"
     );
 
+    RECORD TYPE SQLFavorite (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        connectionId    STRING QUERYABLE SEARCHABLE SORTABLE,
+        createdAt       TIMESTAMP QUERYABLE SORTABLE,
+        favoriteId      STRING QUERYABLE SEARCHABLE SORTABLE,
+        folderId        STRING QUERYABLE SEARCHABLE SORTABLE,
+        keyword         STRING QUERYABLE SEARCHABLE SORTABLE,
+        modifiedAtLocal TIMESTAMP QUERYABLE SORTABLE,
+        name            STRING QUERYABLE SEARCHABLE SORTABLE,
+        query           STRING QUERYABLE SEARCHABLE SORTABLE,
+        schemaVersion   INT64 QUERYABLE SORTABLE,
+        sortOrder       INT64 QUERYABLE SORTABLE,
+        updatedAt       TIMESTAMP QUERYABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE SQLFavoriteFolder (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        connectionId    STRING QUERYABLE SEARCHABLE SORTABLE,
+        createdAt       TIMESTAMP QUERYABLE SORTABLE,
+        folderId        STRING QUERYABLE SEARCHABLE SORTABLE,
+        modifiedAtLocal TIMESTAMP QUERYABLE SORTABLE,
+        name            STRING QUERYABLE SEARCHABLE SORTABLE,
+        parentId        STRING QUERYABLE SEARCHABLE SORTABLE,
+        schemaVersion   INT64 QUERYABLE SORTABLE,
+        sortOrder       INT64 QUERYABLE SORTABLE,
+        updatedAt       TIMESTAMP QUERYABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
     RECORD TYPE SSHProfile (
         "___createTime" TIMESTAMP,
         "___createdBy"  REFERENCE,
@@ -122,6 +189,7 @@ DEFINE SCHEMA
         agentSocketPath STRING QUERYABLE SEARCHABLE SORTABLE,
         authMethod      STRING QUERYABLE SEARCHABLE SORTABLE,
         host            STRING QUERYABLE SEARCHABLE SORTABLE,
+        jumpHostsJson   BYTES QUERYABLE SORTABLE,
         modifiedAtLocal TIMESTAMP QUERYABLE SORTABLE,
         name            STRING QUERYABLE SEARCHABLE SORTABLE,
         port            INT64 QUERYABLE SORTABLE,

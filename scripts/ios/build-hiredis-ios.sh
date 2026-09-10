@@ -1,5 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -eo pipefail
+
+# shellcheck source=../lib/common.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/common.sh"
 
 # Build static hiredis (with SSL) for iOS → xcframework
 #
@@ -19,18 +22,6 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LIBS_DIR="$PROJECT_DIR/Libs/ios"
 BUILD_DIR="$(mktemp -d)"
 NCPU=$(sysctl -n hw.ncpu)
-
-run_quiet() {
-    local logfile
-    logfile=$(mktemp)
-    if ! "$@" > "$logfile" 2>&1; then
-        echo "FAILED: $*"
-        tail -50 "$logfile"
-        rm -f "$logfile"
-        return 1
-    fi
-    rm -f "$logfile"
-}
 
 cleanup() {
     echo "   Cleaning up build directory..."
@@ -54,9 +45,12 @@ resolve_openssl() {
     fi
 
     # Find the correct slice directory
-    local SSL_LIB=$(find "$XCFW_SSL" -path "*$PLATFORM*/libssl.a" | head -1)
-    local CRYPTO_LIB=$(find "$XCFW_CRYPTO" -path "*$PLATFORM*/libcrypto.a" | head -1)
-    local HEADERS=$(find "$XCFW_SSL" -path "*$PLATFORM*/Headers" -type d | head -1)
+    local SSL_LIB
+    SSL_LIB=$(find "$XCFW_SSL" -path "*$PLATFORM*/libssl.a" | head -1)
+    local CRYPTO_LIB
+    CRYPTO_LIB=$(find "$XCFW_CRYPTO" -path "*$PLATFORM*/libcrypto.a" | head -1)
+    local HEADERS
+    HEADERS=$(find "$XCFW_SSL" -path "*$PLATFORM*/Headers" -type d | head -1)
 
     if [ -z "$SSL_LIB" ] || [ -z "$CRYPTO_LIB" ]; then
         echo "ERROR: Could not find OpenSSL libs for platform $PLATFORM"
@@ -66,7 +60,6 @@ resolve_openssl() {
     OPENSSL_SSL_LIB="$SSL_LIB"
     OPENSSL_CRYPTO_LIB="$CRYPTO_LIB"
     OPENSSL_INCLUDE="$HEADERS"
-    OPENSSL_LIB_DIR="$(dirname "$SSL_LIB")"
 }
 
 # --- Download hiredis ---

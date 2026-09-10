@@ -16,6 +16,16 @@ struct TableRows: Sendable {
     var columnEnumValues: [String: [String]]
     var columnNullable: [String: Bool]
     var columnComments: [String: String]
+    var columnIdentity: [String: IdentityKind]
+    /// Columns the app must never write. Held here as well as on `DataChangeManager` because the
+    /// change manager is rebuilt by `configureForTable` on every execution and only the schema
+    /// fetch refills it, so a rerun that answered from cache left a generated or `GENERATED ALWAYS
+    /// AS IDENTITY` column writable again.
+    var generatedColumns: Set<String>
+    /// Whether the sets above came from the table's own schema. A result set reports far less than
+    /// the schema does, so a command that stages a value from them waits rather than reading an
+    /// empty set as "this table owns nothing".
+    var hasAuthoritativeSchema: Bool
     var foreignKeysFetched: Bool
 
     init(
@@ -27,6 +37,9 @@ struct TableRows: Sendable {
         columnEnumValues: [String: [String]] = [:],
         columnNullable: [String: Bool] = [:],
         columnComments: [String: String] = [:],
+        columnIdentity: [String: IdentityKind] = [:],
+        generatedColumns: Set<String> = [],
+        hasAuthoritativeSchema: Bool = false,
         foreignKeysFetched: Bool = false
     ) {
         self.rows = rows
@@ -38,10 +51,24 @@ struct TableRows: Sendable {
         self.columnEnumValues = columnEnumValues
         self.columnNullable = columnNullable
         self.columnComments = columnComments
+        self.columnIdentity = columnIdentity
+        self.generatedColumns = generatedColumns
+        self.hasAuthoritativeSchema = hasAuthoritativeSchema
         self.foreignKeysFetched = foreignKeysFetched
     }
 
     var count: Int { rows.count }
+
+    /// Whether leaving the column out of an INSERT makes the server supply the value.
+    ///
+    /// A default expression is only one of the two ways that happens. An identity column has no
+    /// default at all: PostgreSQL reports the generation in `pg_attribute.attidentity` and leaves
+    /// `column_default` null, so asking about the default alone answers "no" for every identity
+    /// column and the new row goes out carrying NULL.
+    func serverAssignsValue(forColumn name: String) -> Bool {
+        if columnIdentity[name] != nil { return true }
+        return (columnDefaults[name] ?? nil) != nil
+    }
 
     func value(at row: Int, column: Int) -> PluginCellValue {
         guard row >= 0, row < rows.count else { return .null }
@@ -55,6 +82,12 @@ struct TableRows: Sendable {
     func row(withID id: RowID) -> Row? {
         guard let index = indexByID[id] else { return nil }
         return rows[index]
+    }
+
+    /// Releases the row payload while keeping the schema needed to render and reload the table.
+    mutating func discardRowsKeepingMetadata() {
+        rows = []
+        indexByID = [:]
     }
 
     @discardableResult
@@ -162,7 +195,10 @@ struct TableRows: Sendable {
         columnForeignKeys: [String: ForeignKeyInfo]? = nil,
         columnEnumValues: [String: [String]]? = nil,
         columnNullable: [String: Bool]? = nil,
-        columnComments: [String: String]? = nil
+        columnComments: [String: String]? = nil,
+        columnIdentity: [String: IdentityKind]? = nil,
+        generatedColumns: Set<String>? = nil,
+        hasAuthoritativeSchema: Bool? = nil
     ) -> Delta {
         var didChange = false
         if let columnTypes, columnTypes != self.columnTypes {
@@ -192,6 +228,18 @@ struct TableRows: Sendable {
             self.columnComments = columnComments
             didChange = true
         }
+        if let columnIdentity, columnIdentity != self.columnIdentity {
+            self.columnIdentity = columnIdentity
+            didChange = true
+        }
+        if let generatedColumns, generatedColumns != self.generatedColumns {
+            self.generatedColumns = generatedColumns
+            didChange = true
+        }
+        if let hasAuthoritativeSchema, hasAuthoritativeSchema != self.hasAuthoritativeSchema {
+            self.hasAuthoritativeSchema = hasAuthoritativeSchema
+            didChange = true
+        }
         return didChange ? .columnsReplaced : .none
     }
 
@@ -204,6 +252,9 @@ struct TableRows: Sendable {
         columnEnumValues: [String: [String]] = [:],
         columnNullable: [String: Bool] = [:],
         columnComments: [String: String] = [:],
+        columnIdentity: [String: IdentityKind] = [:],
+        generatedColumns: Set<String> = [],
+        hasAuthoritativeSchema: Bool = false,
         foreignKeysFetched: Bool = false
     ) -> TableRows {
         var rows = ContiguousArray<Row>()
@@ -221,6 +272,9 @@ struct TableRows: Sendable {
             columnEnumValues: columnEnumValues,
             columnNullable: columnNullable,
             columnComments: columnComments,
+            columnIdentity: columnIdentity,
+            generatedColumns: generatedColumns,
+            hasAuthoritativeSchema: hasAuthoritativeSchema,
             foreignKeysFetched: foreignKeysFetched
         )
     }

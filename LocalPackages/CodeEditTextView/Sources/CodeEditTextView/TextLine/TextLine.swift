@@ -54,10 +54,17 @@ public final class TextLine: Identifiable, Equatable {
         markedRanges: MarkedRanges?,
         attachments: [AnyTextAttachment]
     ) {
-        let string = stringRef.attributedSubstring(from: range)
+        // The line storage can be longer than the string it indexes for as long as an edit is in
+        // flight, and slicing with a range from the far side of that raises. Leaving `needsLayout`
+        // set means the line is typeset again once the two agree.
+        guard let documentRange = range.resolved(inDocumentOfLength: stringRef.length),
+              documentRange == range else {
+            return
+        }
+        let string = stringRef.attributedSubstring(from: documentRange)
         let maxWidth = typesetter.typeset(
             string,
-            documentRange: range,
+            documentRange: documentRange,
             displayData: displayData,
             markedRanges: markedRanges,
             attachments: attachments

@@ -195,11 +195,63 @@ enum PostgreSQLSchemaQueries {
     /// then current schema) before escaping and passing it here. The identity,
     /// generated, and attribute-join fragments come from the connected server's
     /// versioned capabilities.
+    static let enumTypeOidQuery = """
+        SELECT t.oid::text, t.typarray::text, t.typname
+        FROM pg_catalog.pg_type t
+        WHERE t.typtype = 'e'
+        """
+
+    /// Every enum appears, with a NULL label where it has none, so the column resolver can tell
+    /// an enum apart from a composite, a range or an extension's base type: all four reach it as
+    /// `USER-DEFINED`, and only an enum has a row here.
+    static let enumLabelQuery = """
+        SELECT n.nspname, t.typname, e.enumlabel
+        FROM pg_catalog.pg_type t
+        JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+        LEFT JOIN pg_catalog.pg_enum e ON e.enumtypid = t.oid
+        WHERE t.typtype = 'e'
+        ORDER BY n.nspname, t.typname, e.enumsortorder
+        """
+
+    static let arrayTypeQuery = """
+        SELECT n.nspname, arr.typname, el.typname, el.typtype
+        FROM pg_catalog.pg_type arr
+        JOIN pg_catalog.pg_type el ON el.oid = arr.typelem
+        JOIN pg_catalog.pg_namespace n ON n.oid = arr.typnamespace
+        WHERE arr.typelem <> 0 AND el.typarray = arr.oid
+        """
+
+    /// `conkey` carries the attribute numbers the constraint touches, so the columns involved come
+    /// from the catalog rather than from parsing the expression. `pg_get_constraintdef` is the only
+    /// supported way to read the text: `consrc` was removed in PostgreSQL 12.
+    static func checkConstraintsQuery(schemaLiteral: String, tableLiteral: String) -> String {
+        """
+        SELECT
+            con.conname,
+            pg_get_constraintdef(con.oid),
+            con.convalidated,
+            COALESCE((
+                SELECT to_json(array_agg(att.attname ORDER BY att.attnum))::text
+                FROM unnest(con.conkey) AS k(attnum)
+                JOIN pg_catalog.pg_attribute att
+                    ON att.attrelid = con.conrelid AND att.attnum = k.attnum
+            ), \'[]\')
+        FROM pg_catalog.pg_constraint con
+        JOIN pg_catalog.pg_class cls ON cls.oid = con.conrelid
+        JOIN pg_catalog.pg_namespace ns ON ns.oid = cls.relnamespace
+        WHERE con.contype = \'c\'
+            AND ns.nspname = \'\(schemaLiteral)\'
+            AND cls.relname = \'\(tableLiteral)\'
+        ORDER BY con.conname
+        """
+    }
+
     static func columnsQuery(
         schemaLiteral: String,
         tableLiteral: String?,
         identityProjection: String,
         generatedProjection: String,
+        generationExpressionProjection: String,
         attributeJoin: String
     ) -> String {
         let shape = ColumnQueryShape.fragments(tableLiteral: tableLiteral)
@@ -214,7 +266,9 @@ enum PostgreSQLSchemaQueries {
                 c.udt_name,
                 CASE WHEN pk.column_name IS NOT NULL THEN 'YES' ELSE 'NO' END AS is_pk,
                 \(identityProjection),
-                \(generatedProjection)
+                \(generatedProjection),
+                c.udt_schema,
+                \(generationExpressionProjection)
             FROM information_schema.columns c
             LEFT JOIN pg_catalog.pg_statio_all_tables st
                 ON st.schemaname = c.table_schema

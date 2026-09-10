@@ -6,11 +6,10 @@ import UniformTypeIdentifiers
 
 struct ConnectionListView: View {
     @Environment(AppState.self) private var appState
-    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(ConnectionCoordinatorStore.self) private var coordinatorStore
     @State private var showingAddConnection = false
     @State private var editingConnection: DatabaseConnection?
     @SceneStorage("lastConnectionId") private var selectedConnectionIdString: String?
-    @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
     @State private var showingGroupManagement = false
     @State private var showingTagManagement = false
     @AppStorage("lastFilterTagId") private var filterTagIdString: String?
@@ -19,7 +18,6 @@ struct ConnectionListView: View {
     @State private var editMode: EditMode = .inactive
     @State private var connectionToDelete: DatabaseConnection?
     @State private var showingSettings = false
-    @State private var coordinatorCache: [UUID: ConnectionCoordinator] = [:]
     @State private var showingFileImporter = false
     @State private var importItem: IdentifiableURL?
     @State private var showingExport = false
@@ -32,15 +30,15 @@ struct ConnectionListView: View {
         )
     }
 
-    private var selectedConnectionId: Binding<UUID?> {
-        Binding(
-            get: { selectedConnectionIdString.flatMap { UUID(uuidString: $0) } },
-            set: { selectedConnectionIdString = $0?.uuidString }
-        )
-    }
-
     private var selectedConnectionUUID: UUID? {
         selectedConnectionIdString.flatMap { UUID(uuidString: $0) }
+    }
+
+    private var openConnection: Binding<DatabaseConnection?> {
+        Binding(
+            get: { selectedConnection },
+            set: { selectedConnectionIdString = $0?.id.uuidString }
+        )
     }
 
     private var filterTagId: UUID? {
@@ -68,7 +66,7 @@ struct ConnectionListView: View {
     }
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
+        NavigationStack {
             sidebar
                 .navigationTitle("Connections")
                 .toolbar {
@@ -76,7 +74,7 @@ struct ConnectionListView: View {
                         moreMenu
                         filterMenu
                         if filterTagId == nil && !appState.connections.isEmpty {
-                            Button(editMode == .active ? "Done" : "Edit") {
+                            Button(editMode == .active ? String(localized: "Done") : String(localized: "Edit")) {
                                 editMode = editMode == .active ? .inactive : .active
                             }
                         }
@@ -130,19 +128,10 @@ struct ConnectionListView: View {
             .onAppear {
                 navigateToPendingConnection(appState.pendingConnectionId)
             }
-        } detail: {
-            if let connection = selectedConnection {
-                ConnectedView(connection: connection, cachedCoordinator: coordinatorCache[connection.id]) { coordinator in
-                    coordinatorCache[connection.id] = coordinator
-                }
+        }
+        .fullScreenCover(item: openConnection) { connection in
+            ConnectedView(connection: connection)
                 .id(connection.id)
-            } else {
-                ContentUnavailableView(
-                    "Select a Connection",
-                    systemImage: "server.rack",
-                    description: Text("Choose a connection from the sidebar.")
-                )
-            }
         }
         .sheet(isPresented: $showingAddConnection) {
             ConnectionFormView { connection in
@@ -153,6 +142,7 @@ struct ConnectionListView: View {
         .sheet(item: $editingConnection) { connection in
             ConnectionFormView(editing: connection) { updated in
                 appState.updateConnection(updated)
+                coordinatorStore.invalidate(updated.id)
                 editingConnection = nil
             }
         }
@@ -244,7 +234,7 @@ struct ConnectionListView: View {
 
     @ViewBuilder
     private var connectionList: some View {
-        let list = List(selection: selectedConnectionId) {
+        let list = List {
             if groupByGroup {
                 groupedContent
             } else {
@@ -261,11 +251,7 @@ struct ConnectionListView: View {
                 }
             }
         }
-        if sizeClass == .regular {
-            list.listStyle(.sidebar)
-        } else {
-            list.listStyle(.insetGrouped)
-        }
+        list.listStyle(.insetGrouped)
     }
 
     @ViewBuilder
@@ -314,7 +300,6 @@ struct ConnectionListView: View {
                         if selectedConnectionUUID == connection.id {
                             selectedConnectionIdString = nil
                         }
-                        coordinatorCache.removeValue(forKey: connection.id)
                         appState.removeConnection(connection)
                     }
                 }
@@ -448,9 +433,18 @@ struct ConnectionListView: View {
     }
 
     private func connectionRow(_ connection: DatabaseConnection) -> some View {
-        NavigationLink(value: connection.id) {
-            ConnectionRow(connection: connection, tag: appState.tag(for: connection.tagId))
+        Button {
+            selectedConnectionIdString = connection.id.uuidString
+        } label: {
+            HStack(spacing: 8) {
+                ConnectionRow(connection: connection, tag: appState.tag(for: connection.tagId))
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .hoverEffect()
         .swipeActions(edge: .leading) {
             Button {
@@ -537,7 +531,11 @@ private struct ConnectionRow: View {
         let typeName = connection.type.rawValue.uppercased()
         let location: String = connection.type == .sqlite
             ? (connection.database.components(separatedBy: "/").last ?? "database")
-            : "\(connection.host) port \(connection.port)"
+            : String(
+                format: String(localized: "%@, port %lld"),
+                connection.host,
+                Int64(connection.port)
+            )
         if let tag {
             return Text("\(typeName), \(displayName), \(location), tag \(tag.name)")
         }

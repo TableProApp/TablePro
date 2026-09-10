@@ -17,10 +17,19 @@ struct DateTimePickerContentView: View {
     private let calendar: Calendar
     @State private var date: Date
 
+    /// The day the today ring belongs on, as calendar fields rather than an instant.
+    ///
+    /// A value with no offset is read in GMT, so each day cell is a GMT midnight; asking whether
+    /// that instant is today in the reader's zone answers for the previous day west of Greenwich.
+    /// Comparing fields asks the question the ring actually poses. A value that carries an offset
+    /// names a real instant, and its own zone is the only one whose today means anything for it.
+    private let today: DateComponents
+
     init(
         initialDate: Date,
         components: TemporalComponents,
         timeZone: TimeZone,
+        carriesItsOwnZone: Bool,
         onCommit: @escaping (Date) -> Void,
         onDismiss: @escaping () -> Void
     ) {
@@ -30,6 +39,11 @@ struct DateTimePickerContentView: View {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
         self.calendar = calendar
+        var todayCalendar = calendar
+        if !carriesItsOwnZone {
+            todayCalendar.timeZone = .autoupdatingCurrent
+        }
+        self.today = todayCalendar.dateComponents([.year, .month, .day], from: Date())
         self._date = State(initialValue: initialDate)
     }
 
@@ -37,7 +51,7 @@ struct DateTimePickerContentView: View {
         VStack(spacing: 0) {
             VStack(spacing: 12) {
                 if components != .timeOnly {
-                    CalendarMonthView(date: $date, calendar: calendar)
+                    CalendarMonthView(date: $date, calendar: calendar, today: today)
                 }
                 if components != .dateOnly {
                     TimeFieldView(date: $date, calendar: calendar)
@@ -67,6 +81,7 @@ struct DateTimePickerContentView: View {
 private struct CalendarMonthView: View {
     @Binding var date: Date
     let calendar: Calendar
+    let today: DateComponents
 
     @State private var visibleMonth: Date
 
@@ -75,9 +90,10 @@ private struct CalendarMonthView: View {
     private let monthTitleFormatter: DateFormatter
     private let dayLabelFormatter: DateFormatter
 
-    init(date: Binding<Date>, calendar: Calendar) {
+    init(date: Binding<Date>, calendar: Calendar, today: DateComponents) {
         self._date = date
         self.calendar = calendar
+        self.today = today
         self._visibleMonth = State(initialValue: date.wrappedValue)
         self.monthTitleFormatter = Self.makeFormatter(calendar: calendar) { $0.dateFormat = "MMMM yyyy" }
         self.dayLabelFormatter = Self.makeFormatter(calendar: calendar) {
@@ -111,6 +127,8 @@ private struct CalendarMonthView: View {
                 Image(systemName: "chevron.left")
             }
             .buttonStyle(.borderless)
+            .accessibilityLabel(String(localized: "Previous Month"))
+            .help(String(localized: "Previous Month"))
 
             Spacer()
 
@@ -123,6 +141,8 @@ private struct CalendarMonthView: View {
                 Image(systemName: "chevron.right")
             }
             .buttonStyle(.borderless)
+            .accessibilityLabel(String(localized: "Next Month"))
+            .help(String(localized: "Next Month"))
         }
     }
 
@@ -130,7 +150,7 @@ private struct CalendarMonthView: View {
     private func dayCell(_ day: Date?) -> some View {
         if let day {
             let isSelected = calendar.isDate(day, inSameDayAs: date)
-            let isToday = calendar.isDateInToday(day)
+            let isToday = calendar.dateComponents([.year, .month, .day], from: day) == today
             Button {
                 select(day)
             } label: {
@@ -139,7 +159,7 @@ private struct CalendarMonthView: View {
                     .frame(width: cellSize, height: cellSize)
                     .background {
                         if isSelected {
-                            Circle().fill(Color.accentColor)
+                            Circle().fill(Color(nsColor: .selectedContentBackgroundColor))
                         } else if isToday {
                             Circle().strokeBorder(Color.accentColor, lineWidth: 1)
                         }
@@ -154,7 +174,7 @@ private struct CalendarMonthView: View {
     }
 
     private func dayColor(isSelected: Bool, isToday: Bool) -> Color {
-        if isSelected { return .white }
+        if isSelected { return .emphasizedSelectionLabel }
         if isToday { return .accentColor }
         return .primary
     }

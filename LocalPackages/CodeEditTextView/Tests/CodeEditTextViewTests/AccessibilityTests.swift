@@ -96,6 +96,18 @@ struct AccessibilityTests {
         #expect(range == .notFound)
     }
 
+    /// An accessibility client computes an index against the document as it was, so it can send one
+    /// that is now negative. `rangeOfComposedCharacterSequence(at:)` raises for those.
+    @Test
+    func accessibilityRangeForNegativeIndex() {
+        #expect(textView.accessibilityRange(for: -1) == .notFound)
+    }
+
+    @Test
+    func accessibilityLineForNegativeIndex() {
+        #expect(textView.accessibilityLine(for: -1) == -1)
+    }
+
     // MARK: - Selection Tests
 
     @Test

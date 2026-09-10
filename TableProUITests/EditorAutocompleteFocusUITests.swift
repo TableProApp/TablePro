@@ -1,33 +1,13 @@
 import XCTest
 
-final class EditorAutocompleteFocusUITests: XCTestCase {
-    override func setUpWithError() throws {
-        continueAfterFailure = false
-    }
-
-    override func tearDownWithError() throws {
-        XCUIApplication().terminate()
-    }
-
+final class EditorAutocompleteFocusUITests: UITestCase {
     func testTypingInNewTabKeepsEditorFocusWhileAutocompleteAppears() throws {
-        let app = XCUIApplication()
-        app.launchEnvironment["TABLEPRO_UI_TESTING"] = "1"
-        app.launch()
-
-        let menuBar = app.menuBars.firstMatch
-        XCTAssertTrue(menuBar.waitForExistence(timeout: 10))
-        menuBar.menuBarItems["File"].click()
-        let openSample = menuBar.menuItems["Open Sample Database"]
-        XCTAssertTrue(openSample.waitForExistence(timeout: 5))
-        openSample.click()
-
-        let firstEditor = editorTextView(in: app)
-        XCTAssertTrue(firstEditor.waitForExistence(timeout: 15))
+        let app = try launchWithSampleDatabase()
 
         app.typeKey("t", modifierFlags: .command)
 
         let editor = editorTextView(in: app)
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertTrue(editor.waitToExist(timeout: 10))
         XCTAssertTrue(waitForValue("", in: editor, timeout: 5), "New tab editor should start empty")
 
         app.typeText("select")
@@ -38,13 +18,50 @@ final class EditorAutocompleteFocusUITests: XCTestCase {
         )
     }
 
-    private func editorTextView(in app: XCUIApplication) -> XCUIElement {
-        let window = app.windows.firstMatch
-        let identified = window.textViews.matching(identifier: "sql-editor-textview").firstMatch
-        if identified.exists {
-            return identified
+    /// #2444: with the popup already open for `t`, typing the rest of `true` has to re-rank so the
+    /// preselected first row is the exact keyword. The popup is a borderless panel whose rows are
+    /// not reliably queryable, so this asserts the text Return actually inserts.
+    func testTypingToAnExactKeywordCommitsThatKeyword() throws {
+        let app = try launchWithSampleDatabase()
+
+        app.typeKey("t", modifierFlags: .command)
+
+        let editor = editorTextView(in: app)
+        XCTAssertTrue(editor.waitToExist(timeout: 10))
+        XCTAssertTrue(waitForValue("", in: editor, timeout: 5), "New tab editor should start empty")
+
+        app.typeText("select * from t where t")
+        XCTAssertTrue(
+            waitForValue(in: editor, timeout: 5) { $0.lowercased() == "select * from t where t" },
+            "Editor should hold the opening prefix; got '\(editor.value as? String ?? "nil")'"
+        )
+
+        app.typeText("rue")
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 1.0))
+        app.typeKey(.return, modifierFlags: [])
+
+        let committed = waitForValue(in: editor, timeout: 5) {
+            $0.lowercased().hasSuffix("true")
         }
-        return window.textViews.firstMatch
+
+        XCTAssertTrue(
+            committed,
+            "Return should commit the keyword the typed token completes; got "
+                + "'\(editor.value as? String ?? "nil")'"
+        )
+    }
+
+    private func waitForValue(
+        in element: XCUIElement,
+        timeout: TimeInterval,
+        matching predicate: (String) -> Bool
+    ) -> Bool {
+        let deadline = Date(timeIntervalSinceNow: timeout)
+        while Date() < deadline {
+            if predicate(element.value as? String ?? "") { return true }
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+        }
+        return predicate(element.value as? String ?? "")
     }
 
     private func waitForValue(_ expected: String, in element: XCUIElement, timeout: TimeInterval) -> Bool {

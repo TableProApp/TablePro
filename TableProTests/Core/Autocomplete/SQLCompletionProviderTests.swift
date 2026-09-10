@@ -6,9 +6,9 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 @Suite("SQL Completion Provider")
 struct SQLCompletionProviderTests {
@@ -251,11 +251,15 @@ struct SQLCompletionProviderTests {
         #expect(items.count <= 20)
     }
 
+    /// The cap above is one half of the contract; this is the other. A prefix narrow enough to match
+    /// one keyword must return that keyword and stop well short of the cap. It asserted
+    /// `items.count >= 0`, which is true of every possible result, so it could not fail.
     @Test("Fewer than 20 returned when applicable")
     func testFewerThan20Returned() async {
         let text = "SELECT * FROM users ORDER BY name ASC LIMIT 10 OFF"
         let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
-        #expect(items.count >= 0)
+        #expect(items.contains { $0.label == "OFFSET" })
+        #expect(items.count < 20)
     }
 
     @Test("Exactly 20 items when many matches")
@@ -295,8 +299,16 @@ struct SQLCompletionProviderTests {
     // MARK: - P0: CF-1 - DatabaseType Threading
 
     @Test("Provider accepts databaseType parameter")
+    /// The data types come from the dialect, not from `databaseType`: the provider keeps a
+    /// `cachedDialect` and falls back to generic SQL when it has none. Built with a type but no
+    /// dialect, these asked a generic provider for engine-specific types, which is why they sat in
+    /// the quarantine file. The registry carries the real one, published by the bundled driver.
     func testProviderAcceptsDatabaseType() async {
-        let pgProvider = SQLCompletionProvider(schemaProvider: schemaProvider, databaseType: .postgresql)
+        let pgProvider = await SQLCompletionProvider(
+            schemaProvider: schemaProvider,
+            databaseType: .postgresql,
+            dialect: MainActor.run { PluginMetadataRegistry.shared.snapshot(for: .postgresql)?.editor.sqlDialect }
+        )
         // Use prefix "JSON" to filter past the 20-item limit so JSONB appears
         let text = "CREATE TABLE test (col JSON"
         let (items, _) = await pgProvider.getCompletions(text: text, cursorPosition: text.count)
@@ -306,8 +318,16 @@ struct SQLCompletionProviderTests {
     }
 
     @Test("MySQL provider shows MySQL-specific types")
+    /// The data types come from the dialect, not from `databaseType`: the provider keeps a
+    /// `cachedDialect` and falls back to generic SQL when it has none. Built with a type but no
+    /// dialect, these asked a generic provider for engine-specific types, which is why they sat in
+    /// the quarantine file. The registry carries the real one, published by the bundled driver.
     func testMySQLProviderTypes() async {
-        let mysqlProvider = SQLCompletionProvider(schemaProvider: schemaProvider, databaseType: .mysql)
+        let mysqlProvider = await SQLCompletionProvider(
+            schemaProvider: schemaProvider,
+            databaseType: .mysql,
+            dialect: MainActor.run { PluginMetadataRegistry.shared.snapshot(for: .mysql)?.editor.sqlDialect }
+        )
         let text = "CREATE TABLE test (col "
         let (items, _) = await mysqlProvider.getCompletions(text: text, cursorPosition: text.count)
         let hasEnum = items.contains { $0.label == "ENUM" }
@@ -1175,8 +1195,59 @@ struct SQLCompletionProviderTests {
         #expect(items.first?.label == "INNER JOIN")
     }
 
-    @Test("Comma-separated FROM scopes columns to every listed table")
+    /// Both tables in a comma-joined FROM contribute columns, and each one arrives qualified by its
+    /// alias. The qualification is the point rather than a formatting detail: with two tables in
+    /// scope a bare `user_name` does not say which table it came from, and `allColumnsInScope`
+    /// qualifies exactly when `references.count > 1`. This case asserted the bare label, which that
+    /// branch never produces.
+    ///
+    /// Each column is asked for behind its own prefix. The provider caps a result set at
+    /// `defaultMaxSuggestions`, 20, and an unfiltered WHERE fills that with keywords before any
+    /// column reaches it, so an unprefixed form could not observe scoping at all.
+    @Test("A comma-joined FROM offers every table's columns, alias-qualified")
     func testCommaFromScopesColumnsToAllTables() async {
+        let driver = makeTwoTableDriver()
+        await schemaProvider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
+        let base = "SELECT * FROM users u, orders o WHERE "
+
+        let (userItems, context) = await provider.getCompletions(
+            text: base + "user_", cursorPosition: (base + "user_").count
+        )
+        #expect(context.clauseType == .where_)
+        #expect(userItems.contains { $0.kind == .column && $0.label == "u.user_name" })
+
+        let (orderItems, _) = await provider.getCompletions(
+            text: base + "order_", cursorPosition: (base + "order_").count
+        )
+        #expect(orderItems.contains { $0.kind == .column && $0.label == "o.order_total" })
+
+        #expect(Set(driver.fetchColumnsCalls) == ["users", "orders"])
+    }
+
+    /// The other half of the same design. Once the user names an alias the column is already
+    /// unambiguous, so the dot-prefix branch resolves the alias to its table and offers bare labels
+    /// for that table alone. Asserting both shapes keeps a later change from collapsing them.
+    @Test("An alias prefix resolves to that table's columns, unqualified")
+    func testAliasPrefixScopesToItsOwnTable() async {
+        let driver = makeTwoTableDriver()
+        await schemaProvider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
+        let text = "SELECT * FROM users u, orders o WHERE u."
+
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
+
+        #expect(items.contains { $0.kind == .column && $0.label == "user_name" })
+        #expect(!items.contains { $0.label.contains("order_total") })
+
+        #expect(driver.fetchColumnsCalls == ["users"])
+    }
+
+    /// The returned driver has to stay alive for as long as the assertions run.
+    /// `SQLSchemaProvider.cachedDriver` is `weak`, because in the app the connection session owns
+    /// the driver and the provider must not pin it. Nothing else holds a mock, so letting it go out
+    /// of scope makes `getColumns` take its `else { return [] }` arm and every column expectation
+    /// fails as though scoping were broken. Each case above ends by asserting what the driver was
+    /// asked for, which keeps it alive to that point and fails loudly if the fetch stops happening.
+    private func makeTwoTableDriver() -> MockDatabaseDriver {
         let driver = MockDatabaseDriver()
         driver.tablesToReturn = [
             TestFixtures.makeTableInfo(name: "users"),
@@ -1186,13 +1257,6 @@ struct SQLCompletionProviderTests {
             "users": [TestFixtures.makeColumnInfo(name: "user_name")],
             "orders": [TestFixtures.makeColumnInfo(name: "order_total")]
         ]
-        await schemaProvider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
-
-        let text = "SELECT * FROM users u, orders o WHERE "
-        let (items, context) = await provider.getCompletions(text: text, cursorPosition: text.count)
-
-        #expect(context.clauseType == .where_)
-        #expect(items.contains { $0.kind == .column && $0.label == "user_name" })
-        #expect(items.contains { $0.kind == .column && $0.label == "order_total" })
+        return driver
     }
 }

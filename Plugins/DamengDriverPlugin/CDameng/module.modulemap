@@ -1,0 +1,4 @@
+module CDameng {
+    umbrella header "CDameng.h"
+    export *
+}

@@ -44,7 +44,7 @@ enum VimScreenPosition { case top, middle, bottom }
 
 @MainActor
 final class VimEngine {
-    static let logger = Logger(subsystem: "com.TablePro", category: "VimEngine")
+    nonisolated static let logger = Logger(subsystem: "com.TablePro", category: "VimEngine")
 
     private(set) var mode: VimMode = .normal {
         didSet {

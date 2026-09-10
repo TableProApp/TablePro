@@ -19,7 +19,7 @@ struct ConnectionSyncSchemaTests {
             port: 5432,
             username: "admin",
             database: "app",
-            colorTag: "#FF0000",
+            color: .red,
             isReadOnly: true,
             safeModeLevel: .readOnly,
             queryTimeoutSeconds: 30,
@@ -64,35 +64,58 @@ struct ConnectionSyncSchemaTests {
         #expect(Set(record.allKeys()).isSubset(of: ConnectionSyncField.declaredKeys))
     }
 
-    @Test("isFavorite stays out of the wire until the production schema is verified")
-    func isFavoriteIsNotWritten() {
-        #expect(ConnectionSyncField.isFavorite.isWritable == false)
+    @Test("every declared field is deployed, so nothing is silently dropped")
+    func everyDeclaredFieldIsWritable() {
+        let gated = ConnectionSyncField.allCases.filter { !$0.isWritable }
+
+        #expect(gated.isEmpty, "Gated Connection fields: \(gated.map(\.key).sorted())")
     }
 
-    @Test("a colour tag is written to colorTag and never to the macOS color field")
-    func colourTagDoesNotCollideWithMacColor() {
+    @Test("a colour is written to the field macOS also reads")
+    func colourIsWrittenToTheSharedField() {
         var connection = makeFullyPopulatedConnection()
-        connection.colorTag = "#00FF00"
+        connection.color = .green
 
         let record = SyncRecordMapper.toRecord(connection, zoneID: zoneID)
+        let fields = record.fields(ConnectionSyncField.self)
 
-        #expect(record[ConnectionSyncField.colorTag] as? String == "#00FF00")
-        #expect(record[ConnectionSyncField.color] == nil)
+        #expect(fields[.color] as? String == ConnectionColor.green.rawValue)
     }
 
-    @Test("a macOS colour name is not adopted as an iOS colour tag")
-    func macColorNameIsNotDecodedAsColourTag() {
+    /// The two platforms used to sync a connection's colour on separate fields, macOS writing this
+    /// enum's name to `color` and iOS writing hex to `colorTag`, so neither device ever showed the
+    /// other's colour. A record written by macOS has to decode here now.
+    @Test("a macOS colour name decodes")
+    func macColorNameDecodes() {
         let connection = makeFullyPopulatedConnection()
         let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
         let record = CKRecord(recordType: SyncRecordType.connection.rawValue, recordID: recordID)
-        record[ConnectionSyncField.connectionId] = connection.id.uuidString as CKRecordValue
-        record[ConnectionSyncField.name] = "From Mac" as CKRecordValue
-        record[ConnectionSyncField.type] = "PostgreSQL" as CKRecordValue
-        record[ConnectionSyncField.color] = "Blue" as CKRecordValue
+        let fields = record.fields(ConnectionSyncField.self)
+        fields[.connectionId] = connection.id.uuidString
+        fields[.name] = "From Mac"
+        fields[.type] = "PostgreSQL"
+        fields[.color] = "Blue"
 
         let decoded = SyncRecordMapper.toConnection(record)
 
-        #expect(decoded?.colorTag == nil)
+        #expect(decoded?.color == .blue)
+    }
+
+    /// Whatever an older iOS build already wrote as hex still has to come back as a colour.
+    @Test("a legacy hex colour tag decodes to the nearest colour")
+    func legacyColourTagDecodes() {
+        let connection = makeFullyPopulatedConnection()
+        let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
+        let record = CKRecord(recordType: SyncRecordType.connection.rawValue, recordID: recordID)
+        let fields = record.fields(ConnectionSyncField.self)
+        fields[.connectionId] = connection.id.uuidString
+        fields[.name] = "From an older iPhone"
+        fields[.type] = "PostgreSQL"
+        fields[.colorTag] = "#FF0000"
+
+        let decoded = SyncRecordMapper.toConnection(record)
+
+        #expect(decoded?.color == .red)
     }
 
     @Test("a fully populated connection round-trips through the wire")
@@ -112,18 +135,28 @@ struct ConnectionSyncSchemaTests {
         #expect(decoded?.isReadOnly == connection.isReadOnly)
         #expect(decoded?.safeModeLevel == connection.safeModeLevel)
         #expect(decoded?.groupId == connection.groupId)
-        #expect(decoded?.colorTag == connection.colorTag)
+        #expect(decoded?.color == connection.color)
     }
 
-    @Test("A gated field does not survive the round trip")
-    func gatedFieldsDoNotRoundTrip() {
+    @Test("a query timeout survives the round trip now that the field is deployed")
+    func queryTimeoutRoundTrips() {
         let connection = makeFullyPopulatedConnection()
         let record = SyncRecordMapper.toRecord(connection, zoneID: zoneID)
 
         let decoded = SyncRecordMapper.toConnection(record)
 
         #expect(connection.queryTimeoutSeconds != nil)
-        #expect(ConnectionSyncField.queryTimeoutSeconds.isWritable == false)
-        #expect(decoded?.queryTimeoutSeconds == nil)
+        #expect(decoded?.queryTimeoutSeconds == connection.queryTimeoutSeconds)
+    }
+
+    @Test("every tag survives the round trip instead of collapsing to the first")
+    func everyTagRoundTrips() {
+        let connection = makeFullyPopulatedConnection()
+        let record = SyncRecordMapper.toRecord(connection, zoneID: zoneID)
+
+        let decoded = SyncRecordMapper.toConnection(record)
+
+        #expect(connection.tagIds.count == 2)
+        #expect(decoded?.tagIds == connection.tagIds)
     }
 }

@@ -15,7 +15,9 @@ final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let explainVariants: [ExplainVariant] = [
-        ExplainVariant(id: "explain", label: "Explain", sqlPrefix: "EXPLAIN QUERY PLAN")
+        ExplainVariant(
+            id: "explain", label: "Explain", sqlPrefix: "EXPLAIN QUERY PLAN", format: .sqliteQueryPlan
+        )
     ]
 
     static let databaseTypeId = "SQLite"
@@ -31,12 +33,27 @@ final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let isDownloadable = false
     static let pathFieldRole: PathFieldRole = .filePath
     static let connectionMode: ConnectionMode = .fileBased
+    static let supportsHealthMonitor = false
     static let urlSchemes: [String] = ["sqlite"]
     static let fileExtensions: [String] = ["db", "db3", "s3db", "sl3", "sqlite", "sqlite3", "sqlitedb"]
     static let brandColorHex = "#003B57"
     static let supportsDatabaseSwitching = false
+    static let supportsRenameTable = true
+    static let supportsRenameView = false
     static let supportsTriggers = true
+    static let supportsDatabaseTriggerBrowse = true
     static let supportsTriggerEditing = true
+    static let structureColumnFields: [StructureColumnField] =
+        [.name, .type, .nullable, .defaultValue, .generated, .generationExpression, .autoIncrement]
+
+    static let supportsCheckConstraints = true
+
+    /// ALTER TABLE ... ADD/DROP CONSTRAINT arrived in SQLite 3.53.0 (2026-04-09). The plugin links
+    /// the system libsqlite3, so this tracks the user's macOS rather than the app version, and it
+    /// is a per-process constant because one dylib is linked for the process's whole lifetime.
+    static let supportsCheckConstraintEditing = sqlite3_libversion_number() >= 3_053_000
+
+    static let supportsGeneratedColumns = true
     static let databaseGroupingStrategy: GroupingStrategy = .flat
     static let columnTypesByCategory: [String: [String]] = [
         "Integer": ["INTEGER", "INT", "TINYINT", "SMALLINT", "MEDIUMINT", "BIGINT"],
@@ -88,12 +105,71 @@ final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
         regexSyntax: .unsupported,
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .explicit,
-        paginationStyle: .limit
+        paginationStyle: .limit,
+        caseSensitivityStyle: .collationDefined
     )
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         SQLitePluginDriver(config: config)
     }
+}
+
+// MARK: - Busy Wait
+
+/// Ends a wait on a locked database when the user presses Stop, and after the configured timeout.
+///
+/// `sqlite3_busy_timeout` cannot do the first of those: it sleeps inside SQLite with nothing to
+/// interrupt it, and `sqlite3_interrupt` does not reach a connection that is waiting for a lock
+/// rather than running a statement. Measured against SQLite 3.54.0 with a second connection
+/// holding `BEGIN EXCLUSIVE`: the interrupt was ignored and the waiter ran the full 60 seconds
+/// before returning `SQLITE_BUSY`. A busy handler is the documented way to keep that decision,
+/// because it is called back on every retry and stops the wait by returning zero.
+///
+/// Read and written from whichever thread is stepping a statement and from the caller of Stop, so
+/// every access takes the lock.
+private final class SQLiteBusyState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isCancelled = false
+    private var timeoutMilliseconds: Int32 = 0
+
+    /// How long one retry waits. Also the granularity at which Stop is noticed.
+    static let retryIntervalMilliseconds: Int32 = 10
+
+    func setTimeout(milliseconds: Int32) {
+        lock.lock()
+        defer { lock.unlock() }
+        timeoutMilliseconds = milliseconds
+    }
+
+    func beginOperation() {
+        lock.lock()
+        defer { lock.unlock() }
+        isCancelled = false
+    }
+
+    func cancel() {
+        lock.lock()
+        defer { lock.unlock() }
+        isCancelled = true
+    }
+
+    /// - Parameter retryCount: How many times SQLite has already called back for this lock.
+    /// - Returns: `true` to wait and retry, `false` to give up and let the step return `SQLITE_BUSY`.
+    func shouldRetry(afterRetryCount retryCount: Int32) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isCancelled else { return false }
+        guard timeoutMilliseconds > 0 else { return true }
+        return retryCount * Self.retryIntervalMilliseconds < timeoutMilliseconds
+    }
+}
+
+private let sqliteBusyHandler: @convention(c) (UnsafeMutableRawPointer?, Int32) -> Int32 = { context, retryCount in
+    guard let context else { return 0 }
+    let state = Unmanaged<SQLiteBusyState>.fromOpaque(context).takeUnretainedValue()
+    guard state.shouldRetry(afterRetryCount: retryCount) else { return 0 }
+    usleep(UInt32(SQLiteBusyState.retryIntervalMilliseconds) * 1_000)
+    return 1
 }
 
 // MARK: - SQLite Connection Actor
@@ -102,6 +178,11 @@ private actor SQLiteConnectionActor {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLiteConnectionActor")
 
     private var db: OpaquePointer?
+    private let busyState: SQLiteBusyState
+
+    init(busyState: SQLiteBusyState) {
+        self.busyState = busyState
+    }
 
     var isConnected: Bool { db != nil }
 
@@ -113,6 +194,7 @@ private actor SQLiteConnectionActor {
                 ?? "Unknown SQLite error"
             throw SQLitePluginError.connectionFailed(errorMessage)
         }
+        installBusyHandler()
     }
 
     func close() {
@@ -123,8 +205,16 @@ private actor SQLiteConnectionActor {
     }
 
     func applyBusyTimeout(_ milliseconds: Int32) {
+        busyState.setTimeout(milliseconds: milliseconds)
+    }
+
+    func beginBusyOperation() {
+        busyState.beginOperation()
+    }
+
+    private func installBusyHandler() {
         guard let db else { return }
-        sqlite3_busy_timeout(db, milliseconds)
+        sqlite3_busy_handler(db, sqliteBusyHandler, Unmanaged.passUnretained(busyState).toOpaque())
     }
 
     var dbHandleForInterrupt: Int { db.map { Int(bitPattern: $0) } ?? 0 }
@@ -133,6 +223,7 @@ private actor SQLiteConnectionActor {
         guard let db else {
             throw SQLitePluginError.notConnected
         }
+        busyState.beginOperation()
 
         let startTime = Date()
         var statement: OpaquePointer?
@@ -170,7 +261,8 @@ private actor SQLiteConnectionActor {
         var rowsAffected = 0
         var truncated = false
 
-        while sqlite3_step(statement) == SQLITE_ROW {
+        var stepResult = sqlite3_step(statement)
+        while stepResult == SQLITE_ROW {
             if rows.count >= PluginRowLimits.emergencyMax {
                 truncated = true
                 break
@@ -197,6 +289,11 @@ private actor SQLiteConnectionActor {
             }
 
             rows.append(row)
+            stepResult = sqlite3_step(statement)
+        }
+
+        if !truncated, stepResult != SQLITE_DONE {
+            throw SQLitePluginError.queryFailed(String(cString: sqlite3_errmsg(db)))
         }
 
         if columns.isEmpty {
@@ -216,6 +313,7 @@ private actor SQLiteConnectionActor {
     }
 
     func streamQuery(_ query: String, continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation) throws {
+        busyState.beginOperation()
         guard let db else {
             throw SQLitePluginError.notConnected
         }
@@ -256,7 +354,8 @@ private actor SQLiteConnectionActor {
         var batch: [PluginRow] = []
         batch.reserveCapacity(batchSize)
 
-        while sqlite3_step(statement) == SQLITE_ROW {
+        var stepResult = sqlite3_step(statement)
+        while stepResult == SQLITE_ROW {
             if Task.isCancelled {
                 if !batch.isEmpty {
                     continuation.yield(.rows(batch))
@@ -291,10 +390,21 @@ private actor SQLiteConnectionActor {
                 continuation.yield(.rows(batch))
                 batch.removeAll(keepingCapacity: true)
             }
+            stepResult = sqlite3_step(statement)
         }
 
         if !batch.isEmpty {
             continuation.yield(.rows(batch))
+        }
+
+        // A step that ends on anything but `SQLITE_DONE` stopped early: a locked database, an I/O
+        // error on the volume, a corrupt page. Finishing the stream normally would report the rows
+        // read so far as the whole table, which is indistinguishable from an empty one.
+        guard stepResult == SQLITE_DONE else {
+            let message = String(cString: sqlite3_errmsg(db))
+            sqlite3_finalize(statement)
+            continuation.finish(throwing: SQLitePluginError.queryFailed(message))
+            return
         }
 
         sqlite3_finalize(statement)
@@ -305,6 +415,7 @@ private actor SQLiteConnectionActor {
         guard let db else {
             throw SQLitePluginError.notConnected
         }
+        busyState.beginOperation()
 
         let startTime = Date()
         var statement: OpaquePointer?
@@ -368,7 +479,8 @@ private actor SQLiteConnectionActor {
         var rowsAffected = 0
         var truncated = false
 
-        while sqlite3_step(statement) == SQLITE_ROW {
+        var stepResult = sqlite3_step(statement)
+        while stepResult == SQLITE_ROW {
             if rows.count >= PluginRowLimits.emergencyMax {
                 truncated = true
                 break
@@ -395,6 +507,11 @@ private actor SQLiteConnectionActor {
             }
 
             rows.append(row)
+            stepResult = sqlite3_step(statement)
+        }
+
+        if !truncated, stepResult != SQLITE_DONE {
+            throw SQLitePluginError.queryFailed(String(cString: sqlite3_errmsg(db)))
         }
 
         if columns.isEmpty {
@@ -427,7 +544,8 @@ private struct SQLiteRawResult: Sendable {
 
 final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
-    private let connectionActor = SQLiteConnectionActor()
+    private let busyState = SQLiteBusyState()
+    private let connectionActor: SQLiteConnectionActor
     private let interruptLock = NSLock()
     nonisolated(unsafe) private var _dbHandleForInterrupt: OpaquePointer?
 
@@ -447,6 +565,8 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .truncateTable,
             .cancelQuery,
             .batchExecute,
+            .schemaCompare,
+            .dataCompare,
         ]
     }
 
@@ -457,6 +577,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     init(config: DriverConnectionConfig) {
         self.config = config
+        self.connectionActor = SQLiteConnectionActor(busyState: busyState)
     }
 
     // MARK: - Connection
@@ -487,8 +608,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
-        guard seconds > 0 else { return }
-        await connectionActor.applyBusyTimeout(Int32(seconds * 1_000))
+        await connectionActor.applyBusyTimeout(Int32(max(0, seconds) * 1_000))
     }
 
     // MARK: - Query Execution
@@ -517,7 +637,10 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
+    /// `sqlite3_interrupt` ends a statement that is running. A connection waiting for a lock is
+    /// not running one, and measurably ignores it, so the busy handler is what ends that wait.
     func cancelQuery() throws {
+        busyState.cancel()
         interruptLock.lock()
         defer { interruptLock.unlock() }
         guard let db = _dbHandleForInterrupt else { return }
@@ -569,60 +692,47 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - User Query
 
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        guard Self.returnsRows(query) else { return nil }
+        return try await boundedQueryFromStream(query: query, rowCap: rowCap)
+    }
+
+    /// A capped read from a caller that resolves its own cap, the MCP bridge among them, still
+    /// streams. Routing every uncapped statement through the stream is what made a DML statement
+    /// report no row count, because a stepped statement carries its `sqlite3_changes` nowhere.
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
+        if parameters == nil, let cap = rowCap, cap > 0,
+           let bounded = try await executeBoundedQuery(query: query, rowCap: cap) {
+            return bounded
+        }
+
+        let raw: PluginQueryResult
         if let parameters {
-            let raw = try await executeParameterized(query: query, parameters: parameters)
-            guard let cap = rowCap, cap > 0, raw.rows.count > cap else { return raw }
-            return PluginQueryResult(
-                columns: raw.columns,
-                columnTypeNames: raw.columnTypeNames,
-                rows: Array(raw.rows.prefix(cap)),
-                rowsAffected: raw.rowsAffected,
-                executionTime: raw.executionTime,
-                isTruncated: true,
-                statusMessage: raw.statusMessage
-            )
+            raw = try await executeParameterized(query: query, parameters: parameters)
+        } else {
+            raw = try await execute(query: query)
         }
-
-        let startTime = Date()
-        var columns: [String] = []
-        var columnTypeNames: [String] = []
-        var rows: [[PluginCellValue]] = []
-        var truncated = false
-
-        let stream = streamRows(query: query)
-        for try await element in stream {
-            switch element {
-            case .header(let header):
-                columns = header.columns
-                columnTypeNames = header.columnTypeNames
-            case .rows(let batch):
-                if let cap = rowCap, cap > 0 {
-                    let remaining = cap - rows.count
-                    if remaining <= 0 {
-                        truncated = true
-                    } else if batch.count > remaining {
-                        rows.append(contentsOf: batch.prefix(remaining))
-                        truncated = true
-                    } else {
-                        rows.append(contentsOf: batch)
-                    }
-                } else {
-                    rows.append(contentsOf: batch)
-                }
-                if truncated { break }
-            }
-            if truncated { break }
-        }
-
+        guard let cap = rowCap, cap > 0, raw.rows.count > cap else { return raw }
         return PluginQueryResult(
-            columns: columns,
-            columnTypeNames: columnTypeNames,
-            rows: rows,
-            rowsAffected: 0,
-            executionTime: Date().timeIntervalSince(startTime),
-            isTruncated: truncated
+            columns: raw.columns,
+            columnTypeNames: raw.columnTypeNames,
+            rows: Array(raw.rows.prefix(cap)),
+            rowsAffected: raw.rowsAffected,
+            executionTime: raw.executionTime,
+            isTruncated: true,
+            statusMessage: raw.statusMessage
         )
+    }
+
+    private static let rowReturningKeywords: Set<String> = ["SELECT", "WITH", "VALUES", "TABLE", "PRAGMA", "EXPLAIN"]
+
+    private static func returnsRows(_ query: String) -> Bool {
+        var remaining = Substring(query).drop { $0.isWhitespace }
+        while remaining.first == "(" {
+            remaining = remaining.dropFirst().drop { $0.isWhitespace }
+        }
+        let keyword = remaining.prefix { $0.isLetter }.uppercased()
+        return rowReturningKeywords.contains(keyword)
     }
 
     // MARK: - Schema Operations
@@ -645,63 +755,115 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         let safeTable = escapeStringLiteral(table)
-        let query = "PRAGMA table_info('\(safeTable)')"
+        // table_xinfo rather than table_info: table_info omits generated columns entirely, so they
+        // were invisible to the structure editor and to every write path that reads this list.
+        let query = "PRAGMA table_xinfo('\(safeTable)')"
         let result = try await execute(query: query)
+        let generationExpressions = SQLiteCheckConstraintParser.generationExpressions(
+            inCreateStatement: try await createStatement(forTable: table) ?? ""
+        )
 
         return result.rows.compactMap { row in
-            guard row.count >= 6,
+            guard row.count >= 7,
                   let name = row[1].asText,
                   let dataType = row[2].asText else {
                 return nil
             }
 
+            // hidden: 0 normal, 1 a virtual table's hidden column, 2 VIRTUAL generated,
+            // 3 STORED generated.
+            let hidden = row[6].asText.flatMap { Int($0) } ?? 0
+            guard hidden != 1 else { return nil }
+
             let isNullable = row[3].asText == "0"
-            // PRAGMA table_info pk column: 0 = not PK, 1+ = position in composite PK
+            // PRAGMA pk column: 0 = not PK, 1+ = position in composite PK
             let pkText = row[5].asText
             let isPrimaryKey = pkText != nil && pkText != "0"
-            let defaultValue = row[4].asText
+            let defaultValue = sqliteDefaultValueFromCatalog(row[4].asText)
+            let generationKind: GenerationKind? = hidden == 2 ? .virtual : (hidden == 3 ? .stored : nil)
 
             return PluginColumnInfo(
                 name: name,
                 dataType: dataType,
                 isNullable: isNullable,
                 isPrimaryKey: isPrimaryKey,
-                defaultValue: defaultValue
+                defaultValue: defaultValue,
+                isGenerated: generationKind != nil,
+                generationExpression: generationKind == nil ? nil : generationExpressions[name],
+                generationKind: generationKind
             )
         }
     }
 
+    private func createStatement(forTable table: String) async throws -> String? {
+        let query = "SELECT sql FROM sqlite_master WHERE type='table' AND name='\(escapeStringLiteral(table))'"
+        let result = try await execute(query: query)
+        return result.rows.first?[safe: 0]?.asText
+    }
+
+    func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
+        guard let statement = try await createStatement(forTable: table) else { return [] }
+        return SQLiteCheckConstraintParser.constraints(inCreateStatement: statement).map { parsed in
+            PluginCheckConstraintInfo(name: parsed.name, expression: parsed.expression)
+        }
+    }
+
+    var providesBulkColumnFetch: Bool { true }
+
+    /// `pragma_table_xinfo`, not `pragma_table_info`, for the same reason `fetchColumns` uses it:
+    /// `table_info` omits generated columns entirely, so the bulk read used to answer with a
+    /// shorter column list than the per-table read for the same table. A caller comparing two
+    /// schemas through the bulk read saw neither side's generated columns and reported them as
+    /// matching. `m.sql` rides along so the generation expressions are parsed from the CREATE
+    /// statement without a second round trip per table.
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let query = """
-            SELECT m.name AS tbl, p.cid, p.name, p.type, p."notnull", p.dflt_value, p.pk
-            FROM sqlite_master m, pragma_table_info(m.name) p
+            SELECT m.name AS tbl, p.cid, p.name, p.type, p."notnull", p.dflt_value, p.pk,
+                   p.hidden, m.sql
+            FROM sqlite_master m, pragma_table_xinfo(m.name) p
             WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%'
             ORDER BY m.name, p.cid
             """
         let result = try await execute(query: query)
 
         var allColumns: [String: [PluginColumnInfo]] = [:]
+        var expressionsByTable: [String: [String: String]] = [:]
 
         for row in result.rows {
-            guard row.count >= 7,
+            guard row.count >= 9,
                   let tableName = row[0].asText,
                   let columnName = row[2].asText,
                   let dataType = row[3].asText else {
                 continue
             }
 
+            // hidden: 0 normal, 1 a virtual table's hidden column, 2 VIRTUAL generated,
+            // 3 STORED generated.
+            let hidden = row[7].asText.flatMap { Int($0) } ?? 0
+            guard hidden != 1 else { continue }
+
             let isNullable = row[4].asText == "0"
-            let defaultValue = row[5].asText
-            // PRAGMA table_info pk column: 0 = not PK, 1+ = position in composite PK
+            let defaultValue = sqliteDefaultValueFromCatalog(row[5].asText)
+            // PRAGMA table_xinfo pk column: 0 = not PK, 1+ = position in composite PK
             let pkText = row[6].asText
             let isPrimaryKey = pkText != nil && pkText != "0"
+            let generationKind: GenerationKind? = hidden == 2 ? .virtual : (hidden == 3 ? .stored : nil)
+
+            if generationKind != nil, expressionsByTable[tableName] == nil {
+                expressionsByTable[tableName] = SQLiteCheckConstraintParser.generationExpressions(
+                    inCreateStatement: row[8].asText ?? ""
+                )
+            }
 
             let column = PluginColumnInfo(
                 name: columnName,
                 dataType: dataType,
                 isNullable: isNullable,
                 isPrimaryKey: isPrimaryKey,
-                defaultValue: defaultValue
+                defaultValue: defaultValue,
+                isGenerated: generationKind != nil,
+                generationExpression: generationKind == nil ? nil : expressionsByTable[tableName]?[columnName],
+                generationKind: generationKind
             )
 
             allColumns[tableName, default: []].append(column)
@@ -710,10 +872,15 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return allColumns
     }
 
+    var providesBulkForeignKeyFetch: Bool { true }
+
+    var tableDDLIncludesForeignKeys: Bool { true }
+
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        /// Selected in `PRAGMA foreign_key_list`'s own column order, behind the table name, so the
+        /// rows can be handed to the same grouping the single-table read uses.
         let query = """
-            SELECT m.name AS table_name, p.id, p."table" AS referenced_table,
-                   p."from" AS column_name, p."to" AS referenced_column,
+            SELECT m.name AS table_name, p.id, p.seq, p."table", p."from", p."to",
                    p.on_update, p.on_delete
             FROM sqlite_master m, pragma_foreign_key_list(m.name) p
             WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%'
@@ -721,34 +888,34 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             """
         let result = try await execute(query: query)
 
-        var allForeignKeys: [String: [PluginForeignKeyInfo]] = [:]
-
+        var pragmaRowsByTable: [String: [[PluginCellValue]]] = [:]
         for row in result.rows {
-            guard row.count >= 7,
-                  let tableName = row[0].asText,
-                  let id = row[1].asText,
-                  let refTable = row[2].asText,
-                  let fromCol = row[3].asText,
-                  let toCol = row[4].asText else {
-                continue
-            }
-
-            let onUpdate = row[5].asText ?? "NO ACTION"
-            let onDelete = row[6].asText ?? "NO ACTION"
-
-            let fk = PluginForeignKeyInfo(
-                name: "fk_\(tableName)_\(id)",
-                column: fromCol,
-                referencedTable: refTable,
-                referencedColumn: toCol,
-                onDelete: onDelete,
-                onUpdate: onUpdate
-            )
-
-            allForeignKeys[tableName, default: []].append(fk)
+            guard row.count >= 8, let tableName = row[0].asText else { continue }
+            pragmaRowsByTable[tableName, default: []].append(Array(row.dropFirst()))
         }
+        guard !pragmaRowsByTable.isEmpty else { return [:] }
 
-        return allForeignKeys
+        let createStatements = try await createTableStatements()
+        return pragmaRowsByTable.reduce(into: [:]) { foreignKeys, entry in
+            foreignKeys[entry.key] = SQLiteForeignKeyGrouping.infos(
+                table: entry.key,
+                pragmaRows: entry.value,
+                createTableSQL: createStatements[entry.key]
+            )
+        }
+    }
+
+    /// The stored `CREATE TABLE` text for every ordinary table, keyed by name. Read in one query so
+    /// recovering constraint names costs one round trip rather than one per table.
+    private func createTableStatements() async throws -> [String: String] {
+        let rows = try await execute(query: """
+            SELECT name, sql FROM sqlite_master
+            WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND sql IS NOT NULL
+            """).rows
+        return rows.reduce(into: [:]) { statements, row in
+            guard let name = row[safe: 0]?.asText, let sql = row[safe: 1]?.asText else { return }
+            statements[name] = sql
+        }
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
@@ -761,95 +928,63 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             """
         let result = try await execute(query: query)
 
-        var indexMap: [(name: String, isUnique: Bool, isPrimary: Bool, columns: [String])] = []
-        var indexLookup: [String: Int] = [:]
-
-        for row in result.rows {
-            guard row.count >= 4,
-                  let indexName = row[0].asText else { continue }
-
-            let isUnique = row[1].asText == "1"
-            let origin = row[2].asText ?? "c"
-
-            if let idx = indexLookup[indexName] {
-                if let colName = row[3].asText {
-                    indexMap[idx].columns.append(colName)
-                }
-            } else {
-                let columns: [String] = row[3].asText.map { [$0] } ?? []
-                indexLookup[indexName] = indexMap.count
-                indexMap.append((
-                    name: indexName,
-                    isUnique: isUnique,
-                    isPrimary: origin == "pk",
-                    columns: columns
-                ))
-            }
-        }
-
-        return indexMap.map { entry in
-            PluginIndexInfo(
-                name: entry.name,
-                columns: entry.columns,
-                isUnique: entry.isUnique,
-                isPrimary: entry.isPrimary,
-                type: "BTREE"
+        let rows = result.rows.compactMap { row -> SQLiteIndexRow? in
+            guard row.count >= 4, let indexName = row[0].asText else { return nil }
+            return SQLiteIndexRow(
+                table: table,
+                index: indexName,
+                column: row[3].asText,
+                isUnique: row[1].asText == "1",
+                origin: row[2].asText ?? "c"
             )
-        }.sorted { $0.isPrimary && !$1.isPrimary }
+        }
+        return SQLiteIndexGrouping.group(rows)[table] ?? []
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
         let safeTable = escapeStringLiteral(table)
-        let query = "PRAGMA foreign_key_list('\(safeTable)')"
-        let result = try await execute(query: query)
+        let pragmaRows = try await execute(query: "PRAGMA foreign_key_list('\(safeTable)')").rows
+        guard !pragmaRows.isEmpty else { return [] }
 
-        return result.rows.compactMap { row -> PluginForeignKeyInfo? in
-            guard row.count >= 5,
-                  let refTable = row[2].asText,
-                  let fromCol = row[3].asText,
-                  let toCol = row[4].asText else {
-                return nil
-            }
+        let createTableSQL = try await execute(query: """
+            SELECT sql FROM sqlite_master WHERE type = 'table' AND name = '\(safeTable)'
+            """).rows.first?[safe: 0]?.asText
 
-            let id = row[0].asText ?? "0"
-            let onUpdate = row.count >= 6 ? (row[5].asText ?? "NO ACTION") : "NO ACTION"
-            let onDelete = row.count >= 7 ? (row[6].asText ?? "NO ACTION") : "NO ACTION"
-
-            return PluginForeignKeyInfo(
-                name: "fk_\(table)_\(id)",
-                column: fromCol,
-                referencedTable: refTable,
-                referencedColumn: toCol,
-                onDelete: onDelete,
-                onUpdate: onUpdate
+        return SQLiteForeignKeyGrouping.infos(
+            table: table,
+            pragmaRows: pragmaRows,
+            createTableSQL: createTableSQL,
+            primaryKeysByTable: try await primaryKeys(
+                ofTablesReferencedIn: pragmaRows.compactMap { $0[safe: 2]?.asText }
             )
+        )
+    }
+
+    /// The primary key columns of each named table, in key order, keyed by lower-cased table name.
+    ///
+    /// A foreign key written `REFERENCES parent` with no column list points at the parent's primary
+    /// key, and `PRAGMA foreign_key_list` reports null rather than resolving it, so the parent has
+    /// to be asked. One query covers every parent a table references.
+    private func primaryKeys(ofTablesReferencedIn tables: [String]) async throws -> [String: [String]] {
+        let names = Set(tables.map { $0.lowercased() })
+        guard !names.isEmpty else { return [:] }
+        let literals = names.map { "'\(escapeStringLiteral($0))'" }.joined(separator: ", ")
+
+        let rows = try await execute(query: """
+            SELECT m.name, i.name
+            FROM sqlite_master m, pragma_table_info(m.name) i
+            WHERE m.type = 'table' AND lower(m.name) IN (\(literals)) AND i.pk > 0
+            ORDER BY m.name, i.pk
+            """).rows
+
+        return rows.reduce(into: [:]) { keys, row in
+            guard let table = row[safe: 0]?.asText, let column = row[safe: 1]?.asText else { return }
+            keys[table.lowercased(), default: []].append(column)
         }
     }
 
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
-        let safeTable = escapeStringLiteral(table)
-        let query = """
-            SELECT name, sql FROM sqlite_master
-            WHERE type = 'trigger' AND tbl_name = '\(safeTable)'
-            ORDER BY name
-            """
-        let result = try await execute(query: query)
-
-        return result.rows.compactMap { row -> PluginTriggerInfo? in
-            guard row.count >= 2,
-                  let name = row[0].asText,
-                  let sql = row[1].asText else {
-                return nil
-            }
-
-            let (timing, event) = TriggerSQLParser.timingAndEvent(from: sql)
-            return PluginTriggerInfo(
-                name: name,
-                timing: timing,
-                event: event,
-                statement: sql
-            )
-        }
+        try await sqliteTriggerList(table: table)
     }
 
     var supportsTransactionalDDL: Bool { true }
@@ -883,6 +1018,22 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let formatted = formatDDL(ddl)
         return formatted.hasSuffix(";") ? formatted : formatted + ";"
+    }
+
+    /// `sqlite_master` stores each index's own `CREATE INDEX` text, which is what `sqlite3 .dump`
+    /// replays and which carries a partial predicate, an expression key, a collation and a sort
+    /// direction exactly as written. An index SQLite created for itself to back a UNIQUE or PRIMARY
+    /// KEY constraint has a null `sql`, so testing for that is what keeps `sqlite_autoindex_*` out
+    /// of the dump: those come back with the constraint inside `CREATE TABLE`.
+    func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
+        let result = try await execute(query: """
+            SELECT sql FROM sqlite_master
+            WHERE type = 'index'
+              AND tbl_name = '\(escapeStringLiteral(table))'
+              AND sql IS NOT NULL
+            ORDER BY name
+            """)
+        return result.rows.compactMap { $0[safe: 0]?.asText }
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
@@ -983,73 +1134,56 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Create Table DDL
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
-        guard !definition.columns.isEmpty else { return nil }
-
-        let tableName = quoteIdentifier(definition.tableName)
-        let pkColumns = definition.columns.filter { $0.isPrimaryKey }
-        let inlinePK = pkColumns.count == 1
-        var parts: [String] = definition.columns.map { sqliteColumnDefinition($0, inlinePK: inlinePK) }
-
-        if pkColumns.count > 1 {
-            let pkCols = pkColumns.map { quoteIdentifier($0.name) }.joined(separator: ", ")
-            parts.append("PRIMARY KEY (\(pkCols))")
-        }
-
-        for fk in definition.foreignKeys {
-            parts.append(sqliteForeignKeyDefinition(fk))
-        }
-
-        let sql = "CREATE TABLE \(tableName) (\n  " +
-            parts.joined(separator: ",\n  ") +
-            "\n);"
-
-        return sql
+        sqliteCreateTableSQL(definition: definition)
     }
 
-    private func sqliteColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
-        var def = "\(quoteIdentifier(col.name)) \(col.dataType)"
-        if inlinePK && col.isPrimaryKey {
-            def += " PRIMARY KEY"
-            if col.autoIncrement {
-                def += " AUTOINCREMENT"
-            }
-        }
-        if !col.isNullable {
-            def += " NOT NULL"
-        }
-        if let defaultValue = col.defaultValue {
-            def += " DEFAULT \(sqliteDefaultValue(defaultValue))"
-        }
-        return def
-    }
-
-    private func sqliteDefaultValue(_ value: String) -> String {
-        let upper = value.uppercased()
-        if upper == "NULL" || upper == "CURRENT_TIMESTAMP" || upper == "CURRENT_DATE" || upper == "CURRENT_TIME"
-            || value.hasPrefix("'") || Int64(value) != nil || Double(value) != nil {
-            return value
-        }
-        return "'\(escapeStringLiteral(value))'"
-    }
-
-    private func sqliteForeignKeyDefinition(_ fk: PluginForeignKeyDefinition) -> String {
-        let cols = fk.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let refCols = fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        var def = "FOREIGN KEY (\(cols)) REFERENCES \(quoteIdentifier(fk.referencedTable)) (\(refCols))"
-        if fk.onDelete != "NO ACTION" {
-            def += " ON DELETE \(fk.onDelete)"
-        }
-        if fk.onUpdate != "NO ACTION" {
-            def += " ON UPDATE \(fk.onUpdate)"
-        }
-        return def
+    /// Kept as a method because the table-rebuild path renders its columns through it. The body is
+    /// the extracted free function, so the create path and the rebuild path cannot spell a column
+    /// two different ways.
+    func sqliteColumnDefinition(_ column: PluginColumnDefinition, inlinePK: Bool) -> String {
+        sqliteColumnDefinitionSQL(column, isInlinePrimaryKey: inlinePK && column.isPrimaryKey)
     }
 
     // MARK: - ALTER TABLE DDL
 
+    /// `ALTER TABLE` is the only rename SQLite has and it refuses a view, so a view is turned
+    /// away here rather than by a message from the engine. From 3.25 the statement rewrites the
+    /// references to the table in every trigger and view, and from 3.26 in every foreign key,
+    /// unless `PRAGMA legacy_alter_table` is on.
+    func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws {
+        guard objectType.uppercased() == "TABLE" else {
+            throw PluginDriverUnsupportedOperation.renameTable
+        }
+        _ = try await execute(
+            query: "ALTER TABLE \(quoteIdentifier(name)) RENAME TO \(quoteIdentifier(newName))"
+        )
+    }
+
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
-        let colDef = sqliteColumnDefinition(column, inlinePK: false)
+        let colDef = sqliteColumnDefinitionSQL(addableColumn(column), isInlinePrimaryKey: false)
         return "ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(colDef)"
+    }
+
+    /// ALTER TABLE ADD COLUMN refuses a STORED generated column outright once the table holds rows
+    /// ("cannot add a STORED column"), so the ALTER path downgrades to VIRTUAL. CREATE TABLE has no
+    /// such limit and keeps whichever kind was chosen.
+    private func addableColumn(_ column: PluginColumnDefinition) -> PluginColumnDefinition {
+        guard column.generationKind == .stored else { return column }
+        return PluginColumnDefinition(
+            name: column.name,
+            dataType: column.dataType,
+            isNullable: column.isNullable,
+            defaultValue: column.defaultValue,
+            isPrimaryKey: column.isPrimaryKey,
+            autoIncrement: column.autoIncrement,
+            comment: column.comment,
+            unsigned: column.unsigned,
+            onUpdate: column.onUpdate,
+            charset: column.charset,
+            collation: column.collation,
+            generationExpression: column.generationExpression,
+            generationKind: .virtual
+        )
     }
 
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
@@ -1061,10 +1195,51 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "ALTER TABLE \(quoteIdentifier(table)) DROP COLUMN \(quoteIdentifier(columnName))"
     }
 
+    /// SQLite has no positional `ALTER`, so the order changes by rebuilding the table.
+    ///
+    /// The new table is written by moving the original column definitions as text inside the
+    /// statement SQLite stored, so a `CHECK`, a `COLLATE`, a `GENERATED ALWAYS AS` and a `DEFAULT`
+    /// with a comma in it all come through untouched. Re-rendering them from `PRAGMA table_info`
+    /// would lose every one, because the pragma does not report them.
+    func generateColumnReorderPlan(
+        table: String,
+        schema: String?,
+        columns: [PluginColumnDefinition],
+        desiredOrder: [String]
+    ) async throws -> PluginColumnReorderPlan? {
+        try await SQLiteColumnReorderPlanner.plan(
+            tableName: table,
+            desiredOrder: desiredOrder,
+            isRunnable: true,
+            execute: { try await self.execute(query: $0) }
+        )
+    }
+
+    func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String? {
+        try await SQLiteColumnReorderPlanner.schemaFingerprint(
+            tableName: table,
+            execute: { try await self.execute(query: $0) }
+        )
+    }
+
+    /// ADD/DROP CONSTRAINT arrived in SQLite 3.53.0. Returning nil below that version makes
+    /// `SchemaStatementGenerator` refuse the change with "Unsupported schema operation" rather than
+    /// sending a statement the linked library cannot parse.
+    func generateAddCheckConstraintSQL(table: String, constraint: PluginCheckConstraintDefinition) -> String? {
+        guard SQLitePlugin.supportsCheckConstraintEditing else { return nil }
+        let expression = constraint.expression.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !expression.isEmpty, !constraint.name.isEmpty else { return nil }
+        return "ALTER TABLE \(quoteIdentifier(table)) ADD CONSTRAINT "
+            + "\(quoteIdentifier(constraint.name)) CHECK (\(expression))"
+    }
+
+    func generateDropCheckConstraintSQL(table: String, constraintName: String) -> String? {
+        guard SQLitePlugin.supportsCheckConstraintEditing, !constraintName.isEmpty else { return nil }
+        return "ALTER TABLE \(quoteIdentifier(table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
+    }
+
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
-        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let unique = index.isUnique ? "UNIQUE " : ""
-        return "CREATE \(unique)INDEX \(quoteIdentifier(index.name)) ON \(quoteIdentifier(table)) (\(cols))"
+        sqliteAddIndexSQL(table: table, index: index)
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {

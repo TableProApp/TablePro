@@ -6,113 +6,107 @@ import XCTest
 final class MCPCancellationTokenTests: XCTestCase {
     func testNewTokenIsNotCancelled() async {
         let token = MCPCancellationToken()
-        let cancelled = await token.isCancelled()
+        let cancelled = await token.isCancelled
+        let reason = await token.reason
         XCTAssertFalse(cancelled)
+        XCTAssertNil(reason)
     }
 
-    func testIsCancelledAfterCancel() async {
+    func testCancelRecordsTheReason() async {
+        let token = MCPCancellationToken()
+        await token.cancel(reason: .clientDisconnected)
+
+        let cancelled = await token.isCancelled
+        let reason = await token.reason
+        XCTAssertTrue(cancelled)
+        XCTAssertEqual(reason, .clientDisconnected)
+    }
+
+    func testCancelDefaultsToAClientRequest() async {
         let token = MCPCancellationToken()
         await token.cancel()
-        let cancelled = await token.isCancelled()
-        XCTAssertTrue(cancelled)
+
+        let reason = await token.reason
+        XCTAssertEqual(reason, .clientRequested(nil))
     }
 
-    func testOnCancelHandlerRunsWhenCancelFires() async {
+    func testCancelIsIdempotentAndKeepsTheFirstReason() async {
         let token = MCPCancellationToken()
         let flag = ObservedFlag()
-        await token.onCancel {
-            await flag.set()
-        }
+        await token.onCancel { _ in await flag.set() }
 
-        let beforeCancel = await flag.value()
-        XCTAssertFalse(beforeCancel)
+        await token.cancel(reason: .clientRequested("user pressed stop"))
+        await token.cancel(reason: .serverShuttingDown)
+        await token.cancel(reason: .deadlineExceeded)
 
-        await token.cancel()
-
-        let afterCancel = await flag.value()
-        XCTAssertTrue(afterCancel)
+        let reason = await token.reason
+        let handlerRuns = await flag.times()
+        XCTAssertEqual(reason, .clientRequested("user pressed stop"))
+        XCTAssertEqual(handlerRuns, 1)
     }
 
-    func testOnCancelRegisteredAfterCancelRunsImmediately() async {
+    func testOnCancelHandlersRunWhenCancelFires() async {
         let token = MCPCancellationToken()
-        await token.cancel()
+        let first = ObservedFlag()
+        let second = ObservedFlag()
+        await token.onCancel { _ in await first.set() }
+        await token.onCancel { _ in await second.set() }
 
-        let flag = ObservedFlag()
-        await token.onCancel {
-            await flag.set()
-        }
+        let beforeFirst = await first.value()
+        let beforeSecond = await second.value()
+        XCTAssertFalse(beforeFirst)
+        XCTAssertFalse(beforeSecond)
 
-        let value = await flag.value()
-        XCTAssertTrue(value)
+        await token.cancel(reason: .credentialRevoked)
+
+        let afterFirst = await first.value()
+        let afterSecond = await second.value()
+        XCTAssertTrue(afterFirst)
+        XCTAssertTrue(afterSecond)
     }
 
-    func testMultipleOnCancelHandlersAllInvoked() async {
+    func testHandlersReceiveTheCancellationReason() async {
         let token = MCPCancellationToken()
-        let flagA = ObservedFlag()
-        let flagB = ObservedFlag()
-        let flagC = ObservedFlag()
+        let observed = ObservedValue<MCPCancellationReason>()
+        await token.onCancel { reason in await observed.set(reason) }
 
-        await token.onCancel { await flagA.set() }
-        await token.onCancel { await flagB.set() }
-        await token.onCancel { await flagC.set() }
+        await token.cancel(reason: .deadlineExceeded)
 
-        await token.cancel()
-
-        let valueA = await flagA.value()
-        let valueB = await flagB.value()
-        let valueC = await flagC.value()
-        XCTAssertTrue(valueA)
-        XCTAssertTrue(valueB)
-        XCTAssertTrue(valueC)
+        let reason = await observed.value()
+        XCTAssertEqual(reason, .deadlineExceeded)
     }
 
-    func testCancelTwiceIsIdempotent() async {
+    func testHandlerRegisteredAfterCancellationRunsImmediately() async {
         let token = MCPCancellationToken()
-        let counter = HandlerInvocationCounter()
-        await token.onCancel {
-            await counter.increment()
-        }
+        await token.cancel(reason: .serverShuttingDown)
 
-        await token.cancel()
-        await token.cancel()
+        let observed = ObservedValue<MCPCancellationReason>()
+        await token.onCancel { reason in await observed.set(reason) }
 
-        let count = await counter.value()
-        XCTAssertEqual(count, 1)
-
-        let cancelled = await token.isCancelled()
-        XCTAssertTrue(cancelled)
+        let reason = await observed.value()
+        XCTAssertEqual(reason, .serverShuttingDown)
     }
 
-    func testThrowIfCancelledThrowsAfterCancel() async {
+    func testThrowIfCancelledOnlyThrowsAfterCancellation() async throws {
         let token = MCPCancellationToken()
-        await token.cancel()
+        try await token.throwIfCancelled()
+
+        await token.cancel(reason: .clientDisconnected)
+
         do {
             try await token.throwIfCancelled()
-            XCTFail("Expected CancellationError to be thrown")
+            XCTFail("Expected a CancellationError")
         } catch is CancellationError {
-        } catch {
-            XCTFail("Unexpected error: \(error)")
+            return
         }
     }
 
-    func testThrowIfCancelledDoesNotThrowWhenNotCancelled() async {
-        let token = MCPCancellationToken()
-        do {
-            try await token.throwIfCancelled()
-        } catch {
-            XCTFail("Unexpected error: \(error)")
-        }
-    }
-}
-
-private actor HandlerInvocationCounter {
-    private var invocations: Int = 0
-
-    func increment() {
-        invocations += 1
-    }
-
-    func value() -> Int {
-        invocations
+    func testEveryReasonHasAStableLabel() {
+        XCTAssertEqual(MCPCancellationReason.clientRequested(nil).label, "client_requested")
+        XCTAssertEqual(MCPCancellationReason.clientRequested("stop").label, "client_requested")
+        XCTAssertEqual(MCPCancellationReason.clientDisconnected.label, "client_disconnected")
+        XCTAssertEqual(MCPCancellationReason.deadlineExceeded.label, "deadline_exceeded")
+        XCTAssertEqual(MCPCancellationReason.credentialRevoked.label, "credential_revoked")
+        XCTAssertEqual(MCPCancellationReason.serverShuttingDown.label, "server_shutting_down")
     }
 }

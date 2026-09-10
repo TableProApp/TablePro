@@ -7,6 +7,7 @@
 //  and migration from the legacy character-string storage.
 //
 
+import AppKit
 import Foundation
 @testable import TablePro
 import Testing
@@ -43,6 +44,14 @@ struct ShortcutActionDefaultsTests {
     func findDefaults() {
         #expect(KeyboardSettings.defaultShortcuts[.findNext] == .character("g", command: true))
         #expect(KeyboardSettings.defaultShortcuts[.findPrevious] == .character("g", command: true, shift: true))
+    }
+
+    @Test("Jump to Column default is Cmd+Shift+J and belongs to the data grid")
+    func jumpToColumnDefault() {
+        #expect(KeyboardSettings.defaultShortcuts[.jumpToColumn] == .character("j", command: true, shift: true))
+        #expect(ShortcutAction.jumpToColumn.context == .dataGrid)
+        #expect(ShortcutAction.jumpToColumn.category == .dataGrid)
+        #expect(ShortcutAction.reservedConflict(for: .character("j", command: true, shift: true), context: .dataGrid) == nil)
     }
 }
 
@@ -181,6 +190,35 @@ struct BareKeyValidationTests {
         #expect(!ShortcutAction.executeQuery.allowsBareKey)
     }
 
+    /// The recorder tells the user a shortcut needs Command or Control, so the capture rule has
+    /// to be exactly that. Option and Shift only ever qualify a combo, they never carry one, and
+    /// a letter key held with either alone is a text-input keystroke rather than a shortcut.
+    @Test("Option and Shift cannot hold a shortcut without Command or Control")
+    func optionAndShiftAloneAreNotRecordable() {
+        func capture(_ flags: NSEvent.ModifierFlags) -> BoundKey? {
+            let event = NSEvent.keyEvent(
+                with: .keyDown,
+                location: .zero,
+                modifierFlags: flags,
+                timestamp: 0,
+                windowNumber: 0,
+                context: nil,
+                characters: "e",
+                charactersIgnoringModifiers: "e",
+                isARepeat: false,
+                keyCode: 14
+            )
+            return event.flatMap(BoundKey.init(from:))
+        }
+
+        #expect(capture(.option) == nil)
+        #expect(capture(.shift) == nil)
+        #expect(capture([.option, .shift]) == nil)
+        #expect(capture(.command) != nil)
+        #expect(capture(.control) != nil)
+        #expect(capture([.command, .option]) != nil)
+    }
+
     @Test("hasModifier reflects the combo")
     func hasModifierReflectsCombo() {
         #expect(BoundKey.character("r", command: true).hasModifier)
@@ -223,10 +261,21 @@ struct ShortcutConflictTests {
         #expect(conflict == .refresh)
     }
 
-    @Test("Editor action does not conflict with the data-grid Cmd+F filter")
-    func crossContextDoesNotConflict() {
+    @Test("Cmd+F is held by the global Find action, so an editor binding collides with it")
+    func commandFConflictsWithFind() {
         let settings = KeyboardSettings.default
         let conflict = settings.findConflict(for: .character("f", command: true), excluding: .executeQuery)
+        #expect(conflict == .find)
+    }
+
+    @Test("A data-grid binding does not conflict with an editor-only default")
+    func crossContextDoesNotConflict() {
+        let settings = KeyboardSettings.default
+        #expect(KeyboardSettings.defaultShortcuts[.formatQuery] == .character("l", command: true, shift: true))
+        let conflict = settings.findConflict(
+            for: .character("l", command: true, shift: true),
+            excluding: .previousPage
+        )
         #expect(conflict == nil)
     }
 }
@@ -268,6 +317,61 @@ struct KeyboardSettingsSanitizeTests {
         let key = BoundKey.character("x", command: true)
         let settings = KeyboardSettings(shortcuts: ["future.unknown.action": key])
         #expect(settings.sanitized().shortcuts["future.unknown.action"] == key)
+    }
+}
+
+@Suite("Workspace navigation defaults")
+struct WorkspaceNavigationShortcutTests {
+    @Test("Moving through the rail is bound to Control-Command and the arrow that matches the direction")
+    func workspaceCyclingIsBoundToVerticalArrows() {
+        let settings = KeyboardSettings.default
+        #expect(settings.shortcut(for: .showPreviousWorkspace) == .special(.upArrow, command: true, control: true))
+        #expect(settings.shortcut(for: .showNextWorkspace) == .special(.downArrow, command: true, control: true))
+    }
+
+    @Test("A chord the user already spent stands down the default that would fight it")
+    func aClaimedChordDisarmsTheNewDefault() {
+        var settings = KeyboardSettings.default
+        settings.setShortcut(.special(.upArrow, command: true, control: true), for: .firstPage)
+
+        #expect(settings.shortcut(for: .firstPage) == .special(.upArrow, command: true, control: true))
+        #expect(settings.shortcut(for: .showPreviousWorkspace) == nil)
+    }
+
+    @Test("Standing a default down leaves every other default alone")
+    func disarmingOneDefaultSparesTheRest() {
+        var settings = KeyboardSettings.default
+        settings.setShortcut(.special(.upArrow, command: true, control: true), for: .firstPage)
+
+        #expect(settings.shortcut(for: .showNextWorkspace) == .special(.downArrow, command: true, control: true))
+        #expect(settings.shortcut(for: .toggleWorkspaceRail) == .character("0", command: true, option: true))
+    }
+
+    @Test("Releasing the conflicting chord re-arms the default on its own")
+    func releasingTheClaimRestoresTheDefault() {
+        var settings = KeyboardSettings.default
+        settings.setShortcut(.special(.upArrow, command: true, control: true), for: .firstPage)
+        #expect(settings.shortcut(for: .showPreviousWorkspace) == nil)
+
+        settings.resetToDefault(for: .firstPage)
+        #expect(settings.shortcut(for: .showPreviousWorkspace) == .special(.upArrow, command: true, control: true))
+    }
+
+    @Test("Standing a default down never counts as the user customizing it")
+    func yieldingDoesNotMarkTheActionCustomized() {
+        var settings = KeyboardSettings.default
+        settings.setShortcut(.special(.upArrow, command: true, control: true), for: .firstPage)
+
+        #expect(!settings.isCustomized(.showPreviousWorkspace))
+        #expect(settings.sanitized().shortcuts[ShortcutAction.showPreviousWorkspace.rawValue] == nil)
+    }
+
+    @Test("An untouched settings file keeps every default")
+    func defaultsSurviveSanitizationUntouched() {
+        let sanitized = KeyboardSettings.default.sanitized()
+        for (action, key) in KeyboardSettings.defaultShortcuts {
+            #expect(sanitized.shortcut(for: action) == key)
+        }
     }
 }
 

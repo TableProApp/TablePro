@@ -41,7 +41,7 @@ struct SetPopoverContentView: View {
                             )
                         )
                         .toggleStyle(.checkbox)
-                        .font(.system(.callout, design: .monospaced))
+                        .font(ThemeEngine.shared.valueFontSwiftUI)
                     }
                 }
                 .padding(12)

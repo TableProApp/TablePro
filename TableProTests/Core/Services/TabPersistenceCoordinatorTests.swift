@@ -7,16 +7,21 @@
 
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TablePro
 
 @Suite("TabPersistenceCoordinator")
 @MainActor
 struct TabPersistenceCoordinatorTests {
     // MARK: - Helpers
 
+    /// A coordinator that has already consulted the disk, which is what every save path requires.
+    /// The refusal to write before that is covered on its own by `TabPersistenceWriteGateTests`.
     private func makeCoordinator() -> TabPersistenceCoordinator {
-        TabPersistenceCoordinator(connectionId: UUID())
+        let coordinator = TabPersistenceCoordinator(connectionId: UUID())
+        coordinator.markObservedTabs()
+        return coordinator
     }
 
     private func makeTabs(count: Int) -> [QueryTab] {
@@ -102,6 +107,74 @@ struct TabPersistenceCoordinatorTests {
 
         coordinator.clearForUserClosedAllTabs()
         await sleep()
+    }
+
+    @Test("A queued older snapshot cannot overwrite a newer synchronous save")
+    func synchronousSaveSupersedesQueuedSnapshot() async throws {
+        let connectionId = UUID()
+        defer { TabDiskActor.clearSync(connectionId: connectionId) }
+        let oldTabs = makeTabs(count: 1)
+        var newTab = oldTabs[0]
+        newTab.title = "Newest"
+        newTab.content.query = "SELECT 180"
+        let oldWriteToken = TabDiskActor.issueWriteToken(for: connectionId)
+
+        TabDiskActor.saveSync(
+            connectionId: connectionId,
+            tabs: [newTab.toPersistedTab()],
+            selectedTabId: newTab.id
+        )
+        let staleWriteApplied = try await TabDiskActor.shared.save(
+            connectionId: connectionId,
+            tabs: oldTabs.map { $0.toPersistedTab() },
+            selectedTabId: oldTabs[0].id,
+            writeToken: oldWriteToken
+        )
+
+        let state = await TabDiskActor.shared.load(connectionId: connectionId)
+        #expect(staleWriteApplied == false)
+        #expect(state?.tabs.count == 1)
+        #expect(state?.tabs[0].title == "Newest")
+        #expect(state?.tabs[0].query == "SELECT 180")
+    }
+
+    @Test("A synchronous coordinator save supersedes its queued asynchronous snapshot")
+    func synchronousCoordinatorSaveSupersedesQueuedSnapshot() async {
+        let coordinator = makeCoordinator()
+        defer { TabDiskActor.clearSync(connectionId: coordinator.connectionId) }
+        let oldTabs = makeTabs(count: 1)
+        var newTab = oldTabs[0]
+        newTab.title = "Newest"
+        newTab.content.query = "SELECT 180"
+
+        coordinator.saveNow(tabs: oldTabs, selectedTabId: oldTabs[0].id)
+        coordinator.saveNowSync(tabs: [newTab], selectedTabId: newTab.id)
+        await Task.yield()
+
+        let state = await TabDiskActor.shared.load(connectionId: coordinator.connectionId)
+        #expect(state?.tabs.count == 1)
+        #expect(state?.tabs[0].title == "Newest")
+        #expect(state?.tabs[0].query == "SELECT 180")
+    }
+
+    @Test("A queued older snapshot cannot recreate state after a synchronous clear")
+    func synchronousClearSupersedesQueuedSnapshot() async throws {
+        let connectionId = UUID()
+        defer { TabDiskActor.clearSync(connectionId: connectionId) }
+        let tabs = makeTabs(count: 1)
+        let oldWriteToken = TabDiskActor.issueWriteToken(for: connectionId)
+
+        TabDiskActor.clearSync(connectionId: connectionId)
+        let staleWriteApplied = try await TabDiskActor.shared.save(
+            connectionId: connectionId,
+            tabs: tabs.map { $0.toPersistedTab() },
+            selectedTabId: tabs[0].id,
+            writeToken: oldWriteToken
+        )
+
+        let state = await TabDiskActor.shared.load(connectionId: connectionId)
+        #expect(staleWriteApplied == false)
+        #expect(state == nil)
     }
 
     @Test("A query over 500KB survives a save and restore through its sidecar")

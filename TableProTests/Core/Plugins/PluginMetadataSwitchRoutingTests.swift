@@ -16,11 +16,11 @@ import Testing
 @Suite("Plugin metadata switch-routing normalization")
 struct PluginMetadataSwitchRoutingTests {
     private var oracleDefault: PluginMetadataSnapshot? {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: DatabaseType.oracle.pluginTypeId)
+        PluginMetadataRegistry.shared.snapshot(for: .oracle)
     }
 
     private var legacyTwoTier: PluginMetadataSnapshot? {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: DatabaseType.mssql.pluginTypeId)
+        PluginMetadataRegistry.shared.snapshot(for: .mssql)
     }
 
     @Test("legacy two-tier declarations on a schema-only engine are detected")

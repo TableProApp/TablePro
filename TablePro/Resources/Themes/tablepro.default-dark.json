@@ -9,6 +9,7 @@
         "text": "#D4D4D4",
         "cursor": "#007AFF",
         "currentLineHighlight": "#007AFF14",
+        "currentStatementHighlight": "#FFFFFF0F",
         "selection": "#264F78",
         "lineNumber": "#858585",
         "invisibles": "#4D4D4D",

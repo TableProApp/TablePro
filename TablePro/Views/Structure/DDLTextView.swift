@@ -38,7 +38,8 @@ struct DDLTextView: View {
                 $text,
                 language: resolvedLanguage,
                 configuration: editorConfiguration,
-                state: $editorState
+                state: $editorState,
+                foldProvider: foldProvider
             )
             .onChange(of: ddl) { _, newDDL in
                 text = newDDL
@@ -50,6 +51,10 @@ struct DDLTextView: View {
                 editorConfiguration = Self.makeConfiguration(fontSize: newSize)
             }
         }
+    }
+
+    private var foldProvider: LineFoldProvider? {
+        databaseType.flatMap(FoldProviderResolver.provider(for:))
     }
 
     private var resolvedLanguage: CodeLanguage {
@@ -73,10 +78,9 @@ struct DDLTextView: View {
             layout: .init(
                 contentInsets: NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
             ),
-            peripherals: .init(
-                showGutter: true,
-                showMinimap: false,
-                showFoldingRibbon: false
+            peripherals: EditorPeripherals.inline(
+                lineNumbers: true,
+                folding: AppSettingsManager.shared.editor.codeFoldingEnabled
             )
         )
     }

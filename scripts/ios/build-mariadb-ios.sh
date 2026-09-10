@@ -1,5 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -eo pipefail
+
+# shellcheck source=../lib/common.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/common.sh"
 
 # Build static MariaDB Connector/C for iOS → xcframework
 #
@@ -11,6 +14,12 @@ set -eo pipefail
 #   ./scripts/ios/build-mariadb-ios.sh
 
 MARIADB_VERSION="3.4.4"
+# MariaDB publishes a digest for this tarball independently of the tarball itself, at
+# https://archive.mariadb.org/connector-c-$MARIADB_VERSION/sha256sums.txt, which is why the source
+# moved here from the GitHub tag archive: GitHub publishes no digest, so pinning one would only
+# record whatever was served the first time anybody looked. Note the upstream tarball unpacks to a
+# "-src" directory, unlike the GitHub one.
+MARIADB_SHA256="58876fad1c2d33979d78bbfa61d7a3476e8faa2cd0af0f7f8bfeb06deaa1034e"
 IOS_DEPLOY_TARGET="17.0"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -18,18 +27,6 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LIBS_DIR="$PROJECT_DIR/Libs/ios"
 BUILD_DIR="$(mktemp -d)"
 NCPU=$(sysctl -n hw.ncpu)
-
-run_quiet() {
-    local logfile
-    logfile=$(mktemp)
-    if ! "$@" > "$logfile" 2>&1; then
-        echo "FAILED: $*"
-        tail -50 "$logfile"
-        rm -f "$logfile"
-        return 1
-    fi
-    rm -f "$logfile"
-}
 
 cleanup() {
     echo "   Cleaning up build directory..."
@@ -46,9 +43,12 @@ setup_openssl_prefix() {
     local PLATFORM_KEY=$1
     local PREFIX_DIR="$BUILD_DIR/openssl-$PLATFORM_KEY"
 
-    local SSL_LIB=$(find "$LIBS_DIR/OpenSSL-SSL.xcframework" -path "*$PLATFORM_KEY*/libssl.a" | head -1)
-    local CRYPTO_LIB=$(find "$LIBS_DIR/OpenSSL-Crypto.xcframework" -path "*$PLATFORM_KEY*/libcrypto.a" | head -1)
-    local HEADERS=$(find "$LIBS_DIR/OpenSSL-SSL.xcframework" -path "*$PLATFORM_KEY*/Headers" -type d | head -1)
+    local SSL_LIB
+    SSL_LIB=$(find "$LIBS_DIR/OpenSSL-SSL.xcframework" -path "*$PLATFORM_KEY*/libssl.a" | head -1)
+    local CRYPTO_LIB
+    CRYPTO_LIB=$(find "$LIBS_DIR/OpenSSL-Crypto.xcframework" -path "*$PLATFORM_KEY*/libcrypto.a" | head -1)
+    local HEADERS
+    HEADERS=$(find "$LIBS_DIR/OpenSSL-SSL.xcframework" -path "*$PLATFORM_KEY*/Headers" -type d | head -1)
 
     if [ -z "$SSL_LIB" ] || [ -z "$CRYPTO_LIB" ]; then
         echo "ERROR: OpenSSL not found for $PLATFORM_KEY. Run build-openssl-ios.sh first."
@@ -66,11 +66,12 @@ setup_openssl_prefix() {
 # --- Download MariaDB Connector/C ---
 
 echo "=> Downloading MariaDB Connector/C $MARIADB_VERSION..."
-curl -fSL "https://github.com/mariadb-corporation/mariadb-connector-c/archive/refs/tags/v$MARIADB_VERSION.tar.gz" \
+curl -fSL "https://archive.mariadb.org/connector-c-$MARIADB_VERSION/mariadb-connector-c-$MARIADB_VERSION-src.tar.gz" \
     -o "$BUILD_DIR/mariadb.tar.gz"
+echo "$MARIADB_SHA256  $BUILD_DIR/mariadb.tar.gz" | shasum -a 256 -c -
 
 tar xzf "$BUILD_DIR/mariadb.tar.gz" -C "$BUILD_DIR"
-MARIADB_SRC="$BUILD_DIR/mariadb-connector-c-$MARIADB_VERSION"
+MARIADB_SRC="$BUILD_DIR/mariadb-connector-c-$MARIADB_VERSION-src"
 
 # --- Build function ---
 

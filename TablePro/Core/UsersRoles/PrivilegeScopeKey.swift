@@ -21,6 +21,7 @@ extension PluginPrivilegeScope {
         case .schema: .schema
         case .table: .table
         case .column: .column
+        @unknown default: .server
         }
     }
 
@@ -38,6 +39,8 @@ extension PluginPrivilegeScope {
         case let .column(database, schema, table, column):
             schema.map { "db:\(database)/schema:\($0)/table:\(table)/column:\(column)" }
                 ?? "db:\(database)/table:\(table)/column:\(column)"
+        @unknown default:
+            "server"
         }
     }
 
@@ -54,6 +57,8 @@ extension PluginPrivilegeScope {
         case let .column(database, schema, table, column):
             schema.map { "\(database) › \($0) › \(table) › \(column)" }
                 ?? "\(database) › \(table) › \(column)"
+        @unknown default:
+            String(localized: "Server")
         }
     }
 
@@ -69,6 +74,8 @@ extension PluginPrivilegeScope {
             table
         case let .column(_, _, _, column):
             column
+        @unknown default:
+            String(localized: "Server")
         }
     }
 
@@ -79,6 +86,7 @@ extension PluginPrivilegeScope {
         case .schema: "folder"
         case .table: "tablecells"
         case .column: "rectangle.split.3x1"
+        @unknown default: "server.rack"
         }
     }
 }

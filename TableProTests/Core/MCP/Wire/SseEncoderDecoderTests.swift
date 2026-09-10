@@ -102,4 +102,68 @@ final class SseEncoderDecoderTests: XCTestCase {
         let encoded = SseEncoder.encode(frame)
         XCTAssertEqual(encoded.suffix(2), Data([0x0A, 0x0A]))
     }
+
+    func testEncoderOmitsEventAndIdWhenAbsent() {
+        let encoded = SseEncoder.encode(SseFrame(data: "payload"))
+        let text = String(data: encoded, encoding: .utf8) ?? ""
+        XCTAssertEqual(text, "data: payload\n\n")
+    }
+
+    func testEncoderSplitsCrlfInsideDataIntoTwoDataLines() {
+        let encoded = SseEncoder.encode(SseFrame(data: "first\r\nsecond"))
+        let text = String(data: encoded, encoding: .utf8) ?? ""
+        XCTAssertEqual(text, "data: first\ndata: second\n\n")
+    }
+
+    func testCrlfInsideDataSurvivesAsALineBreakThroughARoundTrip() async {
+        let encoded = SseEncoder.encode(SseFrame(data: "first\r\nsecond"))
+        let decoder = SseDecoder()
+        let frames = await decoder.feed(encoded)
+        XCTAssertEqual(frames.count, 1)
+        XCTAssertEqual(frames.first?.data, "first\nsecond")
+    }
+
+    func testKeepAliveCommentAloneProducesNoFrames() async {
+        let decoder = SseDecoder()
+        let frames = await decoder.feed(Data(":\r\n".utf8))
+        XCTAssertTrue(frames.isEmpty)
+    }
+
+    func testKeepAliveCommentsBetweenFramesAreIgnored() async {
+        var stream = Data(":\r\n".utf8)
+        stream.append(SseEncoder.encode(SseFrame(data: "one")))
+        stream.append(Data(":\r\n".utf8))
+        stream.append(SseEncoder.encode(SseFrame(data: "two")))
+
+        let decoder = SseDecoder()
+        let frames = await decoder.feed(stream)
+        XCTAssertEqual(frames.map(\.data), ["one", "two"])
+    }
+
+    func testUnknownFieldsAreIgnored() async {
+        let decoder = SseDecoder()
+        let frames = await decoder.feed(Data("unknown: 1\ndata: payload\n\n".utf8))
+        XCTAssertEqual(frames.count, 1)
+        XCTAssertEqual(frames.first?.data, "payload")
+    }
+
+    func testAFrameWithoutDataIsNotEmitted() async {
+        let decoder = SseDecoder()
+        let frames = await decoder.feed(Data("event: ping\n\n".utf8))
+        XCTAssertTrue(frames.isEmpty)
+    }
+
+    func testAJsonRpcResponseTravelsAsASingleDataLine() async throws {
+        let message = JsonRpcMessage.successResponse(
+            JsonRpcSuccessResponse(id: .number(1), result: .object(["ok": .bool(true)]))
+        )
+        let payload = try XCTUnwrap(String(data: try JsonRpcCodec.encode(message), encoding: .utf8))
+        let encoded = SseEncoder.encode(SseFrame(data: payload))
+        XCTAssertEqual(String(data: encoded, encoding: .utf8), "data: \(payload)\n\n")
+
+        let decoder = SseDecoder()
+        let frames = await decoder.feed(encoded)
+        XCTAssertEqual(frames.count, 1)
+        XCTAssertEqual(try JsonRpcCodec.decode(Data((frames.first?.data ?? "").utf8)), message)
+    }
 }

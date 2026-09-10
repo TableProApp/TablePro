@@ -15,7 +15,7 @@ import os
 internal final class ThemeRegistryInstaller {
     static let shared = ThemeRegistryInstaller()
 
-    @ObservationIgnored private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeRegistryInstaller")
+    @ObservationIgnored nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeRegistryInstaller")
 
     private init() {}
 

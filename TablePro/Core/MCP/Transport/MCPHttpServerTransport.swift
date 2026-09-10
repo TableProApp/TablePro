@@ -1,7 +1,6 @@
 import Foundation
 import Network
 import os
-import Security
 
 public enum MCPHttpServerState: Sendable, Equatable {
     case idle
@@ -13,20 +12,19 @@ public enum MCPHttpServerState: Sendable, Equatable {
 
 public actor MCPHttpServerTransport {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.HttpServer")
+    private static let readyTimeout: Duration = .seconds(15)
+    private static let exchangeBufferSize = 1_024
 
     private let configuration: MCPHttpServerConfiguration
-    private let sessionStore: MCPSessionStore
     private let authenticator: any MCPAuthenticator
     private let clock: any MCPClock
 
     private var listener: NWListener?
     private var connections: [UUID: HttpConnectionContext] = [:]
-    private var sseWriters: [UUID: MCPSseWriter] = [:]
-    private var sseConnectionsBySession: [MCPSessionId: UUID] = [:]
-    private var sessionEventsTask: Task<Void, Never>?
     private var readyContinuation: CheckedContinuation<Void, Error>?
     private var readyTimeoutTask: Task<Void, Never>?
-    private static let readyTimeout: Duration = .seconds(5)
+    private var currentState: MCPHttpServerState = .idle
+    private var boundPort: UInt16 = 0
 
     nonisolated public let exchanges: AsyncStream<MCPInboundExchange>
     nonisolated private let exchangesContinuation: AsyncStream<MCPInboundExchange>.Continuation
@@ -34,21 +32,17 @@ public actor MCPHttpServerTransport {
     nonisolated public let listenerState: AsyncStream<MCPHttpServerState>
     nonisolated private let stateContinuation: AsyncStream<MCPHttpServerState>.Continuation
 
-    private var currentState: MCPHttpServerState = .idle
-
     public init(
         configuration: MCPHttpServerConfiguration,
-        sessionStore: MCPSessionStore,
         authenticator: any MCPAuthenticator,
         clock: any MCPClock = MCPSystemClock()
     ) {
         self.configuration = configuration
-        self.sessionStore = sessionStore
         self.authenticator = authenticator
         self.clock = clock
 
         let (exchanges, exchangesContinuation) = AsyncStream<MCPInboundExchange>.makeStream(
-            bufferingPolicy: .bufferingOldest(1_024)
+            bufferingPolicy: .bufferingOldest(Self.exchangeBufferSize)
         )
         self.exchanges = exchanges
         self.exchangesContinuation = exchangesContinuation
@@ -58,25 +52,27 @@ public actor MCPHttpServerTransport {
         self.stateContinuation = stateContinuation
     }
 
+    public var state: MCPHttpServerState {
+        currentState
+    }
+
+    public var listeningPort: UInt16? {
+        guard case .running(let port) = currentState else { return nil }
+        return port
+    }
+
     public func start() async throws {
         guard listener == nil else {
             Self.logger.warning("start() called while listener already exists")
             throw MCPHttpServerError.alreadyStarted
         }
 
-        Self.logger.info("Starting MCP HTTP server: bind=\(String(describing: self.configuration.bindAddress)) port=\(self.configuration.port) tls=\(self.configuration.tls != nil)")
-
-        if configuration.bindAddress == .anyInterface, configuration.tls == nil {
-            Self.logger.error("Remote access requested without TLS, refusing to start")
-            throw MCPHttpServerError.tlsRequiredForRemoteAccess
-        }
-
+        Self.logger.info("Starting MCP HTTP server on loopback port \(self.configuration.port, privacy: .public)")
         emitState(.starting)
 
-        let parameters: NWParameters = makeParameters()
         let newListener: NWListener
         do {
-            newListener = try NWListener(using: parameters)
+            newListener = try NWListener(using: makeParameters())
         } catch {
             emitState(.failed(reason: error.localizedDescription))
             throw MCPHttpServerError.bindFailed(reason: error.localizedDescription)
@@ -89,7 +85,10 @@ public actor MCPHttpServerTransport {
         }
 
         newListener.newConnectionHandler = { [weak self] connection in
-            guard let self else { return }
+            guard let self else {
+                connection.cancel()
+                return
+            }
             Task { await self.handleNewConnection(connection) }
         }
 
@@ -101,7 +100,6 @@ public actor MCPHttpServerTransport {
                     await self?.handleReadyTimeout()
                 }
                 newListener.start(queue: .global(qos: .userInitiated))
-                startSessionEventListener()
             }
         } catch {
             readyTimeoutTask?.cancel()
@@ -113,38 +111,15 @@ public actor MCPHttpServerTransport {
         }
     }
 
-    private func resumeReady(with result: Result<Void, Error>) {
-        guard let continuation = readyContinuation else { return }
-        readyContinuation = nil
-        readyTimeoutTask?.cancel()
-        readyTimeoutTask = nil
-        continuation.resume(with: result)
-    }
-
-    private func handleReadyTimeout() {
-        guard readyContinuation != nil else { return }
-        Self.logger.error("MCP HTTP listener did not reach .ready within timeout")
-        resumeReady(with: .failure(MCPHttpServerError.bindFailed(reason: "listener startup timed out")))
-    }
-
     public func stop() async {
         Self.logger.info("Stopping MCP HTTP server")
 
         resumeReady(with: .failure(MCPHttpServerError.bindFailed(reason: "stop() called before listener ready")))
 
-        sessionEventsTask?.cancel()
-        sessionEventsTask = nil
-
-        for (_, writer) in sseWriters {
-            await writer.stop()
-        }
-        sseWriters.removeAll()
-
         for (_, context) in connections {
-            await context.cancel()
+            await context.close()
         }
         connections.removeAll()
-        sseConnectionsBySession.removeAll()
 
         if let listener {
             self.listener = nil
@@ -163,48 +138,10 @@ public actor MCPHttpServerTransport {
         stateContinuation.finish()
     }
 
-    public func sendNotification(_ notification: JsonRpcNotification, toSession sessionId: MCPSessionId) async {
-        guard let connectionId = sseConnectionsBySession[sessionId],
-              let writer = sseWriters[connectionId] else {
-            return
-        }
-
-        let message = JsonRpcMessage.notification(notification)
-        guard let data = try? JsonRpcCodec.encode(message),
-              let text = String(data: data, encoding: .utf8) else { return }
-        await writer.writeFrame(SseFrame(data: text))
-    }
-
-    public func broadcastNotification(_ notification: JsonRpcNotification) async {
-        let sessionIds = Array(sseConnectionsBySession.keys)
-        for sessionId in sessionIds {
-            await sendNotification(notification, toSession: sessionId)
-        }
-    }
-
     private func makeParameters() -> NWParameters {
-        let tcpOptions = NWProtocolTCP.Options()
-
-        let parameters: NWParameters
-        if let tls = configuration.tls {
-            let tlsOptions = NWProtocolTLS.Options()
-            if let secIdentity = sec_identity_create(tls.identity) {
-                sec_protocol_options_set_local_identity(tlsOptions.securityProtocolOptions, secIdentity)
-            }
-            switch tls.minimumProtocol {
-            case .tls12:
-                sec_protocol_options_set_min_tls_protocol_version(tlsOptions.securityProtocolOptions, .TLSv12)
-            case .tls13:
-                sec_protocol_options_set_min_tls_protocol_version(tlsOptions.securityProtocolOptions, .TLSv13)
-            }
-            parameters = NWParameters(tls: tlsOptions, tcp: tcpOptions)
-        } else {
-            parameters = NWParameters(tls: nil, tcp: tcpOptions)
-        }
-
-        let host: NWEndpoint.Host = configuration.bindAddress == .loopback ? .ipv4(.loopback) : .ipv4(.any)
+        let parameters = NWParameters(tls: nil, tcp: NWProtocolTCP.Options())
         let port = NWEndpoint.Port(rawValue: configuration.port) ?? .any
-        parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: host, port: port)
+        parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(.loopback), port: port)
         parameters.allowLocalEndpointReuse = true
         return parameters
     }
@@ -213,6 +150,7 @@ public actor MCPHttpServerTransport {
         switch state {
         case .ready:
             let port = listener?.port?.rawValue ?? configuration.port
+            boundPort = port
             Self.logger.info("MCP HTTP server listening on port \(port, privacy: .public)")
             emitState(.running(port: port))
             resumeReady(with: .success(()))
@@ -233,188 +171,88 @@ public actor MCPHttpServerTransport {
         }
     }
 
+    private func resumeReady(with result: Result<Void, Error>) {
+        guard let continuation = readyContinuation else { return }
+        readyContinuation = nil
+        readyTimeoutTask?.cancel()
+        readyTimeoutTask = nil
+        continuation.resume(with: result)
+    }
+
+    private func handleReadyTimeout() {
+        guard readyContinuation != nil else { return }
+        Self.logger.error("MCP HTTP listener did not reach .ready within timeout")
+        resumeReady(with: .failure(MCPHttpServerError.bindFailed(reason: "listener startup timed out")))
+    }
+
     private func emitState(_ state: MCPHttpServerState) {
         currentState = state
         stateContinuation.yield(state)
     }
 
-    private func startSessionEventListener() {
-        sessionEventsTask?.cancel()
-        let store = sessionStore
-        sessionEventsTask = Task { [weak self] in
-            let eventsStream = await store.events
-            for await event in eventsStream {
-                guard let self else { return }
-                if case .terminated(let sessionId, let reason) = event {
-                    await self.handleSessionTerminated(sessionId, reason: reason)
-                }
-            }
-        }
-    }
+    private func handleNewConnection(_ connection: NWConnection) async {
+        let connectionId = UUID()
+        let context = HttpConnectionContext(
+            id: connectionId,
+            connection: connection,
+            limits: configuration.limits
+        )
 
-    private func handleSessionTerminated(_ sessionId: MCPSessionId, reason: MCPSessionTerminationReason) async {
-        guard let connectionId = sseConnectionsBySession.removeValue(forKey: sessionId) else {
+        guard connections.count < configuration.limits.maxConcurrentConnections else {
+            Self.logger.warning("Refusing connection \(connectionId, privacy: .public): connection limit reached")
+            await context.rejectOverCapacity()
             return
         }
 
-        let comment: String
-        switch reason {
-        case .idleTimeout:
-            comment = "idle-timeout"
-        case .tokenRevoked:
-            comment = "token-revoked"
-        case .serverShutdown:
-            comment = "server-shutdown"
-        case .clientRequested:
-            comment = "client-disconnect"
-        case .capacityEvicted:
-            comment = "capacity-evicted"
-        }
-
-        if let writer = sseWriters.removeValue(forKey: connectionId) {
-            await writer.writeComment(comment)
-            await writer.stop()
-        } else if let context = connections[connectionId] {
-            await context.writeRaw(Data("\u{003A} \(comment)\n\n".utf8))
-            await context.cancel()
-        }
-        connections.removeValue(forKey: connectionId)
-    }
-
-    private func handleNewConnection(_ connection: NWConnection) async {
-        let connectionId = UUID()
-        Self.logger.debug("Accepted connection \(connectionId, privacy: .public)")
-        let context = HttpConnectionContext(id: connectionId, connection: connection)
         connections[connectionId] = context
         let router = makeRouter()
-        await context.start { [weak self] data in
+        await context.start { [weak self] request in
             guard let self else { return }
-            await self.handleReceivedData(connectionId: connectionId, data: data, router: router)
+            await self.handleRequest(connectionId: connectionId, request: request, router: router)
         } onClosed: { [weak self] in
-            guard let self else { return }
-            await self.removeConnection(connectionId: connectionId)
+            await self?.removeConnection(connectionId: connectionId)
         }
+    }
+
+    private func handleRequest(
+        connectionId: UUID,
+        request: HttpParsedRequest,
+        router: MCPHttpRequestRouter
+    ) async {
+        guard let context = connections[connectionId] else { return }
+        await router.dispatch(request: request, context: context)
+    }
+
+    private func removeConnection(connectionId: UUID) {
+        connections.removeValue(forKey: connectionId)
     }
 
     private func makeRouter() -> MCPHttpRequestRouter {
-        let exchangesContinuation = self.exchangesContinuation
-        let transport = self
+        let continuation = exchangesContinuation
         return MCPHttpRequestRouter(
-            configuration: configuration,
-            sessionStore: sessionStore,
             authenticator: authenticator,
             clock: clock,
+            boundPort: boundPort == 0 ? configuration.port : boundPort,
             emitInbound: { exchange in
-                exchangesContinuation.yield(exchange)
-            },
-            startSse: { connectionId, sessionId, context in
-                await transport.attachSseWriter(connectionId: connectionId, sessionId: sessionId, context: context)
-            },
-            makeResponderSink: { context in
-                TransportResponderSink(transport: transport, context: context)
+                continuation.yield(exchange)
             }
         )
-    }
-
-    private func removeConnection(connectionId: UUID) async {
-        connections.removeValue(forKey: connectionId)
-        if let writer = sseWriters.removeValue(forKey: connectionId) {
-            await writer.stop()
-        }
-        let pairs = sseConnectionsBySession.filter { $0.value == connectionId }
-        for (sessionId, _) in pairs {
-            sseConnectionsBySession.removeValue(forKey: sessionId)
-        }
-    }
-
-    private func handleReceivedData(connectionId: UUID, data: Data, router: MCPHttpRequestRouter) async {
-        guard let context = connections[connectionId] else { return }
-
-        let parseResult: HttpRequestParseResult
-        do {
-            parseResult = try HttpRequestParser.parse(data)
-        } catch HttpRequestParseError.bodyTooLarge {
-            await respondParseFailure(context: context, status: .payloadTooLarge)
-            return
-        } catch HttpRequestParseError.headerTooLarge {
-            await respondParseFailure(context: context, status: .payloadTooLarge)
-            return
-        } catch {
-            await respondParseFailure(context: context, status: .badRequest, detail: "Malformed HTTP")
-            return
-        }
-
-        switch parseResult {
-        case .incomplete:
-            return
-        case .complete(let head, let body, _):
-            await context.markRequestComplete()
-            await router.dispatch(head: head, body: body, context: context)
-        }
-    }
-
-    private func respondParseFailure(context: HttpConnectionContext, status: HttpStatus, detail: String? = nil) async {
-        let error: MCPProtocolError
-        if status.code == HttpStatus.payloadTooLarge.code {
-            error = .payloadTooLarge()
-        } else {
-            error = .invalidRequest(detail: detail ?? "Bad request")
-        }
-        let envelope = error.toJsonRpcErrorResponse(id: nil)
-        let data = (try? JSONEncoder().encode(envelope)) ?? Data()
-        await context.writeJsonResponse(
-            data: data,
-            status: error.httpStatus,
-            sessionId: nil,
-            extraHeaders: error.extraHeaders
-        )
-        await context.cancel()
-    }
-
-    fileprivate func attachSseWriter(
-        connectionId: UUID,
-        sessionId: MCPSessionId,
-        context: HttpConnectionContext
-    ) async {
-        if let previous = sseConnectionsBySession[sessionId], previous != connectionId {
-            if let oldWriter = sseWriters.removeValue(forKey: previous) {
-                await oldWriter.stop()
-            } else if let oldContext = connections[previous] {
-                await oldContext.cancel()
-            }
-            connections.removeValue(forKey: previous)
-        }
-        let writer = MCPSseWriter(context: context)
-        sseWriters[connectionId] = writer
-        sseConnectionsBySession[sessionId] = connectionId
-        await writer.startStream(sessionId: sessionId)
-    }
-
-    fileprivate func registerSseConnection(connectionId: UUID, sessionId: MCPSessionId) async {
-        guard let context = connections[connectionId] else { return }
-        await attachSseWriter(connectionId: connectionId, sessionId: sessionId, context: context)
     }
 }
 
-struct TransportResponderSink: MCPResponderSink {
-    let transport: MCPHttpServerTransport
+struct MCPHttpResponderSink: MCPResponderSink {
     let context: HttpConnectionContext
 
-    func writeJson(_ data: Data, status: HttpStatus, sessionId: MCPSessionId?, extraHeaders: [(String, String)]) async {
-        await context.writeJsonResponse(
-            data: data,
-            status: status,
-            sessionId: sessionId,
-            extraHeaders: extraHeaders
-        )
+    func writeJson(_ data: Data, status: HttpStatus, extraHeaders: [(String, String)]) async {
+        await context.writeJsonResponse(data: data, status: status, extraHeaders: extraHeaders)
     }
 
     func writeAccepted() async {
         await context.writeAccepted()
     }
 
-    func writeSseStreamHeaders(sessionId: MCPSessionId) async {
-        await context.writeSseStreamHeaders(sessionId: sessionId)
+    func beginSseStream() async {
+        await context.beginSseStream()
     }
 
     func writeSseFrame(_ frame: SseFrame) async {
@@ -422,10 +260,10 @@ struct TransportResponderSink: MCPResponderSink {
     }
 
     func closeConnection() async {
-        await context.cancel()
+        await context.completeResponse()
     }
 
-    func registerSseConnection(sessionId: MCPSessionId) async {
-        await transport.registerSseConnection(connectionId: context.id, sessionId: sessionId)
+    func isClosed() async -> Bool {
+        await context.isClosed()
     }
 }

@@ -3,274 +3,236 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("MCP HTTP Server Transport Pairing")
+@Suite("MCP HTTP Server Transport Pairing", .serialized)
 struct MCPHttpServerTransportPairingTests {
-    private struct ExchangeError: Decodable {
-        let error: String
-    }
+    private static let exchangePath = "/v1/integrations/exchange"
 
-    private struct ExchangeResponse: Decodable {
-        let token: String
-    }
-
-    private func makeTransport(
-        authenticator: any MCPAuthenticator,
-        clock: any MCPClock = MCPSystemClock()
-    ) -> (MCPHttpServerTransport, MCPSessionStore) {
-        let policy = MCPSessionPolicy(
-            idleTimeout: .seconds(900),
-            maxSessions: 16,
-            cleanupInterval: .seconds(60)
-        )
-        let store = MCPSessionStore(policy: policy, clock: clock)
-        let config = MCPHttpServerConfiguration.loopback(port: 0)
-        let transport = MCPHttpServerTransport(
-            configuration: config,
-            sessionStore: store,
-            authenticator: authenticator,
-            clock: clock
-        )
-        return (transport, store)
-    }
-
-    private func startedTransport(
-        authenticator: any MCPAuthenticator,
-        clock: any MCPClock = MCPSystemClock()
-    ) async throws -> (MCPHttpServerTransport, UInt16) {
-        let (transport, _) = makeTransport(authenticator: authenticator, clock: clock)
-        let stateStream = transport.listenerState
-        let stateTask = Task<UInt16?, Never> {
-            for await state in stateStream {
-                if case .running(let port) = state {
-                    return port
-                }
-                if case .failed = state {
-                    return nil
-                }
-            }
-            return nil
-        }
-        try await transport.start()
-        guard let port = await stateTask.value, port != 0 else {
-            await transport.stop()
-            throw PairingTestError.serverDidNotStart
-        }
-        return (transport, port)
-    }
-
-    private func makeExchangeRequest(
-        port: UInt16,
-        body: Data?,
-        contentType: String = "application/json"
-    ) -> URLRequest {
-        guard let url = URL(string: "http://127.0.0.1:\(port)/v1/integrations/exchange") else {
-            fatalError("Failed to construct test URL")
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
-        if let body {
-            request.httpBody = body
-        }
-        return request
-    }
-
-    private func insertPairingRecord(
-        code: String,
-        plaintextToken: String,
-        challenge: String,
-        expiresAt: Date
-    ) async throws {
-        let store = await MainActor.run { MCPPairingService.shared.store }
-        try await store.insert(
-            code: code,
-            record: PairingExchangeRecord(
-                plaintextToken: plaintextToken,
-                challenge: challenge,
-                expiresAt: expiresAt
-            )
-        )
-    }
-
-    private func clearPairingCode(_ code: String) async {
-        let store = await MainActor.run { MCPPairingService.shared.store }
-        _ = try? await store.consume(code: code, verifier: "__cleanup__")
+    private func uniqueVerifier() -> String {
+        let raw = UUID().uuidString + UUID().uuidString
+        return String(raw.filter { $0.isLetter || $0.isNumber || $0 == "-" }.prefix(64))
     }
 
     private func uniqueCode() -> String {
         "test-code-\(UUID().uuidString)"
     }
 
-    private func challenge(for verifier: String) -> String {
-        PairingExchangeStore.sha256Base64Url(of: verifier)
+    private func store() async -> PairingExchangeStore {
+        await MainActor.run { MCPPairingService.shared.store }
     }
 
-    @Test("Empty body returns 400 with invalid JSON body error")
-    func emptyBodyReturnsBadRequest() async throws {
-        let auth = StubAlwaysAllowAuthenticator()
-        let (transport, port) = try await startedTransport(authenticator: auth)
-        defer { Task { await transport.stop() } }
-
-        let request = makeExchangeRequest(port: port, body: Data())
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let http = try #require(response as? HTTPURLResponse)
-
-        #expect(http.statusCode == 400)
-        let decoded = try JSONDecoder().decode(ExchangeError.self, from: data)
-        #expect(decoded.error == "Invalid JSON body")
-    }
-
-    @Test("Malformed JSON returns 400 with invalid JSON body error")
-    func malformedJsonReturnsBadRequest() async throws {
-        let auth = StubAlwaysAllowAuthenticator()
-        let (transport, port) = try await startedTransport(authenticator: auth)
-        defer { Task { await transport.stop() } }
-
-        let body = Data("{not-json".utf8)
-        let request = makeExchangeRequest(port: port, body: body)
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let http = try #require(response as? HTTPURLResponse)
-
-        #expect(http.statusCode == 400)
-        let decoded = try JSONDecoder().decode(ExchangeError.self, from: data)
-        #expect(decoded.error == "Invalid JSON body")
-    }
-
-    @Test("Missing code returns 400 with missing code error")
-    func missingCodeReturnsBadRequest() async throws {
-        let auth = StubAlwaysAllowAuthenticator()
-        let (transport, port) = try await startedTransport(authenticator: auth)
-        defer { Task { await transport.stop() } }
-
-        let body = Data(#"{"code":"","code_verifier":"verifier"}"#.utf8)
-        let request = makeExchangeRequest(port: port, body: body)
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let http = try #require(response as? HTTPURLResponse)
-
-        #expect(http.statusCode == 400)
-        let decoded = try JSONDecoder().decode(ExchangeError.self, from: data)
-        #expect(decoded.error == "Missing code or code_verifier")
-    }
-
-    @Test("Missing code_verifier returns 400 with missing code error")
-    func missingCodeVerifierReturnsBadRequest() async throws {
-        let auth = StubAlwaysAllowAuthenticator()
-        let (transport, port) = try await startedTransport(authenticator: auth)
-        defer { Task { await transport.stop() } }
-
-        let body = Data(#"{"code":"abc","code_verifier":""}"#.utf8)
-        let request = makeExchangeRequest(port: port, body: body)
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let http = try #require(response as? HTTPURLResponse)
-
-        #expect(http.statusCode == 400)
-        let decoded = try JSONDecoder().decode(ExchangeError.self, from: data)
-        #expect(decoded.error == "Missing code or code_verifier")
-    }
-
-    @Test("Unknown code returns 404 with not-found error")
-    func unknownCodeReturnsNotFound() async throws {
-        let auth = StubAlwaysAllowAuthenticator()
-        let (transport, port) = try await startedTransport(authenticator: auth)
-        defer { Task { await transport.stop() } }
-
-        let synthetic = "synthetic-\(UUID().uuidString)"
-        let body = Data(#"{"code":"\#(synthetic)","code_verifier":"any-verifier"}"#.utf8)
-        let request = makeExchangeRequest(port: port, body: body)
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let http = try #require(response as? HTTPURLResponse)
-
-        #expect(http.statusCode == 404)
-        let decoded = try JSONDecoder().decode(ExchangeError.self, from: data)
-        #expect(decoded.error == "Pairing code not found")
-    }
-
-    @Test("Successful exchange returns 200 with token in body")
-    func successfulExchangeReturnsToken() async throws {
-        let auth = StubAlwaysAllowAuthenticator()
-        let (transport, port) = try await startedTransport(authenticator: auth)
-        defer { Task { await transport.stop() } }
-
-        let code = uniqueCode()
-        let verifier = "verifier-\(UUID().uuidString)"
-        let plaintext = "tp_test-token-\(UUID().uuidString)"
-        try await insertPairingRecord(
+    private func insertPairingCode(
+        code: String,
+        plaintextToken: String,
+        verifier: String,
+        expiresIn: TimeInterval
+    ) async throws {
+        try await store().insert(
             code: code,
-            plaintextToken: plaintext,
-            challenge: challenge(for: verifier),
-            expiresAt: Date.now.addingTimeInterval(60)
+            record: PairingExchangeRecord(
+                plaintextToken: plaintextToken,
+                tokenId: UUID(),
+                challenge: PairingExchangeStore.sha256Base64Url(of: verifier),
+                expiresAt: Date.now.addingTimeInterval(expiresIn)
+            )
         )
-        defer { Task { await clearPairingCode(code) } }
-
-        let payload = ["code": code, "code_verifier": verifier]
-        let body = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
-
-        let request = makeExchangeRequest(port: port, body: body)
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let http = try #require(response as? HTTPURLResponse)
-
-        #expect(http.statusCode == 200)
-        let decoded = try JSONDecoder().decode(ExchangeResponse.self, from: data)
-        #expect(decoded.token == plaintext)
     }
 
-    @Test("Mismatched verifier returns 403 with challenge mismatch error")
-    func mismatchedVerifierReturnsForbidden() async throws {
-        let auth = StubAlwaysAllowAuthenticator()
-        let (transport, port) = try await startedTransport(authenticator: auth)
-        defer { Task { await transport.stop() } }
-
-        let code = uniqueCode()
-        let realVerifier = "real-verifier-\(UUID().uuidString)"
-        try await insertPairingRecord(
-            code: code,
-            plaintextToken: "tp_test",
-            challenge: challenge(for: realVerifier),
-            expiresAt: Date.now.addingTimeInterval(60)
-        )
-        defer { Task { await clearPairingCode(code) } }
-
-        let payload = ["code": code, "code_verifier": "wrong-verifier"]
-        let body = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
-
-        let request = makeExchangeRequest(port: port, body: body)
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let http = try #require(response as? HTTPURLResponse)
-
-        #expect(http.statusCode == 403)
-        let decoded = try JSONDecoder().decode(ExchangeError.self, from: data)
-        #expect(decoded.error == "Challenge mismatch")
+    private func discard(code: String) async {
+        await store().discard(code: code)
     }
 
-    @Test("Expired pairing code is unredeemable")
+    private func exchangeRequest(port: UInt16, body: Data?) -> Data {
+        MCPTransportTestRequests.raw(
+            method: "POST",
+            path: Self.exchangePath,
+            port: port,
+            headers: [("Content-Type", "application/json")],
+            body: body
+        )
+    }
+
+    private func post(port: UInt16, body: Data?) async throws -> RawHttpTestResponse {
+        let client = RawHttpTestClient(port: port)
+        try await client.connect()
+        defer { Task { await client.close() } }
+        try await client.send(exchangeRequest(port: port, body: body))
+        return try await client.readResponse()
+    }
+
+    @Test("An empty body is refused as invalid JSON")
+    func emptyBodyIsBadRequest() async throws {
+        try await MCPTransportTestHarness.withServer { port in
+            let response = try await post(port: port, body: Data())
+
+            #expect(response.statusCode == 400)
+            #expect(try response.plainJsonField("error") == "Invalid JSON body")
+        }
+    }
+
+    @Test("Malformed JSON is refused as invalid JSON")
+    func malformedJsonIsBadRequest() async throws {
+        try await MCPTransportTestHarness.withServer { port in
+            let response = try await post(port: port, body: Data("{not-json".utf8))
+
+            #expect(response.statusCode == 400)
+            #expect(try response.plainJsonField("error") == "Invalid JSON body")
+        }
+    }
+
+    @Test("A blank code or verifier is refused before the store is touched")
+    func blankFieldsAreBadRequest() async throws {
+        try await MCPTransportTestHarness.withServer { port in
+            let bodies = [
+                Data(#"{"code":"","code_verifier":"verifier"}"#.utf8),
+                Data(#"{"code":"abc","code_verifier":""}"#.utf8)
+            ]
+            for body in bodies {
+                let response = try await post(port: port, body: body)
+                #expect(response.statusCode == 400)
+                #expect(try response.plainJsonField("error") == "Missing code or code_verifier")
+            }
+        }
+    }
+
+    @Test("A field beyond the size cap is refused")
+    func oversizedFieldIsBadRequest() async throws {
+        try await MCPTransportTestHarness.withServer { port in
+            let payload = ["code": String(repeating: "a", count: 2_048), "code_verifier": uniqueVerifier()]
+            let body = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+            let response = try await post(port: port, body: body)
+
+            #expect(response.statusCode == 400)
+            #expect(try response.plainJsonField("error") == "Field exceeds size limit")
+        }
+    }
+
+    @Test("A valid code and verifier exchange for the paired token")
+    func successfulExchangeReturnsTheToken() async throws {
+        try await MCPTransportTestHarness.withServer { port in
+            let code = uniqueCode()
+            let verifier = uniqueVerifier()
+            let plaintext = "tp_test-token-\(UUID().uuidString)"
+            try await insertPairingCode(
+                code: code,
+                plaintextToken: plaintext,
+                verifier: verifier,
+                expiresIn: 60
+            )
+
+            let payload = ["code": code, "code_verifier": verifier]
+            let body = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+            let response = try await post(port: port, body: body)
+
+            #expect(response.statusCode == 200)
+            #expect(try response.plainJsonField("token") == plaintext)
+
+            let stillPending = await store().contains(code: code)
+            #expect(!stillPending, "a pairing code is single-use")
+        }
+    }
+
+    @Test("An unknown code answers 404")
+    func unknownCodeIsNotFound() async throws {
+        try await MCPTransportTestHarness.withServer { port in
+            let payload = ["code": uniqueCode(), "code_verifier": uniqueVerifier()]
+            let body = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+            let response = try await post(port: port, body: body)
+
+            #expect(response.statusCode == 404)
+            #expect(try response.plainJsonField("error") == "Pairing code not found")
+        }
+    }
+
+    @Test("A verifier that does not match the challenge answers 403 and burns the code")
+    func mismatchedVerifierIsForbidden() async throws {
+        try await MCPTransportTestHarness.withServer { port in
+            let code = uniqueCode()
+            try await insertPairingCode(
+                code: code,
+                plaintextToken: "tp_test",
+                verifier: uniqueVerifier(),
+                expiresIn: 60
+            )
+            defer { Task { await discard(code: code) } }
+
+            let payload = ["code": code, "code_verifier": uniqueVerifier()]
+            let body = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+            let response = try await post(port: port, body: body)
+
+            #expect(response.statusCode == 403)
+            #expect(try response.plainJsonField("error") == "Challenge mismatch")
+
+            let stillPending = await store().contains(code: code)
+            #expect(!stillPending, "a failed verification burns the code")
+        }
+    }
+
+    @Test("An expired code is unredeemable")
     func expiredCodeIsUnredeemable() async throws {
-        let auth = StubAlwaysAllowAuthenticator()
-        let (transport, port) = try await startedTransport(authenticator: auth)
-        defer { Task { await transport.stop() } }
+        try await MCPTransportTestHarness.withServer { port in
+            let code = uniqueCode()
+            let verifier = uniqueVerifier()
+            try await insertPairingCode(
+                code: code,
+                plaintextToken: "tp_test",
+                verifier: verifier,
+                expiresIn: -60
+            )
+            defer { Task { await discard(code: code) } }
 
-        let code = uniqueCode()
-        let verifier = "verifier-\(UUID().uuidString)"
-        try await insertPairingRecord(
-            code: code,
-            plaintextToken: "tp_test",
-            challenge: challenge(for: verifier),
-            expiresAt: Date.now.addingTimeInterval(-60)
-        )
-        defer { Task { await clearPairingCode(code) } }
+            let payload = ["code": code, "code_verifier": verifier]
+            let body = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+            let response = try await post(port: port, body: body)
 
-        let payload = ["code": code, "code_verifier": verifier]
-        let body = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
-
-        let request = makeExchangeRequest(port: port, body: body)
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let http = try #require(response as? HTTPURLResponse)
-
-        #expect(http.statusCode == 410 || http.statusCode == 404)
-        let decoded = try JSONDecoder().decode(ExchangeError.self, from: data)
-        #expect(decoded.error == "Pairing code expired" || decoded.error == "Pairing code not found")
+            #expect(response.statusCode == 410 || response.statusCode == 404)
+            let message = try response.plainJsonField("error")
+            #expect(message == "Pairing code expired" || message == "Pairing code not found")
+        }
     }
-}
 
-private enum PairingTestError: Error {
-    case serverDidNotStart
+    @Test("The exchange endpoint accepts POST only")
+    func exchangeEndpointIsPostOnly() async throws {
+        try await MCPTransportTestHarness.withServer { port in
+            for method in ["GET", "DELETE"] {
+                let client = RawHttpTestClient(port: port)
+                try await client.connect()
+                defer { Task { await client.close() } }
+                try await client.send(
+                    MCPTransportTestRequests.raw(
+                        method: method,
+                        path: Self.exchangePath,
+                        port: port,
+                        body: nil,
+                        includeContentLength: false
+                    )
+                )
+                let response = try await client.readResponse()
+                #expect(response.statusCode == 405, "\(method) on the exchange endpoint must be 405")
+                #expect(response.header("Allow")?.contains("POST") == true)
+            }
+        }
+    }
+
+    @Test("The exchange endpoint refuses a non-loopback Host")
+    func exchangeEndpointRefusesRemoteHost() async throws {
+        try await MCPTransportTestHarness.withServer { port in
+            let client = RawHttpTestClient(port: port)
+            try await client.connect()
+            defer { Task { await client.close() } }
+            try await client.send(
+                MCPTransportTestRequests.raw(
+                    method: "POST",
+                    path: Self.exchangePath,
+                    port: port,
+                    host: "attacker.test",
+                    headers: [("Content-Type", "application/json")],
+                    body: Data("{}".utf8)
+                )
+            )
+            let response = try await client.readResponse()
+
+            #expect(response.statusCode == 403)
+            #expect(try response.plainJsonField("error") == "forbidden_host")
+        }
+    }
 }

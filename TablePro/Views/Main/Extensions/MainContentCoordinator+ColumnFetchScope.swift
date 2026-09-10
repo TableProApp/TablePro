@@ -18,7 +18,8 @@ extension MainContentCoordinator {
         return ColumnFetchScope.selectColumns(
             schemaColumns: schema.columns,
             hiddenColumns: tab.columnLayout.hiddenColumns,
-            primaryKeyColumns: schema.primaryKeys
+            primaryKeyColumns: schema.primaryKeys,
+            sortColumns: tab.sortState.columns.compactMap(\.columnName)
         )
     }
 
@@ -35,14 +36,19 @@ extension MainContentCoordinator {
         }
     }
 
+    /// Re-resolves the tab by id after the await. An index taken before it points at whatever tab
+    /// occupies that slot now, which after a close or a reorder is a different tab entirely.
     @discardableResult
     func rebuildSelectedTableColumnScopedQuery() async -> Bool {
-        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+        guard let tab = tabManager.selectedTab,
               tab.tabType == .table,
               let tableName = tab.tableContext.tableName else { return false }
+        let tabId = tab.id
         await loadSchemaColumns(for: tableName, scope: scope(for: tab))
-        guard !Task.isCancelled, tabIndex < tabManager.tabs.count else { return false }
-        filterCoordinator.rebuildTableQuery(at: tabIndex)
+        guard !Task.isCancelled,
+              let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
+              tabManager.tabs[index].tableContext.tableName == tableName else { return false }
+        filterCoordinator.rebuildTableQuery(at: index)
         return true
     }
 
@@ -60,6 +66,7 @@ extension MainContentCoordinator {
                 }
                 return (columns.map(\.name), columns.filter(\.isPrimaryKey).map(\.name))
             } catch {
+                guard !DatabaseCancellationDiagnosis.isCancellation(error) else { return nil }
                 columnScopeLog.error("loadSchemaColumns: fetchColumns failed for table=\(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 return nil
             }
@@ -68,11 +75,11 @@ extension MainContentCoordinator {
 
     func columnsForVisibilityPicker(for tab: QueryTab, resultColumns: [String]) -> [String] {
         guard tab.tabType == .table, let tableName = tab.tableContext.tableName else { return resultColumns }
-        if let schema = schemaColumns.cached(schemaColumnsKey(tableName, scope: scope(for: tab))), !schema.columns.isEmpty {
-            return schema.columns
-        }
-        let missingHidden = tab.columnLayout.hiddenColumns.subtracting(resultColumns)
-        return missingHidden.isEmpty ? resultColumns : resultColumns + missingHidden.sorted()
+        return ColumnFetchScope.visibilityPickerColumns(
+            schemaColumns: schemaColumns.cached(schemaColumnsKey(tableName, scope: scope(for: tab)))?.columns,
+            resultColumns: resultColumns,
+            hiddenColumns: tab.columnLayout.hiddenColumns
+        )
     }
 
     func selectedTabSchemaColumns() -> [String]? {

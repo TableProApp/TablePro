@@ -15,10 +15,8 @@ extension TableViewCoordinator {
     @MainActor
     func undoDeleteRow(at index: Int) {
         changeManager.undoRowDeletion(rowIndex: index)
-        visualIndex.updateRow(index, from: changeManager, sortedIDs: displayIDs)
-        tableView?.reloadData(
-            forRowIndexes: IndexSet(integer: index),
-            columnIndexes: IndexSet(integersIn: 0..<(tableView?.numberOfColumns ?? 0)))
+        visualIndex.updateRow(index, from: changeManager, displayIDs: displayIDs)
+        repaintRows(IndexSet(integer: index))
         refreshRowVisualState(at: index)
     }
 
@@ -102,14 +100,21 @@ extension TableViewCoordinator {
         let columnType = columnTypes.indices.contains(columnIndex) ? columnTypes[columnIndex] : nil
 
         if case .bytes(let data) = cell {
-            ClipboardService.shared.writeText(BlobFormattingService.shared.format(data, for: .copy) ?? "")
+            let format = columnIndex < columnDisplayFormats.count ? columnDisplayFormats[columnIndex] : nil
+            let value = format.flatMap { format in
+                guard format.isApplicable(to: columnType, databaseType: databaseType) else { return nil }
+                return ValueDisplayFormatter.apply(data, format: format, columnType: columnType)
+            }
+                ?? BlobFormattingService.shared.format(data, for: .copy)
+                ?? ""
+            ClipboardService.shared.writeText(value)
             return
         }
 
         let value = cell.asText ?? "NULL"
 
-        if columnIndex < columnDisplayFormats.count, let format = columnDisplayFormats[columnIndex], format != .raw {
-            let formatted = ValueDisplayFormatService.applyFormat(value, format: format)
+        if columnIndex < columnDisplayFormats.count, let format = columnDisplayFormats[columnIndex], format != .raw,
+           let formatted = ValueDisplayFormatter.apply(value, format: format, columnType: columnType) {
             ClipboardService.shared.writeText(formatted)
             return
         }
@@ -168,15 +173,15 @@ extension TableViewCoordinator {
     }
 
     func copyRowsAsJson(at indices: Set<Int>) {
-        let projection = selectedColumnProjection()
-        let rows = indices.sorted().compactMap { displayRow(at: $0).map { projection.values(Array($0.values)) } }
-        guard !rows.isEmpty else { return }
-        let tableRows = tableRowsProvider()
-        let converter = JsonRowConverter(
-            columns: projection.columns(tableRows.columns),
-            columnTypes: projection.columnTypes(tableRows.columnTypes)
+        guard !indices.isEmpty else { return }
+        let output = ResultJsonSerializer.serialize(
+            tableRows: tableRowsProvider(),
+            displayIDs: displayIDs,
+            selectedDisplayIndices: indices,
+            columns: selectedColumnProjection()
         )
-        ClipboardService.shared.writeText(converter.generateJson(rows: rows))
+        guard output.rowCount > 0 else { return }
+        ClipboardService.shared.writeText(output.json)
     }
 
     func copyRowsAsCsv(at indices: Set<Int>, includeHeaders: Bool) {
@@ -257,18 +262,15 @@ extension TableViewCoordinator {
         VisibleColumnProjection(indices: visibleColumnDataIndices())
     }
 
+    /// The selection's columns as data indices, already in display order because that is the order
+    /// its display positions run in.
     private func selectedColumnProjection() -> VisibleColumnProjection {
         guard !selectionController.isEmpty else { return visibleColumnProjection }
-        let selectedColumns = selectionController.selection.affectedColumns
-        guard !selectedColumns.isEmpty else { return visibleColumnProjection }
-        guard let visible = visibleColumnDataIndices() else {
-            return VisibleColumnProjection(indices: selectedColumns.sorted())
-        }
-        let ordered = visible.filter { selectedColumns.contains($0) }
+        let ordered = dataColumnIndices(in: selectionController.selection.affectedColumns)
         return ordered.isEmpty ? visibleColumnProjection : VisibleColumnProjection(indices: ordered)
     }
 
-    private func resolveDriver() -> (any DatabaseDriver)? {
+    func resolveDriver() -> (any DatabaseDriver)? {
         guard let connectionId else { return nil }
         return DatabaseManager.shared.driver(for: connectionId)
     }
@@ -277,10 +279,15 @@ extension TableViewCoordinator {
 
     private static let rowDragType = NSPasteboard.PasteboardType("com.TablePro.rowDrag")
 
+    /// Writes the reorder type only where a reorder can actually run. The text and HTML flavours
+    /// are written either way: dragging a row into another app is a copy, and it stays available on
+    /// an engine whose columns cannot move.
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
         guard delegate != nil else { return nil }
         let item = NSPasteboardItem()
-        item.setString(String(row), forType: Self.rowDragType)
+        if rowReorder.isEnabled {
+            item.setString(String(row), forType: Self.rowDragType)
+        }
 
         if let values = displayRow(at: row)?.values {
             let tableRows = tableRowsProvider()
@@ -305,7 +312,7 @@ extension TableViewCoordinator {
         proposedRow row: Int,
         proposedDropOperation dropOperation: NSTableView.DropOperation
     ) -> NSDragOperation {
-        guard delegate != nil else { return [] }
+        guard delegate != nil, rowReorder.isEnabled else { return [] }
         guard info.draggingSource as? NSTableView === tableView else { return [] }
         guard info.draggingPasteboard.availableType(from: [Self.rowDragType]) != nil else { return [] }
         guard dropOperation == .above else {
@@ -321,7 +328,7 @@ extension TableViewCoordinator {
         row: Int,
         dropOperation: NSTableView.DropOperation
     ) -> Bool {
-        guard let delegate else { return false }
+        guard let delegate, rowReorder.isEnabled else { return false }
         guard let item = info.draggingPasteboard.pasteboardItems?.first,
               let rowString = item.string(forType: Self.rowDragType),
               let fromRow = Int(rowString) else {
@@ -332,49 +339,71 @@ extension TableViewCoordinator {
         return true
     }
 
+    /// The header hands over the data index of the column it drew; a selection is built from
+    /// display positions, so the two are translated here rather than inside the controller.
     func selectColumn(_ dataColumnIndex: Int) {
+        guard let position = displayPosition(ofDataColumnIndex: dataColumnIndex) else { return }
         let totalRows = displayIDs?.count ?? tableRowsProvider().rows.count
-        selectionController.selectEntireColumn(dataColumnIndex, totalRows: totalRows)
+        selectionController.selectEntireColumn(position, totalRows: totalRows)
         if let keyTableView = tableView as? KeyHandlingTableView {
             keyTableView.deselectAll(nil)
         }
     }
 
     func extendColumnSelection(_ dataColumnIndex: Int) {
+        guard let position = displayPosition(ofDataColumnIndex: dataColumnIndex) else { return }
         let totalRows = displayIDs?.count ?? tableRowsProvider().rows.count
-        selectionController.addEntireColumn(dataColumnIndex, totalRows: totalRows)
+        selectionController.addEntireColumn(position, totalRows: totalRows)
         if let keyTableView = tableView as? KeyHandlingTableView {
             keyTableView.deselectAll(nil)
         }
     }
 
+    /// Copies the selected block in the order the user is looking at it.
+    ///
+    /// The rect's column axis is display positions, so the walk is over positions and each one is
+    /// resolved to its data index before a value is read. Walking the rect as though its bounds were
+    /// data indices copied whatever slots happened to lie between them, which after a column reorder
+    /// is not the block that was swept and can include a column the user hid.
     func copyGridSelection(_ selection: GridSelection) {
         guard let rect = selection.boundingRectangle else { return }
+        if rect.rows.count == 1, rect.columns.count == 1,
+           let dataColumn = dataColumnIndex(atDisplayPosition: rect.columns.lowerBound) {
+            copyCellValue(at: rect.rows.lowerBound, columnIndex: dataColumn)
+            return
+        }
+
         let tableRows = tableRowsProvider()
         let columnTypes = tableRows.columnTypes
         let rowCount = displayIDs?.count ?? tableRows.rows.count
-        let columnCount = tableRows.columns.count
 
-        let rowRange = rect.rows.lowerBound...min(rect.rows.upperBound, max(0, rowCount - 1))
-        let columnRange = rect.columns.lowerBound...min(rect.columns.upperBound, max(0, columnCount - 1))
-        guard rowRange.lowerBound <= rowRange.upperBound,
-              columnRange.lowerBound <= columnRange.upperBound else { return }
+        /// The same ceiling the row copy has always had. Copy reads the cell selection first, so a
+        /// Select All that keeps its rectangle now arrives here instead of on the row path, and
+        /// without this a Fetch All over millions of rows builds the whole string on the main
+        /// thread. (#2667)
+        let lastRow = min(
+            rect.rows.upperBound,
+            max(0, rowCount - 1),
+            rect.rows.lowerBound + RowOperationsManager.maxClipboardRows - 1
+        )
+        let rowRange = rect.rows.lowerBound...lastRow
+        let positions = Array(rect.columns.lowerBound...rect.columns.upperBound)
+            .filter { $0 >= 0 && $0 < presentedColumnCount }
+        guard rowRange.lowerBound <= rowRange.upperBound, !positions.isEmpty else { return }
 
         var lines: [String] = []
         lines.reserveCapacity(rowRange.count)
         for rowIndex in rowRange {
             guard let row = displayRow(at: rowIndex) else {
-                lines.append(String(repeating: "\t", count: columnRange.count - 1))
+                lines.append(String(repeating: "\t", count: positions.count - 1))
                 continue
             }
             var fields: [String] = []
-            fields.reserveCapacity(columnRange.count)
-            for columnIndex in columnRange {
-                guard selection.contains(row: rowIndex, column: columnIndex) else {
-                    fields.append("")
-                    continue
-                }
-                guard row.values.indices.contains(columnIndex) else {
+            fields.reserveCapacity(positions.count)
+            for position in positions {
+                guard selection.contains(row: rowIndex, displayColumn: position),
+                      let columnIndex = dataColumnIndex(atDisplayPosition: position),
+                      row.values.indices.contains(columnIndex) else {
                     fields.append("")
                     continue
                 }

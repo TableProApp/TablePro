@@ -41,6 +41,7 @@ final class SurrealDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let defaultPrimaryKeyColumn: String? = "id"
     static let immutableColumns: [String] = ["id"]
     static let supportsDropDatabase = true
+    static let supportsDropSchema = true
     static let postConnectActions: [PostConnectAction] = [.selectSchemaFromLastSession]
 
     static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable]
@@ -96,7 +97,8 @@ final class SurrealDBPlugin: NSObject, TableProPlugin, DriverPlugin {
         booleanLiteralStyle: .truefalse,
         likeEscapeStyle: .explicit,
         paginationStyle: .limit,
-        autoLimitStyle: .limit
+        autoLimitStyle: .limit,
+        caseSensitivityStyle: .unsupported
     )
 
     static let additionalConnectionFields: [ConnectionField] = surrealDBPluginConnectionFields()

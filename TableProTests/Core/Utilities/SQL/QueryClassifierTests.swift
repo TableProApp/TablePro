@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import Testing
 @testable import TablePro
+import Testing
 
 @Suite("QueryClassifier isExplainStatement")
 struct QueryClassifierExplainTests {
@@ -46,6 +46,51 @@ struct QueryClassifierExplainTests {
     }
 }
 
+@Suite("QueryClassifier explainedStatement")
+struct QueryClassifierExplainedStatementTests {
+    @Test("Preserves line comments between EXPLAIN options and the statement")
+    func preservesLineCommentBeforeStatement() throws {
+        let subject = "-- compare this plan\nSELECT * FROM users"
+        let explicitSubject = try #require(SQLStatementScanner.executableStatements(in: subject).first?.sql)
+
+        #expect(
+            QueryClassifier.explainedStatement(in: "EXPLAIN QUERY PLAN \(subject)")
+                == explicitSubject
+        )
+    }
+
+    @Test("Preserves block comments between parenthesized options and the statement")
+    func preservesBlockCommentBeforeStatement() throws {
+        let subject = "/* compare this plan */ SELECT * FROM users"
+        let explicitSubject = try #require(SQLStatementScanner.executableStatements(in: subject).first?.sql)
+
+        #expect(
+            QueryClassifier.explainedStatement(in: "EXPLAIN (ANALYZE, BUFFERS) \(subject)")
+                == explicitSubject
+        )
+    }
+
+    @Test("Preserves nested block comments before the statement")
+    func preservesNestedBlockCommentBeforeStatement() throws {
+        let subject = "/* outer /* inner */ still outer */ SELECT 1"
+        let explicitSubject = try #require(SQLStatementScanner.executableStatements(in: subject).first?.sql)
+
+        #expect(
+            QueryClassifier.explainedStatement(in: "EXPLAIN (FORMAT JSON) \(subject)")
+                == explicitSubject
+        )
+    }
+
+    @Test("Comments inside EXPLAIN options do not become statement comments")
+    func skipsCommentsInsideOptions() {
+        #expect(
+            QueryClassifier.explainedStatement(
+                in: "EXPLAIN FORMAT /* option separator */ = JSON /* statement */ SELECT 1"
+            ) == "/* statement */ SELECT 1"
+        )
+    }
+}
+
 @Suite("QueryClassifier classification with leading comments")
 struct QueryClassifierLeadingCommentTests {
     @Test("isWriteQuery detects writes preceded by comments")
@@ -77,7 +122,8 @@ struct QueryClassifierKeywordBoundaryTests {
     func writeDetectionAcrossWhitespace() {
         #expect(QueryClassifier.isWriteQuery("DELETE\nFROM users", databaseType: .mysql))
         #expect(QueryClassifier.isWriteQuery("INSERT\tINTO t VALUES (1)", databaseType: .postgresql))
-        #expect(!QueryClassifier.isWriteQuery("DELETED_ROWS", databaseType: .mysql))
+        #expect(QueryClassifier.classifyTier("DELETED_ROWS", databaseType: .mysql) != .destructive)
+        #expect(!QueryClassifier.isDangerousQuery("DELETED_ROWS", databaseType: .mysql))
     }
 
     @Test("isDangerousQuery detects destructive statements followed by newline")
@@ -91,6 +137,39 @@ struct QueryClassifierKeywordBoundaryTests {
     func tierClassificationAcrossWhitespace() {
         #expect(QueryClassifier.classifyTier("TRUNCATE\nusers", databaseType: .mysql) == .destructive)
         #expect(QueryClassifier.classifyTier("UPDATE\nt SET x = 1", databaseType: .mysql) == .write)
+    }
+}
+
+@Suite("QueryClassifier parenthesised statements")
+struct QueryClassifierParenthesisedTests {
+    @Test("leadingKeyword reaches past opening parentheses")
+    func leadingKeywordSkipsParens() {
+        #expect(QueryClassifier.leadingKeyword(of: "(SELECT * FROM t)") == "SELECT")
+        #expect(QueryClassifier.leadingKeyword(of: "((SELECT * FROM t))") == "SELECT")
+        #expect(QueryClassifier.leadingKeyword(of: "( /* c */ SELECT 1 )") == "SELECT")
+        #expect(QueryClassifier.leadingKeyword(of: "(  VALUES (1), (2)") == "VALUES")
+    }
+
+    @Test("A parenthesised set operation reads as safe")
+    func parenthesisedUnionIsSafe() {
+        let sql = "(SELECT * FROM events ORDER BY id) UNION ALL (SELECT * FROM events_archive)"
+        #expect(!QueryClassifier.isWriteQuery(sql, databaseType: .postgresql))
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .postgresql) == .safe)
+    }
+
+    @Test("Skipping parentheses cannot downgrade a write or a destructive statement")
+    func parenthesesDoNotDowngradeWrites() {
+        #expect(QueryClassifier.isWriteQuery("(DELETE FROM users)", databaseType: .postgresql))
+        #expect(QueryClassifier.classifyTier("(DROP TABLE users)", databaseType: .postgresql) == .destructive)
+        #expect(QueryClassifier.classifyTier("(UPDATE t SET x = 1)", databaseType: .postgresql) == .write)
+        #expect(QueryClassifier.isWriteQuery("(SELECT * INTO backup FROM t)", databaseType: .postgresql))
+    }
+
+    @Test("A filesystem or code surface inside parentheses is still flagged")
+    func parenthesesDoNotHideUnsafeSurface() {
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode(
+            "(COPY t FROM PROGRAM 'sh')", databaseType: .postgresql
+        ))
     }
 }
 

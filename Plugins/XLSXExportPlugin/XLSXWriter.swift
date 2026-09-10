@@ -142,7 +142,15 @@ final class XLSXWriter {
     }
 
     /// Write the XLSX file to the given URL
-    func write(to url: URL) throws {
+    func write(to url: URL) async throws {
+        let entries = archiveEntries()
+        try await Task.detached(priority: .userInitiated) {
+            let zipData = try ZipBuilder.build(entries: entries)
+            try zipData.write(to: url, options: .atomic)
+        }.value
+    }
+
+    private func archiveEntries() -> [ZipFileEntry] {
         var entries: [ZipFileEntry] = []
 
         entries.append(ZipFileEntry(path: "[Content_Types].xml", data: contentTypesXML()))
@@ -158,8 +166,7 @@ final class XLSXWriter {
             ))
         }
 
-        let zipData = try ZipBuilder.build(entries: entries)
-        try zipData.write(to: url, options: .atomic)
+        return entries
     }
 
     // MARK: - Row XML Generation

@@ -1,6 +1,6 @@
 import Foundation
 
-public final class SingleResumeGate<Value>: @unchecked Sendable {
+public final class SingleResumeGate<Value: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<Value, Error>?
     private var outcome: Result<Value, Error>?

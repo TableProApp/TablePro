@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import os
 import SwiftUI
 
 internal struct QuickSwitcherSearchField: NSViewRepresentable {
@@ -12,6 +13,7 @@ internal struct QuickSwitcherSearchField: NSViewRepresentable {
     var onMoveUp: () -> Void
     var onMoveDown: () -> Void
     var onSubmit: () -> Void
+    var accessibilityIdentifier = "quick-switcher-search-field"
 
     func makeNSView(context: Context) -> QuickSwitcherTextField {
         let field = QuickSwitcherTextField()
@@ -27,6 +29,7 @@ internal struct QuickSwitcherSearchField: NSViewRepresentable {
         field.cell?.wraps = false
         field.delegate = context.coordinator
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        field.setAccessibilityIdentifier(accessibilityIdentifier)
         return field
     }
 
@@ -62,7 +65,9 @@ internal struct QuickSwitcherSearchField: NSViewRepresentable {
             case #selector(NSResponder.moveDown(_:)):
                 parent.onMoveDown()
                 return true
-            case #selector(NSResponder.insertNewline(_:)):
+            case #selector(NSResponder.insertNewline(_:)),
+                 #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)),
+                 #selector(NSResponder.insertLineBreak(_:)):
                 parent.onSubmit()
                 return true
             case #selector(NSResponder.cancelOperation(_:)):
@@ -78,7 +83,7 @@ internal struct QuickSwitcherSearchField: NSViewRepresentable {
 }
 
 internal final class QuickSwitcherTextField: NSTextField {
-    private var becomeKeyObserver: NSObjectProtocol?
+    private let becomeKeyObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -87,7 +92,7 @@ internal final class QuickSwitcherTextField: NSTextField {
             window.makeFirstResponder(self)
             return
         }
-        becomeKeyObserver = NotificationCenter.default.addObserver(
+        let observer = NotificationCenter.default.addObserver(
             forName: NSWindow.didBecomeKeyNotification,
             object: window,
             queue: .main
@@ -95,17 +100,18 @@ internal final class QuickSwitcherTextField: NSTextField {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.window?.makeFirstResponder(self)
-                if let observer = self.becomeKeyObserver {
-                    NotificationCenter.default.removeObserver(observer)
-                    self.becomeKeyObserver = nil
+                if let installed = self.becomeKeyObserver.withLockUnchecked({ $0 }) {
+                    NotificationCenter.default.removeObserver(installed)
+                    self.becomeKeyObserver.withLockUnchecked { $0 = nil }
                 }
             }
         }
+        becomeKeyObserver.withLockUnchecked { $0 = observer }
     }
 
     deinit {
-        if let becomeKeyObserver {
-            NotificationCenter.default.removeObserver(becomeKeyObserver)
+        if let observer = becomeKeyObserver.withLockUnchecked({ $0 }) {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 }

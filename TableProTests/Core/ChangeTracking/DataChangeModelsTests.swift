@@ -30,14 +30,12 @@ struct DataChangeModelsTests {
     @Test("CellChange stores values correctly")
     func cellChangeStoresValues() {
         let cellChange = CellChange(
-            rowIndex: 5,
             columnIndex: 2,
             columnName: "email",
             oldValue: "old@example.com",
             newValue: "new@example.com"
         )
 
-        #expect(cellChange.rowIndex == 5)
         #expect(cellChange.columnIndex == 2)
         #expect(cellChange.columnName == "email")
         #expect(cellChange.oldValue == "old@example.com")
@@ -47,7 +45,6 @@ struct DataChangeModelsTests {
     @Test("CellChange with nil values")
     func cellChangeNilValues() {
         let cellChange = CellChange(
-            rowIndex: 0,
             columnIndex: 1,
             columnName: "description",
             oldValue: nil,
@@ -61,14 +58,12 @@ struct DataChangeModelsTests {
     @Test("CellChange has unique id")
     func cellChangeUniqueId() {
         let change1 = CellChange(
-            rowIndex: 1,
             columnIndex: 2,
             columnName: "name",
             oldValue: "old",
             newValue: "new"
         )
         let change2 = CellChange(
-            rowIndex: 1,
             columnIndex: 2,
             columnName: "name",
             oldValue: "old",
@@ -82,7 +77,6 @@ struct DataChangeModelsTests {
     @Test("RowChange stores values correctly")
     func rowChangeStoresValues() {
         let cellChange = CellChange(
-            rowIndex: 3,
             columnIndex: 1,
             columnName: "status",
             oldValue: "active",

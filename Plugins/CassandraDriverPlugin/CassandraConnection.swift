@@ -97,15 +97,18 @@ actor CassandraConnectionActor {
             let trimmedClientCertPath = sslClientCertPath?.trimmingCharacters(in: .whitespaces) ?? ""
             let trimmedClientKeyPath = sslClientKeyPath?.trimmingCharacters(in: .whitespaces) ?? ""
             if !trimmedClientCertPath.isEmpty || !trimmedClientKeyPath.isEmpty {
-                try applyClientCertificate(
-                    to: ssl,
-                    certPath: trimmedClientCertPath,
-                    keyPath: trimmedClientKeyPath,
-                    keyPassphrase: sslClientKeyPassphrase
-                ) {
+                do {
+                    try applyClientCertificate(
+                        to: ssl,
+                        certPath: trimmedClientCertPath,
+                        keyPath: trimmedClientKeyPath,
+                        keyPassphrase: sslClientKeyPassphrase
+                    )
+                } catch {
                     cass_ssl_free(ssl)
                     cass_cluster_free(cluster)
                     self.cluster = nil
+                    throw error
                 }
             }
 
@@ -165,38 +168,31 @@ actor CassandraConnectionActor {
         to ssl: OpaquePointer,
         certPath: String,
         keyPath: String,
-        keyPassphrase: String?,
-        cleanup: () -> Void
+        keyPassphrase: String?
     ) throws {
         guard !certPath.isEmpty else {
-            cleanup()
             throw SSLHandshakeError.clientCertRequired(serverMessage: "A client certificate is required when a client key is set")
         }
         guard !keyPath.isEmpty else {
-            cleanup()
             throw SSLHandshakeError.clientCertRequired(serverMessage: "A client key is required when a client certificate is set")
         }
 
         guard let certData = FileManager.default.contents(atPath: certPath),
               let certString = String(data: certData, encoding: .utf8) else {
-            cleanup()
             throw SSLHandshakeError.clientCertRequired(serverMessage: "Could not read client certificate at \(certPath)")
         }
         let certResult = cass_ssl_set_cert(ssl, certString)
         if certResult != CASS_OK {
-            cleanup()
             throw SSLHandshakeError.clientCertRequired(serverMessage: "Client certificate at \(certPath) is not a valid PEM")
         }
 
         guard let keyData = FileManager.default.contents(atPath: keyPath),
               let keyString = String(data: keyData, encoding: .utf8) else {
-            cleanup()
             throw SSLHandshakeError.clientKeyInvalid(serverMessage: "Could not read client key at \(keyPath)")
         }
         let passphrase = keyPassphrase?.isEmpty == false ? keyPassphrase : nil
         let keyResult = cass_ssl_set_private_key(ssl, keyString, passphrase)
         if keyResult != CASS_OK {
-            cleanup()
             throw CassandraClientKeyClassifier.privateKeyLoadError(keyPEM: keyString, hasPassphrase: passphrase != nil, keyPath: keyPath)
         }
     }
@@ -689,13 +685,20 @@ actor CassandraConnectionActor {
         return "Unknown error"
     }
 
+    /// The whole loop is one non-suspending actor job holding the cooperative-pool thread, and
+    /// cass_future_wait blocks it, so nothing outside can interrupt a page. `abort` is the only
+    /// way the consumer's departure reaches this body, and it is read between pages and between
+    /// rows rather than mid-request.
     func streamQuery(
         _ cql: String,
+        abort: PluginStreamAbort,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) throws {
         guard let session else {
             throw CassandraPluginError.notConnected
         }
+
+        guard !abort.isAborted else { return }
 
         let pageSize: Int32 = 5_000
         let statement = cass_statement_new(cql, 0)
@@ -709,7 +712,10 @@ actor CassandraConnectionActor {
 
         defer { cass_statement_free(statement) }
 
+        var aborted = false
+
         while true {
+            if abort.isAborted { break }
             let future = cass_session_execute(session, statement)
             guard let future else {
                 throw CassandraPluginError.queryFailed("Failed to execute query")
@@ -759,7 +765,13 @@ actor CassandraConnectionActor {
             let iterator = cass_iterator_from_result(result)
 
             if let iterator {
+                var rowsThisPage = 0
                 while cass_iterator_next(iterator) == cass_true {
+                    rowsThisPage += 1
+                    if rowsThisPage % 256 == 0, abort.isAborted {
+                        aborted = true
+                        break
+                    }
                     let row = cass_iterator_get_row(iterator)
                     guard let row else { continue }
 
@@ -784,16 +796,16 @@ actor CassandraConnectionActor {
 
             let hasMore = cass_result_has_more_pages(result) == cass_true
 
-            if hasMore {
+            if hasMore, !aborted {
                 cass_statement_set_paging_state(statement, result)
             }
 
             cass_result_free(result)
 
-            if !hasMore { break }
+            if !hasMore || aborted { break }
         }
 
-        if !headerSent {
+        if !headerSent, !aborted {
             continuation.yield(.header(PluginStreamHeader(
                 columns: [],
                 columnTypeNames: [],

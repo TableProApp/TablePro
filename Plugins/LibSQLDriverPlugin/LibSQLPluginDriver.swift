@@ -51,6 +51,8 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .foreignKeyToggle,
             .truncateTable,
             .cancelQuery,
+            .schemaCompare,
+            .dataCompare,
         ]
         if isLocalMode {
             base.insert(.transactions)
@@ -94,11 +96,11 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let versionResult = try await localBackend.executeQuery("SELECT sqlite_version()")
         let version = versionResult.rows.first?.first?.asText ?? "SQLite"
 
-        lock.lock()
-        _dbHandleForInterrupt = rawHandle != 0 ? OpaquePointer(bitPattern: rawHandle) : nil
-        _serverVersion = version
-        backend = .local(localBackend)
-        lock.unlock()
+        lock.withLock {
+            _dbHandleForInterrupt = rawHandle != 0 ? OpaquePointer(bitPattern: rawHandle) : nil
+            _serverVersion = version
+            backend = .local(localBackend)
+        }
 
         Self.logger.debug("Connected to local libSQL database file")
     }
@@ -126,18 +128,14 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 ?? sqliteVersion.rows.first?.first?.stringValue
                 ?? "libSQL"
 
-            lock.lock()
-            _serverVersion = version
-            lock.unlock()
+            lock.withLock { _serverVersion = version }
         } catch {
             client.invalidateSession()
             Self.logger.error("Connection test failed: \(error.localizedDescription)")
             throw LibSQLError(message: String(localized: "Failed to connect to libSQL database"))
         }
 
-        lock.lock()
-        backend = .remote(client)
-        lock.unlock()
+        lock.withLock { backend = .remote(client) }
 
         Self.logger.debug("Connected to libSQL database: \(normalized)")
     }
@@ -340,7 +338,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
             let isNullable = row[3].asText == "0"
             let isPrimaryKey = row[5].asText != nil && row[5].asText != "0"
-            let defaultValue = row[4].asText
+            let defaultValue = libSQLDefaultValueFromCatalog(row[4].asText)
 
             return PluginColumnInfo(
                 name: name,
@@ -372,7 +370,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             }
 
             let isNullable = row[4].asText == "0"
-            let defaultValue = row[5].asText
+            let defaultValue = libSQLDefaultValueFromCatalog(row[5].asText)
             let isPrimaryKey = row[6].asText != nil && row[6].asText != "0"
 
             let column = PluginColumnInfo(
@@ -388,6 +386,10 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         return allColumns
     }
+
+    var providesBulkForeignKeyFetch: Bool { true }
+
+    var tableDDLIncludesForeignKeys: Bool { true }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         let query = """
@@ -506,23 +508,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
-        let safeTable = escapeStringLiteral(table)
-        let query = """
-            SELECT name, sql FROM sqlite_master
-            WHERE type = 'trigger' AND tbl_name = '\(safeTable)'
-            ORDER BY name
-            """
-        let result = try await execute(query: query)
-
-        return result.rows.compactMap { row -> PluginTriggerInfo? in
-            guard row.count >= 2,
-                  let name = row[0].asText,
-                  let sql = row[1].asText else {
-                return nil
-            }
-            let (timing, event) = TriggerSQLParser.timingAndEvent(from: sql)
-            return PluginTriggerInfo(name: name, timing: timing, event: event, statement: sql)
-        }
+        try await sqliteTriggerList(table: table)
     }
 
     var supportsTransactionalDDL: Bool { true }
@@ -556,6 +542,22 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let formatted = formatDDL(ddl)
         return formatted.hasSuffix(";") ? formatted : formatted + ";"
+    }
+
+    /// `sqlite_master` stores each index's own `CREATE INDEX` text, which is what `sqlite3 .dump`
+    /// replays and which carries a partial predicate, an expression key, a collation and a sort
+    /// direction exactly as written. An index SQLite created for itself to back a UNIQUE or PRIMARY
+    /// KEY constraint has a null `sql`, so testing for that is what keeps `sqlite_autoindex_*` out
+    /// of the dump: those come back with the constraint inside `CREATE TABLE`.
+    func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
+        let result = try await execute(query: """
+            SELECT sql FROM sqlite_master
+            WHERE type = 'index'
+              AND tbl_name = '\(escapeStringLiteral(table))'
+              AND sql IS NOT NULL
+            ORDER BY name
+            """)
+        return result.rows.compactMap { $0[safe: 0]?.asText }
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
@@ -734,22 +736,80 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
+        "ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(libSQLColumnDefinition(column))"
+    }
+
+    private func libSQLColumnDefinition(_ column: PluginColumnDefinition) -> String {
         var def = "\(quoteIdentifier(column.name)) \(column.dataType)"
         if !column.isNullable { def += " NOT NULL" }
         if let defaultValue = column.defaultValue, !defaultValue.isEmpty {
-            def += " DEFAULT \(sqlDefaultValue(defaultValue))"
+            def += " DEFAULT \(defaultValue)"
         }
-        return "ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(def)"
+        return def
     }
 
     func generateDropColumnSQL(table: String, columnName: String) -> String? {
         "ALTER TABLE \(quoteIdentifier(table)) DROP COLUMN \(quoteIdentifier(columnName))"
     }
 
+    /// SQLite has no positional `ALTER`, so the order changes by rebuilding the table, using the
+    /// shared recipe every SQLite-derived driver follows.
+    ///
+    /// Runnable only in local mode. A local database is a real SQLite handle that holds a
+    /// transaction across statements, which is what makes the rebuild atomic; over HTTP each
+    /// statement is its own request and the script has to be handed to the user instead.
+    func generateColumnReorderPlan(
+        table: String,
+        schema: String?,
+        columns: [PluginColumnDefinition],
+        desiredOrder: [String]
+    ) async throws -> PluginColumnReorderPlan? {
+        try await SQLiteColumnReorderPlanner.plan(
+            tableName: table,
+            desiredOrder: desiredOrder,
+            isRunnable: isLocalMode,
+            execute: { try await self.execute(query: $0) }
+        )
+    }
+
+    /// Foreign keys change the same way, and for the same reason: no SQLite `ALTER TABLE` can add
+    /// or drop one, so the table is recreated with the keys the save asks for.
+    func generateTableRebuildPlan(
+        table: String,
+        schema: String?,
+        respecification: PluginTableRespecification
+    ) async throws -> PluginColumnReorderPlan? {
+        guard !respecification.isEmpty,
+              let context = try await SQLiteTableRebuildPlanner.context(
+                  tableName: table,
+                  execute: { try await self.execute(query: $0) }
+              ) else { return nil }
+
+        return SQLiteTableRebuildPlanner.plan(
+            tableName: table,
+            context: context,
+            respecification: respecification,
+            renderColumn: { self.libSQLColumnDefinition($0) },
+            isRunnable: isLocalMode
+        )
+    }
+
+    func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String? {
+        try await SQLiteColumnReorderPlanner.schemaFingerprint(
+            tableName: table,
+            execute: { try await self.execute(query: $0) }
+        )
+    }
+
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
         let uniqueStr = index.isUnique ? "UNIQUE " : ""
         let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        return "CREATE \(uniqueStr)INDEX \(quoteIdentifier(index.name)) ON \(quoteIdentifier(table)) (\(cols))"
+        var statement = "CREATE \(uniqueStr)INDEX \(quoteIdentifier(index.name)) "
+            + "ON \(quoteIdentifier(table)) (\(cols))"
+        if let predicate = index.whereClause?.nilIfEmpty {
+            statement += " WHERE \(predicate)"
+        }
+        return statement
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
@@ -785,24 +845,18 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             def += " NOT NULL"
         }
         if let defaultValue = col.defaultValue {
-            def += " DEFAULT \(sqlDefaultValue(defaultValue))"
+            def += " DEFAULT \(defaultValue)"
         }
         return def
     }
 
-    private func sqlDefaultValue(_ value: String) -> String {
-        let upper = value.uppercased()
-        if upper == "NULL" || upper == "CURRENT_TIMESTAMP" || upper == "CURRENT_DATE" || upper == "CURRENT_TIME"
-            || value.hasPrefix("'") || Int64(value) != nil || Double(value) != nil {
-            return value
-        }
-        return "'\(escapeStringLiteral(value))'"
-    }
-
     private func foreignKeyDefinition(_ fk: PluginForeignKeyDefinition) -> String {
         let cols = fk.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let refCols = fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        var def = "FOREIGN KEY (\(cols)) REFERENCES \(quoteIdentifier(fk.referencedTable)) (\(refCols))"
+        let constraint = fk.name.isEmpty ? "" : "CONSTRAINT \(quoteIdentifier(fk.name)) "
+        var def = "\(constraint)FOREIGN KEY (\(cols)) REFERENCES \(quoteIdentifier(fk.referencedTable))"
+        if !fk.referencedColumns.isEmpty {
+            def += " (\(fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")))"
+        }
         if fk.onDelete != "NO ACTION" {
             def += " ON DELETE \(fk.onDelete)"
         }

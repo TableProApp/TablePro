@@ -45,7 +45,6 @@ extension MainContentCoordinator {
                         ? originalRow[field.columnIndex]
                         : .null
                     return CellChange(
-                        rowIndex: rowIndex,
                         columnIndex: field.columnIndex,
                         columnName: field.columnName,
                         oldValue: oldValue,

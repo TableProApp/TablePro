@@ -103,6 +103,8 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
             return try await columns(in: database, schema: schema, table: table)
         case .server, .column:
             return []
+        @unknown default:
+            return []
         }
     }
 

@@ -13,6 +13,13 @@ struct QueryFetchResult {
     let statusMessage: String?
     let isTruncated: Bool
     let resultColumnMeta: [ResultColumnMeta]?
+
+    /// What the elapsed time was spent on, when the driver could tell.
+    var timing: PluginQueryTiming?
+
+    var resolvedTiming: PluginQueryTiming {
+        timing ?? PluginQueryTiming(total: executionTime)
+    }
 }
 
 struct FetchedTableSchema {
@@ -26,10 +33,39 @@ struct ParsedSchemaMetadata {
     let columnForeignKeys: [String: ForeignKeyInfo]?
     let columnNullable: [String: Bool]
     let primaryKeyColumns: [String]
+    /// Columns the app must never write, whether the server computes the value from an expression
+    /// or allocates it from an identity sequence the column cannot override. A `GENERATED ALWAYS
+    /// AS IDENTITY` column belongs here for the same reason a stored generated column does: the
+    /// engine rejects both an explicit INSERT value and an UPDATE of one.
     let generatedColumns: Set<String>
+    let columnIdentity: [String: IdentityKind]
     let approximateRowCount: Int?
     let columnEnumValues: [String: [String]]
     let columnComments: [String: String]
+    /// Whether this came from the table's own schema, rather than from what the result set happened
+    /// to carry. Only the schema knows which columns the server owns, so a command that stages a
+    /// value from that knowledge waits for it rather than guessing from an empty set.
+    let isAuthoritative: Bool
+
+    /// The metadata a tab already holds, captured at the moment the cache decision is made.
+    ///
+    /// Reading it again when the result finally lands reads whichever result is active *then*, and
+    /// selecting a pinned result in between made a cached rerun adopt that other result's identity
+    /// and non-writable sets, with no schema fetch behind it to repair the mistake.
+    static func cached(rows: TableRows, primaryKeyColumns: [String]) -> ParsedSchemaMetadata {
+        ParsedSchemaMetadata(
+            columnDefaults: rows.columnDefaults,
+            columnForeignKeys: rows.foreignKeysFetched ? rows.columnForeignKeys : nil,
+            columnNullable: rows.columnNullable,
+            primaryKeyColumns: primaryKeyColumns,
+            generatedColumns: rows.generatedColumns,
+            columnIdentity: rows.columnIdentity,
+            approximateRowCount: nil,
+            columnEnumValues: rows.columnEnumValues,
+            columnComments: rows.columnComments,
+            isAuthoritative: rows.hasAuthoritativeSchema
+        )
+    }
 }
 
 @MainActor
@@ -69,11 +105,45 @@ final class QueryExecutor {
 
     // MARK: - Driver fetch (nonisolated, runs on background)
 
+    /// Bounding a fetch abandons the rest of it, which for some drivers cancels the statement on the
+    /// server, so it is only ever offered a cap that `resolveRowCap` produced. That gate excludes
+    /// writes and DDL; a caller computing its own cap (the MCP bridge caps a write that RETURNs)
+    /// must not route here.
+    nonisolated static func fetchBoundedQueryData(
+        driver: DatabaseDriver,
+        sql: String,
+        rowCap: Int?
+    ) async throws -> QueryFetchResult? {
+        guard let rowCap, rowCap > 0 else { return nil }
+        let start = CFAbsoluteTimeGetCurrent()
+        guard let result = try await driver.executeBoundedQuery(query: sql, rowCap: rowCap) else {
+            return nil
+        }
+        let elapsed = CFAbsoluteTimeGetCurrent() - start
+        queryExecutorLog.info(
+            "[executeBoundedQuery] rows=\(result.rows.count) truncated=\(result.isTruncated) totalTime=\(String(format: "%.3f", elapsed))s"
+        )
+        return QueryFetchResult(
+            columns: result.columns,
+            columnTypes: result.columnTypes,
+            rows: result.rows,
+            executionTime: result.executionTime,
+            rowsAffected: result.rowsAffected,
+            statusMessage: result.statusMessage,
+            isTruncated: result.isTruncated,
+            resultColumnMeta: result.columnMeta,
+            timing: result.timing
+        )
+    }
+
     nonisolated static func fetchQueryData(
         driver: DatabaseDriver,
         sql: String,
         rowCap: Int?
     ) async throws -> QueryFetchResult {
+        if let bounded = try await fetchBoundedQueryData(driver: driver, sql: sql, rowCap: rowCap) {
+            return bounded
+        }
         let start = CFAbsoluteTimeGetCurrent()
         queryExecutorLog.info("[executeUserQuery] sql=\(sql.prefix(100), privacy: .public) rowCap=\(rowCap?.description ?? "nil")")
         let result = try await driver.executeUserQuery(query: sql, rowCap: rowCap, parameters: nil)
@@ -87,7 +157,8 @@ final class QueryExecutor {
             rowsAffected: result.rowsAffected,
             statusMessage: result.statusMessage,
             isTruncated: result.isTruncated,
-            resultColumnMeta: result.columnMeta
+            resultColumnMeta: result.columnMeta,
+            timing: result.timing
         )
     }
 
@@ -110,7 +181,8 @@ final class QueryExecutor {
             rowsAffected: result.rowsAffected,
             statusMessage: result.statusMessage,
             isTruncated: result.isTruncated,
-            resultColumnMeta: result.columnMeta
+            resultColumnMeta: result.columnMeta,
+            timing: result.timing
         )
     }
 
@@ -150,9 +222,11 @@ final class QueryExecutor {
     static func parseSchemaMetadata(_ schema: FetchedTableSchema) -> ParsedSchemaMetadata {
         var defaults: [String: String?] = [:]
         var nullable: [String: Bool] = [:]
+        var identity: [String: IdentityKind] = [:]
         for col in schema.columns {
             defaults[col.name] = col.defaultValue
             nullable[col.name] = col.isNullable
+            identity[col.name] = col.identityKind
         }
         var fks: [String: ForeignKeyInfo]?
         if let foreignKeys = schema.foreignKeys {
@@ -179,10 +253,16 @@ final class QueryExecutor {
             columnForeignKeys: fks,
             columnNullable: nullable,
             primaryKeyColumns: schema.columns.filter { $0.isPrimaryKey }.map(\.name),
-            generatedColumns: Set(schema.columns.filter(\.isGenerated).map(\.name)),
+            generatedColumns: Set(
+                schema.columns
+                    .filter { $0.isGenerated || $0.identityKind == .always }
+                    .map(\.name)
+            ),
+            columnIdentity: identity,
             approximateRowCount: schema.approximateRowCount,
             columnEnumValues: enumValues,
-            columnComments: comments
+            columnComments: comments,
+            isAuthoritative: true
         )
     }
 
@@ -190,10 +270,16 @@ final class QueryExecutor {
         guard let meta, !meta.isEmpty, meta.count == columns.count else { return nil }
         var nullable: [String: Bool] = [:]
         var primaryKeys: [String] = []
+        var identity: [String: IdentityKind] = [:]
         for (index, column) in columns.enumerated() {
             nullable[column] = meta[index].isNullable
             if meta[index].isPrimaryKey {
                 primaryKeys.append(column)
+            }
+            /// The result set reports only that the server allocates the column, never whether it
+            /// would refuse an explicit value, so the writable kind is the safe reading.
+            if meta[index].isAutoIncrement {
+                identity[column] = .byDefault
             }
         }
         return ParsedSchemaMetadata(
@@ -202,9 +288,11 @@ final class QueryExecutor {
             columnNullable: nullable,
             primaryKeyColumns: primaryKeys,
             generatedColumns: [],
+            columnIdentity: identity,
             approximateRowCount: nil,
             columnEnumValues: [:],
-            columnComments: [:]
+            columnComments: [:],
+            isAuthoritative: false
         )
     }
 
@@ -221,10 +309,12 @@ final class QueryExecutor {
         return cap > 0 ? cap : nil
     }
 
+    private static let rowProducingKeywords: Set<String> = ["SELECT", "WITH", "TABLE", "VALUES"]
+
     static func qualifiesForRowCap(sql: String, tabType: TabType, databaseType: DatabaseType) -> Bool {
         guard tabType == .query else { return false }
         let keyword = QueryClassifier.leadingKeyword(of: sql)
-        return (keyword == "SELECT" || keyword == "WITH")
+        return rowProducingKeywords.contains(keyword)
             && !QueryClassifier.isWriteQuery(sql, databaseType: databaseType)
             && !isDDLStatement(sql)
     }

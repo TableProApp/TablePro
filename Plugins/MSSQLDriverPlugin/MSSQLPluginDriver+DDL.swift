@@ -55,21 +55,12 @@ extension MSSQLPluginDriver {
             def += " NOT NULL"
         }
         if let defaultValue = col.defaultValue {
-            def += " DEFAULT \(mssqlDefaultValue(defaultValue))"
+            def += " DEFAULT \(defaultValue)"
         }
         if inlinePK && col.isPrimaryKey {
             def += " PRIMARY KEY"
         }
         return def
-    }
-
-    private func mssqlDefaultValue(_ value: String) -> String {
-        let upper = value.uppercased()
-        if upper == "NULL" || upper == "GETDATE()" || upper == "NEWID()" || upper == "GETUTCDATE()"
-            || value.hasPrefix("'") || value.hasPrefix("(") || Int64(value) != nil || Double(value) != nil {
-            return value
-        }
-        return "'\(escapeStringLiteral(value))'"
     }
 
     private func mssqlIndexDefinition(_ index: PluginIndexDefinition, qualifiedTable: String) -> String {
@@ -84,10 +75,20 @@ extension MSSQLPluginDriver {
         return def
     }
 
+    /// The referenced table is schema-qualified. An unqualified name resolves against the caller's
+    /// own default schema rather than the schema the table is being created in, so a foreign key
+    /// pointing at `sales.orders` used to be created against whatever `orders` that login could see,
+    /// or to fail with nothing naming the schema as the reason.
     private func mssqlForeignKeyDefinition(_ fk: PluginForeignKeyDefinition) -> String {
         let cols = fk.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
         let refCols = fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        var def = "CONSTRAINT \(quoteIdentifier(fk.name)) FOREIGN KEY (\(cols)) REFERENCES \(quoteIdentifier(fk.referencedTable)) (\(refCols))"
+        let refSchema = fk.referencedSchema.flatMap { $0.isEmpty ? nil : $0 } ?? _currentSchema
+        let refTable = "\(quoteIdentifier(refSchema)).\(quoteIdentifier(fk.referencedTable))"
+        let constraint = fk.name.isEmpty ? "" : "CONSTRAINT \(quoteIdentifier(fk.name)) "
+        var def = "\(constraint)FOREIGN KEY (\(cols)) REFERENCES \(refTable)"
+        if !refCols.isEmpty {
+            def += " (\(refCols))"
+        }
         if fk.onDelete != "NO ACTION" {
             def += " ON DELETE \(fk.onDelete)"
         }
@@ -139,8 +140,11 @@ extension MSSQLPluginDriver {
             stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) \(newColumn.dataType) \(nullable)")
         }
 
-        if defaultChanged, let defaultValue = newColumn.defaultValue {
-            stmts.append("ALTER TABLE \(qt) ADD DEFAULT \(mssqlDefaultValue(defaultValue)) FOR \(colName)")
+        // The re-add mirrors the drop above. A type or nullability change drops the constraint too,
+        // so re-adding only on a default change left a column the user never touched with no
+        // default at all, and every later INSERT that omitted it failed.
+        if defaultChanged || needsTypeChange, let defaultValue = newColumn.defaultValue {
+            stmts.append("ALTER TABLE \(qt) ADD DEFAULT \(defaultValue) FOR \(colName)")
         }
 
         return stmts.isEmpty ? nil : stmts.joined(separator: ";\n")
@@ -164,6 +168,56 @@ extension MSSQLPluginDriver {
 
     func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {
         "ALTER TABLE \(mssqlQualifiedTable(table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
+    }
+
+    func generateAddCheckConstraintSQL(table: String, constraint: PluginCheckConstraintDefinition) -> String? {
+        let expression = constraint.expression.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !expression.isEmpty, !constraint.name.isEmpty else { return nil }
+        return "ALTER TABLE \(mssqlQualifiedTable(table)) ADD CONSTRAINT "
+            + "\(quoteIdentifier(constraint.name)) CHECK (\(expression))"
+    }
+
+    func generateDropCheckConstraintSQL(table: String, constraintName: String) -> String? {
+        guard !constraintName.isEmpty else { return nil }
+        return "ALTER TABLE \(mssqlQualifiedTable(table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
+    }
+
+    /// `sys.check_constraints.parent_column_id` is 0 for a multi-column check, so the columns come
+    /// from `sys.sql_expression_dependencies`, which lists them for both shapes.
+    func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
+        // Bracket-quoting makes `target` a safe identifier, but it lands inside a string literal
+        // here, so it needs literal escaping too: a legal name like O'Reilly would otherwise
+        // terminate the literal.
+        let target = escapeStringLiteral(mssqlQualifiedTable(table))
+        let query = """
+            SELECT cc.name, cc.definition, cc.is_not_trusted,
+                   COL_NAME(d.referenced_id, d.referenced_minor_id)
+            FROM sys.check_constraints cc
+            LEFT JOIN sys.sql_expression_dependencies d
+                ON d.referencing_id = cc.object_id AND d.referenced_minor_id > 0
+            WHERE cc.parent_object_id = OBJECT_ID(\'\(target)\')
+            ORDER BY cc.name
+            """
+        let result = try await execute(query: query)
+        // One row per referenced column rather than a FOR XML aggregate, which entity-escapes
+        // &, < and > and cannot be split safely when a name contains a comma.
+        var ordered: [String] = []
+        var byName: [String: PluginCheckConstraintInfo] = [:]
+        for row in result.rows {
+            guard let name = row[safe: 0]?.asText,
+                  let definition = row[safe: 1]?.asText else { continue }
+            let existing = byName[name]
+            if existing == nil { ordered.append(name) }
+            var columns = existing?.columns ?? []
+            if let column = row[safe: 3]?.asText?.nilIfEmpty { columns.append(column) }
+            byName[name] = PluginCheckConstraintInfo(
+                name: name,
+                expression: MSSQLCheckConstraintDefinition.expression(fromDefinition: definition),
+                columns: columns,
+                isValidated: row[safe: 2]?.asText != "1"
+            )
+        }
+        return ordered.compactMap { byName[$0] }
     }
 
     func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? {

@@ -13,28 +13,38 @@ import os
 internal final class AppLaunchCoordinator {
     internal static let shared = AppLaunchCoordinator()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "AppLaunchCoordinator")
-    internal static let collectionWindow: Duration = .milliseconds(150)
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "AppLaunchCoordinator")
 
     private(set) var phase: LaunchPhase = .launching
 
+    @ObservationIgnored private let environment: any LaunchEnvironment
     private var pendingIntents: [LaunchIntent] = []
-    private var deadlineTask: Task<Void, Never>?
     private var hasFinishedLaunching = false
+    private var isDraining = false
+    private var hasRoutedAnyIntent = false
+    private var hasFinishedStartup = false
 
-    private init() {}
+    internal init(environment: any LaunchEnvironment = LiveLaunchEnvironment()) {
+        self.environment = environment
+    }
 
     // MARK: - App Lifecycle Hooks
 
+    /// Intents are collected for exactly one run-loop turn rather than a fixed span of time.
+    ///
+    /// Measured on macOS 27 with a probe app registered for a URL scheme and a document type:
+    /// LaunchServices always delivers the gesture that started the app to `application(_:open:)`
+    /// before `applicationDidFinishLaunching` returns, coalesces several documents from one gesture
+    /// into a single call, and delivers a straggler from a second request 2.4 to 7.1ms later, in
+    /// every run before the first turn of the main queue. A timed window buys nothing over that and
+    /// costs the person every millisecond of it, because the window they are waiting for is not
+    /// built until it closes.
     internal func didFinishLaunching() {
         hasFinishedLaunching = true
-        let deadline = Date().addingTimeInterval(0.150)
-        phase = .collectingIntents(deadline: deadline)
-        deadlineTask = Task { [weak self] in
-            try? await Task.sleep(for: Self.collectionWindow)
-            await MainActor.run {
-                self?.transitionToRouting()
-            }
+        deliver(UITestLaunchEnvironment.launchIntents)
+        phase = .collectingIntents
+        environment.scheduleNextTurn { [weak self] in
+            self?.transitionToRouting()
         }
     }
 
@@ -51,6 +61,10 @@ internal final class AppLaunchCoordinator {
                 return intent
             }
         }
+        /// Unconditional, even when nothing parsed: LaunchServices treats every `open` request as a
+        /// launch and puts a running background process back in the Dock, so the role has to be
+        /// re-applied on arrival rather than only when the URL turns out to mean something.
+        AppActivationPolicyController.shared.adoptIntents(intents, isLaunching: !hasFinishedLaunching)
         deliver(intents)
     }
 
@@ -58,6 +72,7 @@ internal final class AppLaunchCoordinator {
         guard let connectionIdString = activity.userInfo?["connectionId"] as? String,
               let connectionId = UUID(uuidString: connectionIdString) else { return }
         let table = activity.userInfo?["tableName"] as? String
+        AppActivationPolicyController.shared.adoptUserSession()
 
         if let table {
             deliver([.openTable(
@@ -72,121 +87,78 @@ internal final class AppLaunchCoordinator {
         }
     }
 
+    /// Reaching for the app itself is the gesture that makes a machine-started process the person's
+    /// own, so it keeps its Dock icon and menu bar from here on however it started.
     internal func handleReopen(hasVisibleWindows: Bool) -> Bool {
+        AppActivationPolicyController.shared.adoptUserSession()
         if hasVisibleWindows { return true }
-        showWelcomeWindow()
+        environment.presentWelcome()
         return false
     }
 
     // MARK: - Phase Transitions
 
-    private func deliver(_ intents: [LaunchIntent]) {
+    /// The one way an intent enters the launch pipeline, whether it came from a URL, a handoff, or
+    /// the UI-test environment. Everything is queued; nothing routes straight from here.
+    internal func deliver(_ intents: [LaunchIntent]) {
         guard !intents.isEmpty else { return }
-        if phase.isAcceptingIntents {
-            pendingIntents.append(contentsOf: intents)
-            for window in NSApp.windows where Self.isWelcomeWindow(window) {
-                window.orderOut(nil)
-            }
-        } else {
-            Task { [weak self] in
-                guard let self else { return }
-                for intent in intents {
-                    await LaunchIntentRouter.shared.route(intent)
-                }
-                self.dismissWelcomeIfMainWindowVisible()
-            }
+        pendingIntents.append(contentsOf: intents)
+        guard !phase.isAcceptingIntents else {
+            environment.closeWelcome()
+            return
         }
+        drain()
     }
 
     private func transitionToRouting() {
-        guard hasFinishedLaunching else { return }
+        guard hasFinishedLaunching, phase == .collectingIntents else { return }
         phase = .routing
-        let intents = pendingIntents
-        pendingIntents.removeAll()
+        drain()
+    }
+
+    /// One consumer for the whole queue, so an intent that arrives while another is suspended joins
+    /// the pass in flight instead of racing it.
+    ///
+    /// Routing an intent suspends: `TabRouter.openTable` awaits `ensureConnected`. Two independent
+    /// tasks for the same connection can each look, each find no session, and each open one, which
+    /// on an embedded engine means two writable instances of one file that never see each other's
+    /// writes. Draining serially also means the cutoff between "collected at launch" and "arrived
+    /// later" stops mattering: a straggler is routed in order either way, so nothing rests on when
+    /// LaunchServices happens to deliver it.
+    private func drain() {
+        guard !isDraining else { return }
+        isDraining = true
 
         Task { [weak self] in
             guard let self else { return }
-            for intent in intents {
-                await LaunchIntentRouter.shared.route(intent)
+            while !self.pendingIntents.isEmpty {
+                let intent = self.pendingIntents.removeFirst()
+                self.hasRoutedAnyIntent = true
+                await self.environment.route(intent)
             }
-            self.dismissWelcomeIfMainWindowVisible()
-            self.runStartupBehaviorIfNeeded(skipping: intents)
-            self.phase = .ready
-            self.finalizeWindowsIfNoVisibleMain(intents: intents)
+            self.isDraining = false
+            self.environment.dismissWelcomeIfMainWindowVisible()
+            self.finishStartupIfNeeded()
         }
     }
 
-    private func dismissWelcomeIfMainWindowVisible() {
-        guard NSApp.windows.contains(where: { Self.isMainWindow($0) && $0.isVisible }) else { return }
-        WindowOpener.shared.orderOutWelcome()
-    }
-
-    private func runStartupBehaviorIfNeeded(skipping intents: [LaunchIntent]) {
-        guard intents.isEmpty else { return }
-
-        let general = AppSettingsStorage.shared.loadGeneral()
-        switch general.startupBehavior {
-        case .showWelcome:
-            for window in NSApp.windows where Self.isMainWindow(window) {
-                window.close()
-            }
-        case .reopenLast:
-            reopenLastSession()
-        }
-    }
-
-    private func reopenLastSession() {
-        guard !NSApp.windows.contains(where: { Self.isMainWindow($0) }) else { return }
-
-        let connectionIds = LastOpenConnectionsStorage.shared.load()
-        guard !connectionIds.isEmpty else { return }
-
-        let connectionsById = Dictionary(
-            ConnectionStorage.shared.loadConnections().map { ($0.id, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        var openedAny = false
-        for connectionId in connectionIds {
-            guard let connection = connectionsById[connectionId] else { continue }
-            WindowManager.shared.openTab(
-                payload: EditorTabPayload(connectionId: connectionId, intent: .restoreOrDefault)
-            )
-            openedAny = true
-            Task {
-                do {
-                    try await DatabaseManager.shared.ensureConnected(connection)
-                } catch {
-                    Self.logger.error(
-                        "[restore] reopen connect failed for \(connectionId, privacy: .public): \(error.localizedDescription, privacy: .public)"
-                    )
-                }
-            }
-        }
-
-        if openedAny {
-            WindowOpener.shared.orderOutWelcome()
-        }
-    }
-
-    private func finalizeWindowsIfNoVisibleMain(intents: [LaunchIntent]) {
-        guard intents.isEmpty else { return }
-        guard !NSApp.windows.contains(where: { Self.isMainWindow($0) && $0.isVisible }) else { return }
-        showWelcomeWindow()
+    private func finishStartupIfNeeded() {
+        guard !hasFinishedStartup, phase == .routing else { return }
+        hasFinishedStartup = true
+        environment.runStartupBehavior(hadIntents: hasRoutedAnyIntent)
+        LaunchTracer.shared.mark(.intentsRouted)
+        phase = .ready
+        environment.presentWelcomeIfNoMainWindow(hadIntents: hasRoutedAnyIntent)
+        environment.launchDidComplete()
     }
 
     // MARK: - Window Identification
 
     internal static func isMainWindow(_ window: NSWindow) -> Bool {
-        guard let raw = window.identifier?.rawValue else { return false }
-        return raw == "main" || raw.hasPrefix("main-")
+        ConnectionWindowIdentity.isPrimaryWindow(window.identifier?.rawValue)
     }
 
     internal static func isWelcomeWindow(_ window: NSWindow) -> Bool {
-        guard let raw = window.identifier?.rawValue else { return false }
-        return raw == SceneId.welcome || raw.hasPrefix("\(SceneId.welcome)-")
-    }
-
-    private func showWelcomeWindow() {
-        WindowOpener.shared.openWelcome()
+        ConnectionWindowIdentity.isWelcomeWindow(window.identifier?.rawValue)
     }
 }

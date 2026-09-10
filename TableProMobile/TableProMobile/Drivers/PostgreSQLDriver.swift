@@ -3,7 +3,7 @@ import Foundation
 import TableProDatabase
 import TableProModels
 
-final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
+nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     private let actor = PostgreSQLActor()
     private let host: String
     private let port: Int
@@ -19,6 +19,10 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     nonisolated(unsafe) private(set) var currentSchema: String? = "public"
     nonisolated(unsafe) private(set) var serverVersion: String?
 
+    nonisolated(unsafe) private var reportsIdentityColumns: Bool?
+
+    private var effectiveSchema: String { currentSchema ?? "public" }
+
     init(host: String, port: Int, user: String, password: String, database: String, ssl: DriverSSLConfiguration = .disabled) {
         self.host = host
         self.port = port
@@ -33,7 +37,15 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     func connect() async throws {
         try await LocalNetworkPermission.shared.ensureAccess(for: host)
         try await actor.connect(host: host, port: port, user: user, password: password, database: database, ssl: ssl)
+        _ = try? await actor.execute("SET standard_conforming_strings = on")
         serverVersion = await actor.serverVersion()
+        await adoptServerSchema()
+    }
+
+    private func adoptServerSchema() async {
+        guard let schema = try? await actor.execute("SELECT current_schema()").rows.first?.first ?? nil,
+              !schema.isEmpty else { return }
+        currentSchema = schema
     }
 
     func disconnect() async throws {
@@ -126,7 +138,7 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     // MARK: - Schema
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {
-        let schemaName = schema ?? "public"
+        let schemaName = schema ?? effectiveSchema
         let safe = schemaName.replacingOccurrences(of: "'", with: "''")
         let raw = try await actor.execute("""
             SELECT table_name, table_type
@@ -149,34 +161,26 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
-        let schemaName = schema ?? "public"
+        let schemaName = schema ?? effectiveSchema
         let safeTbl = table.replacingOccurrences(of: "'", with: "''")
         let safeSchema = schemaName.replacingOccurrences(of: "'", with: "''")
 
-        let raw = try await actor.execute("""
-            SELECT
-                c.column_name,
-                c.data_type,
-                c.is_nullable,
-                c.column_default,
-                c.character_maximum_length,
-                CASE WHEN pk.column_name IS NOT NULL THEN 'YES' ELSE 'NO' END AS is_pk
-            FROM information_schema.columns c
-            LEFT JOIN (
-                SELECT kcu.column_name
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                    ON tc.constraint_name = kcu.constraint_name
-                    AND tc.table_schema = kcu.table_schema
-                WHERE tc.constraint_type = 'PRIMARY KEY'
-                    AND tc.table_schema = '\(safeSchema)'
-                    AND tc.table_name = '\(safeTbl)'
-            ) pk ON c.column_name = pk.column_name
-            WHERE c.table_schema = '\(safeSchema)' AND c.table_name = '\(safeTbl)'
-            ORDER BY c.ordinal_position
-            """)
+        let result: RawPGResult
+        if reportsIdentityColumns == false {
+            result = try await actor.execute(columnsQuery(schema: safeSchema, table: safeTbl, identity: false))
+        } else {
+            do {
+                result = try await actor.execute(columnsQuery(schema: safeSchema, table: safeTbl, identity: true))
+                reportsIdentityColumns = true
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                reportsIdentityColumns = false
+                result = try await actor.execute(columnsQuery(schema: safeSchema, table: safeTbl, identity: false))
+            }
+        }
 
-        return raw.rows.enumerated().compactMap { index, row in
+        return result.rows.enumerated().compactMap { index, row in
             guard row.count >= 6, let name = row[0], let dataType = row[1] else { return nil }
             let maxLen = row[4].flatMap { Int($0) }
             return ColumnInfo(
@@ -187,13 +191,45 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
                 defaultValue: row[3],
                 comment: nil,
                 characterMaxLength: maxLen,
-                ordinalPosition: index
+                ordinalPosition: index,
+                isAutoIncrement: ColumnMetadataRules.postgresIsAutoIncrement(
+                    isIdentity: row.count > 6 ? row[6] : nil, columnDefault: row[3]
+                ),
+                isGenerated: ColumnMetadataRules.postgresIsGenerated(
+                    isGenerated: row.count > 7 ? row[7] : nil
+                )
             )
         }
     }
 
+    private func columnsQuery(schema: String, table: String, identity: Bool) -> String {
+        let identityColumns = identity ? ",\n                c.is_identity,\n                c.is_generated" : ""
+        return """
+            SELECT
+                c.column_name,
+                c.data_type,
+                c.is_nullable,
+                c.column_default,
+                c.character_maximum_length,
+                CASE WHEN pk.column_name IS NOT NULL THEN 'YES' ELSE 'NO' END AS is_pk\(identityColumns)
+            FROM information_schema.columns c
+            LEFT JOIN (
+                SELECT kcu.column_name
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                    ON tc.constraint_name = kcu.constraint_name
+                    AND tc.table_schema = kcu.table_schema
+                WHERE tc.constraint_type = 'PRIMARY KEY'
+                    AND tc.table_schema = '\(schema)'
+                    AND tc.table_name = '\(table)'
+            ) pk ON c.column_name = pk.column_name
+            WHERE c.table_schema = '\(schema)' AND c.table_name = '\(table)'
+            ORDER BY c.ordinal_position
+            """
+    }
+
     func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] {
-        let schemaName = schema ?? "public"
+        let schemaName = schema ?? effectiveSchema
         let safeTbl = table.replacingOccurrences(of: "'", with: "''")
         let safeSchema = schemaName.replacingOccurrences(of: "'", with: "''")
 
@@ -241,7 +277,7 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
-        let schemaName = schema ?? "public"
+        let schemaName = schema ?? effectiveSchema
         let safeTbl = table.replacingOccurrences(of: "'", with: "''")
         let safeSchema = schemaName.replacingOccurrences(of: "'", with: "''")
 
@@ -326,7 +362,11 @@ final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
 private actor PostgreSQLActor {
     private var conn: OpaquePointer?
 
-    func connect(host: String, port: Int, user: String, password: String, database: String, ssl: DriverSSLConfiguration = .disabled) throws {
+    private static let connectTimeout: TimeInterval = 15
+    private static let pollSliceMilliseconds: Int32 = 100
+
+    /// `PQconnectdb` blocks with no way to abort, so a cancelled connect can never stop dialing.
+    func connect(host: String, port: Int, user: String, password: String, database: String, ssl: DriverSSLConfiguration = .disabled) async throws {
         guard (1...65_535).contains(port) else {
             throw PostgreSQLError.connectionFailed(
                 "Port \(port) is out of range. Use a value between 1 and 65535."
@@ -335,31 +375,72 @@ private actor PostgreSQLActor {
         // Close existing connection if reconnecting
         if let conn { PQfinish(conn); self.conn = nil }
 
-        let escapedHost = escapeConnParam(host)
-        let escapedUser = escapeConnParam(user)
-        let escapedPass = escapeConnParam(password)
-        let escapedDb = escapeConnParam(database)
+        let connStr = PostgreSQLConnectionString.build(
+            host: host,
+            port: port,
+            database: database,
+            user: user,
+            password: password,
+            ssl: ssl
+        )
 
-        var connStr = "host='\(escapedHost)' port='\(port)' dbname='\(escapedDb)' " +
-            "user='\(escapedUser)' password='\(escapedPass)' connect_timeout='10' sslmode='\(ssl.postgresSSLMode)'"
-        if let caPath = ssl.existingCACertificatePath {
-            connStr += " sslrootcert='\(escapeConnParam(caPath))'"
+        guard let connection = PQconnectStart(connStr) else {
+            throw PostgreSQLError.connectionFailed(String(localized: "Could not start a connection."))
         }
 
-        let connection = PQconnectdb(connStr)
+        var adopted = false
+        defer { if !adopted { PQfinish(connection) } }
 
-        guard PQstatus(connection) == CONNECTION_OK else {
-            let msg = connection.flatMap { String(cString: PQerrorMessage($0)) } ?? "Unknown error"
-            PQfinish(connection)
-            throw PostgreSQLError.connectionFailed(msg)
+        guard PQstatus(connection) != CONNECTION_BAD else {
+            throw PostgreSQLError.connectionFailed(Self.message(from: connection))
         }
+
+        try await pollUntilConnected(connection)
 
         self.conn = connection
+        adopted = true
     }
 
-    private func escapeConnParam(_ value: String) -> String {
-        value.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
+    private func pollUntilConnected(_ connection: OpaquePointer) async throws {
+        let deadline = Date().addingTimeInterval(Self.connectTimeout)
+        var status = PGRES_POLLING_WRITING
+
+        while true {
+            try Task.checkCancellation()
+
+            switch status {
+            case PGRES_POLLING_OK:
+                return
+            case PGRES_POLLING_FAILED:
+                throw PostgreSQLError.connectionFailed(Self.message(from: connection))
+            case PGRES_POLLING_READING, PGRES_POLLING_WRITING:
+                let socket = PQsocket(connection)
+                guard socket >= 0 else {
+                    throw PostgreSQLError.connectionFailed(Self.message(from: connection))
+                }
+                guard Date() < deadline else {
+                    throw PostgreSQLError.connectionFailed(String(localized: "Connection timed out."))
+                }
+
+                let events = status == PGRES_POLLING_READING ? Int16(POLLIN) : Int16(POLLOUT)
+                var descriptor = pollfd(fd: socket, events: events, revents: 0)
+                let ready = poll(&descriptor, 1, Self.pollSliceMilliseconds)
+                guard ready >= 0 else {
+                    throw PostgreSQLError.connectionFailed(String(localized: "Connection failed while waiting on the socket."))
+                }
+                guard ready > 0 else { continue }
+
+                status = PQconnectPoll(connection)
+            default:
+                status = PQconnectPoll(connection)
+            }
+        }
+    }
+
+    private static func message(from connection: OpaquePointer?) -> String {
+        guard let connection else { return String(localized: "Unknown error") }
+        let text = String(cString: PQerrorMessage(connection))
+        return text.isEmpty ? String(localized: "Unknown error") : text
     }
 
     func close() {
@@ -612,7 +693,7 @@ private actor PostgreSQLActor {
     }
 }
 
-enum PGBeginStreamResult: Sendable {
+nonisolated enum PGBeginStreamResult: Sendable {
     case tuples([ColumnInfo])
     case commandOk(affectedRows: Int)
 }
@@ -651,7 +732,7 @@ nonisolated private func pgOidToTypeName(_ oid: UInt32) -> String {
     }
 }
 
-private struct RawPGResult: Sendable {
+nonisolated private struct RawPGResult: Sendable {
     let columns: [String]
     let columnTypes: [String]
     let rows: [[String?]]
@@ -662,7 +743,7 @@ private struct RawPGResult: Sendable {
 
 // MARK: - Errors
 
-enum PostgreSQLError: Error, LocalizedError {
+nonisolated enum PostgreSQLError: Error, LocalizedError {
     case connectionFailed(String)
     case notConnected
     case queryFailed(String)

@@ -58,7 +58,6 @@ enum TestFixtures {
         new: String? = "value"
     ) -> CellChange {
         return CellChange(
-            rowIndex: row,
             columnIndex: col,
             columnName: colName,
             oldValue: PluginCellValue.fromOptional(old),
@@ -101,12 +100,27 @@ enum TestFixtures {
 
     static func makeTableInfo(
         name: String = "test_table",
-        type: TableInfo.TableType = .table
+        type: TableInfo.TableType = .table,
+        schema: String? = nil
     ) -> TableInfo {
         return TableInfo(
             name: name,
             type: type,
-            rowCount: 0
+            rowCount: 0,
+            schema: schema
+        )
+    }
+
+    static func makeTableRef(
+        name: String = "test_table",
+        type: TableInfo.TableType = .table,
+        database: String? = nil,
+        schema: String? = nil
+    ) -> DatabaseTreeTableRef {
+        DatabaseTreeTableRef(
+            database: database,
+            schema: schema,
+            table: makeTableInfo(name: name, type: type, schema: schema)
         )
     }
 
@@ -173,6 +187,8 @@ enum TestFixtures {
         query: String = "SELECT * FROM users",
         connectionId: UUID = UUID(),
         databaseName: String = "testdb",
+        databaseType: DatabaseType = .postgresql,
+        source: QueryHistorySource = .editor,
         executionTime: TimeInterval = 0.05,
         rowCount: Int = 10,
         wasSuccessful: Bool = true,
@@ -183,10 +199,33 @@ enum TestFixtures {
             query: query,
             connectionId: connectionId,
             databaseName: databaseName,
+            databaseType: databaseType,
+            source: source,
             executionTime: executionTime,
             rowCount: rowCount,
             wasSuccessful: wasSuccessful,
             errorMessage: errorMessage
+        )
+    }
+
+    /// A structure editing session for one table. The identity has to agree with what
+    /// `MainEditorContentView.structureContent` builds, because a mismatch is what tells the view
+    /// this session belongs to a table the tab no longer shows.
+    @MainActor
+    static func makeStructureSession(
+        connection: DatabaseConnection? = nil,
+        database: String = "db_a",
+        schema: String? = nil,
+        table: String = "users"
+    ) -> StructureEditingSession {
+        let resolved = connection ?? makeConnection(database: database)
+        let scope = DatabaseScope(connectionId: resolved.id, database: database, schema: schema)
+        return StructureEditingSession(
+            identity: "\(scope.qualifiedDescription).\(table)",
+            connection: resolved,
+            databaseName: database,
+            schemaName: schema,
+            tableName: table
         )
     }
 

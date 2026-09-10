@@ -7,4 +7,7 @@
 #   pluginkit:<path under the PluginKit tree that differs or exists in only one tree>
 #   databasetype:<file defining a production DatabaseType other than the TableProCore source>
 
-databasetype:TablePro/Models/Connection/DatabaseConnection.swift
+# The macOS DatabaseType moved out of DatabaseConnection.swift into a file of its own so that
+# naming a database type stops costing the plugin registry at compile time. Same single
+# definition, new path: this is a relocation of the entry below, not a fresh one.
+databasetype:TablePro/Models/Connection/DatabaseType.swift

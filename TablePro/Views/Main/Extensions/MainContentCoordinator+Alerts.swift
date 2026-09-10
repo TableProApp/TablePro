@@ -41,22 +41,25 @@ extension MainContentCoordinator {
             return String(localized: "Navigating to another page will discard all unsaved changes.")
         case .filter:
             return String(localized: "Applying or clearing filters will reload data and discard all unsaved changes.")
+        case .resultSwitch:
+            return String(localized: "Showing another result will discard all unsaved changes.")
+        /// Worded for both directions, because Forward reaches the same guard. Naming Back here
+        /// misstated the operation the user was approving whenever they stepped forward.
+        case .navigation:
+            return String(localized: "Moving through this tab's history replaces what it is showing and will discard all unsaved changes.")
+        /// No mention of reloading, unlike sort and the WHERE filter: a value filter narrows the
+        /// rows already loaded and never re-queries. What it does change is which row each display
+        /// position names, which is what the edits are recorded against.
+        case .displayOrder:
+            return String(localized: "Changing which rows are shown will discard all unsaved changes.")
+        /// Named for the reload, like sort and the WHERE filter, because that is what costs the
+        /// edits: the table is fetched again with a different column list.
+        case .columnVisibility:
+            return String(localized: "Showing or hiding columns will reload data and discard all unsaved changes.")
         }
     }
 
     // MARK: - Error Alerts
-
-    /// Show query execution error as a sheet
-    /// - Parameters:
-    ///   - error: The error that occurred
-    ///   - window: Parent window (optional)
-    func showQueryError(_ error: Error, window: NSWindow?) {
-        AlertHelper.showErrorSheet(
-            title: String(localized: "Query Execution Failed"),
-            message: error.localizedDescription,
-            window: window
-        )
-    }
 
     /// Show save changes error as a sheet
     /// - Parameters:

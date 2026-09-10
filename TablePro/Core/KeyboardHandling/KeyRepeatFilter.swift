@@ -23,14 +23,14 @@ final class KeyRepeatFilter {
         guard monitor == nil else { return }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { nsEvent in
             nonisolated(unsafe) let event = nsEvent
-            return MainActor.assumeIsolated {
-                guard event.isARepeat else { return event }
+            let suppress = MainActor.assumeIsolated { () -> Bool in
+                guard event.isARepeat else { return false }
                 let keyboard = AppSettingsManager.shared.keyboard
-                let suppress = Self.nonRepeatingActions.contains {
+                return Self.nonRepeatingActions.contains {
                     keyboard.shortcut(for: $0)?.matches(event) == true
                 }
-                return suppress ? nil : event
             }
+            return suppress ? nil : nsEvent
         }
     }
 }

@@ -1,9 +1,10 @@
 import Foundation
+import TableProDatabase
 import TableProModels
 import TableProPluginKit
 import TableProQuery
 
-enum SQLBuilder {
+nonisolated enum SQLBuilder {
     static func quoteIdentifier(_ name: String, for type: DatabaseType) -> String {
         switch type {
         case .mysql, .mariadb:
@@ -22,98 +23,124 @@ enum SQLBuilder {
         case .mssql:
             let order = orderBy.isEmpty ? "ORDER BY (SELECT NULL)" : orderBy
             return "\(order) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
+        case .oracle:
+            let order = orderBy.isEmpty ? "ORDER BY 1" : orderBy
+            return "\(order) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
         default:
             let trailing = "LIMIT \(limit) OFFSET \(offset)"
             return orderBy.isEmpty ? trailing : "\(orderBy) \(trailing)"
         }
     }
 
-    static func escapeString(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\0", with: "\\0")
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\r", with: "\\r")
-            .replacingOccurrences(of: "\u{1a}", with: "\\Z")
-            .replacingOccurrences(of: "'", with: "''")
-    }
-
-    static func buildCount(table: String, type: DatabaseType) -> String {
-        let quoted = quoteIdentifier(table, for: type)
+    static func buildCount(table: String, schema: String?, type: DatabaseType) -> String {
+        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         return "SELECT COUNT(*) FROM \(quoted)"
     }
 
-    static func buildSelect(table: String, type: DatabaseType, limit: Int, offset: Int) -> String {
-        let quoted = quoteIdentifier(table, for: type)
+    static func buildSelect(table: String, schema: String?, type: DatabaseType, limit: Int, offset: Int) -> String {
+        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         let pagination = paginationClause(orderBy: "", limit: limit, offset: offset, for: type)
         return "SELECT * FROM \(quoted) \(pagination)"
     }
 
     static func buildDelete(
         table: String,
+        schema: String?,
         type: DatabaseType,
+        driver: any DatabaseDriver,
         primaryKeys: [(column: String, value: String)]
     ) -> String {
-        let quotedTable = quoteIdentifier(table, for: type)
-        let where_ = primaryKeys.map {
-            "\(quoteIdentifier($0.column, for: type)) = '\(escapeString($0.value))'"
+        let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
+        let predicate = primaryKeys.map {
+            "\(quoteIdentifier($0.column, for: type)) = '\(driver.escapeStringLiteral($0.value))'"
         }.joined(separator: " AND ")
-        return "DELETE FROM \(quotedTable) WHERE \(where_)"
+        return "DELETE FROM \(quotedTable) WHERE \(predicate)"
     }
 
     static func buildUpdate(
         table: String,
+        schema: String?,
         type: DatabaseType,
+        driver: any DatabaseDriver,
         changes: [(column: String, value: String?)],
         primaryKeys: [(column: String, value: String)]
     ) -> String {
-        let quotedTable = quoteIdentifier(table, for: type)
-        let set_ = changes.map { col, val in
+        let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
+        let assignments = changes.map { col, val in
             let qcol = quoteIdentifier(col, for: type)
-            if let val { return "\(qcol) = '\(escapeString(val))'" }
+            if let val { return "\(qcol) = '\(driver.escapeStringLiteral(val))'" }
             return "\(qcol) = NULL"
         }.joined(separator: ", ")
-        let where_ = primaryKeys.map {
-            "\(quoteIdentifier($0.column, for: type)) = '\(escapeString($0.value))'"
+        let predicate = primaryKeys.map {
+            "\(quoteIdentifier($0.column, for: type)) = '\(driver.escapeStringLiteral($0.value))'"
         }.joined(separator: " AND ")
-        return "UPDATE \(quotedTable) SET \(set_) WHERE \(where_)"
+        return "UPDATE \(quotedTable) SET \(assignments) WHERE \(predicate)"
     }
 
     static func buildInsert(
         table: String,
+        schema: String?,
         type: DatabaseType,
+        driver: any DatabaseDriver,
         columns: [String],
         values: [String?]
-    ) -> String {
-        let quotedTable = quoteIdentifier(table, for: type)
+    ) -> String? {
+        let qualifiedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
+        guard !columns.isEmpty else {
+            return buildAllDefaultsInsert(qualifiedTable: qualifiedTable, for: type)
+        }
         let cols = columns.map { quoteIdentifier($0, for: type) }.joined(separator: ", ")
         let vals = values.map { val in
-            if let val { return "'\(escapeString(val))'" }
+            if let val { return "'\(driver.escapeStringLiteral(val))'" }
             return "NULL"
         }.joined(separator: ", ")
-        return "INSERT INTO \(quotedTable) (\(cols)) VALUES (\(vals))"
+        return "INSERT INTO \(qualifiedTable) (\(cols)) VALUES (\(vals))"
+    }
+
+    /// Every column left on its database default. MySQL and MariaDB take an empty column list;
+    /// the PostgreSQL family, SQLite and SQL Server take `DEFAULT VALUES`. Oracle accepts
+    /// neither, so it gets no statement.
+    static func buildAllDefaultsInsert(qualifiedTable: String, for type: DatabaseType) -> String? {
+        switch type {
+        case .mysql, .mariadb:
+            return "INSERT INTO \(qualifiedTable) () VALUES ()"
+        case .postgresql, .redshift, .sqlite, .mssql, .duckdb:
+            return "INSERT INTO \(qualifiedTable) DEFAULT VALUES"
+        default:
+            return nil
+        }
+    }
+
+    static func supportsAllDefaultsInsert(_ type: DatabaseType) -> Bool {
+        buildAllDefaultsInsert(qualifiedTable: "t", for: type) != nil
+    }
+
+    static func qualifiedIdentifier(table: String, schema: String?, for type: DatabaseType) -> String {
+        let quotedTable = quoteIdentifier(table, for: type)
+        guard let schema, !schema.isEmpty else { return quotedTable }
+        return "\(quoteIdentifier(schema, for: type)).\(quotedTable)"
     }
 
     static func buildSelect(
-        table: String, type: DatabaseType,
+        table: String, schema: String?, type: DatabaseType,
         sortState: SortState,
         limit: Int, offset: Int
     ) -> String {
-        let quoted = quoteIdentifier(table, for: type)
+        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         let orderBy = buildOrderByClause(sortState, for: type)
         let pagination = paginationClause(orderBy: orderBy, limit: limit, offset: offset, for: type)
         return "SELECT * FROM \(quoted) \(pagination)"
     }
 
     static func buildFilteredSelect(
-        table: String, type: DatabaseType,
+        table: String, schema: String?, type: DatabaseType,
         filters: [TableFilter], logicMode: FilterLogicMode,
         limit: Int, offset: Int
     ) -> String {
         let dialect = dialectDescriptor(for: type)
         let generator = FilterSQLGenerator(dialect: dialect)
         let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode)
-        let quoted = quoteIdentifier(table, for: type)
+        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         let pagination = paginationClause(orderBy: "", limit: limit, offset: offset, for: type)
         var sql = "SELECT * FROM \(quoted)"
         if !whereClause.isEmpty { sql += " \(whereClause)" }
@@ -122,7 +149,7 @@ enum SQLBuilder {
     }
 
     static func buildFilteredSelect(
-        table: String, type: DatabaseType,
+        table: String, schema: String?, type: DatabaseType,
         filters: [TableFilter], logicMode: FilterLogicMode,
         sortState: SortState,
         limit: Int, offset: Int
@@ -131,7 +158,7 @@ enum SQLBuilder {
         let generator = FilterSQLGenerator(dialect: dialect)
         let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode)
         let orderBy = buildOrderByClause(sortState, for: type)
-        let quoted = quoteIdentifier(table, for: type)
+        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         let pagination = paginationClause(orderBy: orderBy, limit: limit, offset: offset, for: type)
         var sql = "SELECT * FROM \(quoted)"
         if !whereClause.isEmpty { sql += " \(whereClause)" }
@@ -140,13 +167,13 @@ enum SQLBuilder {
     }
 
     static func buildFilteredCount(
-        table: String, type: DatabaseType,
+        table: String, schema: String?, type: DatabaseType,
         filters: [TableFilter], logicMode: FilterLogicMode
     ) -> String {
         let dialect = dialectDescriptor(for: type)
         let generator = FilterSQLGenerator(dialect: dialect)
         let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode)
-        let quoted = quoteIdentifier(table, for: type)
+        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         if whereClause.isEmpty {
             return "SELECT COUNT(*) FROM \(quoted)"
         }
@@ -156,13 +183,13 @@ enum SQLBuilder {
     // MARK: - Search
 
     static func buildSearchSelect(
-        table: String, type: DatabaseType,
+        table: String, schema: String?, type: DatabaseType,
         searchText: String, searchColumns: [ColumnInfo],
         filters: [TableFilter] = [], logicMode: FilterLogicMode = .and,
         sortState: SortState = SortState(),
         limit: Int, offset: Int
     ) -> String {
-        let quoted = quoteIdentifier(table, for: type)
+        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         let whereClause = buildSearchWhereClause(
             searchText: searchText, searchColumns: searchColumns,
             filters: filters, logicMode: logicMode, type: type
@@ -176,11 +203,11 @@ enum SQLBuilder {
     }
 
     static func buildSearchCount(
-        table: String, type: DatabaseType,
+        table: String, schema: String?, type: DatabaseType,
         searchText: String, searchColumns: [ColumnInfo],
         filters: [TableFilter] = [], logicMode: FilterLogicMode = .and
     ) -> String {
-        let quoted = quoteIdentifier(table, for: type)
+        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         let whereClause = buildSearchWhereClause(
             searchText: searchText, searchColumns: searchColumns,
             filters: filters, logicMode: logicMode, type: type
@@ -243,6 +270,8 @@ enum SQLBuilder {
                 castExpr = "CAST(\(quotedCol) AS TEXT)"
             case .mssql:
                 castExpr = "CAST(\(quotedCol) AS NVARCHAR(MAX))"
+            case .oracle:
+                castExpr = "CAST(\(quotedCol) AS VARCHAR2(4000))"
             case .clickhouse:
                 castExpr = "toString(\(quotedCol))"
             default:
@@ -282,6 +311,16 @@ enum SQLBuilder {
         return "ORDER BY " + clauses.joined(separator: ", ")
     }
 
+    static func caseSensitivityStyle(for type: DatabaseType) -> SQLDialectDescriptor.CaseSensitivityStyle {
+        dialectDescriptor(for: type).caseSensitivityStyle
+    }
+
+    /// Mirrors what each driver's plugin declares on the Mac, because iOS links its drivers
+    /// directly and has no plugin bundle to ask. The default arm is the trap: an omitted type gets
+    /// `caseSensitivityStyle` `.unsupported`, which resolves to plain `LIKE` and to a case
+    /// sensitivity toggle the UI will not offer, so a filter silently returns fewer rows than the
+    /// same filter on the Mac. `SQLDialectParityTests` is what stops a new driver landing here
+    /// without an arm.
     private static func dialectDescriptor(for type: DatabaseType) -> SQLDialectDescriptor {
         switch type {
         case .mysql, .mariadb:
@@ -291,15 +330,26 @@ enum SQLBuilder {
                 functions: [],
                 dataTypes: [],
                 likeEscapeStyle: .implicit,
-                requiresBackslashEscaping: true
+                requiresBackslashEscaping: true,
+                caseSensitivityStyle: .collationDefined
             )
-        case .postgresql, .redshift:
+        case .postgresql:
             return SQLDialectDescriptor(
                 identifierQuote: "\"",
                 keywords: [],
                 functions: [],
                 dataTypes: [],
-                likeEscapeStyle: .explicit
+                likeEscapeStyle: .explicit,
+                caseSensitivityStyle: .ilikeOperator
+            )
+        case .redshift:
+            return SQLDialectDescriptor(
+                identifierQuote: "\"",
+                keywords: [],
+                functions: [],
+                dataTypes: [],
+                likeEscapeStyle: .explicit,
+                caseSensitivityStyle: .caseFoldFunction
             )
         case .mssql:
             return SQLDialectDescriptor(
@@ -307,7 +357,38 @@ enum SQLBuilder {
                 keywords: [],
                 functions: [],
                 dataTypes: [],
-                likeEscapeStyle: .explicit
+                likeEscapeStyle: .explicit,
+                caseSensitivityStyle: .collationDefined
+            )
+        case .oracle:
+            return SQLDialectDescriptor(
+                identifierQuote: "\"",
+                keywords: [],
+                functions: [],
+                dataTypes: [],
+                likeEscapeStyle: .explicit,
+                caseSensitivityStyle: .caseFoldFunction
+            )
+        case .sqlite:
+            return SQLDialectDescriptor(
+                identifierQuote: "\"",
+                keywords: [],
+                functions: [],
+                dataTypes: [],
+                likeEscapeStyle: .explicit,
+                caseSensitivityStyle: .collationDefined
+            )
+        case .duckdb:
+            return SQLDialectDescriptor(
+                identifierQuote: "\"",
+                keywords: [],
+                functions: [],
+                dataTypes: [],
+                regexSyntax: .regexpMatches,
+                booleanLiteralStyle: .truefalse,
+                likeEscapeStyle: .explicit,
+                paginationStyle: .limit,
+                caseSensitivityStyle: .ilikeOperator
             )
         default:
             return SQLDialectDescriptor(

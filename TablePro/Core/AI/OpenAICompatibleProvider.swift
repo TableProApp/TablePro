@@ -196,7 +196,11 @@ final class OpenAICompatibleProvider: ChatTransport {
         return events
     }
 
-    func fetchAvailableModels() async throws -> [String] {
+    func fetchAvailableModels() async throws -> [AIModelInfo] {
+        try await fetchModelIDs().map { AIModelInfo(id: $0) }
+    }
+
+    private func fetchModelIDs() async throws -> [String] {
         switch providerType {
         case .ollama:
             return try await fetchOllamaModels()

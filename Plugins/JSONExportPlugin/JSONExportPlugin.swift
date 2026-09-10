@@ -8,7 +8,7 @@ import SwiftUI
 import TableProPluginKit
 
 @Observable
-final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin {
+final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "JSON Export"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Export data to JSON format"
@@ -26,6 +26,11 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin {
 
     required init() { loadSettings() }
 
+    var currentFileExtension: String {
+        settings.layout.fileExtension
+    }
+
+    @MainActor
     func settingsView() -> AnyView? {
         AnyView(JSONExportOptionsView(plugin: self))
     }
@@ -48,25 +53,33 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin {
             }
         }
 
-        let prettyPrint = settings.prettyPrint
+        /// NDJSON is one row per line by definition, so the pretty-print setting cannot apply to it
+        /// and the wrapping object has no place to go.
+        let isNewlineDelimited = settings.layout == .newlineDelimited
+        let prettyPrint = settings.prettyPrint && !isNewlineDelimited
         let indent = prettyPrint ? "  " : ""
         let newline = prettyPrint ? "\n" : ""
 
-        try fileHandle.write(contentsOf: "{\(newline)".toUTF8Data())
+        if !isNewlineDelimited {
+            try fileHandle.write(contentsOf: "{\(newline)".toUTF8Data())
+        }
 
+        var hasWrittenAnyRow = false
         for (tableIndex, table) in tables.enumerated() {
             try progress.checkCancellation()
 
             progress.setCurrentTable(table.qualifiedName, index: tableIndex + 1)
 
             let escapedTableName = PluginExportUtilities.escapeJSONString(table.qualifiedName)
-            try fileHandle.write(contentsOf: "\(indent)\"\(escapedTableName)\": [\(newline)".toUTF8Data())
+            if !isNewlineDelimited {
+                try fileHandle.write(contentsOf: "\(indent)\"\(escapedTableName)\": [\(newline)".toUTF8Data())
+            }
 
-            var hasWrittenRow = false
+            var hasWrittenRow = isNewlineDelimited ? hasWrittenAnyRow : false
             var columns: [String]?
             var columnTypeNames: [String]?
 
-            let stream = dataSource.streamRows(table: table.name, databaseName: table.databaseName)
+            let stream = dataSource.streamRows(for: table)
             for try await element in stream {
                 try progress.checkCancellation()
 
@@ -80,7 +93,7 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin {
                         var rowString = ""
 
                         if hasWrittenRow {
-                            rowString += ",\(newline)"
+                            rowString += isNewlineDelimited ? "\n" : ",\(newline)"
                         }
 
                         rowString += rowPrefix
@@ -116,11 +129,15 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin {
 
                         try fileHandle.write(contentsOf: rowString.toUTF8Data())
                         hasWrittenRow = true
+                        hasWrittenAnyRow = true
                         progress.incrementRow()
                     }
                 }
             }
 
+            if isNewlineDelimited {
+                continue
+            }
             if hasWrittenRow {
                 try fileHandle.write(contentsOf: newline.toUTF8Data())
             }
@@ -128,7 +145,13 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin {
             try fileHandle.write(contentsOf: "\(indent)]\(tableSuffix)".toUTF8Data())
         }
 
-        try fileHandle.write(contentsOf: "}".toUTF8Data())
+        if isNewlineDelimited {
+            if hasWrittenAnyRow {
+                try fileHandle.write(contentsOf: "\n".toUTF8Data())
+            }
+        } else {
+            try fileHandle.write(contentsOf: "}".toUTF8Data())
+        }
 
         try progress.checkCancellation()
         try fileHandle.close()
@@ -152,46 +175,20 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin {
     }
 
     private func formatJSONTextValue(_ val: String, columnTypeName: String, preserveAsString: Bool) -> String {
-
         if preserveAsString {
             return "\"\(PluginExportUtilities.escapeJSONString(val))\""
         }
 
-        if val.lowercased() == "true" || val.lowercased() == "false" {
-            return val.lowercased()
+        let folded = val.lowercased()
+        if folded == "true" || folded == "false" {
+            return folded
         }
 
-        let isNumericCol = PluginExportUtilities.isNumericColumnType(columnTypeName)
-
-        if isNumericCol && isValidIntegerLiteral(val) {
-            if let intVal = Int(val) {
-                return String(intVal)
-            }
-            return val
-        }
-        if isNumericCol, let doubleVal = Double(val), !val.contains("e"), !val.contains("E") {
-            let jsMaxSafeInteger = 9_007_199_254_740_991.0
-
-            if doubleVal.truncatingRemainder(dividingBy: 1) == 0 && !val.contains(".") {
-                if abs(doubleVal) <= jsMaxSafeInteger,
-                   doubleVal >= Double(Int.min),
-                   doubleVal <= Double(Int.max) {
-                    return String(Int(doubleVal))
-                } else {
-                    return val
-                }
-            }
-            return String(doubleVal)
+        if PluginExportUtilities.isNumericColumnType(columnTypeName),
+           let literal = JsonNumberNormalizer.numberLiteral(from: val) {
+            return literal
         }
 
         return "\"\(PluginExportUtilities.escapeJSONString(val))\""
-    }
-
-    private func isValidIntegerLiteral(_ val: String) -> Bool {
-        guard !val.isEmpty else { return false }
-        let digits = val.hasPrefix("-") || val.hasPrefix("+") ? String(val.dropFirst()) : val
-        guard !digits.isEmpty else { return false }
-        if digits.count > 1 && digits.hasPrefix("0") { return false }
-        return digits.allSatisfy(\.isNumber)
     }
 }

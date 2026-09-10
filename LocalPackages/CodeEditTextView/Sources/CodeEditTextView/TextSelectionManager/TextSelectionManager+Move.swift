@@ -31,7 +31,7 @@ extension TextSelectionManager {
         }
         updateSelectionViews()
         delegate?.setNeedsDisplay()
-        NotificationCenter.default.post(Notification(name: Self.selectionChangedNotification, object: self))
+        notifySelectionChanged()
     }
 
     /// Moves a single selection determined by the direction and destination provided.

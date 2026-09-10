@@ -15,7 +15,10 @@ final class AnalyticsService {
     private let service: AnalyticsHeartbeatService
 
     private init() {
-        service = AnalyticsHeartbeatService(provider: MacAnalyticsProvider.shared)
+        service = AnalyticsHeartbeatService(
+            provider: MacAnalyticsProvider.shared,
+            defaults: AppStorageEnvironment.shared.defaults
+        )
     }
 
     deinit {

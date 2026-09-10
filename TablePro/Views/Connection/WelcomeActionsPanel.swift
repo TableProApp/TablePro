@@ -40,18 +40,18 @@ struct WelcomeActionsPanel: View {
 
             VStack(spacing: 8) {
                 Button(action: onCreateConnection) {
-                    Label(String(localized: "Create Connection..."), systemImage: "plus.circle")
+                    Label(String(localized: "Create Connection…"), systemImage: "plus.circle")
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
 
                 Menu {
-                    Button(String(localized: "Import from URL..."), action: onImportFromURL)
-                    Button(String(localized: "Import from Other App..."), action: onImportFromApp)
-                    Button(String(localized: "Open Project Folder..."), action: onOpenProjectFolder)
+                    Button(String(localized: "Import from URL…"), action: onImportFromURL)
+                    Button(String(localized: "Import from Other App…"), action: onImportFromApp)
+                    Button(String(localized: "Open Project Folder…"), action: onOpenProjectFolder)
                     Divider()
-                    Button(String(localized: "Import Connections..."), action: onImportConnectionsFile)
+                    Button(String(localized: "Import Connections…"), action: onImportConnectionsFile)
                 } label: {
                     Label(String(localized: "Add from Existing"), systemImage: "square.and.arrow.down")
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -82,7 +82,7 @@ struct WelcomeActionsPanel: View {
             Button {
                 updaterBridge.checkForUpdates()
             } label: {
-                Text(String(localized: "Check for Updates..."))
+                Text(String(localized: "Check for Updates…"))
             }
             .buttonStyle(.link)
             .disabled(!updaterBridge.canCheckForUpdates)
@@ -90,16 +90,40 @@ struct WelcomeActionsPanel: View {
         .font(.callout)
     }
 
-    @ViewBuilder
+    /// The badge follows entitlement and the support link follows whether anything has been paid,
+    /// which are different questions: a license the server has not confirmed in 30 days still
+    /// pauses Pro features, and its owner is still not someone to ask for a purchase.
     private var licenseLine: some View {
-        if LicenseManager.shared.status.isValid {
+        HStack(spacing: 6) {
+            licenseBadge
+
+            if LicenseManager.shared.supportAudience == .prospect {
+                Text(verbatim: "·")
+                    .foregroundStyle(.tertiary)
+                SupportPromptLink()
+            }
+        }
+        .font(.subheadline)
+    }
+
+    /// Exhaustive on purpose. This used to read `status.isValid`, so the one status that means
+    /// "a paying customer who has been offline" was offered an activation sheet that needs the
+    /// network to succeed, which is the one thing it could not do.
+    @ViewBuilder
+    private var licenseBadge: some View {
+        switch LicenseManager.shared.status {
+        case .active:
             Label(String(localized: "Pro"), systemImage: "checkmark.seal.fill")
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.green)
-        } else {
+        case .validationFailed:
+            Label(String(localized: "Pro"), systemImage: "exclamationmark.seal.fill")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.orange)
+                .help(String(localized: "License not verified in 30 days. Connect to the internet to check it."))
+        case .unlicensed, .expired, .suspended, .deactivated:
             Button(action: onActivateLicense) {
                 Text(String(localized: "Activate License"))
-                    .font(.subheadline)
             }
             .buttonStyle(.link)
         }

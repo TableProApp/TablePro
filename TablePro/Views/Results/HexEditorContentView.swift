@@ -2,13 +2,30 @@
 //  HexEditorContentView.swift
 //  TablePro
 //
-//  SwiftUI popover content for viewing and editing BLOB column values as hex.
+//  The hex dump and editor a binary cell's popover shows, unframed so a viewer that puts it
+//  behind a tab sizes the popover once.
 //
 
 import AppKit
 import SwiftUI
 
-struct HexEditorContentView: View {
+@MainActor
+internal enum HexEditorMetrics {
+    /// A dump line is a fixed count of monospaced characters, so the popover is only as wide as
+    /// that count in the value font. Fixing the width instead wraps every line and breaks the
+    /// column alignment the dump exists for.
+    static var popoverWidth: CGFloat {
+        let line = ThemeEngine.shared.dataGridFonts.monoCharWidth
+            * CGFloat(HexDumpLayout.lineWidthInCharacters)
+        return line + textViewChromeWidth
+    }
+
+    /// The text container's own inset on both edges, the layout manager's line fragment padding,
+    /// and room for the vertical scroller.
+    private static let textViewChromeWidth: CGFloat = 42
+}
+
+struct HexEditorBody: View {
     let initialValue: String?
     let isEditable: Bool
     let onCommit: (String) -> Void
@@ -21,6 +38,12 @@ struct HexEditorContentView: View {
     @State private var isTruncated: Bool = false
     @State private var byteCount: Int = 0
     @State private var validateTask: Task<Void, Never>?
+
+    /// Whether the value this editor opened on was already a prefix. It is a fact about the stored
+    /// value, so it is settled once here and never recomputed from what the user types. Deriving it
+    /// from the draft instead let deleting the ellipsis re-enable Save over a value the editor only
+    /// ever held the first 10,240 bytes of, which then overwrote the rest of the blob.
+    private let sourceIsTruncated: Bool
 
     init(
         initialValue: String?,
@@ -44,16 +67,18 @@ struct HexEditorContentView: View {
             self._byteCount = State(initialValue: value.data(using: .isoLatin1)?.count ?? 0)
             self._isTruncated = State(initialValue: truncated)
             self._isValid = State(initialValue: !truncated)
+            self.sourceIsTruncated = truncated
         } else {
             self._hexDumpText = State(initialValue: "")
             self._editableHex = State(initialValue: "")
             self._byteCount = State(initialValue: 0)
+            self.sourceIsTruncated = false
         }
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            HexDumpDisplayView(text: hexDumpText)
+            HexDumpDisplayView(text: hexDumpText, font: ThemeEngine.shared.valueFont)
 
             if isEditable {
                 Divider()
@@ -63,7 +88,7 @@ struct HexEditorContentView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    HexInputTextView(text: $editableHex)
+                    HexInputTextView(text: $editableHex, font: ThemeEngine.shared.valueFont)
                         .frame(height: 80)
 
                     HStack(spacing: 4) {
@@ -71,7 +96,7 @@ struct HexEditorContentView: View {
                             .font(.caption)
                             .foregroundStyle(.tertiary)
 
-                        if isTruncated {
+                        if sourceIsTruncated || isTruncated {
                             Text(String(localized: "Truncated, read only"))
                                 .font(.caption)
                                 .foregroundStyle(.orange)
@@ -95,7 +120,7 @@ struct HexEditorContentView: View {
                         .keyboardShortcut(.cancelAction)
                     Button("Save") { saveHex() }
                         .keyboardShortcut(.defaultAction)
-                        .disabled(!isValid || isTruncated)
+                        .disabled(!isValid || isTruncated || sourceIsTruncated)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
@@ -114,7 +139,6 @@ struct HexEditorContentView: View {
                 .padding(.vertical, 8)
             }
         }
-        .frame(width: 520, height: isEditable ? 400 : 280)
         .onChange(of: editableHex) { _, newValue in
             scheduleValidation(newValue)
         }
@@ -123,7 +147,7 @@ struct HexEditorContentView: View {
     // MARK: - Actions
 
     private func saveHex() {
-        guard isValid else { return }
+        guard isValid, !sourceIsTruncated else { return }
 
         if editableHex.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             if initialValue != nil, initialValue != "" {
@@ -191,6 +215,7 @@ struct HexEditorContentView: View {
 
 private struct HexDumpDisplayView: NSViewRepresentable {
     let text: String
+    let font: NSFont
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSTextView.scrollableTextView()
@@ -200,10 +225,7 @@ private struct HexDumpDisplayView: NSViewRepresentable {
 
         textView.isEditable = false
         textView.isSelectable = true
-        textView.font = NSFont.monospacedSystemFont(
-            ofSize: 11,
-            weight: .regular
-        )
+        textView.font = font
         textView.textContainerInset = NSSize(width: 8, height: 8)
         textView.backgroundColor = NSColor.textBackgroundColor
         textView.textColor = NSColor.secondaryLabelColor
@@ -214,6 +236,9 @@ private struct HexDumpDisplayView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
+        if textView.font != font {
+            textView.font = font
+        }
         if textView.string != text {
             textView.string = text
         }
@@ -224,6 +249,7 @@ private struct HexDumpDisplayView: NSViewRepresentable {
 
 private struct HexInputTextView: NSViewRepresentable {
     @Binding var text: String
+    let font: NSFont
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -237,10 +263,7 @@ private struct HexInputTextView: NSViewRepresentable {
 
         textView.isEditable = true
         textView.isSelectable = true
-        textView.font = NSFont.monospacedSystemFont(
-            ofSize: 12,
-            weight: .regular
-        )
+        textView.font = font
         textView.textContainerInset = NSSize(width: 8, height: 8)
         textView.backgroundColor = NSColor.textBackgroundColor
         textView.textColor = NSColor.labelColor
@@ -262,6 +285,9 @@ private struct HexInputTextView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
+        if textView.font != font {
+            textView.font = font
+        }
         if textView.string != text, !context.coordinator.isUpdating {
             textView.string = text
         }

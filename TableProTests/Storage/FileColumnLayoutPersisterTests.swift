@@ -9,6 +9,10 @@ import Testing
 
 @testable import TablePro
 
+private struct LegacyColumnLayoutPayload: Decodable {
+    let columnWidths: [String: CGFloat]
+}
+
 @Suite("FileColumnLayoutPersister")
 @MainActor
 struct FileColumnLayoutPersisterTests {
@@ -53,6 +57,69 @@ struct FileColumnLayoutPersisterTests {
         #expect(loaded?.columnOrder == layout.columnOrder)
     }
 
+    @Test("Content widths round-trip while legacy readers retain the actual total width")
+    func contentWidthRoundTripIsBackwardCompatible() throws {
+        let (persister, directory) = makeIsolatedPersister()
+        defer { cleanup(directory) }
+
+        let connectionId = UUID()
+        let tableKey = key("events", connectionId)
+        var layout = ColumnLayoutState()
+        layout.columnWidths = ["created_at": 176]
+        layout.columnContentWidths = ["created_at": 160]
+
+        persister.save(layout, for: tableKey)
+
+        let loaded = try #require(persister.load(for: tableKey))
+        #expect(loaded.columnWidths == ["created_at": 176])
+        #expect(loaded.columnContentWidths == ["created_at": 160])
+
+        let fileURL = directory.appendingPathComponent("\(connectionId.uuidString).json")
+        let data = try Data(contentsOf: fileURL)
+        let legacyEntries = try JSONDecoder().decode([String: LegacyColumnLayoutPayload].self, from: data)
+        #expect(legacyEntries[tableKey.storageKey]?.columnWidths == ["created_at": 176])
+    }
+
+    @Test("Legacy width payloads load without content-width provenance")
+    func legacyWidthPayloadLoads() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TableProTests-\(UUID().uuidString)", isDirectory: true)
+        defer { cleanup(directory) }
+
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let connectionId = UUID()
+        let tableKey = key("events", connectionId)
+        let payload: [String: Any] = [
+            tableKey.storageKey: [
+                "columnWidths": ["created_at": 160],
+            ],
+        ]
+        let data = try JSONSerialization.data(withJSONObject: payload)
+        try data.write(to: directory.appendingPathComponent("\(connectionId.uuidString).json"))
+
+        let loaded = try #require(
+            FileColumnLayoutPersister(storageDirectory: directory).load(for: tableKey)
+        )
+        #expect(loaded.columnWidths == ["created_at": 160])
+        #expect(loaded.columnContentWidths == nil)
+    }
+
+    @Test("Content-only geometry is retained")
+    func contentOnlyGeometryRoundTrips() throws {
+        let (persister, directory) = makeIsolatedPersister()
+        defer { cleanup(directory) }
+
+        let tableKey = key("events", UUID())
+        var layout = ColumnLayoutState()
+        layout.columnContentWidths = ["created_at": 160]
+
+        persister.save(layout, for: tableKey)
+
+        let loaded = try #require(persister.load(for: tableKey))
+        #expect(loaded.columnWidths.isEmpty)
+        #expect(loaded.columnContentWidths == ["created_at": 160])
+    }
+
     @Test("Loading an unknown table returns nil")
     func loadMissing() {
         let (persister, dir) = makeIsolatedPersister()
@@ -69,6 +136,22 @@ struct FileColumnLayoutPersisterTests {
         let connectionId = UUID()
         persister.save(ColumnLayoutState(), for: key("users", connectionId))
         #expect(persister.load(for: key("users", connectionId)) == nil)
+    }
+
+    @Test("Column order persists without promoting automatic widths")
+    func orderOnlyLayoutRoundTrips() {
+        let (persister, dir) = makeIsolatedPersister()
+        defer { cleanup(dir) }
+
+        let tableKey = key("users", UUID())
+        var layout = ColumnLayoutState()
+        layout.columnOrder = ["name", "id"]
+
+        persister.save(layout, for: tableKey)
+
+        let restored = persister.load(for: tableKey)
+        #expect(restored?.columnWidths.isEmpty == true)
+        #expect(restored?.columnOrder == ["name", "id"])
     }
 
     @Test("Multiple tables on the same connection coexist")
@@ -350,11 +433,13 @@ struct FileColumnLayoutPersisterTests {
         let tableKey = key("users", UUID())
         var geometry = ColumnLayoutState()
         geometry.columnWidths = ["id": 80]
+        geometry.columnContentWidths = ["id": 72]
         geometry.columnOrder = ["id"]
         persister.save(geometry, for: tableKey)
         persister.saveHiddenColumns(["email"], for: tableKey)
 
         #expect(persister.load(for: tableKey)?.columnWidths == ["id": 80])
+        #expect(persister.load(for: tableKey)?.columnContentWidths == ["id": 72])
         #expect(persister.load(for: tableKey)?.columnOrder == ["id"])
         #expect(persister.loadHiddenColumns(for: tableKey) == ["email"])
     }

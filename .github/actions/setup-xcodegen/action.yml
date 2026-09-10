@@ -1,0 +1,27 @@
+name: Setup XcodeGen
+description: Installs a pinned XcodeGen so CI and local builds generate identical projects.
+
+runs:
+  using: composite
+  steps:
+    - name: Install XcodeGen
+      shell: bash
+      # Pinned to a released archive rather than Homebrew: brew tracks latest, and
+      # generated pbxproj output differs between XcodeGen versions. install.sh copies
+      # both bin/xcodegen and share/xcodegen/SettingPresets; without the presets,
+      # generation silently drops build settings and still exits 0.
+      env:
+        XCODEGEN_VERSION: "2.46.0"
+        XCODEGEN_SHA256: "4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806"
+      run: |
+        set -euo pipefail
+        if command -v xcodegen > /dev/null && [ "$(xcodegen --version | awk '{print $2}')" = "$XCODEGEN_VERSION" ]; then
+          echo "XcodeGen $XCODEGEN_VERSION already installed"
+          exit 0
+        fi
+        curl -sSLo "$RUNNER_TEMP/xcodegen.zip" \
+          "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+        echo "${XCODEGEN_SHA256}  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
+        unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP/xcodegen-dist"
+        sudo "$RUNNER_TEMP/xcodegen-dist/xcodegen/install.sh" /usr/local
+        xcodegen --version

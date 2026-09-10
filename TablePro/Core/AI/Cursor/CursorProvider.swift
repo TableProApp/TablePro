@@ -61,7 +61,11 @@ final class CursorProvider: ChatTransport {
         }
     }
 
-    func fetchAvailableModels() async throws -> [String] {
+    func fetchAvailableModels() async throws -> [AIModelInfo] {
+        try await fetchModelIDs().map { AIModelInfo(id: $0, reasoning: .unsupported) }
+    }
+
+    private func fetchModelIDs() async throws -> [String] {
         var request = URLRequest(url: try Self.url("/v1/models"))
         request.timeoutInterval = AIProvider.modelListTimeout
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")

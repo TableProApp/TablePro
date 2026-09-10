@@ -35,6 +35,8 @@ final class ConnectionCoordinator {
     private let historyStorage = QueryHistoryStorage()
 
     private let appState: AppState
+
+    var connectionManager: ConnectionManager { appState.connectionManager }
     private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionCoordinator")
 
     enum ConnectionPhase: Sendable {
@@ -55,7 +57,8 @@ final class ConnectionCoordinator {
 
     var supportsSchemas: Bool {
         connection.type == .postgresql || connection.type == .redshift ||
-        connection.type == .mssql || connection.type == .duckdb
+        connection.type == .mssql || connection.type == .duckdb ||
+        connection.type == .oracle
     }
 
     init(connection: DatabaseConnection, appState: AppState) {
@@ -77,51 +80,105 @@ final class ConnectionCoordinator {
 
     // MARK: - Connection Lifecycle
 
-    private var isConnecting = false
+    /// The attempt allowed to write `session` and `phase`. Cancelling mints a new one.
+    private var attemptToken = UUID()
+    private var connectTask: Task<Void, Never>?
 
+    var isConnecting: Bool { connectTask != nil }
+
+    /// Returning early without touching `phase` is what left the connecting screen up for good.
     func connect() async {
-        guard !isConnecting, session == nil else {
-            if session != nil { phase = .connected }
+        if let inFlight = connectTask {
+            await inFlight.value
             return
         }
 
-        isConnecting = true
-        defer { isConnecting = false }
+        let token = UUID()
+        attemptToken = token
         phase = .connecting
 
-        if let existing = appState.connectionManager.session(for: connection.id) {
-            self.session = existing
-            do {
-                self.tables = try await existing.driver.fetchTables(schema: nil)
-                await loadDatabases()
-                await loadSchemas()
-                phase = .connected
-            } catch {
-                self.session = nil
-                await appState.connectionManager.disconnect(connection.id)
-                await connectFresh()
-            }
-            return
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.runAttempt(token: token)
         }
-
-        await connectFresh()
+        connectTask = task
+        await task.value
+        if connectTask == task { connectTask = nil }
     }
 
-    private func connectFresh() async {
-        await appState.sshProvider.setPendingConnectionId(connection.id)
+    /// Never waits on the driver: `Task.cancel()` is cooperative and these drivers ignore it.
+    func cancelConnect() {
+        guard connectTask != nil else { return }
+        attemptToken = UUID()
+        connectTask?.cancel()
+        connectTask = nil
+        appState.connectionManager.invalidateAttempt(for: connection.id)
+        session = nil
+        phase = .error(Self.cancelledError)
+    }
 
+    private static var cancelledError: AppError {
+        AppError(
+            category: .network,
+            title: String(localized: "Connection Cancelled"),
+            message: String(localized: "The connection attempt was cancelled."),
+            recovery: String(localized: "Tap Retry to try again."),
+            underlying: nil
+        )
+    }
+
+    private func runAttempt(token: UUID) async {
+        if let existing = appState.connectionManager.session(for: connection.id) {
+            do {
+                let existingTables = try await existing.driver.fetchTables(schema: nil)
+                guard attemptToken == token else { return }
+                session = existing
+                tables = existingTables
+                await loadDatabases()
+                await loadSchemas()
+                guard attemptToken == token else { return }
+                phase = .connected
+                return
+            } catch {
+                guard attemptToken == token else { return }
+                session = nil
+                await appState.connectionManager.disconnect(connection.id)
+            }
+        }
+
+        guard attemptToken == token else { return }
+        await connectFresh(token: token)
+    }
+
+    /// `allowSignIn` is false on the retry that follows a sign-in, so a connection that keeps
+    /// failing cannot put the prompt up again and again.
+    private func connectFresh(token: UUID, allowSignIn: Bool = true) async {
         IOSAnalyticsProvider.shared.markConnectionAttempted()
 
         do {
             let newSession = try await appState.connectionManager.connect(connection)
-            self.session = newSession
-            self.tables = try await newSession.driver.fetchTables(schema: nil)
+            let newTables = try await newSession.driver.fetchTables(schema: nil)
+            guard attemptToken == token else { return }
+            session = newSession
+            tables = newTables
             await loadDatabases()
             await loadSchemas()
+            guard attemptToken == token else { return }
             phase = .connected
             IOSAnalyticsProvider.shared.markConnectionSucceeded()
             navigateToPendingTable()
         } catch {
+            guard attemptToken == token else { return }
+            // A sign-in that expired is recoverable, so offer it once and retry rather than
+            // leaving the user on an error screen whose only button repeats the same failure.
+            if allowSignIn,
+               EntraSignIn.needsSignIn(error),
+               await EntraSignIn.offer(fields: connection.additionalFields) {
+                guard attemptToken == token else { return }
+                await connectFresh(token: token, allowSignIn: false)
+                return
+            }
+            guard attemptToken == token else { return }
             let context = ErrorContext(
                 operation: "connect",
                 databaseType: connection.type,
@@ -133,7 +190,7 @@ final class ConnectionCoordinator {
     }
 
     func reconnectIfNeeded() async {
-        guard let session, !isSwitching, !isReconnecting else { return }
+        guard let session, !isSwitching, !isReconnecting, connectTask == nil else { return }
         do {
             _ = try await session.driver.ping()
             return
@@ -141,13 +198,15 @@ final class ConnectionCoordinator {
             // Ping failed; fall through to actual reconnect path below.
         }
 
+        let token = attemptToken
         isReconnecting = true
         defer { isReconnecting = false }
         do {
-            await appState.sshProvider.setPendingConnectionId(connection.id)
             let newSession = try await appState.connectionManager.connect(connection)
+            guard attemptToken == token else { return }
             self.session = newSession
         } catch {
+            guard attemptToken == token else { return }
             let context = ErrorContext(
                 operation: "reconnect",
                 databaseType: connection.type,
@@ -193,10 +252,10 @@ final class ConnectionCoordinator {
         var newConnection = connection
         newConnection.database = database
 
-        await appState.sshProvider.setPendingConnectionId(connection.id)
-
+        let token = attemptToken
         do {
             let newSession = try await appState.connectionManager.connect(newConnection)
+            guard attemptToken == token else { return }
             self.session = newSession
             self.tables = try await newSession.driver.fetchTables(schema: nil)
             activeDatabase = database
@@ -204,9 +263,9 @@ final class ConnectionCoordinator {
             await loadSchemas()
         } catch {
             Self.logger.error("Failed to switch to database \(database, privacy: .public): \(error.localizedDescription, privacy: .public)")
-            await appState.sshProvider.setPendingConnectionId(connection.id)
             do {
                 let fallbackSession = try await appState.connectionManager.connect(connection)
+                guard attemptToken == token else { return }
                 self.session = fallbackSession
                 self.tables = try await fallbackSession.driver.fetchTables(schema: nil)
                 failureAlertMessage = String(localized: "Failed to switch database")

@@ -62,6 +62,9 @@ internal enum SSHKeychainLookup {
 
     /// Save a passphrase in the same format as `ssh-add --apple-use-keychain`.
     static func savePassphrase(_ passphrase: String, forKeyAt absolutePath: String) {
+        /// The item is written in `ssh-add --apple-use-keychain`'s own format so both agree on it,
+        /// which makes the real keychain the only place it can go. A sandboxed run skips it.
+        guard !AppStorageEnvironment.shared.isIsolated else { return }
         let label = "SSH: \(absolutePath)"
         guard let data = passphrase.data(using: .utf8) else { return }
 

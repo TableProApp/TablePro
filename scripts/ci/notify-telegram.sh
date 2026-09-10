@@ -24,7 +24,32 @@ FORMATTED=$(echo "$ESCAPED" | sed -E \
   -e 's/`([^`]+)`/<code>\1<\/code>/g' \
   -e '/^[[:space:]]*$/d')
 
-TEXT=$(printf '<b>TablePro v%s Released</b>\n\n%s\n\n<a href="%s">View Release</a>' "$VERSION" "$FORMATTED" "$RELEASE_URL")
+MESSAGE_LIMIT=4096
+TRUNCATION_NOTICE="• Read the rest in the full release notes."
+
+build_message() {
+  printf '<b>TablePro v%s Released</b>\n\n%s\n\n<a href="%s">View Release</a>' "$VERSION" "$1" "$RELEASE_URL"
+}
+
+message_length() {
+  printf '%s' "$1" | wc -m | tr -d ' '
+}
+
+TEXT=$(build_message "$FORMATTED")
+
+# Telegram rejects a message over MESSAGE_LIMIT outright, so keep whole entries
+# until the budget runs out and point at the release for the remainder.
+if [ "$(message_length "$TEXT")" -gt "$MESSAGE_LIMIT" ]; then
+  OVERHEAD=$(( $(message_length "$TEXT") - $(message_length "$FORMATTED") ))
+  BUDGET=$(( MESSAGE_LIMIT - OVERHEAD - ${#TRUNCATION_NOTICE} - 1 ))
+  KEPT=$(printf '%s\n' "$FORMATTED" | awk -v budget="$BUDGET" '
+    { if (used + length($0) + 1 > budget) exit
+      used += length($0) + 1
+      print }')
+  FORMATTED=$(printf '%s\n%s' "$KEPT" "$TRUNCATION_NOTICE")
+  TEXT=$(build_message "$FORMATTED")
+  echo "Release notes exceeded ${MESSAGE_LIMIT} characters, trimmed to $(message_length "$TEXT")"
+fi
 
 PAYLOAD=$(jq -n \
   --arg chat_id "$TELEGRAM_CHAT_ID" \

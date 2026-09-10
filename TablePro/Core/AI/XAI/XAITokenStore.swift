@@ -18,7 +18,7 @@ actor XAITokenStore {
     private var refreshTask: Task<XAITokens, Error>?
 
     init(
-        keychain: KeychainStoring = KeychainHelper.shared,
+        keychain: KeychainStoring = AppStorageEnvironment.shared.keychain,
         refresher: XAITokenRefreshing = XAIOAuthClient()
     ) {
         self.keychain = keychain

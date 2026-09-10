@@ -1,1 +1,0 @@
-../../Plugins/PostgreSQLDriverPlugin/RedshiftSchemaQueries.swift

@@ -40,7 +40,7 @@ extension TableViewCoordinator {
         guard let fkInfo = tableRows.columnForeignKeys[columnName] else { return }
         let cellValue = cellValue(at: row, column: columnIndex)
         guard let databaseType, let connectionId else { return }
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
         let model = FKPreviewModel(cellValue: cellValue, fkInfo: fkInfo)
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
@@ -118,10 +118,11 @@ extension TableViewCoordinator {
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
         let columnName = tableRows.columns[columnIndex]
 
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
-        PopoverPresenter.show(
+        dismissActiveCellEditorPopover()
+        activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,
             of: tableView,
             contentSize: NSSize(width: 560, height: 420)
@@ -135,7 +136,7 @@ extension TableViewCoordinator {
                 onDismiss: dismiss,
                 onPopOut: { currentText in
                     dismiss()
-                    JSONViewerWindowController.open(
+                    self?.activePoppedOutEditor = JSONViewerWindowController.open(
                         text: currentText,
                         columnName: columnName,
                         isEditable: true,
@@ -150,17 +151,23 @@ extension TableViewCoordinator {
 
     func showBlobEditorPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         let currentValue = blobStringValue(at: row, columnIndex: columnIndex)
+        let columnName = columnName(at: columnIndex)
+        let image = blobImage(at: row, columnIndex: columnIndex)
 
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
-        PopoverPresenter.show(
+        dismissActiveCellEditorPopover()
+        activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,
             of: tableView,
-            contentSize: NSSize(width: 520, height: 400)
+            contentSize: nil
         ) { [weak self] dismiss in
-            HexEditorContentView(
+            BlobPopoverContentView(
                 initialValue: currentValue,
+                image: image,
+                columnName: columnName,
+                isEditable: true,
                 onCommit: { newValue in
                     self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
                 },
@@ -172,19 +179,35 @@ extension TableViewCoordinator {
         }
     }
 
+    /// A date control has no vocabulary for "I could not read this": `NSDatePicker.dateValue` and
+    /// every SwiftUI `DatePicker` binding are a non-optional `Date`, so a cell the parser rejects
+    /// gets seeded with today and an unchanged confirm writes today over the stored value in a
+    /// spelling the column never used. Such a cell goes to the text editor instead, where the value
+    /// stays visible and the user can repair it. An empty cell has nothing to misrepresent and keeps
+    /// the picker.
+    func opensDatePicker(row: Int, columnIndex: Int) -> Bool {
+        guard let value = cellValue(at: row, column: columnIndex),
+              !value.trimmingCharacters(in: .whitespaces).isEmpty
+        else { return true }
+        return DatabaseDateParser.parse(value) != nil
+    }
+
     func showDateTimePickerPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         let tableRows = tableRowsProvider()
         guard columnIndex >= 0, columnIndex < tableRows.columnTypes.count else { return }
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
         let columnType = tableRows.columnTypes[columnIndex]
-        let parsed = DateEditingService.parse(cellValue(at: row, column: columnIndex))
-        let initialDate = parsed?.date ?? Date()
-        let timeZone = parsed?.timeZone ?? .gmt
+        let parsed = DatabaseDateParser.parse(cellValue(at: row, column: columnIndex))
+        /// The whole second, not the instant: a fraction near one second rounds the `Double` up, so
+        /// the picker would open a second, and sometimes a day, past the value the cell shows.
+        let initialDate = parsed?.wholeSecond ?? Date()
+        let timeZone = parsed?.timeZone ?? DateEditingService.defaultTimeZone
         let components = DateEditingService.components(for: columnType)
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
-        PopoverPresenter.show(
+        dismissActiveCellEditorPopover()
+        activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,
             of: tableView
         ) { [weak self] dismiss in
@@ -192,8 +215,11 @@ extension TableViewCoordinator {
                 initialDate: initialDate,
                 components: components,
                 timeZone: timeZone,
+                carriesItsOwnZone: parsed?.carriesItsOwnZone ?? false,
                 onCommit: { picked in
-                    let newValue = parsed.map { DateEditingService.string(from: picked, like: $0) }
+                    guard picked != initialDate else { return }
+                    let newValue = parsed
+                        .map { DateEditingService.string(from: picked, like: $0, offered: components) }
                         ?? DateEditingService.defaultString(from: picked, columnType: columnType)
                     self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
                 },
@@ -203,7 +229,7 @@ extension TableViewCoordinator {
     }
 
     func showEnumPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
         let tableRows = tableRowsProvider()
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
         let columnName = tableRows.columns[columnIndex]
@@ -211,7 +237,11 @@ extension TableViewCoordinator {
 
         let currentValue = cellValue(at: row, column: columnIndex)
         let isNullable = tableRows.columnNullable[columnName] ?? true
-        let defaultValue = tableRows.columnDefaults[columnName] ?? nil
+        // The picker matches against the enum's own unquoted tokens, so the column default crosses
+        // out of SQL here. It arrives as the exact SQL after DEFAULT, which for a string default is
+        // quoted, and a quoted value matched no entry so the default badge was never drawn.
+        let storedDefault = tableRows.columnDefaults[columnName] ?? nil
+        let defaultValue = storedDefault.flatMap(SQLStringLiteral.unquoted) ?? storedDefault
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
         EnumMenuPicker.presentEnum(
@@ -226,8 +256,64 @@ extension TableViewCoordinator {
         }
     }
 
+    /// The value picker a writable foreign key cell opens in place of the plain text editor.
+    ///
+    /// Falls back to that editor whenever the picker cannot be built, the way the array editor falls
+    /// back on a literal it cannot parse: an engine with no SQL dialect has nothing to search the
+    /// referenced table with, a column of a composite key cannot be picked on its own, and a cell
+    /// that opens nothing at all reads as a broken grid.
+    ///
+    /// `canStartInlineEdit` is asked again here because `CellInteractionResolver` knows only the
+    /// columns the plugin declares immutable. A generated column carrying foreign key metadata,
+    /// which SQLite allows, would otherwise open the picker and have its commit dropped by
+    /// `recordCellEdit`, closing the popover over a cell that never changed.
+    func showForeignKeyPicker(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
+        let columnName = tableRows.columns[columnIndex]
+
+        guard let connectionId,
+              let databaseType,
+              let fkInfo = tableRows.columnForeignKeys[columnName],
+              canStartInlineEdit(row: row, columnIndex: columnIndex),
+              PluginManager.shared.sqlDialect(for: databaseType) != nil,
+              !ForeignKeyConstraintSpan.isMultiColumn(fkInfo, among: tableRows.columnForeignKeys)
+        else {
+            beginCellEdit(row: row, tableColumnIndex: column)
+            return
+        }
+
+        let scope = DatabaseScope(
+            connectionId: connectionId,
+            database: databaseName ?? DatabaseManager.shared.browseScope(for: connectionId)?.database ?? "",
+            schema: schemaName
+        )
+
+        let currentValue = cellValue(at: row, column: columnIndex)
+        let isNullable = tableRows.columnNullable[columnName] ?? true
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        dismissActiveCellEditorPopover()
+        activeCellEditorPopover = PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView
+        ) { [weak self] dismiss in
+            ForeignKeyPickerView(
+                scope: scope,
+                databaseType: databaseType,
+                fkInfo: fkInfo,
+                currentValue: currentValue,
+                isNullable: isNullable,
+                onCommit: { newValue in
+                    self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
+                },
+                onDismiss: dismiss
+            )
+        }
+    }
+
     func showSetPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
         let tableRows = tableRowsProvider()
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
         let columnName = tableRows.columns[columnIndex]
@@ -245,37 +331,107 @@ extension TableViewCoordinator {
         }
     }
 
+    func showArrayEditorPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
+        let columnName = tableRows.columns[columnIndex]
+
+        let typedValue = cellTypedValue(at: row, column: columnIndex)
+        let elements: [PostgresArrayElement]?
+        if typedValue.isNull {
+            elements = nil
+        } else {
+            guard let parsed = PostgresArrayLiteralCodec.parse(typedValue.asText ?? "") else {
+                beginCellEdit(row: row, tableColumnIndex: column)
+                return
+            }
+            elements = parsed
+        }
+
+        let allowedValues = tableRows.columnEnumValues[columnName] ?? []
+        let isNullable = tableRows.columnNullable[columnName] ?? true
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+
+        dismissActiveCellEditorPopover()
+        activeCellEditorPopover = PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView,
+            behavior: .applicationDefined
+        ) { [weak self] dismiss in
+            ArrayValueEditorView(
+                initialElements: elements,
+                allowedValues: allowedValues,
+                isNullable: isNullable,
+                onCommit: { newValue in
+                    self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
+                },
+                onDismiss: dismiss
+            )
+        }
+    }
+
+    /// Only one cell editor popover is open at a time, and the outgoing one is closed before the
+    /// next is presented rather than after. An `.applicationDefined` popover such as the array
+    /// editor stays on screen until something closes it, so forgetting it would strand an editor
+    /// nothing can dismiss, and closing it once the replacement is already up takes first responder
+    /// back off the editor that just opened.
+    func dismissActiveCellEditorPopover() {
+        guard let popover = activeCellEditorPopover else { return }
+        activeCellEditorPopover = nil
+        popover.close()
+    }
+
+    /// The popped-out JSON editor is a window rather than a popover, so it survives everything that
+    /// closes a popover while still committing through the display row it was opened from. Only a
+    /// replaced row set invalidates it, never the user opening a different cell's editor.
+    func dismissPoppedOutCellEditor() {
+        guard let editor = activePoppedOutEditor else { return }
+        activePoppedOutEditor = nil
+        editor.close()
+    }
+
+    /// A column the owner listed as a dropdown but supplied no fixed vocabulary for. Its list comes
+    /// from the delegate per row, so a nil answer means "nothing to offer here", not "fall back".
+    private func declaresRowDependentMenu(columnIndex: Int) -> Bool {
+        dropdownColumns?.contains(columnIndex) == true && customDropdownOptions?[columnIndex] == nil
+    }
+
     func showDropdownMenu(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
         let tableRows = tableRowsProvider()
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
 
         let currentValue = cellValue(at: row, column: columnIndex)
-        let context = DropdownMenuContext(row: row, columnIndex: columnIndex)
+        /// The delegate is asked first, because a list that depends on the row cannot be held in a
+        /// dictionary keyed by column. Either answer counts as custom, so a curated vocabulary never
+        /// gains a `Set NULL` the schema grids have no use for.
+        let custom = delegate?.dataGridMenuOptions(forRow: row, columnIndex: columnIndex)
+            ?? customDropdownOptions?[columnIndex]
 
-        let options: [String]
-        if let custom = customDropdownOptions?[columnIndex] {
+        /// The boolean pair is the fallback for a cell whose column is a boolean, not for a column
+        /// that declared a chevron and then had no list to show. A schema grid does the latter
+        /// whenever its delegate declines the row, and offering `1` and `0` there writes a digit
+        /// into a name.
+        let options: [GridMenuOption]
+        if let custom {
             options = custom
+        } else if declaresRowDependentMenu(columnIndex: columnIndex) {
+            return
         } else if let dbType = databaseType, PluginManager.shared.usesTrueFalseBooleans(for: dbType) {
-            options = ["true", "false"]
+            options = GridMenuOption.values(["true", "false"])
         } else {
-            options = ["1", "0"]
+            options = GridMenuOption.values(["1", "0"])
         }
 
         let menu = NSMenu()
         for option in options {
-            let item = NSMenuItem(title: option, action: #selector(dropdownMenuItemSelected(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = context
-            if option == currentValue {
-                item.state = .on
-            }
-            menu.addItem(item)
+            menu.addItem(menuItem(for: option, row: row, columnIndex: columnIndex, currentValue: currentValue))
         }
 
         let columnName = tableRows.columns[columnIndex]
         let isNullable = tableRows.columnNullable[columnName] ?? true
-        if isNullable && customDropdownOptions?[columnIndex] == nil {
+        if isNullable && custom == nil {
             menu.addItem(.separator())
             let nullItem = NSMenuItem(
                 title: String(localized: "Set NULL"),
@@ -283,7 +439,7 @@ extension TableViewCoordinator {
                 keyEquivalent: ""
             )
             nullItem.target = self
-            nullItem.representedObject = context
+            nullItem.representedObject = DropdownMenuContext(row: row, columnIndex: columnIndex)
             if currentValue == nil {
                 nullItem.state = .on
             }
@@ -294,9 +450,49 @@ extension TableViewCoordinator {
         menu.popUp(positioning: nil, at: NSPoint(x: cellRect.minX, y: cellRect.maxY), in: tableView)
     }
 
+    /// A section header is a menu item AppKit draws itself, not a separator with a label, so the
+    /// grouping reads to VoiceOver as a group rather than as an unselectable entry.
+    private func menuItem(
+        for option: GridMenuOption,
+        row: Int,
+        columnIndex: Int,
+        currentValue: String?
+    ) -> NSMenuItem {
+        switch option {
+        case .sectionHeader(let title):
+            return NSMenuItem.sectionHeader(title: title)
+        case .value(let title, let sql):
+            let item = NSMenuItem(title: title, action: #selector(dropdownMenuItemSelected(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = DropdownMenuContext(row: row, columnIndex: columnIndex, sql: sql)
+            if sql == currentValue {
+                item.state = .on
+            }
+            return item
+        case .clear(let title):
+            let item = NSMenuItem(title: title, action: #selector(dropdownMenuNullSelected(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = DropdownMenuContext(row: row, columnIndex: columnIndex)
+            if currentValue == nil {
+                item.state = .on
+            }
+            return item
+        case .custom(let title):
+            let item = NSMenuItem(title: title, action: #selector(dropdownMenuCustomSelected(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = DropdownMenuContext(row: row, columnIndex: columnIndex)
+            return item
+        }
+    }
+
     @objc func dropdownMenuItemSelected(_ sender: NSMenuItem) {
         guard let context = sender.representedObject as? DropdownMenuContext else { return }
-        commitPopoverEdit(row: context.row, columnIndex: context.columnIndex, newValue: sender.title)
+        commitPopoverEdit(row: context.row, columnIndex: context.columnIndex, newValue: context.sql ?? sender.title)
+    }
+
+    @objc func dropdownMenuCustomSelected(_ sender: NSMenuItem) {
+        guard let context = sender.representedObject as? DropdownMenuContext else { return }
+        showCustomValuePopover(row: context.row, columnIndex: context.columnIndex)
     }
 
     @objc func dropdownMenuNullSelected(_ sender: NSMenuItem) {
@@ -318,7 +514,7 @@ extension TableViewCoordinator {
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
         let columnName = tableRows.columns[columnIndex]
 
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
         PopoverPresenter.show(
@@ -349,7 +545,7 @@ extension TableViewCoordinator {
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
         let columnName = tableRows.columns[columnIndex]
 
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
         PopoverPresenter.show(
@@ -371,8 +567,10 @@ extension TableViewCoordinator {
 
     func showBlobViewerPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         let currentValue = blobStringValue(at: row, columnIndex: columnIndex)
+        let columnName = columnName(at: columnIndex)
+        let image = blobImage(at: row, columnIndex: columnIndex)
 
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
         PopoverPresenter.show(
@@ -380,11 +578,79 @@ extension TableViewCoordinator {
             of: tableView,
             contentSize: nil
         ) { dismiss in
-            HexEditorContentView(
+            BlobPopoverContentView(
                 initialValue: currentValue,
+                image: image,
+                columnName: columnName,
                 isEditable: false,
                 onDismiss: dismiss
             )
+        }
+    }
+
+    func showSvgViewerPopover(
+        tableView: NSTableView,
+        row: Int,
+        column: Int,
+        columnIndex: Int,
+        isEditable: Bool
+    ) {
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
+        let columnName = columnName(at: columnIndex)
+        let value = cellValue(at: row, column: columnIndex) ?? ""
+
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        dismissActiveCellEditorPopover()
+        activeCellEditorPopover = PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView,
+            contentSize: nil
+        ) { [weak self] dismiss in
+            SvgViewerContentView(
+                initialValue: value,
+                isEditable: isEditable,
+                onDismiss: dismiss,
+                onCommit: isEditable ? { newValue in
+                    self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
+                } : nil,
+                onPopOut: { currentText in
+                    dismiss()
+                    CellImageWindowController.open(
+                        data: Data(currentText.utf8),
+                        format: .svg,
+                        sourceKind: .markup,
+                        columnName: columnName
+                    )
+                }
+            )
+        }
+    }
+
+    private func displayFormatOverride(at columnIndex: Int) -> ValueDisplayFormat? {
+        guard columnIndex >= 0, columnIndex < columnDisplayFormats.count else { return nil }
+        return columnDisplayFormats[columnIndex]
+    }
+
+    private func columnName(at columnIndex: Int) -> String? {
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return nil }
+        return tableRows.columns[columnIndex]
+    }
+
+    /// The cell's stored bytes paired with what they turned out to be, or nil when they are not an
+    /// image or the column asked for its value raw.
+    private func blobImage(at row: Int, columnIndex: Int) -> CellImageValue? {
+        guard displayFormatOverride(at: columnIndex) != .raw else { return nil }
+        let value = cellTypedValue(at: row, column: columnIndex)
+        switch value {
+        case .null:
+            return nil
+        case .bytes(let bytes):
+            guard let format = CellImageSniffer.format(of: bytes) else { return nil }
+            return CellImageValue(data: bytes, format: format)
+        case .text(let text):
+            guard let format = CellImageSniffer.format(ofText: text) else { return nil }
+            return CellImageValue(data: text.storedBytes, format: format)
         }
     }
 
@@ -400,9 +666,13 @@ extension TableViewCoordinator {
 private final class DropdownMenuContext {
     let row: Int
     let columnIndex: Int
+    /// What the item sets the cell to. It is not the item's title wherever the value is not its own
+    /// best label, which is every entry a `GridMenuOption.value` gives a separate title.
+    let sql: String?
 
-    init(row: Int, columnIndex: Int) {
+    init(row: Int, columnIndex: Int, sql: String? = nil) {
         self.row = row
         self.columnIndex = columnIndex
+        self.sql = sql
     }
 }

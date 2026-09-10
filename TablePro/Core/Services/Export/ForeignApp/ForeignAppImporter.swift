@@ -12,7 +12,7 @@ import UniformTypeIdentifiers
 
 // MARK: - Protocol
 
-protocol ForeignAppImporter {
+protocol ForeignAppImporter: Sendable {
     var id: String { get }
     var displayName: String { get }
     var symbolName: String { get }
@@ -124,7 +124,7 @@ enum KeychainReadResult {
     case cancelled
 }
 
-typealias ForeignKeychainRead = (_ service: String, _ account: String) -> KeychainReadResult
+typealias ForeignKeychainRead = @Sendable (_ service: String, _ account: String) -> KeychainReadResult
 
 enum ForeignKeychainReader {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ForeignKeychainReader")

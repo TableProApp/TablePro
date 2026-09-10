@@ -30,6 +30,7 @@ enum CLIExecutableFinder {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
         process.arguments = arguments
+        process.environment = CLIToolEnvironment.augmented()
 
         let pipe = Pipe()
         process.standardOutput = pipe

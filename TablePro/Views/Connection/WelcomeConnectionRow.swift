@@ -38,19 +38,45 @@ struct WelcomeConnectionRow: View {
             : String(localized: "Add to Favorites")
     }
 
+    /// A row carries the identity colour beside the name rather than on the engine glyph, which
+    /// stays the engine's own colour. It is a dot and not the toolbar's filled capsule because a
+    /// row can be selected, and a fill of its own would compete with the selection band; the dot
+    /// steps aside through `selectionAwareTint` the way the connection switcher's already does.
+    ///
+    /// An uncoloured connection gets a neutral dot rather than no dot, so every name in the list
+    /// starts at the same x and the column keeps a straight left edge. The connection switcher
+    /// resolves it the same way.
+    @ViewBuilder
+    private var identityDot: some View {
+        let identity = connection.identityColor
+        let dot = Circle()
+            .selectionAwareTint(identity?.indicatorColor ?? .secondary)
+            .frame(width: 8, height: 8)
+
+        if let identity {
+            dot.accessibilityLabel(String(format: String(localized: "Color: %@"), identity.displayName))
+        } else {
+            dot.accessibilityHidden(true)
+        }
+    }
+
     var body: some View {
         let meta = metadata
         return HStack {
             connection.type.iconImage
                 .renderingMode(.template)
                 .font(.title3)
-                .foregroundStyle(connection.displayColor)
+                .foregroundStyle(connection.brandColor)
                 .frame(width: 18, height: 18)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(connection.name)
-                    .font(.body)
-                    .foregroundStyle(.primary)
+                HStack(spacing: 6) {
+                    identityDot
+
+                    Text(connection.name)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                }
 
                 HStack(spacing: 6) {
                     Text(connection.connectionSubtitle)

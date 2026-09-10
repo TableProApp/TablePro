@@ -16,7 +16,10 @@ struct BackupResultSheet: View {
     enum Outcome {
         case backupSuccess(database: String, destination: URL, bytes: Int64)
         case restoreSuccess(database: String, source: URL)
-        case failure(message: String)
+        /// A run over several databases, where one failing does not stop the rest, so the sheet
+        /// reports every database rather than one verdict for the batch.
+        case batch(outcomes: [NativeDumpBatchOutcome], directory: URL)
+        case failure(message: String, targetMayBeModified: Bool)
         case cancelled
     }
 
@@ -38,7 +41,7 @@ struct BackupResultSheet: View {
             detailView
 
             HStack(spacing: 12) {
-                if case .backupSuccess = outcome, let onShowInFinder {
+                if showsFinderButton, let onShowInFinder {
                     Button(String(localized: "Show in Finder")) {
                         onShowInFinder()
                         onClose()
@@ -52,30 +55,35 @@ struct BackupResultSheet: View {
             }
         }
         .padding(24)
-        .frame(width: 420)
+        .frame(minWidth: 420)
         .background(Color(nsColor: .windowBackgroundColor))
     }
+
+    private var showsFinderButton: Bool {
+        switch outcome {
+        case .backupSuccess: return true
+        case .batch(let outcomes, _): return outcomes.contains(where: \.succeeded)
+        case .restoreSuccess, .failure, .cancelled: return false
+        }
+    }
+
+    private static let partialStateWarning = String(
+        localized: "The target database may be in a partial state. Review it and clean up as needed.")
 
     @ViewBuilder
     private var detailView: some View {
         switch outcome {
-        case .failure(let message):
-            ScrollView {
-                Text(message)
-                    .font(.system(.callout, design: .monospaced))
+        case .failure(let message, let targetMayBeModified):
+            if targetMayBeModified {
+                Text(Self.partialStateWarning)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-                    .padding(8)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxWidth: .infinity)
-            .frame(maxHeight: 160)
-            .background(Color(nsColor: .textBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-            )
+            scrollingDetail(message)
+        case .batch(let outcomes, let directory):
+            scrollingDetail(Self.batchDetail(outcomes, directory: directory))
         default:
             if let detail {
                 Text(detail)
@@ -89,6 +97,25 @@ struct BackupResultSheet: View {
         }
     }
 
+    private func scrollingDetail(_ text: String) -> some View {
+        ScrollView {
+            Text(text)
+                .font(.system(.callout, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
+                .padding(8)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(maxHeight: 160)
+        .background(Color(nsColor: .textBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+        )
+    }
+
     @ViewBuilder
     private var icon: some View {
         switch outcome {
@@ -98,7 +125,15 @@ struct BackupResultSheet: View {
             Image(systemName: "exclamationmark.triangle.fill")
         case .cancelled:
             Image(systemName: "xmark.circle.fill")
+        case .batch(let outcomes, _):
+            Image(systemName: Self.batchAllSucceeded(outcomes)
+                ? "checkmark.circle.fill"
+                : "exclamationmark.triangle.fill")
         }
+    }
+
+    private static func batchAllSucceeded(_ outcomes: [NativeDumpBatchOutcome]) -> Bool {
+        !outcomes.isEmpty && outcomes.allSatisfy(\.succeeded)
     }
 
     private var tintColor: Color {
@@ -106,6 +141,7 @@ struct BackupResultSheet: View {
         case .backupSuccess, .restoreSuccess: return .green
         case .failure: return .orange
         case .cancelled: return .gray
+        case .batch(let outcomes, _): return Self.batchAllSucceeded(outcomes) ? .green : .orange
         }
     }
 
@@ -125,6 +161,11 @@ struct BackupResultSheet: View {
             case .backup: return String(localized: "Backup Dump Cancelled")
             case .restore: return String(localized: "Restore Dump Cancelled")
             }
+        case .batch(let outcomes, _):
+            guard !Self.batchAllSucceeded(outcomes) else {
+                return String(localized: "Backup Dump Complete")
+            }
+            return String(localized: "Backup Dump Finished With Problems")
         }
     }
 
@@ -144,15 +185,42 @@ struct BackupResultSheet: View {
                 database,
                 source.path
             )
-        case .failure(let message):
+        case .failure(let message, _):
             return message
         case .cancelled:
             switch kind {
             case .backup: return nil
             case .restore:
-                return String(localized: "The target database may be in a partial state. Review the database and clean up as needed.")
+                return Self.partialStateWarning
+            }
+        case .batch(let outcomes, let directory):
+            return Self.batchDetail(outcomes, directory: directory)
+        }
+    }
+
+    /// One line per database, so a run where the second of three failed says which one and keeps
+    /// the other two visible rather than reporting a single verdict for the batch.
+    private static func batchDetail(_ outcomes: [NativeDumpBatchOutcome], directory: URL) -> String {
+        let lines = outcomes.map { outcome -> String in
+            switch outcome.result {
+            case .succeeded(let bytes):
+                return String(
+                    format: String(localized: "%1$@ \u{2192} %2$@ (%3$@)"),
+                    outcome.database,
+                    outcome.destination.lastPathComponent,
+                    ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+                )
+            case .failed(let message):
+                return String(
+                    format: String(localized: "%1$@ failed: %2$@"),
+                    outcome.database,
+                    message.split(separator: "\n").last.map(String.init) ?? message
+                )
+            case .cancelled:
+                return String(format: String(localized: "%@ cancelled"), outcome.database)
             }
         }
+        return ([directory.path(percentEncoded: false)] + lines).joined(separator: "\n")
     }
 }
 
@@ -184,7 +252,9 @@ struct BackupResultSheet: View {
 #Preview("Restore Failure") {
     BackupResultSheet(
         kind: .restore,
-        outcome: .failure(message: "pg_restore: error: could not connect to database \"missing\": FATAL: database does not exist"),
+        outcome: .failure(
+            message: "pg_restore: error: could not connect to database \"missing\": FATAL: database does not exist",
+            targetMayBeModified: true),
         onClose: {},
         onShowInFinder: nil
     )

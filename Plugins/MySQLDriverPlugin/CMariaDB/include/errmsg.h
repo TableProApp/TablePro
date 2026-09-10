@@ -116,11 +116,10 @@ extern const char *mariadb_client_errors[];	/* Error messages */
 #define CR_BINLOG_SEMI_SYNC_ERROR 5023
 #define CR_INVALID_CLIENT_FLAG 5024
 #define CR_STMT_NO_RESULT 5025
-#define CR_ERR_MISSING_ERROR_INFO 5026
 
 /* Always last, if you add new error codes please update the
    value for CR_MARIADB_LAST_ERROR */
-#define CR_MARIADB_LAST_ERROR CR_ERR_MISSING_ERROR_INFO
+#define CR_MARIADB_LAST_ERROR CR_STMT_NO_RESULT
 
 #endif
 
@@ -129,6 +128,6 @@ extern const char *mariadb_client_errors[];	/* Error messages */
 
 #define ER(code) IS_MYSQL_ERROR((code)) ? client_errors[(code) - CR_MIN_ERROR] : \
                  IS_MARIADB_ERROR((code)) ?  mariadb_client_errors[(code) - CER_MIN_ERROR] : \
-                 "Unknown or undefined error code"
+                 "Unknown or undefined error code" 
 #define CER(code) ER((code))
 

@@ -21,6 +21,7 @@ struct PostgreSQLColumnsQueryTests {
             tableLiteral: table,
             identityProjection: "a.attidentity",
             generatedProjection: "a.attgenerated",
+            generationExpressionProjection: "c.generation_expression",
             attributeJoin: "LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = st.relid"
         )
     }
@@ -31,6 +32,7 @@ struct PostgreSQLColumnsQueryTests {
             tableLiteral: nil,
             identityProjection: "NULL::text",
             generatedProjection: "NULL::text",
+            generationExpressionProjection: "NULL::text",
             attributeJoin: ""
         )
     }

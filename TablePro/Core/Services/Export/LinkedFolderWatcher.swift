@@ -12,7 +12,7 @@ import Foundation
 import os
 import TableProImport
 
-struct LinkedConnection: Identifiable {
+struct LinkedConnection: Identifiable, Sendable {
     let id: UUID
     let connection: ExportableConnection
     let folderId: UUID
@@ -23,7 +23,7 @@ struct LinkedConnection: Identifiable {
 @Observable
 final class LinkedFolderWatcher {
     static let shared = LinkedFolderWatcher()
-    private static let logger = Logger(subsystem: "com.TablePro", category: "LinkedFolderWatcher")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "LinkedFolderWatcher")
 
     private(set) var linkedConnections: [LinkedConnection] = []
     private var watchSources: [UUID: DispatchSourceFileSystemObject] = [:]
@@ -142,13 +142,13 @@ final class LinkedFolderWatcher {
                 queue: .global(qos: .utility)
             )
 
-            source.setEventHandler { [weak self] in
+            source.setEventHandler { @Sendable [weak self] in
                 Task { @MainActor [weak self] in
                     self?.scheduleDebouncedRescan()
                 }
             }
 
-            source.setCancelHandler {
+            source.setCancelHandler { @Sendable in
                 close(fd)
             }
 
@@ -166,7 +166,7 @@ final class LinkedFolderWatcher {
 
     // MARK: - Stable IDs (SHA-256 based, deterministic across launches)
 
-    nonisolated private static func stableId(folderId: UUID, connection: ExportableConnection) -> UUID {
+    nonisolated static func stableId(folderId: UUID, connection: ExportableConnection) -> UUID {
         let key = "\(folderId.uuidString)|\(connection.name)|\(connection.host)|\(connection.port)|\(connection.type)"
         let digest = SHA256.hash(data: Data(key.utf8))
         var bytes = Array(digest.prefix(16))

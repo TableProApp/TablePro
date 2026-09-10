@@ -10,7 +10,7 @@ import TableProPluginKit
 
 @MainActor @Observable
 final class AIChatViewModel {
-    static let logger = Logger(subsystem: "com.TablePro", category: "AIChatViewModel")
+    nonisolated static let logger = Logger(subsystem: "com.TablePro", category: "AIChatViewModel")
 
     enum StreamingState {
         case idle
@@ -36,6 +36,9 @@ final class AIChatViewModel {
     var savedQueries: [SQLFavorite] = []
 
     var connection: DatabaseConnection?
+
+    @ObservationIgnored var streamFlushClock: StreamFlushClock = ContinuousStreamFlushClock()
+    @ObservationIgnored var streamFlushInterval: Duration = .milliseconds(50)
 
     var tables: [TableInfo] {
         guard let id = connection?.id else { return [] }
@@ -175,6 +178,10 @@ final class AIChatViewModel {
         attachedContext.removeAll { $0.stableKey == item.stableKey }
     }
 
+    func turn(withID id: UUID) -> ChatTurn? {
+        messages.first { $0.id == id }
+    }
+
     func cancelStream() {
         pendingWalkthroughBeforeSQL = nil
         prepTask?.cancel()
@@ -185,8 +192,9 @@ final class AIChatViewModel {
 
         if case .streaming(let assistantID) = streamingState,
            let idx = messages.firstIndex(where: { $0.id == assistantID }) {
-            messages[idx].finishStreamingTextBlock()
-            if messages[idx].blocks.isEmpty {
+            let turn = messages[idx]
+            turn.finishStreamingTextBlock()
+            if turn.blocks.isEmpty {
                 messages.remove(at: idx)
             }
         }
@@ -300,7 +308,8 @@ final class AIChatViewModel {
                     let transport = await AIProviderFactory.createProvider(for: config, apiKey: apiKey)
                     do {
                         let models = try await transport.fetchAvailableModels()
-                        return (config.id, models)
+                        AIModelCatalog.shared.store(providerTypeID: config.type.rawValue, models: models)
+                        return (config.id, models.map(\.id))
                     } catch is CancellationError {
                         return (config.id, nil)
                     } catch {

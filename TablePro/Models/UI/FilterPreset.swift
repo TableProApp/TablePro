@@ -20,7 +20,7 @@ struct FilterPreset: Identifiable, Codable, Equatable {
     static let shared = FilterPresetStorage()
 
     private let presetsKey = "com.TablePro.filter.presets"
-    private let defaults = UserDefaults.standard
+    private let defaults = AppStorageEnvironment.shared.defaults
 
     /// Cached presets to avoid repeated UserDefaults read + JSON decode
     private var cachedPresets: [FilterPreset]?

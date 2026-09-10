@@ -1,1 +1,0 @@
-../../Plugins/DuckDBDriverPlugin/QuackConnectBuilder.swift

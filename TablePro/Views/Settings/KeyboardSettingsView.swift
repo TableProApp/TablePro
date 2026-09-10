@@ -22,7 +22,7 @@ struct KeyboardSettingsView: View {
         VStack(spacing: 0) {
             NativeSearchField(
                 text: $searchText,
-                placeholder: String(localized: "Search shortcuts...")
+                placeholder: String(localized: "Search shortcuts…")
             )
             .padding(.horizontal, 20)
             .padding(.top, 16)
@@ -51,6 +51,7 @@ struct KeyboardSettingsView: View {
                 }
             }
             .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
         }
     }
 
@@ -68,7 +69,9 @@ struct KeyboardSettingsView: View {
             }
             Button(String(localized: "Reassign")) {
                 if let state = conflictAlert {
-                    settings.clearShortcut(for: state.conflictingAction)
+                    if settings.isCustomized(state.conflictingAction) {
+                        settings.clearShortcut(for: state.conflictingAction)
+                    }
                     settings.setShortcut(state.combo, for: state.action)
                 }
                 conflictAlert = nil
@@ -129,7 +132,7 @@ struct KeyboardSettingsView: View {
                 needsModifierAlert = nil
             }
         } message: {
-            Text(String(localized: "This action needs a modifier key like ⌘ or ⌥. A plain key won't reach the menu reliably."))
+            Text(String(localized: "This action needs ⌘ or ⌃. Option and Shift can join them, but cannot hold a shortcut on their own."))
         }
         .onAppear {
             SystemHotkeyChecker.shared.reload()
@@ -166,6 +169,9 @@ struct KeyboardSettingsView: View {
                 },
                 onClear: {
                     settings.clearShortcut(for: action)
+                },
+                onUnusableModifiers: {
+                    needsModifierAlert = action
                 }
             )
             .frame(width: 160, height: 24)

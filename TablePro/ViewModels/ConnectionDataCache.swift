@@ -80,11 +80,10 @@ internal final class ConnectionDataCache {
         async let favoritesResult = SQLFavoriteManager.shared.fetchFavorites(connectionId: connectionId)
 
         let allLinkedFolders = LinkedSQLFolderStorage.shared.loadFolders()
-            .filter { $0.isEnabled }
             .filter { $0.connectionId == nil || $0.connectionId == connectionId }
 
         var loadedLinkedFiles: [UUID: [LinkedSQLFavorite]] = [:]
-        for folder in allLinkedFolders {
+        for folder in allLinkedFolders where folder.isEnabled {
             if Task.isCancelled { return }
             loadedLinkedFiles[folder.id] = await LinkedSQLIndex.shared.fetchAll(
                 folderId: folder.id,

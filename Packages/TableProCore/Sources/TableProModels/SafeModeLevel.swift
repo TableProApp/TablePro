@@ -25,9 +25,9 @@ public enum SafeModeLevel: String, Codable, Sendable, CaseIterable, Identifiable
 
     public var displayName: String {
         switch self {
-        case .off: return "Off"
-        case .confirmWrites: return "Confirm Writes"
-        case .readOnly: return "Read-Only"
+        case .off: return String(localized: "Off")
+        case .confirmWrites: return String(localized: "Confirm Writes")
+        case .readOnly: return String(localized: "Read-Only")
         }
     }
 }

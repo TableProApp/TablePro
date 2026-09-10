@@ -17,7 +17,7 @@ struct RowVisualIndexTests {
         let changeManager = AnyChangeManager(DataChangeManager())
         let displayIDs: [RowID] = [.existing(0), .inserted(UUID()), .existing(2)]
 
-        index.rebuild(from: changeManager, sortedIDs: displayIDs)
+        index.rebuild(from: changeManager, displayIDs: displayIDs)
 
         #expect(index.visualState(for: 1).isInserted)
         #expect(!index.visualState(for: 0).isInserted)
@@ -30,7 +30,7 @@ struct RowVisualIndexTests {
         let changeManager = AnyChangeManager(DataChangeManager())
         let displayIDs: [RowID] = [.existing(0), .existing(1)]
 
-        index.rebuild(from: changeManager, sortedIDs: displayIDs)
+        index.rebuild(from: changeManager, displayIDs: displayIDs)
 
         #expect(index.visualState(for: 0) == .empty)
         #expect(index.visualState(for: 1) == .empty)

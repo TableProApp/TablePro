@@ -36,13 +36,11 @@ extension TableViewCoordinator {
         alert.addButton(withTitle: String(localized: "Fill"))
         alert.addButton(withTitle: String(localized: "Cancel"))
 
+        alert.window.initialFirstResponder = accessory.firstResponderView
+
         alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn else { return }
             self?.applyFillColumn(columnIndex: columnIndex, value: accessory.resolvedValue)
-        }
-
-        DispatchQueue.main.async {
-            alert.window.makeFirstResponder(accessory.firstResponderView)
         }
     }
 

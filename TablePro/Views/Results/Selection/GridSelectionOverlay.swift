@@ -63,11 +63,13 @@ final class GridSelectionOverlay: NSView {
     }
 
     private func activeOverlayCell(in coordinator: TableViewCoordinator) -> GridCoord? {
-        if let editor = coordinator.overlayEditor, editor.isActive {
-            return GridCoord(row: editor.row, column: editor.columnIndex)
+        if let editor = coordinator.overlayEditor, editor.isActive,
+           let position = coordinator.displayPosition(ofDataColumnIndex: editor.columnIndex) {
+            return GridCoord(row: editor.row, displayColumn: position)
         }
-        if let viewer = coordinator.overlayViewer, viewer.isActive {
-            return GridCoord(row: viewer.row, column: viewer.columnIndex)
+        if let viewer = coordinator.overlayViewer, viewer.isActive,
+           let position = coordinator.displayPosition(ofDataColumnIndex: viewer.columnIndex) {
+            return GridCoord(row: viewer.row, displayColumn: position)
         }
         return nil
     }
@@ -90,8 +92,8 @@ final class GridSelectionOverlay: NSView {
 
         var leadingX = CGFloat.infinity
         var trailingX = -CGFloat.infinity
-        for dataColumn in rect.columns.lowerBound...rect.columns.upperBound {
-            guard let tableColumnIndex = coordinator.tableColumnIndex(for: dataColumn) else { continue }
+        for position in rect.columns.lowerBound...rect.columns.upperBound {
+            guard let tableColumnIndex = coordinator.tableColumnIndex(forDisplayPosition: position) else { continue }
             let columnRect = tableView.rect(ofColumn: tableColumnIndex)
             leadingX = min(leadingX, columnRect.minX)
             trailingX = max(trailingX, columnRect.maxX)

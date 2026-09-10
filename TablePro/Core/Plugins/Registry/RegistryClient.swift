@@ -16,7 +16,7 @@ final class RegistryClient {
 
     let session: URLSession
     static let supportedSchemaVersion = 2
-    private static let logger = Logger(subsystem: "com.TablePro", category: "RegistryClient")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "RegistryClient")
     private static let manifestFreshnessWindow: TimeInterval = 300
 
     private static let defaultRegistryURL = URL(string:
@@ -47,7 +47,7 @@ final class RegistryClient {
         return Self.defaultRegistryURL
     }
 
-    private static let manifestCacheFileName = "registry-manifest.json"
+    nonisolated private static let manifestCacheFileName = "registry-manifest.json"
 
     init(
         userDefaults: UserDefaults = .standard,
@@ -70,14 +70,14 @@ final class RegistryClient {
         config.urlCache = URLCache(
             memoryCapacity: 1_000_000,
             diskCapacity: 5_000_000,
-            directory: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            directory: AppStorageEnvironment.shared.applicationSupportRoot
                 .appendingPathComponent("TablePro/Registry/URLCache", isDirectory: true)
         )
         return URLSession(configuration: config)
     }
 
     nonisolated static func defaultManifestCacheURL() -> URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        AppStorageEnvironment.shared.applicationSupportRoot
             .appendingPathComponent("TablePro/Registry", isDirectory: true)
             .appendingPathComponent(manifestCacheFileName)
     }

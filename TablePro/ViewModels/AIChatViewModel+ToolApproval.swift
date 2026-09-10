@@ -125,16 +125,16 @@ extension AIChatViewModel {
 
     @MainActor
     func appendPendingToolUseBlocks(_ blocks: [ToolUseBlock], assistantID: UUID) {
-        guard let idx = messages.firstIndex(where: { $0.id == assistantID }) else { return }
+        guard let turn = turn(withID: assistantID) else { return }
         for block in blocks {
-            messages[idx].appendBlock(.toolUse(block))
+            turn.appendBlock(.toolUse(block))
         }
     }
 
     @MainActor
     func updateApprovalState(blockID: String, newState: ToolApprovalState, assistantID: UUID) {
-        guard let idx = messages.firstIndex(where: { $0.id == assistantID }) else { return }
-        for chatBlock in messages[idx].blocks {
+        guard let turn = turn(withID: assistantID) else { return }
+        for chatBlock in turn.blocks {
             if case .toolUse(var block) = chatBlock.kind, block.id == blockID {
                 block.approvalState = newState
                 chatBlock.setKind(.toolUse(block))

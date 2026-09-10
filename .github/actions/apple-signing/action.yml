@@ -1,0 +1,70 @@
+name: Apple signing
+description: Imports the Developer ID certificate, stores notary credentials, and installs the provisioning profile.
+
+inputs:
+  certificate-p12:
+    description: Base64 of the .p12 holding the Developer ID Application certificate.
+    required: true
+  certificate-password:
+    description: Password for that .p12.
+    required: true
+  apple-id:
+    description: Apple ID the notary submissions are made under.
+    required: true
+  team-id:
+    description: Apple Developer team identifier.
+    required: true
+  notary-password:
+    description: App-specific password for notarytool.
+    required: true
+  provisioning-profile:
+    description: Base64 of the provisioning profile. Omit to skip installing one.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Import signing certificate
+      shell: bash
+      env:
+        CERTIFICATES_P12: ${{ inputs.certificate-p12 }}
+        CERTIFICATES_PASSWORD: ${{ inputs.certificate-password }}
+      # A keychain of its own, unlocked with an empty password and given a six hour lock timeout,
+      # so a long notarization wait cannot relock it mid-run. The runner is thrown away afterwards.
+      run: |
+        set -euo pipefail
+        KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+        security create-keychain -p "" "$KEYCHAIN_PATH"
+        security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+        security unlock-keychain -p "" "$KEYCHAIN_PATH"
+        echo "$CERTIFICATES_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+        security import "$RUNNER_TEMP/certificate.p12" -P "$CERTIFICATES_PASSWORD" \
+          -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+        rm -f "$RUNNER_TEMP/certificate.p12"
+        security set-key-partition-list -S apple-tool:,apple: -k "" "$KEYCHAIN_PATH"
+        security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain
+
+    - name: Configure notarization
+      shell: bash
+      env:
+        APPLE_ID: ${{ inputs.apple-id }}
+        APPLE_TEAM_ID: ${{ inputs.team-id }}
+        NOTARY_PASSWORD: ${{ inputs.notary-password }}
+      run: |
+        set -euo pipefail
+        xcrun notarytool store-credentials "TablePro" \
+          --apple-id "$APPLE_ID" \
+          --team-id "$APPLE_TEAM_ID" \
+          --password "$NOTARY_PASSWORD"
+
+    - name: Install provisioning profile
+      if: inputs.provisioning-profile != ''
+      shell: bash
+      env:
+        PROVISIONING_PROFILE: ${{ inputs.provisioning-profile }}
+      run: |
+        set -euo pipefail
+        profiles="$HOME/Library/MobileDevice/Provisioning Profiles"
+        mkdir -p "$profiles"
+        echo "$PROVISIONING_PROFILE" | base64 --decode > "$profiles/tablepro.provisionprofile"

@@ -211,6 +211,38 @@ struct RDSSigningEndpointResolverTests {
         }
     }
 
+    @Test("An override may not redirect the token away from the host being dialled")
+    func overrideCannotRedirectToAnotherHost() {
+        #expect(throws: AWSAuthError.rdsEndpointUnresolved(host: "evil.example.com")) {
+            _ = try resolve(
+                host: "evil.example.com",
+                port: 5_432,
+                override: "prod.abc123.us-east-1.rds.amazonaws.com:5432"
+            )
+        }
+    }
+
+    @Test("An override that restates the dialled host is accepted")
+    func overrideMatchingDialledHostIsAccepted() throws {
+        let endpoint = try resolve(
+            host: "mydb.abc123.us-east-1.rds.amazonaws.com",
+            port: 5_432,
+            override: "MyDB.abc123.us-east-1.RDS.amazonaws.com:5433"
+        )
+        #expect(endpoint.port == 5_433)
+    }
+
+    @Test("A pre-tunnel host is ignored when the socket is not a local forward")
+    func preTunnelHostIgnoredForRemoteDial() throws {
+        let endpoint = try resolve(
+            host: "evil.example.com",
+            port: 5_432,
+            preTunnelHost: "prod.abc123.us-east-1.rds.amazonaws.com",
+            preTunnelPort: 5_432
+        )
+        #expect(endpoint == RDSSigningEndpoint(host: "evil.example.com", port: 5_432))
+    }
+
     @Test("The region comes from the signing host, not the local forward")
     func regionFollowsSigningHost() throws {
         let endpoint = try resolve(
@@ -307,7 +339,7 @@ struct AWSSSOParsingTests {
 @MainActor
 struct RegistryAWSIAMFieldsTests {
     private func fieldIds(forTypeId typeId: String) -> [String] {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: typeId)?
+        PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId)?
             .connection.additionalConnectionFields.map(\.id) ?? []
     }
 
@@ -327,7 +359,7 @@ struct RegistryAWSIAMFieldsTests {
     @Test("The profile field offers the profiles found on disk")
     func profileFieldHasDynamicOptions() {
         for typeId in ["MySQL", "MariaDB", "PostgreSQL"] {
-            let field = PluginMetadataRegistry.shared.snapshot(forTypeId: typeId)?
+            let field = PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId)?
                 .connection.additionalConnectionFields.first { $0.id == "awsProfileName" }
             #expect(field?.dynamicOptions == .awsProfiles, "\(typeId) profile field has no profile list")
         }
@@ -341,7 +373,7 @@ struct RegistryAWSIAMFieldsTests {
 
     @Test("The secret access key field is Keychain-backed (secure)")
     func secretFieldIsSecure() {
-        let field = PluginMetadataRegistry.shared.snapshot(forTypeId: "MySQL")?
+        let field = PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: "MySQL")?
             .connection.additionalConnectionFields.first { $0.id == "awsSecretAccessKey" }
         #expect(field?.isSecure == true)
     }

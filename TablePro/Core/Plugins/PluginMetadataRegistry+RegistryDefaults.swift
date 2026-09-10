@@ -11,7 +11,8 @@ extension PluginMetadataRegistry {
     func registryPluginDefaults() -> [(typeId: String, snapshot: PluginMetadataSnapshot)] {
         let (
             clickhouseDialect, clickhouseColumnTypes, mssqlDialect, mssqlColumnTypes,
-            oracleDialect, oracleColumnTypes, duckdbDialect, duckdbColumnTypes,
+            oracleDialect, oracleColumnTypes, damengDialect, damengCompletions, damengColumnTypes,
+            duckdbDialect, duckdbColumnTypes,
             cassandraDialect, cassandraColumnTypes, mongoCompletions, mongoColumnTypes,
             etcdCompletions, redisCompletions, redisColumnTypes, d1Dialect, d1ColumnTypes
         ) = registryDefaultIngredients()
@@ -26,7 +27,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#00ED63",
                 queryLanguageName: "MQL", editorLanguage: .javascript,
                 connectionMode: .network, supportsDatabaseSwitching: true,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: true,
@@ -94,6 +94,17 @@ extension PluginMetadataRegistry {
                                 .init(value: "2", label: "2"),
                                 .init(value: "3", label: "3")
                             ])
+                        ),
+                        ConnectionField(
+                            id: "mongoUuidRepresentation",
+                            label: String(localized: "Legacy UUID Encoding"),
+                            fieldType: .dropdown(options: [
+                                .init(value: "", label: String(localized: "Do Not Decode")),
+                                .init(value: "javaLegacy", label: "Java"),
+                                .init(value: "csharpLegacy", label: "C#"),
+                                .init(value: "pythonLegacy", label: "Python")
+                            ]),
+                            section: .advanced
                         )
                     ],
                     category: .document,
@@ -110,7 +121,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#DC382D",
                 queryLanguageName: "Redis CLI", editorLanguage: .bash,
                 connectionMode: .network, supportsDatabaseSwitching: false,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: false,
@@ -146,14 +156,77 @@ extension PluginMetadataRegistry {
                 connection: PluginMetadataSnapshot.ConnectionConfig(
                     additionalConnectionFields: [
                         ConnectionField(
+                            id: "redisMode",
+                            label: String(localized: "Connection Mode"),
+                            defaultValue: "standalone",
+                            fieldType: .dropdown(options: [
+                                .init(value: "standalone", label: String(localized: "Standalone")),
+                                .init(value: "sentinel", label: String(localized: "Sentinel")),
+                                .init(value: "cluster", label: String(localized: "Cluster")),
+                            ]),
+                            section: .connection
+                        ),
+                        ConnectionField(
+                            id: "redisSentinelHosts",
+                            label: String(localized: "Sentinel Nodes"),
+                            placeholder: "127.0.0.1:26379",
+                            required: true,
+                            fieldType: .hostList,
+                            section: .connection,
+                            visibleWhen: FieldVisibilityRule(fieldId: "redisMode", values: ["sentinel"])
+                        ),
+                        ConnectionField(
+                            id: "redisSentinelMasterName",
+                            label: String(localized: "Primary Group Name"),
+                            placeholder: "mymaster",
+                            required: true,
+                            defaultValue: "mymaster",
+                            section: .connection,
+                            visibleWhen: FieldVisibilityRule(fieldId: "redisMode", values: ["sentinel"])
+                        ),
+                        ConnectionField(
+                            id: "redisClusterHosts",
+                            label: String(localized: "Cluster Seed Nodes"),
+                            placeholder: "127.0.0.1:6379",
+                            required: true,
+                            fieldType: .hostList,
+                            section: .connection,
+                            visibleWhen: FieldVisibilityRule(fieldId: "redisMode", values: ["cluster"])
+                        ),
+                        ConnectionField(
+                            id: "redisSentinelUsername",
+                            label: String(localized: "Sentinel Username"),
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "redisMode", values: ["sentinel"])
+                        ),
+                        ConnectionField(
+                            id: "redisSentinelPassword",
+                            label: String(localized: "Sentinel Password"),
+                            fieldType: .secure,
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "redisMode", values: ["sentinel"])
+                        ),
+                        ConnectionField(
                             id: "redisDatabase",
                             label: String(localized: "Database Index"),
                             defaultValue: "0",
-                            fieldType: .stepper(range: ConnectionField.IntRange(0...15))
-                        )
-                    ],
+                            fieldType: .stepper(range: ConnectionField.IntRange(0...15)),
+                            visibleWhen: FieldVisibilityRule(
+                                fieldId: "redisMode",
+                                values: ["standalone", "sentinel"]
+                            )
+                        ),
+                        ConnectionField(
+                            id: "redisSeparator",
+                            label: String(localized: "Key Separator"),
+                            defaultValue: ":",
+                            fieldType: .text,
+                            section: .advanced
+                        ),
+                    ] + AWSAuthFields.standard() + [AWSAuthFields.elastiCacheReplicationGroupField()],
                     category: .keyValue,
                     tagline: String(localized: "In-memory data store and cache"),
+                    hidesBuiltInDatabase: true,
                     defaultUnixSocketPath: "/var/run/redis/redis.sock"
                 )
             )),
@@ -167,7 +240,7 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#E34517",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
-                supportsColumnReorder: false,
+                structureEditing: SchemaEditingSupport(foreignKeyEdit: .alter),
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
                     supportsImport: true,
@@ -180,6 +253,7 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: true,
+                    supportsDropSchema: true,
                     supportsRenameColumn: true,
                     defaultSSLMode: .preferred
                 ),
@@ -209,7 +283,8 @@ extension PluginMetadataRegistry {
                             defaultValue: "sql",
                             fieldType: .dropdown(options: [
                                 .init(value: "sql", label: "SQL Server Authentication"),
-                                .init(value: "windows", label: "Windows Authentication (Kerberos)")
+                                .init(value: "windows", label: "Windows Authentication (Kerberos)"),
+                                .init(value: "entra", label: String(localized: "Microsoft Entra ID"))
                             ]),
                             section: .authentication
                         ),
@@ -231,7 +306,7 @@ extension PluginMetadataRegistry {
                         ConnectionField(
                             id: "mssqlSchema", label: "Schema", placeholder: "dbo", defaultValue: "dbo"
                         )
-                    ],
+                    ] + EntraAuthFields.standard(gatedBy: "mssqlAuthMethod", value: "entra"),
                     category: .relational,
                     tagline: String(localized: "Microsoft's enterprise SQL database")
                 )
@@ -246,7 +321,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#F37440",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: true,
@@ -295,7 +369,8 @@ extension PluginMetadataRegistry {
                             "CHAR", "VARCHAR", "CLOB", "BYTE", "VARBYTE", "BLOB",
                             "DATE", "TIME", "TIMESTAMP", "INTERVAL", "PERIOD", "JSON", "XML",
                         ],
-                        autoLimitStyle: .top
+                        autoLimitStyle: .top,
+                        caseSensitivityStyle: .unsupported
                     ),
                     statementCompletions: [],
                     columnTypesByCategory: [
@@ -335,7 +410,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#DD5F3B",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
                     supportsImport: false,
@@ -362,7 +436,7 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: ["information_schema"],
                     fileExtensions: [],
                     databaseGroupingStrategy: .hierarchicalSchema,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .comment]
+                    structureColumnFields: [.name, .type, .nullable, .comment]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: SQLDialectDescriptor(
@@ -392,7 +466,8 @@ extension PluginMetadataRegistry {
                         booleanLiteralStyle: .truefalse,
                         likeEscapeStyle: .explicit,
                         paginationStyle: .offsetFetch,
-                        offsetFetchOrderBy: ""
+                        offsetFetchOrderBy: "",
+                        caseSensitivityStyle: .regexFlag
                     ),
                     statementCompletions: [],
                     columnTypesByCategory: [
@@ -453,7 +528,7 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#C3160B",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: false,
-                supportsColumnReorder: false,
+                structureEditing: SchemaEditingSupport(columnReorder: .alter, foreignKeyEdit: .alter),
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
                     supportsImport: true,
@@ -499,23 +574,83 @@ extension PluginMetadataRegistry {
                     tagline: String(localized: "Enterprise SQL with PL/SQL")
                 )
             )),
+            ("Dameng", PluginMetadataSnapshot(
+                displayName: "Dameng DM8", iconName: "cylinder", defaultPort: 5_236,
+                requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,
+                isDownloadable: true, primaryUrlScheme: "dm", parameterStyle: .questionMark,
+                navigationModel: .standard, explainVariants: [
+                    ExplainVariant(id: "plan", label: "Plan", sqlPrefix: "EXPLAIN", format: .damengText)
+                ],
+                pathFieldRole: .database,
+                supportsHealthMonitor: true, urlSchemes: ["dm"],
+                postConnectActions: [.selectSchemaFromLastSession],
+                brandColorHex: "#C60018",
+                queryLanguageName: "SQL", editorLanguage: .sql,
+                connectionMode: .network, supportsDatabaseSwitching: false,
+                structureEditing: SchemaEditingSupport(foreignKeyEdit: .alter),
+                capabilities: PluginMetadataSnapshot.CapabilityFlags(
+                    supportsSchemaSwitching: true,
+                    supportsImport: true,
+                    supportsExport: true,
+                    supportsSSH: true,
+                    supportsSSL: false,
+                    supportsCascadeDrop: true,
+                    supportsForeignKeyDisable: false,
+                    supportsReadOnlyMode: true,
+                    supportsQueryProgress: false,
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: false,
+                    supportsDropSchema: true,
+                    supportsRenameColumn: true,
+                    supportsOpportunisticTLS: false
+                ),
+                schema: PluginMetadataSnapshot.SchemaInfo(
+                    defaultSchemaName: "",
+                    defaultGroupName: "main",
+                    tableEntityName: "Tables",
+                    containerEntityName: "Schema",
+                    defaultPrimaryKeyColumn: nil,
+                    immutableColumns: [],
+                    systemDatabaseNames: [],
+                    systemSchemaNames: ["SYS", "SYSDBA", "SYSAUDITOR", "SYSSSO", "CTISYS"],
+                    fileExtensions: [],
+                    databaseGroupingStrategy: .hierarchicalSchema,
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                ),
+                editor: PluginMetadataSnapshot.EditorConfig(
+                    sqlDialect: damengDialect,
+                    statementCompletions: damengCompletions,
+                    columnTypesByCategory: damengColumnTypes
+                ),
+                connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: [],
+                    category: .relational,
+                    tagline: String(localized: "Enterprise relational database for DM8 deployments")
+                )
+            )),
             ("ClickHouse", PluginMetadataSnapshot(
                 displayName: "ClickHouse", iconName: "clickhouse-icon", defaultPort: 8_123,
                 requiresAuthentication: true, supportsForeignKeys: false, supportsSchemaEditing: true,
                 isDownloadable: true, primaryUrlScheme: "clickhouse", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [
-                    ExplainVariant(id: "plan", label: "Plan", sqlPrefix: "EXPLAIN"),
-                    ExplainVariant(id: "pipeline", label: "Pipeline", sqlPrefix: "EXPLAIN PIPELINE"),
-                    ExplainVariant(id: "ast", label: "AST", sqlPrefix: "EXPLAIN AST"),
-                    ExplainVariant(id: "syntax", label: "Syntax", sqlPrefix: "EXPLAIN SYNTAX"),
-                    ExplainVariant(id: "estimate", label: "Estimate", sqlPrefix: "EXPLAIN ESTIMATE")
+                    ExplainVariant(id: "plan", label: "Plan", sqlPrefix: "EXPLAIN", format: .indentedText),
+                    ExplainVariant(
+                        id: "pipeline", label: "Pipeline", sqlPrefix: "EXPLAIN PIPELINE", format: .indentedText
+                    ),
+                    ExplainVariant(id: "ast", label: "AST", sqlPrefix: "EXPLAIN AST", format: .indentedText),
+                    ExplainVariant(
+                        id: "syntax", label: "Syntax", sqlPrefix: "EXPLAIN SYNTAX", format: .indentedText
+                    ),
+                    ExplainVariant(
+                        id: "estimate", label: "Estimate", sqlPrefix: "EXPLAIN ESTIMATE", format: .indentedText
+                    )
                 ],
                 pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: ["clickhouse", "ch"], postConnectActions: [.selectDatabaseFromLastSession],
                 brandColorHex: "#FFD100",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
-                supportsColumnReorder: false,
+                structureEditing: SchemaEditingSupport(columnReorder: .alter, foreignKeyEdit: .unsupported),
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: true,
@@ -554,59 +689,6 @@ extension PluginMetadataRegistry {
                     tagline: String(localized: "Column-oriented OLAP for big data")
                 )
             )),
-            ("DuckDB", PluginMetadataSnapshot(
-                displayName: "DuckDB", iconName: "duckdb-icon", defaultPort: 9_494,
-                requiresAuthentication: false, supportsForeignKeys: true, supportsSchemaEditing: true,
-                isDownloadable: true, primaryUrlScheme: "duckdb", parameterStyle: .dollar,
-                navigationModel: .standard,
-                explainVariants: [
-                    ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN"),
-                ],
-                pathFieldRole: .database,
-                supportsHealthMonitor: false, urlSchemes: ["duckdb", "quack"], postConnectActions: [],
-                brandColorHex: "#FFD900",
-                queryLanguageName: "SQL", editorLanguage: .sql,
-                connectionMode: .apiOnly, supportsDatabaseSwitching: false,
-                supportsColumnReorder: false,
-                capabilities: PluginMetadataSnapshot.CapabilityFlags(
-                    supportsSchemaSwitching: false,
-                    supportsImport: true,
-                    supportsExport: true,
-                    supportsSSH: false,
-                    supportsSSL: false,
-                    supportsCascadeDrop: false,
-                    supportsForeignKeyDisable: true,
-                    supportsReadOnlyMode: true,
-                    supportsQueryProgress: false,
-                    requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: false,
-                    supportsRenameColumn: true
-                ),
-                schema: PluginMetadataSnapshot.SchemaInfo(
-                    defaultSchemaName: "public",
-                    defaultGroupName: "main",
-                    tableEntityName: "Tables",
-                    containerEntityName: "Database",
-                    defaultPrimaryKeyColumn: nil,
-                    immutableColumns: [],
-                    systemDatabaseNames: ["information_schema", "pg_catalog"],
-                    systemSchemaNames: [],
-                    fileExtensions: ["duckdb", "ddb"],
-                    databaseGroupingStrategy: .flat,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
-                ),
-                editor: PluginMetadataSnapshot.EditorConfig(
-                    sqlDialect: duckdbDialect,
-                    statementCompletions: [],
-                    columnTypesByCategory: duckdbColumnTypes
-                ),
-                connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: Self.duckdbConnectionFields,
-                    category: .analytical,
-                    tagline: String(localized: "Embedded and remote analytical SQL"),
-                    hidesBuiltInPassword: true
-                )
-            )),
             ("Beancount", PluginMetadataSnapshot(
                 displayName: "Beancount", iconName: "beancount-icon", defaultPort: 0,
                 requiresAuthentication: false, supportsForeignKeys: false, supportsSchemaEditing: false,
@@ -616,7 +698,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#3F7D20",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .fileBased, supportsDatabaseSwitching: false,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: false,
@@ -635,7 +716,8 @@ extension PluginMetadataRegistry {
                     supportsRenameColumn: false,
                     supportsAddIndex: false,
                     supportsDropIndex: false,
-                    supportsModifyPrimaryKey: false
+                    supportsModifyPrimaryKey: false,
+                    localFilePathField: .database
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -670,7 +752,8 @@ extension PluginMetadataRegistry {
                         regexSyntax: .unsupported,
                         booleanLiteralStyle: .numeric,
                         likeEscapeStyle: .explicit,
-                        paginationStyle: .limit
+                        paginationStyle: .limit,
+                        caseSensitivityStyle: .collationDefined
                     ),
                     statementCompletions: [],
                     columnTypesByCategory: [
@@ -681,6 +764,15 @@ extension PluginMetadataRegistry {
                     ]
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: [
+                        ConnectionField(
+                            id: "beancountRunLedgerPlugins",
+                            label: String(localized: "Run Ledger Plugins"),
+                            defaultValue: "false",
+                            fieldType: .toggle,
+                            section: .advanced
+                        )
+                    ],
                     category: .analytical,
                     tagline: String(localized: "Plain-text accounting ledgers")
                 )
@@ -695,7 +787,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#26A0D8",
                 queryLanguageName: "CQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: false,
@@ -729,7 +820,7 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .byDatabase,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                    structureColumnFields: [.name, .type, .nullable, .comment]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: cassandraDialect,
@@ -759,7 +850,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#6B2EE3",
                 queryLanguageName: "CQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: false,
@@ -793,7 +883,7 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .byDatabase,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                    structureColumnFields: [.name, .type, .nullable, .comment]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: cassandraDialect,
@@ -822,7 +912,6 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#419EDA",
                 queryLanguageName: "etcdctl", editorLanguage: .bash,
                 connectionMode: .network, supportsDatabaseSwitching: false,
-                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: false,
@@ -894,7 +983,8 @@ extension PluginMetadataRegistry {
                         ),
                     ],
                     category: .coordination,
-                    tagline: String(localized: "Distributed key-value store for service discovery")
+                    tagline: String(localized: "Distributed key-value store for service discovery"),
+                    hidesBuiltInDatabase: true
                 )
             )),
             ("Cloudflare D1", PluginMetadataSnapshot(
@@ -902,14 +992,16 @@ extension PluginMetadataRegistry {
                 requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: false,
                 isDownloadable: true, primaryUrlScheme: "d1", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [
-                    ExplainVariant(id: "plan", label: "Query Plan", sqlPrefix: "EXPLAIN QUERY PLAN")
+                    ExplainVariant(
+                        id: "plan", label: "Query Plan", sqlPrefix: "EXPLAIN QUERY PLAN", format: .sqliteQueryPlan
+                    )
                 ],
                 pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: ["d1"], postConnectActions: [],
                 brandColorHex: "#F6821F",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .apiOnly, supportsDatabaseSwitching: true,
-                supportsColumnReorder: false,
+                structureEditing: SchemaEditingSupport(columnReorder: .rebuild, foreignKeyEdit: .rebuild),
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: false,
@@ -960,14 +1052,16 @@ extension PluginMetadataRegistry {
                 requiresAuthentication: false, supportsForeignKeys: true, supportsSchemaEditing: true,
                 isDownloadable: true, primaryUrlScheme: "libsql", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [
-                    ExplainVariant(id: "plan", label: "Query Plan", sqlPrefix: "EXPLAIN QUERY PLAN")
+                    ExplainVariant(
+                        id: "plan", label: "Query Plan", sqlPrefix: "EXPLAIN QUERY PLAN", format: .sqliteQueryPlan
+                    )
                 ],
                 pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: ["libsql"], postConnectActions: [],
                 brandColorHex: "#4FF8D2",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .apiOnly, supportsDatabaseSwitching: false,
-                supportsColumnReorder: false,
+                structureEditing: SchemaEditingSupport(columnReorder: .rebuild, foreignKeyEdit: .rebuild),
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: false,
@@ -981,7 +1075,8 @@ extension PluginMetadataRegistry {
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
                     supportsModifyColumn: false,
-                    supportsRenameColumn: true
+                    supportsRenameColumn: true,
+                    localFilePathField: .additionalField("libsqlFilePath")
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "main",
@@ -1041,8 +1136,10 @@ extension PluginMetadataRegistry {
                     tagline: String(localized: "Distributed SQLite by Turso")
                 )
             )),
-        ] + cloudPluginDefaults() + elasticsearchPluginDefaults() + surrealDBPluginDefaults()
-            + r2SQLPluginDefaults()
+        ] + tursoPluginDefaults(dialect: d1Dialect, columnTypes: d1ColumnTypes)
+            + duckdbPluginDefaults(dialect: duckdbDialect, columnTypes: duckdbColumnTypes)
+            + cloudPluginDefaults() + elasticsearchPluginDefaults() + surrealDBPluginDefaults()
+            + kafkaPluginDefaults() + typesensePluginDefaults() + r2SQLPluginDefaults()
     }
     // swiftlint:enable function_body_length
 }

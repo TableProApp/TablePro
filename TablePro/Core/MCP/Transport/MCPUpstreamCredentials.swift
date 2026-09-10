@@ -3,12 +3,10 @@ import Foundation
 public struct MCPUpstreamCredentials: Sendable, Equatable {
     public let endpoint: URL
     public let bearerToken: String
-    public let tlsCertFingerprint: String?
 
-    public init(endpoint: URL, bearerToken: String, tlsCertFingerprint: String? = nil) {
+    public init(endpoint: URL, bearerToken: String) {
         self.endpoint = endpoint
         self.bearerToken = bearerToken
-        self.tlsCertFingerprint = tlsCertFingerprint
     }
 }
 

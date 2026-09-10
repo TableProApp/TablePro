@@ -2,7 +2,8 @@ import Foundation
 
 public struct GetTableDdlTool: MCPToolImplementation {
     public static let name = "get_table_ddl"
-    public static let description = String(localized: "Get the CREATE TABLE DDL statement for a table")
+    public static let title: String? = String(localized: "Get Table DDL")
+    public static let description = String(localized: "Return the CREATE statement for one table or view.")
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
     public static let annotations = MCPToolAnnotations(
         title: String(localized: "Get Table DDL"),
@@ -12,46 +13,35 @@ public struct GetTableDdlTool: MCPToolImplementation {
         openWorldHint: false
     )
 
-    public static let inputSchema: JsonValue = .object([
-        "type": .string("object"),
-        "properties": .object([
-            "connection_id": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "UUID of the connection"))
-            ]),
-            "table": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "Table name"))
-            ]),
-            "database": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "Database name (uses current if omitted)"))
-            ]),
-            "schema": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "Schema name (uses current if omitted)"))
-            ])
-        ]),
-        "required": .array([.string("connection_id"), .string("table")])
-    ])
+    public static let inputSchema = MCPToolSchema.object(
+        properties: [
+            "connection_id": MCPToolSchema.connectionId,
+            "table": MCPToolSchema.table,
+            "database": MCPToolSchema.database,
+            "schema": MCPToolSchema.schema
+        ],
+        required: ["connection_id", "table"]
+    )
+
+    public static let outputSchema: JsonValue? = MCPToolSchema.object(
+        properties: [
+            "table": MCPToolSchema.string(String(localized: "Table the DDL describes")),
+            "schema": MCPToolSchema.nullableString(String(localized: "Schema the table lives in")),
+            "ddl": MCPToolSchema.string(String(localized: "CREATE statement"))
+        ],
+        required: ["table", "ddl"]
+    )
 
     public init() {}
 
-    public func call(
+    public func perform(
         arguments: JsonValue,
         context: MCPRequestContext,
         services: MCPToolServices
     ) async throws -> MCPToolCallResult {
-        let connectionId = try MCPArgumentDecoder.requireUuid(arguments, key: "connection_id")
-        let table = try MCPArgumentDecoder.requireString(arguments, key: "table")
-        let database = MCPArgumentDecoder.optionalString(arguments, key: "database")
-        let schema = MCPArgumentDecoder.optionalString(arguments, key: "schema")
-
-        let scope = try await services.connectionBridge.resolveScope(
-            connectionId: connectionId,
-            database: database,
-            schema: schema
-        )
+        try MCPArgumentDecoder.rejectUnknownKeys(arguments, allowed: MCPScopeArguments.keys.union(["table"]))
+        let table = try MCPArgumentDecoder.requireNonEmptyString(arguments, key: "table")
+        let scope = try await MCPScopeArguments.resolve(arguments, services: services)
         let payload = try await services.connectionBridge.getTableDDL(scope: scope, table: table)
         return .structured(payload)
     }

@@ -128,12 +128,27 @@ echo "✅ All unchanged libraries match HEAD"
 echo "📝 Regenerating $CHECKSUMS_FILE..."
 shasum -a 256 Libs/*.a > "$CHECKSUMS_FILE"
 
+# An allowlist of exactly what the checksum guard above covers, not `-C Libs .`. The dot swept in
+# Libs/ios and Libs/dylibs, so every download of the macOS archive also carried about 78 MB of iOS
+# xcframeworks that nothing here verified, and the marker files with them.
 echo "📦 Creating $LIBS_ARCHIVE..."
-tar czf "/tmp/$LIBS_ARCHIVE" -C Libs .
+archive_members=()
+for lib in Libs/*.a; do
+    archive_members+=("$(basename "$lib")")
+done
+if [ "${#archive_members[@]}" -eq 0 ]; then
+    echo "❌ No Libs/*.a to publish."
+    exit 1
+fi
+
+# A private directory rather than a predictable /tmp name: this archive is uploaded publicly, and
+# /tmp is world-writable, so a fixed path is something another local user can replace first.
+staging="$(mktemp -d)"
+trap 'rm -rf "$staging"' EXIT
+tar czf "$staging/$LIBS_ARCHIVE" -C Libs "${archive_members[@]}" "$(basename "$CHECKSUMS_FILE")"
 
 echo "☁️  Uploading to $REPO@$LIBS_TAG..."
-gh release upload "$LIBS_TAG" "/tmp/$LIBS_ARCHIVE" --clobber --repo "$REPO"
-rm -f "/tmp/$LIBS_ARCHIVE"
+gh release upload "$LIBS_TAG" "$staging/$LIBS_ARCHIVE" --clobber --repo "$REPO"
 
 echo ""
 echo "🎉 Published. Now commit the checksum update:"

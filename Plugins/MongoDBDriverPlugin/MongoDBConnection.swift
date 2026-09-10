@@ -36,6 +36,12 @@ extension MongoDBError: PluginDriverError {
 
 // MARK: - Connection Class
 
+/// Hands a BSON pointer or a decoded document between the serial queue and the awaiting caller.
+/// Only one of the two touches it at a time, which is what the compiler cannot see through `Any`.
+private struct QueueTransfer<Value>: @unchecked Sendable {
+    let value: Value
+}
+
 /// Thread-safe MongoDB connection using libmongoc.
 /// All blocking C calls are dispatched to a dedicated serial queue.
 /// Async entry points use `queue.async` + continuations. Synchronous entry points
@@ -67,6 +73,7 @@ final class MongoDBConnection: @unchecked Sendable {
     private let authMechanism: String?
     private let replicaSet: String?
     private let extraUriParams: [String: String]
+    let uuidRepresentation: MongoDBUuidRepresentation
 
     private let controlQueue = DispatchQueue(label: "com.TablePro.mongodb.control", qos: .userInitiated)
 
@@ -131,7 +138,8 @@ final class MongoDBConnection: @unchecked Sendable {
         useSrv: Bool = false,
         authMechanism: String? = nil,
         replicaSet: String? = nil,
-        extraUriParams: [String: String] = [:]
+        extraUriParams: [String: String] = [:],
+        uuidRepresentation: MongoDBUuidRepresentation = .unspecified
     ) {
         self.host = host
         self.port = port
@@ -150,11 +158,37 @@ final class MongoDBConnection: @unchecked Sendable {
         self.authMechanism = authMechanism
         self.replicaSet = replicaSet
         self.extraUriParams = extraUriParams
+        self.uuidRepresentation = uuidRepresentation
         queue.setSpecific(key: Self.queueKey, value: ObjectIdentifier(self))
     }
 
     private var isOnQueue: Bool {
         DispatchQueue.getSpecific(key: Self.queueKey) == ObjectIdentifier(self)
+    }
+
+    /// Runs a libmongoc call on the connection's own queue and waits for it.
+    ///
+    /// The script runtime evaluates JavaScript on a thread of its own and has to block there while
+    /// a host call reaches the driver, because a `JSContext` cannot suspend. Going through the
+    /// async entry points would mean blocking a cooperative-pool thread on a continuation, so the
+    /// script path takes the queue directly. Re-entry is safe: an on-queue caller runs the body
+    /// inline rather than deadlocking on `dispatch_sync`.
+    #if canImport(CLibMongoc)
+    func withClientSync<T>(_ body: (OpaquePointer) throws -> T) throws -> T {
+        if isOnQueue {
+            guard !isShuttingDown, let client else { throw MongoDBError.notConnected }
+            return try body(client)
+        }
+        return try queue.sync {
+            guard !isShuttingDown, let client else { throw MongoDBError.notConnected }
+            return try body(client)
+        }
+    }
+    #endif
+
+    /// Clears a stale cancellation flag so a new script run starts clean.
+    func beginScriptRun() {
+        resetCancellation()
     }
 
     deinit {
@@ -404,7 +438,9 @@ final class MongoDBConnection: @unchecked Sendable {
     /// libmongoc call at this point, so the `killSessions` command needs its own client.
     private func killSession(lsid: OpaquePointer) {
         let uriString = buildUri()
+        let session = QueueTransfer(value: lsid)
         controlQueue.async {
+            let lsid = session.value
             defer { bson_destroy(lsid) }
             guard let controlClient = mongoc_client_new(uriString) else { return }
             defer { mongoc_client_destroy(controlClient) }
@@ -508,8 +544,8 @@ final class MongoDBConnection: @unchecked Sendable {
             try checkCancelled()
             let result = try runCommandSync(client: client, command: command, database: database)
             try checkCancelled()
-            return result
-        }
+            return QueueTransfer(value: result)
+        }.value
         #else
         throw MongoDBError.libmongocUnavailable
         #endif
@@ -533,11 +569,11 @@ final class MongoDBConnection: @unchecked Sendable {
                 throw MongoDBError.notConnected
             }
             try checkCancelled()
-            return try findSync(
+            return try QueueTransfer(value: findSync(
                 client: client, database: database, collection: collection,
                 filter: filter, sort: sort, projection: projection, skip: skip, limit: limit
-            )
-        }
+            ))
+        }.value
         #else
         throw MongoDBError.libmongocUnavailable
         #endif
@@ -551,10 +587,10 @@ final class MongoDBConnection: @unchecked Sendable {
                 throw MongoDBError.notConnected
             }
             try checkCancelled()
-            return try aggregateSync(
+            return try QueueTransfer(value: aggregateSync(
                 client: client, database: database, collection: collection, pipeline: pipeline
-            )
-        }
+            ))
+        }.value
         #else
         throw MongoDBError.libmongocUnavailable
         #endif
@@ -707,24 +743,26 @@ final class MongoDBConnection: @unchecked Sendable {
                 throw MongoDBError.notConnected
             }
             try checkCancelled()
-            return try listIndexesSync(
+            return try QueueTransfer(value: listIndexesSync(
                 client: client, database: database, collection: collection
-            )
-        }
+            ))
+        }.value
         #else
         throw MongoDBError.libmongocUnavailable
         #endif
     }
     // MARK: - Streaming Queries
 
+    /// Streams a find whose options are given as the document the caller already built.
+    ///
+    /// Taking the text rather than rebuilding it from pieces is what keeps an export reading the
+    /// same rows the grid showed: `hint`, `collation` and `allowDiskUse` change which documents come
+    /// back, and a signature that only carries sort, projection, skip and limit drops them.
     func streamFind(
         database: String,
         collection: String,
         filter: String,
-        sort: String?,
-        projection: String?,
-        skip: Int = 0,
-        limit: Int? = nil
+        optionsJson: String
     ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         #if canImport(CLibMongoc)
         let queue = self.queue
@@ -759,33 +797,7 @@ final class MongoDBConnection: @unchecked Sendable {
                     }
                     defer { bson_destroy(filterBson) }
 
-                    var optsJson: [String: Any] = [:]
-                    if let sort = sort, let data = sort.data(using: .utf8),
-                       let obj = try? JSONSerialization.jsonObject(with: data) {
-                        optsJson["sort"] = obj
-                    }
-                    if let projection = projection, let data = projection.data(using: .utf8),
-                       let obj = try? JSONSerialization.jsonObject(with: data) {
-                        optsJson["projection"] = obj
-                    }
-                    if skip > 0 {
-                        optsJson["skip"] = skip
-                    }
-                    if let limit, limit > 0 {
-                        optsJson["limit"] = limit
-                    }
-                    let timeoutMS = queryTimeoutMS
-                    if timeoutMS > 0 {
-                        optsJson["maxTimeMS"] = timeoutMS
-                    }
-
-                    var optsBson: OpaquePointer?
-                    if !optsJson.isEmpty {
-                        let optsData = try JSONSerialization.data(withJSONObject: optsJson)
-                        if let optsStr = String(data: optsData, encoding: .utf8) {
-                            optsBson = jsonToBson(optsStr)
-                        }
-                    }
+                    let optsBson = jsonToBson(optionsJson)
                     defer { if let opts = optsBson { bson_destroy(opts) } }
 
                     let col = try getCollection(client, database: database, collection: collection)
@@ -813,7 +825,8 @@ final class MongoDBConnection: @unchecked Sendable {
     func streamAggregate(
         database: String,
         collection: String,
-        pipeline: String
+        pipeline: String,
+        optionsJson: String? = nil
     ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         #if canImport(CLibMongoc)
         let queue = self.queue
@@ -850,10 +863,14 @@ final class MongoDBConnection: @unchecked Sendable {
 
                     let col = try getCollection(client, database: database, collection: collection)
 
-                    let timeoutMS = queryTimeoutMS
                     var optsBson: OpaquePointer?
-                    if timeoutMS > 0 {
-                        optsBson = jsonToBson("{\"maxTimeMS\": \(timeoutMS)}")
+                    if let optionsJson {
+                        optsBson = jsonToBson(optionsJson)
+                    } else {
+                        let timeoutMS = queryTimeoutMS
+                        if timeoutMS > 0 {
+                            optsBson = jsonToBson("{\"maxTimeMS\": \(timeoutMS)}")
+                        }
                     }
                     defer { if let opts = optsBson { bson_destroy(opts) } }
 
@@ -938,11 +955,11 @@ extension MongoDBConnection {
     static func unwrapExtendedJson(_ value: Any) -> Any {
         if let dict = value as? [String: Any] {
             if dict.count == 1 {
-                if let oid = dict["$oid"] as? String { return oid }
+                if let oid = dict["$oid"] as? String { return MongoDBObjectId(hex: oid) }
                 if let s = dict["$numberInt"] as? String, let n = Int32(s) { return n }
                 if let s = dict["$numberLong"] as? String, let n = Int64(s) { return n }
                 if let s = dict["$numberDouble"] as? String, let n = Double(s) { return n }
-                if let s = dict["$numberDecimal"] as? String { return s }
+                if let s = dict["$numberDecimal"] as? String { return MongoDBDecimal128(digits: s) }
                 if let b = dict["$regularExpression"] as? [String: Any],
                    let pattern = b["pattern"] as? String,
                    let options = b["options"] as? String {
@@ -963,7 +980,9 @@ extension MongoDBConnection {
                 }
                 if let b = dict["$binary"] as? [String: Any],
                    let base64 = b["base64"] as? String {
-                    return Data(base64Encoded: base64) ?? base64
+                    guard let data = Data(base64Encoded: base64) else { return base64 }
+                    let subtype = (b["subType"] as? String).flatMap { UInt8($0, radix: 16) } ?? 0
+                    return MongoDBBinaryValue(data: data, subtype: subtype)
                 }
                 if let ts = dict["$timestamp"] as? [String: Any],
                    let t = ts["t"], let i = ts["i"] {

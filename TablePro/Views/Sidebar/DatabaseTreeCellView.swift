@@ -6,44 +6,41 @@
 import AppKit
 import SwiftUI
 
-final class DatabaseTreeCellView: NSTableCellView {
-    private var hosting: NSHostingView<DatabaseTreeRowView>?
-    private var node: DatabaseTreeNode?
-    private var rowContext: DatabaseTreeRowContext?
-    private var actions: DatabaseTreeRowActions?
+/// One row of the object tree. All the hosting geometry is `SidebarHostingCellView`'s and the
+/// rename field is `RenamableSidebarCellView`'s; this only knows how to turn a node into the row
+/// it draws, and which glyph that row wears while it is being renamed.
+final class DatabaseTreeCellView: RenamableSidebarCellView<DatabaseTreeRowView> {
+    private var renameSymbolName = "tablecells"
 
-    override var backgroundStyle: NSView.BackgroundStyle {
-        didSet { rebuild() }
-    }
+    override var editorSymbolName: String { renameSymbolName }
+    override var editorAccessibilityIdentifier: String { "database-tree-rename-field" }
 
-    func configure(node: DatabaseTreeNode, context: DatabaseTreeRowContext, actions: DatabaseTreeRowActions) {
-        self.node = node
-        self.rowContext = context
-        self.actions = actions
-        rebuild()
-    }
-
-    private func rebuild() {
-        guard let node, let rowContext, let actions else { return }
-        let rootView = DatabaseTreeRowView(
+    func configure(
+        node: DatabaseTreeNode,
+        isFavorite: Bool,
+        context: DatabaseTreeRowContext,
+        actions: DatabaseTreeRowActions
+    ) {
+        renameSymbolName = Self.symbolName(for: node)
+        update(rootView: DatabaseTreeRowView(
             node: node,
-            isEmphasized: backgroundStyle == .emphasized,
-            context: rowContext,
+            isFavorite: isFavorite,
+            context: context,
             actions: actions
-        )
-        if let hosting {
-            hosting.rootView = rootView
-            return
+        ))
+    }
+
+    private static func symbolName(for node: DatabaseTreeNode) -> String {
+        switch node.kind {
+        case .table(let ref), .recentTable(let ref):
+            return TableRowLogic.iconName(for: ref.table.type)
+        case .database(let metadata):
+            return metadata.isSystemDatabase ? "gearshape" : "cylinder"
+        case .schema:
+            return "folder"
+        case .routine, .trigger, .userType, .status, .recentSection, .objectKindSection,
+             .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
+            return "tablecells"
         }
-        let view = NSHostingView(rootView: rootView)
-        view.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(view)
-        NSLayoutConstraint.activate([
-            view.leadingAnchor.constraint(equalTo: leadingAnchor),
-            view.trailingAnchor.constraint(equalTo: trailingAnchor),
-            view.topAnchor.constraint(equalTo: topAnchor, constant: 2),
-            view.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2)
-        ])
-        hosting = view
     }
 }

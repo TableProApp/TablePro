@@ -11,7 +11,7 @@ final class CellOverlayEditor: CellOverlayBase, NSTextViewDelegate {
     private var initialValue: String = ""
 
     var onCommit: ((_ row: Int, _ columnIndex: Int, _ newValue: String) -> Void)?
-    var onTabNavigation: ((_ row: Int, _ column: Int, _ forward: Bool) -> Void)?
+    var onMovement: ((_ row: Int, _ column: Int, _ movement: CellEditorMovement) -> Void)?
 
     func show(
         in tableView: NSTableView,
@@ -35,17 +35,11 @@ final class CellOverlayEditor: CellOverlayBase, NSTextViewDelegate {
         textView.isEditable = true
         textView.isRichText = false
         textView.allowsUndo = true
-        textView.font = ThemeEngine.shared.dataGridFonts.regular
+        textView.font = ThemeEngine.shared.valueFont
         textView.textColor = .labelColor
         textView.backgroundColor = .textBackgroundColor
         textView.focusRingType = .none
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.textContainer?.widthTracksTextView = true
-        textView.textContainer?.containerSize = NSSize(
-            width: scrollView.bounds.width,
-            height: CGFloat.greatestFiniteMagnitude
-        )
+        Self.applyCellTextLayout(to: textView)
         textView.delegate = self
         textView.string = value
         textView.selectAll(nil)
@@ -61,7 +55,7 @@ final class CellOverlayEditor: CellOverlayBase, NSTextViewDelegate {
     }
 
     override func handleDismiss(reason: CellOverlayDismissReason) {
-        dismiss(commit: reason != .columnResize)
+        dismiss(commit: reason != .columnGeometry)
     }
 
     func dismiss(commit: Bool) {
@@ -96,20 +90,50 @@ final class CellOverlayEditor: CellOverlayBase, NSTextViewDelegate {
         }
 
         if commandSelector == #selector(NSResponder.insertTab(_:)) {
-            let dismissRow = row, dismissColumn = column
-            dismiss(commit: true)
-            onTabNavigation?(dismissRow, dismissColumn, true)
-            return true
+            return leave(with: .tab, from: textView)
         }
 
         if commandSelector == #selector(NSResponder.insertBacktab(_:)) {
-            let dismissRow = row, dismissColumn = column
-            dismiss(commit: true)
-            onTabNavigation?(dismissRow, dismissColumn, false)
-            return true
+            return leave(with: .backtab, from: textView)
+        }
+
+        if commandSelector == #selector(NSResponder.moveUp(_:)) {
+            return leaveVertically(.up, from: textView)
+        }
+
+        if commandSelector == #selector(NSResponder.moveDown(_:)) {
+            return leaveVertically(.down, from: textView)
         }
 
         return false
+    }
+
+    /// Only the plain arrows are read. Shift, Option and Command each map to a selector of their
+    /// own, so extending a selection or jumping to the end of the value keeps its native meaning.
+    ///
+    /// An unhandled arrow moves the caret inside marked text, which is what it is for, so a
+    /// composition takes it back rather than having it swallowed.
+    private func leaveVertically(_ movement: CellEditorMovement, from textView: NSTextView) -> Bool {
+        guard !textView.hasMarkedText() else { return false }
+        let exit = CellEditorArrowExit(
+            text: textView.string as NSString,
+            selection: textView.selectedRange()
+        )
+        let leaves = movement == .up ? exit.canExitUp : exit.canExitDown
+        guard leaves else { return false }
+        return leave(with: movement, from: textView)
+    }
+
+    /// A composition in progress owns the keystroke. Until the input method commits it the text
+    /// view holds provisional text, and leaving the cell would save that half-composed value and
+    /// carry the editor off it. The key is swallowed rather than passed back, because a literal
+    /// tab in a cell is not what Tab was pressed for.
+    private func leave(with movement: CellEditorMovement, from textView: NSTextView) -> Bool {
+        guard !textView.hasMarkedText() else { return true }
+        let dismissRow = row, dismissColumn = column
+        dismiss(commit: true)
+        onMovement?(dismissRow, dismissColumn, movement)
+        return true
     }
 }
 

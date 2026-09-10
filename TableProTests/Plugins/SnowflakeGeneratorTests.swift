@@ -184,6 +184,46 @@ struct SnowflakeDDLGeneratorTests {
         #expect(sql?.contains("CREATE TABLE \"DB\".\"PUBLIC\".\"T\"") == true)
         #expect(sql?.contains("PRIMARY KEY (\"id\")") == true)
     }
+
+    @Test("CREATE TABLE carries the foreign keys it was given")
+    func testCreateTableForeignKeys() throws {
+        let definition = PluginCreateTableDefinition(
+            tableName: "orders",
+            columns: [
+                PluginColumnDefinition(name: "id", dataType: "NUMBER", isNullable: false, isPrimaryKey: true),
+                PluginColumnDefinition(name: "customer_id", dataType: "NUMBER")
+            ],
+            foreignKeys: [
+                PluginForeignKeyDefinition(
+                    name: "fk_orders_customer", columns: ["customer_id"],
+                    referencedTable: "customers", referencedColumns: ["id"]
+                )
+            ]
+        )
+        let sql = try #require(generator.createTableSQL(definition: definition))
+        #expect(sql.contains(
+            "CONSTRAINT \"fk_orders_customer\" FOREIGN KEY (\"customer_id\") "
+                + "REFERENCES \"DB\".\"PUBLIC\".\"customers\" (\"id\")"
+        ))
+    }
+
+    @Test("an unnamed foreign key writes no CONSTRAINT clause")
+    func testUnnamedForeignKey() {
+        let foreignKey = PluginForeignKeyDefinition(
+            name: "", columns: ["customer_id"], referencedTable: "customers", referencedColumns: ["id"]
+        )
+        let clause = generator.foreignKeyDefinitionSQL(foreignKey)
+        #expect(clause.hasPrefix("FOREIGN KEY (\"customer_id\")"))
+        #expect(!clause.contains("CONSTRAINT"))
+    }
+
+    @Test("no referenced columns means no empty parentheses")
+    func testOmittedReferencedColumns() {
+        let foreignKey = PluginForeignKeyDefinition(
+            name: "", columns: ["customer_id"], referencedTable: "customers", referencedColumns: []
+        )
+        #expect(!generator.foreignKeyDefinitionSQL(foreignKey).contains("()"))
+    }
 }
 
 @Suite("Snowflake Schema Queries")

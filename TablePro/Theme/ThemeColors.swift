@@ -84,7 +84,7 @@ internal struct EditorThemeColors: Codable, Equatable, Sendable {
         selection: "#B4D8FD",
         lineNumber: "#8E8E93",
         invisibles: "#C7C7CC",
-        currentStatementHighlight: "#F0F4FA",
+        currentStatementHighlight: "#0A0A0A0F",
         syntax: .defaultLight
     )
 

@@ -56,8 +56,7 @@ enum IOSConnectionExportService {
                 type: connection.type.rawValue,
                 sshConfig: exportableSSH(connection),
                 sslConfig: exportableSSL(connection),
-                color: (connection.colorTag?.isEmpty == false && connection.colorTag != ConnectionColor.none.rawValue)
-                    ? connection.colorTag : nil,
+                color: connection.color == .none ? nil : connection.color.rawValue,
                 tagName: tagName,
                 tagNames: connectionTagNames.isEmpty ? nil : connectionTagNames,
                 groupName: groupName,

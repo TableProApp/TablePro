@@ -14,13 +14,12 @@ import os
 final class LastOpenConnectionsStorage {
     static let shared = LastOpenConnectionsStorage()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "LastOpenConnections")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "LastOpenConnections")
 
     private let fileURL: URL
 
     private convenience init() {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
+        let appSupport = AppStorageEnvironment.shared.applicationSupportRoot
         self.init(directory: appSupport.appendingPathComponent("TablePro", isDirectory: true))
     }
 

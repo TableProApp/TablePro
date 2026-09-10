@@ -59,15 +59,23 @@ struct ChatComposerTextView: NSViewRepresentable {
         scrollView.minLines = minLines
         scrollView.maxLines = maxLines
 
-        if textView.string != text {
+        // Replacing the string outright while an input method has marked text cancels the
+        // composition. Routing through shouldChangeText/didChangeText also keeps the undo
+        // stack and the delegate notifications intact.
+        if textView.string != text, !textView.hasMarkedText() {
             let selected = textView.selectedRange()
-            textView.string = text
+            let full = NSRange(location: 0, length: (textView.string as NSString).length)
+            if textView.shouldChangeText(in: full, replacementString: text) {
+                textView.textStorage?.replaceCharacters(in: full, with: text)
+                textView.didChangeText()
+            }
             let clampedLocation = min(selected.location, (text as NSString).length)
             textView.setSelectedRange(NSRange(location: clampedLocation, length: 0))
         }
 
         if textView.placeholder != placeholder {
             textView.placeholder = placeholder
+            textView.setAccessibilityPlaceholderValue(placeholder)
             textView.needsDisplay = true
         }
 
@@ -226,8 +234,23 @@ final class ChatComposerNSTextView: NSTextView {
             .font: font,
             .foregroundColor: placeholderColor
         ]
-        let origin = NSPoint(x: textContainerInset.width, y: textContainerInset.height)
-        (placeholder as NSString).draw(at: origin, withAttributes: attributes)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = alignment
+        paragraph.lineBreakMode = .byTruncatingTail
+        var truncating = attributes
+        truncating[.paragraphStyle] = paragraph
+        let available = NSRect(
+            x: textContainerInset.width,
+            y: textContainerInset.height,
+            width: max(bounds.width - textContainerInset.width * 2, 0),
+            height: font.boundingRectForFont.height
+        )
+        (placeholder as NSString).draw(
+            with: available,
+            options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
+            attributes: truncating,
+            context: nil
+        )
     }
 
     override func paste(_ sender: Any?) {

@@ -107,9 +107,12 @@ internal enum HostKeyVerifier {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: String(localized: "Trust"))
-        alert.addButton(withTitle: String(localized: "Cancel"))
+        alert.alertStyle = .warning
+        AlertHelper.addConfirmAndCancel(
+            to: alert,
+            confirmButton: String(localized: "Trust"),
+            cancelButton: String(localized: "Cancel")
+        )
 
         if let window = AlertHelper.resolveWindow(nil) {
             return await withCheckedContinuation { continuation in
@@ -148,12 +151,11 @@ internal enum HostKeyVerifier {
         alert.messageText = title
         alert.informativeText = message
         alert.alertStyle = .critical
-        alert.addButton(withTitle: String(localized: "Connect Anyway"))
-        alert.addButton(withTitle: String(localized: "Disconnect"))
-
-        // Make "Disconnect" the default button (Return key) instead of "Connect Anyway"
-        alert.buttons[1].keyEquivalent = "\r"
-        alert.buttons[0].keyEquivalent = ""
+        AlertHelper.addConfirmAndCancel(
+            to: alert,
+            confirmButton: String(localized: "Connect Anyway"),
+            cancelButton: String(localized: "Disconnect")
+        )
 
         if let window = AlertHelper.resolveWindow(nil) {
             return await withCheckedContinuation { continuation in

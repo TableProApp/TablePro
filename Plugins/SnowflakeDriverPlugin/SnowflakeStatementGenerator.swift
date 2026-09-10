@@ -139,6 +139,6 @@ struct SnowflakeStatementGenerator {
     }
 
     private func quoteIdentifier(_ name: String) -> String {
-        "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+        SnowflakeSQL.quoteIdentifier(name)
     }
 }

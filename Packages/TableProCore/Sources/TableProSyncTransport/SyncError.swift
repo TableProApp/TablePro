@@ -20,7 +20,7 @@ public enum SyncError: Error, LocalizedError, Equatable, Sendable {
         case .accountUnavailable:
             return String(localized: "iCloud account is not available. Sign in to iCloud in System Settings.")
         case .quotaExceeded:
-            return String(localized: "iCloud storage is full. Free up space or reduce the history sync limit.")
+            return String(localized: "iCloud storage is full. Free up space in iCloud and try again.")
         case .zoneNotFound:
             return String(localized: "Sync zone not found. A full sync will be performed.")
         case .serverError(let message):

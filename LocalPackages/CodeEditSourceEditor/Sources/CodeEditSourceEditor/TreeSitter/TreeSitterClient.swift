@@ -198,7 +198,14 @@ public final class TreeSitterClient: HighlightProviding {
             executor.cancelAll(below: .edit)
             executor.execAsync(
                 priority: .edit,
-                operation: { completion(.success(operation())) },
+                operation: {
+                    // Keep `operation()` outside the hop. It drives the parse loop that takes the
+                    // main thread in `parserTimeout` slices and releases it between them, so running
+                    // it inside would hold main for the whole parse. Only `completion` hops, because
+                    // it is `@MainActor` and drives the highlight state machine.
+                    let invalidatedRanges = operation()
+                    DispatchQueue.dispatchMainIfNot { completion(.success(invalidatedRanges)) }
+                },
                 onCancel: { [weak self] in
                     self?.pendingEdits.mutate { edits in
                         edits.append(edit)

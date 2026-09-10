@@ -5,7 +5,6 @@ struct MCPTokenRevealSheet: View {
     let token: MCPAuthToken
     let plaintext: String
     let port: Int
-    let allowRemoteConnections: Bool
     @Environment(\.dismiss) private var dismiss
 
     @State private var isTokenRevealed = false
@@ -128,7 +127,7 @@ struct MCPTokenRevealSheet: View {
     }
 
     private var baseURL: String {
-        let scheme = allowRemoteConnections ? "https" : "http"
+        let scheme = "http"
         return "\(scheme)://127.0.0.1:\(port)/mcp"
     }
 

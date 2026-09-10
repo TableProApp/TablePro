@@ -8,7 +8,7 @@ import SwiftUI
 import TableProPluginKit
 
 @Observable
-final class JSONImportPlugin: ImportFormatPlugin, SettablePlugin {
+final class JSONImportPlugin: ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "JSON Import"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Import data from JSON files"
@@ -27,6 +27,7 @@ final class JSONImportPlugin: ImportFormatPlugin, SettablePlugin {
 
     required init() { loadSettings() }
 
+    @MainActor
     func settingsView() -> AnyView? {
         AnyView(JSONImportOptionsView(plugin: self))
     }
@@ -36,6 +37,10 @@ final class JSONImportPlugin: ImportFormatPlugin, SettablePlugin {
     }
 
     private static let batchSize = 500
+    /// One budget shared with the rows the runner itself recorded, so the two lists together stay
+    /// inside the cap the import dialog documents. The skip *count* is deliberately uncapped: a
+    /// truncated list must not also under-report how much of the file was left out.
+    private static let maxRecordedErrors = 1_000
 
     func performImport(
         source: any PluginImportSource,
@@ -51,10 +56,13 @@ final class JSONImportPlugin: ImportFormatPlugin, SettablePlugin {
         )
 
         let outcome: RowImportRunner.Outcome
+        var unreadableLines: [PluginImportResult.ImportStatementError] = []
+        var unreadableLineCount = 0
         if JSONImportParsing.isLineDelimited(url) {
             progress.setEstimatedTotal(max(1, Int(source.fileSizeBytes() / 256)))
             var lines = url.lines.makeAsyncIterator()
             var lineNumber = 0
+            let skipsErrors = settings.errorHandling == .skipAndContinue
             outcome = try await RowImportRunner.run(
                 configuration: configuration, sink: sink, progress: progress
             ) {
@@ -63,7 +71,21 @@ final class JSONImportPlugin: ImportFormatPlugin, SettablePlugin {
                     lineNumber += 1
                     let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !trimmed.isEmpty else { continue }
-                    batch.append((lineNumber, try JSONImportParsing.parseRow(fromLine: trimmed)))
+                    do {
+                        let row = try JSONImportParsing.parseRow(fromLine: trimmed)
+                        guard !row.isEmpty else { continue }
+                        batch.append((lineNumber, row))
+                    } catch {
+                        guard skipsErrors else { throw error }
+                        unreadableLineCount += 1
+                        if unreadableLines.count < Self.maxRecordedErrors {
+                            unreadableLines.append(.init(
+                                statement: "row \(lineNumber)",
+                                line: lineNumber,
+                                errorMessage: error.localizedDescription
+                            ))
+                        }
+                    }
                 }
                 return batch.isEmpty ? nil : batch
             }
@@ -76,8 +98,10 @@ final class JSONImportPlugin: ImportFormatPlugin, SettablePlugin {
             ) {
                 guard cursor < rawRows.count else { return nil }
                 let end = min(cursor + Self.batchSize, rawRows.count)
-                let batch = (cursor..<end).map { index in
-                    (index + 1, JSONImportParsing.convertRow(rawRows[index]))
+                let batch = (cursor..<end).compactMap { index -> RowImportRunner.Entry? in
+                    let row = JSONImportParsing.convertRow(rawRows[index])
+                    guard !row.isEmpty else { return nil }
+                    return (index + 1, row)
                 }
                 cursor = end
                 return batch
@@ -87,8 +111,8 @@ final class JSONImportPlugin: ImportFormatPlugin, SettablePlugin {
         return PluginImportResult(
             executedStatements: outcome.inserted,
             executionTime: Date().timeIntervalSince(startTime),
-            skippedStatements: outcome.skipped,
-            errors: outcome.errors
+            skippedStatements: outcome.skipped + unreadableLineCount,
+            errors: Array((outcome.errors + unreadableLines).prefix(Self.maxRecordedErrors))
         )
     }
 

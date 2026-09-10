@@ -2,8 +2,12 @@ import Foundation
 
 public struct DescribeTableTool: MCPToolImplementation {
     public static let name = "describe_table"
+    public static let title: String? = String(localized: "Describe Table")
     public static let description = String(
-        localized: "Get detailed table structure: columns, indexes, foreign keys, and DDL"
+        localized: """
+        Describe one table: columns, indexes, foreign keys, DDL, and an approximate row count. \
+        Every part is read against the same database and schema.
+        """
     )
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
     public static let annotations = MCPToolAnnotations(
@@ -14,46 +18,49 @@ public struct DescribeTableTool: MCPToolImplementation {
         openWorldHint: false
     )
 
-    public static let inputSchema: JsonValue = .object([
-        "type": .string("object"),
-        "properties": .object([
-            "connection_id": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "UUID of the connection"))
-            ]),
-            "table": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "Table name"))
-            ]),
-            "database": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "Database name (uses current if omitted)"))
-            ]),
-            "schema": .object([
-                "type": .string("string"),
-                "description": .string(String(localized: "Schema name (uses current if omitted)"))
-            ])
-        ]),
-        "required": .array([.string("connection_id"), .string("table")])
-    ])
+    public static let inputSchema = MCPToolSchema.object(
+        properties: [
+            "connection_id": MCPToolSchema.connectionId,
+            "table": MCPToolSchema.table,
+            "database": MCPToolSchema.database,
+            "schema": MCPToolSchema.schema
+        ],
+        required: ["connection_id", "table"]
+    )
+
+    public static let outputSchema: JsonValue? = MCPToolSchema.object(
+        properties: [
+            "table": MCPToolSchema.string(String(localized: "Table that was described")),
+            "database": MCPToolSchema.string(String(localized: "Database the table lives in")),
+            "schema": MCPToolSchema.nullableString(String(localized: "Schema the table lives in")),
+            "columns": MCPToolSchema.array(
+                String(localized: "Columns in declaration order"),
+                of: MCPToolSchema.columnDefinition
+            ),
+            "indexes": MCPToolSchema.array(
+                String(localized: "Indexes on the table"),
+                of: MCPToolSchema.indexDefinition
+            ),
+            "foreign_keys": MCPToolSchema.array(
+                String(localized: "Outgoing foreign keys"),
+                of: MCPToolSchema.foreignKeyDefinition
+            ),
+            "ddl": MCPToolSchema.string(String(localized: "CREATE statement, when the engine can produce one")),
+            "approximate_row_count": MCPToolSchema.integer(String(localized: "Estimated row count"))
+        ],
+        required: ["table", "database", "columns", "indexes", "foreign_keys"]
+    )
 
     public init() {}
 
-    public func call(
+    public func perform(
         arguments: JsonValue,
         context: MCPRequestContext,
         services: MCPToolServices
     ) async throws -> MCPToolCallResult {
-        let connectionId = try MCPArgumentDecoder.requireUuid(arguments, key: "connection_id")
-        let table = try MCPArgumentDecoder.requireString(arguments, key: "table")
-        let database = MCPArgumentDecoder.optionalString(arguments, key: "database")
-        let schema = MCPArgumentDecoder.optionalString(arguments, key: "schema")
-
-        let scope = try await services.connectionBridge.resolveScope(
-            connectionId: connectionId,
-            database: database,
-            schema: schema
-        )
+        try MCPArgumentDecoder.rejectUnknownKeys(arguments, allowed: MCPScopeArguments.keys.union(["table"]))
+        let table = try MCPArgumentDecoder.requireNonEmptyString(arguments, key: "table")
+        let scope = try await MCPScopeArguments.resolve(arguments, services: services)
         let payload = try await services.connectionBridge.describeTable(scope: scope, table: table)
         return .structured(payload)
     }

@@ -15,17 +15,13 @@ extension TableViewCoordinator {
     }
 
     func commitTypedCellEdit(row: Int, columnIndex: Int, newValue typedNewValue: PluginCellValue) {
-        guard let tableView else { return }
-        guard let delta = recordCellEdit(row: row, columnIndex: columnIndex, newValue: typedNewValue) else { return }
+        guard recordCellEdit(row: row, columnIndex: columnIndex, newValue: typedNewValue) != nil else { return }
 
         invalidateDisplayCache()
-        visualIndex.updateRow(row, from: changeManager, sortedIDs: displayIDs)
+        visualIndex.updateRow(row, from: changeManager, displayIDs: displayIDs)
 
         guard let tableColumnIndex = tableColumnIndex(for: columnIndex) else { return }
-        tableView.reloadData(
-            forRowIndexes: IndexSet(integer: row),
-            columnIndexes: IndexSet(integer: tableColumnIndex)
-        )
+        redrawCells(rows: IndexSet(integer: row), tableColumnIndexes: IndexSet(integer: tableColumnIndex))
     }
 
     @discardableResult
@@ -34,6 +30,10 @@ extension TableViewCoordinator {
         guard !isCommittingCellEdit else { return nil }
         let tableRows = tableRowsProvider()
         guard columnIndex >= 0 && columnIndex < tableRows.columns.count else { return nil }
+        /// Before the rows are touched, not after. The change manager refuses a server-owned column
+        /// on its own, and editing here first would paint a value into the grid that no statement
+        /// will ever carry.
+        guard isColumnWritable(tableRows.columns[columnIndex]) else { return nil }
         guard let displayRowValues = displayRow(at: row) else { return nil }
         guard columnIndex < displayRowValues.values.count else { return nil }
         let oldValue = displayRowValues.values[columnIndex]

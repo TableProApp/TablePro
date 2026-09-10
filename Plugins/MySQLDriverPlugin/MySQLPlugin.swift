@@ -23,15 +23,28 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let iconName = "mysql-icon"
     static let defaultPort = 3306
     static let additionalConnectionFields: [ConnectionField] =
-        AWSAuthFields.standard() + [AWSAuthFields.rdsEndpointField()]
+        AWSAuthFields.standard() + [AWSAuthFields.rdsEndpointField()] + [
+        ConnectionField(
+            id: "mysqlIdleReleaseMinutes",
+            label: String(localized: "Release the Server Connection After (minutes, 0 to keep it)"),
+            defaultValue: "0",
+            fieldType: .stepper(range: ConnectionField.IntRange(0...240)),
+            section: .advanced
+        )
+        ]
     static let additionalDatabaseTypeIds: [String] = ["MariaDB"]
 
     // MARK: - UI/Capability Metadata
 
     static let urlSchemes: [String] = ["mysql"]
     static let explainVariants: [ExplainVariant] = [
-        ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN"),
-        ExplainVariant(id: "explain-json", label: "EXPLAIN (JSON)", sqlPrefix: "EXPLAIN FORMAT=JSON"),
+        ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN", format: .mysqlComposite),
+        ExplainVariant(
+            id: "explain-json",
+            label: "EXPLAIN (JSON)",
+            sqlPrefix: "EXPLAIN FORMAT=JSON",
+            format: .mysqlComposite
+        ),
     ]
     static let brandColorHex = "#FF9500"
     static let postConnectActions: [PostConnectAction] = [.selectDatabaseFromLastSession]
@@ -48,7 +61,8 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     ]
 
     static let structureColumnFields: [StructureColumnField] = [
-        .name, .type, .nullable, .defaultValue, .onUpdate, .autoIncrement, .comment, .charset, .collation
+        .name, .type, .nullable, .defaultValue, .generated, .generationExpression, .onUpdate,
+        .autoIncrement, .comment, .charset, .collation
     ]
 
     static let sqlDialect: SQLDialectDescriptor? = SQLDialectDescriptor(
@@ -92,12 +106,19 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .implicit,
         paginationStyle: .limit,
-        requiresBackslashEscaping: true
+        requiresBackslashEscaping: true,
+        caseSensitivityStyle: .collationDefined
     )
 
     static let supportsDropDatabase = true
+    static let supportsRenameTable = true
     static let supportsTriggers = true
+    static let supportsRoutines = true
+    static let supportsDatabaseTriggerBrowse = true
     static let supportsTriggerEditing = true
+    static let supportsCheckConstraints = true
+    static let supportsCheckConstraintEditing = true
+    static let supportsGeneratedColumns = true
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         MySQLPluginDriver(config: config)

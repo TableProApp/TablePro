@@ -15,6 +15,9 @@ struct HighlightedSQLTextView: NSViewRepresentable {
     let sql: String
     var fontSize: CGFloat = 13
     var databaseType: DatabaseType = .mysql
+    /// A SwiftUI `.accessibilityIdentifier` lands on the representable's wrapper, not on the text
+    /// view AppKit publishes, so the only way to name this element is to set it on the text view.
+    var accessibilityIdentifier: String?
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSTextView.scrollableTextView()
@@ -23,6 +26,8 @@ struct HighlightedSQLTextView: NSViewRepresentable {
             return scrollView
         }
 
+        textView.setAccessibilityIdentifier(accessibilityIdentifier)
+        textView.setAccessibilityLabel(String(localized: "Query preview"))
         textView.isEditable = false
         textView.isSelectable = true
         textView.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)

@@ -17,7 +17,10 @@ final class SSLPaneViewModel {
 
     var coordinator: WeakCoordinatorRef?
 
+    /// Silent on a driver that renders no SSL section, so a stored mode the form cannot show
+    /// cannot disable Save over a certificate field the user has no way to reach.
     var validationIssues: [String] {
+        guard coordinator?.value?.supportsSSL ?? true else { return [] }
         var issues: [String] = []
         if mode == .verifyCa || mode == .verifyIdentity {
             if caCertPath.trimmingCharacters(in: .whitespaces).isEmpty {

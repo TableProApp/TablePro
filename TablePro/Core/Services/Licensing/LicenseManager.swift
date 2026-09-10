@@ -10,18 +10,50 @@ import Foundation
 import Observation
 import os
 
+/// Why a cached license blob was not adopted at launch.
+internal enum CachedLicenseRejection: Equatable {
+    case cachedForAnotherMachine
+    case boundToAnotherMachine
+    case signatureInvalid
+
+    var logDescription: String {
+        switch self {
+        case .cachedForAnotherMachine: return "cached for another machine"
+        case .boundToAnotherMachine: return "signed for another machine"
+        case .signatureInvalid: return "signature invalid"
+        }
+    }
+}
+
+/// Outcome of checking a cached license blob before trusting it.
+internal enum CachedLicenseResolution: Equatable {
+    case accepted(License)
+    case rejected(CachedLicenseRejection)
+}
+
 /// Manages the app's license state with offline-first verification
 @MainActor @Observable
 final class LicenseManager {
     static let shared = LicenseManager()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "LicenseManager")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "LicenseManager")
 
     /// Current cached license (nil = unlicensed)
     private(set) var license: License?
 
-    /// Current license status
-    private(set) var status: LicenseStatus = .unlicensed
+    /// Current license status.
+    ///
+    /// Every write announces itself, so no caller has to remember to. `deactivate` wrote this
+    /// directly and skipped the announcement, which left `SyncCoordinator`, its only observer,
+    /// reporting a healthy sync for a license that no longer existed until the next launch.
+    /// The observer subscribes with `.receive(on: RunLoop.main)`, so this cannot re-enter a
+    /// mutation that is still in progress.
+    private(set) var status: LicenseStatus = .unlicensed {
+        didSet {
+            guard status != oldValue else { return }
+            AppEvents.shared.licenseStatusDidChange.send(())
+        }
+    }
 
     /// Whether a network operation is in progress
     private(set) var isValidating: Bool = false
@@ -38,6 +70,56 @@ final class LicenseManager {
 
     /// Grace period: 30 days without server contact before forcing re-validation
     private let gracePeriodDays = 30
+
+    /// What the server last told us about this license, when that was a rejection rather than a
+    /// new payload. Deliberately not persisted: it can only take entitlement away, and writing it
+    /// to disk would put licensing state back outside the signature.
+    private var serverRejection: LicenseStatus?
+
+    /// When the server last confirmed this license, measured by this Mac's clock. Held in memory
+    /// only, so nothing on disk can forge it and a relaunch falls back to the signed issue date.
+    /// It exists so a server clock far behind the Mac cannot expire the grace period on a license
+    /// the server has just approved.
+    private var lastServerContact: Date?
+
+    /// Whether this Mac's license was removed here rather than never having existed. It is what
+    /// separates `.deactivated` from `.unlicensed`, and it is deliberately not persisted: a relaunch
+    /// with no license is simply unlicensed.
+    private var wasDeactivatedLocally = false
+
+    /// The seats this license is activated on. Owned here rather than by the settings view so the
+    /// list survives the pane being reselected, and so an activation elsewhere can reset it.
+    /// See `LicenseManager+Devices`.
+    internal var devices: [LicenseActivationInfo] = []
+
+    internal var maxDevices: Int = 0
+
+    internal var deviceListState: LicenseDeviceListState = .idle
+
+    /// A reload of a list that already has content. Separate from `deviceListState` so a refresh
+    /// never blanks the seats it is refreshing, per the CLAUDE.md invariant.
+    internal var isRefreshingDevices = false
+
+    /// Seats with a release in flight, so a row cannot be released twice.
+    internal var releasingMachineIds: Set<String> = []
+
+    /// Why the last release did not go through. Kept apart from `deviceListState` so a failure on
+    /// one seat is reported beside the list rather than replacing every other seat with an error.
+    internal var releaseErrorMessage: String?
+
+    /// Why the last refresh of an already-loaded list did not go through. Separate from
+    /// `releaseErrorMessage` because its wording is about reloading, not about giving up a seat.
+    internal var refreshErrorMessage: String?
+
+    /// The team roster, for a Team license. See `LicenseManager+Team`.
+    internal var team: LicenseTeamResponse?
+
+    internal var teamListState: LicenseDeviceListState = .idle
+
+    nonisolated internal static let deviceLogger = Logger(
+        subsystem: "com.TablePro",
+        category: "LicenseDevices"
+    )
 
     @ObservationIgnored private var revalidationTask: Task<Void, Never>?
 
@@ -58,29 +140,62 @@ final class LicenseManager {
             return
         }
 
-        // Verify license belongs to this machine (prevents backup/restore cross-machine use)
-        guard cached.machineId == storage.machineId else {
-            Self.logger.warning("Cached license machineId mismatch, clearing")
-            storage.clearAll()
-            status = .unlicensed
-            return
-        }
+        let resolution = Self.resolveCachedLicense(
+            cached,
+            currentMachineId: storage.machineId,
+            verify: verifier.verify(payload:)
+        )
 
-        // Re-verify signature offline with embedded public key
-        do {
-            _ = try verifier.verify(payload: cached.signedPayload)
-
-            license = cached
+        switch resolution {
+        case .accepted(let accepted):
+            license = accepted
             evaluateStatus()
-
-            Self.logger.trace("Loaded cached license for \(cached.email)")
-        } catch {
-            // Signature invalid — clear everything
-            Self.logger.error("Cached license signature invalid, clearing")
+            Self.logger.trace("Loaded cached license for \(accepted.email)")
+        case .rejected(let reason):
+            Self.logger.error("Cached license rejected (\(reason.logDescription)), clearing")
             storage.clearAll()
             license = nil
             status = .unlicensed
         }
+    }
+
+    /// Verify a signed payload and refuse one the server minted for a different Mac.
+    /// Every path that trusts a payload goes through here.
+    private func verifiedPayload(from signed: SignedLicensePayload) throws -> LicensePayloadData {
+        let data = try verifier.verify(payload: signed)
+
+        guard Self.acceptsMachine(data.machineId, current: storage.machineId) else {
+            throw LicenseError.machineMismatch
+        }
+
+        return data
+    }
+
+    /// A payload without a signed machine binding predates the binding and is accepted.
+    nonisolated static func acceptsMachine(_ bound: String?, current: String) -> Bool {
+        guard let bound else { return true }
+        return bound == current
+    }
+
+    /// Whether a cached blob may be adopted, decided without touching storage so it can be tested.
+    nonisolated static func resolveCachedLicense(
+        _ cached: License,
+        currentMachineId: String,
+        verify: (SignedLicensePayload) throws -> LicensePayloadData
+    ) -> CachedLicenseResolution {
+        guard cached.cachedOnMachineId == currentMachineId else {
+            return .rejected(.cachedForAnotherMachine)
+        }
+
+        guard let verified = try? verify(cached.signedPayload) else {
+            return .rejected(.signatureInvalid)
+        }
+
+        guard acceptsMachine(verified.machineId, current: currentMachineId) else {
+            return .rejected(.boundToAnotherMachine)
+        }
+
+        return .accepted(cached)
     }
 
     /// Start periodic re-validation. Call from AppDelegate.applicationDidFinishLaunching.
@@ -89,7 +204,7 @@ final class LicenseManager {
         revalidationTask = Task { [weak self] in
             // Check if revalidation is needed right now
             if let self, let license = self.license,
-               license.daysSinceLastValidation >= Int(self.revalidationInterval / 86_400) {
+               (license.daysSinceLastValidation ?? .max) >= Int(self.revalidationInterval / 86_400) {
                 await self.revalidate()
             }
 
@@ -146,19 +261,15 @@ final class LicenseManager {
         do {
             let signedPayload = try await apiClient.activate(request: request)
 
-            let payloadData = try verifier.verify(payload: signedPayload)
+            let payloadData = try verifiedPayload(from: signedPayload)
 
-            let newLicense = License.from(
-                payload: payloadData,
-                signedPayload: signedPayload,
-                machineId: storage.machineId
-            )
+            let newLicense = License(signedPayload: signedPayload, cachedOnMachineId: storage.machineId)
 
             storage.saveLicenseKey(trimmedKey)
             storage.saveLicense(newLicense)
 
             license = newLicense
-            evaluateStatus()
+            adoptActivatedLicense()
 
             Self.logger.info("License activated for \(payloadData.email)")
         } catch let error as LicenseError {
@@ -193,19 +304,15 @@ final class LicenseManager {
         do {
             let signedPayload = try await apiClient.acceptInvite(request: request)
 
-            let payloadData = try verifier.verify(payload: signedPayload)
+            let payloadData = try verifiedPayload(from: signedPayload)
 
-            let newLicense = License.from(
-                payload: payloadData,
-                signedPayload: signedPayload,
-                machineId: storage.machineId
-            )
+            let newLicense = License(signedPayload: signedPayload, cachedOnMachineId: storage.machineId)
 
             storage.saveLicenseKey(newLicense.key)
             storage.saveLicense(newLicense)
 
             license = newLicense
-            evaluateStatus()
+            adoptActivatedLicense()
 
             Self.logger.info("Joined team via invitation for \(payloadData.email)")
         } catch let error as LicenseError {
@@ -242,23 +349,81 @@ final class LicenseManager {
             serverSuccess = false
         }
 
-        storage.clearAll()
-        self.license = nil
-        status = .deactivated
-
-        revalidationTask?.cancel()
-        revalidationTask = nil
+        await clearLocalLicense()
 
         Self.logger.info("License deactivated locally (server: \(serverSuccess ? "ok" : "failed"))")
         return serverSuccess
     }
 
-    // MARK: - Re-validation
+    /// Release a seat, which may be this Mac or another one on the same license.
+    ///
+    /// The two cases differ in what happens locally, not on the wire: releasing this Mac has to
+    /// clear the license here, while releasing another Mac must leave this one running. Without
+    /// that split, releasing your own seat would leave the pane showing an active license until the
+    /// next revalidation noticed, up to seven days later.
+    @discardableResult
+    func releaseSeat(machineId: String) async throws -> Bool {
+        guard let license else { return true }
 
-    var isExpiringSoon: Bool {
-        guard let days = license?.daysUntilExpiry else { return false }
-        return days >= 0 && days <= 7
+        /// Delegated before anything else is touched: `deactivate` runs the whole local teardown
+        /// and owns `isValidating` for the duration, so setting it here first would leave this
+        /// function's `defer` clearing a flag it did not raise.
+        guard machineId != storage.machineId else {
+            return await deactivate()
+        }
+
+        isValidating = true
+        defer { isValidating = false }
+
+        let request = LicenseDeactivationRequest(licenseKey: license.key, machineId: machineId)
+
+        do {
+            try await apiClient.deactivate(request: request)
+        } catch let error as LicenseError {
+            lastError = error
+            throw error
+        } catch {
+            let licenseError = LicenseError.networkError(error)
+            lastError = licenseError
+            throw licenseError
+        }
+
+        lastError = nil
+        Self.logger.info("Released a seat on another machine")
+        return true
     }
+
+    /// Whether the renewal warning applies, which a license that has already lapsed does not.
+    ///
+    /// `daysUntilExpiry` counts whole days, so a license that ran out this morning still reports
+    /// zero until tomorrow. Without the expiry check the pane warned "License expires in 0 day(s)"
+    /// directly above "Status: Expired", stating both readings of the same date at once.
+    nonisolated static func isExpiringSoon(daysUntilExpiry: Int?, isExpired: Bool) -> Bool {
+        guard !isExpired, let daysUntilExpiry else { return false }
+        return daysUntilExpiry >= 0 && daysUntilExpiry <= 7
+    }
+
+    /// Drops every trace of the license this Mac was carrying.
+    ///
+    /// The status is settled through `evaluateStatus()` rather than assigned, so `.deactivated`
+    /// comes out of the one resolver that decides what "no license" means. Announcing it is the
+    /// `status` observer's job, which is why no caller has to remember to.
+    private func clearLocalLicense() async {
+        storage.clearAll()
+        await TeamLibrarySyncCoordinator.shared.clear()
+        license = nil
+        serverRejection = nil
+        lastServerContact = nil
+        wasDeactivatedLocally = true
+        resetDeviceList()
+        resetTeam()
+        evaluateStatus()
+
+        revalidationTask?.cancel()
+        revalidationTask = nil
+    }
+
+    // MARK: - Re-validation
 
     var daysUntilExpiry: Int? {
         license?.daysUntilExpiry
@@ -281,78 +446,138 @@ final class LicenseManager {
 
         do {
             let signedPayload = try await apiClient.validate(request: request)
-            let payloadData = try verifier.verify(payload: signedPayload)
+            _ = try verifiedPayload(from: signedPayload)
 
-            let updatedLicense = License.from(
-                payload: payloadData,
-                signedPayload: signedPayload,
-                machineId: storage.machineId
-            )
+            let updatedLicense = License(signedPayload: signedPayload, cachedOnMachineId: storage.machineId)
 
             storage.saveLicense(updatedLicense)
             self.license = updatedLicense
-            evaluateStatus()
+            lastError = nil
+            acceptServerConfirmation()
 
             await TeamLibrarySyncCoordinator.shared.pullIfNeeded()
 
             Self.logger.trace("License re-validated successfully")
         } catch {
-            // Network failure — use grace period
-            Self.logger.warning("Re-validation failed: \(error.localizedDescription)")
+            let licenseError = error as? LicenseError ?? .networkError(error)
 
-            if license.daysSinceLastValidation > gracePeriodDays {
-                self.status = .validationFailed
-                Self.logger.error("Grace period exceeded (\(license.daysSinceLastValidation) days)")
+            if let rejection = Self.revocationStatus(for: licenseError) {
+                Self.logger.error("License rejected by server: \(licenseError.localizedDescription)")
+                serverRejection = rejection
+            } else {
+                Self.logger.warning("Re-validation failed: \(licenseError.localizedDescription)")
             }
-            // Otherwise keep using cached license (still within grace period)
+
+            lastError = licenseError
+            evaluateStatus()
         }
+    }
+
+    /// The status the server's own rejection implies, or nil when the request simply did not
+    /// reach it. Only a rejection the server actually spoke changes entitlement; a transport
+    /// failure falls through to the offline grace period.
+    nonisolated static func revocationStatus(for error: LicenseError) -> LicenseStatus? {
+        switch error {
+        case .licenseSuspended:
+            return .suspended
+        case .licenseExpired:
+            return .expired
+        case .notActivated, .machineMismatch:
+            return .deactivated
+        case .invalidKey:
+            return .unlicensed
+        default:
+            return nil
+        }
+    }
+
+    private func acceptServerConfirmation() {
+        serverRejection = nil
+        lastServerContact = Date()
+        evaluateStatus()
+    }
+
+    /// Takes up a license this Mac has just activated.
+    ///
+    /// Restarting periodic validation is the point: `deactivate` cancels the task, and the only
+    /// other caller of `startPeriodicValidation` is a one-shot at launch, so without this a
+    /// deactivate-then-activate in one session left the process never revalidating again. The call
+    /// cancels before it restarts, so activating twice does not stack two tasks. It cannot live in
+    /// `acceptServerConfirmation`, which `revalidate` calls from inside the very task this cancels.
+    ///
+    /// The seat and roster lists are dropped rather than kept, because they describe the license
+    /// that was here a moment ago, not the one just activated.
+    private func adoptActivatedLicense() {
+        wasDeactivatedLocally = false
+        resetDeviceList()
+        resetTeam()
+        acceptServerConfirmation()
+        startPeriodicValidation()
+    }
+
+    /// Whether this Mac has heard from the server recently enough to keep the license running,
+    /// which covers a freshly issued payload whose signed issue date looks stale to us.
+    private var isWithinLocalGracePeriod: Bool {
+        guard let lastServerContact else { return false }
+        return Date().timeIntervalSince(lastServerContact) <= Double(gracePeriodDays) * 86_400
     }
 
     // MARK: - Status Evaluation
 
     /// Evaluate current license status based on expiration, grace period, and signature validity
     private func evaluateStatus() {
-        let previousStatus = status
-        defer { notifyIfChanged(from: previousStatus) }
-
         guard let license else {
-            status = .unlicensed
+            status = Self.resolveUnlicensedStatus(wasDeactivatedLocally: wasDeactivatedLocally)
             return
         }
 
-        // Check server-reported status
-        switch license.status {
-        case .suspended:
-            status = .suspended
-            return
-        case .expired:
-            status = .expired
-            return
-        case .deactivated:
-            status = .deactivated
-            return
-        default:
-            break
-        }
-
-        // Check local expiration
-        if license.isExpired {
-            status = .expired
-            return
-        }
-
-        // Check grace period
-        if license.daysSinceLastValidation > gracePeriodDays {
-            status = .validationFailed
-            return
-        }
-
-        status = .active
+        status = Self.resolveStatus(
+            signedStatus: license.status,
+            isExpired: license.isExpired,
+            daysSinceValidation: license.daysSinceLastValidation,
+            gracePeriodDays: gracePeriodDays,
+            serverRejection: serverRejection,
+            hasRecentServerContact: isWithinLocalGracePeriod
+        )
     }
 
-    private func notifyIfChanged(from previousStatus: LicenseStatus) {
-        if status != previousStatus {
-            AppEvents.shared.licenseStatusDidChange.send(())
+    /// What "no license" means, which is not one state: a Mac that never had one is unlicensed, and
+    /// a Mac whose license was removed here is deactivated. Collapsing them loses the only signal
+    /// that separates "you have not bought this" from "you gave this seat up".
+    nonisolated static func resolveUnlicensedStatus(wasDeactivatedLocally: Bool) -> LicenseStatus {
+        wasDeactivatedLocally ? .deactivated : .unlicensed
+    }
+
+    /// Pure resolution of the effective status. Kept static and side-effect free so the whole grid
+    /// can be tested without constructing a LicenseManager, the same way `resolveAccess` is.
+    /// Only a signed `active` may go on to be treated as active, so a status this build does not
+    /// recognise withholds access rather than granting it.
+    nonisolated static func resolveStatus(
+        signedStatus: LicenseStatus,
+        isExpired: Bool,
+        daysSinceValidation: Int?,
+        gracePeriodDays: Int,
+        serverRejection: LicenseStatus?,
+        hasRecentServerContact: Bool
+    ) -> LicenseStatus {
+        if let serverRejection {
+            return serverRejection
         }
+
+        guard signedStatus == .active else {
+            return signedStatus
+        }
+
+        if isExpired {
+            return .expired
+        }
+
+        // An unreadable issue date is left to the revalidation scheduler, which treats it as due,
+        // rather than counted against a license that may be fine.
+        if (daysSinceValidation ?? 0) > gracePeriodDays, !hasRecentServerContact {
+            return .validationFailed
+        }
+
+        return .active
     }
 }

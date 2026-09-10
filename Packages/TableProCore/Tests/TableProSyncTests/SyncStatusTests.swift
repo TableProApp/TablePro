@@ -17,6 +17,7 @@ struct SyncStatusTests {
         DisableReason.noAccount,
         DisableReason.licenseRequired,
         DisableReason.licenseExpired,
+        DisableReason.licenseUnverified,
         DisableReason.userDisabled
     ])
     func disabledIsNotEnabled(_ reason: DisableReason) {
@@ -45,5 +46,6 @@ struct SyncStatusTests {
         #expect(SyncStatus.disabled(.noAccount) != .disabled(.userDisabled))
         #expect(SyncStatus.error(.tokenExpired) != .error(.networkUnavailable))
         #expect(SyncStatus.disabled(.noAccount) == .disabled(.noAccount))
+        #expect(SyncStatus.disabled(.licenseUnverified) != .disabled(.licenseRequired))
     }
 }

@@ -18,7 +18,7 @@ struct FilePathConnectionFieldRow: View {
     var body: some View {
         HStack {
             ConnectionFieldRow(field: field, value: $value)
-            Button(String(localized: "Browse...")) {
+            Button(String(localized: "Browse…")) {
                 onBrowse()
             }
             .controlSize(.small)

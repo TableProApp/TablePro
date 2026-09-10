@@ -22,12 +22,8 @@ struct AIChatCodeBlockView: View, Equatable {
     @State private var isCopied: Bool = false
     @State private var isEditorReady = false
     @State private var editorState = SourceEditorState()
-    @FocusedValue(\.commandActions) private var focusedActions
-    @Bindable private var commandRegistry = CommandActionsRegistry.shared
-
-    private var actions: MainContentCommandActions? {
-        focusedActions ?? commandRegistry.current
-    }
+    @State private var measuredWidth: CGFloat = 0
+    @Environment(\.commandActions) private var actions
 
     private var usesLightweightContent: Bool {
         prefersLightweightRendering || !isEditorReady
@@ -108,24 +104,33 @@ struct AIChatCodeBlockView: View, Equatable {
 
     @ViewBuilder
     private var codeContent: some View {
-        if usesLightweightContent {
-            Text(code.isEmpty ? " " : code)
-                .font(.system(.body, design: .monospaced))
-                .foregroundStyle(.primary)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(8)
-                .frame(minHeight: 32, alignment: .topLeading)
-                .background(Color(nsColor: .textBackgroundColor))
-        } else {
-            SourceEditor(
-                .constant(code),
-                language: treeSitterLanguage,
-                configuration: Self.makeConfiguration(),
-                state: $editorState
-            )
-            .frame(maxWidth: .infinity)
-            .frame(height: editorHeight)
+        Group {
+            if usesLightweightContent {
+                Text(code.isEmpty ? " " : code)
+                    .font(Font(Self.editorFont))
+                    .lineSpacing(CodeBlockHeightEstimator.extraLineSpacing(for: Self.editorFont))
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+                    .frame(minHeight: CodeBlockHeightEstimator.minimumHeight, alignment: .topLeading)
+                    .background(Color(nsColor: .textBackgroundColor))
+            } else {
+                SourceEditor(
+                    .constant(code),
+                    language: treeSitterLanguage,
+                    configuration: Self.makeConfiguration(),
+                    state: $editorState,
+                    foldProvider: FoldProviderResolver.provider(for: treeSitterLanguage)
+                )
+                .frame(maxWidth: .infinity)
+                .frame(height: contentHeight)
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { newWidth in
+            measuredWidth = newWidth
         }
     }
 
@@ -136,7 +141,7 @@ struct AIChatCodeBlockView: View, Equatable {
         return Self.detectLanguage(from: code)
     }
 
-    static func detectLanguage(from code: String) -> String? {
+    nonisolated static func detectLanguage(from code: String) -> String? {
         let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard !trimmed.isEmpty else { return nil }
         let firstNonCommentLine = trimmed
@@ -177,21 +182,22 @@ struct AIChatCodeBlockView: View, Equatable {
         treeSitterLanguage.id != CodeLanguage.default.id
     }
 
-    private var editorHeight: CGFloat {
-        let lineHeight: CGFloat = 18
-        let editorInsets: CGFloat = 16
-        let lineCount = code.reduce(into: 1) { count, char in
-            if char == "\n" { count += 1 }
-        }
-        let height = CGFloat(lineCount) * lineHeight + editorInsets
-        return min(max(height, 32), 400)
+    private var contentHeight: CGFloat {
+        CodeBlockHeightEstimator.height(
+            for: code,
+            font: Self.editorFont,
+            availableWidth: measuredWidth
+        )
     }
+
+    private static let editorFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
 
     private static func makeConfiguration() -> SourceEditorConfiguration {
         SourceEditorConfiguration(
             appearance: .init(
                 theme: TableProEditorTheme.make(),
-                font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
+                font: editorFont,
+                lineHeightMultiple: Double(CodeBlockHeightEstimator.lineHeightMultiple),
                 wrapLines: true
             ),
             behavior: .init(
@@ -200,10 +206,8 @@ struct AIChatCodeBlockView: View, Equatable {
             layout: .init(
                 contentInsets: NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
             ),
-            peripherals: .init(
-                showGutter: false,
-                showMinimap: false,
-                showFoldingRibbon: false
+            peripherals: EditorPeripherals.preview(
+                folding: AppSettingsManager.shared.editor.codeFoldingEnabled
             )
         )
     }

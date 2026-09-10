@@ -115,9 +115,19 @@ struct SQLStatementGeneratorTests {
         #expect(stmt.parameters.count == 2)
     }
 
-    @Test("Insert with all __DEFAULT__ returns empty")
-    func testInsertAllDefaultReturnsEmpty() throws {
-        let generator = try makeGenerator()
+    /// This used to expect no statement at all, which dropped the row from the batch while the rest
+    /// of the save committed and reported success. A table of nothing but an identity column and
+    /// defaults is exactly the shape that produces it.
+    @Test(
+        "Insert with all __DEFAULT__ names no column",
+        arguments: [
+            (DatabaseType.mysql, "() VALUES ()"),
+            (DatabaseType.postgresql, "DEFAULT VALUES"),
+            (DatabaseType.sqlite, "DEFAULT VALUES"),
+        ]
+    )
+    func testInsertAllDefaultNamesNoColumn(databaseType: DatabaseType, expected: String) throws {
+        let generator = try makeGenerator(databaseType: databaseType)
         let insertedRowData: [Int: [PluginCellValue]] = [
             0: ["__DEFAULT__", "__DEFAULT__", "__DEFAULT__"]
         ]
@@ -132,7 +142,10 @@ struct SQLStatementGeneratorTests {
             insertedRowIndices: [0]
         )
 
-        #expect(statements.isEmpty)
+        #expect(statements.count == 1)
+        #expect(statements.first?.sql.hasPrefix("INSERT INTO ") == true)
+        #expect(statements.first?.sql.hasSuffix(expected) == true)
+        #expect(statements.first?.parameters.isEmpty == true)
     }
 
     @Test("Insert from cellChanges fallback")
@@ -143,9 +156,9 @@ struct SQLStatementGeneratorTests {
                 rowIndex: 0,
                 type: .insert,
                 cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 0, columnName: "id", oldValue: nil, newValue: "1"),
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: nil, newValue: "John"),
-                    CellChange(rowIndex: 0, columnIndex: 2, columnName: "email", oldValue: nil, newValue: "john@example.com")
+                    CellChange(columnIndex: 0, columnName: "id", oldValue: nil, newValue: "1"),
+                    CellChange(columnIndex: 1, columnName: "name", oldValue: nil, newValue: "John"),
+                    CellChange(columnIndex: 2, columnName: "email", oldValue: nil, newValue: "john@example.com")
                 ],
                 originalRow: nil
             )
@@ -287,7 +300,7 @@ struct SQLStatementGeneratorTests {
                 rowIndex: 0,
                 type: .update,
                 cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
+                    CellChange(columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
                 ],
                 originalRow: ["1", "John", "john@example.com"]
             )
@@ -320,8 +333,8 @@ struct SQLStatementGeneratorTests {
                 rowIndex: 0,
                 type: .update,
                 cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny"),
-                    CellChange(rowIndex: 0, columnIndex: 2, columnName: "email", oldValue: "john@example.com", newValue: "johnny@example.com")
+                    CellChange(columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny"),
+                    CellChange(columnIndex: 2, columnName: "email", oldValue: "john@example.com", newValue: "johnny@example.com")
                 ],
                 originalRow: ["1", "John", "john@example.com"]
             )
@@ -349,7 +362,7 @@ struct SQLStatementGeneratorTests {
                 rowIndex: 0,
                 type: .update,
                 cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 2, columnName: "email", oldValue: "john@example.com", newValue: nil)
+                    CellChange(columnIndex: 2, columnName: "email", oldValue: "john@example.com", newValue: nil)
                 ],
                 originalRow: ["1", "John", "john@example.com"]
             )
@@ -374,7 +387,7 @@ struct SQLStatementGeneratorTests {
                 rowIndex: 0,
                 type: .update,
                 cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "__DEFAULT__")
+                    CellChange(columnIndex: 1, columnName: "name", oldValue: "John", newValue: "__DEFAULT__")
                 ],
                 originalRow: ["1", "John", "john@example.com"]
             )
@@ -401,7 +414,7 @@ struct SQLStatementGeneratorTests {
                 rowIndex: 0,
                 type: .update,
                 cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 2, columnName: "email", oldValue: "old@example.com", newValue: "CURRENT_TIMESTAMP()")
+                    CellChange(columnIndex: 2, columnName: "email", oldValue: "old@example.com", newValue: "CURRENT_TIMESTAMP()")
                 ],
                 originalRow: ["1", "John", "old@example.com"]
             )
@@ -428,7 +441,7 @@ struct SQLStatementGeneratorTests {
                 rowIndex: 0,
                 type: .update,
                 cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
+                    CellChange(columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
                 ],
                 originalRow: ["1", "John", "john@example.com"]
             )
@@ -455,7 +468,7 @@ struct SQLStatementGeneratorTests {
                 rowIndex: 0,
                 type: .update,
                 cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
+                    CellChange(columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
                 ],
                 originalRow: ["42", "John", "john@example.com"]
             )
@@ -637,7 +650,7 @@ struct SQLStatementGeneratorTests {
                 rowIndex: 1,
                 type: .update,
                 cellChanges: [
-                    CellChange(rowIndex: 1, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
+                    CellChange(columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
                 ],
                 originalRow: ["1", "John", "john@example.com"]
             ),
@@ -844,7 +857,7 @@ struct SQLStatementGeneratorTests {
                 rowIndex: 1,
                 type: .update,
                 cellChanges: [
-                    CellChange(rowIndex: 1, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
+                    CellChange(columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
                 ],
                 originalRow: ["1", "John", "john@example.com"]
             ),
@@ -875,8 +888,8 @@ struct SQLStatementGeneratorTests {
                 rowIndex: 0,
                 type: .update,
                 cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny"),
-                    CellChange(rowIndex: 0, columnIndex: 2, columnName: "email", oldValue: "john@example.com", newValue: "johnny@example.com")
+                    CellChange(columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny"),
+                    CellChange(columnIndex: 2, columnName: "email", oldValue: "john@example.com", newValue: "johnny@example.com")
                 ],
                 originalRow: ["1", "John", "john@example.com"]
             )
@@ -966,7 +979,7 @@ struct SQLStatementGeneratorTests {
                 rowIndex: 0,
                 type: .update,
                 cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
+                    CellChange(columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")
                 ],
                 originalRow: ["1", "John", "john@example.com"]
             )
@@ -1041,8 +1054,8 @@ struct SQLStatementGeneratorTests {
                 rowIndex: 0,
                 type: .update,
                 cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny"),
-                    CellChange(rowIndex: 0, columnIndex: 2, columnName: "email", oldValue: "john@example.com", newValue: "johnny@example.com")
+                    CellChange(columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny"),
+                    CellChange(columnIndex: 2, columnName: "email", oldValue: "john@example.com", newValue: "johnny@example.com")
                 ],
                 originalRow: ["1", "John", "john@example.com"]
             )
@@ -1081,7 +1094,7 @@ struct SQLStatementGeneratorTests {
                 rowIndex: 0,
                 type: .update,
                 cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "database", oldValue: "old_db", newValue: "new_db")
+                    CellChange(columnIndex: 1, columnName: "database", oldValue: "old_db", newValue: "new_db")
                 ],
                 originalRow: ["1", "old_db", "users", "5"]
             )
@@ -1172,7 +1185,7 @@ struct SQLStatementGeneratorTests {
                 rowIndex: 0,
                 type: .update,
                 cellChanges: [
-                    CellChange(rowIndex: 0, columnIndex: 1, columnName: "database", oldValue: "old_db", newValue: "new_db")
+                    CellChange(columnIndex: 1, columnName: "database", oldValue: "old_db", newValue: "new_db")
                 ],
                 originalRow: ["1", "old_db", "5"]
             )

@@ -1,6 +1,16 @@
+//
+//  SchemaPickerControl.swift
+//  TablePro
+//
+
 import SwiftUI
 import TableProPluginKit
 
+/// The active schema, at the foot of the object list, for engines that browse one schema at a time.
+///
+/// The toolbar's scope chip carries the same value and is the control the HIG points at, because a
+/// window can be positioned so its bottom edge is off screen. This one stays because the flat object
+/// list is scoped to the active schema, so the schema belongs beside the list it filters.
 struct SchemaPickerControl: View {
     let connectionId: UUID
     let databaseType: DatabaseType
@@ -14,24 +24,15 @@ struct SchemaPickerControl: View {
         databaseManager.session(for: connectionId)?.browseSchema
     }
 
-    private var allSchemas: [String] {
-        schemaService.schemas(for: connectionId)
-    }
-
-    private var systemSchemas: Set<String> {
-        Set(PluginManager.shared.systemSchemaNames(for: databaseType))
+    private var sections: SchemaMenuModel.Sections {
+        SchemaMenuModel.sections(
+            all: schemaService.schemas(for: connectionId),
+            system: Set(PluginManager.shared.systemSchemaNames(for: databaseType))
+        )
     }
 
     private var entityName: String {
         PluginManager.shared.schemaEntityName(for: databaseType)
-    }
-
-    private var userSchemas: [String] {
-        allSchemas.filter { !systemSchemas.contains($0) }
-    }
-
-    private var visibleSystemSchemas: [String] {
-        allSchemas.filter { systemSchemas.contains($0) }
     }
 
     private var selectedSchema: Binding<String> {
@@ -49,14 +50,15 @@ struct SchemaPickerControl: View {
     }
 
     var body: some View {
-        if Self.shouldShow(schemaCount: allSchemas.count) {
+        let sections = sections
+        if Self.shouldShow(schemaCount: sections.user.count + sections.system.count) {
             Menu {
                 Picker(entityName, selection: selectedSchema) {
-                    ForEach(userSchemas, id: \.self) { schema in
+                    ForEach(sections.user, id: \.self) { schema in
                         Text(schema).tag(schema)
                     }
                     if showSystemSchemas {
-                        ForEach(visibleSystemSchemas, id: \.self) { schema in
+                        ForEach(sections.system, id: \.self) { schema in
                             Text(schema).tag(schema)
                         }
                     }
@@ -64,7 +66,7 @@ struct SchemaPickerControl: View {
                 .pickerStyle(.inline)
                 .labelsHidden()
 
-                if !visibleSystemSchemas.isEmpty {
+                if !sections.system.isEmpty {
                     Divider()
                     Toggle(
                         String(format: String(localized: "Show System %@s"), entityName),
@@ -78,9 +80,10 @@ struct SchemaPickerControl: View {
                 }
             } label: {
                 Text(currentSchema ?? String(format: String(localized: "Select %@"), entityName.lowercased()))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
             .menuStyle(.borderlessButton)
-            .fixedSize()
             .accessibilityLabel(String(format: String(localized: "Current %@"), entityName.lowercased()))
         }
     }

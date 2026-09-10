@@ -9,17 +9,34 @@ import SwiftUI
 @MainActor
 internal final class SidebarContainerViewController: NSViewController {
     private let searchField = NSSearchField()
-    private var hostingController: NSHostingController<AnyView>
+    /// Sidebar chrome, like the field it shares a row with, so it survives a connection switch and
+    /// writes settings that are not scoped to one. Hidden on the Favorites tab, whose list draws
+    /// none of what these options settle.
+    private let viewOptionsButton = SidebarViewOptionsButton()
+    /// The filter field is window chrome and stays put; only the object list below it belongs to a
+    /// connection, so that is the part the window swaps.
+    private let listHost = WorkspacePaneHost()
     private var sidebarState: SharedSidebarState?
     private var observationTask: Task<Void, Never>?
+    private var filterPopover: NSPopover?
 
-    var rootView: AnyView {
-        get { hostingController.rootView }
-        set { hostingController.rootView = newValue }
+    internal func show(_ controller: NSViewController?) {
+        listHost.show(controller)
+        searchField.nextKeyView = controller?.view ?? listHost.view
     }
 
-    init(rootView: AnyView) {
-        self.hostingController = NSHostingController(rootView: rootView)
+    /// Whether the filter field answers, and what it currently holds. The object list below it
+    /// belongs to a connection; the field belongs to the window and stands whether or not one is
+    /// up, so both of these have to be true of a window with no session as well as one with.
+    internal var isFilterEnabled: Bool {
+        searchField.isEnabled
+    }
+
+    internal var filterText: String {
+        searchField.stringValue
+    }
+
+    init() {
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -32,26 +49,51 @@ internal final class SidebarContainerViewController: NSViewController {
         view = NSView()
 
         searchField.translatesAutoresizingMaskIntoConstraints = false
+        /// Standing from the window's first frame, disabled until a connection is up. It used to
+        /// be hidden until then, so the sidebar was a bare column for the length of a connect and
+        /// the field arrived with the object list. The HIG's answer to a control that does not
+        /// apply yet is to dim it, not to take it away.
+        searchField.isEnabled = false
         searchField.placeholderString = String(localized: "Filter")
         searchField.controlSize = .regular
         searchField.sendsSearchStringImmediately = true
         searchField.delegate = self
         searchField.setAccessibilityIdentifier("sidebar-filter")
         searchField.setAccessibilityLabel(String(localized: "Filter"))
-        view.addSubview(searchField)
 
-        addChild(hostingController)
-        let hostingView = hostingController.view
+        viewOptionsButton.isHidden = true
+        viewOptionsButton.setContentHuggingPriority(.required, for: .horizontal)
+
+        /// A stack view rather than two anchored controls, so hiding the button on the Favorites
+        /// tab takes its width with it: `detachesHiddenViews` removes a hidden arranged subview
+        /// from the layout, where a hidden anchored one would keep its gap beside the field.
+        let filterRow = NSStackView(views: [searchField, viewOptionsButton])
+        filterRow.translatesAutoresizingMaskIntoConstraints = false
+        filterRow.orientation = .horizontal
+        filterRow.alignment = .centerY
+        filterRow.spacing = 6
+        filterRow.detachesHiddenViews = true
+        view.addSubview(filterRow)
+
+        addChild(listHost)
+        let hostingView = listHost.view
         hostingView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(hostingView)
         searchField.nextKeyView = hostingView
 
-        NSLayoutConstraint.activate([
-            searchField.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 5),
-            searchField.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10),
-            searchField.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10),
+        /// The insets are a margin, not an invariant, so they yield rather than break when the
+        /// window narrows the sidebar to the workspace rail and leaves this view no width at all.
+        let rowLeading = filterRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10)
+        let rowTrailing = filterRow.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10)
+        rowLeading.priority = .defaultHigh
+        rowTrailing.priority = .defaultHigh
 
-            hostingView.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 5),
+        NSLayoutConstraint.activate([
+            filterRow.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 5),
+            rowLeading,
+            rowTrailing,
+
+            hostingView.topAnchor.constraint(equalTo: filterRow.bottomAnchor, constant: 5),
             hostingView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             hostingView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             hostingView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -63,14 +105,51 @@ internal final class SidebarContainerViewController: NSViewController {
         view.window?.makeFirstResponder(searchField)
     }
 
+    /// The database filter, shown from the View menu and from the object list's contextual menu
+    /// rather than from a button at the bottom of the sidebar. It anchors on the filter field
+    /// because that is what it scopes, and because the field is the one piece of sidebar chrome
+    /// that outlives a workspace switch.
+    func presentDatabaseFilter(connectionId: UUID, sidebarState: SharedSidebarState) {
+        guard !searchField.isHidden else { return }
+        filterPopover?.close()
+        filterPopover = PopoverPresenter.show(
+            relativeTo: searchField.bounds,
+            of: searchField,
+            preferredEdge: .maxY,
+            behavior: .transient
+        ) { _ in
+            DatabaseTreeFilterPopover(
+                connectionId: connectionId,
+                selectedDatabases: Binding(
+                    get: { sidebarState.databaseFilterSelected },
+                    set: { sidebarState.databaseFilterSelected = $0 }
+                )
+            )
+        }
+    }
+
     func updateSidebarState(_ state: SharedSidebarState?) {
         observationTask?.cancel()
+        /// The popover is scoped to the connection whose databases it lists, and this is the field
+        /// being repointed at a different one.
+        filterPopover?.close()
+        filterPopover = nil
         self.sidebarState = state
         guard let state else {
-            searchField.isHidden = true
+            /// `syncFromState` is the only writer of these, and it cannot run without a state, so
+            /// the field would otherwise keep the filter text of the connection it just left.
+            searchField.isEnabled = false
+            searchField.stringValue = ""
+            searchField.placeholderString = String(localized: "Filter")
+            searchField.setAccessibilityLabel(String(localized: "Filter"))
+            viewOptionsButton.isHidden = true
             return
         }
-        searchField.isHidden = false
+        searchField.isEnabled = true
+        /// Set here rather than left to the observation task, which runs on the next main-actor
+        /// turn: the button would show over the favorites filter for a turn on the way in, and
+        /// linger for a turn on the way out, with the stack view re-laying the row each time.
+        viewOptionsButton.isHidden = state.selectedSidebarTab != .tables
         observationTask = Task { @MainActor [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
@@ -109,9 +188,11 @@ internal final class SidebarContainerViewController: NSViewController {
         case .tables:
             activeText = state.searchText
             placeholder = String(localized: "Filter")
+            viewOptionsButton.isHidden = false
         case .favorites:
             activeText = state.favoritesSearchText
             placeholder = String(localized: "Filter favorites")
+            viewOptionsButton.isHidden = true
         }
 
         if searchField.stringValue != activeText {
@@ -132,10 +213,18 @@ extension SidebarContainerViewController: NSSearchFieldDelegate {
         writeSearchText("")
     }
 
+    /// Down from the filter field hands focus to the list. The handoff goes through the key view loop,
+    /// which only ever lands on a view that answers `acceptsFirstResponder`; naming the hosting view
+    /// directly parked focus on a view that does not, so the selection never moved, the list never drew
+    /// as focused, and returning true swallowed the key. Returning false when nothing took focus leaves
+    /// AppKit's own handling in place.
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-        guard commandSelector == #selector(NSResponder.moveDown(_:)) else { return false }
-        view.window?.makeFirstResponder(hostingController.view)
-        return true
+        guard commandSelector == #selector(NSResponder.moveDown(_:)), let window = view.window else {
+            return false
+        }
+        let previous = window.firstResponder
+        window.selectKeyView(following: searchField)
+        return window.firstResponder !== previous
     }
 
     private func writeSearchText(_ text: String) {

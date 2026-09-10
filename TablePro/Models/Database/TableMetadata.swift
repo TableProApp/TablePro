@@ -8,7 +8,7 @@
 import Foundation
 
 /// Represents table-level metadata fetched from database
-struct TableMetadata {
+struct TableMetadata: Equatable {
     let tableName: String
     let dataSize: Int64?
     let indexSize: Int64?
@@ -23,7 +23,7 @@ struct TableMetadata {
 
     /// Format a size in bytes to human readable format
     static func formatSize(_ bytes: Int64?) -> String {
-        guard let bytes = bytes else { return "—" }
+        guard let bytes = bytes else { return "-" }
         if bytes == 0 { return "0 B" }
 
         let units = ["B", "KB", "MB", "GB", "TB"]

@@ -215,4 +215,15 @@ struct RowDetailViewModelTests {
         #expect(vm.loadingCell == nil)
         #expect(vm.hasOverride(forRow: 0, cellIndex: 1) == true)
     }
+
+    @Test("isNullable follows the column metadata so NOT NULL columns are not offered NULL")
+    func isNullableFollowsMetadata() {
+        let vm = RowDetailViewModel(
+            columns: makeColumns(), rows: makeRows(), initialIndex: 0,
+            table: TableInfo(name: "users"), columnDetails: makeColumns()
+        )
+        #expect(vm.isNullable(at: 0) == false)
+        #expect(vm.isNullable(at: 1) == true)
+        #expect(vm.isNullable(at: 99) == true)
+    }
 }

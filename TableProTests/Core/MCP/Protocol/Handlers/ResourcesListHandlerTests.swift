@@ -12,81 +12,82 @@ final class ResourcesListHandlerTests: XCTestCase {
         XCTAssertEqual(ResourcesListHandler.requiredScopes, [.resourcesRead])
     }
 
-    func testAllowedInReadyState() {
-        XCTAssertEqual(ResourcesListHandler.allowedSessionStates, [.ready])
+    func testIsOfferedToLegacyClients() {
+        XCTAssertTrue(ResourcesListHandler.isAvailableToLegacyClients)
     }
 
-    func testReturnsConnectionsResource() async throws {
-        let (handler, context) = try await makeContext()
-        let response = try await handler.handle(params: nil, context: context)
-
-        guard case .successResponse(let success) = response else {
-            XCTFail("Expected success response, got \(response)")
-            return
-        }
-
-        let resources = success.result["resources"]?.arrayValue
-        XCTAssertNotNil(resources)
-        let uris = resources?.compactMap { $0["uri"]?.stringValue } ?? []
+    func testListsTheSavedConnectionsResource() async throws {
+        let result = try await runList()
+        let resources = try XCTUnwrap(result.payload["resources"]?.arrayValue)
+        let uris = resources.compactMap { $0["uri"]?.stringValue }
         XCTAssertTrue(uris.contains("tablepro://connections"))
     }
 
-    func testEntriesIncludeNameAndMimeType() async throws {
-        let (handler, context) = try await makeContext()
-        let response = try await handler.handle(params: nil, context: context)
+    func testEveryEntryDescribesItself() async throws {
+        let result = try await runList()
+        let resources = try XCTUnwrap(result.payload["resources"]?.arrayValue)
+        XCTAssertFalse(resources.isEmpty)
 
-        guard case .successResponse(let success) = response,
-              let resources = success.result["resources"]?.arrayValue,
-              let connections = resources.first(where: { $0["uri"]?.stringValue == "tablepro://connections" })
-        else {
-            XCTFail("Expected connections resource")
-            return
+        for resource in resources {
+            XCTAssertFalse(resource["uri"]?.stringValue?.isEmpty ?? true)
+            XCTAssertFalse(resource["name"]?.stringValue?.isEmpty ?? true)
+            XCTAssertFalse(resource["title"]?.stringValue?.isEmpty ?? true)
+            XCTAssertFalse(resource["description"]?.stringValue?.isEmpty ?? true)
+            XCTAssertEqual(resource["mimeType"]?.stringValue, "application/json")
         }
-
-        XCTAssertNotNil(connections["name"]?.stringValue)
-        XCTAssertEqual(connections["mimeType"]?.stringValue, "application/json")
     }
 
-    private func makeContext(
-        clock: any MCPClock = MCPSystemClock()
-    ) async throws -> (ResourcesListHandler, MCPRequestContext) {
-        let store = MCPSessionStore(clock: clock)
-        let session = try await store.create()
-        try await session.transitionToReady()
-        let progressSink = StubProgressSink()
-        let services = MCPToolServices(
-            connectionBridge: MCPConnectionBridge(),
-            authPolicy: MCPAuthPolicy()
+    func testResultIsCompleteAndCacheableForThisPrincipalOnly() async throws {
+        let result = try await runList()
+        XCTAssertEqual(result.kind, .complete)
+
+        let hint = try XCTUnwrap(result.cacheHint)
+        XCTAssertEqual(hint.scope, .privateScope)
+        XCTAssertEqual(hint.ttlMilliseconds, 30_000)
+        XCTAssertTrue(MCPProtocolDispatcher.cacheableMethods.contains(ResourcesListHandler.method))
+    }
+
+    func testShortListingCarriesNoCursor() async throws {
+        let result = try await runList()
+        let count = result.payload["resources"]?.arrayValue?.count ?? 0
+        XCTAssertLessThanOrEqual(count, MCPListPagination.defaultPageSize)
+        XCTAssertNil(result.payload["nextCursor"])
+    }
+
+    func testEmptyCursorIsRefused() async throws {
+        let error = try await failure(params: .object(["cursor": .string("")]))
+        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
+    }
+
+    func testCursorFromAnotherMethodIsRefused() async throws {
+        let cursor = MCPListPagination.encodeCursor(offset: 0, method: "tools/list")
+        let error = try await failure(params: .object(["cursor": .string(cursor)]))
+        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
+    }
+
+    func testCursorPastTheEndIsRefused() async throws {
+        let cursor = MCPListPagination.encodeCursor(offset: 9_999, method: ResourcesListHandler.method)
+        let error = try await failure(params: .object(["cursor": .string(cursor)]))
+        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
+    }
+
+    private func runList(params: JsonValue? = nil) async throws -> MCPResult {
+        let services = MCPProtocolHandlerTestSupport.makeToolServices()
+        let context = await MCPProtocolHandlerTestSupport.makeContext(
+            method: ResourcesListHandler.method,
+            params: params,
+            principalScopes: [.resourcesRead]
         )
-        let dispatcher = MCPProtocolDispatcher(
-            handlers: [ResourcesListHandler(services: services)],
-            sessionStore: store,
-            progressSink: progressSink,
-            clock: clock
-        )
-        let request = MCPProtocolTestSupport.makeRequest(method: "resources/list")
-        let principal = MCPProtocolTestSupport.makePrincipal(scopes: [.resourcesRead])
-        let sessionId = await session.id
-        let (exchange, _) = MCPProtocolTestSupport.makeExchange(
-            message: request,
-            sessionId: sessionId,
-            principal: principal
-        )
-        let token = MCPCancellationToken()
-        let emitter = MCPProgressEmitter(
-            progressToken: nil,
-            target: progressSink,
-            sessionId: sessionId
-        )
-        let context = MCPRequestContext(
-            exchange: exchange,
-            session: session,
-            principal: principal,
-            dispatcher: dispatcher,
-            progress: emitter,
-            cancellation: token,
-            clock: clock
-        )
-        return (ResourcesListHandler(services: services), context)
+        return try await ResourcesListHandler(services: services).handle(params: params, context: context)
+    }
+
+    private func failure(params: JsonValue?) async throws -> MCPProtocolError {
+        do {
+            _ = try await runList(params: params)
+        } catch let error as MCPProtocolError {
+            return error
+        }
+        XCTFail("Expected the handler to refuse the request")
+        return .internalError(detail: "unreachable")
     }
 }

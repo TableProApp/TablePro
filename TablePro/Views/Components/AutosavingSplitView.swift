@@ -16,6 +16,14 @@ struct AutosavingSplitView<Primary: View, Secondary: View>: NSViewControllerRepr
     var primaryMinimum: CGFloat
     var primaryMaximum: CGFloat?
     var secondaryMinimum: CGFloat
+
+    /// The share of the width the primary pane takes before the user has ever dragged the divider.
+    /// `NSSplitViewItem.contentListWithViewController` sets 0.33 for a list beside a detail view,
+    /// "akin to Mail's message list", and caps automatic sizing at 576pt so a wide display grows
+    /// the detail pane rather than the list. Nil keeps the previous behaviour, where the first
+    /// layout fell out of the minimums.
+    var primaryThicknessFraction: CGFloat?
+    var primaryAutomaticMaximum: CGFloat?
     var primaryHoldingPriority: NSLayoutConstraint.Priority = .splitPaneHolding
     var collapsesPrimaryWhenTight = false
     @ViewBuilder let primary: () -> Primary
@@ -48,6 +56,12 @@ struct AutosavingSplitView<Primary: View, Secondary: View>: NSViewControllerRepr
         if let primaryMaximum {
             primaryItem.maximumThickness = primaryMaximum
         }
+        if let primaryThicknessFraction {
+            primaryItem.preferredThicknessFraction = primaryThicknessFraction
+        }
+        if let primaryAutomaticMaximum {
+            primaryItem.automaticMaximumThickness = primaryAutomaticMaximum
+        }
 
         let secondaryItem = NSSplitViewItem(viewController: secondaryController)
         secondaryItem.minimumThickness = secondaryMinimum
@@ -56,7 +70,7 @@ struct AutosavingSplitView<Primary: View, Secondary: View>: NSViewControllerRepr
 
         controller.addSplitViewItem(primaryItem)
         controller.addSplitViewItem(secondaryItem)
-        controller.splitView.autosaveName = NSSplitView.AutosaveName(autosaveName)
+        controller.splitView.autosaveName = NSSplitView.AutosaveName(SplitViewAutosaveName.current(autosaveName))
         return controller
     }
 

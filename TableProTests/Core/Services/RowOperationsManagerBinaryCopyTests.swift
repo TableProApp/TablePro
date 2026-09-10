@@ -18,7 +18,8 @@ struct RowOperationsManagerBinaryCopyTests {
             tableName: "documents",
             columns: ["id", "payload"],
             primaryKeyColumns: ["id"],
-            databaseType: .postgresql
+            databaseType: .postgresql,
+            generatedColumns: []
         )
         let rowOps = RowOperationsManager(changeManager: changeManager)
         let tableRows = TableRows.from(

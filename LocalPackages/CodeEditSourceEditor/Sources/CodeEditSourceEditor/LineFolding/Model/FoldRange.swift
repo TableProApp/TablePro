@@ -13,8 +13,4 @@ struct FoldRange: Sendable, Equatable {
     let depth: Int
     let range: Range<Int>
     var isCollapsed: Bool
-
-    func isHoveringEqual(_ other: FoldRange) -> Bool {
-        depth == other.depth && range.contains(other.range)
-    }
 }

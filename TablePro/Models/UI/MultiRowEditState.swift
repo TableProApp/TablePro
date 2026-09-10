@@ -25,8 +25,20 @@ struct FieldEditState: Identifiable {
     /// Set when the owning grid dictates the editor instead of the column type.
     var editor: FieldEditorKind?
 
+    /// Which editor the field's own type and value ask for, resolved once here.
+    ///
+    /// Resolving it costs a full `JSONSerialization` parse of the value and a PHP-serialized parse
+    /// after it, and `FieldEditorResolver` was reached from two view bodies per field. Every hover,
+    /// every inspector tab switch and every pending-edit keystroke re-parsed every value in the row.
+    var resolvedEditor: FieldEditorKind?
+
     /// A schema field has no data type, so it offers no type badge and no NULL or DEFAULT state.
     var isSchemaField: Bool = false
+
+    /// The server owns the value, so the field is shown without an editor. Refusing the edit further
+    /// down instead would leave a pending value here that nothing can clear, and the inspector would
+    /// go on reporting an unsaved change that Save never writes.
+    var isServerOwned: Bool = false
 
     /// The value already differs from the loaded schema because the edit is recorded elsewhere.
     var hasCommittedEdit: Bool = false
@@ -80,7 +92,9 @@ final class MultiRowEditState {
         columnTypes: [ColumnType],
         externallyModifiedColumns: Set<Int> = [],
         primaryKeyColumns: Set<String> = [],
-        foreignKeyColumns: Set<String> = []
+        foreignKeyColumns: Set<String> = [],
+        serverOwnedColumns: Set<String> = [],
+        displayFormats: [ValueDisplayFormat?] = []
     ) {
         // Check if the underlying data has changed (not just edits)
         let columnsChanged = self.columns != columns
@@ -145,6 +159,7 @@ final class MultiRowEditState {
                 isJson: isJson,
                 isPrimaryKey: primaryKeyColumns.contains(columnName),
                 isForeignKey: foreignKeyColumns.contains(columnName),
+                isServerOwned: serverOwnedColumns.contains(columnName),
                 originalValue: originalValue,
                 hasMultipleValues: hasMultipleValues,
                 pendingValue: pendingValue,
@@ -154,6 +169,16 @@ final class MultiRowEditState {
             if let preservedId {
                 newField.id = preservedId
             }
+            /// The column's display format decides the editor here exactly as it does in the grid.
+            /// Without it the inspector resolved from the raw value alone, so a column the user had
+            /// set to JSON or PHP-serialized opened a plain text field in the inspector while the
+            /// grid rendered it structured.
+            newField.resolvedEditor = FieldEditorResolver.resolve(
+                for: columnTypeEnum,
+                isLongText: isLongText,
+                originalValue: originalValue,
+                displayFormatOverride: colIndex < displayFormats.count ? displayFormats[colIndex] : nil
+            )
             newFields.append(newField)
         }
 
@@ -190,6 +215,13 @@ final class MultiRowEditState {
             )
             if index < reusedIds.count {
                 state.id = reusedIds[index]
+            }
+            if field.editor == nil {
+                state.resolvedEditor = FieldEditorResolver.resolve(
+                    for: .text(rawType: nil),
+                    isLongText: false,
+                    originalValue: field.value
+                )
             }
             return state
         }

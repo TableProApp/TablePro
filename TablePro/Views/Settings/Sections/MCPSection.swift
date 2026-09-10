@@ -35,11 +35,18 @@ struct MCPSection: View {
         }
     }
 
+    /// The server starts on demand whether or not the toggle is on, so the toggle cannot be what
+    /// decides whether a running one is reported. With it off this was the only place left that
+    /// could say a server was running, and it said nothing at all.
+    private var showsStatus: Bool {
+        settings.enabled || manager.state != .stopped
+    }
+
     var body: some View {
         Section(String(localized: "Integrations")) {
             Toggle(String(localized: "Enable MCP Server"), isOn: $settings.enabled)
 
-            if settings.enabled {
+            if showsStatus {
                 LabeledContent(String(localized: "Status")) {
                     MCPStatusIndicator()
                 }
@@ -48,15 +55,33 @@ struct MCPSection: View {
 
         if settings.enabled {
             configurationSection
+            connectionAccessSection
             authenticationSection
-            networkSection
             helpSection
+        }
+    }
 
-            Section {
-                Text(String(localized: "AI access policies are configured per-connection in each connection's settings."))
-                    .foregroundStyle(.secondary)
-                    .font(.callout)
+    private var connectionAccessSection: some View {
+        Section {
+            Picker(String(localized: "Approval"), selection: $settings.connectionApproval) {
+                ForEach(MCPConnectionApproval.allCases) { approval in
+                    Text(approval.displayName).tag(approval)
+                }
             }
+            .pickerStyle(.menu)
+
+            Text(settings.connectionApproval.explanation)
+                .foregroundStyle(.secondary)
+                .font(.callout)
+
+            MCPGrantListView()
+        } header: {
+            Text("Connection Access")
+        } footer: {
+            // swiftlint:disable:next line_length
+            Text("Approval is separate from what a client may reach. A connection blocked for external clients stays blocked, a read-only one stays read only, and Safe Mode still confirms destructive statements.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -116,25 +141,8 @@ struct MCPSection: View {
                 MCPTokenRevealSheet(
                     token: revealedToken,
                     plaintext: revealedPlaintext,
-                    port: settings.port,
-                    allowRemoteConnections: settings.allowRemoteConnections
+                    port: manager.listeningPort ?? settings.port
                 )
-            }
-        }
-    }
-
-    private var networkSection: some View {
-        Section(String(localized: "Network")) {
-            Toggle(String(localized: "Allow remote connections"), isOn: $settings.allowRemoteConnections)
-
-            if settings.allowRemoteConnections {
-                Label {
-                    Text(String(localized: "The server will be accessible from other devices on your network. Authentication and TLS are enabled automatically."))
-                } icon: {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                }
-                .font(.callout)
             }
         }
     }
@@ -149,7 +157,7 @@ struct MCPSection: View {
             }
         }
         .sheet(isPresented: $showSetupSheet) {
-            IntegrationsSetupSheet(port: settings.port)
+            IntegrationsSetupSheet(port: manager.listeningPort ?? settings.port)
         }
     }
 
@@ -157,12 +165,13 @@ struct MCPSection: View {
         Task {
             guard let store = manager.tokenStore else { return }
             let access: ConnectionAccess = connectionIds.map { .limited($0) } ?? .all
-            let result = await store.generate(
+            guard let result = try? await store.generate(
                 name: name,
                 permissions: permissions,
                 connectionAccess: access,
-                expiresAt: expiresAt
-            )
+                expiresAt: expiresAt,
+                isBridgeCredential: false
+            ) else { return }
             revealedToken = result.token
             revealedPlaintext = result.plaintext
             showCreateSheet = false
@@ -173,7 +182,7 @@ struct MCPSection: View {
 
     private func refreshTokens() async {
         guard let store = MCPServerManager.shared.tokenStore else { return }
-        tokenList = await store.list().filter { $0.name != MCPTokenStore.stdioBridgeTokenName }
+        tokenList = await store.list().filter { !$0.isBridgeCredential }
     }
 }
 
@@ -198,7 +207,7 @@ private struct MCPStatusIndicator: View {
         case .stopped:
             String(localized: "Stopped")
         case .starting:
-            String(localized: "Starting...")
+            String(localized: "Starting…")
         case .running(let port):
             String(format: String(localized: "Running on port %d"), port)
         case .failed(let message):

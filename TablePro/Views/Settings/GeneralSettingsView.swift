@@ -14,7 +14,7 @@ struct GeneralSettingsView: View {
 
     @State private var initialLanguage: AppLanguage?
     @State private var showResetConfirmation = false
-    @AppStorage(SidebarPersistenceKey.defaultLayout) private var defaultSidebarLayout: SidebarLayout = .flat
+    @AppStorage(SidebarPersistenceKey.defaultLayout, store: AppStorageEnvironment.shared.defaults) private var defaultSidebarLayout: SidebarLayout = .flat
 
     private static let standardTimeouts = [10, 20, 30, 40, 50, 60, 90, 120, 180, 300, 600]
 
@@ -50,22 +50,58 @@ struct GeneralSettingsView: View {
                 Toggle("Enable preview tabs", isOn: $tabSettings.enablePreviewTabs)
                     .help("Single-clicking a table opens a temporary tab that gets replaced on next click.")
 
-                Toggle("Group all connections in one window", isOn: $tabSettings.groupAllConnectionTabs)
-                    .help("When enabled, tabs from different connections share the same window instead of opening separate windows.")
+                Picker("When tabs stop fitting:", selection: $tabSettings.overflow) {
+                    ForEach(EditorTabStripOverflow.allCases, id: \.self) { style in
+                        Text(style.displayName).tag(style)
+                    }
+                }
+                .help("Scrolling keeps one row of tabs, the way every macOS tab bar does. Rows wraps them so nothing is off screen.")
             }
 
             Section("Sidebar") {
+                Toggle("Show connections", isOn: $settings.showWorkspaceRail)
+                    .help("Adds a narrow strip on the window's leading edge listing every connection and database you have open, so one click switches to it.")
+
                 Toggle("Show recent tables", isOn: $settings.showRecentTables)
                     .help("Adds a Recent section at the top of the Tables sidebar with the last tables you opened per connection and database.")
 
+                Toggle("Show object icons", isOn: $settings.showObjectIcons)
+                    .help("Shows a type icon before each object name in the sidebar. Turn it off for a plain list of names.")
+
                 Toggle("Show object comments", isOn: $settings.showObjectComments)
                     .help("Shows database object comments next to tables in the sidebar and in grid column headers.")
+
+                Picker("Row size:", selection: $settings.sidebarRowSize) {
+                    ForEach(SidebarRowSizePreference.allCases, id: \.self) { size in
+                        Text(size.title).tag(size)
+                    }
+                }
+                .help(String(localized: """
+                    Match System follows Sidebar icon size in System Settings > Appearance. \
+                    Choose a size to fit more objects on screen than the rest of the system shows.
+                    """))
 
                 Picker("Default layout for new connections:", selection: $defaultSidebarLayout) {
                     Text("List").tag(SidebarLayout.flat)
                     Text("Tree").tag(SidebarLayout.tree)
                 }
                 .help(String(localized: "Layout for new connections on servers that support a database tree. Switch the current connection from the View menu."))
+            }
+
+            Section("Connections") {
+                Picker("Check connections:", selection: $settings.connectionHealthCheck) {
+                    ForEach(ConnectionHealthCheck.allCases) { option in
+                        Text(option.title).tag(option)
+                    }
+                }
+                .accessibilityIdentifier("connection-health-check-picker")
+                .help(String(localized: """
+                    TablePro runs a small query on each open connection so it can notice a dropped \
+                    one and reconnect before you hit it. Only when I use the connection stops that \
+                    background traffic, which is what a database that sleeps when idle, or bills \
+                    per query, needs; TablePro then checks the connection the first time you use \
+                    it after a pause.
+                    """))
             }
 
             Section("Query Execution") {
@@ -80,6 +116,8 @@ struct GeneralSettingsView: View {
 
             CommandLineToolSection()
 
+            LinkedFoldersSection()
+
             TrustedExternalConnectionsSection()
 
             Section("Software Update") {
@@ -88,7 +126,7 @@ struct GeneralSettingsView: View {
                         updaterBridge.updater.automaticallyChecksForUpdates = newValue
                     }
 
-                Button("Check for Updates...") {
+                Button("Check for Updates…") {
                     updaterBridge.checkForUpdates()
                 }
                 .disabled(!updaterBridge.canCheckForUpdates)

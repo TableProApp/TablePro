@@ -3,8 +3,8 @@
 //  TableProTests
 //
 //  Pins #1358: "Reopen Last Session" must not replay a connection whose attempt the
-//  user cancelled. A window that never finished connecting was never activated, so
-//  it is not part of the session to restore.
+//  user cancelled. It must still replay one whose server was merely unreachable,
+//  which a failed restore used to erase from the list as if the user had given up.
 //
 
 import Foundation
@@ -18,7 +18,7 @@ struct RecoveryConnectionListTests {
         let id = UUID()
 
         let ids = RecoveryConnectionList.connectionIds(
-            from: [RecoveryCandidate(connectionId: id, isActivated: true)]
+            from: [RecoveryCandidate(connectionId: id, isActivated: true, retainsRestoreIntent: false)]
         )
 
         #expect(ids == [id])
@@ -27,10 +27,21 @@ struct RecoveryConnectionListTests {
     @Test("A cancelled connection attempt is not restored")
     func cancelledAttemptIsNotRestored() {
         let ids = RecoveryConnectionList.connectionIds(
-            from: [RecoveryCandidate(connectionId: UUID(), isActivated: false)]
+            from: [RecoveryCandidate(connectionId: UUID(), isActivated: false, retainsRestoreIntent: false)]
         )
 
         #expect(ids.isEmpty)
+    }
+
+    @Test("A window whose server was unreachable is still restored")
+    func failedConnectionIsStillRestored() {
+        let id = UUID()
+
+        let ids = RecoveryConnectionList.connectionIds(
+            from: [RecoveryCandidate(connectionId: id, isActivated: false, retainsRestoreIntent: true)]
+        )
+
+        #expect(ids == [id])
     }
 
     @Test("Cancelling one connection leaves the other connected windows restorable")
@@ -39,8 +50,8 @@ struct RecoveryConnectionListTests {
         let cancelled = UUID()
 
         let ids = RecoveryConnectionList.connectionIds(from: [
-            RecoveryCandidate(connectionId: connected, isActivated: true),
-            RecoveryCandidate(connectionId: cancelled, isActivated: false),
+            RecoveryCandidate(connectionId: connected, isActivated: true, retainsRestoreIntent: false),
+            RecoveryCandidate(connectionId: cancelled, isActivated: false, retainsRestoreIntent: false),
         ])
 
         #expect(ids == [connected])
@@ -51,8 +62,20 @@ struct RecoveryConnectionListTests {
         let id = UUID()
 
         let ids = RecoveryConnectionList.connectionIds(from: [
-            RecoveryCandidate(connectionId: id, isActivated: true),
-            RecoveryCandidate(connectionId: id, isActivated: true),
+            RecoveryCandidate(connectionId: id, isActivated: true, retainsRestoreIntent: false),
+            RecoveryCandidate(connectionId: id, isActivated: true, retainsRestoreIntent: false),
+        ])
+
+        #expect(ids == [id])
+    }
+
+    @Test("An activated window and a still-pending one list the connection once")
+    func activatedAndPendingListOnce() {
+        let id = UUID()
+
+        let ids = RecoveryConnectionList.connectionIds(from: [
+            RecoveryCandidate(connectionId: id, isActivated: true, retainsRestoreIntent: false),
+            RecoveryCandidate(connectionId: id, isActivated: false, retainsRestoreIntent: true),
         ])
 
         #expect(ids == [id])
@@ -63,8 +86,8 @@ struct RecoveryConnectionListTests {
         let id = UUID()
 
         let ids = RecoveryConnectionList.connectionIds(from: [
-            RecoveryCandidate(connectionId: id, isActivated: false),
-            RecoveryCandidate(connectionId: id, isActivated: true),
+            RecoveryCandidate(connectionId: id, isActivated: false, retainsRestoreIntent: false),
+            RecoveryCandidate(connectionId: id, isActivated: true, retainsRestoreIntent: false),
         ])
 
         #expect(ids == [id])

@@ -1,64 +1,48 @@
 ---
 title: MongoDB
-description: Connect to MongoDB with MQL shell queries, collection browsing, and automatic Atlas SRV setup
+description: Connect to MongoDB and run mongosh JavaScript, browse collections, and set up Atlas SRV automatically
 ---
 
-Collections appear as tables in the sidebar. Documents display with top-level fields as columns and nested objects as formatted JSON.
+import RegistryPlugin from "/snippets/registry-plugin.mdx";
 
-MongoDB is a registry plugin. Picking it in the **Choose a Database** sheet prompts to install; connecting to a saved MongoDB connection installs it without asking. You can also install **MongoDB Driver** from **Settings > Plugins > Browse**.
+The query tab is a JavaScript shell. Write `db.orders.find({status: "new"})` the way mongosh takes it, unquoted keys and all, and keep going into variables, loops and `forEach`. Collections appear as tables in the sidebar, with top-level fields as columns and nested objects as formatted JSON.
 
-## Quick Setup
+<RegistryPlugin name="MongoDB" plugin="MongoDB Driver" />
+
+## Quick setup
 
 <Steps>
   <Step title="Create Connection">
-    Click **New Connection**, select **MongoDB**, enter hosts and credentials, and click **Create**
+    Click **Create Connection…**, select **MongoDB**, and enter hosts and credentials
   </Step>
   <Step title="Test Connection">
-    Click **Test Connection** to verify
+    Click **Test Connection** to verify, then **Save & Connect**
   </Step>
 </Steps>
 
-## Connection Settings
+## Connection settings
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| **Hosts** | `localhost:27017` | Add multiple `host:port` pairs for replica sets |
+| **Hosts** | `localhost:27017` | Several `host:port` pairs for a replica set |
 | **Username** | - | Leave empty for local dev without auth |
 | **Password** | - | |
-| **Auth Mechanism** | Default | SCRAM-SHA-1, SCRAM-SHA-256, X.509, or AWS IAM. In the Authentication section |
+| **Database** | - | Opens straight into that database. Leave it empty to browse them all |
+| **Auth Database** | - | Advanced. Where your user account lives, usually `admin` |
+| **Auth Mechanism** | Default | SCRAM-SHA-1, SCRAM-SHA-256, X.509, or AWS IAM, under Authentication |
 
-The form has no Database field. On connect TablePro opens the first non-system database it finds, and **Cmd+K** switches to another. A database in a connection URL path (`mongodb://host:27017/mydb`) is used instead.
+Naming a **Database** skips listing every database on the server, which is worth doing on a cluster with hundreds. Leave it empty and the first non-system database opens instead. `Cmd+K` switches either way, on the same connection, with no reconnect.
 
-**Advanced**: **Auth Database** (usually `admin`), **Read Preference**, **Write Concern**, **Use SRV Record**, and **Replica Set** name.
+**Auth Database** is a separate question: it says where your account is defined, not what you browse. Left empty, it follows the **Database** field. An account defined in `admin` needs **Auth Database** set to `admin` whenever **Database** names something else, or authentication fails. SRV connections authenticate against `admin` regardless, unless told otherwise. Switching databases in the app never changes it, so browsing a database your user has no account in is fine.
 
-Leaving **Auth Database** empty authenticates against the database in the connection URL path, or `admin` when there is none. Switching databases in the app never changes it, so browsing a database your user has no account in does not break the connection.
+Also in Advanced: **Read Preference**, **Write Concern**, **Use SRV Record**, **Replica Set** name, and **Legacy UUID Encoding**. There is no minimum server version; the driver adapts what it asks for to what the server answers.
 
 <Frame caption="MongoDB connection form">
   <img className="block dark:hidden" src="/images/mongodb-connection-form.png" alt="MongoDB connection form with the multi-host Hosts editor" />
   <img className="hidden dark:block" src="/images/mongodb-connection-form-dark.png" alt="MongoDB connection form with the multi-host Hosts editor" />
 </Frame>
 
-## MongoDB Atlas (SRV)
-
-The **Use SRV Record** toggle in Advanced connects with the `mongodb+srv://` scheme. For hosts ending in `.mongodb.net`, TablePro enables SRV automatically and turns TLS on if the SSL mode is Disabled, since Atlas requires both. An Atlas connection needs only the cluster hostname, username, and password.
-
-## Replica Sets
-
-The **Hosts** field accepts multiple `host:port` pairs separated by commas (for example `host1:27017,host2:27017,host3:27017`). TablePro discovers the primary automatically and routes writes there. Set the replica set name in **Advanced**.
-
-You can also paste a multi-host URI directly:
-
-```text
-mongodb://user:pass@host1:27017,host2:27017,host3:27017/db?replicaSet=rs0
-```
-
-<Note>
-Over an SSH tunnel TablePro connects to the first host only and drops the rest of the list. Replica set discovery and failover are off for that session.
-</Note>
-
-## SSL/TLS
-
-The MongoDB driver has no TLS fallback. **Preferred** behaves the same as **Required** (the SSL pane shows a warning). For unencrypted local instances, use **Disabled** or [SSH tunneling](/databases/ssh-tunneling). See [SSL/TLS](/features/ssl) for details.
+On MongoDB 4.0 and later the database list is requested as authorized databases only, so an account without the `listDatabases` privilege still sees what it can read. On an older server that list comes back empty: name a **Database** on the connection instead.
 
 ## Connection URL
 
@@ -67,73 +51,148 @@ mongodb://user:password@host:27017/database?authSource=admin
 mongodb+srv://user:password@cluster.mongodb.net/database
 ```
 
-The `mongodb+srv://` scheme resolves hosts through DNS SRV records and does not allow a port. If you paste an SRV URL that includes one (for example `cluster.mongodb.net:27017`), TablePro strips it before connecting. The plain `mongodb://` scheme keeps any port you provide.
+`mongodb+srv://` resolves hosts through DNS SRV records and takes no port; one pasted into the field is stripped before connecting. Plain `mongodb://` keeps whatever port you give it. See [Connection URL Reference](/connections/urls).
 
-See [Connection URL Reference](/databases/connection-urls) for all parameters.
+## MongoDB Atlas (SRV)
 
-## Features
+An Atlas connection needs the cluster hostname, a username, and a password. Atlas requires SRV and TLS, so a host ending in `.mongodb.net` gets both turned on for you, TLS only if the SSL mode was still Disabled. Elsewhere the **Use SRV Record** toggle in Advanced does the same job. Add your current IP to the cluster's access list in the Atlas console first: traffic from an address that is not on it times out rather than failing.
 
-**Collection Browsing**: Sidebar shows all collections. Click to view documents in the data grid. Top-level fields render as columns, nested objects and arrays as formatted JSON, ObjectIds as strings. The grid schema is inferred by sampling documents.
+## Replica sets
 
-**New Database**: The dialog asks for a database name and the name of its first collection. Both are required. MongoDB stores a database only once it holds a collection, so a name on its own would disappear as soon as the sidebar refreshed. The collection is created empty.
+The **Hosts** field takes comma-separated pairs (`host1:27017,host2:27017,host3:27017`), the primary is discovered, and writes are routed to it. Set the replica set name in Advanced. A multi-host URI pastes in directly:
 
-**Views**: **New View** in the sidebar opens a query tab with a `db.createView("view_name", "source_collection", [pipeline])` template. Editing a view definition pre-fills a `db.runCommand({"collMod": ...})` command.
-
-**Explain**: Press `Cmd+Option+E` on an MQL statement. TablePro converts `find`, `aggregate`, `countDocuments`, update, delete, and `findOneAnd*` calls into `db.runCommand({"explain": ..., "verbosity": "executionStats"})`.
-
-**MQL Shell Queries**: Filters and pipelines are parsed as JSON and Extended JSON, not JavaScript. Quote every key, operators included: `{age: {$gte: 18}}` fails with a parse error. mongosh helpers like `ISODate("2025-01-01")` fail too; write `{"$date": "2025-01-01T00:00:00Z"}`. The editor has no comment syntax, so a `//` line becomes part of the statement.
-
-Find with a filter:
-
-```javascript
-db.users.find({"age": {"$gte": 18}, "active": true})
+```text
+mongodb://user:pass@host1:27017,host2:27017,host3:27017/db?replicaSet=rs0
 ```
 
-Find with a projection and a sort:
+<Warning>
+<Warning>
+Over an SSH tunnel only the first host is used and the rest of the list is dropped. Replica set discovery and failover are off for that session, with nothing on screen to say so.
+</Warning>
+</Warning>
+
+## Browsing collections
+
+Click a collection to page through its documents. Column layout is inferred by sampling documents, not read from a validator, so a field missing from the sample gets no column. ObjectIds render as strings, arrays and nested objects as formatted JSON.
+
+The filter bar's column picker lists paths inside nested objects and arrays of objects, so `customer.country` and `items.sku` filter directly; a row on an array field chooses **any element** or **same element**, which makes one array entry satisfy every row set to it. See [Filtering](/features/filtering#nested-fields). A field name containing a literal dot is left out of the picker, since MongoDB reads a dot as a path separator; reach it with `$getField` inside `$expr`.
+
+The Structure tab lists a collection's indexes; create and drop them from a query tab with `db.users.createIndex({"email": 1})` and `db.users.dropIndex("email_1")`. **New Database** asks for a database name and a first collection, both required. **New View** opens a query tab holding a `db.createView("view_name", "source_collection", [pipeline])` template, and editing a view pre-fills `db.runCommand({"collMod": …})`.
+
+### Binary UUIDs
+
+A binary subtype 4 field renders as `UUID("8cd003eb-4a25-4324-9332-88fce2da0d1a")`. Subtype 3 is the legacy format, and its bytes do not say which driver wrote them, so it stays `BinData(3, "…")` until **Legacy UUID Encoding** on the connection is set to Java, C#, or Python. Match it to the driver that wrote the data: the wrong choice shows a valid-looking but wrong UUID.
+
+Once set, the value renders as `LegacyJavaUUID("…")` and reads that way everywhere, filters and MQL export included. Nothing stored is rewritten, `uuidRepresentation=javaLegacy` in a pasted URL sets the same option, and a change takes effect on the next connect.
+
+## Writing queries
+
+Queries run through JavaScriptCore, so a statement is JavaScript and the whole language is
+available: object literals with unquoted keys, single-quoted strings, regex literals such as
+`/abc/i`, `new Date()`, arithmetic, `//` and `/* */` comments.
+
+`Date("2020-01-01")` without `new` gives a date rather than the string plain JavaScript would
+return, so a filter written that way keeps matching. `new Date` and `instanceof Date` are the
+native ones.
 
 ```javascript
-db.orders.find(
-  {"status": "completed"},
-  {"customerId": 1, "total": 1, "date": 1}
-).sort({"date": -1}).limit(20)
-```
+db.orders.find({status: "completed"}, {customerId: 1, total: 1})
+  .sort({date: -1})
+  .limit(20)
 
-Aggregation pipeline, with dates in Extended JSON:
-
-```javascript
 db.sales.aggregate([
-  {"$match": {"date": {"$gte": {"$date": "2025-01-01T00:00:00Z"}}}},
-  {"$group": {"_id": "$product", "totalSales": {"$sum": "$amount"}}},
-  {"$sort": {"totalSales": -1}},
-  {"$limit": 10}
+  {$match: {date: {$gte: ISODate("2025-01-01")}}},
+  {$group: {_id: "$product", totalSales: {$sum: "$amount"}}}
 ])
 ```
 
-Count documents:
+### Scripts
+
+The shell is per connection, so a variable or function defined in one statement is there for the
+next, in any tab on that connection, until you disconnect.
 
 ```javascript
-db.users.countDocuments({"role": "admin"})
+var stale = [];
+db.orders.find({status: "pending"}).forEach(function (order) {
+  if (order.updatedAt < ISODate("2025-01-01")) { stale.push(order._id); }
+});
+print("stale orders: " + stale.length);
 ```
 
-**Collection references**: Write `db.users`, `db["users"]`, or `db.getCollection("users")`. The bracket and `getCollection` forms take the name exactly as written, so use them for names that contain dots or spaces, start with a digit, or match a database method such as `stats` or `version`. Single quotes and backticks work in place of double quotes. `db.getSiblingDB(...)` is not supported: a query always runs against the database the connection is using.
+`print` and `printjson` write to the result grid, one row per line, whenever the statement itself
+returns no documents. A statement that returns documents shows those instead, with the printed
+lines on the status line under the grid.
 
-**Supported methods**: collection-level `find`, `findOne`, `aggregate`, `countDocuments`/`count`, `insertOne`/`insertMany`, `updateOne`/`updateMany`, `replaceOne`, `deleteOne`/`deleteMany`, `findOneAndUpdate`/`findOneAndReplace`/`findOneAndDelete`, `createIndex`, `dropIndex`, `drop`; database-level `getCollectionNames`/`listCollections`, `createCollection`, `dropDatabase`, `version`, `stats`. Anything else goes through `db.runCommand({...})` or `db.adminCommand({...})`. Unlisted shell methods (for example `distinct` or `getUsers`) return an unsupported-method error.
+### Collection references
 
-## Troubleshooting
+`db.users`, `db["users"]`, or `db.getCollection("users")`. Use `getCollection` for names with dots
+or spaces, names starting with a digit, and names that collide with a database method: `db.stats`
+and `db["stats"]` both reach the method, because the shell cannot tell which you meant.
 
-**Connection refused**: Check MongoDB is running (`brew services start mongodb-community`), verify host/port in `mongod.conf`, check `bindIp` setting.
+### Cursors
 
-**Auth failed**: The error names the database TablePro authenticated against. If that is not where your user lives, set **Auth Database** in the Advanced section. Otherwise verify username, password, and auth mechanism. The MQL editor does not parse `db.getUsers()` or `db.createUser()`; inspect users with `db.runCommand({"usersInfo": 1})` or manage them in mongosh.
+`find()` and `aggregate()` return a cursor and touch nothing until something reads it. Chain
+`sort`, `skip`, `limit`, `projection`, `hint`, `collation`, `maxTimeMS`, `batchSize` and
+`allowDiskUse` onto it, then read it with `forEach`, `map`, `toArray`, `hasNext`/`next`, `itcount`,
+`count` or `explain`. On an aggregation, `sort`, `skip` and `limit` become `$sort`, `$skip` and
+`$limit` stages appended to the pipeline.
 
-**Timeout**: Verify host/port, check network and firewall, whitelist your IP in MongoDB Atlas.
+A modifier after the cursor has started throws, the same as mongosh. Split it into two statements,
+or set the modifier before the first read.
 
-**A collection is slow to open**: A sort or a filter on a field with no index makes MongoDB read every document, even when you only ask for 20 rows, because it has to look at all of them to find which 20 come first. Check the Structure tab for an index on the field you sorted or filtered by, and add one if it is missing. `Cmd+.` stops the query on the server.
+### Write options
 
-**The row total shows `~`**: That is an estimate read from collection metadata, which is instant. TablePro caps the automatic count at 5 seconds and keeps the estimate if the server takes longer, so browsing is never held up by counting. **Count exactly** runs a real count with your configured query timeout. Views and time-series collections have no metadata count, so their estimate can be missing.
+`updateOne`, `updateMany`, `replaceOne`, `findOneAndUpdate` and the delete calls take an options
+document, and `upsert`, `arrayFilters`, `hint`, `collation` and `returnDocument` reach the server. A
+write returns the object mongosh returns: `matchedCount`, `modifiedCount`, `upsertedCount` and
+`upsertedId` for an update, `deletedCount` for a delete, `insertedId` for an insert.
+
+```javascript
+db.users.updateOne({_id: 1}, {$set: {active: true}}, {upsert: true})
+```
+
+### Methods
+
+Collection: `find`, `findOne`, `aggregate`, `countDocuments`/`count`, `estimatedDocumentCount`,
+`distinct`, `insertOne`/`insertMany`/`insert`, `updateOne`/`updateMany`/`update`, `replaceOne`,
+`save`, `deleteOne`/`deleteMany`/`remove`, `findOneAndUpdate`/`findOneAndReplace`/`findOneAndDelete`,
+`bulkWrite`, `createIndex`/`createIndexes`, `dropIndex`/`dropIndexes`, `getIndexes`,
+`hideIndex`/`unhideIndex`, `drop`, `renameCollection`, `stats`, `dataSize`, `storageSize`,
+`totalIndexSize`, `totalSize`, `isCapped`, `validate`, `explain`.
+
+Database: `getCollection`, `getSiblingDB`, `getCollectionNames`, `getCollectionInfos`,
+`createCollection`, `dropDatabase`, `stats`, `version`, `serverStatus`, `hostInfo`, `currentOp`,
+`killOp`, `runCommand`, `adminCommand`. `use <name>`, `show dbs` and `show collections` work as
+typed. Anything with no method of its own goes through `db.runCommand({…})`.
+
+`Cmd+Shift+F` reformats by nesting depth. Autocomplete offers collections, collection methods,
+cursor methods after `find()`, nested field paths such as `address.city`, and the `$` operators
+valid at the cursor; see [Autocomplete](/features/autocomplete#mongodb). For a query plan, chain
+`.explain("executionStats")` onto the cursor.
+
+## SSL/TLS
+
+New connections default to **Disabled**, and the driver has no TLS fallback: **Preferred** behaves exactly as **Required**, which is what the SSL pane warns about. For an unencrypted local instance use **Disabled** or [SSH tunneling](/connections/ssh-tunneling). See [SSL/TLS](/connections/ssl).
 
 ## Limitations
 
+- A row with no `_id` cannot be updated or deleted. The save is skipped rather than matched on the remaining fields. Keep `_id` in the projection so every row carries one.
+- `_id` is read-only in the grid, and left out of an insert entirely so the server generates it. To choose your own, insert with `db.collection.insertOne({…})`.
 - Transactions are not exposed. Statements always run standalone, on any topology.
-- The grid schema is inferred by sampling documents, not read from a validator.
-- GridFS buckets are not browsable.
-- Change streams are unsupported.
+- Nested paths filter but do not sort. Sorting works on the grid's own columns.
+- **same element** covers a field one array deep. A path through an array inside another array needs nested `$elemMatch`, so those filter with dot notation only.
+- GridFS buckets are not browsable, and change streams are unsupported.
+- A script that loops without touching the database cannot be stopped: JavaScriptCore has no public way to interrupt one. `Cmd+.` stops anything that reads, writes or prints, which covers every query. A script silent for 120 seconds is abandoned and the shell restarts.
+- Field names that look like integers (`"0"`, `"12"`) sort ahead of the rest in a document literal, which is what JavaScript does with them.
+
+## Troubleshooting
+
+**Connection refused**: check MongoDB is running (`brew services start mongodb-community`) and that the port and `bindIp` in `mongod.conf` match what you entered.
+
+**Authentication fails on connect**: the error names the database that was authenticated against. If your user does not live there, set **Auth Database** in Advanced; otherwise check the username, password, and auth mechanism. The MQL editor does not parse `db.getUsers()` or `db.createUser()`; read users with `db.runCommand({"usersInfo": 1})`.
+
+**Timeout**: for Atlas, add your IP to the cluster's access list first. Otherwise verify host and port and check the network and firewall.
+
+**A collection is slow to open**: a sort or filter on an unindexed field makes MongoDB read every document, even for 20 rows. Check the Structure tab for an index on that field. `Cmd+.` stops the query on the server.
+
+**The row total shows `~`**: that is the instant estimate from collection metadata. The automatic count is capped at 5 seconds and keeps the estimate if the server is slower; **Count Exactly** runs a real count against your query timeout. Views and time-series collections have no metadata count, so their estimate can be missing altogether.

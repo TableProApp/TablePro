@@ -253,11 +253,6 @@ final class VimTextBufferAdapter: VimTextBuffer {
         guard clampedRange != currentRange else { return }
 
         textView.selectionManager.setSelectedRange(clampedRange)
-        // CodeEditTextView's setSelectedRange (singular) doesn't call setNeedsDisplay,
-        // so selection highlights (drawn in draw(_:)) won't render without this.
-        if clampedRange.length > 0 {
-            textView.needsDisplay = true
-        }
         textView.scrollToRange(clampedRange)
     }
 

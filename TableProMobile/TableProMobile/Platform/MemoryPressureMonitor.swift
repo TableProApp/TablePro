@@ -14,7 +14,7 @@ final class MemoryPressureMonitor {
 
     private(set) var currentLevel: Level = .normal
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "MemoryPressureMonitor")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "MemoryPressureMonitor")
     private var source: DispatchSourceMemoryPressure?
 
     private init() {}
@@ -27,7 +27,7 @@ final class MemoryPressureMonitor {
             queue: .global(qos: .utility)
         )
 
-        newSource.setEventHandler { [weak self] in
+        newSource.setEventHandler { @Sendable [weak self] in
             let event = newSource.data
             let level: Level
             if event.contains(.critical) {

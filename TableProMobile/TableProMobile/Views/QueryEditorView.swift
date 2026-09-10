@@ -1,11 +1,12 @@
-import ActivityKit
 import os
 import SwiftUI
 import TableProDatabase
 import TableProModels
+import TableProQuery
 
 struct QueryEditorView: View {
     @Environment(ConnectionCoordinator.self) private var coordinator
+    @Environment(AppState.self) private var appState
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryEditorView")
 
@@ -127,6 +128,7 @@ struct QueryEditorView: View {
             Button {
                 if isExecuting {
                     executeTask?.cancel()
+                    viewModel.stop()
                     Task { try? await session?.driver.cancelCurrentQuery() }
                 } else {
                     executeTask = Task { await executeQuery() }
@@ -160,7 +162,7 @@ struct QueryEditorView: View {
             }
 
             if resultRowCount > 0 {
-                Text(verbatim: "\(resultRowCount) rows")
+                Text("\(resultRowCount) rows")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -315,7 +317,8 @@ struct QueryEditorView: View {
                 Button(format.rawValue) {
                     let text = ClipboardExporter.exportRow(
                         columns: columns, row: row,
-                        format: format
+                        format: format,
+                        databaseType: databaseType, driver: coordinator.session?.driver
                     )
                     ClipboardExporter.copyToClipboard(text)
                 }
@@ -352,7 +355,8 @@ struct QueryEditorView: View {
                         Button {
                             shareText = ClipboardExporter.exportRows(
                                 columns: viewModel.columns, rows: viewModel.legacyRows,
-                                format: format
+                                format: format,
+                                databaseType: databaseType, driver: coordinator.session?.driver
                             )
                             showShareSheet = true
                         } label: {
@@ -365,7 +369,8 @@ struct QueryEditorView: View {
                         Button {
                             let text = ClipboardExporter.exportRows(
                                 columns: viewModel.columns, rows: viewModel.legacyRows,
-                                format: format
+                                format: format,
+                                databaseType: databaseType, driver: coordinator.session?.driver
                             )
                             ClipboardExporter.copyToClipboard(text)
                         } label: {
@@ -391,17 +396,11 @@ struct QueryEditorView: View {
 
     // MARK: - Execution
 
-    private func isWriteQuery(_ sql: String) -> Bool {
-        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        let writeKeywords = ["INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "TRUNCATE", "REPLACE"]
-        return writeKeywords.contains(where: { trimmed.hasPrefix($0) })
-    }
-
     private func executeQuery() async {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        if isWriteQuery(trimmed) {
+        if SQLWriteClassifier.isWriteQuery(trimmed, databaseType: databaseType) {
             switch safeModeLevel.writePermission {
             case .blocked:
                 showWriteBlockedAlert = true
@@ -425,98 +424,72 @@ struct QueryEditorView: View {
         isExecuting = true
         let startedAt = Date()
         executionStartTime = startedAt
-        let activity = startQueryActivity(trimmed: trimmed, startedAt: startedAt)
-        let progressUpdater = startActivityProgressUpdater(activity: activity, startedAt: startedAt)
-        defer {
-            progressUpdater.cancel()
-            isExecuting = false
-            executionStartTime = nil
-            endQueryActivity(activity, startedAt: startedAt)
-        }
         appError = nil
 
-        await viewModel.run(driver: session.driver, query: trimmed)
+        let token = await appState.queryActivities.start(
+            connectionId: connectionId,
+            connectionName: coordinator.displayName,
+            query: trimmed,
+            startedAt: startedAt
+        )
 
-        if case .error(let err) = viewModel.phase {
-            appError = err
-            hapticError.toggle()
+        guard !Task.isCancelled else {
+            recordHistory(query: trimmed, outcome: .stopped, errorMessage: QueryExecutionOutcome.stopped.historyMessage)
+            isExecuting = false
+            executionStartTime = nil
+            await appState.queryActivities.end(token: token, outcome: .stopped)
             return
         }
 
-        executionTime = viewModel.executionTime
-        hapticSuccess.toggle()
+        let progressUpdater = startActivityProgressUpdater(token: token)
 
-        IOSAnalyticsProvider.shared.markFirstQueryExecuted()
+        await viewModel.run(driver: session.driver, query: trimmed)
 
-        let item = QueryHistoryItem(query: trimmed, connectionId: connectionId)
-        coordinator.addHistoryItem(item)
+        progressUpdater.cancel()
+        let phase = viewModel.phase
+        let outcome = QueryExecutionOutcome(phase: phase)
+
+        if case .error(let err) = phase {
+            appError = err
+            hapticError.toggle()
+            recordHistory(query: trimmed, outcome: outcome, errorMessage: err.localizedDescription)
+        } else {
+            executionTime = viewModel.executionTime
+            if outcome == .completed {
+                hapticSuccess.toggle()
+                IOSAnalyticsProvider.shared.markFirstQueryExecuted()
+            }
+            recordHistory(query: trimmed, outcome: outcome, errorMessage: outcome.historyMessage)
+        }
+
+        isExecuting = false
+        executionStartTime = nil
+
+        await appState.queryActivities.end(token: token, outcome: outcome.activityOutcome)
+    }
+
+    private func recordHistory(query: String, outcome: QueryExecutionOutcome, errorMessage: String?) {
+        coordinator.addHistoryItem(
+            QueryHistoryItem(
+                query: query,
+                connectionId: connectionId,
+                wasSuccessful: outcome == .completed,
+                errorMessage: errorMessage
+            )
+        )
     }
 
     // MARK: - Live Activity
 
-    private func startQueryActivity(trimmed: String, startedAt: Date) -> Activity<QueryActivityAttributes>? {
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return nil }
-        let preview: String = AppPreferences.hidesQueryPreviewInActivity
-            ? String(localized: "Running query")
-            : String(trimmed.prefix(60))
-        let attributes = QueryActivityAttributes(
-            connectionId: coordinator.connection.id,
-            connectionName: coordinator.displayName,
-            queryPreview: preview
-        )
-        let initialState = QueryActivityAttributes.ContentState(
-            startedAt: startedAt,
-            endedAt: nil,
-            rowsStreamed: 0
-        )
-        // 5-minute stale window: if the app crashes mid-query, iOS marks the
-        // activity stale instead of showing a forever-ticking timer.
-        return try? Activity.request(
-            attributes: attributes,
-            content: .init(state: initialState, staleDate: startedAt.addingTimeInterval(5 * 60))
-        )
-    }
-
-    /// Polls the streaming row count once per second while the query runs and pushes
-    /// `activity.update(state:)` only when the count changes. The system rate-limits
-    /// activity updates anyway, and the lock screen card just needs a fresh number
-    /// when the user wakes the device mid-query - it does not need real-time ticks
-    /// for the count (the elapsed time ticks itself via `Text(timerInterval:)`).
-    private func startActivityProgressUpdater(
-        activity: Activity<QueryActivityAttributes>?,
-        startedAt: Date
-    ) -> Task<Void, Never> {
-        Task { [weak viewModel] in
-            guard let activity else { return }
-            var lastReportedCount = 0
+    private func startActivityProgressUpdater(token: QueryExecutionToken?) -> Task<Void, Never> {
+        let controller = appState.queryActivities
+        return Task { [weak viewModel] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
                 if Task.isCancelled { return }
-                let count = viewModel?.legacyRows.count ?? 0
-                guard count != lastReportedCount else { continue }
-                lastReportedCount = count
-                let state = QueryActivityAttributes.ContentState(
-                    startedAt: startedAt,
-                    endedAt: nil,
-                    rowsStreamed: count
-                )
-                await activity.update(.init(
-                    state: state,
-                    staleDate: startedAt.addingTimeInterval(5 * 60)
-                ))
+                guard let count = viewModel?.legacyRows.count else { return }
+                await controller.update(token: token, rowsStreamed: count)
             }
-        }
-    }
-
-    private func endQueryActivity(_ activity: Activity<QueryActivityAttributes>?, startedAt: Date) {
-        guard let activity else { return }
-        let final = QueryActivityAttributes.ContentState(
-            startedAt: startedAt,
-            endedAt: Date(),
-            rowsStreamed: viewModel.legacyRows.count
-        )
-        Task {
-            await activity.end(.init(state: final, staleDate: nil), dismissalPolicy: .immediate)
         }
     }
 }

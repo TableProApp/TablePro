@@ -74,6 +74,8 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "SQL Server"
+
+    static let supportsRenameTable = true
     static let databaseDisplayName = "SQL Server"
     static let iconName = "mssql-icon"
     static let defaultPort = 1433
@@ -84,7 +86,8 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
             defaultValue: "sql",
             fieldType: .dropdown(options: [
                 .init(value: "sql", label: "SQL Server Authentication"),
-                .init(value: "windows", label: "Windows Authentication (Kerberos)")
+                .init(value: "windows", label: "Windows Authentication (Kerberos)"),
+                .init(value: "entra", label: String(localized: "Microsoft Entra ID"))
             ]),
             section: .authentication
         ),
@@ -110,7 +113,10 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
             )
         ),
         ConnectionField(id: "mssqlSchema", label: "Schema", placeholder: "dbo", defaultValue: "dbo")
-    ]
+    ] + EntraAuthFields.standard(
+        gatedBy: MSSQLConnectionOptions.AdditionalFieldKey.authMethod,
+        value: MSSQLAuthMethod.entra.rawValue
+    )
 
     // MARK: - UI/Capability Metadata
 
@@ -181,12 +187,19 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .explicit,
         paginationStyle: .offsetFetch,
-        autoLimitStyle: .top
+        autoLimitStyle: .top,
+        caseSensitivityStyle: .collationDefined
     )
 
     static let supportsDropDatabase = true
+    static let supportsDropSchema = true
     static let supportsTriggers = true
+    static let supportsRoutines = true
+    static let supportsDatabaseTriggerBrowse = true
     static let supportsTriggerEditing = true
+    static let supportsCheckConstraints = true
+    static let supportsCheckConstraintEditing = true
+    static let supportsGeneratedColumns = false
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         MSSQLPluginDriver(config: config)
@@ -206,6 +219,11 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// rejects explicit values for IDENTITY columns unless IDENTITY_INSERT is ON,
     /// and the value the user typed is server-allocated anyway.
     var identityColumnsByTable: [String: Set<String>] = [:]
+
+    /// Computed columns observed during a column fetch, keyed by table name. SQL Server rejects an
+    /// explicit value for one the same way it does for IDENTITY: "The column cannot be modified
+    /// because it is either a computed column or is the result of a UNION operator."
+    var computedColumnsByTable: [String: Set<String>] = [:]
     let identityCacheLock = NSLock()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MSSQLPluginDriver")
@@ -231,6 +249,8 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .multiSchema,
             .cancelQuery,
             .batchExecute,
+            .schemaCompare,
+            .dataCompare,
         ]
     }
 
@@ -277,7 +297,8 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         do {
             let kerberosCachePath = try await acquireKerberosTicketIfNeeded(authMethod: authMethod)
             let kerberosServicePrincipal = try await resolveKerberosServicePrincipal(authMethod: authMethod)
-            let options = MSSQLConnectionOptions(
+            let fedAuthToken = try await resolveEntraTokenIfNeeded(authMethod: authMethod)
+            var options = MSSQLConnectionOptions(
                 host: config.host,
                 port: config.port,
                 user: config.username,
@@ -289,6 +310,9 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 kerberosCachePath: kerberosCachePath,
                 kerberosServicePrincipal: kerberosServicePrincipal
             )
+            options.certificateVerification = MSSQLSSLMapping.certificateVerification(for: config.ssl.mode)
+            options.caCertificatePath = config.ssl.caCertificatePath
+            options.fedAuthToken = fedAuthToken
             conn = FreeTDSConnection(options: options)
             try await conn.connect()
         } catch let error as MSSQLCoreError {
@@ -342,6 +366,13 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             Self.logger.warning("Kerberos realm resolution timed out; using the default service principal")
             return nil
         }
+    }
+
+    /// `EntraOAuthError` deliberately escapes unwrapped. The connection form checks for it to
+    /// offer a browser sign-in, and wrapping it in a plugin error would erase that.
+    private func resolveEntraTokenIfNeeded(authMethod: MSSQLAuthMethod) async throws -> String? {
+        guard authMethod == .entra else { return nil }
+        return try await EntraCredentialResolver.shared.accessToken(fields: config.additionalFields)
     }
 
     private func acquireKerberosTicketIfNeeded(authMethod: MSSQLAuthMethod) async throws -> String? {
@@ -471,6 +502,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         var nonDefaultColumns: [String] = []
         var parameters: [PluginCellValue] = []
         let identityColumns = cachedIdentityColumns(for: table)
+        let computedColumns = cachedComputedColumns(for: table)
 
         for (index, value) in values.enumerated() {
             if value.asText == "__DEFAULT__" { continue }
@@ -480,6 +512,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             // an explicit value fail unless `SET IDENTITY_INSERT <table> ON` was issued,
             // so always omit them and let the server assign the next value.
             if identityColumns.contains(columnName) { continue }
+            if computedColumns.contains(columnName) { continue }
             nonDefaultColumns.append("[\(columnName.replacingOccurrences(of: "]", with: "]]"))]")
             parameters.append(value)
         }
@@ -571,16 +604,26 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Streaming
 
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        try await boundedQueryFromStream(query: query, rowCap: rowCap)
+    }
+
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         guard let conn = freeTDSConn else {
             return AsyncThrowingStream { $0.finish(throwing: MSSQLPluginError.notConnected) }
         }
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        return PluginRowStream.make { continuation, abort in
             let streamTask = Task {
                 let coreStream = AsyncThrowingStream<MSSQLStreamElement, Error> { coreContinuation in
+                    /// A plain `Task {}` inherits context but is not a child, so cancelling the
+                    /// outer task never reaches this one. The abort closure is what does.
                     Task {
                         do {
-                            try await conn.streamQuery(query, continuation: coreContinuation)
+                            try await conn.streamQuery(
+                                query,
+                                isAborted: { abort.isAborted },
+                                continuation: coreContinuation
+                            )
                         } catch let error as MSSQLCoreError {
                             coreContinuation.finish(throwing: MSSQLPluginError(coreError: error))
                         } catch {
@@ -611,9 +654,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { @Sendable _ in
-                streamTask.cancel()
-            }
+            abort.onAbort { streamTask.cancel() }
         }
     }
 

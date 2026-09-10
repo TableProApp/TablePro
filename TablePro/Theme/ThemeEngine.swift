@@ -85,6 +85,19 @@ internal final class ThemeEngine {
     /// Cached data grid fonts
     private(set) var dataGridFonts: DataGridFontCacheResolved
 
+    // MARK: - Stored Value Font
+
+    /// The font every control that shows or edits a stored value uses, so one value reads the same in
+    /// the grid cell, its inline editor, the row inspector and a pop-out window. It is the data grid
+    /// font today; a viewer that also wears the editor's colours and syntax palette takes
+    /// `editorFonts` instead.
+    var valueFont: NSFont { dataGridFonts.regular }
+
+    var valueFontSwiftUI: Font { Font(valueFont) }
+
+    /// The emphasised variant, for the key half of a key/value pair.
+    var valueFontEmphasizedSwiftUI: Font { Font(dataGridFonts.medium) }
+
     // MARK: - Available Themes
 
     private(set) var availableThemes: [ThemeDefinition]
@@ -93,13 +106,14 @@ internal final class ThemeEngine {
 
     /// These are not theme properties but are needed by makeEditorTheme()
     @ObservationIgnored var highlightCurrentLine: Bool = true
+    @ObservationIgnored var highlightCurrentStatement: Bool = true
     @ObservationIgnored var showLineNumbers: Bool = true
     @ObservationIgnored var tabWidth: Int = 4
     @ObservationIgnored var wordWrap: Bool = false
 
     // MARK: - Private
 
-    @ObservationIgnored private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeEngine")
+    @ObservationIgnored nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeEngine")
     @ObservationIgnored private var accessibilityObserver: NSObjectProtocol?
     @ObservationIgnored private var lastAccessibilityScale: CGFloat = 1.0
 
@@ -254,11 +268,13 @@ internal final class ThemeEngine {
 
     func updateEditorSettings(
         highlightCurrentLine: Bool,
+        highlightCurrentStatement: Bool,
         showLineNumbers: Bool,
         tabWidth: Int,
         wordWrap: Bool
     ) {
         self.highlightCurrentLine = highlightCurrentLine
+        self.highlightCurrentStatement = highlightCurrentStatement
         self.showLineNumbers = showLineNumbers
         self.tabWidth = tabWidth
         self.wordWrap = wordWrap
@@ -276,8 +292,11 @@ internal final class ThemeEngine {
         let numberAttr = EditorTheme.Attribute(color: srgb(c.number))
         let variableAttr = EditorTheme.Attribute(color: srgb(c.null))
         let typeAttr = EditorTheme.Attribute(color: srgb(c.type))
+        let operatorAttr = EditorTheme.Attribute(color: srgb(c.operator))
+        let functionAttr = EditorTheme.Attribute(color: srgb(c.function))
 
         let lineHighlight: NSColor = highlightCurrentLine ? c.currentLineHighlight : .clear
+        let statementHighlight: NSColor = highlightCurrentStatement ? resolvedStatementHighlight(c) : .clear
 
         return EditorTheme(
             text: textAttr,
@@ -285,6 +304,7 @@ internal final class ThemeEngine {
             invisibles: EditorTheme.Attribute(color: srgb(c.invisibles)),
             background: srgb(c.background),
             lineHighlight: srgb(lineHighlight),
+            statementHighlight: srgb(statementHighlight),
             selection: srgb(c.selection),
             keywords: keywordAttr,
             commands: keywordAttr,
@@ -295,8 +315,24 @@ internal final class ThemeEngine {
             numbers: numberAttr,
             strings: stringAttr,
             characters: stringAttr,
-            comments: commentAttr
+            comments: commentAttr,
+            operators: operatorAttr,
+            functions: functionAttr
         )
+    }
+
+    /// The band's colour, corrected for a theme that never declared one.
+    ///
+    /// `EditorThemeColors` falls back to its light defaults for any key a theme omits, and every theme written before
+    /// this key existed omits it. On a dark custom theme that fallback is a near-black wash on a near-black
+    /// background: invisible, and indistinguishable from the feature being broken. Deriving the band from the
+    /// theme's own text colour instead is what the gutter glyph already does.
+    private func resolvedStatementHighlight(_ colors: ResolvedEditorColors) -> NSColor {
+        let declared = colors.currentStatementHighlight
+        let backgroundIsDark = (colors.background.usingColorSpace(.deviceRGB)?.brightnessComponent ?? 1) < 0.5
+        let bandIsDark = (declared.usingColorSpace(.deviceRGB)?.brightnessComponent ?? 0) < 0.5
+        guard backgroundIsDark, bandIsDark else { return declared }
+        return colors.text.withAlphaComponent(declared.alphaComponent)
     }
 
     // MARK: - Appearance

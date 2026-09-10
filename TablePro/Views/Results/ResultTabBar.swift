@@ -35,7 +35,8 @@ struct ResultTabBar: View {
             isActive: rs.id == (activeResultSetId ?? resultSets.last?.id),
             onActivate: { activeResultSetId = rs.id },
             onTogglePin: { onTogglePin?(rs.id) },
-            onClose: rs.isPinned ? nil : { onClose?(rs.id) }
+            onClose: rs.isPinned ? nil : { onClose?(rs.id) },
+            revealsStatement: rs.statementAnchor != nil
         )
         .help(provenance(of: rs))
         .contextMenu { menuItems(for: rs) }
@@ -82,6 +83,9 @@ private struct ResultTab: View {
     let onActivate: () -> Void
     let onTogglePin: () -> Void
     let onClose: (() -> Void)?
+    /// Whether choosing this result also takes the reader to the statement that produced it, which VoiceOver has no
+    /// other way to learn: the caret moves in a view the tab has no relationship to.
+    let revealsStatement: Bool
 
     @State private var isHovering = false
 
@@ -98,7 +102,12 @@ private struct ResultTab: View {
         pill
             .accessibilityLabel(accessibilityLabel)
             .accessibilityAddTraits(isActive ? [.isSelected] : [])
+            .accessibilityHint(revealsStatement && !isActive ? Text(revealHint) : Text(""))
             .accessibilityAction(named: Text(pinActionTitle), onTogglePin)
+    }
+
+    private var revealHint: String {
+        String(localized: "Moves the editor cursor to the statement that produced this result")
     }
 
     private var pill: some View {

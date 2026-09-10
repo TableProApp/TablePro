@@ -10,13 +10,7 @@ import CodeEditTextView
 
 extension MinimapView: TextSelectionManagerDelegate {
     public var visibleTextRange: NSRange? {
-        let minY = max(visibleRect.minY, 0)
-        let maxY = min(visibleRect.maxY, layoutManager?.estimatedHeight() ?? 3.0)
-        guard let minYLine = layoutManager?.textLineForPosition(minY),
-              let maxYLine = layoutManager?.textLineForPosition(maxY) else {
-            return nil
-        }
-        return NSRange(start: minYLine.range.location, end: maxYLine.range.max)
+        layoutManager?.textRange(covering: visibleRect)
     }
 
     public func setNeedsDisplay() {

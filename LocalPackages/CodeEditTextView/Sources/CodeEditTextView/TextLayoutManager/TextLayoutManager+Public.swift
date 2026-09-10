@@ -50,6 +50,26 @@ extension TextLayoutManager {
         }
     }
 
+    /// The range of text laid out inside a rect.
+    ///
+    /// This is the geometric question every rect-driven consumer has to ask: given a rect the view has been asked
+    /// to draw, hit test or measure, which text does it cover? Callers that answer it from the *viewport* instead
+    /// are wrong: AppKit calls `draw(_:)` with rects outside the visible area under responsive scrolling and caches
+    /// the result, so a viewport-derived answer bakes the scroll position into the drawing.
+    ///
+    /// - Parameter rect: The rect to find text for, in the text view's coordinate space.
+    /// - Returns: The range the rect covers, or `nil` when the rect lies past the end of the document.
+    public func textRange(covering rect: CGRect) -> NSRange? {
+        let minY = max(rect.minY, 0)
+        let maxY = min(rect.maxY, estimatedHeight())
+        guard maxY >= minY,
+              let firstLine = textLineForPosition(minY),
+              let lastLine = textLineForPosition(maxY) else {
+            return nil
+        }
+        return NSRange(start: firstLine.range.location, end: lastLine.range.max)
+    }
+
     /// Finds text line and returns it if found.
     /// Lines are 0 indexed.
     /// - Parameter index: The line to find.
@@ -232,10 +252,16 @@ extension TextLayoutManager {
         let realRangeStart = textStorage.rangeOfComposedCharacterSequence(at: range.lowerBound)
         let realRangeEnd = textStorage.rangeOfComposedCharacterSequence(at: range.upperBound - 1)
 
+        // Clamp to this line before rebasing. The requested range is document-absolute, so on every line after
+        // the first, subtracting the line's own location from it produces a negative start and the fragment
+        // lookup below matches nothing. That silently reduced any multi-line range to its first line.
+        let characterAlignedRange = NSRange(start: realRangeStart.lowerBound, end: realRangeEnd.upperBound)
+        guard let lineIntersection = characterAlignedRange.intersection(line.range) else { return [] }
+
         // Fragments are relative to the line
         let relativeRange = NSRange(
-            start: realRangeStart.lowerBound - line.range.location,
-            end: realRangeEnd.upperBound - line.range.location
+            start: lineIntersection.location - line.range.location,
+            end: lineIntersection.max - line.range.location
         )
 
         var rects: [CGRect] = []

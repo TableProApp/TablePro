@@ -5,6 +5,7 @@
 
 import AppKit
 import Combine
+import os
 import SwiftUI
 
 enum FilterCompletionSource {
@@ -40,7 +41,7 @@ struct FilterValueTextField: NSViewRepresentable {
     var onSubmit: () -> Void = {}
     var onCancel: () -> Void = {}
 
-    static func suggestions(for input: String, in completions: [String]) -> [String] {
+    nonisolated static func suggestions(for input: String, in completions: [String]) -> [String] {
         guard !input.isEmpty else { return [] }
         let needle = input.lowercased()
         let matches = completions.filter { $0.lowercased().hasPrefix(needle) }
@@ -50,7 +51,7 @@ struct FilterValueTextField: NSViewRepresentable {
         return matches
     }
 
-    static func shouldOfferTokenCompletion(fieldText: String, cursor: Int) -> Bool {
+    nonisolated static func shouldOfferTokenCompletion(fieldText: String, cursor: Int) -> Bool {
         let nsText = fieldText as NSString
         guard nsText.length > 0 else { return false }
         let clamped = min(max(cursor, 0), nsText.length)
@@ -59,27 +60,28 @@ struct FilterValueTextField: NSViewRepresentable {
         return !CharacterSet.whitespaces.contains(scalar)
     }
 
-    static func splice(into current: String, range: NSRange, insertText: String) -> (text: String, caret: Int)? {
+    nonisolated static func splice(into current: String, range: NSRange, insertText: String) -> (text: String, caret: Int)? {
         let ns = current as NSString
         guard range.location >= 0, range.location + range.length <= ns.length else { return nil }
         let caret = range.location + (insertText as NSString).length
         return (ns.replacingCharacters(in: range, with: insertText), caret)
     }
 
-    enum SuggestionKeyOutcome: Equatable {
+    enum SuggestionCommandOutcome: Equatable {
         case moveSelection(Int)
         case accept(submitting: Bool)
-        case dismiss
         case passThrough
     }
 
-    static func suggestionKeyOutcome(for key: KeyCode?, submitsOnAccept: Bool) -> SuggestionKeyOutcome {
-        switch key {
-        case .downArrow: return .moveSelection(1)
-        case .upArrow: return .moveSelection(-1)
-        case .return: return .accept(submitting: submitsOnAccept)
-        case .tab: return .accept(submitting: false)
-        case .escape: return .dismiss
+    nonisolated static func suggestionCommandOutcome(
+        for commandSelector: Selector,
+        submitsOnAccept: Bool
+    ) -> SuggestionCommandOutcome {
+        switch commandSelector {
+        case #selector(NSResponder.moveDown(_:)): return .moveSelection(1)
+        case #selector(NSResponder.moveUp(_:)): return .moveSelection(-1)
+        case #selector(NSResponder.insertNewline(_:)): return .accept(submitting: submitsOnAccept)
+        case #selector(NSResponder.insertTab(_:)): return .accept(submitting: false)
         default: return .passThrough
         }
     }
@@ -90,7 +92,7 @@ struct FilterValueTextField: NSViewRepresentable {
         case closeBar
     }
 
-    static func escapeOutcome(popupVisible: Bool, recentlyDismissedPopup: Bool) -> EscapeOutcome {
+    nonisolated static func escapeOutcome(popupVisible: Bool, recentlyDismissedPopup: Bool) -> EscapeOutcome {
         if popupVisible { return .dismissPopup }
         if recentlyDismissedPopup { return .consume }
         return .closeBar
@@ -170,9 +172,8 @@ struct FilterValueTextField: NSViewRepresentable {
 
         private let suggestionState = SuggestionState()
         private var suggestionPopover: NSPopover?
-        private var keyMonitor: Any?
         private var focusState = FilterFocusState()
-        private var windowKeyObserver: NSObjectProtocol?
+        private let windowKeyObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
         private var latestReplacementRange: NSRange?
         private var completionGeneration = 0
         private var escapeDismissedPopup = false
@@ -224,7 +225,7 @@ struct FilterValueTextField: NSViewRepresentable {
 
         func startObservingWindowKeyStatus(for window: NSWindow) {
             stopObservingWindowKeyStatus()
-            windowKeyObserver = NotificationCenter.default.addObserver(
+            let observer = NotificationCenter.default.addObserver(
                 forName: NSWindow.didResignKeyNotification,
                 object: window,
                 queue: .main
@@ -233,19 +234,17 @@ struct FilterValueTextField: NSViewRepresentable {
                     self?.handleResignedFirstResponder()
                 }
             }
+            windowKeyObserver.withLockUnchecked { $0 = observer }
         }
 
         func stopObservingWindowKeyStatus() {
-            guard let token = windowKeyObserver else { return }
+            guard let token = windowKeyObserver.withLockUnchecked({ $0 }) else { return }
             NotificationCenter.default.removeObserver(token)
-            windowKeyObserver = nil
+            windowKeyObserver.withLockUnchecked { $0 = nil }
         }
 
         deinit {
-            if let token = keyMonitor {
-                NSEvent.removeMonitor(token)
-            }
-            if let token = windowKeyObserver {
+            if let token = windowKeyObserver.withLockUnchecked({ $0 }) {
                 NotificationCenter.default.removeObserver(token)
             }
         }
@@ -266,14 +265,16 @@ struct FilterValueTextField: NSViewRepresentable {
             textView: NSTextView,
             doCommandBy commandSelector: Selector
         ) -> Bool {
-            if commandSelector != #selector(NSResponder.cancelOperation(_:)) {
-                escapeDismissedPopup = false
+            if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+                handleEscape()
+                return true
+            }
+            escapeDismissedPopup = false
+
+            if suggestionPopover != nil, handleSuggestionCommand(commandSelector) {
+                return true
             }
             if commandSelector == #selector(NSResponder.insertNewline(_:)) {
-                if suggestionPopover != nil {
-                    acceptCurrentSelection(submitting: submitsOnAccept)
-                    return true
-                }
                 onSubmit()
                 return true
             }
@@ -282,22 +283,38 @@ struct FilterValueTextField: NSViewRepresentable {
                 text.wrappedValue = textView.string
                 return true
             }
-            if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
-                switch FilterValueTextField.escapeOutcome(
-                    popupVisible: suggestionPopover != nil,
-                    recentlyDismissedPopup: escapeDismissedPopup
-                ) {
-                case .dismissPopup:
-                    escapeDismissedPopup = true
-                    dismissSuggestions()
-                case .consume:
-                    escapeDismissedPopup = false
-                case .closeBar:
-                    onCancel()
-                }
-                return true
-            }
             return false
+        }
+
+        private func handleSuggestionCommand(_ commandSelector: Selector) -> Bool {
+            switch FilterValueTextField.suggestionCommandOutcome(
+                for: commandSelector,
+                submitsOnAccept: submitsOnAccept
+            ) {
+            case .moveSelection(let delta):
+                moveSelection(by: delta)
+                return true
+            case .accept(let submitting):
+                acceptCurrentSelection(submitting: submitting)
+                return true
+            case .passThrough:
+                return false
+            }
+        }
+
+        private func handleEscape() {
+            switch FilterValueTextField.escapeOutcome(
+                popupVisible: suggestionPopover != nil,
+                recentlyDismissedPopup: escapeDismissedPopup
+            ) {
+            case .dismissPopup:
+                escapeDismissedPopup = true
+                dismissSuggestions()
+            case .consume:
+                escapeDismissedPopup = false
+            case .closeBar:
+                onCancel()
+            }
         }
 
         private func updateSuggestions(for textField: NSTextField) {
@@ -382,6 +399,7 @@ struct FilterValueTextField: NSViewRepresentable {
         private func showPopover(for textField: NSTextField, items: [SuggestionItem]) {
             suggestionState.items = items
             suggestionState.selectedIndex = 0
+            announceSuggestions(count: items.count, on: textField)
 
             let bounds = textField.bounds
             let state = suggestionState
@@ -402,45 +420,23 @@ struct FilterValueTextField: NSViewRepresentable {
                 }
             }
             suggestionPopover = popover
-            installKeyMonitor()
         }
 
-        private func installKeyMonitor() {
-            removeKeyMonitor()
-            keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                nonisolated(unsafe) let nsEvent = event
-                return MainActor.assumeIsolated {
-                    guard let self,
-                          self.suggestionPopover != nil,
-                          let textField = self.textField,
-                          nsEvent.window === textField.window,
-                          nsEvent.window?.firstResponder === textField.currentEditor()
-                    else { return nsEvent }
-
-                    switch FilterValueTextField.suggestionKeyOutcome(
-                        for: nsEvent.semanticKeyCode,
-                        submitsOnAccept: self.submitsOnAccept
-                    ) {
-                    case .moveSelection(let delta):
-                        self.moveSelection(by: delta)
-                    case .accept(let submitting):
-                        self.acceptCurrentSelection(submitting: submitting)
-                    case .dismiss:
-                        self.escapeDismissedPopup = true
-                        self.dismissSuggestions()
-                    case .passThrough:
-                        return nsEvent
-                    }
-                    return nil
-                }
-            }
-        }
-
-        private func removeKeyMonitor() {
-            if let token = keyMonitor {
-                NSEvent.removeMonitor(token)
-                keyMonitor = nil
-            }
+        /// The completion list never takes focus, so nothing in it is ever the accessibility
+        /// focus. Without an announcement on the field there is no signal that it opened at all.
+        private func announceSuggestions(count: Int, on textField: NSTextField) {
+            guard count > 0 else { return }
+            NSAccessibility.post(
+                element: textField,
+                notification: .announcementRequested,
+                userInfo: [
+                    .announcement: String(
+                        format: String(localized: "%lld suggestions available"),
+                        Int64(count)
+                    ),
+                    .priority: NSAccessibilityPriorityLevel.medium.rawValue
+                ]
+            )
         }
 
         private func moveSelection(by delta: Int) {
@@ -489,7 +485,6 @@ struct FilterValueTextField: NSViewRepresentable {
 
         func dismissSuggestions() {
             completionGeneration &+= 1
-            removeKeyMonitor()
             suggestionPopover?.close()
             suggestionPopover = nil
         }
@@ -557,9 +552,14 @@ struct FilterValueTextField: NSViewRepresentable {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 3)
+                                .foregroundStyle(
+                                    state.selectedIndex == index
+                                        ? Color.emphasizedSelectionLabel
+                                        : Color.primary
+                                )
                                 .background(
                                     state.selectedIndex == index
-                                        ? Color.accentColor.opacity(0.18)
+                                        ? Color(nsColor: .selectedContentBackgroundColor)
                                         : Color.clear
                                 )
                                 .clipShape(RoundedRectangle(cornerRadius: 4))
@@ -577,7 +577,7 @@ struct FilterValueTextField: NSViewRepresentable {
                 }
                 .focusable(false)
                 .onChange(of: state.selectedIndex) { _, newIndex in
-                    withAnimation(.easeOut(duration: 0.1)) {
+                    withMotion(.easeOut(duration: 0.1)) {
                         proxy.scrollTo(newIndex, anchor: .center)
                     }
                 }

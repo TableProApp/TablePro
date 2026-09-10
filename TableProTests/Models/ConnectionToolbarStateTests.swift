@@ -2,7 +2,7 @@
 //  ConnectionToolbarStateTests.swift
 //  TableProTests
 //
-//  Tests for the toolbar chip's grouping-aware text resolution.
+//  Tests for the state the toolbar and the menu bar validate against.
 //
 
 import Foundation
@@ -13,73 +13,50 @@ import Testing
 @MainActor
 @Suite("ConnectionToolbarState")
 struct ConnectionToolbarStateTests {
-    // MARK: - chipText
-
-    @Test("chipText returns currentDatabase when grouping is byDatabase")
-    func chipTextByDatabase() {
-        let state = ConnectionToolbarState()
-        state.databaseGroupingStrategy = .byDatabase
-        state.currentDatabase = "myappdb"
-        state.currentSchema = "ignored"
-
-        #expect(state.chipText == "myappdb")
-    }
-
-    @Test("chipText returns currentSchema when grouping is bySchema and schema is set")
-    func chipTextBySchemaWithSchema() {
-        let state = ConnectionToolbarState()
-        state.databaseGroupingStrategy = .bySchema
-        state.currentDatabase = "Sales"
-        state.currentSchema = "dbo"
-
-        #expect(state.chipText == "dbo")
-    }
-
-    @Test("chipText falls back to currentDatabase when grouping is bySchema and schema is nil")
-    func chipTextBySchemaWithNilSchema() {
-        let state = ConnectionToolbarState()
-        state.databaseGroupingStrategy = .bySchema
-        state.currentDatabase = "Sales"
-        state.currentSchema = nil
-
-        #expect(state.chipText == "Sales")
-    }
-
-    @Test("chipText falls back to currentDatabase when grouping is bySchema and schema is empty")
-    func chipTextBySchemaWithEmptySchema() {
-        let state = ConnectionToolbarState()
-        state.databaseGroupingStrategy = .bySchema
-        state.currentDatabase = "Sales"
-        state.currentSchema = ""
-
-        #expect(state.chipText == "Sales")
-    }
-
-    @Test("chipText returns currentDatabase when grouping is flat (Redis, MongoDB)")
-    func chipTextFlat() {
-        let state = ConnectionToolbarState()
-        state.databaseGroupingStrategy = .flat
-        state.currentDatabase = "0"
-        state.currentSchema = "ignored"
-
-        #expect(state.chipText == "0")
-    }
-
     // MARK: - reset
 
-    @Test("reset clears database, schema, and grouping strategy")
-    func resetClearsAllChipFields() {
+    @Test("reset clears the scope and every tab's duration")
+    func resetClearsScopeFields() {
         let state = ConnectionToolbarState()
-        state.databaseGroupingStrategy = .bySchema
         state.currentDatabase = "Sales"
         state.currentSchema = "dbo"
+        state.recordQueryTiming(PluginQueryTiming(total: 1.5), for: UUID())
 
         state.reset()
 
         #expect(state.currentDatabase == "")
         #expect(state.currentSchema == nil)
-        #expect(state.databaseGroupingStrategy == .byDatabase)
-        #expect(state.chipText == "")
+        #expect(state.queryTimings.isEmpty)
+    }
+
+    // MARK: - query timing
+
+    /// The status bar that draws this belongs to one tab, so an untagged duration would report a
+    /// background tab's query under the rows of the tab on screen.
+    @Test("A duration is only offered to the tab that produced it")
+    func queryTimingIsScopedToItsTab() {
+        let state = ConnectionToolbarState()
+        let ran = UUID()
+        let other = UUID()
+
+        state.recordQueryTiming(PluginQueryTiming(total: 1.5), for: ran)
+
+        #expect(state.queryTiming(forTab: ran)?.total == 1.5)
+        #expect(state.queryTiming(forTab: other) == nil)
+    }
+
+    /// A failure on one tab says nothing about the duration another tab is still showing.
+    @Test("Clearing a duration from another tab leaves it standing")
+    func clearingFromAnotherTabIsIgnored() {
+        let state = ConnectionToolbarState()
+        let ran = UUID()
+        state.recordQueryTiming(PluginQueryTiming(total: 1.5), for: ran)
+
+        state.clearQueryTiming(forTab: UUID())
+        #expect(state.queryTiming(forTab: ran)?.total == 1.5)
+
+        state.clearQueryTiming(forTab: ran)
+        #expect(state.queryTiming(forTab: ran) == nil)
     }
 
     // MARK: - syncFromSession

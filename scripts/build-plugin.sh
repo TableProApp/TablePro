@@ -1,5 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
+
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/notarize.sh"
 
 # Build script for creating standalone plugin bundles
 # Usage: ./scripts/build-plugin.sh <PluginTarget> [arm64|x86_64|both] [version]
@@ -19,7 +21,6 @@ BUILD_DIR="build/Plugins"
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
 TEAM_ID="${TEAM_ID:-}"
 NOTARIZE="${NOTARIZE:-false}"
-APPLE_ID="${APPLE_ID:-}"
 
 if [ -z "$TEAM_ID" ]; then
     echo "ERROR: TEAM_ID is not set. Pass via env or set in your shell profile." >&2
@@ -52,7 +53,8 @@ build_plugin() {
     echo "Building $PLUGIN_TARGET ($arch)..." >&2
 
     # Use -scheme (not -target) with -derivedDataPath to ensure proper
-    # transitive SPM dependency resolution in explicit module builds
+    # transitive SPM dependency resolution in explicit module builds.
+    # project.yml declares one shared scheme per plugin target, named after the target.
     DERIVED_DATA_DIR="build/DerivedData"
 
     local marketing_version_arg=""
@@ -165,32 +167,29 @@ create_zip() {
     echo "   Size: $(ls -lh "$zip_path" | awk '{print $5}')"
 }
 
-notarize_zip() {
-    local zip_path=$1
-
+# Notarization has to happen BEFORE create_zip, and it has to staple.
+#
+# Gatekeeper refuses to load an unnotarized bundle into TablePro, and
+# com.apple.security.cs.disable-library-validation does not exempt it: a quarantined
+# unnotarized plugin fails with "library load disallowed by system policy", and the user
+# gets a "could not verify it is free of malware" panel instead of a driver. Every plugin
+# published before this ran was unnotarized, because the workflow gated the step on an
+# environment variable nothing ever set.
+#
+# Stapling rewrites the bundle, so the distribution zip and its SHA-256 must both be produced
+# after it: the registry manifest pins that checksum and PluginInstaller rejects a mismatch.
+notarize_plugin() {
     if [ "$NOTARIZE" != "true" ]; then
         echo "Skipping notarization (set NOTARIZE=true to enable)"
         return
     fi
-
-    if [ -z "$APPLE_ID" ]; then
-        echo "ERROR: APPLE_ID is not set but NOTARIZE=true." >&2
-        echo "       Pass APPLE_ID=<your-apple-id> or set notarytool-profile in your keychain." >&2
-        exit 1
-    fi
-
-    echo "Submitting for notarization..."
-    if xcrun notarytool submit "$zip_path" \
-        --apple-id "$APPLE_ID" \
-        --team-id "$TEAM_ID" \
-        --keychain-profile "notarytool-profile" \
-        --wait; then
-        echo "Notarization complete"
-    else
-        echo "FATAL: Notarization failed for $zip_path"
-        exit 1
-    fi
+    # "open", not "exec": a plugin bundle is opened by the app, not launched.
+    notarize_and_staple "$1" open
 }
+
+# TablePro.xcodeproj is generated and not in git, so a fresh checkout has none.
+# Generation also declares the per-plugin scheme this script builds with.
+scripts/generate-project.sh
 
 # Clean DerivedData for fresh builds; preserve BUILD_DIR across arch invocations
 rm -rf build/DerivedData
@@ -199,18 +198,18 @@ mkdir -p "$BUILD_DIR"
 case "$ARCH" in
     arm64|x86_64)
         plugin_path=$(build_plugin "$ARCH")
+        notarize_plugin "$plugin_path"
         create_zip "$plugin_path" "$ARCH"
-        notarize_zip "$BUILD_DIR/$(basename "$plugin_path" .tableplugin)-${ARCH}.zip"
         ;;
     both)
         arm64_path=$(build_plugin "arm64")
         x86_path=$(build_plugin "x86_64")
 
+        notarize_plugin "$arm64_path"
+        notarize_plugin "$x86_path"
+
         create_zip "$arm64_path" "arm64"
         create_zip "$x86_path" "x86_64"
-
-        notarize_zip "$BUILD_DIR/$(basename "$arm64_path" .tableplugin)-arm64.zip"
-        notarize_zip "$BUILD_DIR/$(basename "$x86_path" .tableplugin)-x86_64.zip"
         ;;
     *)
         echo "Invalid architecture: $ARCH (use arm64, x86_64, or both)"

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 @testable import TablePro
 import TableProPluginKit
@@ -24,6 +25,12 @@ private final class MockClipboardProvider: ClipboardProvider {
         lastWasGridRows = false
     }
 
+    var copiedImages: [NSImage] = []
+
+    func writeImage(_ image: NSImage) {
+        copiedImages.append(image)
+    }
+
     func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload) {
         lastWrittenText = tsv
         lastWrittenGridRows = gridRows
@@ -45,7 +52,8 @@ struct RowOperationsManagerCopyTests {
             tableName: "users",
             columns: Self.defaultColumns,
             primaryKeyColumns: ["id"],
-            databaseType: .mysql
+            databaseType: .mysql,
+            generatedColumns: []
         )
         let manager = RowOperationsManager(changeManager: changeManager)
         return (manager, changeManager)

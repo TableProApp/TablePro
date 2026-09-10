@@ -15,7 +15,11 @@ public extension TextSelectionManager {
         var boundingRect: CGRect = .zero
         var suggestedXPos: CGFloat?
         /// The position this selection should 'rotate' around when modifying selections.
-        var pivot: Int?
+        ///
+        /// `public` so a subclass in another module implementing its own modifying motion can keep the same end
+        /// fixed the built-in motions do. Without it such a motion has to guess the anchor from the direction, which
+        /// makes the two directions both grow the selection instead of undoing each other.
+        public var pivot: Int?
 
         init(range: NSRange, view: CursorView? = nil) {
             self.range = range

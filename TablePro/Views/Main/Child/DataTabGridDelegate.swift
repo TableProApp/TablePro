@@ -31,6 +31,27 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         onSortStateChanged?(state)
     }
 
+    /// The same gate sort, pagination and the WHERE filter go through. `confirmDiscardChangesIfNeeded`
+    /// answers immediately when there is nothing to lose, so an unedited result never sees an alert.
+    func dataGridConfirmDisplayOrderChange(then apply: @escaping () -> Void) {
+        guard let coordinator else {
+            apply()
+            return
+        }
+        coordinator.confirmDiscardRestoringRowsIfNeeded(action: .displayOrder) { confirmed in
+            guard confirmed else { return }
+            apply()
+        }
+    }
+
+    func dataGridDisplayOrderChanged() {
+        coordinator?.gridDisplayRevision &+= 1
+    }
+
+    func dataGridDisplayFormatChanged() {
+        coordinator?.gridDisplayRevision &+= 1
+    }
+
     func dataGridAddRow() {
         onAddRow?()
     }
@@ -55,6 +76,10 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         coordinator?.pasteRows()
     }
 
+    func dataGridCanPasteRows() -> Bool {
+        coordinator?.commandActions?.canPasteRows ?? false
+    }
+
     func dataGridDuplicateRow() {
         guard let selectionState, let firstIndex = selectionState.indices.first else { return }
         coordinator?.duplicateSelectedRow(index: firstIndex)
@@ -76,6 +101,16 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         coordinator?.navigateToFKReference(value: value, fkInfo: fkInfo, openInNewTab: openInNewTab)
     }
 
+    /// The panel reads the selection, not a row this is told about.
+    ///
+    /// `KeyHandlingTableView.menu(for:)` retargets the selection to a row clicked outside it, so
+    /// the usual single-row case shows the row the reader asked about. A click inside a multi-row
+    /// selection keeps that selection on purpose, and the panel then shows its first row, which is
+    /// the row the Details tab shows too.
+    func dataGridShowRowAsJSON() {
+        coordinator?.showRowAsJSON()
+    }
+
     func dataGridHideColumn(_ columnName: String) {
         coordinator?.hideColumn(columnName)
     }
@@ -90,7 +125,7 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         let target = StructureMenuTarget { onAddRow() }
         let item = NSMenuItem(
             title: String(localized: "Add Row"),
-            action: #selector(StructureMenuTarget.addNewItem),
+            action: #selector(StructureMenuTarget.runAction),
             keyEquivalent: ""
         )
         item.target = target

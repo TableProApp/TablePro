@@ -18,6 +18,26 @@ final class KeyHandlingTableView: NSTableView {
         window.makeFirstResponder(self)
     }
 
+    /// Continues the column separators past the last row.
+    ///
+    /// A row view covers whatever the table view drew beneath it, so this reaches only the area no
+    /// row occupies, which is exactly the area the rows cannot draw. See `DataGridBodyChrome`.
+    override func drawBackground(inClipRect clipRect: NSRect) {
+        super.drawBackground(inClipRect: clipRect)
+        guard let coordinator else { return }
+        let lastRowBottom = numberOfRows > 0 ? rect(ofRow: numberOfRows - 1).maxY : bounds.minY
+        let belowRows = clipRect.intersection(
+            NSRect(x: clipRect.minX, y: lastRowBottom, width: clipRect.width, height: bounds.height)
+        )
+        guard !belowRows.isEmpty else { return }
+        DataGridBodyChrome.drawColumnSeparators(
+            in: belowRows,
+            of: self,
+            tableView: self,
+            presentsColumn: { coordinator.presentsColumn(atTableColumnIndex: $0) }
+        )
+    }
+
     override func didAddSubview(_ subview: NSView) {
         super.didAddSubview(subview)
         guard !isRaisingOverlay else { return }
@@ -77,7 +97,7 @@ final class KeyHandlingTableView: NSTableView {
         let validRows = pendingRows.filteredIndexSet { $0 < numberOfRows }
         let validColumns = pendingColumns.filteredIndexSet { $0 < numberOfColumns }
         guard !validRows.isEmpty, !validColumns.isEmpty else { return }
-        reloadData(forRowIndexes: validRows, columnIndexes: validColumns)
+        coordinator?.redrawCells(rows: validRows, tableColumnIndexes: validColumns)
     }
 
     var focusedRow: Int {
@@ -102,9 +122,11 @@ final class KeyHandlingTableView: NSTableView {
 
     private func totalRows() -> Int { numberOfRows }
 
+    /// The columns a selection can span: the presented run, not every slot the result carries. A
+    /// hidden column has no display position, so counting slots would let Shift+Arrow and Select All
+    /// run past the end of the run.
     private func totalDataColumns() -> Int {
-        guard let schema = coordinator?.identitySchema else { return 0 }
-        return schema.totalDataColumns
+        coordinator?.presentedColumnCount ?? 0
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -127,8 +149,7 @@ final class KeyHandlingTableView: NSTableView {
             return
         }
 
-        let column = tableColumns[clickedColumn]
-        let isDataColumn = column.identifier != ColumnIdentitySchema.rowNumberIdentifier
+        let isDataColumn = presentsDataColumn(at: clickedColumn)
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
         if event.clickCount >= 2 {
@@ -149,7 +170,11 @@ final class KeyHandlingTableView: NSTableView {
         }
 
         let alreadyFocusedHere = clickedRow == focusedRow && clickedColumn == focusedColumn
-        let coord = GridCoord(row: clickedRow, column: dataColumn)
+        guard let displayColumn = coordinator?.displayPosition(ofDataColumnIndex: dataColumn) else {
+            super.mouseDown(with: event)
+            return
+        }
+        let coord = GridCoord(row: clickedRow, displayColumn: displayColumn)
         guard let controller = gridSelection else {
             super.mouseDown(with: event)
             return
@@ -162,7 +187,8 @@ final class KeyHandlingTableView: NSTableView {
                 selectRowIndexes(IndexSet(integer: activeCoord.row), byExtendingSelection: false)
             }
             focusedRow = activeCoord.row
-            focusedColumn = coordinator?.tableColumnIndex(for: activeCoord.column) ?? clickedColumn
+            focusedColumn = coordinator?.tableColumnIndex(forDisplayPosition: activeCoord.displayColumn)
+                ?? clickedColumn
         case .clearFocus:
             deselectAll(nil)
             focusedRow = -1
@@ -195,29 +221,61 @@ final class KeyHandlingTableView: NSTableView {
                 controller.endDrag(dragged: dragged, originalCoord: initial)
                 return
             }
-            let point = convert(event.locationInWindow, from: nil)
+            let point = pointClearOfPinnedGutter(convert(event.locationInWindow, from: nil))
             autoscroll(with: event)
-            let rowIdx = clampRow(row(at: point))
-            let columnIdx = clampDataColumn(column(at: point), schema: schema)
-            guard rowIdx >= 0, columnIdx >= 0 else { continue }
-            let coord = GridCoord(row: rowIdx, column: columnIdx)
+            guard let rowIdx = clampRow(row(at: point), at: point),
+                  let columnIdx = clampDataColumn(column(at: point), at: point, schema: schema) else { continue }
+            let coord = GridCoord(row: rowIdx, displayColumn: columnIdx)
             if coord != initial { dragged = true }
             controller.continueDrag(to: coord)
         }
     }
 
-    private func clampRow(_ value: Int) -> Int {
-        guard numberOfRows > 0 else { return -1 }
-        if value < 0 { return 0 }
-        if value >= numberOfRows { return numberOfRows - 1 }
-        return value
+    /// Pushes a drag point out from under the pinned row gutter, and scrolls to reveal what it
+    /// covers.
+    ///
+    /// `autoscroll(with:)` measures against the clip view, which the gutter does not shrink, so a
+    /// drag parked over the strip never scrolls and the column under it resolves normally. The user
+    /// would then be extending the selection over a column the gutter is hiding.
+    private func pointClearOfPinnedGutter(_ point: NSPoint) -> NSPoint {
+        guard let clipView = enclosingScrollView?.contentView else { return point }
+        let gutterWidth = DataGridRowGutterView.width(of: self)
+        guard gutterWidth > 0 else { return point }
+        let edge = clipView.bounds.origin.x + gutterWidth
+        guard point.x < edge else { return point }
+        let target = max(0, clipView.bounds.origin.x - gutterWidth)
+        if target != clipView.bounds.origin.x {
+            clipView.scroll(to: NSPoint(x: target, y: clipView.bounds.origin.y))
+            enclosingScrollView?.reflectScrolledClipView(clipView)
+            return NSPoint(x: max(point.x, target + gutterWidth), y: point.y)
+        }
+        return NSPoint(x: edge, y: point.y)
     }
 
-    private func clampDataColumn(_ value: Int, schema: ColumnIdentitySchema) -> Int {
-        let firstData = DataGridView.firstDataTableColumnIndex
-        let candidate = value < firstData ? firstData : value
-        guard candidate >= 0, candidate < numberOfColumns else { return -1 }
-        return DataGridView.dataColumnIndex(for: candidate, in: self, schema: schema) ?? -1
+    private func clampRow(_ value: Int, at point: NSPoint) -> Int? {
+        guard numberOfRows > 0 else { return nil }
+        return GridDragClamp.row(
+            hit: value,
+            pointY: point.y,
+            rowCount: numberOfRows,
+            lastRowMaxY: rect(ofRow: numberOfRows - 1).maxY
+        )
+    }
+
+    private func clampDataColumn(_ value: Int, at point: NSPoint, schema: ColumnIdentitySchema) -> Int? {
+        guard let first = coordinator?.firstPresentedColumnIndex(),
+              let last = coordinator?.lastPresentedColumnIndex() else { return nil }
+        guard let candidate = GridDragClamp.column(
+            hit: value,
+            pointX: point.x,
+            firstPresented: first,
+            lastPresented: last,
+            lastPresentedMaxX: rect(ofColumn: last).maxX
+        ) else { return nil }
+        guard let dataIndex = DataGridView.dataColumnIndex(for: candidate, in: self, schema: schema) else {
+            return nil
+        }
+        return coordinator?.displayPosition(ofDataColumnIndex: dataIndex)
     }
 
     @objc func delete(_ sender: Any?) {
@@ -252,13 +310,20 @@ final class KeyHandlingTableView: NSTableView {
             return
         }
         gridSelection?.selectAll(totalRows: totalRows, totalColumns: totalColumns)
-        selectRowIndexes(IndexSet(integersIn: 0..<totalRows), byExtendingSelection: false)
+        /// Marked programmatic, exactly as `selectRowsIntersectingSelection` marks the same
+        /// build-then-write shape. An unmarked write reads back as a gesture, and
+        /// `tableViewSelectionDidChange` answers a gesture that arrives over a live cell selection
+        /// by clearing it, so Cmd+A used to destroy the rectangle it had just built: Copy then took
+        /// the row path instead of the cell path, and Escape had nothing to cancel.
+        withProgrammaticRowSelection {
+            selectRowIndexes(IndexSet(integersIn: 0..<totalRows), byExtendingSelection: false)
+        }
     }
 
     private func focusedDataCell() -> (row: Int, columnIndex: Int)? {
         guard selectedRowIndexes.count == 1,
               focusedRow >= 0,
-              DataGridView.isDataTableColumn(focusedColumn),
+              presentsDataColumn(at: focusedColumn),
               let schema = coordinator?.identitySchema,
               let dataColumn = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema) else {
             return nil
@@ -268,14 +333,34 @@ final class KeyHandlingTableView: NSTableView {
 
     @objc func paste(_ sender: Any?) {
         guard coordinator?.isEditable == true else { return }
-        if focusedRow >= 0,
-           DataGridView.isDataTableColumn(focusedColumn),
-           let schema = coordinator?.identitySchema,
-           let dataCol = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema),
-           coordinator?.pasteCellsFromClipboard(anchorRow: focusedRow, anchorColumn: dataCol) == true {
+        if let anchor = pasteAnchorCell(),
+           coordinator?.pasteCellsFromClipboard(anchorRow: anchor.row, anchorColumn: anchor.column) == true {
             return
         }
         coordinator?.delegate?.dataGridPasteRows()
+    }
+
+    /// The cell a paste would land in. Deliberately looser than `focusedDataCell()`, which also
+    /// requires a single selected row: a paste anchors on the focused cell alone.
+    private func pasteAnchorCell() -> (row: Int, column: Int)? {
+        guard focusedRow >= 0,
+              presentsDataColumn(at: focusedColumn),
+              let schema = coordinator?.identitySchema,
+              let dataCol = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema) else {
+            return nil
+        }
+        return (focusedRow, dataCol)
+    }
+
+    /// Both routes `paste(_:)` can take, asked before the menu item is enabled. The item used to be
+    /// enabled whenever the grid was editable and had a delegate, which lit it over query-result
+    /// tabs where `pasteRows()` returns at its first guard. AppKit gives a disabled item its key
+    /// equivalent anyway, so an enabled-but-dead item swallows Command+V in silence.
+    private var canPaste: Bool {
+        guard let coordinator, coordinator.isEditable else { return false }
+        if coordinator.delegate?.dataGridCanPasteRows() == true { return true }
+        guard let anchor = pasteAnchorCell() else { return false }
+        return coordinator.canPasteCellsFromClipboard(anchorRow: anchor.row, anchorColumn: anchor.column)
     }
 
     override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
@@ -290,9 +375,9 @@ final class KeyHandlingTableView: NSTableView {
             let hasGridSelection = gridSelection?.isEmpty == false
             return hasGridSelection || !selectedRowIndexes.isEmpty
         case #selector(paste(_:)):
-            return coordinator?.isEditable == true && coordinator?.delegate != nil
+            return canPaste
         case #selector(insertNewline(_:)):
-            return selectedRow >= 0 && DataGridView.isDataTableColumn(focusedColumn)
+            return selectedRow >= 0 && presentsDataColumn(at: focusedColumn)
         case #selector(selectAll(_:)):
             return numberOfRows > 0
         default:
@@ -303,15 +388,6 @@ final class KeyHandlingTableView: NSTableView {
     override func keyDown(with event: NSEvent) {
         guard let key = KeyCode(rawValue: event.keyCode) else {
             super.keyDown(with: event)
-            return
-        }
-
-        if key == .tab {
-            if event.modifierFlags.contains(.shift) {
-                handleShiftTabKey()
-            } else {
-                handleTabKey()
-            }
             return
         }
 
@@ -334,6 +410,13 @@ final class KeyHandlingTableView: NSTableView {
         case .home, .end, .pageUp, .pageDown:
             super.keyDown(with: event)
             return
+        case .space:
+            /// Caps Lock is in `deviceIndependentFlagsMask` and is not a chord modifier, so it has
+            /// to be masked out here the way `BoundKey.matches` masks it.
+            if modifiers.intersection([.command, .shift, .option, .control]) == [.shift] {
+                selectRowsIntersectingSelection()
+                return
+            }
         case .delete, .forwardDelete:
             if modifiers.isEmpty || matchesDeleteShortcut(event) {
                 deleteSelectedRowsIfPossible()
@@ -347,7 +430,7 @@ final class KeyHandlingTableView: NSTableView {
            !fkCombo.isCleared,
            fkCombo.matches(event),
            selectedRow >= 0,
-           DataGridView.isDataTableColumn(focusedColumn),
+           presentsDataColumn(at: focusedColumn),
            let schema = coordinator?.identitySchema,
            let columnIndex = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema) {
             coordinator?.toggleForeignKeyPreview(
@@ -360,6 +443,32 @@ final class KeyHandlingTableView: NSTableView {
         }
 
         interpretKeyEvents([event])
+    }
+
+    /// Widens the selection to every whole row it touches, on Shift+Space, which is the spreadsheet
+    /// convention for it.
+    ///
+    /// Numbers spells the same command Option-Command-Return, and that is taken: it is the shipped
+    /// default for Execute Query Without Limit (`KeyboardShortcutModels`), which is a menu item, and
+    /// AppKit resolves a menu key equivalent before the event reaches a view. Plain Space is Preview
+    /// FK here and Control-Space is the editor's completions, so Shift+Space is both free and the
+    /// binding a spreadsheet user already knows.
+    ///
+    /// This is the keyboard half of #2664. The row-number gutter is now pinned, but a route that
+    /// needs no pointer at all is what makes whole-row selection reachable from wherever the cell
+    /// cursor already is, and it is what `GridSelectionController.selectEntireRow` was written for.
+    func selectRowsIntersectingSelection() {
+        guard let coordinator, let controller = gridSelection else { return }
+        let totalColumns = totalDataColumns()
+        guard totalColumns > 0 else { return }
+        let rows = coordinator.currentRowSelection(fallbackRow: focusedRow >= 0 ? focusedRow : nil)
+        guard !rows.isEmpty else { return }
+
+        controller.selectEntireRows(rows, totalColumns: totalColumns)
+        withProgrammaticRowSelection {
+            selectRowIndexes(IndexSet(rows), byExtendingSelection: false)
+        }
+        coordinator.repaintRowGutter()
     }
 
     private func matchesDeleteShortcut(_ event: NSEvent) -> Bool {
@@ -400,19 +509,24 @@ final class KeyHandlingTableView: NSTableView {
     }
 
     private func focusedGridCoord() -> GridCoord? {
-        guard let cell = focusedDataCell() else { return nil }
-        return GridCoord(row: cell.row, column: cell.columnIndex)
+        guard let cell = focusedDataCell(),
+              let displayColumn = coordinator?.displayPosition(ofDataColumnIndex: cell.columnIndex) else { return nil }
+        return GridCoord(row: cell.row, displayColumn: displayColumn)
     }
 
     @objc override func insertNewline(_ sender: Any?) {
         let row = selectedRow
         guard row >= 0,
-              DataGridView.isDataTableColumn(focusedColumn),
+              presentsDataColumn(at: focusedColumn),
               let schema = coordinator?.identitySchema,
               let columnIndex = DataGridView.dataColumnIndex(for: focusedColumn, in: self, schema: schema),
               let coordinator else {
             return
         }
+        // The cell cursor can sit on a column the window left out, and a cell with no view behind
+        // it opens nothing at all. Reaching it first also puts it on screen, where the editor the
+        // keystroke is about to open belongs.
+        coordinator.scrollColumnToVisible(tableColumnIndex: focusedColumn)
         coordinator.handleCellInteraction(row: row, tableColumn: focusedColumn, columnIndex: columnIndex, tableView: self)
     }
 
@@ -434,110 +548,174 @@ final class KeyHandlingTableView: NSTableView {
         let target = focusedColumn < 0
             ? lastVisibleDataColumn()
             : previousVisibleDataColumn(before: focusedColumn)
-        guard DataGridView.isDataTableColumn(target) else { return }
+        guard presentsDataColumn(at: target) else { return }
         focusedColumn = target
         coordinator?.dismissFKPreviewOnColumnChange()
-        if currentRow >= 0 { scrollColumnToVisible(target) }
+        if currentRow >= 0 { coordinator?.scrollColumnToVisible(tableColumnIndex: target) }
     }
 
     private func handleRightArrow(currentRow: Int) {
-        let target = DataGridView.isDataTableColumn(focusedColumn)
+        let target = presentsDataColumn(at: focusedColumn)
             ? nextVisibleDataColumn(after: focusedColumn)
             : firstVisibleDataColumn()
-        guard DataGridView.isDataTableColumn(target) else { return }
+        guard presentsDataColumn(at: target) else { return }
         focusedColumn = target
         coordinator?.dismissFKPreviewOnColumnChange()
-        if currentRow >= 0 { scrollColumnToVisible(target) }
+        if currentRow >= 0 { coordinator?.scrollColumnToVisible(tableColumnIndex: target) }
     }
 
     private func firstVisibleDataColumn() -> Int {
-        for index in DataGridView.firstDataTableColumnIndex..<numberOfColumns where isVisibleDataColumn(at: index) {
-            return index
-        }
-        return -1
+        coordinator?.firstPresentedColumnIndex() ?? -1
     }
 
     private func lastVisibleDataColumn() -> Int {
-        for index in stride(
-            from: numberOfColumns - 1,
-            through: DataGridView.firstDataTableColumnIndex,
-            by: -1
-        ) where isVisibleDataColumn(at: index) {
-            return index
-        }
-        return -1
+        coordinator?.lastPresentedColumnIndex() ?? -1
     }
 
     private func nextVisibleDataColumn(after current: Int) -> Int {
-        guard current + 1 < numberOfColumns else { return -1 }
-        for index in (current + 1)..<numberOfColumns where isVisibleDataColumn(at: index) {
-            return index
-        }
-        return -1
+        coordinator?.nextPresentedColumnIndex(after: current) ?? -1
     }
 
     private func previousVisibleDataColumn(before current: Int) -> Int {
-        guard current > DataGridView.firstDataTableColumnIndex else { return -1 }
-        for index in stride(
-            from: current - 1,
-            through: DataGridView.firstDataTableColumnIndex,
-            by: -1
-        ) where isVisibleDataColumn(at: index) {
-            return index
-        }
-        return -1
+        coordinator?.previousPresentedColumnIndex(before: current) ?? -1
     }
 
-    private func isVisibleDataColumn(at index: Int) -> Bool {
+    /// Whether this position in `tableColumns` holds one of the columns the result presents.
+    ///
+    /// The row-number column and the window's two spacers are attached columns as well, and one
+    /// spacer sits immediately before the first data column, so no fixed position answers this.
+    func presentsDataColumn(at index: Int) -> Bool {
         guard index >= 0, index < numberOfColumns else { return false }
-        let column = tableColumns[index]
-        return !column.isHidden && column.identifier != ColumnIdentitySchema.rowNumberIdentifier
+        guard let coordinator else { return !tableColumns[index].isHidden }
+        return coordinator.presentsColumn(atTableColumnIndex: index)
     }
 
-    private func handleTabKey() {
-        let row = selectedRow
-        guard row >= 0, DataGridView.isDataTableColumn(focusedColumn) else { return }
+    /// `NSResponder` declares these two but does not implement them, so calling `super` raises
+    /// `doesNotRecognizeSelector`. With no cell cursor to move, Tab has to leave the grid the way
+    /// it leaves any other view, or focus is trapped here for the rest of the session.
+    /// VoiceOver follows the focused element, and a table view reports itself rather than the
+    /// cell the grid's own cursor is on, so the cursor was invisible to it. The selected-cells
+    /// override is clamped to the visible rows: AppKit will happily ask for every cell in a
+    /// million-row selection otherwise.
+    /// The cursor moved, so assistive technology is told to re-read where focus now is.
+    ///
+    /// A cell is drawn rather than mounted, so the element comes from the row's own accessibility
+    /// children rather than from a cell view.
+    ///
+    /// Nothing is posted until a client has asked the grid something. The element does not exist
+    /// before that, so the notification had nowhere to land, and asking for it was itself enough to
+    /// mount a view per visible cell in every grid: the cost `#2381` removed, charged to a session
+    /// that pressed Tab once.
+    internal func postCellCursorMoved() {
+        guard DataGridAccessibility.isActive else { return }
+        guard selectedRow >= 0, presentsDataColumn(at: focusedColumn) else { return }
+        guard let element = accessibilityCellElement(row: selectedRow, tableColumnIndex: focusedColumn) else { return }
+        NSAccessibility.post(element: element, notification: .focusedUIElementChanged)
+    }
 
-        var nextColumn = focusedColumn + 1
+    /// What stands for one cell: the view mounted for accessibility, which exists only once a
+    /// client has asked the grid anything. Asking marks accessibility active, so the first such
+    /// question is also what brings the views into being.
+    private func accessibilityCellElement(row: Int, tableColumnIndex: Int) -> Any? {
+        DataGridAccessibility.markActive()
+        return view(atColumn: tableColumnIndex, row: row, makeIfNecessary: false) as? DataGridCellAccessibilityView
+    }
+
+    override func accessibilityCell(forColumn column: Int, row: Int) -> Any? {
+        accessibilityCellElement(row: row, tableColumnIndex: column) ?? super.accessibilityCell(forColumn: column, row: row)
+    }
+
+    /// Anything walking the tree reaches here, which is the grid's signal that a client is attached.
+    override func accessibilityChildren() -> [Any]? {
+        DataGridAccessibility.markActive()
+        return super.accessibilityChildren()
+    }
+
+    /// `NSTableView` answers an accessibility hit test itself and stops at a cell, so a point inside
+    /// a row but outside every column resolved to the table rather than to the row: an ancestor
+    /// rather than a descendant, which a client reads as the row not being reachable at that point.
+    /// A result narrower than the grid leaves most of each row in exactly that state.
+    override func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        DataGridAccessibility.markActive()
+        guard let window else { return super.accessibilityHitTest(point) }
+        let local = convert(window.convertPoint(fromScreen: point), from: nil)
+        let index = row(at: local)
+        guard index >= 0, let rowView = rowView(atRow: index, makeIfNecessary: false) else {
+            return super.accessibilityHitTest(point)
+        }
+        return rowView.accessibilityHitTest(point) ?? rowView
+    }
+
+    override func accessibilitySelectedCells() -> [Any]? {
+        guard let controller = gridSelection, !controller.isEmpty else {
+            return super.accessibilitySelectedCells()
+        }
+        let visible = rows(in: visibleRect)
+        guard visible.length > 0 else { return [] }
+        var cells: [Any] = []
+        for rectangle in controller.selection.rectangles {
+            for row in rectangle.rows where NSLocationInRange(row, visible) {
+                for displayColumn in rectangle.columns {
+                    guard let position = coordinator?.tableColumnIndex(forDisplayPosition: displayColumn),
+                          let element = accessibilityCellElement(row: row, tableColumnIndex: position) else { continue }
+                    cells.append(element)
+                }
+            }
+        }
+        return cells
+    }
+
+    override func insertTab(_ sender: Any?) {
+        guard !moveFocusToNextCell() else { return }
+        window?.selectKeyView(following: self)
+    }
+
+    override func insertBacktab(_ sender: Any?) {
+        guard !moveFocusToPreviousCell() else { return }
+        window?.selectKeyView(preceding: self)
+    }
+
+    private func moveFocusToNextCell() -> Bool {
+        let row = selectedRow
+        guard row >= 0, presentsDataColumn(at: focusedColumn) else { return false }
+
+        var nextColumn = nextVisibleDataColumn(after: focusedColumn)
         var nextRow = row
-
-        if nextColumn >= numberOfColumns {
-            nextColumn = DataGridView.firstDataTableColumnIndex
-            nextRow += 1
+        if nextColumn < 0 {
+            let wrapped = firstVisibleDataColumn()
+            guard wrapped >= 0, row + 1 < numberOfRows else { return true }
+            nextColumn = wrapped
+            nextRow = row + 1
         }
-        if nextRow >= numberOfRows {
-            nextRow = numberOfRows - 1
-            nextColumn = numberOfColumns - 1
-        }
-
-        selectRowIndexes(IndexSet(integer: nextRow), byExtendingSelection: false)
-        focusedRow = nextRow
-        focusedColumn = nextColumn
-        scrollRowToVisible(nextRow)
-        scrollColumnToVisible(nextColumn)
+        focusCell(row: nextRow, column: nextColumn)
+        return true
     }
 
-    private func handleShiftTabKey() {
+    private func moveFocusToPreviousCell() -> Bool {
         let row = selectedRow
-        guard row >= 0, DataGridView.isDataTableColumn(focusedColumn) else { return }
+        guard row >= 0, presentsDataColumn(at: focusedColumn) else { return false }
 
-        var prevColumn = focusedColumn - 1
-        var prevRow = row
-
-        if !DataGridView.isDataTableColumn(prevColumn) {
-            prevColumn = numberOfColumns - 1
-            prevRow -= 1
+        var previousColumn = previousVisibleDataColumn(before: focusedColumn)
+        var previousRow = row
+        if previousColumn < 0 {
+            let wrapped = lastVisibleDataColumn()
+            guard wrapped >= 0, row > 0 else { return true }
+            previousColumn = wrapped
+            previousRow = row - 1
         }
-        if prevRow < 0 {
-            prevRow = 0
-            prevColumn = DataGridView.firstDataTableColumnIndex
-        }
+        focusCell(row: previousRow, column: previousColumn)
+        return true
+    }
 
-        selectRowIndexes(IndexSet(integer: prevRow), byExtendingSelection: false)
-        focusedRow = prevRow
-        focusedColumn = prevColumn
-        scrollRowToVisible(prevRow)
-        scrollColumnToVisible(prevColumn)
+    /// The one way the cell cursor is moved by a keystroke, used by Tab inside the grid and by the
+    /// inline editor's own Tab and arrow navigation.
+    internal func focusCell(row: Int, column: Int) {
+        selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        focusedRow = row
+        focusedColumn = column
+        scrollRowToVisible(row)
+        coordinator?.scrollColumnToVisible(tableColumnIndex: column)
+        postCellCursorMoved()
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -562,7 +740,8 @@ final class KeyHandlingTableView: NSTableView {
               let dataColumn = DataGridView.dataColumnIndex(for: clickedColumn, in: self, schema: schema) else {
             return false
         }
-        return controller.selection.contains(row: clickedRow, column: dataColumn)
+        guard let displayColumn = coordinator?.displayPosition(ofDataColumnIndex: dataColumn) else { return false }
+        return controller.selection.contains(row: clickedRow, displayColumn: displayColumn)
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
@@ -570,19 +749,20 @@ final class KeyHandlingTableView: NSTableView {
         let clickedRow = row(at: point)
         let clickedColumn = column(at: point)
 
-        if clickedRow >= 0, let rowView = rowView(atRow: clickedRow, makeIfNecessary: false) {
+        if clickedRow >= 0, let rowView = rowView(atRow: clickedRow, makeIfNecessary: false) as? DataGridRowView {
             if let schema = coordinator?.identitySchema,
                clickedColumn >= 0,
                let dataColumn = DataGridView.dataColumnIndex(for: clickedColumn, in: self, schema: schema),
                let controller = gridSelection,
                !controller.isEmpty,
-               controller.selection.contains(row: clickedRow, column: dataColumn) {
-                return rowView.menu(for: event)
+               let displayColumn = coordinator?.displayPosition(ofDataColumnIndex: dataColumn),
+               controller.selection.contains(row: clickedRow, displayColumn: displayColumn) {
+                return rowView.contextMenu(for: event)
             }
             if !selectedRowIndexes.contains(clickedRow) {
                 selectRowIndexes(IndexSet(integer: clickedRow), byExtendingSelection: false)
             }
-            return rowView.menu(for: event)
+            return rowView.contextMenu(for: event)
         }
 
         if let menu = coordinator?.delegate?.dataGridEmptySpaceMenu() {

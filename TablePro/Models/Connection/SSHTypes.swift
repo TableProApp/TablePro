@@ -60,6 +60,22 @@ enum SSHAgentSocketOption: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Says which agent the choice actually reaches. `SSH_AUTH_SOCK` is the ssh-agent macOS
+    /// starts for the login session, so it never finds 1Password however the shell is set up,
+    /// and the connect used to fail with a passphrase prompt for an unrelated key (#2583).
+    var explanation: String {
+        switch self {
+        case .systemDefault:
+            return String(
+                localized: "The ssh-agent macOS runs, from SSH_AUTH_SOCK. 1Password and Secretive listen elsewhere."
+            )
+        case .onePassword:
+            return String(localized: "1Password's own socket. 1Password has to be running and unlocked.")
+        case .custom:
+            return String(localized: "The socket of another agent, such as Secretive or an ssh-agent you started.")
+        }
+    }
+
     init(socketPath: String) {
         let trimmedPath = socketPath.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -126,6 +142,18 @@ struct SSHConfiguration: Codable, Hashable {
     var totpDigits: Int = 6
     var totpPeriod: Int = 30
 
+    /// The database file on the SSH server, for a connection whose driver opens a file rather than
+    /// reaching a port. Empty means this configuration forwards TCP, which is what every
+    /// server-backed connection does.
+    ///
+    /// A leading `~` and a relative path are both left as the user typed them and resolved against
+    /// the account's home at connect time. SFTP performs no expansion of its own and rejects a
+    /// literal `~/x` outright, so resolving early would only move the failure somewhere less
+    /// explainable.
+    var remoteFilePath: String = ""
+
+    var forwardsRemoteFile: Bool { enabled && !remoteFilePath.isEmpty }
+
     /// Username may be empty: the runtime resolver supplies `User` from
     /// `~/.ssh/config` when the host is an alias.
     var isValid: Bool {
@@ -139,22 +167,29 @@ extension SSHConfiguration {
     enum CodingKeys: String, CodingKey {
         case enabled, host, port, username, authMethod, privateKeyPath, agentSocketPath, jumpHosts
         case totpMode, totpAlgorithm, totpDigits, totpPeriod
+        case remoteFilePath
     }
 
+    /// Every property here declares a default, so every key decodes as optional. A required decode
+    /// on a field that has a default cannot round-trip a payload written before that field existed:
+    /// it throws `keyNotFound` and takes the whole connection with it, because a connection that
+    /// fails to decode is a connection the user no longer has. `agentSocketPath` was the one still
+    /// required, which is why a stored SSH config from before it existed could not be read back.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        enabled = try container.decode(Bool.self, forKey: .enabled)
-        host = try container.decode(String.self, forKey: .host)
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        host = try container.decodeIfPresent(String.self, forKey: .host) ?? ""
         port = try container.decodeIfPresent(Int.self, forKey: .port)
-        username = try container.decode(String.self, forKey: .username)
+        username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
         authMethod = (try? container.decodeIfPresent(SSHAuthMethod.self, forKey: .authMethod)) ?? .password
-        privateKeyPath = try container.decode(String.self, forKey: .privateKeyPath)
-        agentSocketPath = try container.decode(String.self, forKey: .agentSocketPath)
+        privateKeyPath = try container.decodeIfPresent(String.self, forKey: .privateKeyPath) ?? ""
+        agentSocketPath = try container.decodeIfPresent(String.self, forKey: .agentSocketPath) ?? ""
         jumpHosts = try container.decodeIfPresent([SSHJumpHost].self, forKey: .jumpHosts) ?? []
         totpMode = try container.decodeIfPresent(TOTPMode.self, forKey: .totpMode) ?? .none
         totpAlgorithm = try container.decodeIfPresent(TOTPAlgorithm.self, forKey: .totpAlgorithm) ?? .sha1
         totpDigits = try container.decodeIfPresent(Int.self, forKey: .totpDigits) ?? 6
         totpPeriod = try container.decodeIfPresent(Int.self, forKey: .totpPeriod) ?? 30
+        remoteFilePath = try container.decodeIfPresent(String.self, forKey: .remoteFilePath) ?? ""
     }
 }
 

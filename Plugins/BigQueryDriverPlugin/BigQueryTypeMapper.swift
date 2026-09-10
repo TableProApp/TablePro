@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 
 internal struct BigQueryTypeMapper {
@@ -87,11 +88,15 @@ internal struct BigQueryTypeMapper {
         }
     }
 
-    private static let timestampFormatter: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
+    private static let lockedTimestampFormatter: OSAllocatedUnfairLock<ISO8601DateFormatter> = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return OSAllocatedUnfairLock(uncheckedState: formatter)
     }()
+
+    private static func timestampString(from date: Date) -> String {
+        lockedTimestampFormatter.withLockUnchecked { $0.string(from: date) }
+    }
 
     private static func convertScalarString(_ str: String, type: String) -> String? {
         switch type.uppercased() {
@@ -99,7 +104,7 @@ internal struct BigQueryTypeMapper {
             // BigQuery returns timestamps as epoch-seconds strings like "1.617235200E9"
             if let epochSeconds = Double(str) {
                 let date = Date(timeIntervalSince1970: epochSeconds)
-                return timestampFormatter.string(from: date)
+                return timestampString(from: date)
             }
             return str
 

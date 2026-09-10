@@ -39,11 +39,15 @@ struct LibPQPluginQueryResult {
     let affectedRows: Int
     let commandTag: String?
     let isTruncated: Bool
+
+    /// Send to first row, when the read went through single-row mode and could see one. The
+    /// buffered `PQexec` path has no such boundary and leaves it nil.
+    var firstRowTime: TimeInterval?
 }
 
 // MARK: - Type Mapping
 
-private func pgOidToTypeName(_ oid: UInt32) -> String {
+private func pgOidToTypeName(_ oid: UInt32) -> String? {
     switch oid {
     case 16: return "boolean"
     case 17: return "bytea"
@@ -69,6 +73,26 @@ private func pgOidToTypeName(_ oid: UInt32) -> String {
     case 829: return "macaddr"
     case 869: return "inet"
     case 1_009: return "text[]"
+    case 1_000: return "boolean[]"
+    case 1_001: return "bytea[]"
+    case 1_005: return "smallint[]"
+    case 1_007: return "integer[]"
+    case 1_014: return "char[]"
+    case 1_015: return "varchar[]"
+    case 1_016: return "bigint[]"
+    case 1_021: return "real[]"
+    case 1_022: return "double precision[]"
+    case 1_115: return "timestamp[]"
+    case 1_182: return "date[]"
+    case 1_183: return "time[]"
+    case 1_185: return "timestamptz[]"
+    case 1_187: return "interval[]"
+    case 1_231: return "numeric[]"
+    case 1_270: return "timetz[]"
+    case 199: return "json[]"
+    case 3_807: return "jsonb[]"
+    case 2_951: return "uuid[]"
+    case 1_041: return "inet[]"
     case 1_042: return "char"
     case 1_043: return "varchar"
     case 1_082: return "date"
@@ -79,7 +103,7 @@ private func pgOidToTypeName(_ oid: UInt32) -> String {
     case 1_700: return "numeric"
     case 2_950: return "uuid"
     case 3_802: return "jsonb"
-    default: return "unknown"
+    default: return nil
     }
 }
 
@@ -109,6 +133,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private var _cachedServerVersionNumber: Int32 = 0
     private var _isConnectCancelled: Bool = false
     private var _postgisOidMap: [UInt32: String] = [:]
+    private var _catalogTypeNames: [UInt32: String] = [:]
 
     var isConnected: Bool {
         stateLock.lock()
@@ -162,17 +187,15 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     // MARK: - Connection Management
 
-    func connect() async throws {
-        stateLock.lock()
-        _isConnectCancelled = false
-        stateLock.unlock()
+    func connect(reportingStage report: @escaping ConnectionStageReporter = { _ in }) async throws {
+        stateLock.withLock { _isConnectCancelled = false }
 
         try await withTaskCancellationHandler {
             try await pluginDispatchAsyncCancellable(
                 on: queue,
                 cancellationCheck: { [weak self] in self?.isConnectCancelled ?? true }
             ) { [self] in
-                try performConnect()
+                try performConnect(reportingStage: report)
             }
         } onCancel: {
             cancelConnect()
@@ -191,7 +214,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         return _isConnectCancelled
     }
 
-    private func performConnect() throws {
+    private func performConnect(reportingStage report: @escaping ConnectionStageReporter) throws {
         guard let connection = buildConnectionString().withCString({ PQconnectStart($0) }) else {
             throw LibPQPluginError.connectionFailed
         }
@@ -205,7 +228,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
             throw connectionError(from: connection)
         }
 
-        try pollUntilConnected(connection)
+        try pollUntilConnected(connection, reportingStage: report)
         configureEstablishedConnection(connection)
 
         stateLock.lock()
@@ -215,12 +238,17 @@ final class LibPQPluginConnection: @unchecked Sendable {
         adopted = true
     }
 
-    private func pollUntilConnected(_ connection: OpaquePointer) throws {
+    private func pollUntilConnected(
+        _ connection: OpaquePointer,
+        reportingStage report: @escaping ConnectionStageReporter
+    ) throws {
         let deadline = PQgetCurrentTimeUSec() + Self.connectTimeoutMicroseconds
         var status = PGRES_POLLING_WRITING
+        var lastHandshakeStatus: ConnStatusType?
 
         while true {
             try checkConnectCancellation()
+            reportHandshakeStage(of: connection, last: &lastHandshakeStatus, report: report)
 
             switch status {
             case PGRES_POLLING_OK:
@@ -247,6 +275,28 @@ final class LibPQPluginConnection: @unchecked Sendable {
             default:
                 status = PQconnectPoll(connection)
             }
+        }
+    }
+
+    /// `PGRES_POLLING_*` only says whether the socket wants a read or a write, so it cannot tell
+    /// a TLS handshake from an authentication exchange. `PQstatus` can, and reading it costs one
+    /// pointer dereference per poll slice.
+    private func reportHandshakeStage(
+        of connection: OpaquePointer,
+        last: inout ConnStatusType?,
+        report: ConnectionStageReporter
+    ) {
+        let current = PQstatus(connection)
+        guard current != last else { return }
+        last = current
+
+        switch current {
+        case CONNECTION_SSL_STARTUP:
+            report(.negotiatingEncryption)
+        case CONNECTION_AWAITING_RESPONSE, CONNECTION_AUTH_OK:
+            report(.authenticating)
+        default:
+            break
         }
     }
 
@@ -353,6 +403,91 @@ final class LibPQPluginConnection: @unchecked Sendable {
         return _postgisOidMap
     }
 
+    func mergeCatalogTypeNames(_ names: [UInt32: String]) {
+        stateLock.lock()
+        _catalogTypeNames.merge(names) { _, learned in learned }
+        stateLock.unlock()
+    }
+
+    private func resolveTypeName(_ oid: UInt32) -> String {
+        stateLock.lock()
+        let mapped = _catalogTypeNames[oid]
+        stateLock.unlock()
+        return mapped ?? pgOidToTypeName(oid) ?? PostgreSQLCatalogTypeNames.unresolved
+    }
+
+    private func unresolvedOids(in oids: [UInt32]) -> [UInt32] {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return oids.filter { _catalogTypeNames[$0] == nil && pgOidToTypeName($0) == nil }
+    }
+
+    /// A type created after connect has an oid the connect-time probe never saw, so its columns
+    /// came back as text until the next reconnect. The oids a result leaves unresolved are looked
+    /// up on the same connection once the result is fully read, which is the only moment libpq
+    /// allows another statement, and remembered for every later result. An oid the catalog does
+    /// not know is remembered as unresolved for the same reason. A lookup that fails inside an
+    /// aborted transaction remembers nothing, because it will succeed after the rollback.
+    private func learnTypeNames(for oids: [UInt32], conn: OpaquePointer) {
+        guard let query = PostgreSQLCatalogTypeNames.lookupQuery(oids: oids) else { return }
+        let result: OpaquePointer? = query.withCString { PQexec(conn, $0) }
+        guard let result else { return }
+        defer { PQclear(result) }
+
+        guard PQresultStatus(result) == PGRES_TUPLES_OK else {
+            guard getResultError(from: result).sqlState != Self.transactionAbortedSQLState else { return }
+            mergeCatalogTypeNames(PostgreSQLCatalogTypeNames.names(for: oids, rows: []))
+            return
+        }
+        mergeCatalogTypeNames(PostgreSQLCatalogTypeNames.names(for: oids, rows: Self.textRows(from: result)))
+    }
+
+    /// A streaming result sends its header with the first row, before anything could be looked
+    /// up, so a `SELECT` run right after a `CREATE TYPE` in the same tab would still read the new
+    /// enum as text once. The statement's own command tag says a type was just created, and one
+    /// enum probe there puts the oid in place before the next statement is sent.
+    private func noteCommandTag(_ tag: String?, conn: OpaquePointer) {
+        guard tag == Self.createTypeCommandTag else { return }
+        let query = PostgreSQLSchemaQueries.enumTypeOidQuery
+        let result: OpaquePointer? = query.withCString { PQexec(conn, $0) }
+        guard let result else { return }
+        defer { PQclear(result) }
+        guard PQresultStatus(result) == PGRES_TUPLES_OK else { return }
+        mergeCatalogTypeNames(PostgreSQLCatalogTypeNames.enumProbeNames(rows: Self.textRows(from: result)))
+    }
+
+    private static func textRows(from result: OpaquePointer) -> [[String?]] {
+        let numRows = Int(PQntuples(result))
+        let numFields = Int(PQnfields(result))
+        var rows: [[String?]] = []
+        rows.reserveCapacity(numRows)
+        for rowIndex in 0..<numRows {
+            rows.append((0..<numFields).map { fieldIndex in
+                guard PQgetisnull(result, Int32(rowIndex), Int32(fieldIndex)) == 0,
+                      let valuePtr = PQgetvalue(result, Int32(rowIndex), Int32(fieldIndex)) else { return nil }
+                return String(cString: valuePtr)
+            })
+        }
+        return rows
+    }
+
+    private static let transactionAbortedSQLState = "25P02"
+    private static let createTypeCommandTag = "CREATE TYPE"
+
+    private func resolvingUnknownTypes(
+        _ metadata: ColumnMetadata,
+        conn: OpaquePointer
+    ) -> ColumnMetadata {
+        let missing = unresolvedOids(in: metadata.columnOids)
+        guard !missing.isEmpty else { return metadata }
+        learnTypeNames(for: missing, conn: conn)
+        return ColumnMetadata(
+            columns: metadata.columns,
+            columnOids: metadata.columnOids,
+            columnTypeNames: metadata.columnOids.map(resolveTypeName)
+        )
+    }
+
     // MARK: - Query Cancellation
 
     func cancelCurrentQuery() {
@@ -379,6 +514,16 @@ final class LibPQPluginConnection: @unchecked Sendable {
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw LibPQPluginError.notConnected }
             return try executeQuerySync(queryToRun)
+        }
+    }
+
+    func boundedQuery(_ query: String, rowCap: Int) async throws -> LibPQPluginQueryResult {
+        let queryToRun = String(query)
+        let cap = max(rowCap, 1)
+
+        return try await pluginDispatchAsync(on: queue) { [self] in
+            guard !isShuttingDown else { throw LibPQPluginError.notConnected }
+            return try boundedQuerySync(queryToRun, rowCap: cap)
         }
     }
 
@@ -436,6 +581,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
             let affected = getAffectedRows(from: result)
             let cmdTag = getCommandTag(from: result)
             PQclear(result)
+            noteCommandTag(cmdTag, conn: conn)
             return LibPQPluginQueryResult(
                 columns: [],
                 columnOids: [],
@@ -448,7 +594,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         case PGRES_TUPLES_OK:
             defer { PQclear(result) }
-            return try fetchResults(from: result, generation: generation)
+            return try fetchResults(from: result, conn: conn, generation: generation)
 
         default:
             let error = getResultError(from: result)
@@ -456,6 +602,136 @@ final class LibPQPluginConnection: @unchecked Sendable {
             if cancellationGate.isCancelled(generation) { throw CancellationError() }
             throw error
         }
+    }
+
+    /// Reads at most `rowCap` rows through libpq's single-row mode, then cancels the statement and
+    /// drains the connection instead of pulling the rest of the result across the socket.
+    ///
+    /// One row past the cap is read so `isTruncated` can tell "exactly `rowCap` rows" from "more
+    /// rows exist". The cancel is not an optimization: libpq drains an abandoned result inside the
+    /// next `PQexec`, charging that cost to the user's next statement, and the backend stays active
+    /// holding its snapshot until it can finish writing to the client.
+    private func boundedQuerySync(_ query: String, rowCap: Int) throws -> LibPQPluginQueryResult {
+        stateLock.lock()
+        let conn = self.conn
+        stateLock.unlock()
+
+        guard !isShuttingDown, let conn else {
+            throw LibPQPluginError.notConnected
+        }
+
+        let generation = cancellationGate.beginQuery()
+        defer { cancellationGate.endQuery(generation) }
+
+        /// Started before the drain, so a result the previous statement abandoned is charged to the
+        /// time before the first row rather than appearing as this query's row transfer.
+        let sentAt = Date()
+        while let stale = PQgetResult(conn) { PQclear(stale) }
+
+        /// Cancelling a statement inside a transaction block puts the transaction into the aborted
+        /// state, and every later command fails until ROLLBACK. Reading the tail of one result costs
+        /// less than throwing away the transaction the user opened, so the cancel is withheld here
+        /// and the connection is drained instead.
+        let insideTransaction = PQtransactionStatus(conn) == PQTRANS_INTRANS
+        let suppressCancel = suppressServerSideCancel || insideTransaction
+
+        let localQuery = String(query)
+        let sendOk = localQuery.withCString { queryPtr in
+            PQsendQuery(conn, queryPtr)
+        }
+        guard sendOk != 0 else { throw getError(from: conn) }
+
+        guard PQsetSingleRowMode(conn) != 0 else {
+            Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
+            throw LibPQPluginError(message: "Failed to enter single-row mode", sqlState: nil, detail: nil)
+        }
+
+        var metadata: ColumnMetadata?
+        var rows: [[PluginCellValue]] = []
+        rows.reserveCapacity(min(rowCap, 10_000))
+        var affectedRows = 0
+        var commandTag: String?
+        var truncated = false
+        var pendingError: Error?
+        var firstRowTime: TimeInterval?
+
+        while let result = PQgetResult(conn) {
+            let status = PQresultStatus(result)
+            if firstRowTime == nil { firstRowTime = Date().timeIntervalSince(sentAt) }
+
+            if status == PGRES_SINGLE_TUPLE {
+                let columns = metadata ?? readColumnMetadata(from: result)
+                metadata = columns
+
+                var row: [PluginCellValue] = []
+                row.reserveCapacity(columns.columnOids.count)
+                for columnIndex in columns.columnOids.indices {
+                    row.append(Self.decodeCell(
+                        from: result,
+                        row: 0,
+                        column: Int32(columnIndex),
+                        oid: columns.columnOids[columnIndex]
+                    ))
+                }
+                PQclear(result)
+                rows.append(row)
+
+                if cancellationGate.isCancelled(generation) {
+                    Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
+                    throw CancellationError()
+                }
+                if rows.count > rowCap {
+                    truncated = true
+                    break
+                }
+                continue
+            }
+
+            if status == PGRES_TUPLES_OK {
+                if metadata == nil { metadata = readColumnMetadata(from: result) }
+                PQclear(result)
+                continue
+            }
+
+            if status == PGRES_COMMAND_OK {
+                affectedRows = getAffectedRows(from: result)
+                commandTag = getCommandTag(from: result)
+                PQclear(result)
+                continue
+            }
+
+            pendingError = getResultError(from: result)
+            PQclear(result)
+            break
+        }
+
+        if truncated {
+            Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
+        } else {
+            while let trailing = PQgetResult(conn) { PQclear(trailing) }
+        }
+
+        if let pendingError {
+            if cancellationGate.isCancelled(generation) { throw CancellationError() }
+            throw pendingError
+        }
+        if cancellationGate.isCancelled(generation) { throw CancellationError() }
+
+        if truncated { rows.removeLast() }
+
+        noteCommandTag(commandTag, conn: conn)
+        let resolvedMetadata = metadata.map { resolvingUnknownTypes($0, conn: conn) }
+        let bounded = LibPQPluginQueryResult(
+            columns: resolvedMetadata?.columns ?? [],
+            columnOids: resolvedMetadata?.columnOids ?? [],
+            columnTypeNames: resolvedMetadata?.columnTypeNames ?? [],
+            rows: rows,
+            affectedRows: affectedRows,
+            commandTag: commandTag,
+            isTruncated: truncated,
+            firstRowTime: firstRowTime ?? Date().timeIntervalSince(sentAt)
+        )
+        return applySpatialRendering(to: bounded)
     }
 
     private func executeParameterizedQuerySync(_ query: String, parameters: [PluginCellValue]) throws -> LibPQPluginQueryResult {
@@ -543,6 +819,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
             let affected = getAffectedRows(from: result)
             let cmdTag = getCommandTag(from: result)
             PQclear(result)
+            noteCommandTag(cmdTag, conn: conn)
             return LibPQPluginQueryResult(
                 columns: [],
                 columnOids: [],
@@ -555,7 +832,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         case PGRES_TUPLES_OK:
             defer { PQclear(result) }
-            return try fetchResults(from: result, generation: generation)
+            return try fetchResults(from: result, conn: conn, generation: generation)
 
         default:
             let error = getResultError(from: result)
@@ -579,41 +856,19 @@ final class LibPQPluginConnection: @unchecked Sendable {
         while let res = PQgetResult(conn) { PQclear(res) }
     }
 
+    /// The abort is polled by the producer rather than acted on from `onTermination`, because both
+    /// run on one serial queue: a drain enqueued from the handler sits behind the producer and runs
+    /// only once the whole result has been read, which is no abort at all.
     func streamQuery(_ query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
-        let queue = self.queue
-        let suppressCancel = suppressServerSideCancel
 
-        final class StreamState: @unchecked Sendable {
-            var conn: OpaquePointer?
-            var drained = false
-            let lock = NSLock()
-        }
-        let streamState = StreamState()
+        return PluginRowStream.make { continuation, abort in
+            self.queue.async { [self] in
+                stateLock.lock()
+                let handle = self.conn
+                stateLock.unlock()
 
-        stateLock.lock()
-        let connForStream = self.conn
-        stateLock.unlock()
-
-        streamState.lock.lock()
-        streamState.conn = connForStream
-        streamState.lock.unlock()
-
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
-            continuation.onTermination = { @Sendable _ in
-                queue.async {
-                    streamState.lock.lock()
-                    let conn = streamState.conn
-                    let alreadyDrained = streamState.drained
-                    streamState.drained = true
-                    streamState.lock.unlock()
-                    guard let conn, !alreadyDrained else { return }
-                    Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
-                }
-            }
-
-            queue.async { [self] in
-                guard !isShuttingDown, let conn = connForStream else {
+                guard !isShuttingDown, let conn = handle else {
                     continuation.finish(throwing: LibPQPluginError.notConnected)
                     return
                 }
@@ -621,25 +876,31 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 let generation = cancellationGate.beginQuery()
                 defer { cancellationGate.endQuery(generation) }
 
+                /// The consumer can go away before this block is scheduled, in which case the
+                /// query is never sent at all.
+                guard !abort.isAborted else {
+                    continuation.finish()
+                    return
+                }
+
                 while let res = PQgetResult(conn) { PQclear(res) }
+
+                /// Read before the query goes out: once it is in flight the status is
+                /// PQTRANS_ACTIVE, and the transaction this guard exists for is invisible.
+                let suppressCancel = suppressServerSideCancel
+                    || PQtransactionStatus(conn) == PQTRANS_INTRANS
 
                 let sendOk = queryToRun.withCString { queryPtr in
                     PQsendQuery(conn, queryPtr)
                 }
 
                 if sendOk == 0 {
-                    streamState.lock.lock()
-                    streamState.drained = true
-                    streamState.lock.unlock()
                     continuation.finish(throwing: getError(from: conn))
                     return
                 }
 
                 if PQsetSingleRowMode(conn) == 0 {
-                    while let res = PQgetResult(conn) { PQclear(res) }
-                    streamState.lock.lock()
-                    streamState.drained = true
-                    streamState.lock.unlock()
+                    Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
                     continuation.finish(throwing: LibPQPluginError(
                         message: "Failed to enter single-row mode", sqlState: nil, detail: nil))
                     return
@@ -647,6 +908,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
                 var headerSent = false
                 var columnOids: [UInt32] = []
+                var lastCommandTag: String?
                 let batchSize = 5_000
                 var batch: [PluginRow] = []
                 batch.reserveCapacity(batchSize)
@@ -671,7 +933,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                                 }
                                 let oid = UInt32(PQftype(result, Int32(i)))
                                 columnOids.append(oid)
-                                columnTypeNames.append(pgOidToTypeName(oid))
+                                columnTypeNames.append(resolveTypeName(oid))
                             }
 
                             continuation.yield(.header(PluginStreamHeader(
@@ -702,14 +964,11 @@ final class LibPQPluginConnection: @unchecked Sendable {
                             batch.removeAll(keepingCapacity: true)
                         }
 
-                        if Task.isCancelled {
+                        if abort.isAborted || cancellationGate.isCancelled(generation) {
                             if !batch.isEmpty {
                                 continuation.yield(.rows(batch))
                             }
                             Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
-                            streamState.lock.lock()
-                            streamState.drained = true
-                            streamState.lock.unlock()
                             continuation.finish(throwing: CancellationError())
                             return
                         }
@@ -717,15 +976,13 @@ final class LibPQPluginConnection: @unchecked Sendable {
                         PQclear(result)
                         break
                     } else if status == PGRES_COMMAND_OK {
+                        lastCommandTag = getCommandTag(from: result)
                         PQclear(result)
                         break
                     } else {
                         let error = getResultError(from: result)
                         PQclear(result)
                         while let res = PQgetResult(conn) { PQclear(res) }
-                        streamState.lock.lock()
-                        streamState.drained = true
-                        streamState.lock.unlock()
                         if cancellationGate.isCancelled(generation) {
                             continuation.finish(throwing: CancellationError())
                             return
@@ -739,9 +996,14 @@ final class LibPQPluginConnection: @unchecked Sendable {
                     continuation.yield(.rows(batch))
                 }
 
-                streamState.lock.lock()
-                streamState.drained = true
-                streamState.lock.unlock()
+                while let res = PQgetResult(conn) { PQclear(res) }
+                /// The header went out with the first row, so this stream keeps what it said;
+                /// the lookup is for the results that follow.
+                let missing = unresolvedOids(in: columnOids)
+                if !missing.isEmpty {
+                    learnTypeNames(for: missing, conn: conn)
+                }
+                noteCommandTag(lastCommandTag, conn: conn)
                 continuation.finish()
             }
         }
@@ -749,8 +1011,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     // MARK: - Result Parsing
 
-    private func fetchResults(from result: OpaquePointer, generation: Int) throws -> LibPQPluginQueryResult {
-        let metadata = readColumnMetadata(from: result)
+    private func fetchResults(
+        from result: OpaquePointer,
+        conn: OpaquePointer,
+        generation: Int
+    ) throws -> LibPQPluginQueryResult {
+        let metadata = resolvingUnknownTypes(readColumnMetadata(from: result), conn: conn)
         let parsed = try parseRows(
             from: result,
             columns: metadata.columns,
@@ -759,16 +1025,20 @@ final class LibPQPluginConnection: @unchecked Sendable {
             generation: generation
         )
 
-        let oidMap = postgisOidMap
-        guard !oidMap.isEmpty else { return parsed }
+        return applySpatialRendering(to: parsed)
+    }
 
-        let spatialColumns = metadata.columnOids.enumerated().compactMap { index, oid -> (index: Int, typeName: String)? in
+    private func applySpatialRendering(to result: LibPQPluginQueryResult) -> LibPQPluginQueryResult {
+        let oidMap = postgisOidMap
+        guard !oidMap.isEmpty else { return result }
+
+        let spatialColumns = result.columnOids.enumerated().compactMap { index, oid -> (index: Int, typeName: String)? in
             guard let typeName = oidMap[oid] else { return nil }
             return (index, typeName)
         }
-        guard !spatialColumns.isEmpty else { return parsed }
+        guard !spatialColumns.isEmpty else { return result }
 
-        return renderSpatialColumns(parsed, spatialColumns: spatialColumns)
+        return renderSpatialColumns(result, spatialColumns: spatialColumns)
     }
 
     private struct ColumnMetadata {
@@ -794,7 +1064,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
             }
             let oid = UInt32(PQftype(result, Int32(i)))
             columnOids.append(oid)
-            columnTypeNames.append(pgOidToTypeName(oid))
+            columnTypeNames.append(resolveTypeName(oid))
         }
         return ColumnMetadata(columns: columns, columnOids: columnOids, columnTypeNames: columnTypeNames)
     }
@@ -838,7 +1108,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
             rows: rows,
             affectedRows: result.affectedRows,
             commandTag: result.commandTag,
-            isTruncated: result.isTruncated
+            isTruncated: result.isTruncated,
+            firstRowTime: result.firstRowTime
         )
     }
 

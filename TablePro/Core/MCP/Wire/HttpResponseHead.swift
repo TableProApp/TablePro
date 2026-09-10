@@ -18,8 +18,15 @@ public struct HttpStatus: Sendable, Equatable {
     public static let notFound = HttpStatus(code: 404, reasonPhrase: "Not Found")
     public static let methodNotAllowed = HttpStatus(code: 405, reasonPhrase: "Method Not Allowed")
     public static let notAcceptable = HttpStatus(code: 406, reasonPhrase: "Not Acceptable")
+    public static let requestTimeout = HttpStatus(code: 408, reasonPhrase: "Request Timeout")
+    public static let gone = HttpStatus(code: 410, reasonPhrase: "Gone")
+    public static let lengthRequired = HttpStatus(code: 411, reasonPhrase: "Length Required")
     public static let payloadTooLarge = HttpStatus(code: 413, reasonPhrase: "Payload Too Large")
     public static let unsupportedMediaType = HttpStatus(code: 415, reasonPhrase: "Unsupported Media Type")
+    public static let requestHeaderFieldsTooLarge = HttpStatus(
+        code: 431,
+        reasonPhrase: "Request Header Fields Too Large"
+    )
     public static let tooManyRequests = HttpStatus(code: 429, reasonPhrase: "Too Many Requests")
     public static let internalServerError = HttpStatus(code: 500, reasonPhrase: "Internal Server Error")
     public static let notImplemented = HttpStatus(code: 501, reasonPhrase: "Not Implemented")

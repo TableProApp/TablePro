@@ -11,47 +11,55 @@ struct InspectorStatusBar: View {
     let onNextPage: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            Text(rowSummary)
+        HStack(spacing: 8) {
+            rowSummary
             separator
-            Text(String(format: String(localized: "%d columns"), state.columnNames.count))
+            Text("\(state.columnNames.count) ^[columns](inflect: true)")
             if !state.selectedRowIndices.isEmpty {
                 separator
-                Text(String(format: String(localized: "%d selected"), state.selectedRowIndices.count))
+                Text("\(state.selectedRowIndices.count) selected")
             }
             if state.isComputing {
                 separator
                 ProgressView()
                     .controlSize(.small)
-                Text(String(localized: "Updating…"))
+                    .accessibilityHidden(true)
+                Text("Updating…")
             }
-            Spacer()
+            Spacer(minLength: 8)
             if state.pageCount > 1 {
                 pageControls
             }
         }
         .font(.caption)
         .foregroundStyle(.secondary)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .monospacedDigit()
+        .lineLimit(1)
+        .statusBarChrome()
+    }
+
+    @ViewBuilder
+    private var rowSummary: some View {
+        if state.visibleRowCount == state.totalRowCount {
+            Text("\(state.totalRowCount) ^[rows](inflect: true)")
+        } else {
+            Text("\(state.visibleRowCount) of \(state.totalRowCount) ^[rows](inflect: true)")
+        }
     }
 
     private var pageControls: some View {
         HStack(spacing: 6) {
-            Button(action: onPreviousPage) {
-                Image(systemName: "chevron.left")
-            }
-            .buttonStyle(.plain)
-            .disabled(state.pageOffset == 0)
+            Button(String(localized: "Previous page"), systemImage: "chevron.left", action: onPreviousPage)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.plain)
+                .disabled(state.pageOffset == 0)
 
-            Text(String(format: String(localized: "Page %d of %d"), currentPage, state.pageCount))
+            Text("Page \(currentPage) of \(state.pageCount)")
 
-            Button(action: onNextPage) {
-                Image(systemName: "chevron.right")
-            }
-            .buttonStyle(.plain)
-            .disabled(currentPage >= state.pageCount)
+            Button(String(localized: "Next page"), systemImage: "chevron.right", action: onNextPage)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.plain)
+                .disabled(currentPage >= state.pageCount)
         }
     }
 
@@ -59,18 +67,10 @@ struct InspectorStatusBar: View {
         state.pageSize > 0 ? (state.pageOffset / state.pageSize) + 1 : 1
     }
 
+    /// Punctuation, so VoiceOver must not read it as an element of its own.
     private var separator: some View {
-        Text("·").foregroundStyle(.tertiary)
-    }
-
-    private var rowSummary: String {
-        if state.visibleRowCount == state.totalRowCount {
-            return String(format: String(localized: "%d rows"), state.totalRowCount)
-        }
-        return String(
-            format: String(localized: "%d of %d rows"),
-            state.visibleRowCount,
-            state.totalRowCount
-        )
+        Text(verbatim: "·")
+            .foregroundStyle(.tertiary)
+            .accessibilityHidden(true)
     }
 }

@@ -25,14 +25,6 @@ final class SOCKSProxyPaneViewModel {
             issues.append(String(localized: "SOCKS proxy port must be between 1 and 65535"))
         }
 
-        for other in coordinator?.value?.otherEnabledTunnels(excluding: .socksProxy) ?? [] {
-            issues.append(String(
-                format: String(localized: "Cannot use %@ and %@ at the same time"),
-                other.kind.displayName,
-                ConnectionTunnelKind.socksProxy.displayName
-            ))
-        }
-
         return issues
     }
 

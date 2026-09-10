@@ -245,6 +245,33 @@ struct StructureChangeManagerUndoTests {
         #expect(manager.workingColumns.contains(where: { $0.id == newCol.id }))
     }
 
+    /// The other half of the grouping contract, and the one with no test before this. The structure
+    /// grid deletes a multi-row selection by calling `deleteColumn` once per row, so without an
+    /// explicit group a five-row delete would take five undos. `performAsOneUndoStep` is what the
+    /// two grid delegates wrap those loops in.
+    @Test("A batch wrapped in performAsOneUndoStep undoes as one step")
+    @MainActor func batchedDeletesUndoTogether() {
+        let manager = makeManager()
+        loadSampleSchema(manager)
+
+        let initialCount = manager.workingColumns.count
+        let nameCol = manager.workingColumns[1]
+        let emailCol = manager.workingColumns[2]
+
+        manager.performAsOneUndoStep {
+            manager.deleteColumn(id: nameCol.id)
+            manager.deleteColumn(id: emailCol.id)
+        }
+
+        manager.undo()
+
+        #expect(manager.workingColumns.count == initialCount)
+        #expect(manager.pendingChanges[.column(nameCol.id)] == nil)
+        #expect(manager.pendingChanges[.column(emailCol.id)] == nil)
+        #expect(manager.hasChanges == false)
+        #expect(manager.canUndo == false)
+    }
+
     // MARK: - Discard Clears Undo
 
     @Test("Discard changes clears undo stack")

@@ -20,6 +20,7 @@ struct RowDetailView: View {
         session: ConnectionSession? = nil,
         columnDetails: [ColumnInfo] = [],
         databaseType: DatabaseType = .sqlite,
+        schema: String? = nil,
         safeModeLevel: SafeModeLevel = .off,
         foreignKeys: [ForeignKeyInfo] = [],
         onSaved: (() -> Void)? = nil,
@@ -33,6 +34,7 @@ struct RowDetailView: View {
             session: session,
             columnDetails: columnDetails,
             databaseType: databaseType,
+            schema: schema,
             safeModeLevel: safeModeLevel,
             foreignKeys: foreignKeys,
             onSaved: onSaved,
@@ -175,7 +177,8 @@ struct RowDetailView: View {
                 Button {
                     shareText = ClipboardExporter.exportRow(
                         columns: viewModel.columns, row: viewModel.currentRow,
-                        format: format, tableName: viewModel.table?.name
+                        format: format, tableName: viewModel.table?.name,
+                        databaseType: viewModel.databaseType, driver: viewModel.session?.driver
                     )
                     showShareSheet = true
                 } label: {
@@ -188,7 +191,8 @@ struct RowDetailView: View {
                 Button {
                     let text = ClipboardExporter.exportRow(
                         columns: viewModel.columns, row: viewModel.currentRow,
-                        format: format, tableName: viewModel.table?.name
+                        format: format, tableName: viewModel.table?.name,
+                        databaseType: viewModel.databaseType, driver: viewModel.session?.driver
                     )
                     ClipboardExporter.copyToClipboard(text)
                 } label: {
@@ -305,6 +309,7 @@ struct RowDetailView: View {
         )
 
         let isNull = index < viewModel.editedValues.count ? viewModel.editedValues[index] == nil : true
+        let offersNull = viewModel.isNullable(at: index) || isNull
 
         return HStack {
             if isNull {
@@ -317,18 +322,20 @@ struct RowDetailView: View {
                     .font(.body)
             }
 
-            Button {
-                viewModel.toggleNull(at: index)
-            } label: {
-                Text("NULL")
-                    .font(.caption2)
-                    .foregroundStyle(isNull ? .white : .secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(isNull ? Color.accentColor : Color(.systemFill))
-                    .clipShape(Capsule())
+            if offersNull {
+                Button {
+                    viewModel.toggleNull(at: index)
+                } label: {
+                    Text("NULL")
+                        .font(.caption2)
+                        .foregroundStyle(isNull ? .white : .secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(isNull ? Color.accentColor : Color(.systemFill))
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
     }
 

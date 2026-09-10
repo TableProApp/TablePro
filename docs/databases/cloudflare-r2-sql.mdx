@@ -5,15 +5,15 @@ description: Run read-only SQL against Apache Iceberg tables in a Cloudflare R2 
 
 TablePro connects to Cloudflare R2 SQL, the serverless query engine that reads Apache Iceberg tables stored in an R2 bucket. The bucket's tables are registered in R2 Data Catalog, and TablePro queries them over the R2 SQL HTTP API at `https://api.sql.cloudflarestorage.com`. There is no host, port, or tunnel involved.
 
-R2 SQL runs `SELECT` and nothing else, so these connections are read-only. See [Read-Only Connections](#read-only-connections).
+R2 SQL runs `SELECT` and nothing else, so these connections are read-only. See [Read-only connections](#read-only-connections).
 
 Cloudflare's own reference is the [R2 SQL documentation](https://developers.cloudflare.com/r2-sql/).
 
-## Install the Plugin
+## Install the plugin
 
 Cloudflare R2 SQL is a registry driver. Pick **Cloudflare R2 SQL** in the database type chooser and TablePro offers to download it, or install it up front from **Settings > Plugins > Browse > Cloudflare R2 SQL Driver**. The driver loads without restarting the app. See [Plugins](/features/plugins).
 
-## Connection Settings
+## Connection settings
 
 | Field | Description |
 |-------|-------------|
@@ -21,11 +21,11 @@ Cloudflare R2 SQL is a registry driver. Pick **Cloudflare R2 SQL** in the databa
 | **Bucket** | The R2 bucket holding the Iceberg tables. It needs R2 Data Catalog enabled. |
 | **API Token** | Cloudflare API token, entered in the built-in password field (labeled **API Token** for this driver). Stored in the macOS Keychain. |
 
-That is the whole form. There is no username, port, SSH Tunnel pane, or SSL/TLS pane: the API is HTTPS only. The Iceberg warehouse name is derived from the account ID and the bucket, so you never type it.
+That is the whole form. There is no username, port, SSH Tunnel section, or SSL/TLS section: the API is HTTPS only. The Iceberg warehouse name is derived from the account ID and the bucket, so you never type it.
 
 Click **Test Connection** to verify, then **Save & Connect**.
 
-## Getting Your Credentials
+## Getting your credentials
 
 **Account ID**: on the [Cloudflare dashboard](https://dash.cloudflare.com) right sidebar, or run `npx wrangler whoami`.
 
@@ -44,7 +44,7 @@ All three groups are needed, one per layer the query touches: R2 SQL runs the qu
 The token grants access to R2 across your account, not just this bucket. Scope it to the account you need and rotate it like any other credential.
 </Warning>
 
-## Namespaces and Tables
+## Namespaces and tables
 
 Iceberg groups tables into namespaces. TablePro maps a namespace to a schema, so the sidebar shows one **Namespace** node per namespace with its tables underneath, and the switcher in the toolbar reads **Namespace** too. TablePro reads the tree with `SHOW NAMESPACES`, `SHOW TABLES IN <namespace>`, and `DESCRIBE <namespace>.<table>`.
 
@@ -60,7 +60,7 @@ LIMIT 1000
 
 One connection covers one bucket. Add another connection for another bucket.
 
-## Read-Only Connections
+## Read-only connections
 
 R2 SQL has no `INSERT`, `UPDATE`, `DELETE`, or DDL. TablePro pins the connection to Safe Mode **Read-Only** and disables the Safe Mode picker in the connection form, so:
 
@@ -86,7 +86,7 @@ ORDER BY event_id
 LIMIT 1000
 ```
 
-## SQL Support
+## SQL support
 
 Supported: `SELECT`, `WHERE`, `GROUP BY`, `HAVING`, `QUALIFY`, `ORDER BY`, `LIMIT`, joins, subqueries, CTEs, window functions with an inline `OVER` clause, set operations, `EXPLAIN`, and `EXPLAIN FORMAT JSON`.
 
@@ -110,5 +110,5 @@ The Explain dropdown in the query editor offers **Explain** (`EXPLAIN`) and **Ex
 - No `OFFSET`, and 10,000 rows per query is the ceiling, so table tabs show a single page.
 - No primary keys, foreign keys, or indexes. The ER diagram opens with every table unconnected.
 - No import. Export works.
-- No SSH tunnel, Cloudflare Tunnel, SOCKS proxy, or SSL/TLS pane. The API is HTTPS only.
+- No SSH tunnel, Cloudflare Tunnel, SOCKS proxy, or SSL/TLS section. The API is HTTPS only.
 - One bucket per connection, and no bucket switcher in the toolbar.

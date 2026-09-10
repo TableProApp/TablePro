@@ -36,7 +36,7 @@ struct MSSQLConnectCancellationTests {
     @Test("Cancel returns promptly and the late result is discarded, not adopted")
     func cancelDiscardsLateResult() async {
         let queue = DispatchQueue(label: "test.cancel")
-        let workStarted = DispatchSemaphore(value: 0)
+        let workStarted = FlagBox()
         let release = DispatchSemaphore(value: 0)
         let discarded = FlagBox()
 
@@ -44,7 +44,7 @@ struct MSSQLConnectCancellationTests {
             try await runCancellableBlocking(
                 on: queue,
                 work: { () -> Int in
-                    workStarted.signal()
+                    workStarted.mark()
                     release.wait()
                     return 7
                 },
@@ -52,7 +52,7 @@ struct MSSQLConnectCancellationTests {
             )
         }
 
-        workStarted.wait()
+        await pollUntil { workStarted.value }
         task.cancel()
 
         let result = await task.result

@@ -26,7 +26,3 @@
              (#eq? @_name "hbs"))
   arguments: ((template_string) @glimmer
               (#offset! @glimmer 0 1 0 -1)))
-
-; Ember Unified <template> syntax
-; e.g.: <template><SomeComponent @arg={{double @value}} /></template>
-((glimmer_template) @glimmer)

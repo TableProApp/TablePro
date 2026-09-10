@@ -257,7 +257,7 @@ public extension JsonRpcMessage {
 
     func encode() throws -> Data {
         let encoder = JSONEncoder()
-        encoder.outputFormatting = []
+        encoder.outputFormatting = [.withoutEscapingSlashes]
         return try encoder.encode(self)
     }
 }

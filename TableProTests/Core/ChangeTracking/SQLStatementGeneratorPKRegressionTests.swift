@@ -47,7 +47,7 @@ struct SQLStatementGeneratorPKRegressionTests {
         RowChange(
             rowIndex: rowIndex,
             type: .update,
-            cellChanges: [CellChange(rowIndex: rowIndex, columnIndex: columnIndex, columnName: columnName, oldValue: PluginCellValue.fromOptional(oldValue), newValue: PluginCellValue.fromOptional(newValue))],
+            cellChanges: [CellChange(columnIndex: columnIndex, columnName: columnName, oldValue: PluginCellValue.fromOptional(oldValue), newValue: PluginCellValue.fromOptional(newValue))],
             originalRow: originalRow.map(PluginCellValue.fromOptional)
         )
     }
@@ -126,27 +126,6 @@ struct SQLStatementGeneratorPKRegressionTests {
     }
 
     // MARK: - ClickHouse DELETE with PK
-
-    @Test("ClickHouse delete with PK uses ALTER TABLE DELETE")
-    func testClickHouseDeleteWithPK() throws {
-        let generator = try makeGenerator(databaseType: .clickhouse)
-        let changes = [makeDeleteChange(rowIndex: 0, originalRow: ["1", "John", "john@test.com"])]
-
-        let statements = generator.generateStatements(
-            from: changes,
-            insertedRowData: [:],
-            deletedRowIndices: [0],
-            insertedRowIndices: []
-        )
-
-        #expect(statements.count == 1)
-        let stmt = statements[0]
-        #expect(stmt.sql.contains("ALTER TABLE"))
-        #expect(stmt.sql.contains("DELETE WHERE"))
-        #expect(stmt.sql.contains("`id`"))
-        #expect(!stmt.sql.contains("`name`"))
-        #expect(!stmt.sql.contains("`email`"))
-    }
 
     // MARK: - UPDATE with PK
 

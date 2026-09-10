@@ -10,261 +10,6 @@ import Foundation
 import SwiftUI
 import TableProPluginKit
 
-// MARK: - SSH Configuration
-
-
-/// Represents the type of database
-struct DatabaseType: Hashable, Identifiable, Sendable {
-    let rawValue: String
-    init(rawValue: String) { self.rawValue = rawValue }
-    var id: String { rawValue }
-    var displayName: String { rawValue }
-}
-
-extension DatabaseType {
-    // Built-in types (bundled plugins)
-    static let mysql = DatabaseType(rawValue: "MySQL")
-    static let mariadb = DatabaseType(rawValue: "MariaDB")
-    static let postgresql = DatabaseType(rawValue: "PostgreSQL")
-    static let sqlite = DatabaseType(rawValue: "SQLite")
-    static let redshift = DatabaseType(rawValue: "Redshift")
-    static let cockroachdb = DatabaseType(rawValue: "CockroachDB")
-    static let pglite = DatabaseType(rawValue: "PGlite")
-
-    // Registry-distributed types (known plugins, downloadable separately)
-    static let mongodb = DatabaseType(rawValue: "MongoDB")
-    static let redis = DatabaseType(rawValue: "Redis")
-    static let mssql = DatabaseType(rawValue: "SQL Server")
-    static let oracle = DatabaseType(rawValue: "Oracle")
-    static let clickhouse = DatabaseType(rawValue: "ClickHouse")
-    static let duckdb = DatabaseType(rawValue: "DuckDB")
-    static let cassandra = DatabaseType(rawValue: "Cassandra")
-    static let scylladb = DatabaseType(rawValue: "ScyllaDB")
-    static let etcd = DatabaseType(rawValue: "etcd")
-    static let cloudflareD1 = DatabaseType(rawValue: "Cloudflare D1")
-    static let dynamodb = DatabaseType(rawValue: "DynamoDB")
-    static let bigQuery = DatabaseType(rawValue: "BigQuery")
-    static let libsql = DatabaseType(rawValue: "libSQL")
-    static let turso = DatabaseType(rawValue: "Turso")
-    static let beancount = DatabaseType(rawValue: "Beancount")
-    static let elasticsearch = DatabaseType(rawValue: "Elasticsearch")
-    static let surrealdb = DatabaseType(rawValue: "SurrealDB")
-}
-
-extension DatabaseType: Codable {
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        self.rawValue = try container.decode(String.self)
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        try container.encode(rawValue)
-    }
-}
-
-extension DatabaseType {
-    /// All registered database types, derived dynamically from the plugin metadata registry.
-    static var allKnownTypes: [DatabaseType] {
-        PluginMetadataRegistry.shared.allRegisteredTypeIds().map { DatabaseType(rawValue: $0) }
-    }
-}
-
-extension DatabaseType {
-    /// Returns nil if rawValue doesn't match any registered type.
-    init?(validating rawValue: String) {
-        guard PluginMetadataRegistry.shared.hasType(rawValue) else { return nil }
-        self.rawValue = rawValue
-    }
-}
-
-extension DatabaseType {
-    /// Plugin type ID used for PluginManager lookup, resolved via the registry.
-    var pluginTypeId: String {
-        PluginMetadataRegistry.shared.pluginTypeId(for: rawValue)
-    }
-
-    var isDownloadablePlugin: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.isDownloadable ?? false
-    }
-
-    var iconName: String {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.iconName ?? "database-icon"
-    }
-
-    /// Returns the correct SwiftUI Image for this database type, handling both
-    /// SF Symbol names (e.g. "cylinder.fill") and asset catalog names (e.g. "mysql-icon").
-    var iconImage: Image {
-        let name = iconName
-        if NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil {
-            return Image(systemName: name)
-        }
-        return Image(name).resizable()
-    }
-
-    var defaultPort: Int {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.defaultPort ?? 0
-    }
-
-    var defaultSSLMode: SSLMode {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.defaultSSLMode ?? .disabled
-    }
-
-    var supportsOpportunisticTLS: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsOpportunisticTLS ?? true
-    }
-
-    var supportsClientKeyPassphrase: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsClientKeyPassphrase ?? false
-    }
-
-    var supportsConnectionPooling: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsConnectionPooling ?? true
-    }
-
-    var authenticationIsDatabaseScoped: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?
-            .capabilities.authenticationIsDatabaseScoped ?? false
-    }
-
-    var defaultHost: String? {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.connection.defaultHost
-    }
-
-    var supportsCloudSQLProxy: Bool {
-        switch rawValue {
-        case "MySQL", "PostgreSQL", "SQL Server":
-            return true
-        default:
-            return false
-        }
-    }
-
-    var sslPaneTooltip: String {
-        switch rawValue {
-        case "PostgreSQL", "Redshift", "CockroachDB":
-            return String(localized: """
-                Preferred tries TLS first, falls back to plain. Matches psql and DataGrip defaults. \
-                Required by AWS RDS, Cloud SQL, Heroku, Supabase, Neon.
-                """)
-        case "MySQL", "MariaDB":
-            return String(localized: """
-                Preferred performs a 2-pass connect: tries TLS first, falls back to plain only on \
-                SSL handshake errors. Required by Cloud SQL and Azure MySQL.
-                """)
-        case "SQL Server":
-            return String(localized: "Preferred requests TLS; the server decides. Required by SQL Server 2022 and Azure SQL Database.")
-        case "MongoDB":
-            return String(localized: "MongoDB driver has no TLS fallback. Preferred and Required both force TLS. Use Required for MongoDB Atlas and other hosted instances.")
-        case "Redis":
-            return String(localized: """
-                Redis driver has no TLS fallback. Preferred and Required both force TLS. \
-                Use Required for Redis Cloud, Upstash, and AWS ElastiCache encrypted endpoints.
-                """)
-        case "Oracle":
-            return String(localized: "OracleNIO has no TLS fallback. Preferred connects in plain TCP. Use Required for TCPS to Oracle Autonomous Database.")
-        case "Cassandra", "ScyllaDB":
-            return String(localized: "Use Required for AstraDB, DataStax Astra, and other hosted Cassandra deployments.")
-        case "ClickHouse":
-            return String(localized: "Use Required for ClickHouse Cloud and other managed instances.")
-        default:
-            return ""
-        }
-    }
-
-    var explainVariants: [ExplainVariant] {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.explainVariants ?? []
-    }
-
-    var category: DatabaseCategory {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.connection.category ?? .other
-    }
-
-    var pathFieldRole: PathFieldRole {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.pathFieldRole ?? .database
-    }
-
-    var tagline: String? {
-        let raw = PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.connection.tagline ?? ""
-        return raw.isEmpty ? nil : raw
-    }
-
-    var brandColor: Color {
-        switch rawValue {
-        case "MySQL": Color(hex: "00758F")
-        case "MariaDB": Color(hex: "C0765A")
-        case "PostgreSQL": Color(hex: "336791")
-        case "Redshift": Color(hex: "527FFF")
-        case "CockroachDB": Color(hex: "6933FF")
-        case "PGlite": Color(hex: "F4B942")
-        case "SQLite": Color(hex: "0F80CC")
-        case "SQL Server": Color(hex: "CC2927")
-        case "Oracle": Color(hex: "C74634")
-        case "MongoDB": Color(hex: "00684A")
-        case "Redis": Color(hex: "FF4438")
-        case "ClickHouse": Color(hex: "FFCC01")
-        case "DuckDB": Color(hex: "FFC827")
-        case "Cassandra": Color(hex: "1287B1")
-        case "ScyllaDB": Color(hex: "00C9C2")
-        case "etcd": Color(hex: "419EDA")
-        case "Cloudflare D1": Color(hex: "F38020")
-        case "libSQL", "Turso": Color(hex: "4FF8D2")
-        case "DynamoDB": Color(hex: "4053D6")
-        case "BigQuery": Color(hex: "4285F4")
-        case "Beancount": Color(hex: "3F7D20")
-        default: Color.accentColor
-        }
-    }
-
-    var requiresAuthentication: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.requiresAuthentication ?? true
-    }
-
-    var supportsForeignKeys: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.supportsForeignKeys ?? true
-    }
-
-    var supportsTriggers: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsTriggers ?? false
-    }
-
-    var supportsTriggerEditing: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsTriggerEditing ?? false
-    }
-
-    var supportsSchemaEditing: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.supportsSchemaEditing ?? true
-    }
-
-    var supportsAddColumn: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsAddColumn ?? true
-    }
-
-    var supportsModifyColumn: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsModifyColumn ?? true
-    }
-
-    var supportsDropColumn: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsDropColumn ?? true
-    }
-
-    var supportsRenameColumn: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsRenameColumn ?? false
-    }
-
-    var supportsAddIndex: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsAddIndex ?? true
-    }
-
-    var supportsDropIndex: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsDropIndex ?? true
-    }
-
-    var supportsModifyPrimaryKey: Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: rawValue)?.capabilities.supportsModifyPrimaryKey ?? true
-    }
-}
-
 // MARK: - External Access
 
 enum ExternalAccessLevel: String, Codable, Sendable, CaseIterable, Identifiable {
@@ -311,6 +56,32 @@ enum ConnectionColor: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
+    /// Reads a colour written either as this enum's own name or as the hex iOS used before the two
+    /// platforms converged on the `color` sync field. Kept byte-for-byte in step with
+    /// `ConnectionColor(storedValue:)` in `TableProModels`, which is the same enum for the iOS app.
+    init(storedValue: String) {
+        if let named = ConnectionColor(rawValue: storedValue) {
+            self = named
+            return
+        }
+        if let named = ConnectionColor.allCases.first(where: {
+            $0.rawValue.caseInsensitiveCompare(storedValue) == .orderedSame
+        }) {
+            self = named
+            return
+        }
+        switch storedValue.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "# ")) {
+        case "ff0000", "ff3b30", "cc0000": self = .red
+        case "ff9500", "ff8c00", "ffa500": self = .orange
+        case "ffcc00", "ffff00", "ffd700": self = .yellow
+        case "34c759", "28cd41", "00ff00", "008000": self = .green
+        case "007aff", "0000ff", "5856d6": self = .blue
+        case "af52de", "800080", "9b59b6": self = .purple
+        case "ff2d55", "ff69b4", "ffc0cb": self = .pink
+        default: self = .none
+        }
+    }
+
     var displayName: String {
         switch self {
         case .none: return String(localized: "None")
@@ -342,6 +113,34 @@ enum ConnectionColor: String, CaseIterable, Identifiable, Codable {
 
     /// Whether this represents "no custom color"
     var isDefault: Bool { self == .none }
+
+    /// The hue itself, for a dot, a swatch or a glyph tint. `nil` rather than `color`'s `.clear`
+    /// when the user picked nothing, so a caller cannot paint a transparent indicator and leave a
+    /// hole where the cue should be.
+    var indicatorColor: Color? { isDefault ? nil : color }
+
+    /// The same hue, dimmed only as far as a label sitting on it needs. Use this wherever text is
+    /// drawn on the colour; `indicatorColor` stays at full brightness everywhere else, which is
+    /// why the picker swatch and the fill can differ by a few percent without disagreeing.
+    ///
+    /// The tuning runs inside a dynamic provider rather than at the point of call, because
+    /// `tunedForLegibleLabel` ends at `NSColor(hue:saturation:brightness:alpha:)`, which is a
+    /// concrete colour in whatever appearance happened to be current. Resolving eagerly froze it:
+    /// measured, a tuned red stayed `#DB393B` in both appearances while an untouched orange still
+    /// moved between `#FF8D28` and `#FF9230`, so half the palette followed a Light/Dark switch and
+    /// half did not. A provider is resolved by AppKit against the appearance it is drawn in, so no
+    /// call site has to remember to observe the colour scheme.
+    var labelledFill: Color? {
+        guard !isDefault else { return nil }
+        let palette = color
+        return Color(nsColor: NSColor(name: nil) { appearance in
+            var tuned = NSColor.clear
+            appearance.performAsCurrentDrawingAppearance {
+                tuned = NSColor(palette).tunedForLegibleLabel()
+            }
+            return tuned
+        })
+    }
 }
 
 // MARK: - Database Connection
@@ -365,6 +164,7 @@ struct DatabaseConnection: Identifiable, Hashable {
     var cloudflareTunnelMode: CloudflareTunnelMode = .disabled
     var cloudSQLProxyMode: CloudSQLProxyMode = .disabled
     var socksProxyMode: SOCKSProxyMode = .disabled
+    var tunnelCommandMode: TunnelCommandMode = .disabled
     var safeModeLevel: SafeModeLevel
     var aiPolicy: AIConnectionPolicy?
     var aiRules: String?
@@ -470,6 +270,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         cloudflareTunnelMode: CloudflareTunnelMode = .disabled,
         cloudSQLProxyMode: CloudSQLProxyMode = .disabled,
         socksProxyMode: SOCKSProxyMode = .disabled,
+        tunnelCommandMode: TunnelCommandMode = .disabled,
         safeModeLevel: SafeModeLevel = .silent,
         aiPolicy: AIConnectionPolicy? = nil,
         aiRules: String? = nil,
@@ -524,6 +325,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         self.cloudflareTunnelMode = cloudflareTunnelMode
         self.cloudSQLProxyMode = cloudSQLProxyMode
         self.socksProxyMode = socksProxyMode
+        self.tunnelCommandMode = tunnelCommandMode
         self.aiPolicy = aiPolicy
         self.aiRules = aiRules
         self.aiAlwaysAllowedTools = aiAlwaysAllowedTools
@@ -551,9 +353,21 @@ struct DatabaseConnection: Identifiable, Hashable {
         }
     }
 
-    /// Returns the display color (custom color or database type color)
-    @MainActor var displayColor: Color {
-        color.isDefault ? type.themeColor : color.color
+    /// The engine's own colour. It answers "which database is this" and never changes with the
+    /// user's pick, so the glyph that carries it keeps meaning the same thing on every connection.
+    @MainActor var brandColor: Color {
+        type.themeColor
+    }
+
+    /// The colour the user assigned to tell this connection apart from the others, `nil` when they
+    /// assigned none.
+    ///
+    /// These two used to be one property that returned the brand colour until a pick replaced it,
+    /// which spent the pick recolouring an already-branded glyph: the only visible change was a
+    /// hue shift on a 14pt icon, and the engine lost its own colour to pay for it. They are
+    /// separate because they answer different questions and belong on different surfaces (#2398).
+    var identityColor: ConnectionColor? {
+        color.isDefault ? nil : color
     }
 }
 
@@ -581,7 +395,8 @@ extension DatabaseConnection: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, name, host, port, database, username, type
         case sshConfig, sslConfig, color, tagId, tagIds, groupId, sshProfileId
-        case sshTunnelMode, cloudflareTunnelMode, cloudSQLProxyMode, socksProxyMode, safeModeLevel, aiPolicy, aiRules, aiAlwaysAllowedTools, externalAccess, additionalFields
+        case sshTunnelMode, cloudflareTunnelMode, cloudSQLProxyMode, socksProxyMode, tunnelCommandMode
+        case safeModeLevel, aiPolicy, aiRules, aiAlwaysAllowedTools, externalAccess, additionalFields
         case redisDatabase, startupCommands, sortOrder, localOnly, isSample, isFavorite
         case passwordSource
     }
@@ -622,6 +437,7 @@ extension DatabaseConnection: Codable {
         cloudflareTunnelMode = try container.decodeIfPresent(CloudflareTunnelMode.self, forKey: .cloudflareTunnelMode) ?? .disabled
         cloudSQLProxyMode = try container.decodeIfPresent(CloudSQLProxyMode.self, forKey: .cloudSQLProxyMode) ?? .disabled
         socksProxyMode = try container.decodeIfPresent(SOCKSProxyMode.self, forKey: .socksProxyMode) ?? .disabled
+        tunnelCommandMode = try container.decodeIfPresent(TunnelCommandMode.self, forKey: .tunnelCommandMode) ?? .disabled
 
         // Migrate from legacy fields if sshTunnelMode is not present
         if let tunnelMode = try container.decodeIfPresent(SSHTunnelMode.self, forKey: .sshTunnelMode) {
@@ -666,6 +482,9 @@ extension DatabaseConnection: Codable {
         }
         if case .inline = socksProxyMode {
             try container.encode(socksProxyMode, forKey: .socksProxyMode)
+        }
+        if case .inline = tunnelCommandMode {
+            try container.encode(tunnelCommandMode, forKey: .tunnelCommandMode)
         }
         try container.encode(safeModeLevel, forKey: .safeModeLevel)
         try container.encodeIfPresent(aiPolicy, forKey: .aiPolicy)

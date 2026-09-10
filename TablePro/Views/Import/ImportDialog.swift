@@ -43,6 +43,11 @@ struct ImportDialog: View {
     @State private var importResult: PluginImportResult?
     @State private var importError: (any Error)?
 
+    /// The window this dialog is hosted in, used for presenting its alerts and panels.
+    /// Avoids `NSApp.keyWindow`, which when a result is presented is the progress sheet being
+    /// torn down in the same transaction, and AppKit ends a sheet's children with it (#2314).
+    @State private var hostWindow: NSWindow?
+
     @State private var hasPreviewError = false
     @State private var tempPreviewURL: URL?
     @State private var loadFileTask: Task<Void, Never>?
@@ -79,6 +84,11 @@ struct ImportDialog: View {
             footerView
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .background {
+            WindowAccessor { window in
+                hostWindow = window
+            }
+        }
         .onAppear {
             let available = availableFormats
             if !available.contains(where: { type(of: $0).formatId == selectedFormatId }) {
@@ -115,20 +125,22 @@ struct ImportDialog: View {
                 .interactiveDismissDisabled()
             }
         }
-        .sheet(isPresented: $showSuccessDialog, onDismiss: {
-            isPresented = false
-            AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
-        }) {
-            ImportSuccessView(
-                result: importResult
+        .onChange(of: showSuccessDialog) { _, isShowing in
+            guard isShowing else { return }
+            TransferResultAlert.presentImportSuccess(
+                result: importResult,
+                window: hostWindow,
+                sourceFileName: fileURL?.lastPathComponent ?? "",
+                targetTable: nil
             ) {
                 showSuccessDialog = false
+                isPresented = false
+                AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
             }
         }
-        .sheet(isPresented: $showErrorDialog) {
-            ImportErrorView(
-                error: importError
-            ) {
+        .onChange(of: showErrorDialog) { _, isShowing in
+            guard isShowing else { return }
+            TransferResultAlert.presentImportFailure(error: importError, window: hostWindow) {
                 showErrorDialog = false
             }
         }
@@ -136,19 +148,20 @@ struct ImportDialog: View {
 
     // MARK: - Plugin Helpers
 
+    /// This dialog runs a file of statements. A format that needs a target table is routed to
+    /// `RowImportSheet` instead, so offering one here only ever produced "No target table
+    /// configured for row import" once the user pressed Import.
     private var availableFormats: [any ImportFormatPlugin] {
         let dbTypeId = connection.type.rawValue
         return PluginManager.shared.allImportPlugins()
             .filter { plugin in
-                let supported = type(of: plugin).supportedDatabaseTypeIds
-                let excluded = type(of: plugin).excludedDatabaseTypeIds
-                if !supported.isEmpty && !supported.contains(dbTypeId) {
-                    return false
-                }
-                if excluded.contains(dbTypeId) {
-                    return false
-                }
-                return true
+                let pluginType = type(of: plugin)
+                return ImportRouting.isStatementFormat(
+                    requiresTargetTable: pluginType.requiresTargetTable,
+                    supportedDatabaseTypeIds: pluginType.supportedDatabaseTypeIds,
+                    excludedDatabaseTypeIds: pluginType.excludedDatabaseTypeIds,
+                    databaseTypeId: dbTypeId
+                )
             }
             .sorted { type(of: $0).formatDisplayName < type(of: $1).formatDisplayName }
     }
@@ -172,12 +185,11 @@ struct ImportDialog: View {
 
                     Spacer()
 
-                    Button("Change File...") {
+                    Button("Change File…") {
                         Task {
                             await selectFile()
                         }
                     }
-                    .buttonStyle(.link)
                     .font(.callout)
                 }
 
@@ -193,7 +205,7 @@ struct ImportDialog: View {
                         HStack(spacing: 4) {
                             ProgressView()
                                 .controlSize(.small)
-                            Text("Counting...")
+                            Text("Counting…")
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
                         }
@@ -214,12 +226,13 @@ struct ImportDialog: View {
                 .font(.body)
                 .frame(width: 80, alignment: .leading)
 
-            Picker("", selection: $selectedFormatId) {
+            Picker(String(localized: "Format"), selection: $selectedFormatId) {
                 ForEach(availableFormats.map { (id: type(of: $0).formatId, name: type(of: $0).formatDisplayName) }, id: \.id) { item in
                     Text(item.name).tag(item.id)
                 }
             }
             .pickerStyle(.menu)
+            .labelsHidden()
             .frame(width: 120)
 
             Spacer()
@@ -254,23 +267,23 @@ struct ImportDialog: View {
                 Button("Reset to Defaults") {
                     resetOptionsToDefaults()
                 }
-                .buttonStyle(.link)
+                .buttonStyle(.borderless)
                 .font(.callout)
             }
 
             VStack(alignment: .leading, spacing: 12) {
-                // Encoding picker (always shown, independent of plugin)
                 HStack(spacing: 8) {
                     Text("Encoding:")
                         .font(.body)
                         .frame(width: 80, alignment: .leading)
 
-                    Picker("", selection: $selectedEncoding) {
+                    Picker(String(localized: "Encoding"), selection: $selectedEncoding) {
                         ForEach(ImportEncoding.allCases) { enc in
                             Text(enc.rawValue).tag(enc)
                         }
                     }
                     .pickerStyle(.menu)
+                    .labelsHidden()
                     .frame(width: 120)
                     .onChange(of: selectedEncoding) { _, _ in
                         loadFileTask?.cancel()
@@ -294,13 +307,11 @@ struct ImportDialog: View {
     }
 
     private var footerView: some View {
-        HStack {
+        DialogFooter {
             Button("Cancel") {
                 isPresented = false
             }
             .keyboardShortcut(.cancelAction)
-
-            Spacer()
 
             Button("Import") {
                 performImport()
@@ -340,7 +351,10 @@ struct ImportDialog: View {
 
     @MainActor
     private func selectFile() async {
-        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
+        guard let window = hostWindow else {
+            Self.logger.warning("No host window captured, cannot present the file panel")
+            return
+        }
 
         let panel = NSOpenPanel()
 
@@ -478,6 +492,10 @@ struct ImportDialog: View {
             } catch is PluginImportCancellationError {
                 await MainActor.run {
                     showProgressDialog = false
+                    TransferResultAlert.presentImportCancelled(
+                        executedStatements: service.state.processedStatements,
+                        window: hostWindow
+                    ) {}
                 }
             } catch {
                 await MainActor.run {

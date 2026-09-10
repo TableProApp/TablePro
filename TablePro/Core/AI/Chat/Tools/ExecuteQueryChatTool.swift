@@ -93,7 +93,7 @@ struct ExecuteQueryChatTool: ChatTool {
             scope: scope,
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
-            principalLabel: String(localized: "AI Chat")
+            principal: .inAppAssistant
         )
         return ChatToolResult(content: payload.jsonString(prettyPrinted: true))
     }

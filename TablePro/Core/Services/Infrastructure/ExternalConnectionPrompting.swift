@@ -23,6 +23,18 @@ internal struct ExternalConnectionAlertPrompt: ExternalConnectionPrompting {
         for connection: DatabaseConnection,
         offerAlwaysAllow: Bool
     ) async -> ExternalConnectionDecision {
+        let response = await present(Self.makeAlert(for: connection, offerAlwaysAllow: offerAlwaysAllow))
+        switch response {
+        case .alertFirstButtonReturn:
+            return .connect
+        case .alertThirdButtonReturn where offerAlwaysAllow:
+            return .alwaysAllow
+        default:
+            return .cancel
+        }
+    }
+
+    internal static func makeAlert(for connection: DatabaseConnection, offerAlwaysAllow: Bool) -> NSAlert {
         let alert = NSAlert()
         alert.messageText = String(localized: "Open External Database Connection?")
         alert.informativeText = String(
@@ -37,26 +49,17 @@ internal struct ExternalConnectionAlertPrompt: ExternalConnectionPrompting {
             details(for: connection).joined(separator: "\n")
         )
         alert.alertStyle = .warning
-        alert.addButton(withTitle: String(localized: "Connect"))
-        alert.addButton(withTitle: String(localized: "Cancel"))
+        /// Connecting is the risky half of this decision, so it gives up Return. Escape stays on
+        /// Cancel, which is the only binding that dismisses the alert from the keyboard.
+        alert.addButton(withTitle: String(localized: "Connect")).keyEquivalent = ""
+        AlertHelper.addCancelButton(to: alert, title: String(localized: "Cancel"))
         if offerAlwaysAllow {
             alert.addButton(withTitle: String(localized: "Always Allow"))
         }
-        alert.buttons[0].keyEquivalent = ""
-        alert.buttons[1].keyEquivalent = "\u{1b}"
-
-        let response = await present(alert)
-        switch response {
-        case .alertFirstButtonReturn:
-            return .connect
-        case .alertThirdButtonReturn where offerAlwaysAllow:
-            return .alwaysAllow
-        default:
-            return .cancel
-        }
+        return alert
     }
 
-    private func details(for connection: DatabaseConnection) -> [String] {
+    private static func details(for connection: DatabaseConnection) -> [String] {
         var details: [String] = [
             String(format: String(localized: "Host: %@"), "\(connection.host):\(connection.port)")
         ]
@@ -66,6 +69,30 @@ internal struct ExternalConnectionAlertPrompt: ExternalConnectionPrompting {
         if !connection.database.isEmpty {
             details.append(String(format: String(localized: "Database: %@"), connection.database))
         }
+        details.append(contentsOf: sshDetails(for: connection))
+        return details
+    }
+
+    /// The database host of a tunnelled connection is the far end of the tunnel, usually
+    /// `localhost`, so listing it alone describes none of the machines the session actually
+    /// crosses. The alert asks the user to decide whether they trust the link; it has to name the
+    /// SSH server and every hop for that to mean anything.
+    private static func sshDetails(for connection: DatabaseConnection) -> [String] {
+        let ssh = connection.sshConfig
+        guard ssh.enabled, !ssh.host.isEmpty else { return [] }
+
+        let port = ssh.port ?? 22
+        let target = ssh.username.isEmpty ? "\(ssh.host):\(port)" : "\(ssh.username)@\(ssh.host):\(port)"
+        var details = [String(format: String(localized: "SSH Tunnel: %@"), target)]
+
+        let hops = ssh.jumpHosts.filter { !$0.host.isEmpty }
+        guard !hops.isEmpty else { return details }
+
+        let described = hops.map { hop -> String in
+            let hopPort = hop.port ?? 22
+            return hop.username.isEmpty ? "\(hop.host):\(hopPort)" : "\(hop.username)@\(hop.host):\(hopPort)"
+        }
+        details.append(String(format: String(localized: "Jump Hosts: %@"), described.joined(separator: ", ")))
         return details
     }
 

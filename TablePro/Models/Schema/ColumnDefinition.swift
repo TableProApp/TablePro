@@ -10,7 +10,7 @@ import TableProPluginKit
 
 /// Column definition for schema modification (editable structure tab)
 struct EditableColumnDefinition: Hashable, Codable, Identifiable {
-    let id: UUID
+    var id: UUID
     var name: String
     var dataType: String
     var isNullable: Bool
@@ -22,10 +22,49 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
     var onUpdate: String?  // MySQL timestamp columns
     var charset: String?
     var extra: String?
+    var generationExpression: String?
+    var generationKind: GenerationKind?
 
     var isPrimaryKey: Bool
 
     static let currentTimestampExpression = "CURRENT_TIMESTAMP"
+
+    /// Spelled out rather than left to the memberwise init so the two generation fields can carry
+    /// defaults. `redundant_optional_initialization` is on under `swiftlint --strict`, so `= nil`
+    /// on the stored properties is not an option.
+    init(
+        id: UUID,
+        name: String,
+        dataType: String,
+        isNullable: Bool,
+        defaultValue: String?,
+        autoIncrement: Bool,
+        unsigned: Bool,
+        comment: String?,
+        collation: String?,
+        onUpdate: String?,
+        charset: String?,
+        extra: String?,
+        generationExpression: String? = nil,
+        generationKind: GenerationKind? = nil,
+        isPrimaryKey: Bool
+    ) {
+        self.id = id
+        self.name = name
+        self.dataType = dataType
+        self.isNullable = isNullable
+        self.defaultValue = defaultValue
+        self.autoIncrement = autoIncrement
+        self.unsigned = unsigned
+        self.comment = comment
+        self.collation = collation
+        self.onUpdate = onUpdate
+        self.charset = charset
+        self.extra = extra
+        self.generationExpression = generationExpression
+        self.generationKind = generationKind
+        self.isPrimaryKey = isPrimaryKey
+    }
 
     /// Create a placeholder column for adding new columns
     static func placeholder() -> EditableColumnDefinition {
@@ -45,6 +84,8 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
             isPrimaryKey: false
         )
     }
+
+    var isGenerated: Bool { generationExpression?.isEmpty == false }
 
     /// Check if this definition is valid (not a placeholder)
     var isValid: Bool {
@@ -68,6 +109,8 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
             onUpdate: onUpdateExpression(fromExtra: columnInfo.extra),
             charset: columnInfo.charset,
             extra: columnInfo.extra,
+            generationExpression: columnInfo.generationExpression,
+            generationKind: columnInfo.generationKind,
             isPrimaryKey: columnInfo.isPrimaryKey
         )
     }
@@ -83,7 +126,8 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
         PluginColumnDefinition(
             name: name, dataType: dataType, isNullable: isNullable, defaultValue: defaultValue,
             isPrimaryKey: isPrimaryKey, autoIncrement: autoIncrement, comment: comment,
-            unsigned: unsigned, onUpdate: onUpdate, charset: charset, collation: collation
+            unsigned: unsigned, onUpdate: onUpdate, charset: charset, collation: collation,
+            generationExpression: generationExpression, generationKind: generationKind
         )
     }
 
@@ -98,7 +142,18 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
             extra: extra,
             charset: charset,
             collation: collation,
-            comment: comment
+            comment: comment,
+            isGenerated: isGenerated,
+            generationExpression: generationExpression,
+            generationKind: generationKind
         )
+    }
+
+    /// A copy under a fresh identity, for paste and duplicate. Assigning `id` rather than
+    /// re-listing every property is what stops a newly added field being silently dropped here.
+    func withNewIdentity() -> EditableColumnDefinition {
+        var copy = self
+        copy.id = UUID()
+        return copy
     }
 }

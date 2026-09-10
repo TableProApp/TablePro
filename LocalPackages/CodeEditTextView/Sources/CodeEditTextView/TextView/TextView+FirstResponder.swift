@@ -11,6 +11,7 @@ extension TextView {
     open override func becomeFirstResponder() -> Bool {
         isFirstResponder = true
         selectionManager.cursorTimer.resetTimer()
+        selectionManager.updateSelectionViews(force: true)
         needsDisplay = true
         return super.becomeFirstResponder()
     }

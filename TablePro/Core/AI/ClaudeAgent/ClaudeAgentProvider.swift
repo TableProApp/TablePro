@@ -73,8 +73,8 @@ final class ClaudeAgentProvider: ChatTransport {
         }
     }
 
-    func fetchAvailableModels() async throws -> [String] {
-        ClaudeAgent.curatedModels.map(\.id)
+    func fetchAvailableModels() async throws -> [AIModelInfo] {
+        ClaudeAgent.curatedModels.map { AIModelInfo(id: $0.id, displayName: $0.displayName) }
     }
 
     func testConnection() async throws -> Bool {

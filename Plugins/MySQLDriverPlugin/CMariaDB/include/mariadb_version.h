@@ -26,11 +26,11 @@
 #define MYSQL_VERSION_ID                100808
 #define MYSQL_SERVER_VERSION            "10.8.8-MariaDB"
 
-#define MARIADB_PACKAGE_VERSION "3.4.8"
-#define MARIADB_PACKAGE_VERSION_ID 30408
+#define MARIADB_PACKAGE_VERSION "3.4.4"
+#define MARIADB_PACKAGE_VERSION_ID 30404
 #define MARIADB_SYSTEM_TYPE "Darwin"
 #define MARIADB_MACHINE_TYPE "arm64"
-#define MARIADB_PLUGINDIR "/opt/homebrew/Cellar/mariadb-connector-c/3.4.8_1/lib/mariadb/plugin"
+#define MARIADB_PLUGINDIR "/usr/local/lib/mariadb/plugin"
 
 /* mysqld compile time options */
 #ifndef MYSQL_CHARSET

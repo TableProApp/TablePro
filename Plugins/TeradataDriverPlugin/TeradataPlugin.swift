@@ -35,6 +35,8 @@ final class TeradataPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "Teradata"
+
+    static let supportsRenameTable = true
     static let databaseDisplayName = "Teradata"
     static let iconName = "teradata-icon"
     static let defaultPort = 1_025
@@ -49,10 +51,13 @@ final class TeradataPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let queryLanguageName = "SQL"
     static let supportsDatabaseSwitching = true
     static let supportsSchemaSwitching = false
+    static let supportsHealthMonitor = false
     static let requiresReconnectForDatabaseSwitch = false
     static let databaseGroupingStrategy: GroupingStrategy = .byDatabase
     static let containerEntityName = "Database"
     static let supportsForeignKeys = true
+    static let supportsRoutines = true
+    static let supportsDatabaseTriggerBrowse = true
     static let supportsSchemaEditing = true
     static let supportsSSL = true
     static let systemDatabaseNames: [String] = [
@@ -99,7 +104,8 @@ final class TeradataPlugin: NSObject, TableProPlugin, DriverPlugin {
             "DATE", "TIME", "TIMESTAMP", "INTERVAL", "PERIOD",
             "JSON", "XML", "ST_GEOMETRY",
         ],
-        autoLimitStyle: .top
+        autoLimitStyle: .top,
+        caseSensitivityStyle: .unsupported
     )
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "TeradataPlugin")
@@ -122,7 +128,7 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var supportsTransactions: Bool { true }
 
     var capabilities: PluginCapabilities {
-        [.cancelQuery, .transactions, .alterTableDDL]
+        [.cancelQuery, .transactions, .alterTableDDL, .dataCompare]
     }
 
     init(config: DriverConnectionConfig) {

@@ -162,6 +162,20 @@ internal struct BQJobResponse: Codable, Sendable {
     struct BQJobStatistics: Codable, Sendable {
         let totalBytesProcessed: String?
         let query: BQQueryStatistics?
+        /// Milliseconds since the epoch, as strings. The gap between them is the time the job ran
+        /// on BigQuery, with nothing from the client's own network in it.
+        let startTime: String?
+        let endTime: String?
+
+        var elapsed: TimeInterval? {
+            guard let start = startTime.flatMap(Double.init),
+                  let end = endTime.flatMap(Double.init),
+                  end >= start
+            else {
+                return nil
+            }
+            return (end - start) / 1_000
+        }
     }
 
     struct BQQueryStatistics: Codable, Sendable {
@@ -239,6 +253,10 @@ internal enum BQCellValue: Codable, Sendable {
 internal struct BQJobInfo: Sendable {
     let jobId: String
     let location: String?
+
+    /// How long BigQuery ran the job, from its own statistics. Nil when the response omitted the
+    /// start or end stamp.
+    var serverElapsed: TimeInterval?
 }
 
 internal struct BQExecuteResult: Sendable {
@@ -247,19 +265,22 @@ internal struct BQExecuteResult: Sendable {
     let totalBytesProcessed: String?
     let totalBytesBilled: String?
     let cacheHit: Bool?
+    let serverElapsed: TimeInterval?
 
     init(
         queryResponse: BQQueryResponse,
         dmlAffectedRows: Int,
         totalBytesProcessed: String?,
         totalBytesBilled: String? = nil,
-        cacheHit: Bool? = nil
+        cacheHit: Bool? = nil,
+        serverElapsed: TimeInterval? = nil
     ) {
         self.queryResponse = queryResponse
         self.dmlAffectedRows = dmlAffectedRows
         self.totalBytesProcessed = totalBytesProcessed
         self.totalBytesBilled = totalBytesBilled
         self.cacheHit = cacheHit
+        self.serverElapsed = serverElapsed
     }
 }
 
@@ -491,7 +512,8 @@ internal final class BigQueryConnection: @unchecked Sendable {
             dmlAffectedRows: dmlAffectedRows,
             totalBytesProcessed: totalBytesProcessed,
             totalBytesBilled: totalBytesBilled,
-            cacheHit: cacheHit
+            cacheHit: cacheHit,
+            serverElapsed: finalJobResponse.statistics?.elapsed
         )
     }
 
@@ -566,6 +588,7 @@ internal final class BigQueryConnection: @unchecked Sendable {
             _currentJobLocation = jobRef.location
         }
 
+        var completedJob = jobResponse
         if let state = jobResponse.status?.state, state != "DONE" {
             let finalJob = try await pollJobCompletion(
                 jobId: jobId, location: jobRef.location, auth: auth, session: session
@@ -574,12 +597,17 @@ internal final class BigQueryConnection: @unchecked Sendable {
                 let reason = errorResult.reason.map { " [\($0)]" } ?? ""
                 throw BigQueryError.jobFailed("\(errorResult.message ?? "Unknown job error")\(reason)")
             }
+            completedJob = finalJob
         } else if let errorResult = jobResponse.status?.errorResult {
             let reason = errorResult.reason.map { " [\($0)]" } ?? ""
             throw BigQueryError.jobFailed("\(errorResult.message ?? "Unknown job error")\(reason)")
         }
 
-        return BQJobInfo(jobId: jobId, location: jobRef.location)
+        return BQJobInfo(
+            jobId: jobId,
+            location: jobRef.location,
+            serverElapsed: completedJob.statistics?.elapsed
+        )
     }
 
     // MARK: - Dry Run

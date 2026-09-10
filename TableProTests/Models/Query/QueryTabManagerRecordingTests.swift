@@ -37,10 +37,10 @@ struct QueryTabManagerRecordingTests {
         #expect(opened().first?.isView == true)
     }
 
-    @Test("addPreviewTableTab reports the open as a preview")
+    @Test("addTableTab with isPreview reports the open as a preview")
     func previewReportsAsPreview() throws {
         let (manager, opened) = recorder()
-        try manager.addPreviewTableTab(tableName: "orders", databaseName: "shop", schemaName: "sales")
+        try manager.addTableTab(tableName: "orders", databaseName: "shop", schemaName: "sales", isPreview: true)
         #expect(opened() == [Opened(name: "orders", schema: "sales", database: "shop", isView: false, isPreview: true)])
     }
 

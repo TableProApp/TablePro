@@ -3,14 +3,14 @@ import Foundation
 import TableProDatabase
 import TableProModels
 
-struct DuckDBStreamColumn: Sendable {
+nonisolated struct DuckDBStreamColumn: Sendable {
     let name: String
     let typeName: String
     let type: duckdb_type
     let castToText: Bool
 }
 
-extension DuckDBDriver {
+nonisolated extension DuckDBDriver {
     private static func yieldMaterialized(
         query: String,
         options: StreamOptions,

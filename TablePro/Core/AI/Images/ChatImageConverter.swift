@@ -10,6 +10,12 @@ import ImageIO
 import os
 import UniformTypeIdentifiers
 
+/// Carries an object NSItemProvider decoded on its own queue back to the awaiting caller.
+/// The provider hands it over and keeps no reference, so nothing else can touch it in flight.
+private struct LoadedObject<Value>: @unchecked Sendable {
+    let value: Value
+}
+
 enum ChatImageConverterError: Error, LocalizedError {
     case unsupportedFormat
     case decodingFailed
@@ -142,7 +148,7 @@ enum ChatImageConverter {
     }
 
     private static func loadObject<T: NSItemProviderReading>(itemProvider: NSItemProvider) async throws -> T {
-        try await withCheckedThrowingContinuation { continuation in
+        let loaded: LoadedObject<T> = try await withCheckedThrowingContinuation { continuation in
             itemProvider.loadObject(ofClass: T.self) { object, error in
                 if let error {
                     continuation.resume(throwing: error)
@@ -152,9 +158,10 @@ enum ChatImageConverter {
                     continuation.resume(throwing: ChatImageConverterError.decodingFailed)
                     return
                 }
-                continuation.resume(returning: typed)
+                continuation.resume(returning: LoadedObject(value: typed))
             }
         }
+        return loaded.value
     }
 
     private static func loadData(itemProvider: NSItemProvider, typeIdentifier: String) async throws -> Data {

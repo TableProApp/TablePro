@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import Network
 import TableProPluginKit
 
 @Observable
@@ -34,14 +35,23 @@ final class NetworkPaneViewModel {
 
     var hasHostListField: Bool {
         connectionFields.contains { field in
-            if case .hostList = field.fieldType { return true }
-            return false
+            guard case .hostList = field.fieldType else { return false }
+            return isFieldVisible(field)
         }
     }
 
     var defaultPort: String {
         let port = type.defaultPort
         return port == 0 ? "" : String(port)
+    }
+
+    var firstHostListValue: String {
+        let fieldId = connectionFields.first { field in
+            guard case .hostList = field.fieldType else { return false }
+            return isFieldVisible(field)
+        }?.id
+        guard let fieldId else { return "" }
+        return additionalFieldValues[fieldId] ?? ""
     }
 
     var socketPathPrompt: String {
@@ -56,11 +66,37 @@ final class NetworkPaneViewModel {
         Int(port) ?? type.defaultPort
     }
 
-    var supportsDatabaseField: Bool {
-        let mode = connectionMode
-        return mode == .fileBased
-            || (mode == .apiOnly && PluginManager.shared.supportsDatabaseSwitching(for: type))
-            || (mode == .network && PluginManager.shared.requiresAuthentication(for: type))
+    /// Kerberos service principals are not registered against IP addresses, so SQL Server's
+    /// Windows Authentication warns when the host is one.
+    var resolvedHostIsIPAddress: Bool {
+        let host = resolvedHost.trimmingCharacters(in: .whitespaces)
+        return IPv4Address(host) != nil || IPv6Address(host) != nil
+    }
+
+    var hidesBuiltInDatabase: Bool {
+        PluginMetadataRegistry.shared.snapshot(for: type)?
+            .connection.hidesBuiltInDatabase ?? false
+    }
+
+    /// Whether the form renders the built-in Database field. A driver opts out through
+    /// `hidesBuiltInDatabase` when it names its container some other way, or has none.
+    /// This is deliberately not `requiresAuthentication`: whether a driver needs credentials
+    /// says nothing about whether it accepts a database name.
+    var showsBuiltInDatabaseField: Bool {
+        switch connectionMode {
+        case .fileBased:
+            return false
+        case .apiOnly:
+            return PluginManager.shared.supportsDatabaseSwitching(for: type) && !hidesBuiltInDatabase
+        default:
+            return !hidesBuiltInDatabase
+        }
+    }
+
+    /// Never require a value the form does not render. A file-based connection stores its
+    /// path in `database` and renders it as the Database File field.
+    var requiresDatabaseValue: Bool {
+        connectionMode == .fileBased || (connectionMode == .apiOnly && showsBuiltInDatabaseField)
     }
 
     var validationIssues: [String] {
@@ -69,9 +105,7 @@ final class NetworkPaneViewModel {
             issues.append(String(localized: "Connection name is required"))
         }
         let mode = connectionMode
-        let needsDatabaseField = mode == .fileBased
-            || (mode == .apiOnly && PluginManager.shared.supportsDatabaseSwitching(for: type))
-        if needsDatabaseField && database.trimmingCharacters(in: .whitespaces).isEmpty {
+        if requiresDatabaseValue && database.trimmingCharacters(in: .whitespaces).isEmpty {
             let label = mode == .fileBased
                 ? String(localized: "Database file path is required")
                 : String(localized: "Database name is required")
@@ -114,11 +148,11 @@ final class NetworkPaneViewModel {
     }
 
     func isFieldVisible(_ field: ConnectionField) -> Bool {
-        guard let rule = field.visibleWhen else { return true }
-        let allFields = PluginManager.shared.additionalConnectionFields(for: type)
-        let defaultValue = allFields.first { $0.id == rule.fieldId }?.defaultValue ?? ""
-        let currentValue = additionalFieldValues[rule.fieldId] ?? defaultValue
-        return rule.values.contains(currentValue)
+        PluginFieldRendering.isFieldVisible(field, type: type, values: resolvedFieldValues)
+    }
+
+    private var resolvedFieldValues: [String: String] {
+        coordinator?.value?.allAdditionalFieldValues ?? additionalFieldValues
     }
 
     func load(from connection: DatabaseConnection) {

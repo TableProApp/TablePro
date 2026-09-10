@@ -1,59 +1,55 @@
-# Quarantined macOS test suites (skipped by the macOS Tests CI gate).
+# Quarantined macOS test cases (skipped by the macOS Tests CI gate).
 #
-# These suites fail or hang in the headless XCTest host for reasons documented below,
-# not because the app code is wrong. The gate runs every other suite. Burn this list
-# down: fix a suite, delete its line, and it rejoins the gate. See
-# specs/claude-code-refactor-roadmap.md and the macOS-test gotchas note.
+# One test case per line, as xcodebuild enumerates it: Suite/case(). '#' starts a comment.
+# quarantine-args.sh checks every line against the real enumeration and fails the job on any entry
+# that would skip nothing, so a renamed case cannot leave an inert line behind and a Swift Testing
+# case cannot lose its parentheses and silently rejoin the run.
 #
-# Format: one Swift Testing suite type name per line. '#' starts a comment.
-
-# --- Hangs: real Network-framework transport harness with no timeout (blocks forever headless)
-MCPBridgeIntegrationTests
-
-# --- Driver-dependent: bundled .tableplugin drivers do not activate in the headless test
-#     host (only plugin metadata loads), so driver-backed SQL generation returns empty.
-TableOperationsPluginTests
-TableQueryBuilderFilteredQueryTests
-SQLCompletionProviderTests
-SQLStatementGeneratorPKRegressionTests
-SQLStatementGeneratorCompositePKTests
-EtcdQueryBuilderBrowseTests
-EtcdQueryBuilderCountTests
-EtcdQueryBuilderFilteredTests
-EtcdQueryBuilderTagTests
-EtcdPrefixRangeEndTests
-DataChangeManagerClickHouseTests
-OracleCellFormattingTests
-QueryExecutorTests
-ClickHouseDialectTests
-ValidateDriverDescriptorTests
-PluginCapabilityTests
-FreeTDSClassifierTests
-DatabaseTypeCassandraTests
-RowOperationsManagerTests
-StructureGridDelegateAddRowTests
-SaveCompletionTests
-ChangeReapplyVersionTests
-
-# --- Persistence-entangled: tests assume lowercase enum values but rawValues are
-#     display-style ("Red"/"Private Key"); changing them needs a Codable migration.
-ConnectionURLFormatterSSHProfileTests
-DatabaseConnectionExternalAccessTests
-DataGridSettingsDefaultSortDecoderTests
-
-# --- Environment-coupled: iCloud entitlement, locally-installed apps, or live network.
-MCPHttpServerTransportTests
-MCPPairingServiceTests
-MCPBearerTokenAuthenticatorTests
-TablePlusImporterTests
-SequelAceImporterTests
-HostKeyStoreTests
-KeychainHelperTests
-
-# --- Genuine drift needing per-test investigation (some tests are likely wrong).
-StructureChangeManagerUndoTests
-DataChangeManagerExtendedTests
-DataChangeManagerTests
-CoordinatorEditorLoadTests
-CommandActionsDispatchTests
-ChatToolSpecCopilotTests
+# The list is empty. Keep it that way: a failing case gets fixed, not listed.
+#
+# It began as 39 whole suites. Running them measured 483 passing cases against 53 failing ones, so
+# nine tenths of what the gate skipped was skipped because a sibling case in the same file was
+# broken. Naming cases instead of suites returned those 483 to the gate; the 53 were then worked
+# through one at a time.
+#
+# Not one of them was a bug in the app. Every single case either asserted a contract the app had
+# deliberately changed, or could not reach the code it was asserting. That is worth knowing before
+# adding a line here: the reflex reading of a red case, that the app regressed, was wrong 53 times
+# out of 53.
+#
+# Four patterns covered nearly all of them, and each is worth recognising on sight.
+#
+#   Engine knowledge moved into the plugins. Tests kept the old lever: a query builder with no
+#   dialect, `sshConfig.enabled` after the field became `sshTunnelMode`, `DataChangeManager` after
+#   ClickHouse's ALTER TABLE ... UPDATE moved to ClickHousePluginDriver, a DatabaseType switch after
+#   the built-in arms were deleted.
+#
+#   The test could not reach the code. SaveCompletionTests had no connected driver, so no statements
+#   were generated and saveChanges bailed before touching what the cases asserted;
+#   ValidateDriverDescriptorTests assumed MySQL was registered, but plugin discovery stops at "will
+#   load on first use" and nothing registers in the xctest host. Both seams already existed
+#   (`DatabaseManager.injectSession`, and `driverPlugins` being internal(set)) and neither was used.
+#
+#   The test's own setup was the bug. SQLCompletionProviderTests expected a bare `user_name` where
+#   `allColumnsInScope` qualifies whenever more than one table is in scope, and it let the mock
+#   driver deallocate: SQLSchemaProvider.cachedDriver is weak, correctly, so getColumns returned
+#   nothing and every column expectation failed as though scoping were broken.
+#
+#   Two protective invariants read backwards. reloadVersion deliberately does not bump on an edit,
+#   because a reload would discard the edit the user just made, and insertQueryFromAI only reuses a
+#   tab that is empty. "Fixing the app to match" either one would have caused data loss.
+#
+# Three cases were left here longest for a reason that turned out to be wrong, which is the last
+# lesson. StructureChangeManagerUndoTests failed because NSUndoManager groups by run loop event, so
+# two operations with no turn between them undo as one. The recorded conclusion was that a seam on
+# the manager hangs the test host, after three runs wedged. That was the host wedging on its own:
+# an unrelated six-suite run wedged identically the same day at 0% CPU and passed on a re-run. The
+# real fix was architectural. Undo granularity was a property of run loop timing rather than of the
+# operation, so a multi-row delete collapsed into one undo by luck and two separate user actions
+# stayed separate by luck. StructureChangeManager now turns groupsByEvent off, routes all 25
+# registrations through one helper that opens a group per mutation, and exposes
+# performAsOneUndoStep for the grid delegates' delete loops. Both behaviours are now stated.
+#
+# Before quarantining a case, check the three cheap things first: does a seam already exist, is the
+# expectation older than a deliberate change, and did the run actually run (a suite reporting every
+# case failed at 0.000 seconds, or a log frozen mid-line at 0% CPU, is a wedge and not a result).

@@ -10,7 +10,7 @@ import os
 final class ChatToolRegistry {
     static let shared = ChatToolRegistry()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ChatToolRegistry")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ChatToolRegistry")
 
     private var tools: [String: any ChatTool] = [:]
 

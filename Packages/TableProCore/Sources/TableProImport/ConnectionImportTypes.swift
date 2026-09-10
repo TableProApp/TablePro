@@ -2,13 +2,13 @@ import Foundation
 
 // MARK: - Import Preview Types
 
-public enum ImportItemStatus {
+public enum ImportItemStatus: Sendable {
     case ready
     case duplicate(existingId: UUID, existingName: String)
     case warnings([String])
 }
 
-public struct ImportItem: Identifiable {
+public struct ImportItem: Identifiable, Sendable {
     public let id = UUID()
     public let connection: ExportableConnection
     public let status: ImportItemStatus
@@ -19,14 +19,14 @@ public struct ImportItem: Identifiable {
     }
 }
 
-public enum ImportResolution: Hashable {
+public enum ImportResolution: Hashable, Sendable {
     case importNew
     case skip
     case replace(existingId: UUID)
     case importAsCopy
 }
 
-public struct ConnectionImportPreview {
+public struct ConnectionImportPreview: Sendable {
     public let envelope: ConnectionExportEnvelope
     public let items: [ImportItem]
 
@@ -36,7 +36,7 @@ public struct ConnectionImportPreview {
     }
 }
 
-public struct ConnectionDuplicateCandidate {
+public struct ConnectionDuplicateCandidate: Sendable {
     public let id: UUID
     public let name: String
     public let host: String

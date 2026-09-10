@@ -41,6 +41,11 @@ public final class TextLineStorage<Data: Identifiable> {
 
     public var height: CGFloat = 0
 
+    /// The width of the widest line measured so far. A line that has never been laid out counts as zero wide.
+    public var maxWidth: CGFloat {
+        root?.subtreeWidth ?? 0
+    }
+
     public var first: TextLinePosition? {
         guard count > 0, let position = search(forIndex: 0) else { return nil }
         return TextLinePosition(position: position)
@@ -257,6 +262,37 @@ public final class TextLineStorage<Data: Identifiable> {
         height = 0
     }
 
+    /// Records the measured width of the line at the given index, keeping ``maxWidth`` current.
+    /// - Complexity: `O(log n)`
+    /// - Parameters:
+    ///   - width: The width the line measured when it was laid out, or zero to forget it.
+    ///   - index: The index of the line.
+    public func setWidth(_ width: CGFloat, forLineAt index: Int) {
+        guard let node = search(forIndex: index)?.node, node.width != width else { return }
+        node.width = width
+        var current: Node<Data>? = node
+        while let node = current, node.updateSubtreeWidth() {
+            current = node.parent
+        }
+    }
+
+    /// Forgets every measured width, as if no line had been laid out yet.
+    /// - Complexity: `O(m)` where `m` is the number of lines with a width recorded.
+    public func resetWidths() {
+        var pending: [Node<Data>] = root.map { [$0] } ?? []
+        while let node = pending.popLast() {
+            guard node.subtreeWidth > 0 else { continue }
+            node.width = 0
+            node.subtreeWidth = 0
+            if let left = node.left {
+                pending.append(left)
+            }
+            if let right = node.right {
+                pending.append(right)
+            }
+        }
+    }
+
     /// Efficiently builds the tree from the given array of lines.
     /// - Note: Calls ``TextLineStorage/removeAll()`` before building.
     /// - Parameter lines: The lines to use to build the tree.
@@ -398,12 +434,16 @@ private extension TextLineStorage {
         var nodeY = nodeZ
         var nodeX: Node<Data>?
         var originalColor = nodeY.color
+        // The lowest node whose children change. Every width aggregate from there to the root has to be recomputed.
+        let lowestChangedNode: Node<Data>?
 
         if nodeZ.left == nil || nodeZ.right == nil {
+            lowestChangedNode = nodeZ.parent
             nodeX = nodeZ.right ?? nodeZ.left
             transplant(nodeZ, with: nodeX)
         } else {
             nodeY = nodeZ.right!.minimum()
+            lowestChangedNode = nodeY.parent === nodeZ ? nodeY : nodeY.parent
 
             // Delete nodeY from it's original place in the tree.
             metaFixup(startingAt: nodeY, delta: -nodeY.length, deltaHeight: -nodeY.height, nodeAction: .deleted)
@@ -433,6 +473,8 @@ private extension TextLineStorage {
             // We've inserted nodeY again into a new spot. Update tree meta
             metaFixup(startingAt: nodeY, delta: nodeY.length, deltaHeight: nodeY.height, nodeAction: .inserted)
         }
+
+        updateSubtreeWidths(upFrom: lowestChangedNode)
 
         if originalColor == .black, let nodeX {
             deleteFixup(node: nodeX)
@@ -540,6 +582,18 @@ private extension TextLineStorage {
         nodeX?.color = .black
     }
 
+    /// Recomputes the width aggregate of every node from `node` to the root.
+    ///
+    /// Unlike ``TextLineStorage/setWidth(_:forLineAt:)`` this never stops early: after a node is removed, a node
+    /// higher up may hold an aggregate that still counts it even where the nodes below have not changed.
+    func updateSubtreeWidths(upFrom node: Node<Data>?) {
+        var current = node
+        while let node = current {
+            node.updateSubtreeWidth()
+            current = node.parent
+        }
+    }
+
     /// Walk up the tree, updating any `leftSubtree` metadata.
     private func metaFixup(
         startingAt node: borrowing Node<Data>,
@@ -623,6 +677,10 @@ private extension TextLineStorage {
             node.leftSubtreeCount = metadata.count
         }
         node.parent = nodeY
+
+        // A rotation keeps each subtree's set of lines, so only the two nodes that swapped places need recomputing.
+        node.updateSubtreeWidth()
+        nodeY?.updateSubtreeWidth()
     }
 
     /// Finds the correct subtree metadata starting at a node.

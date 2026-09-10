@@ -11,7 +11,7 @@ import os
 final class ChatGPTCodexService {
     static let shared = ChatGPTCodexService()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ChatGPTCodexService")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ChatGPTCodexService")
 
     enum AuthState: Sendable, Equatable {
         case signedOut

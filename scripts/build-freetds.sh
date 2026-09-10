@@ -22,7 +22,17 @@ IOS_LIBS_DIR="$LIBS_DIR/ios"
 FREETDS_VERSION="1.4.22"
 FREETDS_SHA256="6acb9086350425f5178e544bbe2d54a001097e8e20277a2b766ad0799a2e7d87"
 FREETDS_URL="https://www.freetds.org/files/stable/freetds-${FREETDS_VERSION}.tar.gz"
-BUILD_DIR="/tmp/freetds-build"
+# A private directory with a cleanup trap. This was a fixed /tmp path, which is world-writable and
+# therefore something another local user can own first, and it collided between two concurrent
+# runs. The four mktemp dirs below were also never removed, so a run leaked all five.
+BUILD_DIR="$(mktemp -d)"
+TEMP_DIRS=("$BUILD_DIR")
+cleanup_freetds() { rm -rf "${TEMP_DIRS[@]}"; }
+trap cleanup_freetds EXIT
+
+# Keeps the downloaded tarballs across runs, which the fixed build root used to provide for free.
+CACHE_DIR="${TMPDIR:-/tmp}/tablepro-freetds-cache"
+mkdir -p "$CACHE_DIR"
 SOURCE_DIR="$BUILD_DIR/freetds-${FREETDS_VERSION}"
 MACOS_DEPLOYMENT_TARGET="14.0"
 IOS_DEPLOYMENT_TARGET="17.0"
@@ -39,14 +49,40 @@ fi
 
 mkdir -p "$BUILD_DIR" "$LIBS_DIR" "$IOS_LIBS_DIR"
 
+# Cached outside the per-run build directory, so moving off a fixed /tmp build root does not turn
+# every run into a fresh download. Verified on every run, not only after a download.
+TARBALL="$CACHE_DIR/freetds-${FREETDS_VERSION}.tar.gz"
 echo "==> Downloading FreeTDS ${FREETDS_VERSION}..."
-if [ ! -f "$BUILD_DIR/freetds-${FREETDS_VERSION}.tar.gz" ]; then
-    curl -fSL "$FREETDS_URL" -o "$BUILD_DIR/freetds-${FREETDS_VERSION}.tar.gz"
+if [ ! -f "$TARBALL" ]; then
+    curl -fSL "$FREETDS_URL" -o "$TARBALL"
 fi
-echo "$FREETDS_SHA256  $BUILD_DIR/freetds-${FREETDS_VERSION}.tar.gz" | shasum -a 256 -c -
+echo "$FREETDS_SHA256  $TARBALL" | shasum -a 256 -c -
 
 rm -rf "$SOURCE_DIR"
-tar xz -C "$BUILD_DIR" -f "$BUILD_DIR/freetds-${FREETDS_VERSION}.tar.gz"
+tar xz -C "$BUILD_DIR" -f "$TARBALL"
+
+# FreeTDS has never implemented the TDS FEDAUTH login extension, so Microsoft Entra ID
+# authentication rides as a patch on the pinned release tarball. Upstream tracks the gap in
+# issues #360 and #509. Drop the patch once a release carries it.
+#
+# Patches live in scripts/patches/<library>/ so each build applies only its own. Every slice
+# builds from this one source tree, so patching once here covers macOS and iOS.
+apply_patches() {
+    local source_dir=$1
+    local library=$2
+    local patch_dir="$SCRIPT_DIR/patches/$library"
+    local patch
+
+    [ -d "$patch_dir" ] || return 0
+
+    for patch in "$patch_dir"/*.patch; do
+        [ -e "$patch" ] || continue
+        echo "==> Applying $(basename "$patch") to $library"
+        patch -p1 -d "$source_dir" -i "$patch"
+    done
+}
+
+apply_patches "$SOURCE_DIR" freetds
 
 build_slice() {
     local SLICE_LABEL="$1"
@@ -111,8 +147,12 @@ build_slice() {
 
 # macOS slices use per-arch static OpenSSL from Libs/ to avoid brew's arm64-only dylib at the
 # linker step. Brew supplies headers (arch-agnostic); the .a files come from Libs/.
-MACOS_OPENSSL_ARM64="$(mktemp -d)/openssl-macos-arm64"
-MACOS_OPENSSL_X86_64="$(mktemp -d)/openssl-macos-x86_64"
+MACOS_OPENSSL_ARM64_ROOT="$(mktemp -d)"
+TEMP_DIRS+=("$MACOS_OPENSSL_ARM64_ROOT")
+MACOS_OPENSSL_ARM64="${MACOS_OPENSSL_ARM64_ROOT}/openssl-macos-arm64"
+MACOS_OPENSSL_X86_64_ROOT="$(mktemp -d)"
+TEMP_DIRS+=("$MACOS_OPENSSL_X86_64_ROOT")
+MACOS_OPENSSL_X86_64="${MACOS_OPENSSL_X86_64_ROOT}/openssl-macos-x86_64"
 mkdir -p "$MACOS_OPENSSL_ARM64/include/openssl" "$MACOS_OPENSSL_ARM64/lib"
 mkdir -p "$MACOS_OPENSSL_X86_64/include/openssl" "$MACOS_OPENSSL_X86_64/lib"
 cp -R "$MACOS_OPENSSL_PREFIX/include/openssl/." "$MACOS_OPENSSL_ARM64/include/openssl/"
@@ -160,8 +200,12 @@ cp "$LIBS_DIR/libsybdb_macos_universal.a" "$LIBS_DIR/libsybdb.a"
 
 # iOS slices link OpenSSL statically from the existing xcframeworks; reconstruct a unix-style prefix
 # for FreeTDS's --with-openssl which expects include/ and lib/ siblings.
-IOS_OPENSSL_DEVICE="$(mktemp -d)/openssl-ios-arm64"
-IOS_OPENSSL_SIM="$(mktemp -d)/openssl-ios-arm64-simulator"
+IOS_OPENSSL_DEVICE_ROOT="$(mktemp -d)"
+TEMP_DIRS+=("$IOS_OPENSSL_DEVICE_ROOT")
+IOS_OPENSSL_DEVICE="${IOS_OPENSSL_DEVICE_ROOT}/openssl-ios-arm64"
+IOS_OPENSSL_SIM_ROOT="$(mktemp -d)"
+TEMP_DIRS+=("$IOS_OPENSSL_SIM_ROOT")
+IOS_OPENSSL_SIM="${IOS_OPENSSL_SIM_ROOT}/openssl-ios-arm64-simulator"
 mkdir -p "$IOS_OPENSSL_DEVICE/include" "$IOS_OPENSSL_DEVICE/lib"
 mkdir -p "$IOS_OPENSSL_SIM/include" "$IOS_OPENSSL_SIM/lib"
 cp -R "$IOS_OPENSSL_SSL_XCFW/ios-arm64/Headers/." "$IOS_OPENSSL_DEVICE/include/"
@@ -174,16 +218,27 @@ cp "$IOS_OPENSSL_CRYPTO_XCFW/ios-arm64-simulator/libcrypto.a" "$IOS_OPENSSL_SIM/
 build_slice "ios-arm64"           "iphoneos"        "arm64" "aarch64-apple-darwin" "-mios-version-min=${IOS_DEPLOYMENT_TARGET}"           "$IOS_OPENSSL_DEVICE"
 build_slice "ios-arm64-simulator" "iphonesimulator" "arm64" "aarch64-apple-darwin" "-mios-simulator-version-min=${IOS_DEPLOYMENT_TARGET}" "$IOS_OPENSSL_SIM"
 
+# The xcframework ships the hand-curated stubs, not upstream's headers. TableProMobile's
+# CBridges/CFreeTDS umbrella includes <sybdb.h> and <sybfront.h>, which resolve to these, and
+# upstream sybdb.h transitively requires generated headers (tds_sysdep_public.h and friends) that
+# are not shipped, so staging upstream's copy fails the iOS build with "file not found". The real
+# symbols come from libsybdb.a at link time, so a stub is all a consumer needs.
+#
+# For the same reason, never copy upstream headers into Plugins/MSSQLDriverPlugin/CFreeTDS/include/.
+STUB_HEADERS="$PROJECT_DIR/Plugins/MSSQLDriverPlugin/CFreeTDS/include"
 HEADERS_STAGE="$BUILD_DIR/headers-stage"
 rm -rf "$HEADERS_STAGE"
 mkdir -p "$HEADERS_STAGE"
-cp "$SOURCE_DIR/include/sybdb.h" "$HEADERS_STAGE/"
-cp "$SOURCE_DIR/include/sybfront.h" "$HEADERS_STAGE/"
+cp "$STUB_HEADERS/sybdb.h" "$HEADERS_STAGE/"
+cp "$STUB_HEADERS/sybfront.h" "$HEADERS_STAGE/"
 
-# Do NOT copy raw FreeTDS headers into Plugins/MSSQLDriverPlugin/CFreeTDS/include/. Those are
-# hand-curated Swift-compatible stubs. Upstream sybdb.h transitively requires generated headers
-# (tds_sysdep_public.h, etc.) that we don't ship. The xcframework's bundled headers are also stubs
-# for consumers; the real symbols are exported by libsybdb.a at link time.
+# A stub that has drifted from the built library is the failure this guards against: the symbol
+# links on macOS, where the plugin uses the stub directly, and goes missing only on iOS.
+if ! grep -q 'dbsetlfedauthtoken' "$HEADERS_STAGE/sybdb.h"; then
+    echo "ERROR: $STUB_HEADERS/sybdb.h does not declare dbsetlfedauthtoken." >&2
+    echo "       The FEDAUTH patch is applied to the library but the stub header is stale." >&2
+    exit 1
+fi
 
 echo "==> Assembling FreeTDS.xcframework..."
 XCFRAMEWORK_OUT="$IOS_LIBS_DIR/FreeTDS.xcframework"
@@ -205,10 +260,10 @@ rm -f \
 echo ""
 echo "FreeTDS.xcframework built at: $XCFRAMEWORK_OUT"
 echo "Slices:"
-ls -1 "$XCFRAMEWORK_OUT" | grep -v Info.plist | sed 's/^/  - /'
+find "$XCFRAMEWORK_OUT" -mindepth 1 -maxdepth 1 ! -name Info.plist -exec basename {} \; | sed 's/^/  - /'
 echo ""
 echo "NEXT STEPS:"
 echo "  1. Inspect: xcodebuild -checkFirstLaunchStatus; file ${XCFRAMEWORK_OUT}/*/libsybdb.a"
-echo "  2. Re-pack iOS libs archive and upload to libs-v1 release:"
-echo "       tar czf /tmp/tablepro-libs-ios-v1.tar.gz -C ${IOS_LIBS_DIR} ."
-echo "       gh release upload libs-v1 /tmp/tablepro-libs-ios-v1.tar.gz --clobber --repo TableProApp/TablePro"
+echo "  2. Publish the iOS libs and refresh their integrity baseline:"
+echo "       scripts/publish-ios-libs.sh"
+echo "       git add Libs/ios/checksums.sha256 && git commit -m 'build: update iOS xcframework checksums'"

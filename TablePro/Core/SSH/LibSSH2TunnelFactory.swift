@@ -35,7 +35,9 @@ internal enum LibSSH2TunnelFactory {
 
     // MARK: - Global Init
 
-    private static let initialized: Bool = {
+    /// libssh2's own header says `libssh2_init` uses global state and must not be called
+    /// concurrently, so every entry point in the process goes through this one lazy static.
+    internal static let initialized: Bool = {
         libssh2_init(0)
         return true
     }()
@@ -114,10 +116,9 @@ internal enum LibSSH2TunnelFactory {
     // MARK: - Shared Chain Builder
 
     /// Result of building an authenticated SSH chain (possibly through jump hosts).
-    private struct AuthenticatedChain {
+    internal struct AuthenticatedChain {
         let session: OpaquePointer
         let socketFD: Int32
-        let initialSocketFD: Int32
         let jumpHops: [HopInfo]
 
         struct HopInfo {
@@ -128,17 +129,61 @@ internal enum LibSSH2TunnelFactory {
         }
     }
 
-    private static func buildAuthenticatedChain(
+    /// The depth ssh itself stops at, so a `Host a / ProxyJump b` plus `Host b / ProxyJump a` pair
+    /// ends rather than recursing until the stack runs out.
+    private static let maxJumpChainDepth = 10
+
+    /// Resolves the hops in order, following each one's own `ProxyJump` first. A jump host may
+    /// declare a jump host of its own, and ssh walks that recursively: for `target` -> `bee` ->
+    /// `ay`, it connects to `ay`, tunnels to `bee`, then reaches `target`. Reading only the
+    /// target's own `ProxyJump` stopped the chain at `bee`, which is either unreachable or the
+    /// wrong host entirely.
+    internal static func resolveJumpChain(
+        _ jumpHosts: [SSHJumpHost],
+        document: SSHConfigDocument,
+        env: ResolverEnvironment = .live,
+        depth: Int = 0
+    ) -> [ResolvedSSHTarget] {
+        guard depth < maxJumpChainDepth else {
+            logger.warning("SSH ProxyJump chain deeper than \(maxJumpChainDepth) hops, stopping")
+            return []
+        }
+
+        return jumpHosts.flatMap { jumpHost -> [ResolvedSSHTarget] in
+            let resolved = SSHConfigResolver.resolve(jumpHost, document: document, env: env)
+            let earlier = resolveJumpChain(
+                resolved.proxyJump,
+                document: document,
+                env: env,
+                depth: depth + 1
+            )
+            return earlier + [resolved]
+        }
+    }
+
+    internal static func buildAuthenticatedChain(
         config: SSHConfiguration,
         credentials: SSHTunnelCredentials,
         queueLabel: String
     ) async throws -> AuthenticatedChain {
+        _ = initialized
+
         let document = await SSHConfigCache.shared.current()
         let resolvedPrimary = SSHConfigResolver.resolve(config, document: document)
 
         let formJumps = config.jumpHosts
-        let resolvedJumps: [ResolvedSSHTarget] = (formJumps.isEmpty ? resolvedPrimary.proxyJump : formJumps)
-            .map { SSHConfigResolver.resolve($0, document: document) }
+        let resolvedJumps = resolveJumpChain(
+            formJumps.isEmpty ? resolvedPrimary.proxyJump : formJumps,
+            document: document
+        )
+
+        // A value whose tokens could not be expanded is reported by name. Dialling it anyway is how
+        // `Hostname %h` reached getaddrinfo and came back as a DNS failure for a two-character host.
+        for target in [resolvedPrimary] + resolvedJumps {
+            if let failure = target.expansionFailure {
+                throw SSHTunnelError.configExpansionFailed(failure.explanation)
+            }
+        }
 
         if resolvedPrimary.username.isEmpty {
             throw SSHTunnelError.tunnelCreationFailed(
@@ -269,7 +314,6 @@ internal enum LibSSH2TunnelFactory {
                 return AuthenticatedChain(
                     session: currentSession,
                     socketFD: currentSocketFD,
-                    initialSocketFD: socketFD,
                     jumpHops: jumpHops
                 )
             } catch {
@@ -306,12 +350,10 @@ internal enum LibSSH2TunnelFactory {
     }
 
     /// Clean up all resources in an authenticated chain.
-    private static func cleanupChain(_ chain: AuthenticatedChain, reason: String) {
+    internal static func cleanupChain(_ chain: AuthenticatedChain, reason: String) {
         tablepro_libssh2_session_disconnect(chain.session, reason)
         libssh2_session_free(chain.session)
-        if chain.socketFD != chain.initialSocketFD {
-            Darwin.close(chain.socketFD)
-        }
+        Darwin.close(chain.socketFD)
 
         // Clean up jump hops in reverse order:
         // First pass: cancel relays and shutdown sockets to break relay loops
@@ -503,8 +545,7 @@ internal enum LibSSH2TunnelFactory {
                 buildKeyFileAuthenticator(
                     keyPath: keyPath,
                     providedPassphrase: credentials.keyPassphrase,
-                    resolved: resolved,
-                    canPrompt: true
+                    resolved: resolved
                 )
             }
             authenticators.append(KeyboardInteractiveAuthenticator(
@@ -515,28 +556,35 @@ internal enum LibSSH2TunnelFactory {
             return CompositeAuthenticator(authenticators: authenticators)
 
         case .sshAgent:
+            // The agent is the credential, so there is no key-file fallback: authenticating with a
+            // key the user never chose put TablePro's own passphrase prompt over an agent that had
+            // simply not been reached (#2583). Keyboard-interactive stays, being a second factor the
+            // same server asked for rather than another credential.
             let socketPath: String? = resolved.agentSocketPath.isEmpty
                 ? nil
                 : SSHPathUtilities.expandTilde(resolved.agentSocketPath)
 
-            var authenticators: [any SSHAuthenticator] = [AgentAuthenticator(socketPath: socketPath)]
-
-            for keyPath in effectiveKeyPaths(for: resolved) {
-                authenticators.append(buildKeyFileAuthenticator(
-                    keyPath: keyPath,
-                    providedPassphrase: credentials.keyPassphrase,
-                    resolved: resolved,
-                    canPrompt: true
-                ))
-            }
-
-            authenticators.append(KeyboardInteractiveAuthenticator(
-                password: nil,
-                totpProvider: buildTOTPProvider(config: config, credentials: credentials),
-                promptProvider: promptProvider
-            ))
-
-            return CompositeAuthenticator(authenticators: authenticators)
+            return CompositeAuthenticator(
+                authenticators: [
+                    AgentAuthenticator(
+                        socketPath: socketPath,
+                        socketOrigin: resolved.agentSocketOrigin,
+                        identityFiles: resolved.identityFiles,
+                        identitiesOnly: resolved.identitiesOnly
+                    ),
+                    KeyboardInteractiveAuthenticator(
+                        password: nil,
+                        totpProvider: buildTOTPProvider(config: config, credentials: credentials),
+                        promptProvider: promptProvider
+                    ),
+                ],
+                endsChainOn: Set(
+                    AgentSocketOrigin.allCases.map(AuthFailureReason.agentUnavailable)
+                        + AgentSocketOrigin.allCases.map(AuthFailureReason.agentNoIdentities)
+                        + AgentSocketOrigin.allCases.map(AuthFailureReason.agentNoMatchingIdentity)
+                        + [.agentIdentityFileUnreadable, .agentServerClosedConnection]
+                )
+            )
 
         case .keyboardInteractive:
             return KeyboardInteractiveAuthenticator(
@@ -564,19 +612,16 @@ internal enum LibSSH2TunnelFactory {
             .filter { FileManager.default.isReadableFile(atPath: $0) }
     }
 
-    /// Passphrase resolution is deferred to auth time (not build time) so
-    /// that, when this authenticator is used as an agent fallback, the user
-    /// is only prompted if the agent actually fails.
+    /// Passphrase resolution is deferred to auth time (not build time) so that a key later in
+    /// the chain only prompts once the ones before it have actually been refused.
     private static func buildKeyFileAuthenticator(
         keyPath: String,
         providedPassphrase: String?,
-        resolved: ResolvedSSHTarget,
-        canPrompt: Bool
+        resolved: ResolvedSSHTarget
     ) -> any SSHAuthenticator {
         KeyFileAuthenticator(
             keyPath: keyPath,
             providedPassphrase: providedPassphrase,
-            canPrompt: canPrompt,
             useKeychain: resolved.useKeychain,
             addKeysToAgent: resolved.addKeysToAgent
         )
@@ -588,7 +633,6 @@ internal enum LibSSH2TunnelFactory {
     private struct KeyFileAuthenticator: SSHAuthenticator {
         let keyPath: String
         let providedPassphrase: String?
-        let canPrompt: Bool
         let useKeychain: Bool
         let addKeysToAgent: Bool
 
@@ -619,9 +663,7 @@ internal enum LibSSH2TunnelFactory {
                 }
             }
 
-            // 2. Prompt the user if allowed (key is encrypted, no stored passphrase)
-            guard canPrompt else { throw SSHTunnelError.authenticationFailed(reason: .privateKey) }
-
+            // 2. Prompt the user (key is encrypted, no stored passphrase)
             let provider = PromptPassphraseProvider(keyPath: expandedPath)
             guard let promptResult = provider.providePassphrase() else {
                 throw SSHTunnelError.authenticationFailed(reason: .privateKey)
@@ -670,7 +712,6 @@ internal enum LibSSH2TunnelFactory {
                 KeyFileAuthenticator(
                     keyPath: path,
                     providedPassphrase: nil,
-                    canPrompt: true,
                     useKeychain: resolved.useKeychain,
                     addKeysToAgent: resolved.addKeysToAgent
                 )
@@ -680,12 +721,16 @@ internal enum LibSSH2TunnelFactory {
                 : CompositeAuthenticator(authenticators: authenticators)
         case .sshAgent:
             let socketPath: String? = resolved.agentSocketPath.isEmpty ? nil : resolved.agentSocketPath
-            let agent = AgentAuthenticator(socketPath: socketPath)
+            let agent = AgentAuthenticator(
+                socketPath: socketPath,
+                socketOrigin: resolved.agentSocketOrigin,
+                identityFiles: resolved.identityFiles,
+                identitiesOnly: resolved.identitiesOnly
+            )
             if !jumpHost.privateKeyPath.isEmpty {
                 let keyAuth = KeyFileAuthenticator(
                     keyPath: jumpHost.privateKeyPath,
                     providedPassphrase: nil,
-                    canPrompt: true,
                     useKeychain: resolved.useKeychain,
                     addKeysToAgent: resolved.addKeysToAgent
                 )
@@ -786,6 +831,13 @@ internal enum LibSSH2TunnelFactory {
         return channel
     }
 
+    /// The libssh2 handles the relay task takes ownership of. The relay is the only thing that
+    /// touches them once it starts, which is what the compiler cannot see through an OpaquePointer.
+    private struct RelayHandles: @unchecked Sendable {
+        let channel: OpaquePointer
+        let session: OpaquePointer
+    }
+
     /// Start a relay task that copies data between a channel and a socketpair fd.
     /// libssh2 calls use `sessionQueue.sync` for thread safety; I/O loop runs on a concurrent queue.
     private static func startChannelRelay(
@@ -799,6 +851,7 @@ internal enum LibSSH2TunnelFactory {
             label: "com.TablePro.ssh.hop-relay",
             qos: .utility
         )
+        let handles = RelayHandles(channel: channel, session: session)
         return Task.detached {
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 relayQueue.async {
@@ -806,8 +859,8 @@ internal enum LibSSH2TunnelFactory {
                         localFD: socketFD,
                         transportFD: sshSocketFD,
                         channelIO: LibSSH2ChannelIO(
-                            channel: channel,
-                            session: session,
+                            channel: handles.channel,
+                            session: handles.session,
                             sessionQueue: sessionQueue
                         ),
                         bufferSize: 32_768,

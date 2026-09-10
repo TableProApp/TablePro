@@ -132,7 +132,7 @@ struct SSHForwardChannelOpenPumpTests {
         )
     }
 
-    private static let fakeChannel = OpaquePointer(bitPattern: 0xDEAD_BEEF)!
+    private static var fakeChannel: OpaquePointer { OpaquePointer(bitPattern: 0xDEAD_BEEF)! }
 }
 
 @Suite("handleChannelOpenOutcome")

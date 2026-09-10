@@ -13,7 +13,7 @@ final class DownloadCountService {
     private var counts: [String: Int] = [:]
     private var lastFetchDate: Date?
     private static let cooldown: TimeInterval = 300 // 5 minutes
-    private static let logger = Logger(subsystem: "com.TablePro", category: "DownloadCountService")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "DownloadCountService")
 
     private static let releasesURL = URL(string: "https://api.github.com/repos/TableProApp/TablePro/releases?per_page=100")!
 

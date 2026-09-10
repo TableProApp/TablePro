@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import CodeEditTextView
 import TableProPluginKit
 import UniformTypeIdentifiers
 
@@ -17,9 +18,18 @@ protocol ClipboardProvider {
     func readGridRows() -> GridRowsClipboardPayload?
     func writeText(_ text: String)
     func writeCsv(_ csv: String)
+    func writeImage(_ image: NSImage)
     func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload)
     var hasText: Bool { get }
     var hasGridRows: Bool { get }
+}
+
+extension ClipboardProvider {
+    /// Text a clipboard-history app should not retain. Providers that cannot express that
+    /// fall back to a plain write rather than refusing to copy.
+    func writeSecretText(_ text: String) {
+        writeText(text)
+    }
 }
 
 struct NSPasteboardClipboardProvider: ClipboardProvider {
@@ -27,8 +37,14 @@ struct NSPasteboardClipboardProvider: ClipboardProvider {
     private static let csvType = NSPasteboard.PasteboardType("public.comma-separated-values-text")
     private static let gridRowsType = NSPasteboard.PasteboardType("com.TablePro.gridRows")
 
+    /// The convention clipboard managers watch for to keep an item out of their history.
+    private static let concealedType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
+
+    /// Resolves through `PasteboardTextReader` so a clipboard that carries text as HTML, RTF or a
+    /// file URL still pastes. Reading `.string` alone returned nil for those and the caller had no
+    /// way to tell that apart from an empty clipboard.
     func readText() -> String? {
-        NSPasteboard.general.string(forType: .string)
+        PasteboardTextReader.plainText()
     }
 
     func readGridRows() -> GridRowsClipboardPayload? {
@@ -43,12 +59,28 @@ struct NSPasteboardClipboardProvider: ClipboardProvider {
         pb.setString(text, forType: NSPasteboard.PasteboardType(UTType.utf8PlainText.identifier))
     }
 
+    func writeSecretText(_ text: String) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+        pb.setString(text, forType: NSPasteboard.PasteboardType(UTType.utf8PlainText.identifier))
+        pb.setString(text, forType: Self.concealedType)
+    }
+
     func writeCsv(_ csv: String) {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(csv, forType: .string)
         pb.setString(csv, forType: NSPasteboard.PasteboardType(UTType.utf8PlainText.identifier))
         pb.setString(csv, forType: Self.csvType)
+    }
+
+    /// An image goes on the pasteboard as an image, so it pastes into a document rather than
+    /// arriving as the hex or the markup a plain copy of the same cell would give.
+    func writeImage(_ image: NSImage) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.writeObjects([image])
     }
 
     func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload) {
@@ -65,7 +97,7 @@ struct NSPasteboardClipboardProvider: ClipboardProvider {
     }
 
     var hasText: Bool {
-        NSPasteboard.general.string(forType: .string) != nil
+        PasteboardTextReader.hasText()
     }
 
     var hasGridRows: Bool {

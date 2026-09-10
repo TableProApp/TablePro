@@ -44,8 +44,28 @@ struct LocalProviderRegistrationTests {
             #expect(provider?.allowsMaxOutputTokens == true)
             #expect(provider?.fetchesModelList == true)
             #expect(provider?.allowsNameConfiguration == false)
-            #expect(provider?.supportsReasoning == false)
-            #expect(provider?.supportsImages == false)
+        }
+    }
+
+    /// Reasoning and images are provider-level envelopes, not answers. A local server can host a
+    /// reasoning or vision model, so the descriptor has to allow both and let the model catalog
+    /// narrow them per model. Closing the envelope here would block those models outright.
+    @Test("Local providers leave reasoning and images open for the model catalog to narrow")
+    func localProvidersDelegateModelCapabilitiesToTheCatalog() {
+        for type in [AIProviderType.llamaCpp, .mlx] {
+            let provider = descriptor(for: type)
+            #expect(provider?.supportsReasoning == true)
+            #expect(provider?.supportsImages == true)
+            #expect(provider?.supportsImages(forModelID: "some-unfetched-local-model") == true)
+            #expect(provider?.supportedEffortLevels(forModelID: "some-unfetched-local-model").isEmpty == false)
+        }
+    }
+
+    @Test("Local providers share the OpenAI-compatible envelope with the other providers in that family")
+    func localProvidersMatchTheOpenAICompatibleFamily() {
+        let reference = descriptor(for: .openRouter)
+        for type in [AIProviderType.llamaCpp, .mlx] {
+            #expect(descriptor(for: type)?.capabilities == reference?.capabilities)
         }
     }
 

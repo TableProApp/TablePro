@@ -74,6 +74,11 @@ extension MainContentCoordinator {
 
     private func reloadTableTab(at tabIndex: Int) {
         cancelCurrentQuery()
+        /// A refresh asks for the table as it is now, so the exact count the user requested earlier
+        /// describes a table that may have moved on. Retiring it here is what lets the automatic
+        /// count re-derive a total, which it otherwise refuses to do rather than downgrade an exact
+        /// count to an estimate.
+        tabManager.mutate(at: tabIndex) { $0.pagination.retireDerivedRowCount() }
         rebuildTableQuery(at: tabIndex)
         runQuery()
     }

@@ -42,7 +42,7 @@ struct BigQueryQueryBuilderFilteredTests {
     func filteredReturnsTag() {
         let query = BigQueryQueryBuilder.encodeFilteredQuery(
             table: "users", dataset: "main",
-            filters: [(column: "name", op: "=", value: "Alice")],
+            filters: [PluginQueryFilter(column: "name", op: "=", value: "Alice")],
             logicMode: "AND", sortColumns: [], limit: 100, offset: 0
         )
         #expect(query.hasPrefix(BigQueryQueryBuilder.filterTag))
@@ -53,8 +53,8 @@ struct BigQueryQueryBuilderFilteredTests {
         let query = BigQueryQueryBuilder.encodeFilteredQuery(
             table: "events", dataset: "analytics",
             filters: [
-                (column: "type", op: "=", value: "click"),
-                (column: "count", op: ">", value: "10")
+                PluginQueryFilter(column: "type", op: "=", value: "click"),
+                PluginQueryFilter(column: "count", op: ">", value: "10")
             ],
             logicMode: "OR", sortColumns: [], limit: 200, offset: 0
         )
@@ -98,7 +98,7 @@ struct BigQueryQueryBuilderCombinedTests {
     func combinedReturnsTag() {
         let query = BigQueryQueryBuilder.encodeCombinedQuery(
             table: "users", dataset: "main",
-            filters: [(column: "active", op: "=", value: "true")],
+            filters: [PluginQueryFilter(column: "active", op: "=", value: "true")],
             logicMode: "AND", searchText: "test",
             searchColumns: ["name"], sortColumns: [], limit: 100, offset: 0
         )
@@ -109,7 +109,7 @@ struct BigQueryQueryBuilderCombinedTests {
     func combinedPreservesBoth() {
         let query = BigQueryQueryBuilder.encodeCombinedQuery(
             table: "users", dataset: "main",
-            filters: [(column: "status", op: "!=", value: "deleted")],
+            filters: [PluginQueryFilter(column: "status", op: "!=", value: "deleted")],
             logicMode: "AND", searchText: "alice",
             searchColumns: ["name", "email"], sortColumns: [], limit: 100, offset: 0
         )
@@ -128,7 +128,7 @@ struct BigQueryQueryBuilderIsTaggedTests {
             table: "t", dataset: "d", sortColumns: [], limit: 10, offset: 0
         )
         let filter = BigQueryQueryBuilder.encodeFilteredQuery(
-            table: "t", dataset: "d", filters: [(column: "a", op: "=", value: "b")],
+            table: "t", dataset: "d", filters: [PluginQueryFilter(column: "a", op: "=", value: "b")],
             logicMode: "AND", sortColumns: [], limit: 10, offset: 0
         )
         #expect(BigQueryQueryBuilder.isTaggedQuery(browse))

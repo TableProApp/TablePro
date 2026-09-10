@@ -12,6 +12,17 @@ public struct PluginColumnDefinition: Sendable {
     public let name: String
     public let dataType: String
     public let isNullable: Bool
+    /// The exact SQL that follows the `DEFAULT` keyword, or nil for no `DEFAULT` clause at all.
+    ///
+    /// A literal carries its own quotes (`'abc'`, `''`), an expression is written the way the engine
+    /// spells it (`now()`, `gen_random_uuid()`, `(datetime('now'))`), and `NULL` means `DEFAULT NULL`
+    /// rather than the absence of a default. A driver emits this verbatim and never re-quotes it.
+    ///
+    /// It used to be untyped text, which left every writer guessing literal from expression against a
+    /// hand-copied allowlist. Measured, that turned `gen_random_uuid()` into an eleven-character
+    /// string and `nextval('t_id_seq'::regclass)` into a value PostgreSQL rejects. Adding required
+    /// syntax the engine's own grammar demands is still the driver's job: MySQL takes a `TEXT`
+    /// default only in parentheses, whatever the value is.
     public let defaultValue: String?
     public let isPrimaryKey: Bool
     public let autoIncrement: Bool
@@ -20,7 +31,12 @@ public struct PluginColumnDefinition: Sendable {
     public let onUpdate: String?
     public let charset: String?
     public let collation: String?
+    public let generationExpression: String?
+    public let generationKind: GenerationKind?
 
+    /// The signature published before generated-column detail existed. Kept byte-identical and
+    /// disfavoured so already-built plugins keep resolving their own mangled symbol.
+    @_disfavoredOverload
     public init(
         name: String,
         dataType: String,
@@ -45,6 +61,51 @@ public struct PluginColumnDefinition: Sendable {
         self.onUpdate = onUpdate
         self.charset = charset
         self.collation = collation
+        self.generationExpression = nil
+        self.generationKind = nil
+    }
+
+    public init(
+        name: String,
+        dataType: String,
+        isNullable: Bool = true,
+        defaultValue: String? = nil,
+        isPrimaryKey: Bool = false,
+        autoIncrement: Bool = false,
+        comment: String? = nil,
+        unsigned: Bool = false,
+        onUpdate: String? = nil,
+        charset: String? = nil,
+        collation: String? = nil,
+        generationExpression: String?,
+        generationKind: GenerationKind?
+    ) {
+        self.name = name
+        self.dataType = dataType
+        self.isNullable = isNullable
+        self.defaultValue = defaultValue
+        self.isPrimaryKey = isPrimaryKey
+        self.autoIncrement = autoIncrement
+        self.comment = comment
+        self.unsigned = unsigned
+        self.onUpdate = onUpdate
+        self.charset = charset
+        self.collation = collation
+        self.generationExpression = generationExpression
+        self.generationKind = generationKind
+    }
+
+    public var isGenerated: Bool { generationExpression?.isEmpty == false }
+}
+
+/// Check constraint definition for plugin DDL generation
+public struct PluginCheckConstraintDefinition: Sendable {
+    public let name: String
+    public let expression: String
+
+    public init(name: String, expression: String) {
+        self.name = name
+        self.expression = expression
     }
 }
 

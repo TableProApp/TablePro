@@ -269,8 +269,9 @@ struct MultiConnectionNavigationTests {
         #expect(tabManagerA.selectedTab?.tableContext.tableName == "accounts")
         try tabManagerB.addTableTab(tableName: "orders", databaseType: .mysql, databaseName: "db_a")
 
-        coordinatorB.openTableTab("users")
+        let disposition = coordinatorB.openTableTab("users")
 
+        #expect(disposition == .focusedElsewhere)
         #expect(tabManagerB.tabs.count == 1)
         #expect(tabManagerB.tabs.first?.tableContext.tableName == "orders")
         #expect(tabManagerA.selectedTab?.tableContext.tableName == "users")
@@ -299,7 +300,7 @@ struct MultiConnectionNavigationTests {
             includeSiblings: true
         )
 
-        #expect(activated == false)
+        #expect(activated == nil)
         #expect(tabManagerB.tabs.isEmpty)
     }
 }

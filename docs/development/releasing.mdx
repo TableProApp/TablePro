@@ -1,0 +1,109 @@
+---
+title: Releasing
+description: Release builds, notarization, DMG packaging, static libraries, and the release tag
+---
+
+`scripts/build-release.sh` is the whole release build. It signs every binary in the bundle itself,
+each plugin, helper and framework first and the app bundle last, so signing again by hand
+afterwards undoes its work.
+
+Everything on this page needs credentials the maintainer holds. A contributor building from source
+wants [Building](/development/building) instead.
+
+## Release builds
+
+```bash
+scripts/build-release.sh arm64      # Apple silicon
+scripts/build-release.sh x86_64     # Intel
+scripts/build-release.sh both       # both, the default with no argument
+```
+
+Output lands in `build/Release/TablePro-arm64.app` and `build/Release/TablePro-x86_64.app`.
+
+The script extracts the matching slice from the universal static libraries, copies every
+non-system dynamic library the binaries reference into `Contents/Frameworks` and rewrites their
+install names, strips the main binary and the helpers, then signs with hardened runtime and
+`TablePro/TablePro.entitlements`.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SIGN_IDENTITY` | The maintainer's Developer ID Application identity | Codesign identity for every binary |
+| `NOTARIZE` | `false` | Set `true` to notarize and staple after building |
+| `NOTARY_PROFILE` | `TablePro` | `notarytool` keychain profile holding the credentials |
+
+Create the notarization profile once:
+
+```bash
+xcrun notarytool store-credentials "TablePro" --apple-id … --team-id … --password …
+```
+
+Notarization zips each app, submits it, waits, and staples the ticket. `scripts/lib/notarize.sh`
+reads both the exit status and the reported status: `notarytool` has exited 0 on a rejected
+submission.
+
+## Packaging a DMG
+
+`scripts/create-dmg.sh` takes a version, an architecture (default `universal`) and a source app
+(default `build/Release/TablePro.app`). With no version it reads `MARKETING_VERSION` from
+`Configs/Version.xcconfig`, which is the only place the app version is declared.
+
+```bash
+scripts/build-release.sh arm64
+scripts/create-dmg.sh 0.67.0 arm64 build/Release/TablePro-arm64.app
+```
+
+That writes `build/Release/TablePro-0.67.0-arm64.dmg`. The script prefers `create-dmg`
+(`brew install create-dmg`) and falls back to `hdiutil` when it is missing.
+
+## Static libraries
+
+The `.a` files under `Libs/` and the xcframeworks under `Libs/ios/` live on the `libs-v1` GitHub
+Release, not in git. Each has a checksum baseline committed beside it, and
+`scripts/download-libs.sh` verifies the working copy against the baseline at `HEAD` on every run,
+including runs that download nothing.
+
+That means an archive and its baseline have to move together. Publish through the scripts, which do
+both:
+
+```bash
+scripts/publish-libs.sh libmongoc_arm64.a libmongoc_x86_64.a libmongoc_universal.a libmongoc.a
+git add Libs/checksums.sha256 && git commit -m "build: update static library checksums"
+```
+
+Name every library you rebuilt. `publish-libs.sh` verifies each library you did *not* name against
+the checksums at `HEAD`, regenerates `Libs/checksums.sha256`, and uploads the archive with
+`--clobber`.
+
+The iOS xcframeworks go through their own script, which takes `--dry-run` and refuses a publish
+that changes nothing:
+
+```bash
+scripts/publish-ios-libs.sh
+git add Libs/ios/checksums.sha256 && git commit -m "build: update iOS xcframework checksums"
+```
+
+Never write `shasum -a 256 Libs/*.a > Libs/checksums.sha256` by hand. Regenerating from a stale
+`Libs/` silently reverts every library you did not rebuild, which shipped a broken libmongoc and
+rolled DuckDB back a version. Uploading the xcframeworks with a bare `tar` and `gh release upload`
+fails from the other side: 299 MB published with no baseline behind it, and the next
+`download-libs.sh` run on every machine and every CI job stops.
+
+## Shipping a version
+
+`.github/workflows/build.yml` fires on a `v*` tag push, and otherwise only on a manual dispatch. Bump
+`Configs/Version.xcconfig` first: the release job compares the tag against `MARKETING_VERSION` and
+fails with `tag v… does not match MARKETING_VERSION …` when they disagree.
+
+Four jobs gate the release: SwiftLint, macOS Tests, Build (a matrix over `arm64` and `x86_64`) and
+Registry Readiness. A red suite or a registry with no plugin binary compatible with the shipping
+app blocks the tag.
+
+The release job then verifies the artifacts, signs both update archives with the Sparkle key,
+extracts the release notes from `CHANGELOG.md`, publishes the GitHub release, and only afterwards
+commits `appcast.xml`. A tag containing `-alpha`, `-beta` or `-rc` publishes as a prerelease.
+
+## Plugins
+
+Driver plugins release on their own `plugin-*-v*` tags through a separate workflow, and the registry
+decides which binary a user gets. [Plugin Registry](/development/plugin-registry) covers the
+manifest, the tag names, and the bulk re-release after a PluginKit ABI change.

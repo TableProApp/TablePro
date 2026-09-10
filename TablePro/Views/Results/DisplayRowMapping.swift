@@ -19,4 +19,10 @@ enum DisplayRowMapping {
         guard let index = rowIndex(forDisplay: displayIndex, displayIDs: displayIDs, in: tableRows) else { return nil }
         return tableRows.rows[index]
     }
+
+    /// Where a row sits on screen. Nil when a value filter is hiding it.
+    static func displayIndex(forRowID id: RowID, displayIDs: [RowID]?, in tableRows: TableRows) -> Int? {
+        guard let displayIDs else { return tableRows.index(of: id) }
+        return displayIDs.firstIndex(of: id)
+    }
 }

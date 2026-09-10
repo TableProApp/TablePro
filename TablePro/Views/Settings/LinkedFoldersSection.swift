@@ -32,20 +32,25 @@ struct LinkedFoldersSection: View {
             Button {
                 addFolder()
             } label: {
-                Label("Add Folder...", systemImage: "plus")
+                Label("Add Folder…", systemImage: "plus")
             }
             .disabled(!isLicensed)
         } header: {
             HStack(spacing: 6) {
                 Text("Linked Folders")
                 if !isLicensed {
-                    ProBadge()
+                    ProBadge(feature: .linkedFolders)
                 }
             }
         } footer: {
             Text("Watched folders are scanned for .tablepro files. Connections appear read only in the sidebar.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+        /// The list is seeded once at init, so without this a folder added or removed anywhere else
+        /// leaves this pane showing the set as it stood when the window was first built.
+        .onReceive(AppEvents.shared.linkedFoldersDidUpdate) { _ in
+            folders = LinkedFolderStorage.shared.loadFolders()
         }
     }
 

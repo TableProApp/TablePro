@@ -11,6 +11,7 @@ import AppKit
 import Compression
 import Foundation
 import os
+import TableProNumberFormatting
 import TableProPluginKit
 
 struct SnowflakeQueryResult: Sendable {
@@ -19,12 +20,6 @@ struct SnowflakeQueryResult: Sendable {
     var affectedRows: Int
     var isTruncated: Bool
     var statusMessage: String?
-}
-
-/// JSON-decoded cell value before conversion to PluginCellValue (kept Sendable for streaming).
-enum PluginCellValueBox: Sendable {
-    case null
-    case text(String)
 }
 
 final class SnowflakeConnection: @unchecked Sendable {
@@ -45,19 +40,30 @@ final class SnowflakeConnection: @unchecked Sendable {
 
     let host: String
     let params: ResolvedParameters
+    private let connectionIdentifier: String
 
     private let session: URLSession
     private let lock = NSLock()
     private let heartbeat = SnowflakeHeartbeat()
     private var sessionToken: String?
     private var renewalToken: String?
-    private var activeRequestIDs: Set<String> = []
+    private var activeRequestIDs: [String: Set<String>] = [:]
     private var sequenceId = 0
     private var connectTask: Task<Void, Error>?
 
     var sessionFingerprint: String {
-        [host, params.user.uppercased(), params.authMethod, params.role.uppercased()].joined(separator: "|")
+        SnowflakeSessionKey.fingerprint(
+            connectionId: connectionIdentifier,
+            host: host,
+            user: params.user,
+            authMethod: params.authMethod,
+            role: params.role
+        )
     }
+
+    /// Statements the connection issues for itself, such as the connect-time `USE` calls, belong to
+    /// no driver and are never the target of a Stop.
+    static let sessionOwner = "session"
 
     private var _currentDatabase: String?
     private var _currentSchema: String?
@@ -76,6 +82,7 @@ final class SnowflakeConnection: @unchecked Sendable {
     init(config: DriverConnectionConfig) {
         self.params = Self.resolveParameters(from: config)
         self.host = SnowflakeAccount.host(forAccount: params.account)
+        self.connectionIdentifier = config.additionalFields["connectionId"] ?? ""
 
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 120
@@ -424,9 +431,13 @@ final class SnowflakeConnection: @unchecked Sendable {
 
     // MARK: - Query Execution
 
-    func query(_ sql: String, parameters: [PluginCellValue] = []) async throws -> SnowflakeQueryResult {
+    func query(
+        _ sql: String,
+        parameters: [PluginCellValue] = [],
+        owner: String = SnowflakeConnection.sessionOwner
+    ) async throws -> SnowflakeQueryResult {
         try await withReauthentication {
-            try await performQuery(sql, parameters: parameters)
+            try await performQuery(sql, parameters: parameters, owner: owner)
         }
     }
 
@@ -444,8 +455,12 @@ final class SnowflakeConnection: @unchecked Sendable {
         }
     }
 
-    func cancelAllQueries() {
-        let (requestIDs, token) = lock.withLock { (activeRequestIDs, sessionToken) }
+    /// One Snowflake session is shared by the driver the user sees and by every pooled metadata
+    /// driver behind it, so an abort has to name whose work it is stopping. Aborting the whole
+    /// session made Stop on a query cancel a sidebar refresh running beside it, and cancel a save's
+    /// remaining statements.
+    func cancelQueries(owner: String) {
+        let (requestIDs, token) = lock.withLock { (activeRequestIDs[owner] ?? [], sessionToken) }
         guard !requestIDs.isEmpty, let token else { return }
         Task { [weak self] in
             for requestID in requestIDs {
@@ -459,8 +474,12 @@ final class SnowflakeConnection: @unchecked Sendable {
         }
     }
 
-    private func performQuery(_ sql: String, parameters: [PluginCellValue] = []) async throws -> SnowflakeQueryResult {
-        let (data, token) = try await submitQuery(sql, parameters: parameters)
+    private func performQuery(
+        _ sql: String,
+        parameters: [PluginCellValue] = [],
+        owner: String
+    ) async throws -> SnowflakeQueryResult {
+        let (data, token) = try await submitQuery(sql, parameters: parameters, owner: owner)
         if let resultIds = data["resultIds"] as? String, !resultIds.isEmpty {
             return try await collectMultiStatementResults(ids: resultIds, token: token)
         }
@@ -470,7 +489,8 @@ final class SnowflakeConnection: @unchecked Sendable {
 
     private func submitQuery(
         _ sql: String,
-        parameters: [PluginCellValue]
+        parameters: [PluginCellValue],
+        owner: String
     ) async throws -> (data: [String: Any], token: String) {
         guard let token = lock.withLock({ sessionToken }) else {
             throw SnowflakeError.notConnected
@@ -479,11 +499,14 @@ final class SnowflakeConnection: @unchecked Sendable {
         let requestID = UUID().uuidString.lowercased()
         let sequence = lock.withLock { () -> Int in
             sequenceId += 1
-            activeRequestIDs.insert(requestID)
+            activeRequestIDs[owner, default: []].insert(requestID)
             return sequenceId
         }
         defer {
-            lock.withLock { _ = activeRequestIDs.remove(requestID) }
+            lock.withLock {
+                activeRequestIDs[owner]?.remove(requestID)
+                if activeRequestIDs[owner]?.isEmpty == true { activeRequestIDs[owner] = nil }
+            }
         }
 
         var body: [String: Any] = [
@@ -584,13 +607,20 @@ final class SnowflakeConnection: @unchecked Sendable {
 
         var rows: [[PluginCellValueBox]] = []
         if let inlineRowset = data["rowset"] as? [[Any]] {
-            rows = inlineRowset.map { row in row.map(Self.box) }
+            rows = Self.rows(from: inlineRowset, columns: columns)
         }
 
-        let affectedRows = Self.extractAffectedRows(columns: columns, rows: rows)
+        let affectedRows = SnowflakeStatementType.affectedRows(
+            statementTypeId: (data["statementTypeId"] as? NSNumber)?.intValue ?? 0,
+            row: rows.first
+        )
 
         if let chunks = data["chunks"] as? [[String: Any]], !chunks.isEmpty {
-            rows.append(contentsOf: try await downloadChunks(chunks, headers: Self.chunkRequestHeaders(from: data)))
+            rows.append(contentsOf: try await downloadChunks(
+                chunks,
+                headers: Self.chunkRequestHeaders(from: data),
+                columns: columns
+            ))
         }
 
         return SnowflakeQueryResult(
@@ -609,14 +639,17 @@ final class SnowflakeConnection: @unchecked Sendable {
         let batches: AsyncThrowingStream<[[PluginCellValueBox]], Error>
     }
 
-    func queryStreamed(_ sql: String) async throws -> StreamedResult {
+    func queryStreamed(
+        _ sql: String,
+        owner: String = SnowflakeConnection.sessionOwner
+    ) async throws -> StreamedResult {
         let (data, _) = try await withReauthentication {
-            try await submitQuery(sql, parameters: [])
+            try await submitQuery(sql, parameters: [], owner: owner)
         }
         applyFinalSessionInfo(data)
 
         let columns = Self.parseColumns(data["rowtype"] as? [[String: Any]] ?? [])
-        let inlineRows = (data["rowset"] as? [[Any]] ?? []).map { row in row.map(Self.box) }
+        let inlineRows = Self.rows(from: data["rowset"] as? [[Any]] ?? [], columns: columns)
         let chunks = data["chunks"] as? [[String: Any]] ?? []
         let chunkRowCount = chunks.reduce(0) { $0 + (($1["rowCount"] as? Int) ?? 0) }
         let headers = Self.chunkRequestHeaders(from: data)
@@ -636,7 +669,9 @@ final class SnowflakeConnection: @unchecked Sendable {
                         while nextIndex < min(Self.chunkDownloadWorkers, urls.count) {
                             let index = nextIndex
                             group.addTask {
-                                (index, try await Self.downloadChunk(urls[index], headers: headers, session: session))
+                                (index, try await Self.downloadChunk(
+                                    urls[index], headers: headers, session: session, columns: columns
+                                ))
                             }
                             nextIndex += 1
                         }
@@ -650,7 +685,9 @@ final class SnowflakeConnection: @unchecked Sendable {
                             if nextIndex < urls.count {
                                 let next = nextIndex
                                 group.addTask {
-                                    (next, try await Self.downloadChunk(urls[next], headers: headers, session: session))
+                                    (next, try await Self.downloadChunk(
+                                        urls[next], headers: headers, session: session, columns: columns
+                                    ))
                                 }
                                 nextIndex += 1
                             }
@@ -674,7 +711,11 @@ final class SnowflakeConnection: @unchecked Sendable {
 
     private static let chunkDownloadWorkers = 4
 
-    private func downloadChunks(_ chunks: [[String: Any]], headers: [String: String]) async throws -> [[PluginCellValueBox]] {
+    private func downloadChunks(
+        _ chunks: [[String: Any]],
+        headers: [String: String],
+        columns: [SnowflakeColumnMeta]
+    ) async throws -> [[PluginCellValueBox]] {
         let urls = chunks.compactMap { ($0["url"] as? String).flatMap(URL.init(string:)) }
         guard !urls.isEmpty else { return [] }
 
@@ -684,7 +725,9 @@ final class SnowflakeConnection: @unchecked Sendable {
             while nextIndex < min(Self.chunkDownloadWorkers, urls.count) {
                 let index = nextIndex
                 group.addTask { [session] in
-                    (index, try await Self.downloadChunk(urls[index], headers: headers, session: session))
+                    (index, try await Self.downloadChunk(
+                        urls[index], headers: headers, session: session, columns: columns
+                    ))
                 }
                 nextIndex += 1
             }
@@ -693,7 +736,9 @@ final class SnowflakeConnection: @unchecked Sendable {
                 if nextIndex < urls.count {
                     let next = nextIndex
                     group.addTask { [session] in
-                        (next, try await Self.downloadChunk(urls[next], headers: headers, session: session))
+                        (next, try await Self.downloadChunk(
+                            urls[next], headers: headers, session: session, columns: columns
+                        ))
                     }
                     nextIndex += 1
                 }
@@ -705,7 +750,8 @@ final class SnowflakeConnection: @unchecked Sendable {
     private static func downloadChunk(
         _ url: URL,
         headers: [String: String],
-        session: URLSession
+        session: URLSession,
+        columns: [SnowflakeColumnMeta]
     ) async throws -> [[PluginCellValueBox]] {
         var request = URLRequest(url: url)
         for (key, value) in headers {
@@ -715,7 +761,7 @@ final class SnowflakeConnection: @unchecked Sendable {
         guard http.statusCode == 200 else {
             throw SnowflakeError.invalidResponse("Failed to download result chunk")
         }
-        return try parseChunkRows(gunzipIfNeeded(rawData))
+        return try parseChunkRows(gunzipIfNeeded(rawData), columns: columns)
     }
 
     // MARK: - USE / Session
@@ -731,7 +777,7 @@ final class SnowflakeConnection: @unchecked Sendable {
     }
 
     func quoteIdentifier(_ name: String) -> String {
-        "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+        SnowflakeSQL.quoteIdentifier(name)
     }
 
     // MARK: - HTTP Helpers
@@ -833,29 +879,39 @@ final class SnowflakeConnection: @unchecked Sendable {
         }
     }
 
-    private static func box(_ value: Any) -> PluginCellValueBox {
-        if value is NSNull { return .null }
-        if let string = value as? String { return .text(string) }
-        if let number = value as? NSNumber { return .text(number.stringValue) }
-        return .text(String(describing: value))
-    }
-
-    private static func extractAffectedRows(columns: [SnowflakeColumnMeta], rows: [[PluginCellValueBox]]) -> Int {
-        guard columns.count == 1,
-              columns[0].name.lowercased().contains("number of rows"),
-              let firstRow = rows.first,
-              case .text(let value) = firstRow.first ?? .null,
-              let count = Int(value) else {
-            return 0
+    /// The endpoint writes a cell's value in Snowflake's own encoding, so a row can only be read
+    /// against the `rowtype` that describes it. Every result path funnels through here for that
+    /// reason: a row decoded without its columns is a row of raw wire text.
+    static func rows(from rowset: [[Any]], columns: [SnowflakeColumnMeta]) -> [[PluginCellValueBox]] {
+        rowset.map { row in
+            row.enumerated().map { index, value in
+                box(value, as: index < columns.count ? columns[index] : nil)
+            }
         }
-        return count
     }
 
-    private static func parseChunkRows(_ data: Data) throws -> [[PluginCellValueBox]] {
+    private static func box(_ value: Any, as column: SnowflakeColumnMeta?) -> PluginCellValueBox {
+        if value is NSNull { return .null }
+        let text: String
+        if let string = value as? String {
+            text = string
+        } else if let number = value as? NSNumber {
+            text = NumberText.text(for: number)
+        } else {
+            text = String(describing: value)
+        }
+        guard let column else { return .text(text) }
+        return SnowflakeValueDecoder.decode(text, as: column)
+    }
+
+    private static func parseChunkRows(
+        _ data: Data,
+        columns: [SnowflakeColumnMeta]
+    ) throws -> [[PluginCellValueBox]] {
         let candidates: [Data] = [data, Data("[".utf8) + data + Data("]".utf8)]
         for candidate in candidates {
             if let parsed = try? JSONSerialization.jsonObject(with: candidate) as? [[Any]] {
-                return parsed.map { row in row.map(box) }
+                return rows(from: parsed, columns: columns)
             }
         }
         throw SnowflakeError.invalidResponse("Could not parse result chunk JSON")

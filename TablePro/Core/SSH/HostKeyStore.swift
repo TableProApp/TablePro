@@ -27,13 +27,7 @@ internal final class HostKeyStore: @unchecked Sendable {
     private let lock = NSLock()
 
     private init() {
-        guard let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory, in: .userDomainMask
-        ).first else {
-            self.filePath = NSTemporaryDirectory() + "TablePro_known_hosts"
-            return
-        }
-        let tableProDir = appSupport.appendingPathComponent("TablePro")
+        let tableProDir = AppStorageEnvironment.shared.applicationSupportRoot.appendingPathComponent("TablePro")
         try? FileManager.default.createDirectory(at: tableProDir, withIntermediateDirectories: true)
         self.filePath = tableProDir.appendingPathComponent("known_hosts").path
     }
@@ -60,16 +54,19 @@ internal final class HostKeyStore: @unchecked Sendable {
         let currentFingerprint = Self.fingerprint(of: keyData)
         let entries = loadEntries()
 
-        guard let existing = entries.first(where: { $0.host == hostKey && $0.keyType == keyType }) else {
+        let hostEntries = entries.filter { $0.host == hostKey }
+        guard !hostEntries.isEmpty else {
             Self.logger.info("Unknown host key for \(hostKey)")
             return .unknown(fingerprint: currentFingerprint, keyType: keyType)
         }
 
-        let storedFingerprint = Self.fingerprint(of: existing.keyData)
-        if storedFingerprint == currentFingerprint {
+        if hostEntries.contains(where: { Self.fingerprint(of: $0.keyData) == currentFingerprint }) {
             Self.logger.debug("Host key trusted for \(hostKey)")
             return .trusted
         }
+
+        let sameType = hostEntries.first { $0.keyType == keyType }
+        let storedFingerprint = Self.fingerprint(of: (sameType ?? hostEntries[0]).keyData)
 
         Self.logger.warning("Host key mismatch for \(hostKey)")
         return .mismatch(expected: storedFingerprint, actual: currentFingerprint)

@@ -39,7 +39,7 @@ struct DynamoDBQueryBuilderFilteredTests {
     func nonPkFilterReturnsScan() {
         let query = builder.buildFilteredQuery(
             table: "Users",
-            filters: [(column: "name", op: "=", value: "Alice")],
+            filters: [PluginQueryFilter(column: "name", op: "=", value: "Alice")],
             logicMode: "AND",
             sortColumns: [],
             columns: ["id", "name"],
@@ -56,7 +56,7 @@ struct DynamoDBQueryBuilderFilteredTests {
     func pkFilterReturnsQuery() {
         let query = builder.buildFilteredQuery(
             table: "Users",
-            filters: [(column: "id", op: "=", value: "pk1")],
+            filters: [PluginQueryFilter(column: "id", op: "=", value: "pk1")],
             logicMode: "AND",
             sortColumns: [],
             columns: ["id", "name"],
@@ -74,8 +74,8 @@ struct DynamoDBQueryBuilderFilteredTests {
         let query = builder.buildFilteredQuery(
             table: "Users",
             filters: [
-                (column: "id", op: "=", value: "pk1"),
-                (column: "name", op: "CONTAINS", value: "Al")
+                PluginQueryFilter(column: "id", op: "=", value: "pk1"),
+                PluginQueryFilter(column: "name", op: "CONTAINS", value: "Al")
             ],
             logicMode: "AND",
             sortColumns: [],
@@ -99,8 +99,8 @@ struct DynamoDBQueryBuilderFilteredTests {
         let query = builder.buildFilteredQuery(
             table: "Users",
             filters: [
-                (column: "name", op: "=", value: "Alice"),
-                (column: "age", op: ">", value: "25")
+                PluginQueryFilter(column: "name", op: "=", value: "Alice"),
+                PluginQueryFilter(column: "age", op: ">", value: "25")
             ],
             logicMode: "AND",
             sortColumns: [],
@@ -127,7 +127,7 @@ struct DynamoDBQueryBuilderCombinedTests {
     func filtersOnly() {
         let query = builder.buildCombinedQuery(
             table: "Users",
-            filters: [(column: "name", op: "=", value: "Alice")],
+            filters: [PluginQueryFilter(column: "name", op: "=", value: "Alice")],
             logicMode: "AND",
             searchText: "",
             sortColumns: [],
@@ -166,7 +166,7 @@ struct DynamoDBQueryBuilderCombinedTests {
     func filtersAndSearch() {
         let query = builder.buildCombinedQuery(
             table: "Users",
-            filters: [(column: "name", op: "=", value: "Alice")],
+            filters: [PluginQueryFilter(column: "name", op: "=", value: "Alice")],
             logicMode: "AND",
             searchText: "test",
             sortColumns: [],
@@ -234,7 +234,7 @@ struct DynamoDBQueryBuilderParseQueryTests {
         let builder = DynamoDBQueryBuilder()
         let query = builder.buildFilteredQuery(
             table: "Users",
-            filters: [(column: "id", op: "=", value: "pk1")],
+            filters: [PluginQueryFilter(column: "id", op: "=", value: "pk1")],
             logicMode: "AND",
             sortColumns: [],
             columns: ["id", "name"],
@@ -311,7 +311,7 @@ struct DynamoDBQueryBuilderIsTaggedTests {
         let builder = DynamoDBQueryBuilder()
         let query = builder.buildFilteredQuery(
             table: "T",
-            filters: [(column: "id", op: "=", value: "x")],
+            filters: [PluginQueryFilter(column: "id", op: "=", value: "x")],
             logicMode: "AND",
             sortColumns: [],
             columns: ["id"],

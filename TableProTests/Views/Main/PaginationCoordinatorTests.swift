@@ -47,6 +47,38 @@ struct PaginationCoordinatorTests {
         tabManager.tabs.first { $0.id == tabId }?.pagination
     }
 
+    /// The indicator has its own owner rather than riding on the row-count task slot, because every
+    /// page turn launches an automatic count that takes that slot over.
+    @Test("A count cancelled by a page turn still clears its own indicator")
+    func cancelledCountClearsItsIndicator() {
+        let (coordinator, _, tabId) = makeCoordinator(
+            pagination: PaginationState(totalRowCount: 100, pageSize: 10, currentPage: 1),
+            loadedRowCount: 10
+        )
+        let exactCount = UUID()
+        coordinator.claimExactCount(for: tabId, token: exactCount)
+        coordinator.setRowCountTask(Task {}, token: UUID(), for: tabId)
+
+        #expect(coordinator.releaseExactCount(for: tabId, token: exactCount))
+    }
+
+    @Test("A superseded count cannot stop its successor's indicator")
+    func supersededCountLeavesTheIndicatorAlone() {
+        let (coordinator, _, tabId) = makeCoordinator(
+            pagination: PaginationState(totalRowCount: 100, pageSize: 10, currentPage: 1),
+            loadedRowCount: 10
+        )
+        let first = UUID()
+        coordinator.claimExactCount(for: tabId, token: first)
+        coordinator.releaseAllExactCounts()
+
+        let second = UUID()
+        coordinator.claimExactCount(for: tabId, token: second)
+
+        #expect(!coordinator.releaseExactCount(for: tabId, token: first))
+        #expect(coordinator.releaseExactCount(for: tabId, token: second))
+    }
+
     @Test("Go to page jumps to the requested page when total is known")
     func goToPageWithKnownTotal() {
         let (coordinator, tabManager, tabId) = makeCoordinator(

@@ -30,6 +30,15 @@ struct ResultTabBarPolicyTests {
         #expect(ResultTabBarPolicy.canPin(tabType: .query, display: display))
     }
 
+    @Test("Chart view keeps the strip so each result keeps its own configuration")
+    func chartViewKeepsStrip() {
+        var display = Self.makeDisplay()
+        display.resultsViewMode = .chart
+
+        #expect(ResultTabBarPolicy.showsTabBar(tabType: .query, display: display))
+        #expect(ResultTabBarPolicy.canPin(tabType: .query, display: display))
+    }
+
     @Test("Structure view has no result strip and nothing to pin")
     func structureViewHasNoStrip() {
         var display = Self.makeDisplay()
@@ -39,13 +48,19 @@ struct ResultTabBarPolicyTests {
         #expect(ResultTabBarPolicy.canPin(tabType: .query, display: display) == false)
     }
 
-    @Test("An explain result is not a result set, so nothing can be pinned")
-    func explainHasNothingToPin() {
+    @Test("An explain result is a result set, so it shows the strip and can be pinned")
+    @MainActor
+    func explainBehavesLikeAResultSet() {
         var display = Self.makeDisplay()
-        display.explainText = "Seq Scan on orders"
+        let plan = ExplainResultSetFactory.make(
+            rawText: "Seq Scan on orders", plan: nil, sql: "EXPLAIN SELECT 1", executionTime: 0.2
+        )
+        display.resultSets = [plan]
+        display.activeResultSetId = plan.id
 
-        #expect(ResultTabBarPolicy.showsTabBar(tabType: .query, display: display) == false)
-        #expect(ResultTabBarPolicy.canPin(tabType: .query, display: display) == false)
+        #expect(ResultTabBarPolicy.showsTabBar(tabType: .query, display: display))
+        #expect(ResultTabBarPolicy.canPin(tabType: .query, display: display))
+        #expect(display.activeExplainResult?.id == plan.id)
     }
 
     @Test("A tab with no results has no strip and nothing to pin")
@@ -78,13 +93,13 @@ struct ResultTabBarPolicyTests {
     @Test("A result is never pinnable without a strip to pin it from")
     func pinningNeverOutrunsTheStrip() {
         var states: [TabDisplayState] = [TabDisplayState(), Self.makeDisplay()]
-        for mode in [ResultsViewMode.data, .structure, .json] {
+        for mode in [ResultsViewMode.data, .structure, .json, .chart] {
             var display = Self.makeDisplay()
             display.resultsViewMode = mode
             states.append(display)
 
             var explaining = display
-            explaining.explainText = "plan"
+            explaining.resultSets = []
             states.append(explaining)
         }
 

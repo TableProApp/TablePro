@@ -2,19 +2,20 @@
 //  MainContentCoordinator+SQLPreview.swift
 //  TablePro
 //
-//  SQL preview generation for MainContentCoordinator.
+//  Building the plan for a save, and showing it.
 //
 
 import Foundation
+import TableProPluginKit
 
 extension MainContentCoordinator {
     // MARK: - SQL Preview
 
     /// Routes SQL preview request to the appropriate handler based on current tab mode
     func handlePreviewSQL(
-        pendingTruncates: Set<String>,
-        pendingDeletes: Set<String>,
-        tableOperationOptions: [String: TableOperationOptions]
+        pendingTruncates: Set<DatabaseTreeTableRef>,
+        pendingDeletes: Set<DatabaseTreeTableRef>,
+        tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions]
     ) {
         if tabManager.selectedTab?.display.resultsViewMode == .structure {
             // Structure view handles its own preview via direct call
@@ -30,53 +31,90 @@ extension MainContentCoordinator {
 
     /// Generate SQL preview of all pending changes with inlined parameters
     func generatePreviewSQL(
-        pendingTruncates: Set<String>,
-        pendingDeletes: Set<String>,
-        tableOperationOptions: [String: TableOperationOptions]
+        pendingTruncates: Set<DatabaseTreeTableRef>,
+        pendingDeletes: Set<DatabaseTreeTableRef>,
+        tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions]
     ) {
         do {
-            let statements = try assemblePendingStatements(
+            let plan = try buildDataWritePlan(
                 pendingTruncates: pendingTruncates,
                 pendingDeletes: pendingDeletes,
                 tableOperationOptions: tableOperationOptions
             )
-            toolbarState.previewStatements = statements.map {
-                SQLParameterInliner.inline($0, databaseType: connection.type)
-            }
+            toolbarState.previewStatements = plan.displayStatements
         } catch {
             toolbarState.previewStatements = ["-- Error generating SQL: \(error.localizedDescription)"]
         }
         activeSheet = .sqlPreview
     }
 
-    /// Assembles all pending SQL statements (cell edits + table operations) in execution order.
-    /// Used by both `saveChanges()` and `generatePreviewSQL()` to ensure consistency.
-    /// Transaction wrapping is handled by the caller using driver protocol methods.
-    func assemblePendingStatements(
-        pendingTruncates: Set<String>,
-        pendingDeletes: Set<String>,
-        tableOperationOptions: [String: TableOperationOptions]
-    ) throws -> [ParameterizedStatement] {
-        var allStatements: [ParameterizedStatement] = []
+    /// Hands the rebuild script to a query tab so the user can read, edit and run it themselves.
+    ///
+    /// The rebuild reproduces the table from what the server will describe, so a table using
+    /// something the catalog queries do not reach is better rebuilt by hand from a script the user
+    /// owns than by a button that reports success.
+    /// Opened on the scope the plan was built against, not on whatever the connection is browsing.
+    /// The script names its table without a database, and PostgreSQL has no way to qualify one, so
+    /// running it against another database would rebuild the same-named table there.
+    func openTableRebuildScriptInEditor(_ request: TableRebuildReviewRequest) {
+        let script = request.scriptStatements
+            .map { $0.hasSuffix(";") ? $0 : $0 + ";" }
+            .joined(separator: "\n\n")
+        WindowManager.shared.openTab(
+            payload: EditorTabPayload(
+                connectionId: request.scope.connectionId,
+                tabType: .query,
+                databaseName: request.scope.database,
+                schemaName: request.scope.schema,
+                initialQuery: script,
+                skipAutoExecute: true,
+                tabTitle: String(format: String(localized: "Reorder %@"), request.tableName)
+            )
+        )
+        tableRebuildRequest = nil
+        activeSheet = nil
+    }
+
+    /// Everything one press of Save is about to do, in execution order.
+    ///
+    /// Save and Preview SQL both read this, so what the user is shown is what runs. Each step
+    /// carries the rows it should touch, which is what lets the executor hold the server to that
+    /// number, and the row operations carry the before and after images a later rewind needs.
+    func buildDataWritePlan(
+        pendingTruncates: Set<DatabaseTreeTableRef>,
+        pendingDeletes: Set<DatabaseTreeTableRef>,
+        tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions]
+    ) throws -> DataWritePlan {
         let dbType = connection.type
-
         let hasPendingTableOps = !pendingTruncates.isEmpty || !pendingDeletes.isEmpty
+        var steps: [DataWriteStep] = []
 
-        // Check if any table operation needs FK disabled (must be outside transaction)
-        let needsDisableFK = PluginManager.shared.supportsForeignKeyDisable(for: dbType) && pendingTruncates.union(pendingDeletes).contains { tableName in
-            tableOperationOptions[tableName]?.ignoreForeignKeys == true
-        }
+        /// The foreign-key toggles are not steps. A step runs inside the transaction, and
+        /// `PRAGMA foreign_keys` is a no-op there on every SQLite-derived engine, so the option
+        /// would silently do nothing. They travel as the plan's prologue and epilogue instead.
+        let needsDisableFK = PluginManager.shared.supportsForeignKeyDisable(for: dbType)
+            && pendingTruncates.union(pendingDeletes).contains { ref in
+                tableOperationOptions[ref]?.ignoreForeignKeys == true
+            }
+        let prologue = needsDisableFK ? fkDisableStatements(for: dbType) : []
+        let epilogue = needsDisableFK ? fkEnableStatements(for: dbType) : []
 
-        // FK disable must be FIRST, before any transaction begins
-        if needsDisableFK {
-            allStatements.append(contentsOf: fkDisableStatements(for: dbType).map {
-                ParameterizedStatement(sql: $0, parameters: [])
-            })
-        }
+        let scope = try writeScope(
+            stagedTables: pendingTruncates.union(pendingDeletes),
+            includesRowEdits: changeManager.hasChanges
+        )
 
+        var rowOperations: [RowWriteOperation] = []
         if changeManager.hasChanges {
-            let editStatements = try changeManager.generateSQL()
-            allStatements.append(contentsOf: editStatements)
+            /// The scope's schema, not the tab's: the scope has already fallen back to the session's
+            /// browse schema, and a record stored under one spelling is never found under the other.
+            let rowWrite = try changeManager.buildRowWrites(
+                database: scope.database,
+                schema: scope.schema,
+                containsTableOperation: hasPendingTableOps
+            )
+            steps.append(contentsOf: rowWrite.steps)
+            rowOperations = rowWrite.operations
         }
 
         if hasPendingTableOps {
@@ -86,18 +124,43 @@ extension MainContentCoordinator {
                 options: tableOperationOptions,
                 includeFKHandling: false
             )
-            allStatements.append(contentsOf: tableOpStatements.map {
-                ParameterizedStatement(sql: $0, parameters: [])
+            steps.append(contentsOf: tableOpStatements.map {
+                DataWriteStep(kind: .tableOperation, statement: ParameterizedStatement(sql: $0, parameters: []))
             })
         }
 
-        // FK re-enable must be LAST, after transaction commits
-        if needsDisableFK {
-            allStatements.append(contentsOf: fkEnableStatements(for: dbType).map {
-                ParameterizedStatement(sql: $0, parameters: [])
-            })
-        }
+        return DataWritePlan(
+            scope: scope,
+            databaseType: dbType,
+            steps: steps,
+            rowOperations: rowOperations,
+            prologue: prologue,
+            epilogue: epilogue
+        )
+    }
 
-        return allStatements
+    private func writeScope(
+        stagedTables: Set<DatabaseTreeTableRef>,
+        includesRowEdits: Bool
+    ) throws -> DatabaseScope {
+        try StagedWriteScope.resolve(
+            tabScope: selectedTabScope ?? DatabaseScope(connectionId: connection.id, database: "", schema: nil),
+            browseDatabase: browseDatabaseName,
+            stagedDatabases: Set(stagedTables.compactMap(\.database)),
+            includesRowEdits: includesRowEdits
+        )
+    }
+
+    /// Assembles all pending SQL statements (cell edits + table operations) in execution order.
+    func assemblePendingStatements(
+        pendingTruncates: Set<DatabaseTreeTableRef>,
+        pendingDeletes: Set<DatabaseTreeTableRef>,
+        tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions]
+    ) throws -> [ParameterizedStatement] {
+        try buildDataWritePlan(
+            pendingTruncates: pendingTruncates,
+            pendingDeletes: pendingDeletes,
+            tableOperationOptions: tableOperationOptions
+        ).statements
     }
 }

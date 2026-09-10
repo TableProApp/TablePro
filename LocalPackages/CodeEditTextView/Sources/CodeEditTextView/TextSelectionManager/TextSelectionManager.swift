@@ -75,11 +75,13 @@ public class TextSelectionManager: NSObject {
     /// - Parameter range: The range to set.
     public func setSelectedRange(_ range: NSRange) {
         textSelections.forEach { $0.view?.removeFromSuperview() }
+        let range = range.clamped(toLength: textStorage?.length ?? 0)
         let selection = TextSelection(range: range)
         selection.suggestedXPos = layoutManager?.rectForOffset(range.location)?.minX
         textSelections = [selection]
         updateSelectionViews()
-        NotificationCenter.default.post(Notification(name: Self.selectionChangedNotification, object: self))
+        delegate?.setNeedsDisplay()
+        notifySelectionChanged()
     }
 
     /// Set the selected ranges to new ranges. Overrides any existing selections.
@@ -88,12 +90,12 @@ public class TextSelectionManager: NSObject {
         let oldRanges = textSelections.map(\.range)
 
         textSelections.forEach { $0.view?.removeFromSuperview() }
-        // Remove duplicates, invalid ranges, update suggested X position.
-        textSelections = Set(ranges)
-            .filter {
-                (0...(textStorage?.length ?? 0)).contains($0.location)
-                && (0...(textStorage?.length ?? 0)).contains($0.max)
-            }
+        // Remove duplicates, drop malformed ranges, clamp stale ones, update suggested X position.
+        // A negative location is malformed and is discarded. A location past the end is a stale but
+        // well-formed range, which happens whenever the text shrinks under an existing selection;
+        // clamping keeps a usable selection there instead of leaving the view with none at all.
+        let storageLength = textStorage?.length ?? 0
+        textSelections = Set(ranges.filter { $0.location >= 0 }.map { $0.clamped(toLength: storageLength) })
             .sorted(by: { $0.location < $1.location })
             .map {
                 let selection = TextSelection(range: $0)
@@ -104,7 +106,7 @@ public class TextSelectionManager: NSObject {
         delegate?.setNeedsDisplay()
 
         if oldRanges != textSelections.map(\.range) {
-            NotificationCenter.default.post(Notification(name: Self.selectionChangedNotification, object: self))
+            notifySelectionChanged()
         }
     }
 
@@ -131,8 +133,18 @@ public class TextSelectionManager: NSObject {
         }
 
         updateSelectionViews()
-        NotificationCenter.default.post(Notification(name: Self.selectionChangedNotification, object: self))
+        notifySelectionChanged()
         delegate?.setNeedsDisplay()
+    }
+
+    /// The single place a selection change is announced, to observers and to assistive clients alike.
+    func notifySelectionChanged() {
+        NotificationCenter.default.post(Notification(name: Self.selectionChangedNotification, object: self))
+        // Only the manager the text view answers to speaks for it. The minimap builds a second manager over the
+        // same text view and mirrors every selection into it, which would announce each move twice.
+        if let textView, textView.selectionManager === self {
+            NSAccessibility.post(element: textView, notification: .selectedTextChanged)
+        }
     }
 
     // MARK: - Selection Views
@@ -141,11 +153,21 @@ public class TextSelectionManager: NSObject {
     /// optionally reseting the blink timer.
     func updateSelectionViews(force: Bool = false, skipTimerReset: Bool = false) {
         guard textView?.isFirstResponder ?? false else { return }
+        // A selectable but non-editable view tracks a collapsed selection so the user can extend
+        // it or select a word, but it must not blink an insertion point at text it cannot edit.
+        // This mirrors `NSTextView` with `isEditable = false` and `isSelectable = true`.
+        let showsInsertionPoint = textView?.isEditable ?? true
         var didUpdate: Bool = false
 
         for textSelection in textSelections {
             if textSelection.range.isEmpty {
-                didUpdate = didUpdate || repositionCursorSelection(textSelection: textSelection)
+                if showsInsertionPoint {
+                    didUpdate = didUpdate || repositionCursorSelection(textSelection: textSelection)
+                } else if textSelection.view != nil {
+                    textSelection.view?.removeFromSuperview()
+                    textSelection.view = nil
+                    didUpdate = true
+                }
             } else if !textSelection.range.isEmpty && textSelection.view != nil {
                 textSelection.view?.removeFromSuperview()
                 textSelection.view = nil
@@ -238,10 +260,16 @@ public class TextSelectionManager: NSObject {
     }
 
     /// Removes all cursor views and stops the cursor blink timer.
+    ///
+    /// The view reference is cleared as well as detached: `updateSelectionViews` only
+    /// re-adds a cursor on the `view == nil` branch, so leaving a dangling reference here
+    /// meant the caret never came back after the text view resigned first responder.
     func removeCursors() {
         cursorTimer.stopTimer()
         for textSelection in textSelections {
             textSelection.view?.removeFromSuperview()
+            textSelection.view = nil
+            textSelection.boundingRect = .zero
         }
     }
 }

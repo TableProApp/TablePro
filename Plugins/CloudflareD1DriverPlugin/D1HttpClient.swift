@@ -304,12 +304,9 @@ final class D1HttpClient: @unchecked Sendable {
     }
 
     private func performRequest(url: URL, method: String, body: Data?) async throws -> Data {
-        lock.lock()
-        guard let session else {
-            lock.unlock()
+        guard let session = lock.withLock({ self.session }) else {
             throw D1HttpError(message: String(localized: "Not connected to database"))
         }
-        lock.unlock()
 
         var request = URLRequest(url: url)
         request.httpMethod = method
@@ -348,9 +345,7 @@ final class D1HttpClient: @unchecked Sendable {
             self.lock.unlock()
         }
 
-        lock.lock()
-        currentTask = nil
-        lock.unlock()
+        lock.withLock { currentTask = nil }
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw D1HttpError(message: "Invalid response from server")

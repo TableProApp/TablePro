@@ -8,6 +8,10 @@ final class TrinoPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "Trino"
+
+    static let supportsRenameTable = true
+
+    static let supportsRenameSchema = true
     static let databaseDisplayName = "Trino"
     static let iconName = "trino-icon"
     static let defaultPort = 8_080
@@ -44,7 +48,9 @@ final class TrinoPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsAddIndex = false
     static let supportsDropIndex = false
     static let supportsModifyPrimaryKey = false
-    static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable, .defaultValue, .comment]
+    /// No default. `TrinoColumnSpec` carries name, type, nullability and comment only, so a default
+    /// typed here reached no statement and the save reported success over a change that never ran.
+    static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable, .comment]
     static let postConnectActions: [PostConnectAction] = [.selectSchemaFromLastSession]
 
     static let columnTypesByCategory: [String: [String]] = [
@@ -134,7 +140,8 @@ final class TrinoPlugin: NSObject, TableProPlugin, DriverPlugin {
         booleanLiteralStyle: .truefalse,
         likeEscapeStyle: .explicit,
         paginationStyle: .offsetFetch,
-        offsetFetchOrderBy: ""
+        offsetFetchOrderBy: "",
+        caseSensitivityStyle: .regexFlag
     )
 
     static let explainVariants: [ExplainVariant] = [

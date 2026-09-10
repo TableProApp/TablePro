@@ -26,7 +26,7 @@ public class TextViewController: NSViewController {
 
     weak var findViewController: FindViewController?
 
-    internal(set) public var scrollView: NSScrollView!
+    internal(set) public var scrollView: SourceEditorScrollView!
     internal(set) public var textView: TextView!
     var gutterView: GutterView!
     var minimapView: MinimapView!
@@ -68,6 +68,11 @@ public class TextViewController: NSViewController {
         didSet {
             highlighter?.setLanguage(language: language)
             setUpTextFormation()
+            // Another grammar highlights the text with other bold and italic runs, so the widths measured under the
+            // old one no longer hold.
+            if oldValue.id != language.id {
+                textView?.layoutManager?.invalidateLineWidths()
+            }
         }
     }
 
@@ -204,18 +209,34 @@ public class TextViewController: NSViewController {
 
     var cancellables = Set<AnyCancellable>()
 
-    /// The trailing inset for the editor. Grows when line wrapping is disabled or when the minimap is shown.
-    var textViewTrailingInset: CGFloat {
-        // See https://github.com/CodeEditApp/CodeEditTextView/issues/66
-        // wrapLines ? 1 : 48
-        (minimapView?.isHidden ?? false) ? 0 : (minimapView?.frame.width ?? 0.0)
-    }
-
-    var textViewInsets: HorizontalEdgeInsets {
+    /// The widths of the views floating along the editor's edges: the gutter on the leading side, and the minimap on
+    /// the trailing side while it is shown. ``SourceEditorScrollView`` reserves them so the text scrolls clear of both.
+    var floatingSubviewInsets: HorizontalEdgeInsets {
         HorizontalEdgeInsets(
             left: showGutter ? gutterView.frame.width : 0.0,
-            right: textViewTrailingInset
+            right: (minimapView?.isHidden ?? false) ? 0 : (minimapView?.frame.width ?? 0.0)
         )
+    }
+
+    /// Where the editor is scrolled, measured horizontally from where the text starts rather than from the gutter.
+    ///
+    /// The gutter's width is reserved on the clip view, so the clip view's own origin moves whenever the gutter shows,
+    /// hides or gains a digit. This is the position ``SourceEditorState`` records and restores, so a saved position
+    /// means the same text regardless.
+    var scrollPosition: CGPoint {
+        get {
+            let origin = scrollView.contentView.bounds.origin
+            return CGPoint(x: origin.x + scrollView.floatingSubviewInsets.left, y: origin.y)
+        }
+        set {
+            // The document is only as wide as the lines laid out so far, so the lines at the new vertical position are
+            // laid out before the horizontal position is applied, or it would be clamped to a width they have not
+            // reported yet.
+            textView.scroll(CGPoint(x: scrollView.contentView.bounds.minX, y: newValue.y))
+            textView.layoutManager.layoutLines()
+            textView.scroll(CGPoint(x: newValue.x - scrollView.floatingSubviewInsets.left, y: newValue.y))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+        }
     }
 
     // MARK: Init
@@ -286,22 +307,30 @@ public class TextViewController: NSViewController {
     /// - Parameter text: The new contents of the editor.
     public func setText(_ text: String) {
         self.textView.setText(text)
+        self.foldModel?.documentDidReplace()
         self.setUpHighlighter()
         self.gutterView.setNeedsDisplay(self.gutterView.frame)
     }
 
-    /// Release heavy resources (tree-sitter, highlighter, text storage) early,
-    /// without waiting for deinit. Call when the editor is no longer visible but
-    /// SwiftUI may keep the controller alive in @State.
+    /// Release the caches an editor can rebuild (tree-sitter, highlighter, coordinators, observers)
+    /// without waiting for deinit. Called from ``SourceEditor/dismantleNSViewController(_:coordinator:)``
+    /// when SwiftUI removes the editor for good.
+    ///
+    /// It frees caches only. The text storage is the document, not a cache, and nothing here
+    /// rebuilds it: `setUpHighlighter` and `setUpKeyBindings` run in `loadView` alone, so a
+    /// controller that survives this call has no highlighting and no key bindings for the rest of
+    /// its life. Discarding the text here blanked the editor whenever the call was reached on a
+    /// controller that came back.
     public func releaseHeavyState() {
+        foldModel?.destroy()
         if let highlighter {
             textView?.removeStorageDelegate(highlighter)
         }
         highlighter = nil
         treeSitterClient = nil
         highlightProviders.removeAll()
-        // Don't call textCoordinators.destroy() here — the caller (coordinator.destroy())
-        // is already a coordinator, so calling back into destroy() causes infinite recursion.
+        // Don't call textCoordinators.destroy() here. The caller may already be a coordinator,
+        // so calling back into destroy() causes infinite recursion.
         textCoordinators.removeAll()
         cancellables.forEach { $0.cancel() }
         cancellables.removeAll()
@@ -309,7 +338,6 @@ public class TextViewController: NSViewController {
             NSEvent.removeMonitor(localEventMonitor)
         }
         localEventMonitor = nil
-        textView?.setText("")
     }
 
     deinit {

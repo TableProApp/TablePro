@@ -18,6 +18,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
     public static let clickhouse = DatabaseType(rawValue: "ClickHouse")
     public static let mssql = DatabaseType(rawValue: "SQL Server")
     public static let oracle = DatabaseType(rawValue: "Oracle")
+    public static let dameng = DatabaseType(rawValue: "Dameng")
     public static let duckdb = DatabaseType(rawValue: "DuckDB")
     public static let cassandra = DatabaseType(rawValue: "Cassandra")
     public static let redshift = DatabaseType(rawValue: "Redshift")
@@ -34,13 +35,14 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
     public static let surrealdb = DatabaseType(rawValue: "SurrealDB")
     public static let teradata = DatabaseType(rawValue: "Teradata")
     public static let trino = DatabaseType(rawValue: "Trino")
+    public static let kafka = DatabaseType(rawValue: "Kafka")
     public static let cloudflareR2SQL = DatabaseType(rawValue: "Cloudflare R2 SQL")
 
     public static let allKnownTypes: [DatabaseType] = [
         .mysql, .mariadb, .postgresql, .sqlite, .redis, .mongodb,
-        .clickhouse, .mssql, .oracle, .duckdb, .cassandra, .redshift,
+        .clickhouse, .mssql, .oracle, .dameng, .duckdb, .cassandra, .redshift,
         .etcd, .cloudflareD1, .dynamodb, .bigquery, .snowflake, .libsql, .beancount,
-        .surrealdb, .teradata, .trino, .cloudflareR2SQL
+        .surrealdb, .teradata, .trino, .kafka, .cloudflareR2SQL
     ]
 
     /// Icon name for this database type — asset catalog name (e.g. "mysql-icon") or SF Symbol fallback
@@ -56,6 +58,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
         case .clickhouse: return "clickhouse-icon"
         case .mssql: return "mssql-icon"
         case .oracle: return "oracle-icon"
+        case .dameng: return "cylinder"
         case .duckdb: return "duckdb-icon"
         case .cassandra: return "cassandra-icon"
         case .etcd: return "etcd-icon"
@@ -68,6 +71,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
         case .surrealdb: return "surrealdb-icon"
         case .teradata: return "teradata-icon"
         case .trino: return "trino-icon"
+        case .kafka: return "kafka-icon"
         case .cloudflareR2SQL: return "cloudflare-r2-sql-icon"
         default: return "externaldrive"
         }

@@ -11,6 +11,8 @@ public enum StructureColumnField: String, Sendable, CaseIterable {
     case comment
     case charset
     case collation
+    case generated
+    case generationExpression
 
     public var displayName: String {
         switch self {
@@ -24,6 +26,8 @@ public enum StructureColumnField: String, Sendable, CaseIterable {
         case .comment: String(localized: "Comment")
         case .charset: String(localized: "Charset")
         case .collation: String(localized: "Collation")
+        case .generated: String(localized: "Generated")
+        case .generationExpression: String(localized: "Expression")
         }
     }
 }

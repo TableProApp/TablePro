@@ -2,8 +2,9 @@ import CMariaDB
 import Foundation
 import TableProDatabase
 import TableProModels
+import TableProMSSQLCore
 
-final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
+nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     private let actor = MySQLActor()
     private let host: String
     private let port: Int
@@ -15,6 +16,10 @@ final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     var supportsSchemas: Bool { false }
     var currentSchema: String? { nil }
     var supportsTransactions: Bool { true }
+
+    func escapeStringLiteral(_ value: String) -> String {
+        SQLEscaping.backslashStringLiteral(value)
+    }
 
     // Set once during connect() before the driver is shared — safe for concurrent reads
     nonisolated(unsafe) private(set) var serverVersion: String?
@@ -138,6 +143,7 @@ final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
             guard row.count >= 9, let name = row[0], let dataType = row[1] else { return nil }
             let isPK = row[4]?.uppercased().contains("PRI") == true
             let isNullable = row[3]?.uppercased() == "YES"
+            let extra = row[6]
             return ColumnInfo(
                 name: name,
                 typeName: dataType,
@@ -146,7 +152,9 @@ final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
                 defaultValue: row[5],
                 comment: row[8],
                 characterMaxLength: nil,
-                ordinalPosition: index
+                ordinalPosition: index,
+                isAutoIncrement: ColumnMetadataRules.mySQLIsAutoIncrement(extra: extra),
+                isGenerated: ColumnMetadataRules.mySQLIsGenerated(extra: extra)
             )
         }
     }
@@ -256,7 +264,9 @@ final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
 private actor MySQLActor {
     private var mysql: UnsafeMutablePointer<MYSQL>?
 
-    func connect(host: String, port: Int, user: String, password: String, database: String, ssl: DriverSSLConfiguration) throws {
+    private static let connectDeadline: DispatchTimeInterval = .seconds(15)
+
+    func connect(host: String, port: Int, user: String, password: String, database: String, ssl: DriverSSLConfiguration) async throws {
         // Close existing connection if reconnecting
         if let mysql { mysql_close(mysql); self.mysql = nil }
 
@@ -276,12 +286,21 @@ private actor MySQLActor {
         var reconnect: my_bool = 0
         mysql_options(handle, MYSQL_OPT_RECONNECT, &reconnect)
 
+        var allowLocalInfile: UInt32 = 0
+        mysql_options(handle, MYSQL_OPT_LOCAL_INFILE, &allowLocalInfile)
+
         var sslEnforce: my_bool = ssl.isEnabled ? 1 : 0
         mysql_options(handle, MYSQL_OPT_SSL_ENFORCE, &sslEnforce)
         var sslVerify: my_bool = ssl.verifiesCertificate ? 1 : 0
         mysql_options(handle, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &sslVerify)
         if let caPath = ssl.existingCACertificatePath {
             _ = caPath.withCString { mysql_options(handle, MYSQL_OPT_SSL_CA, $0) }
+        }
+        if let clientCertPath = ssl.existingClientCertificatePath {
+            _ = clientCertPath.withCString { mysql_options(handle, MYSQL_OPT_SSL_CERT, $0) }
+        }
+        if let clientKeyPath = ssl.existingClientKeyPath {
+            _ = clientKeyPath.withCString { mysql_options(handle, MYSQL_OPT_SSL_KEY, $0) }
         }
 
         guard let portU32 = UInt32(exactly: port), (1...65_535).contains(port) else {
@@ -290,9 +309,25 @@ private actor MySQLActor {
                 "Port \(port) is out of range. Use a value between 1 and 65535."
             )
         }
-        guard mysql_real_connect(
-            handle, host, user, password, database, portU32, nil, 0
-        ) != nil else {
+        // A late call closes the handle it was still using, rather than the caller closing it.
+        nonisolated(unsafe) let unsafeHandle = handle
+        let connected = try await runCancellableBlocking(
+            on: DispatchQueue(label: "com.TablePro.mysql.connect.\(UUID().uuidString)"),
+            deadline: Self.connectDeadline,
+            timeoutError: {
+                MySQLError.connectionFailed(
+                    String(localized: "Timed out connecting to the MySQL server.")
+                )
+            },
+            work: {
+                mysql_real_connect(
+                    unsafeHandle, host, user, password, database, portU32, nil, 0
+                ) != nil
+            },
+            discardLateResult: { _ in mysql_close(unsafeHandle) }
+        )
+
+        guard connected else {
             let msg = String(cString: mysql_error(handle))
             mysql_close(handle)
             throw MySQLError.connectionFailed(msg)
@@ -487,7 +522,7 @@ private actor MySQLActor {
     }
 }
 
-enum MySQLBeginStreamResult: Sendable {
+nonisolated enum MySQLBeginStreamResult: Sendable {
     case rowSet([ColumnInfo])
     case noResult(affectedRows: Int)
 }
@@ -525,7 +560,7 @@ nonisolated private func mysqlFieldTypeName(_ typeValue: UInt32) -> String {
     }
 }
 
-private struct RawMySQLResult: Sendable {
+nonisolated private struct RawMySQLResult: Sendable {
     let columns: [String]
     let columnTypes: [String]
     let rows: [[String?]]
@@ -536,7 +571,7 @@ private struct RawMySQLResult: Sendable {
 
 // MARK: - Errors
 
-enum MySQLError: Error, LocalizedError {
+nonisolated enum MySQLError: Error, LocalizedError {
     case connectionFailed(String)
     case notConnected
     case queryFailed(String)

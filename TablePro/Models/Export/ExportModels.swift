@@ -8,9 +8,122 @@ import TableProPluginKit
 
 // MARK: - Export Mode
 
+/// What the export dialog starts with selected: named tables inside the current
+/// container, or every table of whole databases or schemas.
+enum ExportPreselection: Equatable {
+    /// `scope` is the container the named tables live in, carried because a bare name does not
+    /// identify a table: `orders` exists in every schema and every database on the server.
+    /// Nil where no single container holds them all, which falls back to the current one.
+    case tables(names: Set<String>, scope: DatabaseContainerRef?)
+    case containers([DatabaseContainerRef])
+
+    /// The container the export dialog will list this row under. An engine that groups by database
+    /// draws no schema rows at all, and several of those still report a schema per table, so a
+    /// schema-shaped scope would match nothing there.
+    static func scope(
+        for ref: DatabaseTreeTableRef,
+        grouping: GroupingStrategy
+    ) -> DatabaseContainerRef? {
+        guard grouping != .byDatabase, let schema = ref.qualifyingSchema else {
+            return ref.database.map { .database($0) }
+        }
+        return .schema(database: ref.database, schema: schema)
+    }
+
+    /// Carries a scope only when every row agrees on one, the same unanimity rule `scopedDatabase`
+    /// applies to a container preselection.
+    static func tables(
+        fromSidebarSelection refs: Set<DatabaseTreeTableRef>,
+        grouping: GroupingStrategy
+    ) -> ExportPreselection {
+        let names = Set(refs.map(\.table.name))
+        let scopes = refs.map { scope(for: $0, grouping: grouping) }
+        guard let first = scopes.first, scopes.allSatisfy({ $0 == first }) else {
+            return .tables(names: names, scope: nil)
+        }
+        return .tables(names: names, scope: first)
+    }
+
+    /// `container` is the ref the dialog is listing, not its bare name. Matching on the name alone
+    /// compared a database name against schema names, so a preselected database selected nothing on
+    /// a schema-grouped engine and quietly matched an unrelated schema that happened to share a name.
+    ///
+    /// `kind` is what keeps a routine or trigger that shares a table's name out of a table
+    /// preselection. Selecting a whole container still takes every kind in it.
+    func selects(
+        object: String,
+        kind: PluginExportObjectKind,
+        inContainer container: DatabaseContainerRef,
+        isCurrentContainer: Bool
+    ) -> Bool {
+        switch self {
+        case .tables(let names, let scope):
+            guard kind == .table || kind == .view || kind == .materializedView || kind == .foreignTable else {
+                return false
+            }
+            guard names.contains(object) else { return false }
+            /// A named scope answers for itself. `isCurrentContainer` cannot: it is computed from
+            /// the engine's static default schema name, which is "" on the five engines that hang
+            /// tables off schemas, so it is false for every section on those.
+            guard let scope else { return isCurrentContainer }
+            return scope.covers(container)
+        case .containers(let refs):
+            return refs.contains { $0.covers(container) }
+        }
+    }
+
+    var singleTableName: String? {
+        guard case .tables(let names, _) = self, names.count == 1 else { return nil }
+        return names.first
+    }
+
+    /// Whether a table preselection's scope reaches the given container. An unscoped preselection
+    /// reaches everything, which is the behaviour it had before it carried one.
+    func scope(covers container: DatabaseContainerRef) -> Bool {
+        guard case .tables(_, let scope) = self, let scope else { return true }
+        return scope.covers(container)
+    }
+
+    /// The schema the dialog should open expanded, so the section holding a preselected table is
+    /// the one on screen. Ticking the right row inside a collapsed section reads as nothing selected.
+    var scopedSchema: String? {
+        guard case .tables(_, let scope) = self, scope?.kind == .schema else { return nil }
+        return scope?.schema
+    }
+
+    var containerNames: [String] {
+        guard case .containers(let refs) = self else { return [] }
+        return refs.map(\.name)
+    }
+
+    /// The one database this preselection is about, when every ref agrees on it. The export dialog
+    /// scopes itself to that database, so exporting a database other than the active one lists and
+    /// exports that database rather than the one the sidebar happens to be browsing.
+    var scopedDatabase: String? {
+        guard case .containers(let refs) = self, let first = refs.first else { return nil }
+        guard refs.allSatisfy({ $0.database == first.database }) else { return nil }
+        return first.database
+    }
+
+    /// The dialog can open a second connection to any database on the server, so a container in
+    /// another database is preselectable. It cannot on an engine whose database lives inside the
+    /// driver instance rather than on a server it reconnects to, which is what
+    /// `canReachOtherDatabases` reports; there, only the active database has anything to list.
+    static func canPreselect(
+        containers: [DatabaseContainerRef],
+        activeDatabase: String?,
+        canReachOtherDatabases: Bool
+    ) -> Bool {
+        guard !containers.isEmpty else { return false }
+        guard containers.allSatisfy({ $0.database == containers[0].database }) else { return false }
+        guard !canReachOtherDatabases else { return true }
+        return containers.allSatisfy { $0.database == activeDatabase }
+    }
+}
+
 /// Defines the export mode: either exporting database tables or in-memory query results.
 enum ExportMode {
-    case tables(connection: DatabaseConnection, preselectedTables: Set<String>)
+    case tables(connection: DatabaseConnection, preselection: ExportPreselection)
     case queryResults(connection: DatabaseConnection, tableRows: TableRows, suggestedFileName: String)
     case streamingQuery(connection: DatabaseConnection, query: String, suggestedFileName: String)
 }
@@ -39,39 +152,78 @@ struct ExportConfiguration {
 
 // MARK: - Tree View Models
 
-struct ExportTableItem: Identifiable, Hashable {
+/// One selectable thing in the export tree: a table, a view, a routine, a trigger, a type or a
+/// principal whose grants are being exported. `optionValues` stays positionally aligned with the
+/// format's full `perTableOptionColumns` for every kind, so a column a kind does not support is a
+/// blank slot rather than a shifted one.
+struct ExportObjectItem: Identifiable, Hashable {
     let id: UUID
     let name: String
     let databaseName: String
-    let type: TableInfo.TableType
+    let kind: PluginExportObjectKind
+
+    /// Whatever addresses this exact object again: a routine's argument signature, a principal's
+    /// host part. Nil for a kind that a name alone identifies.
+    let identity: String?
+
+    /// The table a trigger fires for. Nil for every other kind.
+    let parentTable: String?
+
     var isSelected: Bool = false
     var optionValues: [Bool] = []
+
+    /// Which rows and columns of this object to write. Only a kind that carries rows can narrow.
+    var rowScope: PluginExportRowScope = .unrestricted
 
     init(
         id: UUID = UUID(),
         name: String,
         databaseName: String = "",
-        type: TableInfo.TableType,
+        kind: PluginExportObjectKind,
+        identity: String? = nil,
+        parentTable: String? = nil,
         isSelected: Bool = false,
-        optionValues: [Bool] = []
+        optionValues: [Bool] = [],
+        rowScope: PluginExportRowScope = .unrestricted
     ) {
         self.id = id
         self.name = name
         self.databaseName = databaseName
-        self.type = type
+        self.kind = kind
+        self.identity = identity
+        self.parentTable = parentTable
         self.isSelected = isSelected
         self.optionValues = optionValues
+        self.rowScope = rowScope
     }
 
     var qualifiedName: String {
         databaseName.isEmpty ? name : "\(databaseName).\(name)"
     }
 
+    /// What the row shows after the name, so two overloads of one routine and two triggers of one
+    /// table are told apart without opening anything.
+    var subtitle: String? {
+        switch kind {
+        case .routine:
+            guard let identity, !identity.isEmpty else { return nil }
+            return identity
+        case .trigger:
+            guard let parentTable, !parentTable.isEmpty else { return nil }
+            return parentTable
+        case .grant:
+            guard let identity, !identity.isEmpty else { return nil }
+            return "@\(identity)"
+        default:
+            return nil
+        }
+    }
+
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }
 
-    static func == (lhs: ExportTableItem, rhs: ExportTableItem) -> Bool {
+    static func == (lhs: ExportObjectItem, rhs: ExportObjectItem) -> Bool {
         lhs.id == rhs.id
     }
 }
@@ -79,40 +231,53 @@ struct ExportTableItem: Identifiable, Hashable {
 struct ExportDatabaseItem: Identifiable {
     let id: UUID
     let name: String
-    var tables: [ExportTableItem]
+    var objects: [ExportObjectItem]
     var isExpanded: Bool = true
 
     init(
         id: UUID = UUID(),
         name: String,
-        tables: [ExportTableItem],
+        objects: [ExportObjectItem],
         isExpanded: Bool = true
     ) {
         self.id = id
         self.name = name
-        self.tables = tables
+        self.objects = objects
         self.isExpanded = isExpanded
     }
 
     var selectedCount: Int {
-        tables.count(where: \.isSelected)
+        objects.count(where: \.isSelected)
     }
 
     var allSelected: Bool {
-        !tables.isEmpty && tables.allSatisfy { $0.isSelected }
+        !objects.isEmpty && objects.allSatisfy { $0.isSelected }
     }
 
     var noneSelected: Bool {
-        tables.allSatisfy { !$0.isSelected }
+        objects.allSatisfy { !$0.isSelected }
     }
 
-    var selectedTables: [ExportTableItem] {
-        tables.filter { $0.isSelected }
+    var selectedObjects: [ExportObjectItem] {
+        objects.filter { $0.isSelected }
+    }
+
+    /// The kinds present, in dump order, which is the order the groups appear in the tree.
+    var presentKinds: [PluginExportObjectKind] {
+        var seen: Set<PluginExportObjectKind> = []
+        return objects
+            .map(\.kind)
+            .filter { seen.insert($0).inserted }
+            .sorted { $0.dumpOrder < $1.dumpOrder }
+    }
+
+    func objects(ofKind kind: PluginExportObjectKind) -> [ExportObjectItem] {
+        objects.filter { $0.kind == kind }
     }
 }
 
-extension ExportTableItem {
-    func normalized(forOptionColumnCount optionColumnCount: Int, defaultOptionValues: [Bool]) -> ExportTableItem {
+extension ExportObjectItem {
+    func normalized(forOptionColumnCount optionColumnCount: Int, defaultOptionValues: [Bool]) -> ExportObjectItem {
         guard optionColumnCount > 0 else { return self }
         let fallback = defaultOptionValues.count == optionColumnCount
             ? defaultOptionValues
@@ -126,13 +291,27 @@ extension ExportTableItem {
         }
         return normalizedItem
     }
+
+    /// Clears every option the format says this kind does not support, so a routine never carries a
+    /// `Data` flag that would make it look exportable for a phase it has no rows for.
+    func maskingUnsupportedOptions(
+        columns: [PluginExportOptionColumn],
+        supports: (String, PluginExportObjectKind) -> Bool
+    ) -> ExportObjectItem {
+        guard optionValues.count == columns.count else { return self }
+        var masked = self
+        masked.optionValues = zip(columns, optionValues).map { column, value in
+            supports(column.id, kind) ? value : false
+        }
+        return masked
+    }
 }
 
 extension [ExportDatabaseItem] {
     func normalizingOptionValues(optionColumnCount: Int, defaultOptionValues: [Bool]) -> [ExportDatabaseItem] {
         map { database in
             var normalizedDatabase = database
-            normalizedDatabase.tables = database.tables.map {
+            normalizedDatabase.objects = database.objects.map {
                 $0.normalized(forOptionColumnCount: optionColumnCount, defaultOptionValues: defaultOptionValues)
             }
             return normalizedDatabase
@@ -142,12 +321,25 @@ extension [ExportDatabaseItem] {
     func resettingOptionValues(to values: [Bool]) -> [ExportDatabaseItem] {
         map { database in
             var resetDatabase = database
-            resetDatabase.tables = database.tables.map { table in
-                var resetTable = table
-                resetTable.optionValues = values
-                return resetTable
+            resetDatabase.objects = database.objects.map { object in
+                var resetObject = object
+                resetObject.optionValues = values
+                return resetObject
             }
             return resetDatabase
+        }
+    }
+
+    func maskingUnsupportedOptions(
+        columns: [PluginExportOptionColumn],
+        supports: @escaping (String, PluginExportObjectKind) -> Bool
+    ) -> [ExportDatabaseItem] {
+        map { database in
+            var maskedDatabase = database
+            maskedDatabase.objects = database.objects.map {
+                $0.maskingUnsupportedOptions(columns: columns, supports: supports)
+            }
+            return maskedDatabase
         }
     }
 }

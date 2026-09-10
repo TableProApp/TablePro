@@ -31,7 +31,6 @@ struct SQLStatementGeneratorBinaryTests {
             type: .update,
             cellChanges: [
                 CellChange(
-                    rowIndex: 0,
                     columnIndex: 1,
                     columnName: "payload",
                     oldValue: .null,
@@ -65,7 +64,6 @@ struct SQLStatementGeneratorBinaryTests {
             type: .insert,
             cellChanges: [
                 CellChange(
-                    rowIndex: 0,
                     columnIndex: 1,
                     columnName: "payload",
                     oldValue: .null,
@@ -106,7 +104,6 @@ struct SQLStatementGeneratorBinaryTests {
             type: .update,
             cellChanges: [
                 CellChange(
-                    rowIndex: 0,
                     columnIndex: 1,
                     columnName: "payload",
                     oldValue: .null,
@@ -164,7 +161,6 @@ struct SQLStatementGeneratorBinaryTests {
             type: .update,
             cellChanges: [
                 CellChange(
-                    rowIndex: 0,
                     columnIndex: 1,
                     columnName: "payload",
                     oldValue: .text("old"),

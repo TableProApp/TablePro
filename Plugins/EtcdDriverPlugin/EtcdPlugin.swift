@@ -40,6 +40,7 @@ final class EtcdPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let defaultPrimaryKeyColumn: String? = "Key"
     static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable]
     static let sqlDialect: SQLDialectDescriptor? = nil
+    static let caseSensitivityStyle: SQLDialectDescriptor.CaseSensitivityStyle = .driverManaged
     static let columnTypesByCategory: [String: [String]] = ["String": ["string"]]
 
     static let additionalConnectionFields: [ConnectionField] = [

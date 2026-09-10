@@ -174,7 +174,7 @@ enum IOSConnectionImportService {
             port: exportable.port,
             username: exportable.username,
             database: exportable.database,
-            colorTag: exportable.color,
+            color: exportable.color.map { ConnectionColor(storedValue: $0) } ?? .none,
             safeModeLevel: safeMode,
             additionalFields: exportable.additionalFields ?? [:],
             sshEnabled: sshEnabled,

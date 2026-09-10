@@ -4,7 +4,7 @@ import os
 @MainActor
 @Observable
 final class ServerDashboardViewModel {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ServerDashboard")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ServerDashboard")
 
     // MARK: - Configuration
 

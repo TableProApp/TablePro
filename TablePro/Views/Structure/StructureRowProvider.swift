@@ -18,8 +18,8 @@ struct StructureSortDescriptor {
 @MainActor
 final class StructureRowProvider {
     private static let canonicalFieldOrder: [StructureColumnField] = [
-        .name, .type, .nullable, .defaultValue, .onUpdate, .primaryKey, .autoIncrement,
-        .comment, .charset, .collation
+        .name, .type, .nullable, .defaultValue, .onUpdate, .generated, .generationExpression,
+        .primaryKey, .autoIncrement, .comment, .charset, .collation
     ]
 
     private static let booleanFields: [StructureColumnField] = [
@@ -66,6 +66,12 @@ final class StructureRowProvider {
                 String(localized: "On Delete"),
                 String(localized: "On Update")
             ]
+        case .checkConstraints:
+            return [
+                String(localized: "Name"),
+                String(localized: "Expression"),
+                String(localized: "Columns")
+            ]
         case .ddl, .parts, .triggers:
             return []
         }
@@ -75,55 +81,82 @@ final class StructureRowProvider {
         Array(repeating: .text(rawType: nil), count: columns.count)
     }
 
+    /// Every column whose cell opens a menu: the ones with a fixed option list, plus the ones whose
+    /// list the delegate builds per row.
     var dropdownColumns: Set<Int> {
+        Set(customDropdownOptions.keys).union(rowDependentDropdownColumns)
+    }
+
+    /// Columns whose list is a function of the row, so it cannot live in `customDropdownOptions`.
+    ///
+    /// On the Foreign Keys grid these are Columns (1), Ref Table (2) and Ref Columns (3): the first
+    /// offers the table's own columns, the second the database's tables, and the third the columns
+    /// of whichever table that row names. Every list keeps a `Custom…` entry, so a table the app has
+    /// not loaded is still reachable by typing.
+    var rowDependentDropdownColumns: Set<Int> {
         switch tab {
-        case .columns:
-            var result: Set<Int> = []
-            for field in Self.booleanFields {
-                guard let index = orderedColumnFields.firstIndex(of: field) else { continue }
-                result.insert(index)
-            }
-            return result
-        case .indexes:
-            return [3]
-        case .foreignKeys:
-            return []
-        case .ddl, .parts, .triggers:
-            return []
+        case .foreignKeys: ForeignKeyReferenceMenus.rowDependentColumns
+        case .columns, .indexes, .checkConstraints, .ddl, .parts, .triggers: []
         }
     }
 
     /// Explicit option lists for every dropdown column, keyed by column index.
     /// Structure flags are schema properties, not data values, so they always offer
     /// the same YES/NO pair the grid displays and never a NULL option.
-    var customDropdownOptions: [Int: [String]] {
+    ///
+    /// The Default column is the one open vocabulary here: it holds the SQL that follows the
+    /// `DEFAULT` keyword, so its list ends in `Custom…` and the cell still takes typed SQL.
+    var customDropdownOptions: [Int: [GridMenuOption]] {
         switch tab {
         case .foreignKeys:
-            let actions = EditableForeignKeyDefinition.ReferentialAction.allCases.map(\.rawValue)
-            return [5: actions, 6: actions]
+            /// Offering every action to every engine is how a DuckDB user reached
+            /// `Parser Error: FOREIGN KEY constraints cannot use CASCADE, SET NULL or SET DEFAULT`
+            /// from a menu that presented CASCADE as valid. An engine with no `ON UPDATE` clause at
+            /// all, Oracle among them, still offers NO ACTION so the cell keeps a closed list rather
+            /// than falling back to free text.
+            let dialect = ForeignKeyDialect.forType(databaseType)
+            let deleteActions = dialect.deleteActions.isEmpty ? [.noAction] : dialect.deleteActions
+            let updateActions = dialect.updateActions.isEmpty ? [.noAction] : dialect.updateActions
+            return [
+                5: GridMenuOption.values(deleteActions.map(\.rawValue)),
+                6: GridMenuOption.values(updateActions.map(\.rawValue))
+            ]
         case .indexes:
             let types = EditableIndexDefinition.IndexType.allCases.map(\.rawValue)
-            return [2: types, 3: Self.booleanOptions]
+            return [2: GridMenuOption.values(types), 3: GridMenuOption.values(Self.booleanOptions)]
         case .columns:
-            var result: [Int: [String]] = [:]
+            var result: [Int: [GridMenuOption]] = [:]
             for field in Self.booleanFields {
                 guard let index = orderedColumnFields.firstIndex(of: field) else { continue }
-                result[index] = Self.booleanOptions
+                result[index] = GridMenuOption.values(Self.booleanOptions)
+            }
+            if let index = orderedColumnFields.firstIndex(of: .generated) {
+                result[index] = GridMenuOption.values(Self.generationOptions)
+            }
+            if let index = orderedColumnFields.firstIndex(of: .defaultValue) {
+                result[index] = ColumnDefaultVocabulary.options(for: databaseType)
             }
             return result
-        case .ddl, .parts, .triggers:
+        case .checkConstraints, .ddl, .parts, .triggers:
             return [:]
         }
     }
 
+
     static let booleanOptions = ["YES", "NO"]
+
+    static let notGeneratedOption = String(localized: "Not generated")
+
+    /// Every engine that offers a choice is offered both; a driver that supports only one kind
+    /// declares only the fields it can honour and the DDL generator spells the keyword it needs.
+    static let generationOptions = [notGeneratedOption] + GenerationKind.allCases.map(\.rawValue)
 
     var typePickerColumns: Set<Int> {
         switch tab {
         case .columns:
             if let i = orderedColumnFields.firstIndex(of: .type) { return [i] }
             return []
-        case .indexes, .foreignKeys, .ddl, .parts, .triggers:
+        case .indexes, .foreignKeys, .checkConstraints, .ddl, .parts, .triggers:
             return []
         }
     }
@@ -212,6 +245,13 @@ final class StructureRowProvider {
             let id = changeManager.workingForeignKeys[sourceIndex].id
             guard let original = changeManager.currentForeignKeys.first(where: { $0.id == id }) else { return nil }
             return Self.row(for: original)
+        case .checkConstraints:
+            guard sourceIndex < changeManager.workingCheckConstraints.count else { return nil }
+            let id = changeManager.workingCheckConstraints[sourceIndex].id
+            guard let original = changeManager.currentCheckConstraints.first(where: { $0.id == id }) else {
+                return nil
+            }
+            return Self.row(for: original)
         case .ddl, .parts, .triggers:
             return nil
         }
@@ -242,9 +282,21 @@ final class StructureRowProvider {
             return changeManager.workingForeignKeys.enumerated().map { index, fk in
                 IndexedRow(sourceIndex: index, row: row(for: fk))
             }
+        case .checkConstraints:
+            return changeManager.workingCheckConstraints.enumerated().map { index, constraint in
+                IndexedRow(sourceIndex: index, row: row(for: constraint))
+            }
         case .ddl, .parts, .triggers:
             return []
         }
+    }
+
+    private static func row(for constraint: EditableCheckConstraintDefinition) -> [String?] {
+        [
+            constraint.name,
+            constraint.expression,
+            constraint.columns.joined(separator: ", ")
+        ]
     }
 
     private static func row(
@@ -263,6 +315,8 @@ final class StructureRowProvider {
             case .comment: column.comment ?? ""
             case .charset: column.charset ?? ""
             case .collation: column.collation ?? ""
+            case .generated: column.generationKind?.rawValue ?? Self.notGeneratedOption
+            case .generationExpression: column.generationExpression ?? ""
             @unknown default: nil
             }
         }

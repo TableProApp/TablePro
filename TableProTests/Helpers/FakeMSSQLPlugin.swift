@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 @testable import TablePro
 
@@ -171,21 +172,17 @@ final class FakeMSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 }
 
 enum FakeMSSQLPluginRegistration {
-    private static var didRegister = false
-    private static let lock = NSLock()
+    private static let didRegister = OSAllocatedUnfairLock(initialState: false)
 
     @MainActor
     static func registerIfNeeded() {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !didRegister else { return }
-        let manager = PluginManager.shared
-        if manager.driverPlugins[FakeMSSQLPlugin.databaseTypeId] != nil {
-            didRegister = true
-            return
+        let alreadyRegistered = didRegister.withLock { registered -> Bool in
+            defer { registered = true }
+            return registered
         }
-        let instance = FakeMSSQLPlugin()
-        manager.driverPlugins[FakeMSSQLPlugin.databaseTypeId] = instance
-        didRegister = true
+        guard !alreadyRegistered else { return }
+        let manager = PluginManager.shared
+        guard manager.driverPlugins[FakeMSSQLPlugin.databaseTypeId] == nil else { return }
+        manager.driverPlugins[FakeMSSQLPlugin.databaseTypeId] = FakeMSSQLPlugin()
     }
 }

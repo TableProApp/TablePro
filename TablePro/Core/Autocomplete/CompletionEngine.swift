@@ -11,6 +11,9 @@ import TableProPluginKit
 /// Completion context returned by the engine
 struct CompletionContext {
     let items: [SQLCompletionItem]
+    /// The wider ranked pool an open popup re-ranks against as the prefix grows. `items` is the
+    /// slice of it the popup shows.
+    let candidates: [SQLCompletionItem]
     let replacementRange: NSRange
     let sqlContext: SQLContext
 }
@@ -95,6 +98,7 @@ final class CompletionEngine {
 
         return CompletionContext(
             items: context.items,
+            candidates: context.candidates,
             replacementRange: mappedRange,
             sqlContext: context.sqlContext
         )
@@ -128,7 +132,7 @@ final class CompletionEngine {
 
         let adjustedCursor = cursorPosition - windowOffset
 
-        let (items, context) = await provider.getCompletions(
+        let (items, candidates, context) = await provider.completionSession(
             text: analysisText,
             cursorPosition: adjustedCursor,
             forcedTableReferences: forcedTableReferences
@@ -164,6 +168,7 @@ final class CompletionEngine {
 
         return CompletionContext(
             items: items,
+            candidates: candidates,
             replacementRange: replacementRange,
             sqlContext: adjustedContext
         )

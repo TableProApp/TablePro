@@ -109,7 +109,7 @@ struct ConnectionImportPreviewList: View {
     @ViewBuilder
     private func warningText(for status: ImportItemStatus) -> some View {
         if case .warnings(let messages) = status, let first = messages.first {
-            Text(" — \(first)")
+            Text(", \(first)")
                 .foregroundStyle(.orange)
         }
     }

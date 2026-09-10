@@ -76,6 +76,8 @@ struct SchemaStatementGenerator {
         // 6. Add indexes
         // 7. Add foreign keys
 
+        var constraintDeletes: [SchemaChange] = []
+        var constraintModifies: [SchemaChange] = []
         var fkDeletes: [SchemaChange] = []
         var indexDeletes: [SchemaChange] = []
         var columnDeletes: [SchemaChange] = []
@@ -84,13 +86,39 @@ struct SchemaStatementGenerator {
         var pkChanges: [SchemaChange] = []
         var indexAdds: [SchemaChange] = []
         var fkAdds: [SchemaChange] = []
+        var constraintAdds: [SchemaChange] = []
 
         for change in changes {
             switch change {
-            case .deleteForeignKey, .modifyForeignKey:
+            case .deleteCheckConstraint:
+                constraintDeletes.append(change)
+            case .modifyCheckConstraint(let old, let new):
+                // An expression change is a drop and a re-add, and the two halves belong on
+                // opposite sides of the column work: the replacement may reference a column this
+                // same save adds, and the old one may reference a column it drops. Keeping them
+                // contiguous fails whenever either is true. A rename is one statement and stays put.
+                if old.expression == new.expression {
+                    constraintModifies.append(change)
+                } else {
+                    constraintDeletes.append(.deleteCheckConstraint(old))
+                    constraintAdds.append(.addCheckConstraint(new))
+                }
+            case .addCheckConstraint:
+                constraintAdds.append(change)
+            case .deleteForeignKey:
                 fkDeletes.append(change)
-            case .deleteIndex, .modifyIndex:
+            case .modifyForeignKey(let old, let new):
+                /// Split for the same reason a modified check constraint is: the replacement may
+                /// reference a column this save adds and the old one may reference a column it
+                /// drops, so the two halves belong on opposite sides of the column work. Keeping
+                /// them contiguous fails whenever either is true.
+                fkDeletes.append(.deleteForeignKey(old))
+                fkAdds.append(.addForeignKey(new))
+            case .deleteIndex:
                 indexDeletes.append(change)
+            case .modifyIndex(let old, let new):
+                indexDeletes.append(.deleteIndex(old))
+                indexAdds.append(.addIndex(new))
             case .deleteColumn:
                 columnDeletes.append(change)
             case .modifyColumn:
@@ -106,7 +134,8 @@ struct SchemaStatementGenerator {
             }
         }
 
-        return fkDeletes + indexDeletes + columnDeletes + columnModifies + columnAdds + pkChanges + indexAdds + fkAdds
+        return constraintDeletes + constraintModifies + fkDeletes + indexDeletes + columnDeletes
+            + columnModifies + columnAdds + pkChanges + indexAdds + fkAdds + constraintAdds
     }
 
     // MARK: - Statement Generation
@@ -133,6 +162,12 @@ struct SchemaStatementGenerator {
             return generateDeleteForeignKey(fk).map { [$0] } ?? []
         case .modifyPrimaryKey(let old, let new):
             return generateModifyPrimaryKey(old: old, new: new)
+        case .addCheckConstraint(let constraint):
+            return generateAddCheckConstraint(constraint).map { [$0] } ?? []
+        case .modifyCheckConstraint(let old, let new):
+            return generateModifyCheckConstraint(old: old, new: new)
+        case .deleteCheckConstraint(let constraint):
+            return generateDeleteCheckConstraint(constraint).map { [$0] } ?? []
         }
     }
 
@@ -222,6 +257,63 @@ struct SchemaStatementGenerator {
             return nil
         }
         return SchemaStatement(sql: sql, description: "Drop foreign key '\(fk.name)'", isDestructive: false)
+    }
+
+    // MARK: - Check Constraint Operations
+
+    private func generateAddCheckConstraint(_ constraint: EditableCheckConstraintDefinition) -> SchemaStatement? {
+        guard let sql = pluginDriver.generateAddCheckConstraintSQL(
+            table: tableName, constraint: constraint.toPlugin()
+        ) else {
+            return nil
+        }
+        return SchemaStatement(
+            sql: sql, description: "Add check constraint '\(constraint.name)'", isDestructive: false
+        )
+    }
+
+    /// A pure rename is one cheap statement on every engine that offers it, so it never becomes a
+    /// drop and re-add: re-adding rescans the whole table and fails outright if any existing row
+    /// violates the constraint, which is the wrong outcome for changing a name.
+    private func generateModifyCheckConstraint(
+        old: EditableCheckConstraintDefinition,
+        new: EditableCheckConstraintDefinition
+    ) -> [SchemaStatement] {
+        if old.expression == new.expression, old.name != new.name,
+           let renameSql = pluginDriver.generateRenameCheckConstraintSQL(
+               table: tableName, from: old.name, to: new.name
+           ) {
+            return [SchemaStatement(
+                sql: renameSql,
+                description: "Rename check constraint '\(old.name)' to '\(new.name)'",
+                isDestructive: false
+            )]
+        }
+
+        guard let dropSql = pluginDriver.generateDropCheckConstraintSQL(table: tableName, constraintName: old.name),
+              let addSql = pluginDriver.generateAddCheckConstraintSQL(table: tableName, constraint: new.toPlugin())
+        else {
+            return []
+        }
+        return [
+            SchemaStatement(
+                sql: dropSql, description: "Drop check constraint '\(old.name)'", isDestructive: true
+            ),
+            SchemaStatement(
+                sql: addSql, description: "Add check constraint '\(new.name)'", isDestructive: false
+            )
+        ]
+    }
+
+    private func generateDeleteCheckConstraint(_ constraint: EditableCheckConstraintDefinition) -> SchemaStatement? {
+        guard let sql = pluginDriver.generateDropCheckConstraintSQL(
+            table: tableName, constraintName: constraint.name
+        ) else {
+            return nil
+        }
+        return SchemaStatement(
+            sql: sql, description: "Drop check constraint '\(constraint.name)'", isDestructive: true
+        )
     }
 
     // MARK: - Primary Key Operations

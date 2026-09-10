@@ -338,4 +338,32 @@ struct SQLFavoriteStorageTests {
         let results = await storage.fetchFavorites(searchText: "large_table")
         #expect(results.contains { $0.id == fav.id })
     }
+
+    @Test("An allowed connection set keeps global favorites and drops the rest")
+    func allowedConnectionIdsKeepsGlobals() async {
+        let allowed = UUID()
+        let excluded = UUID()
+        let global = makeFavorite(name: "Global", connectionId: nil)
+        let allowedFavorite = makeFavorite(name: "Allowed", connectionId: allowed)
+        let excludedFavorite = makeFavorite(name: "Excluded", connectionId: excluded)
+        #expect(await storage.addFavorite(global))
+        #expect(await storage.addFavorite(allowedFavorite))
+        #expect(await storage.addFavorite(excludedFavorite))
+
+        let results = await storage.fetchFavorites(allowedConnectionIds: [allowed])
+        let names = Set(results.map(\.name))
+
+        #expect(names.contains("Global"))
+        #expect(names.contains("Allowed"))
+        #expect(!names.contains("Excluded"))
+    }
+
+    @Test("An empty allowed connection set returns nothing")
+    func emptyAllowedConnectionIdsReturnsNothing() async {
+        #expect(await storage.addFavorite(makeFavorite(name: "Global", connectionId: nil)))
+
+        let results = await storage.fetchFavorites(allowedConnectionIds: [])
+
+        #expect(results.isEmpty)
+    }
 }

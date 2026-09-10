@@ -43,7 +43,11 @@ extension PluginManager {
                 }
                 PluginMetadataRegistry.shared.register(snapshot: snapshot, forTypeId: typeId, preserveIcon: true)
                 for additionalId in driverType.additionalDatabaseTypeIds {
-                    PluginMetadataRegistry.shared.registerVariant(pluginSnapshot: snapshot, forTypeId: additionalId)
+                    PluginMetadataRegistry.shared.registerVariant(
+                        pluginSnapshot: snapshot,
+                        forTypeId: additionalId,
+                        primaryTypeId: typeId
+                    )
                     PluginMetadataRegistry.shared.registerTypeAlias(additionalId, primaryTypeId: typeId)
                 }
 
@@ -124,7 +128,7 @@ extension PluginManager {
         let typeId = driverType.databaseTypeId
         if driverPlugins[typeId] != nil {
             let existingName = PluginMetadataRegistry.shared
-                .snapshot(forTypeId: typeId)?.displayName ?? typeId
+                .snapshot(forRegisteredTypeId: typeId)?.displayName ?? typeId
             throw PluginError.invalidDescriptor(
                 pluginId: pluginId,
                 reason: "databaseTypeId '\(typeId)' is already registered by '\(existingName)'"
@@ -139,7 +143,7 @@ extension PluginManager {
         for additionalId in allAdditionalIds {
             if driverPlugins[additionalId] != nil {
                 let existingName = PluginMetadataRegistry.shared
-                    .snapshot(forTypeId: additionalId)?.displayName ?? additionalId
+                    .snapshot(forRegisteredTypeId: additionalId)?.displayName ?? additionalId
                 throw PluginError.invalidDescriptor(
                     pluginId: pluginId,
                     reason: "additionalDatabaseTypeId '\(additionalId)' is already registered by '\(existingName)'"
@@ -210,18 +214,47 @@ extension PluginManager {
     }
 
     func sqlDialect(for databaseType: DatabaseType) -> SQLDialectDescriptor? {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
-            .editor.sqlDialect
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.editor.sqlDialect
+    }
+
+    /// How this engine can express case-insensitive matching. SQL engines answer from their
+    /// dialect; document stores have no dialect and declare it on the plugin directly.
+    func caseSensitivityStyle(for databaseType: DatabaseType) -> SQLDialectDescriptor.CaseSensitivityStyle {
+        if let dialect = sqlDialect(for: databaseType) {
+            return dialect.caseSensitivityStyle
+        }
+        guard let plugin = driverPlugin(for: databaseType) else { return .unsupported }
+        return type(of: plugin).caseSensitivityStyle
     }
 
     func statementCompletions(for databaseType: DatabaseType) -> [CompletionEntry] {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
-            .editor.statementCompletions ?? []
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.editor.statementCompletions ?? []
     }
 
     func additionalConnectionFields(for databaseType: DatabaseType) -> [ConnectionField] {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .connection.additionalConnectionFields ?? []
+    }
+
+    /// Every secure field id a stored connection of this type could be holding, which is the
+    /// variant's own declared fields UNION its serving plugin's.
+    ///
+    /// Deletion, Keychain cleanup and export redaction all need a superset, and they are the
+    /// reason this is not `additionalConnectionFields(for:).filter(\.isSecure)`. A variant used to
+    /// be offered the primary's whole form, so a PGlite connection saved before that was fixed can
+    /// still hold an AWS secret under a field PGlite itself never declared. Narrowing the list to
+    /// what the form renders today would orphan that value in the Keychain and, worse, stop
+    /// redacting it on export. Rendering a form is the opposite requirement and stays exact.
+    func secureConnectionFieldIds(for databaseType: DatabaseType) -> [String] {
+        let own = PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .connection.additionalConnectionFields ?? []
+        let serving = PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: databaseType.pluginTypeId)?
+            .connection.additionalConnectionFields ?? []
+        var ids: [String] = []
+        for field in own + serving where field.isSecure && !ids.contains(field.id) {
+            ids.append(field.id)
+        }
+        return ids
     }
 
     // MARK: - Plugin Property Lookups
@@ -307,45 +340,55 @@ extension PluginManager {
     }
 
     func editorLanguage(for databaseType: DatabaseType) -> EditorLanguage {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
-            .editorLanguage ?? .sql
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.editorLanguage ?? .sql
     }
 
     func queryLanguageName(for databaseType: DatabaseType) -> String {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .queryLanguageName ?? "SQL"
     }
 
     func connectionMode(for databaseType: DatabaseType) -> ConnectionMode {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .connectionMode ?? .network
     }
 
     func brandColor(for databaseType: DatabaseType) -> Color {
-        if let hex = PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?.brandColorHex {
+        if let hex = PluginMetadataRegistry.shared.snapshot(for: databaseType)?.brandColorHex {
             return Color(hex: hex)
         }
         return Color.gray
     }
 
     func supportsDatabaseSwitching(for databaseType: DatabaseType) -> Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .supportsDatabaseSwitching ?? true
     }
 
     func supportsSchemaSwitching(for databaseType: DatabaseType) -> Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsSchemaSwitching ?? false
     }
 
-    func containerSwitchTarget(for databaseType: DatabaseType) -> ContainerSwitchTarget? {
+    /// Every container dimension the engine can switch, ordered outermost first. An engine can have
+    /// both, which is why this is a list: PostgreSQL browses a database and a schema within it, and
+    /// naming only one of them is what left the schema with no control of its own.
+    func switchableContainers(for databaseType: DatabaseType) -> [ContainerSwitchTarget] {
+        var targets: [ContainerSwitchTarget] = []
         if supportsDatabaseSwitching(for: databaseType) {
-            return .database
+            targets.append(.database)
         }
         if supportsSchemaSwitching(for: databaseType) {
-            return .schema
+            targets.append(.schema)
         }
-        return nil
+        return targets
+    }
+
+    /// The dimension a tab and a workspace are anchored to, which is the outermost one the engine
+    /// switches. Derived from `switchableContainers` so the two orderings cannot drift apart.
+    /// This is not "the dimension the user can switch": read `switchableContainers` for that.
+    func containerSwitchTarget(for databaseType: DatabaseType) -> ContainerSwitchTarget? {
+        switchableContainers(for: databaseType).first
     }
 
     func supportsContainerSwitching(for databaseType: DatabaseType) -> Bool {
@@ -353,47 +396,47 @@ extension PluginManager {
     }
 
     func supportsImport(for databaseType: DatabaseType) -> Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsImport ?? true
     }
 
     func systemDatabaseNames(for databaseType: DatabaseType) -> [String] {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .schema.systemDatabaseNames ?? []
     }
 
     func systemSchemaNames(for databaseType: DatabaseType) -> [String] {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .schema.systemSchemaNames ?? []
     }
 
     func columnTypesByCategory(for databaseType: DatabaseType) -> [String: [String]] {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .editor.columnTypesByCategory ?? PluginMetadataSnapshot.EditorConfig.defaults.columnTypesByCategory
     }
 
     func requiresAuthentication(for databaseType: DatabaseType) -> Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .requiresAuthentication ?? true
     }
 
     func fileExtensions(for databaseType: DatabaseType) -> [String] {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .schema.fileExtensions ?? []
     }
 
     func tableEntityName(for databaseType: DatabaseType) -> String {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .schema.tableEntityName ?? "Tables"
     }
 
     func containerEntityName(for databaseType: DatabaseType) -> String {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .schema.containerEntityName ?? "Database"
     }
 
     func defaultUnixSocketPath(for databaseType: DatabaseType) -> String? {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .connection.defaultUnixSocketPath
     }
 
@@ -402,97 +445,149 @@ extension PluginManager {
     }
 
     func schemaEntityName(for databaseType: DatabaseType) -> String {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .schema.schemaEntityName ?? "Schema"
     }
 
+    func schemaEntityNamePlural(for databaseType: DatabaseType) -> String {
+        schemaEntityName(for: databaseType) + "s"
+    }
+
     func supportsCascadeDrop(for databaseType: DatabaseType) -> Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsCascadeDrop ?? false
     }
 
     func supportsForeignKeyDisable(for databaseType: DatabaseType) -> Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsForeignKeyDisable ?? true
     }
 
     func immutableColumns(for databaseType: DatabaseType) -> [String] {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .schema.immutableColumns ?? []
     }
 
     func supportsReadOnlyMode(for databaseType: DatabaseType) -> Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsReadOnlyMode ?? true
     }
 
     func supportsOffsetPagination(for databaseType: DatabaseType) -> Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsOffsetPagination ?? true
     }
 
     func isEngineReadOnly(for databaseType: DatabaseType) -> Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.isEngineReadOnly ?? false
     }
 
     func defaultSchemaName(for databaseType: DatabaseType) -> String {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .schema.defaultSchemaName ?? "public"
     }
 
     func requiresReconnectForDatabaseSwitch(for databaseType: DatabaseType) -> Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.requiresReconnectForDatabaseSwitch ?? false
     }
 
     func structureColumnFields(for databaseType: DatabaseType) -> [StructureColumnField] {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .schema.structureColumnFields ?? [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
     }
 
     func defaultPrimaryKeyColumn(for databaseType: DatabaseType) -> String? {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .schema.defaultPrimaryKeyColumn
     }
 
     func supportsQueryProgress(for databaseType: DatabaseType) -> Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsQueryProgress ?? false
     }
 
     func supportsSSH(for databaseType: DatabaseType) -> Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsSSH ?? true
     }
 
+    /// Which connection field carries the local database file this type opens, or nil when it
+    /// reaches its database over the network.
+    func localFilePathField(for databaseType: DatabaseType) -> LocalFilePathField? {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.localFilePathField
+    }
+
+    /// Whether this type can point at a database file on an SSH server instead of a local one.
+    func supportsRemoteDatabaseFile(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsRemoteDatabaseFile ?? false
+    }
+
     func supportsSSL(for databaseType: DatabaseType) -> Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsSSL ?? true
     }
 
     func supportsCloudflareTunnel(for databaseType: DatabaseType) -> Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsCloudflareTunnel ?? true
     }
 
     func supportsSOCKSProxy(for databaseType: DatabaseType) -> Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsSOCKSProxy ?? true
     }
 
-    func supportsColumnReorder(for databaseType: DatabaseType) -> Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
-            .supportsColumnReorder ?? false
+    func supportsTunnelCommand(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsTunnelCommand ?? true
+    }
+
+    func columnReorderSupport(for databaseType: DatabaseType) -> ColumnReorderSupport {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .structureEditing.columnReorder ?? .unsupported
+    }
+
+    func foreignKeyEditSupport(for databaseType: DatabaseType) -> ForeignKeyEditSupport {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .structureEditing.foreignKeyEdit ?? .unsupported
     }
 
     func supportsDropDatabase(for databaseType: DatabaseType) -> Bool {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsDropDatabase ?? false
     }
 
+    func supportsDropSchema(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsDropSchema ?? false
+    }
+
+    func supportsRenameTable(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsRenameTable ?? false
+    }
+
+    func supportsRenameView(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsRenameView ?? false
+    }
+
+    func supportsRenameDatabase(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsRenameDatabase ?? false
+    }
+
+    func supportsRenameSchema(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsRenameSchema ?? false
+    }
+
     func autoLimitStyle(for databaseType: DatabaseType) -> AutoLimitStyle {
-        guard let snapshot = PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId) else {
+        guard let snapshot = PluginMetadataRegistry.shared.snapshot(for: databaseType) else {
             return .limit
         }
         guard let dialect = snapshot.editor.sqlDialect else { return .none }
@@ -512,21 +607,41 @@ extension PluginManager {
     }
 
     func databaseGroupingStrategy(for databaseType: DatabaseType) -> GroupingStrategy {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .schema.databaseGroupingStrategy ?? .byDatabase
     }
 
+    /// A file holds exactly one database, so a file-based engine never has a tree to draw.
+    /// Every other mode can: a server hosts several databases, and an embedded engine can
+    /// attach them.
+    ///
+    /// Both remaining terms are permissive by default (`supportsDatabaseSwitching` is true
+    /// and the grouping strategy is `.byDatabase` on `DriverPlugin`), so a plugin that
+    /// declares neither gets a tree its default `fetchDatabases()` returns nothing for.
+    /// That was true of networked plugins before this guard was widened and is why the
+    /// list stays a declaration rather than an inference; `DatabaseTreeCapabilityTests`
+    /// pins it for both modes.
     func supportsDatabaseTree(for databaseType: DatabaseType) -> Bool {
-        guard connectionMode(for: databaseType) == .network,
-              supportsDatabaseSwitching(for: databaseType) else {
-            return false
-        }
-        let grouping = databaseGroupingStrategy(for: databaseType)
+        Self.supportsDatabaseTree(
+            connectionMode: connectionMode(for: databaseType),
+            supportsDatabaseSwitching: supportsDatabaseSwitching(for: databaseType),
+            grouping: databaseGroupingStrategy(for: databaseType)
+        )
+    }
+
+    /// The rule itself, as a pure function of the three inputs, so it can be exercised for
+    /// combinations no registered type declares today.
+    static func supportsDatabaseTree(
+        connectionMode: ConnectionMode,
+        supportsDatabaseSwitching: Bool,
+        grouping: GroupingStrategy
+    ) -> Bool {
+        guard connectionMode != .fileBased, supportsDatabaseSwitching else { return false }
         return grouping == .byDatabase || grouping == .bySchema
     }
 
     func defaultGroupName(for databaseType: DatabaseType) -> String {
-        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .schema.defaultGroupName ?? "main"
     }
 
@@ -585,8 +700,27 @@ extension PluginManager {
             throw PluginError.notFound
         }
 
-        let entry = try await installFromRegistry(registryPlugin, registryClient: registryClient, progress: progress)
-        Self.logger.info("Installed missing plugin '\(entry.name)' for database type '\(databaseType.rawValue)'")
+        /// Published to the tracker as well as to the caller's handler. `PluginInstallStatusRow`
+        /// is built to draw the fraction and reaches it only through the tracker, so without this
+        /// every install started from a connection or a file fell back to its indeterminate
+        /// spinner while the determinate bar beside it was never fed.
+        let tracker = PluginInstallTracker.shared
+        tracker.beginInstall(pluginId: registryPlugin.id)
+        do {
+            let entry = try await installFromRegistry(
+                registryPlugin,
+                registryClient: registryClient,
+                progress: { fraction in
+                    tracker.updateProgress(pluginId: registryPlugin.id, fraction: fraction)
+                    progress(fraction)
+                }
+            )
+            tracker.completeInstall(pluginId: registryPlugin.id)
+            Self.logger.info("Installed missing plugin '\(entry.name)' for database type '\(databaseType.rawValue)'")
+        } catch {
+            tracker.failInstall(pluginId: registryPlugin.id, error: error.localizedDescription)
+            throw error
+        }
     }
 
     nonisolated static func registryPlugin(forTypeId pluginTypeId: String, in manifest: RegistryManifest?) -> RegistryPlugin? {

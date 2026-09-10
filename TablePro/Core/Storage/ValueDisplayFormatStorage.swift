@@ -11,7 +11,7 @@ internal final class ValueDisplayFormatStorage {
 
     private let store: KeyValueStore
 
-    init(defaults: KeyValueStore = UserDefaults.standard) {
+    init(defaults: KeyValueStore = AppStorageEnvironment.shared.defaults) {
         store = defaults
     }
 

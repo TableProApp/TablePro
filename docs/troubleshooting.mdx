@@ -1,0 +1,119 @@
+---
+title: Troubleshooting
+description: Symptom-first checks for launch, connection, plugin, tunnel and save failures
+---
+
+import RowCap from "/snippets/row-cap.mdx";
+
+Find your symptom, then match your error string against the headings in that section. Every heading in quotes is what the app or the server printed, unchanged, so searching for yours works.
+
+- Will not launch, quits at launch, Gatekeeper: [the app will not open](#the-app-will-not-open)
+- Refused, timed out, stuck on Connecting: [a connection fails](#a-connection-fails)
+- A certificate is rejected: [TLS and certificates](#tls-and-certificates)
+- A driver is missing, rejected, or stale: [a plugin will not install or load](#a-plugin-will-not-install-or-load)
+- The tunnel never comes up: [SSH tunnel failures](#ssh-tunnel-failures)
+- Rows are missing, or a query is cancelled under you: [a query is slow](#a-query-is-slow-or-the-results-stop-short)
+- A save is refused: [edits will not save](#edits-will-not-save)
+- You need the log, or you are filing a bug: [logs and diagnostics](#logs-and-diagnostics)
+
+A failure that happens on one engine only is on that engine's page, which ends with its own Troubleshooting section.
+
+## The app will not open
+
+- **Wrong architecture**: assets are per-architecture, `TablePro-<version>-arm64.dmg` and the `x86_64` one. Check yours under **Apple menu > About This Mac**.
+- **Too old a macOS**: 14.0 (Sonoma) is the minimum.
+- **macOS refuses to open it**: the copy was damaged or stripped of its signature. Confirm with `spctl -a -vvv /Applications/TablePro.app`, then re-download or run `brew install --cask tablepro`.
+- **Opens then quits**: attach the crash report from Console.app to an issue.
+- **Opens straight into a connection**: startup is on **Reopen Last Session**. Switch to **Show Welcome Screen** in **Settings > General**.
+
+## A connection fails
+
+A failed connect paints the window with **Could not connect to `…`**, the driver's own message, and three buttons: **Try Again**, **Manage Connections…**, **Copy Details**.
+
+- **Refused** means something answered and said no: the server is not listening on that port, or it is bound to `127.0.0.1` only. **Timed out** means nothing answered, which points at a firewall, a security group or a VPN. Tell them apart with `nc -zv host port`.
+- **Still on Connecting**: after 12 seconds on one step the pane says "This is taking longer than usual." **Cancel** gives up at once and drops that connection from **Reopen Last Session**; a connect that fails on its own keeps its place there.
+- On macOS 15 and later, a database at a local network address (`192.168.x.x`, `.local`) needs the Local Network permission. Grant it to TablePro under **System Settings > Privacy & Security > Local Network**. Loopback and internet hosts are unaffected.
+- Authentication failures are engine-specific. See [PostgreSQL](/databases/postgresql), [MySQL](/databases/mysql) or [SQL Server](/databases/mssql).
+
+## TLS and certificates
+
+A handshake failure names the cause and the SSL Mode to switch to, with the driver's original error underneath. The ladder is Disabled, Preferred, Required, Verify CA, Verify Identity. Every handshake error string and the mode that fixes it is on [SSL/TLS](/connections/ssl).
+
+## A plugin will not install or load
+
+A plugin that fails any of its checks appears as a banner in **Settings > Plugins > Installed** with the reason.
+
+### "Plugin code signature verification failed: …"
+
+The bundle is unsigned, ad-hoc signed, or altered after signing, and there is no override. Download it again from the registry or from its developer.
+
+### "Plugin checksum does not match expected value"
+
+The download does not match the SHA-256 in the registry manifest. Retry the install. A second failure means the manifest and the file disagree, so file an issue.
+
+### "Plugin was built for PluginKit version …; this release of TablePro needs version …"
+
+This plugin predates the app's current driver interface. TablePro fetches a compatible build on its own, retrying after 30 seconds, then 5 and 10 minutes, five attempts in all. Click **Update Now** in the banner, or **Update TablePro** when the plugin needs a newer app.
+
+### "Couldn't reach the plugin registry"
+
+A network problem, not a bad plugin. Retry once you are online.
+
+### "The … plugin is not installed"
+
+A saved connection's driver is missing. The failure screen offers **Install Plugin…**.
+
+Removing a plugin needs a relaunch, offered as **Quit & Reopen**. Plugins you installed live in `~/Library/Application Support/TablePro/Plugins`. See [Plugins & Themes](/features/plugins).
+
+## SSH tunnel failures
+
+### "SSH host key verification failed"
+
+The server presented a key that does not match the stored one, or you declined the prompt. Trusted keys are in `~/Library/Application Support/TablePro/known_hosts`. Accept a changed key only when you know what changed it, such as a rebuild or a rotation.
+
+### "No available local port for SSH tunnel"
+
+The tunnel binds a local port between 60000 and 65000 and found none free. List what holds them with `lsof -nP -iTCP -sTCP:LISTEN`, quit those processes, reconnect.
+
+Failures on the far side start with "The SSH server could not reach …". Those and the authentication rejections are in [SSH Tunneling](/connections/ssh-tunneling).
+
+## A query is slow, or the results stop short
+
+<RowCap />
+
+A capped result offers **Fetch All** in the status bar, and **Query > Execute Query Without Limit** runs one query with the cap off. Browsing a table pages instead of capping.
+
+A query that runs past the timeout in **Settings > General** is cancelled ([Settings](/customization/settings)); cancel one yourself with `Cmd+.`. A changed timeout reaches new connections only, so reconnect after changing it or the old value stays in force with nothing to say so.
+
+## Edits will not save
+
+- The connection is at the **Read-Only** [safe mode](/features/safe-mode) level, which disables cell editing, row changes and import.
+- A result is editable only when it came from one table. Joins, comma joins, subqueries in `FROM`, CTEs, `UNION`, `EXCEPT` and `INTERSECT` are read-only.
+- Select the primary key, unaliased. A key that is renamed with `AS` or left out blocks the whole save.
+- Generated columns are left out of every `INSERT` and `UPDATE`, so a value typed into one never reaches the server.
+- A table with no primary key is matched on every original column value, and the save fails when that matches no row. Someone else usually edited it first.
+
+See [Change Tracking](/features/change-tracking) for what the save actually runs.
+
+## Logs and diagnostics
+
+Logging goes to OSLog under `com.TablePro`, with four drivers on subsystems of their own: `com.TablePro.PostgreSQLDriver`, `com.TablePro.RedisDriver`, `com.TablePro.CassandraDriver`, `com.TablePro.OracleDriver`. Filter on the subsystem in Console.app, or read the last half hour in Terminal:
+
+```bash
+log show --predicate 'subsystem BEGINSWITH "com.TablePro"' --last 30m
+```
+
+Oracle alone adds a diagnostic sheet on a recognized driver error, with **Copy Diagnostic Info** and **Open Issue Tracker**.
+
+Application data is in `~/Library/Application Support/TablePro`, preferences in `~/Library/Preferences/com.TablePro.plist`. **Settings > General** has **Reset All Settings to Defaults**.
+
+Neither copy button includes a password. **Copy Details** carries the host, the database name, the SSH host, and any non-default port; **Copy Diagnostic Info** adds the user name.
+
+## Filing a bug report
+
+**Help > Report an Issue** opens the [issue tracker](https://github.com/TableProApp/TablePro/issues). A report that gets fixed quickly carries:
+
+- The version from **TablePro > About TablePro**, your macOS version, and whether the Mac is Apple Silicon or Intel
+- The engine and server version, plus the plugin version from **Settings > Plugins > Installed**
+- The error pasted from **Copy Details** or **Copy Diagnostic Info**, not retyped
+- What you ran, what happened, and what you expected. Add the log lines when the failure left no dialog

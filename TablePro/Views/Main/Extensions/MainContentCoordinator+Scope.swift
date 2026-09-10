@@ -42,3 +42,31 @@ extension MainContentCoordinator {
         services.databaseManager.browseScope(for: connectionId)
     }
 }
+
+/// The scopes a connection's open tabs are bound to right now.
+///
+/// `SchemaProviderRegistry` asks at eviction time instead of counting retains, because a query
+/// tab reads its provider from a SwiftUI body: an evicted scope would be rebuilt empty on the
+/// next body pass, and the tab's `.task(id:)` has already run and will not run again to refill
+/// it. Every window of the connection contributes, since they can select different tabs.
+@MainActor
+final class CoordinatorLiveScopeProvider: LiveScopeProviding {
+    static let shared = CoordinatorLiveScopeProvider()
+
+    private init() {}
+
+    func liveScopes(for connectionId: UUID) -> Set<DatabaseScope> {
+        var scopes: Set<DatabaseScope> = []
+        for coordinator in MainContentCoordinator.activeCoordinators.values
+        where coordinator.connectionId == connectionId {
+            if let browseScope = coordinator.browseScope {
+                scopes.insert(browseScope)
+            }
+            for tab in coordinator.tabManager.tabs {
+                guard let scope = coordinator.scope(for: tab) else { continue }
+                scopes.insert(scope)
+            }
+        }
+        return scopes
+    }
+}

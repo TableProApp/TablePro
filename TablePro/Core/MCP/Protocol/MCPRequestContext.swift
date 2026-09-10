@@ -1,50 +1,56 @@
 import Foundation
 
 public struct MCPRequestContext: Sendable {
-    public let exchange: MCPInboundExchange
-    public let session: MCPSession
+    public let requestId: JsonRpcId
+    public let params: JsonValue?
+    public let meta: MCPRequestMeta
     public let principal: MCPPrincipal
-    public let dispatcher: MCPProtocolDispatcher
+    public let responder: MCPResponder
     public let progress: MCPProgressEmitter
     public let cancellation: MCPCancellationToken
     public let clock: any MCPClock
+    public let clientAddress: MCPClientAddress
+    public let receivedAt: Date
 
     public init(
-        exchange: MCPInboundExchange,
-        session: MCPSession,
+        requestId: JsonRpcId,
+        params: JsonValue?,
+        meta: MCPRequestMeta,
         principal: MCPPrincipal,
-        dispatcher: MCPProtocolDispatcher,
+        responder: MCPResponder,
         progress: MCPProgressEmitter,
         cancellation: MCPCancellationToken,
-        clock: any MCPClock
+        clock: any MCPClock,
+        clientAddress: MCPClientAddress,
+        receivedAt: Date
     ) {
-        self.exchange = exchange
-        self.session = session
+        self.requestId = requestId
+        self.params = params
+        self.meta = meta
         self.principal = principal
-        self.dispatcher = dispatcher
+        self.responder = responder
         self.progress = progress
         self.cancellation = cancellation
         self.clock = clock
+        self.clientAddress = clientAddress
+        self.receivedAt = receivedAt
     }
 
-    public var requestId: JsonRpcId? {
-        if case .request(let request) = exchange.message {
-            return request.id
-        }
-        return nil
+    public var era: MCPEra {
+        meta.era
     }
 
-    public var sessionId: MCPSessionId {
-        session.id
+    public var protocolVersion: MCPProtocolVersion {
+        meta.protocolVersion
     }
 
-    public var requestParams: JsonValue? {
-        if case .request(let request) = exchange.message {
-            return request.params
+    public var clientCapabilities: MCPClientCapabilities {
+        meta.clientCapabilities
+    }
+
+    public func throwIfCancelled() async throws {
+        if await cancellation.isCancelled {
+            throw CancellationError()
         }
-        if case .notification(let notification) = exchange.message {
-            return notification.params
-        }
-        return nil
     }
 }

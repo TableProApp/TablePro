@@ -122,6 +122,15 @@ def update_plugin_entry(manifest, args):
 
     merged_binaries = prune_old_kit_versions(merged_binaries, args.keep_kit_versions)
 
+    # The prune keeps the newest N PluginKit versions, so publishing for an older one drops the
+    # binary that was just built while still advertising its version number. The entry would then
+    # point every app at a download that does not exist for it.
+    if not any(kit_version(b) == pkv for b in merged_binaries):
+        raise SystemExit(
+            f"PluginKit {pkv} is older than the {args.keep_kit_versions} retained versions; "
+            f"publishing would advertise {args.version} with no binary for it"
+        )
+
     updated_entry = {
         "id": bundle_id,
         "name": args.name,

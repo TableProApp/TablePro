@@ -29,6 +29,7 @@ struct CoordinatorEditorLoadTests {
             changeManager: changeManager,
             toolbarState: toolbarState
         )
+        coordinator.openTabInNewWindow = { _ in }
         return (coordinator, tabManager)
     }
 
@@ -42,9 +43,10 @@ struct CoordinatorEditorLoadTests {
 
         tabManager.addTab(initialQuery: "SELECT 1")
 
-        coordinator.loadQueryIntoEditor("SELECT * FROM users")
+        let disposition = coordinator.loadQueryIntoEditor("SELECT * FROM users")
 
         #expect(tabManager.tabs[0].content.query == "SELECT * FROM users")
+        #expect(disposition == .currentCoordinator)
     }
 
     @Test("loadQueryIntoEditor sets hasUserInteraction to true")
@@ -91,6 +93,81 @@ struct CoordinatorEditorLoadTests {
         #expect(tabManager.tabs.count == 1)
         #expect(tabManager.tabs[0].tabType == .query)
         #expect(tabManager.tabs[0].content.query == "SELECT 1")
+        #expect(tabManager.tabs[0].tableContext.databaseName == "testdb")
+    }
+
+    @Test("loadQueryIntoEditor reuses a query tab in the target database")
+    @MainActor
+    func loadQueryReusesMatchingDatabase() {
+        let (coordinator, tabManager) = makeCoordinator()
+        defer { coordinator.teardown() }
+
+        tabManager.addTab(initialQuery: "SELECT 1", databaseName: "analytics")
+
+        let disposition = coordinator.loadQueryIntoEditor("SELECT 2", databaseName: "analytics")
+
+        #expect(disposition == .currentCoordinator)
+        #expect(tabManager.tabs[0].content.query == "SELECT 2")
+        #expect(tabManager.tabs[0].tableContext.databaseName == "analytics")
+    }
+
+    @Test("loadQueryIntoEditor does not overwrite a query tab from another database")
+    @MainActor
+    func loadQueryPreservesDifferentDatabase() {
+        let (coordinator, tabManager) = makeCoordinator()
+        defer { coordinator.teardown() }
+        var openedPayload: EditorTabPayload?
+        coordinator.openTabInNewWindow = { openedPayload = $0 }
+
+        tabManager.addTab(initialQuery: "SELECT private_data", databaseName: "primary")
+
+        let disposition = coordinator.loadQueryIntoEditor("SELECT public_data", databaseName: "analytics")
+
+        #expect(disposition == .focusedElsewhere)
+        #expect(tabManager.tabs[0].content.query == "SELECT private_data")
+        #expect(tabManager.tabs[0].tableContext.databaseName == "primary")
+        #expect(openedPayload?.databaseName == "analytics")
+        #expect(openedPayload?.initialQuery == "SELECT public_data")
+    }
+
+    @Test("loadQueryIntoEditor keeps the current tab when a new window tab is forced")
+    @MainActor
+    func loadQueryForcesNewWindowTab() {
+        let (coordinator, tabManager) = makeCoordinator()
+        defer { coordinator.teardown() }
+        var openedPayload: EditorTabPayload?
+        coordinator.openTabInNewWindow = { openedPayload = $0 }
+
+        tabManager.addTab(initialQuery: "SELECT 1", databaseName: "testdb")
+
+        let disposition = coordinator.loadQueryIntoEditor(
+            "SELECT 2",
+            databaseName: "testdb",
+            forceNewTab: true
+        )
+
+        #expect(disposition == .focusedElsewhere)
+        #expect(tabManager.tabs[0].content.query == "SELECT 1")
+        #expect(openedPayload?.databaseName == "testdb")
+        #expect(openedPayload?.initialQuery == "SELECT 2")
+    }
+
+    @Test("loadQueryIntoEditor reuses a tab opened without an explicit database")
+    @MainActor
+    func loadQueryReusesTabWithInheritedDatabase() {
+        let (coordinator, tabManager) = makeCoordinator()
+        defer { coordinator.teardown() }
+        var openedPayload: EditorTabPayload?
+        coordinator.openTabInNewWindow = { openedPayload = $0 }
+
+        tabManager.addTab(initialQuery: "SELECT 1")
+        #expect(tabManager.tabs[0].tableContext.databaseName.isEmpty)
+
+        let disposition = coordinator.loadQueryIntoEditor("SELECT 2", databaseName: "testdb")
+
+        #expect(disposition == .currentCoordinator)
+        #expect(tabManager.tabs[0].content.query == "SELECT 2")
+        #expect(openedPayload == nil)
     }
 
     // MARK: - insertQueryFromAI
@@ -109,9 +186,9 @@ struct CoordinatorEditorLoadTests {
         #expect(tabManager.tabs[0].content.query == "SELECT * FROM users")
     }
 
-    @Test("insertQueryFromAI appends with separator when tab has existing text")
+    @Test("insertQueryFromAI leaves a tab that already has text alone")
     @MainActor
-    func insertAiAppendsToExistingQuery() {
+    func insertAiLeavesExistingQueryIntact() {
         let (coordinator, tabManager) = makeCoordinator()
         defer { coordinator.teardown() }
 
@@ -119,7 +196,10 @@ struct CoordinatorEditorLoadTests {
 
         coordinator.insertQueryFromAI("SELECT 2")
 
-        #expect(tabManager.tabs[0].content.query == "SELECT 1\n\nSELECT 2")
+        #expect(
+            tabManager.tabs[0].content.query == "SELECT 1",
+            "Generated SQL opens its own tab rather than appending to what the user wrote (#1257)"
+        )
     }
 
     @Test("insertQueryFromAI treats whitespace-only text as empty")
@@ -165,9 +245,9 @@ struct CoordinatorEditorLoadTests {
         #expect(tabManager.tabs[0].content.query == originalQuery)
     }
 
-    @Test("insertQueryFromAI does nothing when no tabs exist")
+    @Test("insertQueryFromAI opens a query tab when none is open")
     @MainActor
-    func insertAiNoTabs() {
+    func insertAiOpensATabWhenNoneExist() {
         let (coordinator, tabManager) = makeCoordinator()
         defer { coordinator.teardown() }
 
@@ -175,6 +255,8 @@ struct CoordinatorEditorLoadTests {
 
         coordinator.insertQueryFromAI("SELECT 1")
 
-        #expect(tabManager.tabs.isEmpty)
+        #expect(tabManager.tabs.count == 1)
+        #expect(tabManager.tabs[0].tabType == .query)
+        #expect(tabManager.tabs[0].content.query == "SELECT 1")
     }
 }

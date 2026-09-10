@@ -12,7 +12,13 @@ internal struct CellContext: Equatable {
     let isRowDeleted: Bool
     let isImmutableColumn: Bool
     let isBinaryValue: Bool
+    let isForeignKey: Bool
     let displayFormatOverride: ValueDisplayFormat?
+
+    /// What the value itself turned out to be, resolved once by the caller that holds the typed
+    /// cell. It reaches the resolver rather than being sniffed here so the row inspector, which
+    /// resolves through `CellValueContentDetector` too, cannot reach a different answer.
+    let detectedContent: CellValueContent
 
     init(
         columnType: ColumnType?,
@@ -21,7 +27,9 @@ internal struct CellContext: Equatable {
         isRowDeleted: Bool,
         isImmutableColumn: Bool,
         isBinaryValue: Bool = false,
-        displayFormatOverride: ValueDisplayFormat? = nil
+        isForeignKey: Bool = false,
+        displayFormatOverride: ValueDisplayFormat? = nil,
+        detectedContent: CellValueContent = .plain
     ) {
         self.columnType = columnType
         self.value = value
@@ -29,7 +37,9 @@ internal struct CellContext: Equatable {
         self.isRowDeleted = isRowDeleted
         self.isImmutableColumn = isImmutableColumn
         self.isBinaryValue = isBinaryValue
+        self.isForeignKey = isForeignKey
         self.displayFormatOverride = displayFormatOverride
+        self.detectedContent = detectedContent
     }
 }
 
@@ -39,10 +49,14 @@ internal enum CellInteractionMode: Equatable {
     case viewBlob
     case viewPhpSerialized
 
+    case viewSvg
+
     case editInline(value: String)
     case editOverlay(value: String)
+    case editForeignKey
     case editJson
     case editBlob
+    case editSvg
 
     case blocked
 }
@@ -57,20 +71,29 @@ internal struct CellInteractionResolver {
             return isReadOnly ? .viewBlob : .editBlob
         }
 
+        if case .image(.svg) = context.detectedContent, context.displayFormatOverride != .raw {
+            return isReadOnly ? .viewSvg : .editSvg
+        }
+
         switch context.displayFormatOverride {
         case .json:
             return isReadOnly ? .viewJson : .editJson
         case .phpSerialized:
             return .viewPhpSerialized
-        case .raw, .uuid, .unixTimestamp, .unixTimestampMillis, .none:
+        case .raw, .text, .uuid, .unixTimestamp, .unixTimestampMillis, .none:
             return plainText(for: context, isReadOnly: isReadOnly)
         }
     }
 
+    /// A writable foreign key column picks from the rows it points at rather than taking a typed
+    /// key on trust. Resolved here rather than ahead of the blob and structured-format branches, so
+    /// a foreign key that is also a blob, JSON or PHP-serialized value keeps the editor its content
+    /// needs, and a read-only cell keeps every viewer it has.
     private func plainText(for context: CellContext, isReadOnly: Bool) -> CellInteractionMode {
         if isReadOnly {
             return .viewInline(value: context.value ?? "NULL")
         }
+        if context.isForeignKey { return .editForeignKey }
         let value = context.value ?? ""
         if value.containsLineBreak { return .editOverlay(value: value) }
         return .editInline(value: value)

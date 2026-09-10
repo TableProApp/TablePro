@@ -67,6 +67,10 @@ struct DeeplinkImportSheet: View {
                     metadataSection
                 }
 
+                startupCommandsSection
+
+                optionsSection
+
                 if isDuplicate {
                     Section {
                         Label(
@@ -82,10 +86,9 @@ struct DeeplinkImportSheet: View {
 
             Divider()
 
-            HStack {
+            DialogFooter {
                 Button(String(localized: "Cancel")) { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Spacer()
                 Button(isDuplicate ? String(localized: "Add as Copy") : String(localized: "Add Connection")) {
                     performImport()
                 }
@@ -95,6 +98,7 @@ struct DeeplinkImportSheet: View {
             .padding()
         }
         .frame(width: 420)
+        .frame(maxHeight: 560)
         .onAppear { checkDuplicate() }
     }
 
@@ -111,6 +115,17 @@ struct DeeplinkImportSheet: View {
         return ssh.host
     }
 
+    private func formatJumpHosts(_ ssh: ExportableSSHConfig) -> String? {
+        let hops = (ssh.jumpHosts ?? []).filter { !$0.host.isEmpty }
+        guard !hops.isEmpty else { return nil }
+        return hops
+            .map { hop in
+                let port = hop.port ?? 22
+                return hop.username.isEmpty ? "\(hop.host):\(port)" : "\(hop.username)@\(hop.host):\(port)"
+            }
+            .joined(separator: ", ")
+    }
+
     @ViewBuilder
     private var sshSection: some View {
         if let ssh = connection.sshConfig {
@@ -119,9 +134,21 @@ struct DeeplinkImportSheet: View {
                     Text(formatSSHHost(ssh))
                         .foregroundStyle(.secondary)
                 }
+                if !ssh.username.isEmpty {
+                    LabeledContent(String(localized: "User")) {
+                        Text(ssh.username)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 LabeledContent(String(localized: "Auth")) {
                     Text(ssh.authMethod)
                         .foregroundStyle(.secondary)
+                }
+                if let jumpHosts = formatJumpHosts(ssh) {
+                    LabeledContent(String(localized: "Jump Hosts")) {
+                        Text(jumpHosts)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }
@@ -134,6 +161,43 @@ struct DeeplinkImportSheet: View {
                 LabeledContent(String(localized: "Mode")) {
                     Text(ssl.mode)
                         .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var startupCommandsSection: some View {
+        if let startupCommands = connection.startupCommands,
+           !startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            Section {
+                Label(
+                    String(localized: "This connection runs SQL every time it connects, using your credentials."),
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .foregroundStyle(.orange)
+                .font(.callout)
+
+                Text(startupCommands)
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } header: {
+                Text("Startup SQL")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var optionsSection: some View {
+        if let fields = connection.additionalFields, !fields.isEmpty {
+            Section(String(localized: "Driver Options")) {
+                ForEach(fields.keys.sorted(), id: \.self) { key in
+                    LabeledContent(key) {
+                        Text(fields[key] ?? "")
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
                 }
             }
         }

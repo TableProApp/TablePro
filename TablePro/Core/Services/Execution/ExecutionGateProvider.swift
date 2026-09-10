@@ -10,7 +10,7 @@ internal enum ExecutionGateProvider {
         confirming: AlertOperationConfirming(),
         authenticating: BiometricOperationAuthenticating(),
         safeModeLevelResolver: { connectionId, databaseType in
-            await MainActor.run {
+            let connectionLevel: SafeModeLevel = await MainActor.run {
                 if PluginManager.shared.isEngineReadOnly(for: databaseType) {
                     return .readOnly
                 }
@@ -23,6 +23,10 @@ internal enum ExecutionGateProvider {
                     return .silent
                 }
             }
+            return ManagedPolicyResolver.effectiveSafeModeLevel(
+                connectionLevel: connectionLevel,
+                policy: ManagedPolicyReader.shared
+            )
         },
         forcesWriteResolver: { databaseType in
             await MainActor.run {

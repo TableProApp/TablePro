@@ -65,19 +65,15 @@ enum SnowflakeSchemaQueries {
     }
 
     static func escapeLikePattern(_ value: String) -> String {
-        escapeLiteral(value)
-            .replacingOccurrences(of: "_", with: "\\\\_")
-            .replacingOccurrences(of: "%", with: "\\\\%")
+        SnowflakeSQL.escapeLikePattern(value)
     }
 
     static func escapeLiteral(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "''")
+        SnowflakeSQL.escapeLiteral(value)
     }
 
     static func quote(_ identifier: String) -> String {
-        "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\""))\""
+        SnowflakeSQL.quoteIdentifier(identifier)
     }
 
     private static func qualified(_ parts: String...) -> String {

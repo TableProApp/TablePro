@@ -25,11 +25,9 @@ struct ConnectionTagEditor: View {
         .sheet(isPresented: $showingCreateSheet) {
             CreateTagSheet { tagName, tagColor in
                 let tag = ConnectionTag(name: tagName.lowercased(), isPreset: false, color: tagColor)
-                tagStorage.addTag(tag)
+                try tagStorage.addTag(tag)
                 allTags = tagStorage.loadTags()
-                if let added = allTags.first(where: { $0.name == tag.name }) {
-                    toggleOn(added.id)
-                }
+                toggleOn(tag.id)
             }
         }
     }
@@ -53,14 +51,29 @@ struct ConnectionTagEditor: View {
             Circle()
                 .fill(tag.color.color)
                 .frame(width: 7, height: 7)
+                .accessibilityHidden(true)
             Text(tag.name)
                 .lineLimit(1)
+            Button { toggle(tag) } label: {
+                Image(systemName: "xmark")
+                    .imageScale(.small)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+            .help(Text(removeLabel(for: tag)))
+            .accessibilityLabel(Text(removeLabel(for: tag)))
         }
         .padding(.leading, 7)
-        .padding(.trailing, 8)
+        .padding(.trailing, 5)
         .padding(.vertical, 2)
         .background(tag.color.color.opacity(0.14), in: Capsule())
         .overlay(Capsule().strokeBorder(tag.color.color.opacity(0.35), lineWidth: 1))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text(tag.name))
+    }
+
+    private func removeLabel(for tag: ConnectionTag) -> String {
+        String(format: String(localized: "Remove tag %@"), tag.name)
     }
 
     private var tagMenu: some View {
@@ -85,7 +98,7 @@ struct ConnectionTagEditor: View {
             Button {
                 showingCreateSheet = true
             } label: {
-                Label("Create New Tag...", systemImage: "plus.circle")
+                Label("Create New Tag…", systemImage: "plus.circle")
             }
 
             if allTags.contains(where: { !$0.isPreset }) {
@@ -107,9 +120,11 @@ struct ConnectionTagEditor: View {
                 .foregroundStyle(.secondary)
                 .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .fixedSize()
+        .help(Text("Add tags"))
+        .accessibilityLabel(Text("Add tags"))
     }
 
     private func toggle(_ tag: ConnectionTag) {
@@ -151,7 +166,11 @@ private struct CreateTagSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var tagName: String = ""
     @State private var tagColor: ConnectionColor = .gray
-    let onSave: (String, ConnectionColor) -> Void
+    @State private var errorMessage: String?
+    /// Throwing, because the library refuses a name it already holds. A sheet that dismissed on the
+    /// attempt applied the tag that was already there, with its colour rather than the one just
+    /// picked, and said nothing about the difference.
+    let onSave: (String, ConnectionColor) throws -> Void
 
     var body: some View {
         VStack(spacing: 16) {
@@ -169,6 +188,14 @@ private struct CreateTagSheet: View {
                 ColorPaletteView(selectedColor: $tagColor, includesNone: false, size: .compact)
             }
 
+            if let errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
             HStack {
                 Button("Cancel") {
                     dismiss()
@@ -176,8 +203,12 @@ private struct CreateTagSheet: View {
                 .keyboardShortcut(.cancelAction)
 
                 Button("Create") {
-                    onSave(tagName, tagColor)
-                    dismiss()
+                    do {
+                        try onSave(tagName, tagColor)
+                        dismiss()
+                    } catch {
+                        errorMessage = error.localizedDescription
+                    }
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
@@ -186,6 +217,7 @@ private struct CreateTagSheet: View {
         }
         .padding(20)
         .frame(width: 300)
+        .onChange(of: tagName) { _, _ in errorMessage = nil }
         .onExitCommand {
             dismiss()
         }

@@ -3,7 +3,9 @@
 //  TableProTests
 //
 
+import AppKit
 import Foundation
+import SwiftUI
 import TableProPluginKit
 import Testing
 
@@ -38,6 +40,85 @@ struct CoordinatorColumnVisibilityTests {
         tabManager.tabs.append(tab)
         tabManager.selectedTabId = tab.id
         return tab.id
+    }
+
+    private func stageEdit(on coordinator: MainContentCoordinator) {
+        coordinator.changeManager.configureForTable(
+            tableName: "users",
+            columns: ["id", "name"],
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql,
+            generatedColumns: [],
+            triggerReload: false
+        )
+        coordinator.changeManager.recordCellChange(
+            rowIndex: 0,
+            columnIndex: 1,
+            columnName: "name",
+            oldValue: "Alice",
+            newValue: "Bob",
+            originalRow: ["1", "Alice"]
+        )
+    }
+
+    /// Hiding or showing a column re-runs the table's query with a different column list, so the
+    /// rows are replaced and an unsaved edit goes with them. Sort, pagination and the WHERE filter
+    /// all confirm first; this reload used to do it without asking.
+    ///
+    /// The declined branch is reached by pretending an alert is already up, which is what
+    /// `confirmDiscardChangesIfNeeded` answers false to. That keeps the test off the real modal,
+    /// which would hang it.
+    @Test("hiding a column changes nothing while the discard is unanswered")
+    func hidingWaitsForTheDiscardAnswer() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        stageEdit(on: coordinator)
+        coordinator.isShowingConfirmAlert = true
+
+        coordinator.hideColumn("name")
+
+        let tab = try #require(tabManager.tabs.first { $0.id == tabId })
+        #expect(tab.columnLayout.hiddenColumns.isEmpty)
+    }
+
+    @Test("showing every column changes nothing while the discard is unanswered")
+    func showAllWaitsForTheDiscardAnswer() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        coordinator.hideColumn("name")
+        stageEdit(on: coordinator)
+        coordinator.isShowingConfirmAlert = true
+
+        coordinator.showAllColumns()
+
+        let tab = try #require(tabManager.tabs.first { $0.id == tabId })
+        #expect(tab.columnLayout.hiddenColumns == ["name"])
+    }
+
+    @Test("resetting the columns changes nothing while the discard is unanswered")
+    func resetWaitsForTheDiscardAnswer() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        coordinator.hideColumn("name")
+        stageEdit(on: coordinator)
+        coordinator.isShowingConfirmAlert = true
+
+        coordinator.resetColumns()
+
+        let tab = try #require(tabManager.tabs.first { $0.id == tabId })
+        #expect(tab.columnLayout.hiddenColumns == ["name"])
+    }
+
+    /// With nothing staged the gate answers immediately, so the common case takes no round trip.
+    @Test("hiding a column with no unsaved edits applies straight away")
+    func hidingWithNoEditsAppliesImmediately() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+
+        coordinator.hideColumn("name")
+
+        let tab = try #require(tabManager.tabs.first { $0.id == tabId })
+        #expect(tab.columnLayout.hiddenColumns == ["name"])
     }
 
     @Test("hideColumn inserts into the active tab's hidden set")
@@ -94,10 +175,161 @@ struct CoordinatorColumnVisibilityTests {
         #expect(layout.hiddenColumns == ["email"])
         #expect(layout.columnWidths == ["id": 80, "name": 220])
         #expect(layout.columnOrder == ["id", "name"])
+    }
 
-        let session = coordinator.tabSessionRegistry.session(for: tabId)
-        #expect(session?.columnLayout.hiddenColumns == ["email"])
-        #expect(session?.columnLayout.columnWidths == ["id": 80, "name": 220])
+    @Test("Clearing layout after a schema reorder clears every geometry owner")
+    func clearColumnLayoutForSelectedTableClearsEveryGeometryOwner() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        guard let tabIndex = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected table tab")
+            return
+        }
+        tabManager.mutate(at: tabIndex) { tab in
+            tab.columnLayout.columnWidths = ["name": 180]
+            tab.columnLayout.columnContentWidths = ["name": 160]
+            tab.columnLayout.columnOrder = ["name", "id"]
+            tab.columnLayout.hiddenColumns = ["email"]
+        }
+
+        let key = ColumnLayoutTableKey(
+            connectionId: coordinator.connectionId,
+            databaseName: tabManager.tabs[tabIndex].tableContext.databaseName,
+            schemaName: tabManager.tabs[tabIndex].tableContext.schemaName,
+            tableName: "users"
+        )
+        FileColumnLayoutPersister.shared.save(tabManager.tabs[tabIndex].columnLayout, for: key)
+        FileColumnLayoutPersister.shared.saveHiddenColumns(["email"], for: key)
+        defer { FileColumnLayoutPersister.shared.clear(for: key) }
+
+        let rows = TableRows.from(
+            queryRows: [[.text("Ada")]],
+            columns: ["name"],
+            columnTypes: [.text(rawType: "TEXT")]
+        )
+        let gridCoordinator = TableViewCoordinator(
+            changeManager: AnyChangeManager(DataChangeManager()),
+            isEditable: true,
+            selectedRowIndices: .constant([]),
+            delegate: nil,
+            layoutPersister: FileColumnLayoutPersister.shared
+        )
+        gridCoordinator.connectionId = coordinator.connectionId
+        gridCoordinator.databaseName = ""
+        gridCoordinator.tableName = "users"
+        gridCoordinator.tabType = .table
+        gridCoordinator.tableRowsProvider = { rows }
+        gridCoordinator.rebuildColumnMetadataCache(from: rows)
+        let tableView = NSTableView()
+        gridCoordinator.tableView = tableView
+        let column = NSTableColumn(identifier: try #require(gridCoordinator.columnIdentifier(for: 0)))
+        column.width = 180
+        tableView.addTableColumn(column)
+        #expect(gridCoordinator.markColumnWidthUserSized(column))
+        gridCoordinator.scheduleLayoutPersist()
+
+        let gridDelegate = DataTabGridDelegate()
+        gridDelegate.dataGridAttach(tableViewCoordinator: gridCoordinator)
+        coordinator.dataTabDelegate = gridDelegate
+
+        coordinator.clearColumnLayoutForSelectedTable()
+
+        let layout = tabManager.tabs[tabIndex].columnLayout
+        #expect(layout.columnWidths.isEmpty)
+        #expect(layout.columnContentWidths == nil)
+        #expect(layout.columnOrder == nil)
+        #expect(layout.hiddenColumns == ["email"])
+        #expect(FileColumnLayoutPersister.shared.load(for: key) == nil)
+        #expect(FileColumnLayoutPersister.shared.loadHiddenColumns(for: key) == ["email"])
+        #expect(gridCoordinator.userSizedColumnNames.isEmpty)
+        #expect(gridCoordinator.shouldRecalculateAutomaticColumnWidths)
+        #expect(gridCoordinator.pendingColumnLayoutPersistence == nil)
+    }
+
+    @Test("A delayed schema reorder clears only its captured table layout")
+    func capturedSchemaReorderTargetDoesNotClearNewSelection() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let sourceTabId = addTableTab(to: tabManager, tableName: "users")
+        let destinationTabId = addTableTab(to: tabManager, tableName: "orders")
+        let sourceIndex = try #require(tabManager.tabs.firstIndex(where: { $0.id == sourceTabId }))
+        let destinationIndex = try #require(tabManager.tabs.firstIndex(where: { $0.id == destinationTabId }))
+        tabManager.mutate(at: sourceIndex) { tab in
+            tab.columnLayout.columnWidths = ["name": 180]
+            tab.columnLayout.columnContentWidths = ["name": 160]
+            tab.columnLayout.columnOrder = ["name", "id"]
+        }
+        tabManager.mutate(at: destinationIndex) { tab in
+            tab.columnLayout.columnWidths = ["name": 240]
+            tab.columnLayout.columnContentWidths = ["name": 240]
+            tab.columnLayout.columnOrder = ["id", "name"]
+        }
+
+        let sourceKey = ColumnLayoutTableKey(
+            connectionId: coordinator.connectionId,
+            databaseName: "",
+            schemaName: nil,
+            tableName: "users"
+        )
+        let destinationKey = ColumnLayoutTableKey(
+            connectionId: coordinator.connectionId,
+            databaseName: "",
+            schemaName: nil,
+            tableName: "orders"
+        )
+        FileColumnLayoutPersister.shared.save(tabManager.tabs[sourceIndex].columnLayout, for: sourceKey)
+        FileColumnLayoutPersister.shared.save(tabManager.tabs[destinationIndex].columnLayout, for: destinationKey)
+        defer {
+            FileColumnLayoutPersister.shared.clear(for: sourceKey)
+            FileColumnLayoutPersister.shared.clear(for: destinationKey)
+        }
+
+        tabManager.selectedTabId = sourceTabId
+        let target = try #require(coordinator.selectedColumnLayoutClearTarget())
+        tabManager.selectedTabId = destinationTabId
+
+        let rows = TableRows.from(
+            queryRows: [[.text("Ada")]],
+            columns: ["name"],
+            columnTypes: [.text(rawType: "TEXT")]
+        )
+        let gridCoordinator = TableViewCoordinator(
+            changeManager: AnyChangeManager(DataChangeManager()),
+            isEditable: true,
+            selectedRowIndices: .constant([]),
+            delegate: nil,
+            layoutPersister: FileColumnLayoutPersister.shared
+        )
+        gridCoordinator.connectionId = coordinator.connectionId
+        gridCoordinator.databaseName = ""
+        gridCoordinator.tableName = "orders"
+        gridCoordinator.tabType = .table
+        gridCoordinator.tableRowsProvider = { rows }
+        gridCoordinator.rebuildColumnMetadataCache(from: rows)
+        let tableView = NSTableView()
+        gridCoordinator.tableView = tableView
+        let column = NSTableColumn(identifier: try #require(gridCoordinator.columnIdentifier(for: 0)))
+        column.width = 240
+        tableView.addTableColumn(column)
+        #expect(gridCoordinator.markColumnWidthUserSized(column))
+
+        let gridDelegate = DataTabGridDelegate()
+        gridDelegate.dataGridAttach(tableViewCoordinator: gridCoordinator)
+        coordinator.dataTabDelegate = gridDelegate
+
+        coordinator.clearColumnLayout(target)
+
+        let sourceLayout = tabManager.tabs[sourceIndex].columnLayout
+        let destinationLayout = tabManager.tabs[destinationIndex].columnLayout
+        #expect(sourceLayout.columnWidths.isEmpty)
+        #expect(sourceLayout.columnContentWidths == nil)
+        #expect(sourceLayout.columnOrder == nil)
+        #expect(destinationLayout.columnWidths == ["name": 240])
+        #expect(destinationLayout.columnContentWidths == ["name": 240])
+        #expect(destinationLayout.columnOrder == ["id", "name"])
+        #expect(FileColumnLayoutPersister.shared.load(for: sourceKey) == nil)
+        #expect(FileColumnLayoutPersister.shared.load(for: destinationKey)?.columnWidths == ["name": 240])
+        #expect(gridCoordinator.userSizedColumnNames == ["name"])
+        #expect(!gridCoordinator.shouldRecalculateAutomaticColumnWidths)
     }
 
     @Test("showColumn removes from the active tab's hidden set")
@@ -166,17 +398,6 @@ struct CoordinatorColumnVisibilityTests {
         coordinator.hideColumn("name")
         coordinator.hideColumn("name")
         #expect(coordinator.selectedTabHiddenColumns == ["name"])
-    }
-
-    @Test("hideColumn mirrors into the corresponding TabSession")
-    func hideColumnMirrorsIntoSession() {
-        let (coordinator, tabManager) = makeCoordinator()
-        let tabId = addTableTab(to: tabManager, tableName: "users")
-
-        coordinator.hideColumn("name")
-
-        let session = coordinator.tabSessionRegistry.session(for: tabId)
-        #expect(session?.columnLayout.hiddenColumns == ["name"])
     }
 
     @Test("Payload-created table tabs rebuild their query after restoring hidden columns")

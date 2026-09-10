@@ -11,7 +11,7 @@ import os
 final class XAIService {
     static let shared = XAIService()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "XAIService")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "XAIService")
 
     enum AuthState: Sendable, Equatable {
         case signedOut

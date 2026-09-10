@@ -4,7 +4,7 @@ import os
 
 final class AliveFlag: Sendable {
     private let _lock = NSLock()
-    private nonisolated(unsafe) var _value = true
+    nonisolated(unsafe) private var _value = true
 
     nonisolated init() {}
 
@@ -12,6 +12,11 @@ final class AliveFlag: Sendable {
         get { _lock.lock(); defer { _lock.unlock() }; return _value }
         set { _lock.lock(); _value = newValue; _lock.unlock() }
     }
+}
+
+/// Hands a libssh2 channel out of the tunnel actor to the relay task that takes it over.
+nonisolated struct ChannelHandle: @unchecked Sendable {
+    let channel: OpaquePointer?
 }
 
 actor SSHTunnel {
@@ -27,6 +32,7 @@ actor SSHTunnel {
 
     private static let bufferSize = 32_768
     private static let connectionTimeout: Int32 = 10
+    private static let blockingCallTimeoutMilliseconds: Int = 15_000
     nonisolated let sessionLock = NSLock()
 
     private var isAlive: Bool {
@@ -121,6 +127,7 @@ actor SSHTunnel {
         }
 
         libssh2_session_set_blocking(sess, 1)
+        libssh2_session_set_timeout(sess, Self.blockingCallTimeoutMilliseconds)
 
         let rc = libssh2_session_handshake(sess, socketFD)
         if rc != 0 {
@@ -129,6 +136,20 @@ actor SSHTunnel {
         }
 
         session = sess
+    }
+
+    func hostKey() throws -> (keyData: Data, keyType: String) {
+        guard let session else {
+            throw SSHTunnelError.handshakeFailed("No active session")
+        }
+
+        var keyLength = 0
+        var keyType: Int32 = 0
+        guard let keyPtr = libssh2_session_hostkey(session, &keyLength, &keyType) else {
+            throw SSHTunnelError.hostKeyRejected("The server did not present a host key.")
+        }
+
+        return (Data(bytes: keyPtr, count: keyLength), HostKeyStore.keyTypeName(keyType))
     }
 
     // MARK: - Authentication
@@ -242,12 +263,12 @@ actor SSHTunnel {
                 let clientFD = await self.acceptClient()
                 guard clientFD >= 0 else { continue }
 
-                let channel = await self.openDirectTcpipChannel(
+                let opened = await self.openDirectTcpipChannel(
                     remoteHost: remoteHost,
                     remotePort: remotePort
                 )
 
-                guard let channel else {
+                guard let channel = opened.channel else {
                     Self.logger.error("Failed to open direct-tcpip channel")
                     Darwin.close(clientFD)
                     continue
@@ -404,9 +425,9 @@ actor SSHTunnel {
         }
     }
 
-    private func openDirectTcpipChannel(remoteHost: String, remotePort: Int) -> OpaquePointer? {
+    private func openDirectTcpipChannel(remoteHost: String, remotePort: Int) -> ChannelHandle {
         for _ in 0..<30 {
-            guard isAlive, let session else { return nil }
+            guard isAlive, let session else { return ChannelHandle(channel: nil) }
 
             sessionLock.lock()
             let channel = libssh2_channel_direct_tcpip_ex(
@@ -419,19 +440,19 @@ actor SSHTunnel {
             let errNo = libssh2_session_last_errno(session)
             sessionLock.unlock()
 
-            if let channel {
-                return channel
+            if channel != nil {
+                return ChannelHandle(channel: channel)
             }
 
             guard errNo == LIBSSH2_ERROR_EAGAIN else {
-                return nil
+                return ChannelHandle(channel: nil)
             }
 
             if !waitForSocket(timeoutMs: 5_000) {
-                return nil
+                return ChannelHandle(channel: nil)
             }
         }
-        return nil
+        return ChannelHandle(channel: nil)
     }
 
     // Relay runs outside the actor on a detached thread.

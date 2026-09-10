@@ -28,6 +28,9 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Connect to the database
     func connect() async throws
 
+    /// Connect while reporting the steps this driver can see from inside its own handshake.
+    func connectReporting(stage report: @escaping ConnectionStageReporter) async throws
+
     /// Disconnect from the database
     func disconnect()
 
@@ -41,6 +44,20 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     /// Apply query execution timeout (seconds, 0 = no limit)
     func applyQueryTimeout(_ seconds: Int) async throws
+
+    /// What the command that hands this connection's held resource back should be called, or nil
+    /// when the driver holds nothing it can give up. A per-connection answer, not a per-engine one.
+    var releasableResourceCommandTitle: String? { get }
+
+    /// Hands that resource back now, keeping the session alive. A result that did not release is
+    /// a refusal rather than a failure, and carries the reason: re-acquiring the resource would
+    /// not restore what the session is currently holding.
+    func releaseIdleResource() async throws -> PluginResourceRelease
+
+    func resolveQueryCompletionProfile(
+        databaseTypeId: String,
+        base: QueryCompletionProfile
+    ) async throws -> QueryCompletionProfile
 
     // MARK: - Query Execution
 
@@ -61,6 +78,13 @@ protocol DatabaseDriver: AnyObject, Sendable {
     ///   - parameters: Optional parameter list; nil means no parameter binding
     /// - Returns: Query result with `isTruncated` set when the cap clipped rows
     func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult
+
+    /// Run a read that stops once `rowCap` rows are known to be exceeded, rather than fetching the
+    /// whole result and discarding the tail. Returns nil when the driver cannot bound its own fetch.
+    ///
+    /// Call this only for a statement already classified as a read. Bounding means abandoning the
+    /// rest of the fetch, which for some drivers cancels the statement on the server.
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult?
 
     // MARK: - Schema Operations
 
@@ -83,6 +107,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Default implementation falls back to per-table fetchColumns.
     func fetchAllColumns() async throws -> [String: [ColumnInfo]]
 
+    /// Dotted field paths a document store exposes for a collection, for query authoring.
+    /// Default implementation returns nothing, which is correct for every SQL driver.
+    func sampleFieldPaths(table: String, limit: Int) async throws -> [PluginFieldPath]
+
     /// Fetch indexes for a specific table
     func fetchIndexes(table: String) async throws -> [IndexInfo]
 
@@ -91,6 +119,7 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     /// Fetch triggers for a specific table
     func fetchTriggers(table: String) async throws -> [TriggerInfo]
+    func fetchCheckConstraints(table: String) async throws -> [CheckConstraintInfo]
 
     /// Trigger editing hooks (optional — nil when unsupported)
     func createTriggerTemplate(table: String) -> String?
@@ -102,6 +131,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Fetch foreign keys for all tables in the current database/schema in bulk.
     /// Default implementation falls back to per-table fetchForeignKeys.
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]]
+
+    /// Whether `fetchAllForeignKeys` is a single query. False means it degrades to one round trip
+    /// per table, which is too expensive to run ahead of the user.
+    var providesBulkForeignKeyFetch: Bool { get }
 
     /// Fetch foreign keys for a specific set of tables.
     /// Default implementation calls fetchAllForeignKeys and filters, or falls back to per-table.
@@ -121,6 +154,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     /// Fetch the DDL (CREATE TABLE statement) for a specific table
     func fetchTableDDL(table: String) async throws -> String
+
+    /// The CREATE INDEX statements this table needs that `fetchTableDDL` does not already declare.
+    /// Empty on an engine whose CREATE TABLE carries them inline. Default returns empty.
+    func fetchIndexDDL(table: String) async throws -> [String]
 
     /// Fetch dependent type definitions (e.g., PostgreSQL enum types) for a table.
     /// Returns array of (typeName, labels) pairs. Default returns empty.
@@ -146,13 +183,31 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Default implementation returns an empty set; drivers that support them override.
     func fetchExternalSchemaNames() async throws -> Set<String>
 
-    /// Fetch stored procedures for the given schema (or current schema if nil).
-    /// Default implementation returns an empty list; drivers that support routines override.
-    func fetchProcedures(schema: String?) async throws -> [RoutineInfo]
+    /// Fetch every stored procedure and function in the given schema (or the current schema if
+    /// nil), in one round trip. Callers that want one kind filter the result rather than asking
+    /// twice, so an engine is never queried twice for what a single catalog read answers.
+    func fetchRoutines(schema: String?) async throws -> [RoutineInfo]
 
-    /// Fetch user-defined functions for the given schema (or current schema if nil).
-    /// Default implementation returns an empty list; drivers that support routines override.
-    func fetchFunctions(schema: String?) async throws -> [RoutineInfo]
+    /// Fetch the source of one routine. The routine must be one this driver listed, because its
+    /// `identity` is the driver's own key for finding it again.
+    func fetchRoutineDDL(_ routine: RoutineInfo) async throws -> String
+
+    /// Fetch every named type the user created in the given schema, or the current schema if nil.
+    func fetchUserDefinedTypes(schema: String?) async throws -> [UserDefinedTypeInfo]
+
+    /// Read one type again, definition and labels included. The type must be one this driver
+    /// listed, because its `identity` is the driver's own key for finding it again.
+    func fetchUserDefinedType(_ type: UserDefinedTypeInfo) async throws -> UserDefinedTypeInfo
+
+    func createTypeTemplate(schema: String?) -> String?
+    func generateAddEnumLabelSQL(type: UserDefinedTypeInfo, label: String, placement: EnumLabelPlacement?) -> String?
+    func generateRenameEnumLabelSQL(type: UserDefinedTypeInfo, from oldLabel: String, to newLabel: String) -> String?
+
+    /// Fetch every trigger in the given schema, across all its tables.
+    func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo]
+
+    /// Fetch the source of one trigger.
+    func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String
 
     /// Fetch metadata for a specific database (table count, size, etc.)
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata
@@ -166,6 +221,14 @@ protocol DatabaseDriver: AnyObject, Sendable {
     func createDatabase(_ request: CreateDatabaseRequest) async throws
 
     func dropDatabase(name: String) async throws
+
+    func dropSchema(name: String) async throws
+
+    func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws
+
+    func renameDatabase(name: String, to newName: String) async throws
+
+    func renameSchema(name: String, to newName: String) async throws
 
     func fetchSessionContexts() async throws -> [PluginSessionContext]?
 
@@ -234,11 +297,44 @@ protocol SchemaSwitchable: DatabaseDriver {
     func switchSchema(to schema: String) async throws
 }
 
+extension SchemaSwitchable {
+    /// A driver already on the schema needs no statement, and sending one anyway is a round trip that
+    /// can fail on its own. Every schema switch the app issues goes through here, so no two of them can
+    /// disagree about when it is redundant: the pooled metadata driver kept sending an `ALTER SESSION`
+    /// the session driver knew to skip, and on Oracle that spare statement was the one that hung (#2294).
+    func switchSchemaIfNeeded(to schema: String) async throws {
+        guard currentSchema != schema else { return }
+        try await switchSchema(to: schema)
+    }
+}
+
+/// Protocol for drivers that know which database they are on. An embedded engine names
+/// its database from the file it opened, so the session cannot derive it from the
+/// connection definition the way a networked engine can.
+protocol DatabaseReporting: DatabaseDriver {
+    var currentDatabase: String? { get }
+}
+
 /// Default implementation for common operations
 extension DatabaseDriver {
     /// Default implementation returns nil
     /// Override in drivers that support version querying
     var serverVersion: String? { nil }
+
+    func connectReporting(stage report: @escaping ConnectionStageReporter) async throws {
+        try await connect()
+    }
+
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult? { nil }
+
+    func fetchIndexDDL(table: String) async throws -> [String] { [] }
+
+    func resolveQueryCompletionProfile(
+        databaseTypeId: String,
+        base: QueryCompletionProfile
+    ) async throws -> QueryCompletionProfile {
+        base
+    }
 
     var queryBuildingPluginDriver: (any PluginDatabaseDriver)? { nil }
 
@@ -273,6 +369,8 @@ extension DatabaseDriver {
 
     func fetchTriggers(table: String) async throws -> [TriggerInfo] { [] }
 
+    func fetchCheckConstraints(table: String) async throws -> [CheckConstraintInfo] { [] }
+
     func createTriggerTemplate(table: String) -> String? { nil }
     func fetchTriggerDefinition(name: String, table: String) async throws -> String? { nil }
     func generateDropTriggerSQL(name: String, table: String) -> String? { nil }
@@ -283,6 +381,10 @@ extension DatabaseDriver {
         _ = try await execute(query: "SELECT 1")
     }
 
+    var releasableResourceCommandTitle: String? { nil }
+
+    func releaseIdleResource() async throws -> PluginResourceRelease { .nothingToRelease }
+
     func testConnection() async throws -> Bool {
         try await connect()
         disconnect()
@@ -292,6 +394,23 @@ extension DatabaseDriver {
     func dropDatabase(name: String) async throws {
         throw NSError(domain: "DatabaseDriver", code: -1,
                       userInfo: [NSLocalizedDescriptionKey: "Drop database is not supported by this driver"])
+    }
+
+    func dropSchema(name: String) async throws {
+        throw NSError(domain: "DatabaseDriver", code: -1,
+                      userInfo: [NSLocalizedDescriptionKey: "Drop schema is not supported by this driver"])
+    }
+
+    func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws {
+        throw PluginDriverUnsupportedOperation.renameTable
+    }
+
+    func renameDatabase(name: String, to newName: String) async throws {
+        throw PluginDriverUnsupportedOperation.renameDatabase
+    }
+
+    func renameSchema(name: String, to newName: String) async throws {
+        throw PluginDriverUnsupportedOperation.renameSchema
     }
 
     func createDatabaseFormSpec() async throws -> CreateDatabaseFormSpec? { nil }
@@ -323,6 +442,8 @@ extension DatabaseDriver {
         }
         return results
     }
+
+    var providesBulkForeignKeyFetch: Bool { false }
 
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] {
         let allTables = try await fetchTables()
@@ -371,6 +492,10 @@ extension DatabaseDriver {
             }
         }
         return result
+    }
+
+    func sampleFieldPaths(table: String, limit: Int) async throws -> [PluginFieldPath] {
+        []
     }
 
     /// Default fetchAllColumns: falls back to per-table fetchColumns (N+1).
@@ -436,9 +561,37 @@ extension DatabaseDriver {
         try await fetchTables()
     }
 
-    func fetchProcedures(schema: String?) async throws -> [RoutineInfo] { [] }
+    func fetchRoutines(schema: String?) async throws -> [RoutineInfo] { [] }
 
-    func fetchFunctions(schema: String?) async throws -> [RoutineInfo] { [] }
+    func fetchRoutineDDL(_ routine: RoutineInfo) async throws -> String {
+        throw PluginObjectSourceError.unsupported(routine.name)
+    }
+
+    func fetchUserDefinedTypes(schema: String?) async throws -> [UserDefinedTypeInfo] { [] }
+
+    func fetchUserDefinedType(_ type: UserDefinedTypeInfo) async throws -> UserDefinedTypeInfo {
+        guard let definition = type.definition, !definition.isEmpty else {
+            throw PluginObjectSourceError.unsupported(type.name)
+        }
+        return type
+    }
+
+    func createTypeTemplate(schema: String?) -> String? { nil }
+
+    func generateAddEnumLabelSQL(type: UserDefinedTypeInfo, label: String, placement: EnumLabelPlacement?) -> String? {
+        nil
+    }
+
+    func generateRenameEnumLabelSQL(type: UserDefinedTypeInfo, from oldLabel: String, to newLabel: String) -> String? {
+        nil
+    }
+
+    func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo] { [] }
+
+    func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String {
+        if let definition = trigger.definition, !definition.isEmpty { return definition }
+        throw PluginObjectSourceError.unsupported(trigger.name)
+    }
 
     var supportsTransactions: Bool { true }
 
@@ -456,7 +609,7 @@ extension DatabaseDriver {
 /// Factory for creating database drivers via plugin lookup
 @MainActor
 enum DatabaseDriverFactory {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseDriverFactory")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseDriverFactory")
 
     /// Async variant that awaits background plugin loading instead of blocking the main thread.
     /// Preferred for all call sites that are already in an async context.
@@ -498,6 +651,7 @@ enum DatabaseDriverFactory {
             additionalFields["enableCleartextPlugin"] = "true"
         }
         additionalFields["queryTimeoutSeconds"] = String(AppSettingsManager.shared.general.queryTimeoutSeconds)
+        additionalFields["connectionId"] = connection.id.uuidString
         let config = DriverConnectionConfig(
             host: connection.host,
             port: connection.port,
@@ -547,7 +701,7 @@ enum DatabaseDriverFactory {
             preTunnelPort: connection.preTunnelPort,
             override: fields["awsRDSEndpoint"],
             defaultPort: PluginMetadataRegistry.shared
-                .snapshot(forTypeId: connection.type.pluginTypeId)?.defaultPort ?? connection.port
+                .snapshot(for: connection.type)?.defaultPort ?? connection.port
         )
 
         let explicitRegion = fields["awsRegion"].flatMap { $0.isEmpty ? nil : $0 }
@@ -573,6 +727,9 @@ enum DatabaseDriverFactory {
         }
         if let override { return override }
         if let passwordSource = connection.passwordSource {
+            guard await ConnectionStorage.shared.storeIsTrusted else {
+                throw PasswordSourceResolver.ResolutionError.storeNotTrusted
+            }
             return try await PasswordSourceResolver.resolve(passwordSource)
         }
         if connection.usePgpass {
@@ -602,14 +759,18 @@ enum DatabaseDriverFactory {
             fields[key] = value
         }
 
-        let secureFields = PluginManager.shared.additionalConnectionFields(for: connection.type)
-            .filter(\.isSecure)
-        for field in secureFields {
-            if fields[field.id] == nil || fields[field.id]?.isEmpty == true {
+        /// The superset, not the rendered form's list. A connection saved while a variant was
+        /// still being offered its primary's whole form holds those values in the Keychain, and
+        /// the connection still acts on them: a Redshift connection with `awsAuth` set reaches
+        /// `resolveIAMPassword`, which reads `awsSecretAccessKey` from here. Loading only what the
+        /// form renders today would leave that secret behind and fail the connect, with no AWS
+        /// section left in the form to turn it off.
+        for fieldId in PluginManager.shared.secureConnectionFieldIds(for: connection.type) {
+            if fields[fieldId] == nil || fields[fieldId]?.isEmpty == true {
                 if let secureValue = ConnectionStorage.shared.loadPluginSecureField(
-                    fieldId: field.id, for: connection.id
+                    fieldId: fieldId, for: connection.id
                 ) {
-                    fields[field.id] = secureValue
+                    fields[fieldId] = secureValue
                 }
             }
         }

@@ -19,6 +19,12 @@ public final class TextAttachmentManager {
 
     public weak var delegate: TextAttachmentManagerDelegate?
 
+    /// Whether the document has no attachments at all.
+    ///
+    /// Lets a caller that only cares about attachments skip a layout query per mouse move in the common case where
+    /// there are none.
+    public var isEmpty: Bool { orderedAttachments.isEmpty }
+
     /// Adds a new attachment, keeping `orderedAttachments` sorted by range.location.
     /// If two attachments overlap, the layout phase will later ignore the one with the higher start.
     /// - Complexity: `O(n log(n))` due to array insertion. Could be improved with a binary tree.
@@ -48,9 +54,33 @@ public final class TextAttachmentManager {
             layoutManager?.lineStorage.update(atOffset: range.max, delta: 0, deltaHeight: -trailingLine.height)
         }
 
+        // The lines the attachment covers are no longer drawn, or are drawn as part of its first line, so none of their
+        // measured widths describe what is on screen any more.
+        layoutManager?.forgetWidths(ofLinesIn: range)
+        if getNextOne, let trailingLine = layoutManager?.lineStorage.getLine(atOffset: range.max) {
+            layoutManager?.lineStorage.setWidth(0, forLineAt: trailingLine.index)
+        }
+
         layoutManager?.setNeedsLayout()
 
         delegate?.textAttachmentDidAdd(attachment.attachment, for: range)
+    }
+
+    /// Removes every attachment.
+    ///
+    /// An attachment is a range in one text storage. Replacing that storage leaves every range pointing into text
+    /// that is gone, so they cannot be carried over.
+    public func removeAll() {
+        guard !orderedAttachments.isEmpty else { return }
+        let removed = orderedAttachments
+        orderedAttachments.removeAll()
+        for attachment in removed {
+            forgetWidthOfFirstLine(of: attachment)
+        }
+        layoutManager?.setNeedsLayout()
+        for attachment in removed {
+            delegate?.textAttachmentDidRemove(attachment.attachment, for: attachment.range)
+        }
     }
 
     /// Removes an attachment and invalidates layout for the removed range.
@@ -65,11 +95,24 @@ public final class TextAttachmentManager {
         }
 
         let attachment = orderedAttachments.remove(at: index)
+        forgetWidthOfFirstLine(of: attachment)
         layoutManager?.invalidateLayoutForRange(attachment.range)
 
         delegate?.textAttachmentDidRemove(attachment.attachment, for: attachment.range)
 
         return attachment
+    }
+
+    /// Forgets the width the attachment's first line measured with the attachment drawn in it.
+    ///
+    /// The lines the attachment covered were forgotten when it was added and have not been laid out since, so the
+    /// first line is the only one whose width still describes the attachment rather than the text.
+    private func forgetWidthOfFirstLine(of attachment: AnyTextAttachment) {
+        guard let layoutManager,
+              let firstLine = layoutManager.lineStorage.getLine(atOffset: attachment.range.location) else {
+            return
+        }
+        layoutManager.lineStorage.setWidth(0, forLineAt: firstLine.index)
     }
 
     /// Finds attachments starting in the given line range, and returns them as an array.

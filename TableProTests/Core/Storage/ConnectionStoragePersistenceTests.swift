@@ -6,8 +6,8 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
-import Testing
 import TableProSyncTransport
+import Testing
 
 @Suite("ConnectionStorage Persistence")
 @MainActor
@@ -100,6 +100,9 @@ struct ConnectionStoragePersistenceTests {
         connection.cloudflareTunnelMode = .inline(CloudflareConfiguration(accessHostname: "db.example.com"))
         connection.cloudSQLProxyMode = .inline(CloudSQLProxyConfiguration(instanceConnectionName: "p:r:i"))
         connection.socksProxyMode = .inline(SOCKSProxyConfiguration(host: "proxy.example.com", username: "u"))
+        connection.tunnelCommandMode = .inline(
+            TunnelCommandConfiguration(method: .kubectl, kubernetesNamespace: "prod", kubernetesResource: "service/pg")
+        )
         storage.addConnection(connection)
         storage.saveCloudflareTokenId("token-id", for: connection.id)
         storage.saveCloudflareTokenSecret("token-secret", for: connection.id)
@@ -111,6 +114,7 @@ struct ConnectionStoragePersistenceTests {
         #expect(duplicate.cloudflareTunnelMode == connection.cloudflareTunnelMode)
         #expect(duplicate.cloudSQLProxyMode == connection.cloudSQLProxyMode)
         #expect(duplicate.socksProxyMode == connection.socksProxyMode)
+        #expect(duplicate.tunnelCommandMode == connection.tunnelCommandMode)
         #expect(storage.loadCloudflareTokenId(for: duplicate.id) == "token-id")
         #expect(storage.loadCloudflareTokenSecret(for: duplicate.id) == "token-secret")
         #expect(storage.loadCloudSQLProxyServiceAccountKey(for: duplicate.id) == "{\"type\":\"service_account\"}")
@@ -118,6 +122,7 @@ struct ConnectionStoragePersistenceTests {
 
         let reloaded = storage.loadConnections().first { $0.id == duplicate.id }
         #expect(reloaded?.socksProxyMode == connection.socksProxyMode)
+        #expect(reloaded?.tunnelCommandMode == connection.tunnelCommandMode)
     }
 
     @Test("deleting a connection removes its SOCKS proxy password")

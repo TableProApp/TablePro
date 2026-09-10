@@ -80,4 +80,22 @@ final class SQLDialectDescriptorTests: XCTestCase {
         XCTAssertTrue(adapter.isDataType("int"))
         XCTAssertFalse(adapter.isDataType("NONEXISTENT"))
     }
+
+    func testTextCastTypeNameDefaultsToNil() {
+        let descriptor = SQLDialectDescriptor(
+            identifierQuote: "`", keywords: [], functions: [], dataTypes: []
+        )
+        XCTAssertNil(descriptor.textCastTypeName)
+    }
+
+    func testTextCastTypeNameSurvivesCaseSensitivityRestyle() {
+        let descriptor = SQLDialectDescriptor(
+            identifierQuote: "\"", keywords: [], functions: [], dataTypes: [],
+            caseSensitivityStyle: .ilikeOperator, textCastTypeName: "TEXT"
+        )
+        let restyled = descriptor.withCaseSensitivityStyle(.caseFoldFunction)
+        XCTAssertEqual(descriptor.textCastTypeName, "TEXT")
+        XCTAssertEqual(restyled.textCastTypeName, "TEXT")
+        XCTAssertEqual(restyled.caseSensitivityStyle, .caseFoldFunction)
+    }
 }

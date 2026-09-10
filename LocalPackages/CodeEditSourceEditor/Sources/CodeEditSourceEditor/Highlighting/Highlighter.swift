@@ -271,13 +271,21 @@ extension Highlighter: StyledRangeContainerDelegate {
 
         let storage = textView.textStorage
 
+        // The style runs are tracked against the storage's length as of the last edit, so a run can
+        // still name text that a newer edit removed. `setAttributes` raises for that rather than
+        // ignoring it, and this runs inside an editing transaction on the storage.
+        let storageLength = storage?.length ?? 0
         var offset = range.location
         for run in styleContainer.runsIn(range: range) {
-            guard let range = NSRange(location: offset, length: run.length).intersection(range) else {
+            guard let runRange = NSRange(location: offset, length: run.length).intersection(range) else {
                 continue
             }
-            storage?.setAttributes(attributeProvider.attributesFor(run.value?.capture), range: range)
-            offset += range.length
+            offset += runRange.length
+            guard let styledRange = runRange.resolved(inDocumentOfLength: storageLength),
+                  styledRange == runRange else {
+                continue
+            }
+            storage?.setAttributes(attributeProvider.attributesFor(run.value?.capture), range: styledRange)
         }
 
         textView.textStorage.endEditing()

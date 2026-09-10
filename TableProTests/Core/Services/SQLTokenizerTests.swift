@@ -74,6 +74,90 @@ struct SQLTokenizerTests {
         #expect(tokens[0].type == .string)
     }
 
+    // MARK: - Unterminated literals
+
+    @Test("Unterminated string ending in a backslash")
+    func unterminatedStringEndingInBackslash() {
+        let tokens = tokenizer.tokenize("'C:\\")
+        #expect(tokens.count == 1)
+        #expect(tokens[0].type == .string)
+        #expect(tokens[0].value == "'C:\\")
+    }
+
+    @Test("Unterminated double-quoted string ending in a backslash")
+    func unterminatedDoubleQuotedStringEndingInBackslash() {
+        let tokens = tokenizer.tokenize("\"C:\\")
+        #expect(tokens.count == 1)
+        #expect(tokens[0].type == .string)
+        #expect(tokens[0].value == "\"C:\\")
+    }
+
+    @Test("Unterminated backtick identifier ending in a backslash")
+    func unterminatedBacktickEndingInBackslash() {
+        let tokens = tokenizer.tokenize("`C:\\")
+        #expect(tokens.count == 1)
+        #expect(tokens[0].type == .identifier)
+        #expect(tokens[0].value == "`C:\\")
+    }
+
+    @Test("Unterminated string ending in a backslash inside a statement")
+    func unterminatedStringEndingInBackslashInStatement() {
+        let tokens = tokenizer.tokenize("select * from t where c like 'C:\\")
+        let nonWS = tokens.filter { $0.type != .whitespace }
+        #expect(nonWS.last?.type == .string)
+        #expect(nonWS.last?.value == "'C:\\")
+    }
+
+    @Test("Unterminated string keeps a doubled trailing backslash")
+    func unterminatedStringWithDoubledBackslash() {
+        let tokens = tokenizer.tokenize("'C:\\\\")
+        #expect(tokens.count == 1)
+        #expect(tokens[0].type == .string)
+        #expect(tokens[0].value == "'C:\\\\")
+    }
+
+    @Test("Unterminated string without an escape")
+    func unterminatedStringWithoutEscape() {
+        let tokens = tokenizer.tokenize("'abc")
+        #expect(tokens.count == 1)
+        #expect(tokens[0].type == .string)
+        #expect(tokens[0].value == "'abc")
+    }
+
+    @Test("Lone quote")
+    func loneQuote() {
+        let tokens = tokenizer.tokenize("'")
+        #expect(tokens.count == 1)
+        #expect(tokens[0].type == .string)
+        #expect(tokens[0].value == "'")
+    }
+
+    // MARK: - Unterminated comments
+
+    @Test("Unterminated block comment keeps its last character")
+    func unterminatedBlockComment() {
+        let tokens = tokenizer.tokenize("/* abc")
+        #expect(tokens.count == 1)
+        #expect(tokens[0].type == .comment)
+        #expect(tokens[0].value == "/* abc")
+    }
+
+    @Test("Block comment opener with nothing after it")
+    func emptyUnterminatedBlockComment() {
+        let tokens = tokenizer.tokenize("/*")
+        #expect(tokens.count == 1)
+        #expect(tokens[0].type == .comment)
+        #expect(tokens[0].value == "/*")
+    }
+
+    @Test("Terminated block comment is unchanged")
+    func terminatedBlockComment() {
+        let tokens = tokenizer.tokenize("/* abc */")
+        #expect(tokens.count == 1)
+        #expect(tokens[0].type == .comment)
+        #expect(tokens[0].value == "/* abc */")
+    }
+
     // MARK: - Numbers
 
     @Test("Integer")

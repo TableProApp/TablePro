@@ -22,13 +22,13 @@ struct StructureActionHandlerTests {
 
     // MARK: - Individual Closure Dispatch
 
-    @Test("saveChanges closure fires when invoked")
-    func saveChanges_fires() {
+    @Test("refresh closure fires when invoked")
+    func refresh_fires() {
         let handler = StructureViewActionHandler()
         var count = 0
-        handler.saveChanges = { count += 1 }
+        handler.refresh = { count += 1 }
 
-        handler.saveChanges?()
+        handler.refresh?()
 
         #expect(count == 1)
     }
@@ -117,7 +117,7 @@ struct StructureActionHandlerTests {
         let handler = StructureViewActionHandler()
         var counts = [String: Int]()
 
-        handler.saveChanges = { counts["saveChanges", default: 0] += 1 }
+        handler.refresh = { counts["refresh", default: 0] += 1 }
         handler.previewSQL = { counts["previewSQL", default: 0] += 1 }
         handler.copyRows = { counts["copyRows", default: 0] += 1 }
         handler.pasteRows = { counts["pasteRows", default: 0] += 1 }
@@ -126,7 +126,7 @@ struct StructureActionHandlerTests {
         handler.addRow = { counts["addRow", default: 0] += 1 }
         handler.removeRow = { counts["removeRow", default: 0] += 1 }
 
-        handler.saveChanges?()
+        handler.refresh?()
         handler.previewSQL?()
         handler.copyRows?()
         handler.pasteRows?()
@@ -135,7 +135,7 @@ struct StructureActionHandlerTests {
         handler.addRow?()
         handler.removeRow?()
 
-        #expect(counts["saveChanges"] == 1)
+        #expect(counts["refresh"] == 1)
         #expect(counts["previewSQL"] == 1)
         #expect(counts["copyRows"] == 1)
         #expect(counts["pasteRows"] == 1)
@@ -152,7 +152,7 @@ struct StructureActionHandlerTests {
         let handler = StructureViewActionHandler()
 
         // All closures are nil by default; optional chaining should be a no-op
-        handler.saveChanges?()
+        handler.refresh?()
         handler.previewSQL?()
         handler.copyRows?()
         handler.pasteRows?()
@@ -164,17 +164,17 @@ struct StructureActionHandlerTests {
 
     // MARK: - Coordinator Integration
 
-    @Test("coordinator.structureActions dispatches saveChanges closure")
+    @Test("coordinator.structureActions dispatches refresh closure")
     func coordinator_dispatchesSaveChanges() {
         let coordinator = makeCoordinator()
         defer { coordinator.teardown() }
 
         let handler = StructureViewActionHandler()
         var count = 0
-        handler.saveChanges = { count += 1 }
+        handler.refresh = { count += 1 }
         coordinator.structureActions = handler
 
-        coordinator.structureActions?.saveChanges?()
+        coordinator.structureActions?.refresh?()
 
         #expect(count == 1)
     }
@@ -187,7 +187,7 @@ struct StructureActionHandlerTests {
         let handler = StructureViewActionHandler()
         var counts = [String: Int]()
 
-        handler.saveChanges = { counts["saveChanges", default: 0] += 1 }
+        handler.refresh = { counts["refresh", default: 0] += 1 }
         handler.previewSQL = { counts["previewSQL", default: 0] += 1 }
         handler.copyRows = { counts["copyRows", default: 0] += 1 }
         handler.pasteRows = { counts["pasteRows", default: 0] += 1 }
@@ -196,14 +196,14 @@ struct StructureActionHandlerTests {
 
         coordinator.structureActions = handler
 
-        coordinator.structureActions?.saveChanges?()
+        coordinator.structureActions?.refresh?()
         coordinator.structureActions?.previewSQL?()
         coordinator.structureActions?.copyRows?()
         coordinator.structureActions?.pasteRows?()
         coordinator.structureActions?.undo?()
         coordinator.structureActions?.redo?()
 
-        #expect(counts["saveChanges"] == 1)
+        #expect(counts["refresh"] == 1)
         #expect(counts["previewSQL"] == 1)
         #expect(counts["copyRows"] == 1)
         #expect(counts["pasteRows"] == 1)
@@ -220,18 +220,18 @@ struct StructureActionHandlerTests {
 
         let handler = StructureViewActionHandler()
         var count = 0
-        handler.saveChanges = { count += 1 }
+        handler.refresh = { count += 1 }
         coordinator.structureActions = handler
 
         // Verify it works before nil-out
-        coordinator.structureActions?.saveChanges?()
+        coordinator.structureActions?.refresh?()
         #expect(count == 1)
 
         // Nil out the weak reference
         coordinator.structureActions = nil
 
         // Calling through coordinator should be a no-op now
-        coordinator.structureActions?.saveChanges?()
+        coordinator.structureActions?.refresh?()
         #expect(count == 1)
     }
 }

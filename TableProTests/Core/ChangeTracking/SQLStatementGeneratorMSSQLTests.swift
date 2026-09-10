@@ -44,7 +44,6 @@ struct SQLStatementGeneratorMSSQLTests {
             type: .update,
             cellChanges: [
                 CellChange(
-                    rowIndex: rowIndex,
                     columnIndex: 1,
                     columnName: columnName,
                     oldValue: PluginCellValue.fromOptional(oldValue),

@@ -10,6 +10,7 @@ struct ResolvedEditorColors {
     let cursorSwiftUI: Color
     let currentLineHighlight: NSColor
     let currentLineHighlightSwiftUI: Color
+    let currentStatementHighlight: NSColor
     let selection: NSColor
     let selectionSwiftUI: Color
     let lineNumber: NSColor
@@ -43,6 +44,7 @@ struct ResolvedEditorColors {
         cursorSwiftUI = colors.cursor.swiftUIColor
         currentLineHighlight = colors.currentLineHighlight.nsColor
         currentLineHighlightSwiftUI = colors.currentLineHighlight.swiftUIColor
+        currentStatementHighlight = colors.currentStatementHighlight.nsColor
         selection = colors.selection.nsColor
         selectionSwiftUI = colors.selection.swiftUIColor
         lineNumber = colors.lineNumber.nsColor

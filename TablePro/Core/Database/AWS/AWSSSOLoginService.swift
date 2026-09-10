@@ -3,6 +3,18 @@ import Foundation
 import TableProPluginKit
 
 enum AWSSSOLoginService {
+    static let defaultProfileName = "default"
+
+    /// Two spellings are in use: the Cassandra and RDS drivers declare `awsAuth`, DynamoDB
+    /// declares `awsAuthMethod`. Both mean the same thing here.
+    static func usesSSO(_ fields: [String: String]) -> Bool {
+        fields["awsAuth"] == "sso" || fields["awsAuthMethod"] == "sso"
+    }
+
+    static func profileName(from fields: [String: String]) -> String {
+        fields["awsProfileName"].flatMap { $0.isEmpty ? nil : $0 } ?? defaultProfileName
+    }
+
     static func isSSOExpired(_ error: Error) -> Bool {
         guard let ssoError = error as? AWSSSOError else { return false }
         switch ssoError {

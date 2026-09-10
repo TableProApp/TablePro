@@ -5,75 +5,69 @@
 //  Created by Khan Winter on 5/6/25.
 //
 
-import Foundation
 import AppKit
 import CodeEditTextView
 
-/// Displays the code folding ribbon in the ``GutterView``.
+/// Draws the fold controls in the ``GutterView``.
 ///
-/// This view draws its contents manually. This was chosen over managing views on a per-fold basis, which would come
-/// with needing to manage view reuse and positioning. Drawing allows this view to draw only what macOS requests, and
-/// ends up being extremely efficient. This does mean that animations have to be done manually with a timer.
-/// Re: the `hoveredFold` property.
+/// A fold is disclosed the way macOS discloses anything else: a chevron pointing down while the content shows, and
+/// right while it is hidden. An open fold's chevron stays out of the way until the pointer is over the gutter, the
+/// same way an outline view reveals its disclosure triangles, so a document at rest is nothing but code and line
+/// numbers. A collapsed fold keeps its chevron at all times, because hidden content the reader cannot find again is
+/// worse than a little chrome.
+///
+/// The controls are drawn rather than hosted as a view per fold, so scrolling a long document never churns through
+/// view reuse. Drawn controls are invisible to assistive technology unless they say otherwise, so the ribbon
+/// publishes one accessibility element per chevron; see ``LineFoldRibbonView/accessibilityChildren()``.
+///
+/// Which fold is hovered is ``LineFoldModel/hoveredFold``, not state of this view: the gutter's chevron and the
+/// collapsed fold's placeholder are two controls for the same fold, and both have to agree on which one the pointer
+/// is on.
 class LineFoldRibbonView: NSView {
-    struct HoverAnimationDetails: Equatable {
-        var fold: FoldRange?
-        var foldMask: CGPath?
-        var timer: Timer?
-        var progress: CGFloat = 0.0
+    /// The width of the fold controls, in points.
+    ///
+    /// Matches the room AppKit gives a disclosure triangle in an outline view, so a chevron is the same size target
+    /// here as everywhere else in the system.
+    static let width: CGFloat = 14.0
 
-        static let empty = HoverAnimationDetails()
+    /// The point size of the chevron glyph.
+    static let chevronPointSize: CGFloat = 9.0
 
-        public static func == (_ lhs: HoverAnimationDetails, _ rhs: HoverAnimationDetails) -> Bool {
-            lhs.fold == rhs.fold && lhs.foldMask == rhs.foldMask && lhs.progress == rhs.progress
-        }
-    }
-
-    static let width: CGFloat = 7.0
+    /// The width of the bar marking how far the hovered fold reaches, in points.
+    static let extentWidth: CGFloat = 2.0
 
     var model: LineFoldModel?
 
+    /// Whether the pointer is over the gutter, which is what reveals the open folds' chevrons.
     @Invalidating(.display)
-    var hoveringFold: HoverAnimationDetails = .empty
+    var isPointerInGutter: Bool = false
 
     @Invalidating(.display)
-    var backgroundColor: NSColor = NSColor.controlBackgroundColor
+    var backgroundColor: NSColor = .controlBackgroundColor
 
+    /// The colour of a chevron revealed by the pointer. Matches the gutter's line numbers, since it is the same
+    /// class of chrome.
     @Invalidating(.display)
-    var markerColor = NSColor(
-        light: NSColor(deviceWhite: 0.0, alpha: 0.1),
-        dark: NSColor(deviceWhite: 1.0, alpha: 0.2)
-    ).safeCGColor
+    var chevronColor: NSColor = .tertiaryLabelColor
 
+    /// The colour of a collapsed fold's chevron, which is on screen whether or not the pointer is.
     @Invalidating(.display)
-    var markerBorderColor = NSColor(
-        light: NSColor(deviceWhite: 1.0, alpha: 0.4),
-        dark: NSColor(deviceWhite: 0.0, alpha: 0.4)
-    ).safeCGColor
+    var collapsedChevronColor: NSColor = .secondaryLabelColor
 
+    /// The colour of the chevron under the pointer.
     @Invalidating(.display)
-    var hoverFillColor = NSColor(
-        light: NSColor(deviceWhite: 1.0, alpha: 1.0),
-        dark: NSColor(deviceWhite: 0.17, alpha: 1.0)
-    ).safeCGColor
+    var hoveredChevronColor: NSColor = .labelColor
 
+    /// The colour of the bar marking how far the hovered fold reaches.
     @Invalidating(.display)
-    var hoverBorderColor = NSColor(
-        light: NSColor(deviceWhite: 0.8, alpha: 1.0),
-        dark: NSColor(deviceWhite: 0.4, alpha: 1.0)
-    ).safeCGColor
+    var foldExtentColor: NSColor = .quaternaryLabelColor
 
-    @Invalidating(.display)
-    var foldedIndicatorColor = NSColor(
-        light: NSColor(deviceWhite: 0.0, alpha: 0.3),
-        dark: NSColor(deviceWhite: 1.0, alpha: 0.6)
-    ).safeCGColor
+    private var chevronCache: [ChevronKey: NSImage] = [:]
 
-    @Invalidating(.display)
-    var foldedIndicatorChevronColor = NSColor(
-        light: NSColor(deviceWhite: 1.0, alpha: 1.0),
-        dark: NSColor(deviceWhite: 0.0, alpha: 1.0)
-    ).safeCGColor
+    private struct ChevronKey: Hashable {
+        let isCollapsed: Bool
+        let color: NSColor
+    }
 
     override public var isFlipped: Bool {
         true
@@ -83,135 +77,122 @@ class LineFoldRibbonView: NSView {
         super.init(frame: .zero)
         layerContentsRedrawPolicy = .onSetNeedsDisplay
         clipsToBounds = false
-        self.model = LineFoldModel(
-            controller: controller,
-            foldView: self
-        )
+        self.model = LineFoldModel(controller: controller, foldView: self)
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
+    /// A chevron is a control, not text, so the pointer says so by staying an arrow. Disclosure triangles elsewhere
+    /// in the system do the same.
     override public func resetCursorRects() {
-        // Don't use an iBeam in this view
         addCursorRect(bounds, cursor: .arrow)
     }
 
     // MARK: - Hover
 
-    override func updateTrackingAreas() {
-        trackingAreas.forEach(removeTrackingArea)
-        let area = NSTrackingArea(
-            rect: bounds,
-            options: [.mouseMoved, .activeInKeyWindow, .mouseEnteredAndExited],
-            owner: self,
-            userInfo: nil
-        )
-        addTrackingArea(area)
+    /// Called by the ``GutterView`` as the pointer moves anywhere over the gutter.
+    ///
+    /// The gutter owns the tracking, not this view, so moving over the line numbers reveals the controls too. Only a
+    /// pointer actually over this view marks a chevron as hovered, so what looks clickable and what is clickable stay
+    /// the same thing.
+    func pointerMoved(to point: CGPoint) {
+        isPointerInGutter = true
+        model?.setGutterHover(bounds.contains(point) ? fold(at: point) : nil)
     }
 
+    /// Called by the ``GutterView`` when the pointer leaves the gutter.
+    func pointerExitedGutter() {
+        isPointerInGutter = false
+        model?.setGutterHover(nil)
+    }
+
+    /// Scrolling moves the folds under a stationary pointer, so the hovered fold has to be resolved again.
     override func scrollWheel(with event: NSEvent) {
         super.scrollWheel(with: event)
-        self.mouseMoved(with: event)
+        pointerMoved(to: convert(event.locationInWindow, from: nil))
     }
 
     // MARK: - Mouse Events
 
     override func mouseDown(with event: NSEvent) {
-        let clickPoint = convert(event.locationInWindow, from: nil)
-        guard let layoutManager = model?.controller?.textView.layoutManager,
-              event.type == .leftMouseDown,
-              let lineNumber = layoutManager.textLineForPosition(clickPoint.y)?.index,
-              let fold = model?.getCachedFoldAt(lineNumber: lineNumber),
-              let firstLineInFold = layoutManager.textLineForOffset(fold.range.lowerBound) else {
+        let point = convert(event.locationInWindow, from: nil)
+        guard event.type == .leftMouseDown, let model, let fold = fold(at: point) else {
             super.mouseDown(with: event)
             return
         }
 
-        if let attachment = findAttachmentFor(fold: fold, firstLineRange: firstLineInFold.range) {
-            layoutManager.attachments.remove(atOffset: attachment.range.location)
-        } else {
-            let charWidth = model?.controller?.font.charWidth ?? 1.0
-            let placeholder = LineFoldPlaceholder(delegate: model, fold: fold, charWidth: charWidth)
-            layoutManager.attachments.add(placeholder, for: NSRange(fold.range))
-        }
-
-        model?.foldCache.toggleCollapse(forFold: fold)
-        model?.controller?.textView.needsLayout = true
-        model?.controller?.gutterView.needsDisplay = true
-        mouseMoved(with: event)
+        model.setCollapsed(!model.isCollapsed(fold), for: fold)
+        pointerMoved(to: point)
     }
 
-    private func findAttachmentFor(fold: FoldRange, firstLineRange: NSRange) -> AnyTextAttachment? {
-        model?.controller?.textView?.layoutManager.attachments
-            .getAttachmentsStartingIn(NSRange(fold.range))
-            .filter({
-                $0.attachment is LineFoldPlaceholder && firstLineRange.contains($0.range.location)
-            }).first
+    // MARK: - Fold Lookup
+
+    /// The fold whose chevron sits at a point, if a chevron sits there at all.
+    private func fold(at point: CGPoint) -> FoldRange? {
+        guard let layoutManager = model?.controller?.textView.layoutManager,
+              let line = layoutManager.textLineForPosition(point.y) else { return nil }
+        return foldsByStartLine(in: line.range.intRange, layoutManager: layoutManager)[line.index]
     }
 
-    override func mouseMoved(with event: NSEvent) {
-        defer {
-            super.mouseMoved(with: event)
-        }
-
-        let pointInView = convert(event.locationInWindow, from: nil)
-        guard let lineNumber = model?.controller?.textView.layoutManager.textLineForPosition(pointInView.y)?.index,
-              let fold = model?.getCachedFoldAt(lineNumber: lineNumber),
-              !fold.isCollapsed else {
-            clearHoveredFold()
-            return
-        }
-
-        guard fold.range != hoveringFold.fold?.range else {
-            return
-        }
-
-        setHoveredFold(fold: fold)
+    /// The document range a rect in this view covers.
+    ///
+    /// The ribbon is taller than the text it sits beside, so a rect reaching past the last line resolves to no line
+    /// at all. Falling back to the last line is what keeps a document scrolled to its end from losing every chevron.
+    func documentRange(covering rect: CGRect, layoutManager: TextLayoutManager) -> Range<Int>? {
+        guard let firstLine = layoutManager.textLineForPosition(max(0, rect.minY)) else { return nil }
+        guard let lastLine = layoutManager.textLineForPosition(rect.maxY)
+            ?? layoutManager.textLineForIndex(max(0, layoutManager.lineCount - 1)) else { return nil }
+        return firstLine.range.location..<max(firstLine.range.upperBound, lastLine.range.upperBound)
     }
 
-    override func mouseExited(with event: NSEvent) {
-        super.mouseExited(with: event)
-        clearHoveredFold()
-    }
+    /// The fold each line in a range opens, keyed by line number.
+    ///
+    /// A line can open more than one fold, since a statement and the parenthesised body inside it often begin on the
+    /// same line. The outermost one wins, so a chevron always folds the largest block that starts where it is drawn.
+    func foldsByStartLine(
+        in textRange: Range<Int>,
+        layoutManager: TextLayoutManager
+    ) -> [Int: FoldRange] {
+        guard let model else { return [:] }
+        var result: [Int: FoldRange] = [:]
 
-    /// Clears the current hovered fold. Does not animate.
-    func clearHoveredFold() {
-        hoveringFold = .empty
-        model?.clearEmphasis()
-    }
-
-    /// Set the current hovered fold. This method determines when an animation is required and will facilitate it.
-    /// - Parameter fold: The fold to set as the current hovered fold.
-    func setHoveredFold(fold: FoldRange) {
-        defer {
-            model?.emphasizeBracketsForFold(fold)
+        for fold in model.getFolds(in: textRange) {
+            guard let startLine = layoutManager.textLineForOffset(fold.range.lowerBound) else { continue }
+            guard let existing = result[startLine.index] else {
+                result[startLine.index] = fold
+                continue
+            }
+            if fold.depth < existing.depth {
+                result[startLine.index] = fold
+            }
         }
 
-        hoveringFold.timer?.invalidate()
-        // We only animate the first hovered fold. If the user moves the mouse vertically into other folds we just
-        // show it immediately.
-        if hoveringFold.fold == nil {
-            let duration: TimeInterval = 0.2
-            let startTime = CACurrentMediaTime()
+        return result
+    }
 
-            hoveringFold = HoverAnimationDetails(
-                fold: fold,
-                timer: Timer.scheduledTimer(withTimeInterval: 1/60, repeats: true) { [weak self] timer in
-                    guard let self = self else { return }
-                    let now = CACurrentMediaTime()
-                    let time = CGFloat((now - startTime) / duration)
-                    self.hoveringFold.progress = min(1.0, time)
-                    if self.hoveringFold.progress >= 1.0 {
-                        timer.invalidate()
-                    }
-                }
-            )
-            return
+    /// The chevron glyph for a fold's state, in a colour.
+    ///
+    /// SF Symbols draws the same chevron the rest of the system uses for disclosure, so the control is optically
+    /// sized and weighted to match instead of being a hand-drawn approximation of it.
+    /// Called while drawing, so the colour resolves against the appearance AppKit has already made current. That
+    /// resolved colour is the cache key, which is what keeps a light-mode chevron from being reused in dark mode.
+    func chevron(isCollapsed: Bool, color: NSColor) -> NSImage? {
+        let resolved = color.usingColorSpace(.sRGB) ?? color
+        let key = ChevronKey(isCollapsed: isCollapsed, color: resolved)
+        if let cached = chevronCache[key] {
+            return cached
         }
 
-        // Don't animate these
-        hoveringFold = HoverAnimationDetails(fold: fold, progress: 1.0)
+        let configuration = NSImage.SymbolConfiguration(pointSize: Self.chevronPointSize, weight: .semibold)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [resolved]))
+        let image = NSImage(
+            systemSymbolName: isCollapsed ? "chevron.right" : "chevron.down",
+            accessibilityDescription: nil
+        )?.withSymbolConfiguration(configuration)
+
+        chevronCache[key] = image
+        return image
     }
 }

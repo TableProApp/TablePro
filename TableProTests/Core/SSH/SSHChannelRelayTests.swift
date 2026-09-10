@@ -139,6 +139,65 @@ struct SSHChannelRelayTests {
         #expect(io.written == payload)
     }
 
+    @Test("Channel data counts as received")
+    func countsChannelDataAsReceived() {
+        let local = SocketPair()
+        let transport = SocketPair()
+        defer { local.close(); transport.close() }
+
+        let payload = Data("hello".utf8)
+        var dummy: UInt8 = 1
+        _ = Darwin.send(transport.b, &dummy, 1, 0)
+
+        let counter = TransportByteCounter()
+        let io = FakeChannelIO(actions: [.data(payload)], fallback: .closed)
+        let result = runRelay(localFD: local.a, transportFD: transport.a, io: io, byteCounter: counter)
+
+        #expect(result == .channelClosed)
+        #expect(counter.totals == TransportByteTotals(received: UInt64(payload.count), sent: 0))
+    }
+
+    @Test("Local data counts as sent")
+    func countsLocalDataAsSent() {
+        let local = SocketPair()
+        let transport = SocketPair()
+        defer { local.close(); transport.close() }
+
+        let payload = Data("world".utf8)
+        payload.withUnsafeBytes { raw in
+            _ = Darwin.send(local.b, raw.baseAddress, raw.count, 0)
+        }
+
+        let counter = TransportByteCounter()
+        let io = FakeChannelIO(fallback: .wouldBlock)
+        let result = runRelay(
+            localFD: local.a,
+            transportFD: transport.a,
+            io: io,
+            isActive: io.activeUntilWritten(payload.count),
+            byteCounter: counter
+        )
+
+        #expect(result == .cancelled)
+        #expect(counter.totals == TransportByteTotals(received: 0, sent: UInt64(payload.count)))
+    }
+
+    @Test("A relay with no counter still runs")
+    func runsWithoutACounter() {
+        let local = SocketPair()
+        let transport = SocketPair()
+        defer { local.close(); transport.close() }
+
+        let payload = Data("hello".utf8)
+        var dummy: UInt8 = 1
+        _ = Darwin.send(transport.b, &dummy, 1, 0)
+
+        let io = FakeChannelIO(actions: [.data(payload)], fallback: .closed)
+        let result = runRelay(localFD: local.a, transportFD: transport.a, io: io)
+
+        #expect(result == .channelClosed)
+    }
+
     @Test("Concurrent relays sharing one transport each receive their own channel data")
     func concurrentRelaysShareTransport() {
         let transport = SocketPair()
@@ -188,6 +247,7 @@ struct SSHChannelRelayTests {
         transportFD: Int32,
         io: FakeChannelIO,
         isActive: @escaping @Sendable () -> Bool = { true },
+        byteCounter: TransportByteCounter? = nil,
         timeout: Double = 3
     ) -> RelayTermination? {
         let box = ResultBox()
@@ -197,7 +257,8 @@ struct SSHChannelRelayTests {
             transportFD: transportFD,
             io: io,
             isActive: isActive,
-            box: box
+            box: box,
+            byteCounter: byteCounter
         ) { semaphore.signal() }
         _ = semaphore.wait(timeout: .now() + timeout)
         return box.value
@@ -214,6 +275,7 @@ internal func runRelayOnDedicatedThread(
     io: any SSHChannelIO,
     isActive: @escaping @Sendable () -> Bool,
     box: ResultBox,
+    byteCounter: TransportByteCounter? = nil,
     onFinish: @escaping @Sendable () -> Void
 ) {
     let thread = Thread {
@@ -222,7 +284,8 @@ internal func runRelayOnDedicatedThread(
             transportFD: transportFD,
             channelIO: io,
             bufferSize: 32_768,
-            isActive: isActive
+            isActive: isActive,
+            byteCounter: byteCounter
         )
         box.value = relay.run()
         onFinish()

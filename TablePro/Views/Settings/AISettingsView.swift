@@ -33,6 +33,7 @@ struct AISettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
         .task { refreshKeyAvailability() }
         .task { await chatGPTCodexService.refreshAuthState() }
         .task { await cursorAgentService.refreshStatus() }

@@ -1,18 +1,10 @@
 import XCTest
 
-final class QueryTabDeleteLineUITests: XCTestCase {
+final class QueryTabDeleteLineUITests: UITestCase {
     private let query = "SELECT * FROM Genre;"
 
-    override func setUpWithError() throws {
-        continueAfterFailure = false
-    }
-
-    override func tearDownWithError() throws {
-        XCUIApplication().terminate()
-    }
-
     func testCommandDeleteDeletesTheEditorLineAfterRunningAQuery() throws {
-        let app = launchWithSampleDatabase()
+        let app = try launchWithSampleDatabase()
         let editor = openQueryTab(in: app)
 
         app.typeText(query)
@@ -28,16 +20,23 @@ final class QueryTabDeleteLineUITests: XCTestCase {
     }
 
     func testCommandDeleteDeletesTheEditorLineAfterSelectingAResultRow() throws {
-        let app = launchWithSampleDatabase()
+        let app = try launchWithSampleDatabase()
         let editor = openQueryTab(in: app)
 
         app.typeText(query)
         XCTAssertTrue(waitForValue(query, in: editor, timeout: 5))
         executeQuery(in: app)
 
-        let firstRow = app.windows.firstMatch.tables.firstMatch.tableRows.element(boundBy: 0)
-        XCTAssertTrue(firstRow.waitForExistence(timeout: 10))
-        firstRow.click()
+        let grid = app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
+        XCTAssertTrue(grid.waitToExist(timeout: 10))
+        XCTAssertTrue(grid.tableRows.element(boundBy: 0).waitToExist(timeout: 10))
+        /// A point in the grid rather than the row element. A table publishes its columns as
+        /// siblings of its rows, each one as tall as every row it spans and later in the tree, so
+        /// XCUITest reads every row and every cell as obscured and refuses to click either. The
+        /// offset lands in the first row's first data column, past the header and the row numbers.
+        grid.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: 60, dy: 52))
+            .click()
 
         editor.click()
         app.typeKey(XCUIKeyboardKey.rightArrow.rawValue, modifierFlags: .command)
@@ -50,43 +49,18 @@ final class QueryTabDeleteLineUITests: XCTestCase {
         )
     }
 
-    private func launchWithSampleDatabase() -> XCUIApplication {
-        let app = XCUIApplication()
-        app.launchEnvironment["TABLEPRO_UI_TESTING"] = "1"
-        app.launch()
-
-        let menuBar = app.menuBars.firstMatch
-        XCTAssertTrue(menuBar.waitForExistence(timeout: 10))
-        menuBar.menuBarItems["File"].click()
-        let openSample = menuBar.menuItems["Open Sample Database"]
-        XCTAssertTrue(openSample.waitForExistence(timeout: 5))
-        openSample.click()
-
-        XCTAssertTrue(editorTextView(in: app).waitForExistence(timeout: 15))
-        return app
-    }
-
     private func openQueryTab(in app: XCUIApplication) -> XCUIElement {
         app.typeKey("t", modifierFlags: .command)
         let editor = editorTextView(in: app)
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertTrue(editor.waitToExist(timeout: 10))
         XCTAssertTrue(waitForValue("", in: editor, timeout: 5), "A new tab starts with an empty editor")
         return editor
     }
 
     private func executeQuery(in app: XCUIApplication) {
         app.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: .command)
-        let results = app.windows.firstMatch.tables.firstMatch
-        XCTAssertTrue(results.waitForExistence(timeout: 15), "The query must produce a result grid")
-    }
-
-    private func editorTextView(in app: XCUIApplication) -> XCUIElement {
-        let window = app.windows.firstMatch
-        let identified = window.textViews.matching(identifier: "sql-editor-textview").firstMatch
-        if identified.exists {
-            return identified
-        }
-        return window.textViews.firstMatch
+        let results = app.windows.firstMatch.tables.matching(identifier: "data-grid").firstMatch
+        XCTAssertTrue(results.waitToExist(timeout: 15), "The query must produce a result grid")
     }
 
     private func waitForValue(_ expected: String, in element: XCUIElement, timeout: TimeInterval) -> Bool {

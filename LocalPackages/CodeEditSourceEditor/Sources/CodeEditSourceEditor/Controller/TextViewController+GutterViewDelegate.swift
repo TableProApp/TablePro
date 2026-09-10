@@ -9,6 +9,6 @@ import Foundation
 
 extension TextViewController: GutterViewDelegate {
     public func gutterViewWidthDidUpdate() {
-        updateTextInsets()
+        updateFloatingSubviewInsets()
     }
 }

@@ -86,40 +86,41 @@ struct RowCountPlanTests {
 @Suite("RowCountOutcome")
 struct RowCountOutcomeTests {
     @Test("A positive estimate is applied and stays marked approximate")
-    func positiveEstimateApplies() {
-        let applied = RowCountOutcome.count(4_600_000, isApproximate: true).appliedTotal
+    func positiveEstimateApplies() throws {
+        let applied = try #require(RowCountOutcome.count(4_600_000, isApproximate: true).appliedTotal)
         #expect(applied.total == 4_600_000)
         #expect(applied.isApproximate)
     }
 
-    @Test("An estimate of zero means unknown, not an empty table")
-    func zeroEstimateIsUnknown() {
-        let applied = RowCountOutcome.count(0, isApproximate: true).appliedTotal
-        #expect(applied.total == nil)
-        #expect(!applied.isApproximate)
+    /// Phase 1 has usually already put an estimate on screen by the time a phase 2 count lands, so
+    /// "we could not work it out" has to leave that alone. Blanking it made a row count appear and
+    /// then vanish a moment later.
+    @Test("An estimate of zero is no answer, so it applies nothing")
+    func zeroEstimateAppliesNothing() {
+        #expect(RowCountOutcome.count(0, isApproximate: true).appliedTotal == nil)
     }
 
-    @Test("A negative estimate is never shown as a total")
-    func negativeEstimateIsUnknown() {
-        let applied = RowCountOutcome.count(-1, isApproximate: true).appliedTotal
-        #expect(applied.total == nil)
+    @Test("A negative estimate applies nothing")
+    func negativeEstimateAppliesNothing() {
+        #expect(RowCountOutcome.count(-1, isApproximate: true).appliedTotal == nil)
     }
 
     @Test("An exact zero is trustworthy and reported as an empty table")
-    func exactZeroIsApplied() {
-        let applied = RowCountOutcome.count(0, isApproximate: false).appliedTotal
+    func exactZeroIsApplied() throws {
+        let applied = try #require(RowCountOutcome.count(0, isApproximate: false).appliedTotal)
         #expect(applied.total == 0)
         #expect(!applied.isApproximate)
     }
 
-    @Test("A negative exact count is still rejected")
-    func negativeExactIsUnknown() {
-        #expect(RowCountOutcome.count(-5, isApproximate: false).appliedTotal.total == nil)
+    @Test("A negative exact count applies nothing")
+    func negativeExactAppliesNothing() {
+        #expect(RowCountOutcome.count(-5, isApproximate: false).appliedTotal == nil)
     }
 
+    /// A filter change genuinely invalidates the count, so this one still wipes it.
     @Test("Clearing reports an unknown total")
-    func clearIsUnknown() {
-        let applied = RowCountOutcome.clear.appliedTotal
+    func clearIsUnknown() throws {
+        let applied = try #require(RowCountOutcome.clear.appliedTotal)
         #expect(applied.total == nil)
         #expect(!applied.isApproximate)
     }

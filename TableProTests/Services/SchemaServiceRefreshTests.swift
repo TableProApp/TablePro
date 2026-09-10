@@ -150,6 +150,104 @@ struct SchemaServiceRefreshTests {
         #expect(!service.isRefreshing(connectionId: connectionId))
     }
 
+    @Test("A load for a new scope does not adopt the in-flight load for the old scope")
+    func loadsForDifferentScopesDoNotJoin() async {
+        let connectionId = UUID()
+        let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
+        let driver = RefreshMockDriver(connection: connection)
+        let service = SchemaService()
+        let primary = DatabaseScope(connectionId: connectionId, database: "primary", schema: "public")
+        let analytics = DatabaseScope(connectionId: connectionId, database: "analytics", schema: "reporting")
+
+        let suspended = AsyncStream<Void>.makeStream()
+        driver.onFetchTablesSuspended = { suspended.continuation.yield() }
+        driver.pausesFetchTables = true
+        driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "legacy_orders")]
+
+        let first = Task {
+            await service.reload(
+                connectionId: connectionId,
+                driver: driver,
+                connection: connection,
+                scope: primary
+            )
+        }
+        var iterator = suspended.stream.makeAsyncIterator()
+        await iterator.next()
+
+        driver.pausesFetchTables = false
+        driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "events")]
+        let second = Task {
+            await service.reload(
+                connectionId: connectionId,
+                driver: driver,
+                connection: connection,
+                scope: analytics
+            )
+        }
+        await Task.yield()
+        driver.resumeFetchTables()
+        await first.value
+        await second.value
+
+        #expect(driver.tablesCallCount == 2, "Each browse scope must run its own fetch")
+        #expect(service.loadedScope(for: connectionId) == analytics)
+        #expect(
+            service.tables(for: connectionId).map(\.name) == ["events"],
+            "The new scope must not be stamped onto the previous scope's tables"
+        )
+    }
+
+    @Test("refresh waiters receive tables for the requested scope")
+    func refreshWaitersReceiveRequestedScope() async {
+        let connectionId = UUID()
+        let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
+        let driver = RefreshMockDriver(connection: connection)
+        let service = SchemaService()
+        let firstScope = DatabaseScope(connectionId: connectionId, database: "primary", schema: "public")
+        let secondScope = DatabaseScope(connectionId: connectionId, database: "analytics", schema: "reporting")
+
+        driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "orders")]
+        await service.load(
+            connectionId: connectionId,
+            driver: driver,
+            connection: connection,
+            scope: firstScope
+        )
+
+        let suspended = AsyncStream<Void>.makeStream()
+        driver.onFetchTablesSuspended = { suspended.continuation.yield() }
+        driver.pausesFetchTables = true
+        driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "events")]
+
+        let reload = Task {
+            await service.reload(
+                connectionId: connectionId,
+                driver: driver,
+                connection: connection,
+                scope: secondScope
+            )
+        }
+        var iterator = suspended.stream.makeAsyncIterator()
+        await iterator.next()
+
+        #expect(service.loadedScope(for: connectionId) == firstScope)
+        var waiterFinished = false
+        let waiter = Task {
+            await service.waitForRefresh(connectionId: connectionId)
+            waiterFinished = true
+        }
+        await Task.yield()
+        #expect(!waiterFinished)
+
+        driver.resumeFetchTables()
+        await waiter.value
+        await reload.value
+
+        #expect(service.loadedScope(for: connectionId) == secondScope)
+        #expect(service.tables(for: connectionId).map(\.name) == ["events"])
+    }
+
     @Test("a cold load still reports loading so the sidebar can show its spinner")
     func coldLoadReportsLoading() async {
         let connectionId = UUID()

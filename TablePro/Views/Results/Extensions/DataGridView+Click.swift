@@ -10,11 +10,23 @@ import TableProPluginKit
 extension TableViewCoordinator {
     // MARK: - Cell Interaction
 
+    /// Whether a cell is on screen for something to anchor to.
+    ///
+    /// A data cell is drawn rather than mounted, so the row being on screen is what answers this;
+    /// `view(atColumn:row:makeIfNecessary:)` is always nil now and every guard that still asked it
+    /// closed the editor or popover it was guarding (#2381).
+    func presentsCell(row: Int, tableColumnIndex: Int) -> Bool {
+        guard let tableView, row >= 0, row < tableView.numberOfRows else { return false }
+        guard presentsColumn(atTableColumnIndex: tableColumnIndex) else { return false }
+        return tableView.rowView(atRow: row, makeIfNecessary: false) != nil
+    }
+
     func handleCellInteraction(row: Int, tableColumn: Int, columnIndex: Int, tableView: NSTableView) {
         guard let context = makeCellContext(row: row, columnIndex: columnIndex) else { return }
-        guard tableView.view(atColumn: tableColumn, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: tableColumn) else { return }
 
-        switch CellInteractionResolver().resolve(context) {
+        let mode = CellInteractionResolver().resolve(context)
+        switch mode {
         case .blocked:
             return
         case .viewInline(let value):
@@ -25,10 +37,20 @@ extension TableViewCoordinator {
             showBlobViewerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
         case .viewPhpSerialized:
             showPhpViewerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
+        case .viewSvg, .editSvg:
+            showSvgViewerPopover(
+                tableView: tableView,
+                row: row,
+                column: tableColumn,
+                columnIndex: columnIndex,
+                isEditable: mode == .editSvg
+            )
         case .editInline:
             beginCellEdit(row: row, tableColumnIndex: tableColumn)
         case .editOverlay(let value):
             showOverlayEditor(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex, value: value)
+        case .editForeignKey:
+            showForeignKeyPicker(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
         case .editJson:
             showJSONEditorPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
         case .editBlob:
@@ -43,10 +65,11 @@ extension TableViewCoordinator {
         let columnName = tableRows.columns[columnIndex]
         let columnType = columnIndex < tableRows.columnTypes.count ? tableRows.columnTypes[columnIndex] : nil
         let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
-        let override = ValueDisplayFormatService.shared.effectiveFormat(
-            columnName: columnName,
-            scope: tableScope
-        )
+        let override = columnIndex < columnDisplayFormats.count
+            ? columnDisplayFormats[columnIndex]
+            : nil
+
+        let typedValue = cellTypedValue(at: row, column: columnIndex)
 
         return CellContext(
             columnType: columnType,
@@ -54,8 +77,10 @@ extension TableViewCoordinator {
             isTableEditable: isEditable,
             isRowDeleted: changeManager.isRowDeleted(row),
             isImmutableColumn: immutable.contains(columnName),
-            isBinaryValue: cellTypedValue(at: row, column: columnIndex).asBytes != nil,
-            displayFormatOverride: override
+            isBinaryValue: typedValue.asBytes != nil,
+            isForeignKey: tableRows.columnForeignKeys[columnName] != nil,
+            displayFormatOverride: override,
+            detectedContent: CellValueContentDetector.detect(typedValue)
         )
     }
 
@@ -86,6 +111,8 @@ extension TableViewCoordinator {
 
         if columnType.isBooleanType {
             showDropdownMenu(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+        } else if columnType.supportsElementEditing {
+            showArrayEditorPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
         } else if let values = tableRows.columnEnumValues[columnName], !values.isEmpty {
             if columnType.isSetType {
                 showSetPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
@@ -97,7 +124,13 @@ extension TableViewCoordinator {
         } else if columnType.isBlobType {
             showBlobEditorPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
         } else if columnType.isDateType {
-            showDateTimePickerPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+            if opensDatePicker(row: row, columnIndex: columnIndex) {
+                showDateTimePickerPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+            } else {
+                beginEditing(displayRow: row, column: columnIndex)
+            }
+        } else if columnType.isEnumOrSetType {
+            beginEditing(displayRow: row, column: columnIndex)
         }
     }
 
@@ -125,19 +158,55 @@ extension TableViewCoordinator {
         column: Int,
         columnIndex: Int
     ) {
-        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
         let currentValue = cellValue(at: row, column: columnIndex) ?? ""
         let dbType = databaseType ?? .mysql
+        let scope = userDefinedTypeScope
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
-        PopoverPresenter.show(
+        dismissActiveCellEditorPopover()
+        activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,
             of: tableView
         ) { [weak self] dismiss in
-            TypePickerContentView(
-                databaseType: dbType,
-                currentValue: currentValue,
+            UserDefinedTypeAwarePicker(scope: scope) { userDefinedTypes in
+                TypePickerContentView(
+                    databaseType: dbType,
+                    currentValue: currentValue,
+                    userDefinedTypes: userDefinedTypes,
+                    onCommit: { newValue in
+                        guard let self else { return }
+                        self.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
+                    },
+                    onDismiss: dismiss
+                )
+            }
+        }
+    }
+
+    /// The editor behind a chevron menu's `Custom…` item, anchored on the cell the menu came from.
+    ///
+    /// The escaping comes from the connected driver rather than the shared helper, because the two
+    /// disagree: MySQL doubles a backslash as well as a quote, so a value escaped the shared way
+    /// closes its own literal on MySQL and not on PostgreSQL.
+    func showCustomValuePopover(row: Int, columnIndex: Int) {
+        guard let tableView else { return }
+        guard let column = tableColumnIndex(for: columnIndex) else { return }
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
+
+        let currentValue = cellValue(at: row, column: columnIndex) ?? ""
+        let escape = resolveDriver()?.escapeStringLiteral ?? SQLEscaping.escapeStringLiteral
+
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        dismissActiveCellEditorPopover()
+        activeCellEditorPopover = PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView
+        ) { [weak self] dismiss in
+            CustomValueContentView(
+                initialValue: currentValue,
+                escapeStringLiteral: escape,
                 onCommit: { newValue in
                     guard let self else { return }
                     self.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
@@ -145,5 +214,12 @@ extension TableViewCoordinator {
                 onDismiss: dismiss
             )
         }
+    }
+
+    /// The table the structure grid edits, as the scope a type lookup runs against. Nil where the
+    /// grid has no connection behind it, which is every grid that is not a structure grid.
+    private var userDefinedTypeScope: DatabaseScope? {
+        guard let connectionId, tabType == .table || tabType == .createTable else { return nil }
+        return DatabaseScope(connectionId: connectionId, database: databaseName ?? "", schema: schemaName)
     }
 }

@@ -159,11 +159,6 @@ private extension PostgreSQLDashboardProvider {
     }
 
     func formatDuration(seconds: Int) -> String {
-        if seconds >= 3_600 {
-            return "\(seconds / 3_600)h \((seconds % 3_600) / 60)m"
-        } else if seconds >= 60 {
-            return "\(seconds / 60)m \(seconds % 60)s"
-        }
-        return "\(seconds)s"
+        DurationFormatting.string(seconds: seconds)
     }
 }

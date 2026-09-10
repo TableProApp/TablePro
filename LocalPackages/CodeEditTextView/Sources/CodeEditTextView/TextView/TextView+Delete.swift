@@ -49,6 +49,10 @@ extension TextView {
         destination: TextSelectionManager.Destination,
         decomposeCharacters: Bool = false
     ) {
+        // A selectable read-only view still routes key equivalents here. `replaceCharacters` refuses the edit, but
+        // only after this method has already widened the selection and filled the kill ring.
+        guard isEditable else { return }
+
         /// Extend each selection by a distance specified by `destination`, then update both storage and the selection.
         for textSelection in selectionManager.textSelections {
             guard textSelection.range.isEmpty else { continue }

@@ -14,6 +14,9 @@ final class CloudflareD1Plugin: NSObject, TableProPlugin, DriverPlugin {
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "Cloudflare D1"
+
+    static let supportsRenameTable = true
+    static let supportsRenameView = false
     static let databaseDisplayName = "Cloudflare D1"
     static let iconName = "cloudflare-d1-icon"
     static let defaultPort = 0
@@ -27,13 +30,16 @@ final class CloudflareD1Plugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsImport = false
     static let supportsSchemaEditing = true
     static let supportsTriggers = true
+    static let supportsDatabaseTriggerBrowse = true
     static let supportsTriggerEditing = true
     static let databaseGroupingStrategy: GroupingStrategy = .flat
     static let brandColorHex = "#F6821F"
     static let urlSchemes: [String] = ["d1"]
 
     static let explainVariants: [ExplainVariant] = [
-        ExplainVariant(id: "plan", label: "Query Plan", sqlPrefix: "EXPLAIN QUERY PLAN")
+        ExplainVariant(
+            id: "plan", label: "Query Plan", sqlPrefix: "EXPLAIN QUERY PLAN", format: .sqliteQueryPlan
+        )
     ]
 
     static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable, .defaultValue]
@@ -88,7 +94,8 @@ final class CloudflareD1Plugin: NSObject, TableProPlugin, DriverPlugin {
         regexSyntax: .unsupported,
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .explicit,
-        paginationStyle: .limit
+        paginationStyle: .limit,
+        caseSensitivityStyle: .collationDefined
     )
 
     static let additionalConnectionFields: [ConnectionField] = [

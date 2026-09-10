@@ -7,25 +7,48 @@ import AppKit
 import SwiftUI
 
 extension TableViewCoordinator {
+    /// The repaint runs ahead of both guards below on purpose. `isRebuildingColumns` and
+    /// `markColumnWidthUserSized` decide whether the new width is the user's to keep, which is a
+    /// question about persistence; the body has to be redrawn either way, and the second guard is
+    /// false for the row-number column and for every unused pool slot.
     func tableViewColumnDidResize(_ notification: Notification) {
+        columnGeometryDidChange()
         guard !isRebuildingColumns else { return }
+        guard let column = notification.userInfo?["NSTableColumn"] as? NSTableColumn else { return }
+        guard markColumnWidthUserSized(column) else { return }
         scheduleLayoutPersist()
     }
 
     func tableViewColumnDidMove(_ notification: Notification) {
+        columnGeometryDidChange()
         guard !isRebuildingColumns else { return }
         invalidateColumnIndexCache()
+        hasUnpersistedColumnLayoutChanges = true
         layoutPersistTask?.cancel()
         persistColumnLayoutToStorage()
     }
 
     func scheduleLayoutPersist() {
         layoutPersistTask?.cancel()
+        let pending = makePendingColumnLayoutPersistence()
+        pendingColumnLayoutPersistence = nil
+        guard let pending else { return }
+        pendingColumnLayoutPersistence = pending
+        let generation = columnLayoutPersistenceGeneration
         layoutPersistTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(500))
             guard !Task.isCancelled else { return }
-            self?.persistColumnLayoutToStorage()
+            guard self?.columnLayoutPersistenceGeneration == generation else { return }
+            self?.flushPendingColumnLayoutPersistence()
         }
+    }
+
+    func flushPendingColumnLayoutPersistence() {
+        layoutPersistTask?.cancel()
+        layoutPersistTask = nil
+        guard let pending = pendingColumnLayoutPersistence else { return }
+        pendingColumnLayoutPersistence = nil
+        persistColumnLayout(pending)
     }
 
     func currentRowSelection(fallbackRow: Int? = nil) -> Set<Int> {
@@ -44,17 +67,23 @@ extension TableViewCoordinator {
     func tableViewSelectionDidChange(_ notification: Notification) {
         guard let tableView = notification.object as? NSTableView else { return }
 
-        let previousSelection = selectedRowIndices
+        /// The table view's own previous selection, not the binding's. The binding now carries
+        /// `currentRowSelection()`, which spans a cell drag's rows, and `resolvedFocus` reads the
+        /// difference between two row selections to find the row the gesture just added.
+        let previousSelection = lastTableViewRowSelection
         let newSelection = Set(tableView.selectedRowIndexes.map { $0 })
-        if newSelection != previousSelection {
-            selectedRowIndices = newSelection
-        }
+        lastTableViewRowSelection = newSelection
 
-        guard let keyTableView = tableView as? KeyHandlingTableView else { return }
+        guard let keyTableView = tableView as? KeyHandlingTableView else {
+            publishRowSelection(rowSelection: newSelection)
+            return
+        }
 
         if !isApplyingProgrammaticRowSelection, !newSelection.isEmpty, !selectionController.isEmpty {
             selectionController.clear()
         }
+        publishRowSelection(rowSelection: newSelection)
+        repaintRowGutter()
 
         let newFocus = resolvedFocus(
             previous: previousSelection,
@@ -85,7 +114,9 @@ extension TableViewCoordinator {
             return (-1, -1)
         }
 
-        let column = existingFocusedColumn >= 1 ? existingFocusedColumn : 1
+        let column = presentsColumn(atTableColumnIndex: existingFocusedColumn)
+            ? existingFocusedColumn
+            : (firstPresentedColumnIndex() ?? -1)
         let added = current.subtracting(previous)
 
         if let tip = added.max() {

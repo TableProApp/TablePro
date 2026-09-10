@@ -2,7 +2,7 @@ import Foundation
 import TableProDatabase
 import TableProModels
 
-extension DuckDBDriver {
+nonisolated extension DuckDBDriver {
     func fetchTables(schema: String?) async throws -> [TableInfo] {
         let schemaName = resolveSchema(schema)
         let query = """

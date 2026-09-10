@@ -36,7 +36,8 @@ struct CloudKitSyncEngineTests {
         try skipIfEntitled()
         let engine = CloudKitSyncEngine()
         let zoneID = await engine.currentZoneID
-        let record = CKRecord(recordType: "Test", recordID: CKRecord.ID(recordName: "test", zoneID: zoneID))
+        let recordID = CKRecord.ID(recordName: SyncRecordType.connection.recordName(for: "test"), zoneID: zoneID)
+        let record = CKRecord(recordType: SyncRecordType.connection.rawValue, recordID: recordID)
         await #expect(throws: SyncError.accountUnavailable) {
             try await engine.push(records: [record], deletions: [])
         }
@@ -46,6 +47,19 @@ struct CloudKitSyncEngineTests {
     func pushEmptyShortCircuits() async throws {
         let engine = CloudKitSyncEngine()
         try await engine.push(records: [], deletions: [])
+    }
+
+    @Test("push short-circuits when every record is withheld by the schema gate")
+    func pushWithheldShortCircuits() async throws {
+        let engine = CloudKitSyncEngine()
+        let zoneID = await engine.currentZoneID
+        let recordID = CKRecord.ID(recordName: "NotInTheSchema_1", zoneID: zoneID)
+        let record = CKRecord(recordType: "NotInTheSchema", recordID: recordID)
+
+        let outcome = try await engine.push(records: [record], deletions: [])
+
+        #expect(outcome.savedRecords.isEmpty)
+        #expect(!outcome.hasFailures)
     }
 
     @Test("pull throws accountUnavailable without iCloud entitlement")

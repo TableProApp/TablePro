@@ -159,7 +159,20 @@ struct SSHProfileEditorView: View {
                         prompt: Text("/path/to/agent.sock")
                     )
                 }
-                Text("Keys are provided by the SSH agent (e.g. 1Password, ssh-agent).")
+                Text(agentSocketOption.explanation)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                LabeledContent(String(localized: "Identity File")) {
+                    HStack {
+                        TextField("", text: $privateKeyPath, prompt: Text("~/.ssh/id_ed25519.pub"))
+                        Button(String(localized: "Browse")) { browseForPrivateKey() }
+                            .controlSize(.small)
+                    }
+                }
+                Text(String(localized: """
+                Offers the agent key matching this public key file first. With IdentitiesOnly yes \
+                in ~/.ssh/config, only that key is offered.
+                """))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else if authMethod == .keyboardInteractive {
@@ -269,7 +282,7 @@ struct SSHProfileEditorView: View {
                             Spacer()
                             Button {
                                 let idToRemove = jumpHost.id
-                                withAnimation { jumpHosts.removeAll { $0.id == idToRemove } }
+                                withMotion { jumpHosts.removeAll { $0.id == idToRemove } }
                             } label: {
                                 Image(systemName: "minus.circle.fill")
                                     .frame(width: 24, height: 24)

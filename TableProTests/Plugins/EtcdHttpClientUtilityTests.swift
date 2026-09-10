@@ -115,14 +115,6 @@ struct EtcdPrefixRangeEndTests {
         #expect(result == "abd")
     }
 
-    @Test("All 0xFF bytes returns null byte")
-    func allMaxBytes() {
-        // 0xFF bytes aren't valid UTF-8; test with lossy decoding to exercise the all-max-byte path
-        let input = String(decoding: [0xFF, 0xFF, 0xFF] as [UInt8], as: UTF8.self)
-        let result = TestEtcdPrefixRange.rangeEnd(for: input)
-        #expect(result == "\0")
-    }
-
     @Test("Prefix ending with high-value byte rolls back correctly")
     func trailingHighBytes() {
         // "a" + 0xFE (high but not max) should increment 0xFE to 0xFF, truncate to "a\xFF"
@@ -146,6 +138,14 @@ private enum TestEtcdBase64 {
     }
 }
 
+/// A copy of `EtcdHttpClient.prefixRangeEnd`, byte for byte. The plugin's own file is not in this
+/// target, so the cases above exercise this rather than the shipped function: a change to one will
+/// not be caught by the other.
+///
+/// The all-0xFF case that used to sit above is gone. `prefixRangeEnd` takes a `String`, and no
+/// Swift `String` has 0xFF in its UTF-8, so the loop's fallthrough is unreachable from this entry
+/// point. The test built its input with `String(decoding:as: UTF8.self)`, which turns those bytes
+/// into replacement characters, `EF BF BD`, and so never reached the path it named.
 private enum TestEtcdPrefixRange {
     static func rangeEnd(for prefix: String) -> String {
         var bytes = Array(prefix.utf8)

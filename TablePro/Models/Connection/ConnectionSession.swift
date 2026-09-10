@@ -15,6 +15,10 @@ struct ConnectionSession: Identifiable {
     var effectiveConnection: DatabaseConnection?
     var driver: DatabaseDriver?
     var status: ConnectionStatus = .disconnected
+    /// Answers whether `driver` can be believed. `status` cannot: it is `.connecting` throughout an
+    /// ordinary database switch on the engines that reconnect to perform one, and `.disconnected` is
+    /// this struct's own default value.
+    var liveness: ConnectionLiveness = .live
     var lastError: String?
 
     /// Live write-protection level. Seeded from the saved default; the toolbar
@@ -22,10 +26,13 @@ struct ConnectionSession: Identifiable {
     var safeModeLevel: SafeModeLevel
 
     // Per-connection state
-    var selectedTables: Set<TableInfo> = []
-    var pendingTruncates: Set<String> = []
-    var pendingDeletes: Set<String> = []
-    var tableOperationOptions: [String: TableOperationOptions] = [:]
+    var selectedTables: Set<DatabaseTreeTableRef> = []
+    /// Queued Truncate and Drop, keyed by the object each one is aimed at rather than by its name.
+    /// The queue outlives a database switch, so a name-keyed entry was resolved at Save time
+    /// against whatever the selected tab pointed at by then.
+    var pendingTruncates: Set<DatabaseTreeTableRef> = []
+    var pendingDeletes: Set<DatabaseTreeTableRef> = []
+    var tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions] = [:]
     /// Where the user is browsing: what the sidebar lists and where a new tab opens.
     /// It is not where an open tab queries. A tab carries its own database and schema,
     /// and resolving an operation through these instead is how a tab ends up running
@@ -63,6 +70,16 @@ struct ConnectionSession: Identifiable {
         lastActiveAt = Date()
     }
 
+    /// What a switcher, a toolbar or anything else that reports connection health should show.
+    ///
+    /// `status` alone says "connecting" for the whole of a reconnect the app has already stopped
+    /// believing in, which is how the connections strip came to paint a failure while the window
+    /// beside it went on showing rows.
+    var reportedStatus: ConnectionStatus {
+        guard case .unreachable(let info) = liveness else { return status }
+        return .error(info?.message ?? String(localized: "The connection stopped responding."))
+    }
+
     /// Check if session is currently connected
     var isConnected: Bool {
         if case .connected = status {
@@ -97,6 +114,7 @@ struct ConnectionSession: Identifiable {
     func isContentViewEquivalent(to other: ConnectionSession) -> Bool {
         id == other.id
             && status == other.status
+            && liveness == other.liveness
             && connection == other.connection
             && pendingTruncates == other.pendingTruncates
             && pendingDeletes == other.pendingDeletes

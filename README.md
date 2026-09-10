@@ -24,6 +24,7 @@
 <p align="center">
   <a href="README.vi.md">Tiếng Việt</a>
   <a href="README.zh.md">简体中文</a>
+  <a href="README.ko.md">한국어</a>
 </p>
 
 <p align="center">
@@ -64,7 +65,8 @@ TablePro is the missing fourth: native, multi-database, and open source.
 |----------|--------|
 | macOS 14+ | Stable |
 | iOS / iPadOS 18+ | Stable |
-| Linux | In development |
+| Linux | Prototype, nothing to install yet |
+| Windows | No |
 
 ## Supported Databases
 
@@ -81,6 +83,7 @@ TablePro is the missing fourth: native, multi-database, and open source.
 | Microsoft SQL Server | Plugin |
 | MongoDB | Plugin |
 | Oracle Database | Plugin |
+| Dameng DM8 | Plugin |
 | DuckDB | Plugin |
 | Beancount | Plugin |
 | Cassandra / ScyllaDB | Plugin |
@@ -114,14 +117,20 @@ Or download from [GitHub Releases](https://github.com/TableProApp/TablePro/relea
 
 ## How to Build
 
-Building TablePro requires macOS 14 or later and Xcode 15 or later.
+Building TablePro requires macOS 14 or later, Xcode 26 or later, and
+[XcodeGen](https://github.com/yonaskolb/XcodeGen).
 
 Run the first-time setup from the repository root:
 
 ```bash
+brew install xcodegen
 scripts/download-libs.sh
-touch Secrets.xcconfig
+scripts/generate-project.sh
 ```
+
+`TablePro.xcodeproj` is generated from `project.yml` and is not in git. Re-run
+`scripts/generate-project.sh` after changing `project.yml` or `Configs/`, or after adding a
+source file.
 
 Build a Debug app without code signing:
 
@@ -137,7 +146,7 @@ xcodebuild \
 
 The app is written to `~/Library/Developer/Xcode/DerivedData/TablePro-*/Build/Products/Debug/TablePro.app`.
 
-To build and run a signed app, configure your personal Apple team, a unique bundle identifier, and the Debug entitlements in Xcode. See [Building with a personal Apple team](CONTRIBUTING.md#building-with-a-personal-apple-team) for the required settings.
+To build and run a signed app, put your Apple team and a unique bundle identifier in `Configs/Secrets.xcconfig`. See [Building with a personal Apple team](CONTRIBUTING.md#building-with-a-personal-apple-team).
 
 ## Documentation
 
@@ -151,15 +160,15 @@ The app is free under AGPLv3. If you use TablePro at work, please buy a [license
 
 Thanks to these amazing people for supporting TablePro:
 
-**[SimpleLocalize](https://simplelocalize.io?ref=tablepro)** · **[CodeRabbit](https://coderabbit.ai?ref=tablepro)** · **[Nimbus](https://getnimbus.io?ref=tablepro)** · **[Visnalize](https://visnalize.com?ref=tablepro)** · **[Dwarves Foundation](https://dwarves.foundation/?ref=tablepro)** · **[Huy TQ](https://github.com/imhuytq)** · **[Xermius](https://xermius.com?ref=tablepro)** · **[Unikorn](https://unikorn.vn?ref=tablepro)**
+**[getapps.cafe](https://getapps.cafe/?ref=SJO7-TgA)** · **[SimpleLocalize](https://simplelocalize.io?ref=tablepro)** · **[CodeRabbit](https://coderabbit.ai?ref=tablepro)** · **[Nimbus](https://getnimbus.io?ref=tablepro)** · **[Visnalize](https://visnalize.com?ref=tablepro)** · **[Dwarves Foundation](https://dwarves.foundation/?ref=tablepro)** · **[Huy TQ](https://github.com/imhuytq)** · **[Xermius](https://xermius.com?ref=tablepro)** · **[Unikorn](https://unikorn.vn?ref=tablepro)**
 
 ## Star History
 
 <a href="https://www.star-history.com/?repos=TableProApp%2FTablePro&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=TableProApp/TablePro&type=date&theme=dark&legend=top-left&sealed_token=z_8BUG_QiaPNiKmaeuB4TbNUzFzi7Sb2UdMZLGWjDEGLHl0NB0DnQJtO3jV-bnBlKg2Oh7WaoeVdnOajcEmwVnmQpjZ0lNXWkCk7oZHwqqopO1FbEvvzZunUK7fR-AGZrVziaegZPsCMvtW6KjFZbdGny5sOj6-pFDtwA1Df-h-4Wcj90Dg1wIUeFKls" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=TableProApp/TablePro&type=date&legend=top-left&sealed_token=z_8BUG_QiaPNiKmaeuB4TbNUzFzi7Sb2UdMZLGWjDEGLHl0NB0DnQJtO3jV-bnBlKg2Oh7WaoeVdnOajcEmwVnmQpjZ0lNXWkCk7oZHwqqopO1FbEvvzZunUK7fR-AGZrVziaegZPsCMvtW6KjFZbdGny5sOj6-pFDtwA1Df-h-4Wcj90Dg1wIUeFKls" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=TableProApp/TablePro&type=date&legend=top-left&sealed_token=z_8BUG_QiaPNiKmaeuB4TbNUzFzi7Sb2UdMZLGWjDEGLHl0NB0DnQJtO3jV-bnBlKg2Oh7WaoeVdnOajcEmwVnmQpjZ0lNXWkCk7oZHwqqopO1FbEvvzZunUK7fR-AGZrVziaegZPsCMvtW6KjFZbdGny5sOj6-pFDtwA1Df-h-4Wcj90Dg1wIUeFKls" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=TableProApp/TablePro&type=date&theme=dark&legend=top-left&sealed_token=rD14Ce48qCR6mXTi0zio-abLAcluGQrDOorFBPL8DAMnUeVFYI8giJJ8arDwTaB8BgpJfk3Y2y5hpIiAu4SBOg6e1_nW8xZ7OrTOFi7ykoGvxk30ycgvzwHW4E-skW0jp5QGttP1QvGgeu5xFrkVbvFa1OFSo_JwWr557R6RNg2hDXdFD7v7nwf_VnR1" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=TableProApp/TablePro&type=date&legend=top-left&sealed_token=rD14Ce48qCR6mXTi0zio-abLAcluGQrDOorFBPL8DAMnUeVFYI8giJJ8arDwTaB8BgpJfk3Y2y5hpIiAu4SBOg6e1_nW8xZ7OrTOFi7ykoGvxk30ycgvzwHW4E-skW0jp5QGttP1QvGgeu5xFrkVbvFa1OFSo_JwWr557R6RNg2hDXdFD7v7nwf_VnR1" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=TableProApp/TablePro&type=date&legend=top-left&sealed_token=rD14Ce48qCR6mXTi0zio-abLAcluGQrDOorFBPL8DAMnUeVFYI8giJJ8arDwTaB8BgpJfk3Y2y5hpIiAu4SBOg6e1_nW8xZ7OrTOFi7ykoGvxk30ycgvzwHW4E-skW0jp5QGttP1QvGgeu5xFrkVbvFa1OFSo_JwWr557R6RNg2hDXdFD7v7nwf_VnR1" />
  </picture>
 </a>
 
@@ -167,4 +176,3 @@ Thanks to these amazing people for supporting TablePro:
 
 This project is licensed under the [GNU Affero General Public License v3.0 (AGPLv3)](LICENSE).
 
-Contributions require signing a Contributor License Agreement (CLA). See [CLA.md](CLA.md) for details.

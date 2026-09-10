@@ -10,7 +10,7 @@ import os
 /// to all document text sent to the server.
 @MainActor
 final class CopilotDocumentSync {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotDocumentSync")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotDocumentSync")
 
     private let documentManager = LSPDocumentManager()
     let preambleBuilder = CopilotPreambleBuilder()

@@ -57,9 +57,19 @@ public final class SyncMetadataStorage: @unchecked Sendable {
     }
 
     public func markDirty(_ id: String, type: SyncRecordType) {
-        var ids = dirtyIds(for: type)
-        ids.insert(id)
-        saveDirtyIds(ids, for: type)
+        markDirty([id], type: type)
+    }
+
+    /// Marks a whole batch in one read-modify-write.
+    ///
+    /// Marking N records one at a time re-read and rewrote the entire id set N times, which is
+    /// quadratic in the number of records and writes to `UserDefaults` on every step. Enabling sync
+    /// on an account with a few hundred saved column layouts froze the app on that alone.
+    public func markDirty(_ ids: [String], type: SyncRecordType) {
+        guard !ids.isEmpty else { return }
+        var current = dirtyIds(for: type)
+        current.formUnion(ids)
+        saveDirtyIds(current, for: type)
     }
 
     public func removeDirty(_ id: String, type: SyncRecordType) {

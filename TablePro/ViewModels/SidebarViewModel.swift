@@ -4,21 +4,22 @@
 //
 
 import Observation
+import os
 import SwiftUI
-import TableProPluginKit
 
 @MainActor @Observable
 final class SidebarViewModel {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "SidebarViewModel")
     private static var registry: [UUID: SidebarViewModel] = [:]
     private static let searchDebounceNanoseconds: UInt64 = 150_000_000
 
     static func shared(
         connectionId: UUID,
         databaseType: DatabaseType,
-        selectedTables: Binding<Set<TableInfo>>,
-        pendingTruncates: Binding<Set<String>>,
-        pendingDeletes: Binding<Set<String>>,
-        tableOperationOptions: Binding<[String: TableOperationOptions]>
+        selectedTables: Binding<Set<DatabaseTreeTableRef>>,
+        pendingTruncates: Binding<Set<DatabaseTreeTableRef>>,
+        pendingDeletes: Binding<Set<DatabaseTreeTableRef>>,
+        tableOperationOptions: Binding<[DatabaseTreeTableRef: TableOperationOptions]>
     ) -> SidebarViewModel {
         if let existing = registry[connectionId] {
             existing.updateBindings(
@@ -46,10 +47,10 @@ final class SidebarViewModel {
     }
 
     func updateBindings(
-        selectedTables: Binding<Set<TableInfo>>,
-        pendingTruncates: Binding<Set<String>>,
-        pendingDeletes: Binding<Set<String>>,
-        tableOperationOptions: Binding<[String: TableOperationOptions]>
+        selectedTables: Binding<Set<DatabaseTreeTableRef>>,
+        pendingTruncates: Binding<Set<DatabaseTreeTableRef>>,
+        pendingDeletes: Binding<Set<DatabaseTreeTableRef>>,
+        tableOperationOptions: Binding<[DatabaseTreeTableRef: TableOperationOptions]>
     ) {
         selectedTablesBinding = selectedTables
         pendingTruncatesBinding = pendingTruncates
@@ -72,18 +73,36 @@ final class SidebarViewModel {
         }
 
         static func defaultValue(for kind: SidebarObjectKind) -> Bool {
-            kind == .table
+            kind.isExpandedByDefault
         }
     }
 
     // MARK: - Published State
 
+    /// The text in the sidebar's filter field, which the field itself writes into
+    /// `SharedSidebarState`. This is a window onto that one value rather than a second copy, so a
+    /// write here is a write there.
     var searchText: String {
         get { sharedState.searchText }
         set {
             let oldValue = sharedState.searchText
             sharedState.searchText = newValue
             scheduleFilterQueryUpdate(oldValue: oldValue)
+        }
+    }
+
+    /// Watches the shared state directly instead of being told by a view's `onChange`. The relay
+    /// meant a keystroke reached the filter only while a SwiftUI body was evaluating, and the view
+    /// that carried it also re-seeded the debounce on every rebuild.
+    private func observeSearchText() {
+        withObservationTracking { [weak self] in
+            _ = self?.sharedState.searchText
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.scheduleFilterQueryUpdate(oldValue: self.filterQuery)
+                self.observeSearchText()
+            }
         }
     }
 
@@ -98,7 +117,7 @@ final class SidebarViewModel {
     }
     var isRedisKeysExpanded: Bool {
         didSet {
-            UserDefaults.standard.set(
+            AppStorageEnvironment.shared.defaults.set(
                 isRedisKeysExpanded,
                 forKey: SidebarPersistenceKey.redisKeysExpanded(connectionId: connectionId)
             )
@@ -106,7 +125,7 @@ final class SidebarViewModel {
     }
     var isRecentsExpanded: Bool {
         didSet {
-            UserDefaults.standard.set(
+            AppStorageEnvironment.shared.defaults.set(
                 isRecentsExpanded,
                 forKey: SidebarPersistenceKey.recentsExpanded(connectionId: connectionId)
             )
@@ -118,14 +137,14 @@ final class SidebarViewModel {
     }
     var showOperationDialog = false
     var pendingOperationType: TableOperationType?
-    var pendingOperationTables: [String] = []
+    var pendingOperationTables: [DatabaseTreeTableRef] = []
 
     // MARK: - Binding Storage
 
-    private var selectedTablesBinding: Binding<Set<TableInfo>>
-    private var pendingTruncatesBinding: Binding<Set<String>>
-    private var pendingDeletesBinding: Binding<Set<String>>
-    private var tableOperationOptionsBinding: Binding<[String: TableOperationOptions]>
+    private var selectedTablesBinding: Binding<Set<DatabaseTreeTableRef>>
+    private var pendingTruncatesBinding: Binding<Set<DatabaseTreeTableRef>>
+    private var pendingDeletesBinding: Binding<Set<DatabaseTreeTableRef>>
+    private var tableOperationOptionsBinding: Binding<[DatabaseTreeTableRef: TableOperationOptions]>
     let databaseType: DatabaseType
 
     // MARK: - Dependencies
@@ -138,22 +157,22 @@ final class SidebarViewModel {
 
     // MARK: - Convenience Accessors
 
-    var selectedTables: Set<TableInfo> {
+    var selectedTables: Set<DatabaseTreeTableRef> {
         get { selectedTablesBinding.wrappedValue }
         set { selectedTablesBinding.wrappedValue = newValue }
     }
 
-    var pendingTruncates: Set<String> {
+    var pendingTruncates: Set<DatabaseTreeTableRef> {
         get { pendingTruncatesBinding.wrappedValue }
         set { pendingTruncatesBinding.wrappedValue = newValue }
     }
 
-    var pendingDeletes: Set<String> {
+    var pendingDeletes: Set<DatabaseTreeTableRef> {
         get { pendingDeletesBinding.wrappedValue }
         set { pendingDeletesBinding.wrappedValue = newValue }
     }
 
-    var tableOperationOptions: [String: TableOperationOptions] {
+    var tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions] {
         get { tableOperationOptionsBinding.wrappedValue }
         set { tableOperationOptionsBinding.wrappedValue = newValue }
     }
@@ -166,10 +185,10 @@ final class SidebarViewModel {
     // MARK: - Initialization
 
     init(
-        selectedTables: Binding<Set<TableInfo>>,
-        pendingTruncates: Binding<Set<String>>,
-        pendingDeletes: Binding<Set<String>>,
-        tableOperationOptions: Binding<[String: TableOperationOptions]>,
+        selectedTables: Binding<Set<DatabaseTreeTableRef>>,
+        pendingTruncates: Binding<Set<DatabaseTreeTableRef>>,
+        pendingDeletes: Binding<Set<DatabaseTreeTableRef>>,
+        tableOperationOptions: Binding<[DatabaseTreeTableRef: TableOperationOptions]>,
         databaseType: DatabaseType,
         connectionId: UUID
     ) {
@@ -190,6 +209,10 @@ final class SidebarViewModel {
             perConnectionKey: SidebarPersistenceKey.recentsExpanded(connectionId: connectionId),
             defaultValue: true
         )
+        /// Seeded once, at creation, from whatever the field already holds. Doing it from a view's
+        /// initializer instead ran on every view-graph pass.
+        self.filterQuery = self.sharedState.searchText
+        observeSearchText()
     }
 
     private static func loadInitialExpansion(connectionId: UUID) -> ExpansionState {
@@ -201,7 +224,7 @@ final class SidebarViewModel {
     }
 
     private static func loadKindExpansion(connectionId: UUID, kind: SidebarObjectKind) -> Bool {
-        let defaults = UserDefaults.standard
+        let defaults = AppStorageEnvironment.shared.defaults
         let perKindKey = SidebarPersistenceKey.expanded(connectionId: connectionId, kind: kind)
         if defaults.object(forKey: perKindKey) != nil {
             return defaults.bool(forKey: perKindKey)
@@ -227,7 +250,7 @@ final class SidebarViewModel {
         legacyKey: String? = nil,
         defaultValue: Bool
     ) -> Bool {
-        let defaults = UserDefaults.standard
+        let defaults = AppStorageEnvironment.shared.defaults
         if defaults.object(forKey: perConnectionKey) != nil {
             return defaults.bool(forKey: perConnectionKey)
         }
@@ -240,7 +263,7 @@ final class SidebarViewModel {
     }
 
     private func persistExpansion(oldValue: ExpansionState) {
-        let defaults = UserDefaults.standard
+        let defaults = AppStorageEnvironment.shared.defaults
         for kind in SidebarObjectKind.allCases where oldValue[kind] != expanded[kind] {
             defaults.set(
                 expanded[kind],
@@ -249,64 +272,55 @@ final class SidebarViewModel {
         }
     }
 
-    // MARK: - Capability Gating
-
-    func capabilities(for connectionId: UUID) -> PluginCapabilities {
-        guard let adapter = DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter else {
-            return []
-        }
-        return adapter.schemaPluginDriver.capabilities
-    }
-
-    func sectionShouldRender(
-        kind: SidebarObjectKind,
-        itemCount: Int,
-        capabilities: PluginCapabilities
-    ) -> Bool {
-        if kind == .table { return true }
-        if let flag = kind.capabilityFlag, !capabilities.contains(flag) { return false }
-        if itemCount > 0 { return true }
-        return false
-    }
-
     // MARK: - Batch Operations
 
-    func batchToggleTruncate(tableNames: [String]? = nil) {
-        let tablesToToggle = tableNames ?? (selectedTables.isEmpty ? [] : Array(selectedTables.map { $0.name }))
-        guard !tablesToToggle.isEmpty else { return }
-
-        let allAlreadyPending = tablesToToggle.allSatisfy { pendingTruncates.contains($0) }
-        if allAlreadyPending {
-            var updated = pendingTruncates
-            for name in tablesToToggle {
-                updated.remove(name)
-                tableOperationOptions.removeValue(forKey: name)
-            }
-            pendingTruncates = updated
-        } else {
-            pendingOperationType = .truncate
-            pendingOperationTables = tablesToToggle
-            showOperationDialog = true
+    /// A queued Truncate or Drop carries the row it was raised from, not that row's name.
+    /// The queue lives on the connection and outlives a database switch, so a name-keyed entry
+    /// was resolved at Save time against whatever the tab in front pointed at by then.
+    func batchToggleTruncate(refs: [DatabaseTreeTableRef]? = nil) {
+        let targets = refs ?? Array(selectedTables)
+        guard !targets.isEmpty else { return }
+        /// The last gate before the queue, refusing the whole batch the way both menus now do
+        /// rather than truncating the part of a selection that happens to qualify.
+        guard TableOperationEligibility.canTruncate(targets) else {
+            Self.logger.warning("Refused to stage a truncate against an object that holds no rows of its own")
+            return
         }
+
+        guard !targets.allSatisfy({ pendingTruncates.contains($0) }) else {
+            unstage(targets, from: &pendingTruncatesBinding.wrappedValue)
+            return
+        }
+        pendingOperationType = .truncate
+        pendingOperationTables = targets
+        showOperationDialog = true
     }
 
-    func batchToggleDelete(tableNames: [String]? = nil) {
-        let tablesToToggle = tableNames ?? (selectedTables.isEmpty ? [] : Array(selectedTables.map { $0.name }))
-        guard !tablesToToggle.isEmpty else { return }
+    func batchToggleDelete(refs: [DatabaseTreeTableRef]? = nil) {
+        let targets = refs ?? Array(selectedTables)
+        guard !targets.isEmpty else { return }
 
-        let allAlreadyPending = tablesToToggle.allSatisfy { pendingDeletes.contains($0) }
-        if allAlreadyPending {
-            var updated = pendingDeletes
-            for name in tablesToToggle {
-                updated.remove(name)
-                tableOperationOptions.removeValue(forKey: name)
-            }
-            pendingDeletes = updated
-        } else {
-            pendingOperationType = .drop
-            pendingOperationTables = tablesToToggle
-            showOperationDialog = true
+        guard !targets.allSatisfy({ pendingDeletes.contains($0) }) else {
+            unstage(targets, from: &pendingDeletesBinding.wrappedValue)
+            return
         }
+        pendingOperationType = .drop
+        pendingOperationTables = targets
+        showOperationDialog = true
+    }
+
+    private func unstage(_ targets: [DatabaseTreeTableRef], from queue: inout Set<DatabaseTreeTableRef>) {
+        var options = tableOperationOptions
+        for ref in targets {
+            queue.remove(ref)
+            options.removeValue(forKey: ref)
+        }
+        tableOperationOptions = options
+    }
+
+    func cancelPendingOperation() {
+        pendingOperationType = nil
+        pendingOperationTables = []
     }
 
     func confirmOperation(options: TableOperationOptions) {
@@ -316,15 +330,15 @@ final class SidebarViewModel {
         var updatedDeletes = pendingDeletes
         var updatedOptions = tableOperationOptions
 
-        for tableName in pendingOperationTables {
+        for ref in pendingOperationTables {
             if operationType == .truncate {
-                updatedDeletes.remove(tableName)
-                updatedTruncates.insert(tableName)
+                updatedDeletes.remove(ref)
+                updatedTruncates.insert(ref)
             } else {
-                updatedTruncates.remove(tableName)
-                updatedDeletes.insert(tableName)
+                updatedTruncates.remove(ref)
+                updatedDeletes.insert(ref)
             }
-            updatedOptions[tableName] = options
+            updatedOptions[ref] = options
         }
 
         pendingTruncates = updatedTruncates
@@ -339,7 +353,7 @@ final class SidebarViewModel {
 
     func copySelectedTableNames() {
         guard !selectedTables.isEmpty else { return }
-        let names = selectedTables.map { $0.name }.sorted()
+        let names = selectedTables.map { $0.table.name }.sorted()
         ClipboardService.shared.writeText(names.joined(separator: ","))
     }
 
@@ -353,13 +367,17 @@ final class SidebarViewModel {
 
     @ObservationIgnored private var cachedFilteredRoutines: [SidebarObjectKind: [RoutineInfo]] = [:]
     @ObservationIgnored private var cachedFilteredRoutinesFingerprint: (count: Int, generation: Int, query: String)?
+    @ObservationIgnored private var cachedFilteredTriggers: [TriggerInfo] = []
+    @ObservationIgnored private var cachedFilteredTriggersFingerprint: (count: Int, generation: Int, query: String)?
+    @ObservationIgnored private var cachedFilteredUserTypes: [UserDefinedTypeInfo] = []
+    @ObservationIgnored private var cachedFilteredUserTypesFingerprint: (count: Int, generation: Int, query: String)?
 
     private var schemaGeneration: Int {
         SchemaService.shared.generationToken(for: connectionId)
     }
 
     func tables(of kind: SidebarObjectKind, from tables: [TableInfo]) -> [TableInfo] {
-        guard !kind.isRoutine else { return [] }
+        guard kind.category == .table else { return [] }
         let fingerprint = (count: tables.count, generation: schemaGeneration)
         if cachedKindFingerprint?.count != fingerprint.count
             || cachedKindFingerprint?.generation != fingerprint.generation {
@@ -409,6 +427,30 @@ final class SidebarViewModel {
         return cachedFilteredRoutines[kind] ?? []
     }
 
+    func filteredTriggers(from triggers: [TriggerInfo]) -> [TriggerInfo] {
+        let query = filterQuery
+        let fingerprint = (count: triggers.count, generation: schemaGeneration, query: query)
+        if cachedFilteredTriggersFingerprint?.count != fingerprint.count
+            || cachedFilteredTriggersFingerprint?.generation != fingerprint.generation
+            || cachedFilteredTriggersFingerprint?.query != fingerprint.query {
+            cachedFilteredTriggers = DatabaseTreeFilter.filteredTriggers(triggers, searchText: query)
+            cachedFilteredTriggersFingerprint = fingerprint
+        }
+        return cachedFilteredTriggers
+    }
+
+    func filteredUserTypes(from types: [UserDefinedTypeInfo]) -> [UserDefinedTypeInfo] {
+        let query = filterQuery
+        let fingerprint = (count: types.count, generation: schemaGeneration, query: query)
+        if cachedFilteredUserTypesFingerprint?.count != fingerprint.count
+            || cachedFilteredUserTypesFingerprint?.generation != fingerprint.generation
+            || cachedFilteredUserTypesFingerprint?.query != fingerprint.query {
+            cachedFilteredUserTypes = DatabaseTreeFilter.filteredUserTypes(types, searchText: query)
+            cachedFilteredUserTypesFingerprint = fingerprint
+        }
+        return cachedFilteredUserTypes
+    }
+
     func effectiveExpanded(kind: SidebarObjectKind, hasMatches: Bool) -> Bool {
         if !filterQuery.isEmpty && hasMatches { return true }
         return expanded[kind]
@@ -418,8 +460,12 @@ final class SidebarViewModel {
         SidebarNameFilter.ranked(tables, query: query, name: { $0.name })
     }
 
+    /// Goes through DatabaseTreeFilter so the flat root and the tree share one dedup owner. The
+    /// flat root used to rank without deduplicating, so a driver that returned one routine twice
+    /// handed NSOutlineView the same node object at several row indices and selection snapped back
+    /// to the first of them.
     private func applyRoutineQuery(_ query: String, to routines: [RoutineInfo]) -> [RoutineInfo] {
-        SidebarNameFilter.ranked(routines, query: query, name: { $0.name })
+        DatabaseTreeFilter.filteredRoutines(routines, searchText: query)
     }
 
     private func rebuildKindBuckets(from tables: [TableInfo]) {
@@ -428,19 +474,10 @@ final class SidebarViewModel {
             buckets[kind] = []
         }
         for table in tables {
-            let kind = Self.sidebarObjectKind(for: table.type)
+            let kind = SidebarObjectKind.resolve(tableType: table.type)
             buckets[kind, default: []].append(table)
         }
         cachedKindBuckets = buckets
-    }
-
-    private static func sidebarObjectKind(for tableType: TableInfo.TableType) -> SidebarObjectKind {
-        switch tableType.rawValue {
-        case "VIEW":               return .view
-        case "MATERIALIZED VIEW":  return .materializedView
-        case "FOREIGN TABLE":      return .foreignTable
-        default:                   return .table
-        }
     }
 
     private func invalidateFilterCaches() {
@@ -450,7 +487,11 @@ final class SidebarViewModel {
         cachedFilteredRoutinesFingerprint = nil
     }
 
+    /// Clearing the field, or typing the first character into an empty one, changes what the list
+    /// shows wholesale, so it applies at once. Editing an existing query only narrows it, which is
+    /// worth waiting a moment for.
     private func scheduleFilterQueryUpdate(oldValue: String) {
+        guard filterQuery != searchText else { return }
         if searchText.isEmpty || oldValue.isEmpty {
             filterDebounceTask?.cancel()
             filterDebounceTask = nil

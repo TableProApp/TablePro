@@ -5,31 +5,19 @@
 
 import SwiftUI
 
-/// A spinner that only appears once an operation outlasts `delay`. AppKit and SwiftUI
-/// ship no delayed progress indicator, so short refreshes would otherwise flash a
-/// spinner that resolves before the user can read it.
+/// A small spinner that only appears once an operation outlasts `LoadingRevealPolicy.grace`, and
+/// then stays long enough to be read. AppKit and SwiftUI ship no delayed progress indicator.
+///
+/// It used to carry the grace and not the dwell, which left it able to flash: work that ended
+/// just past the grace showed a spinner for the few milliseconds between the two.
 struct DelayedProgressIndicator: View {
     let isActive: Bool
-    var delay: Duration = .milliseconds(500)
-
-    @State private var isVisible = false
 
     var body: some View {
-        Group {
-            if isVisible {
-                ProgressView()
-                    .progressViewStyle(.circular)
-                    .controlSize(.small)
-            }
-        }
-        .task(id: isActive) {
-            guard isActive else {
-                isVisible = false
-                return
-            }
-            try? await Task.sleep(for: delay)
-            guard !Task.isCancelled else { return }
-            isVisible = true
+        LoadingReveal(isActive: isActive) {
+            ProgressView()
+                .progressViewStyle(.circular)
+                .controlSize(.small)
         }
     }
 }

@@ -38,10 +38,49 @@ struct StructureColumnFieldRegistrationTests {
         #expect(onUpdateIndex == defaultIndex + 1)
     }
 
+    /// Neither engine declared its own list, so both inherited the `DriverPlugin` fallback and
+    /// showed a Default and an Auto Inc cell for a grammar that has neither. ScyllaDB is registered
+    /// as its own type id with its own curated snapshot, so fixing one does not fix the other.
+    @Test(
+        "CQL engines offer neither a default nor auto increment",
+        arguments: [DatabaseType.cassandra, .scylladb]
+    )
+    func cqlEnginesOfferNoDefault(databaseType: DatabaseType) {
+        let fields = PluginManager.shared.structureColumnFields(for: databaseType)
+        #expect(!fields.contains(.defaultValue), "\(databaseType.rawValue)")
+        #expect(!fields.contains(.autoIncrement), "\(databaseType.rawValue)")
+    }
+
     @Test("Engines that do not support the attribute never offer it")
     func onUpdateIsEngineScoped() {
         for databaseType in [DatabaseType.postgresql, .sqlite, .clickhouse] {
             #expect(!PluginManager.shared.structureColumnFields(for: databaseType).contains(.onUpdate))
+        }
+    }
+
+    /// Adding the generated-column pair to the Postgres family replaced `.autoIncrement` instead
+    /// of joining it (#2557), so a `SERIAL` column lost its Auto Increment flag in the structure
+    /// editor while `PostgreSQLPluginDriver` went on generating the DDL for one. Redshift is in
+    /// the list as the control: it never gained the generated fields and never lost this one.
+    @Test(
+        "The Postgres family offers auto increment beside the generated fields",
+        arguments: [DatabaseType.postgresql, .cockroachdb, .pglite, .redshift]
+    )
+    func autoIncrementSurvivesTheGeneratedFields(databaseType: DatabaseType) {
+        #expect(PluginManager.shared.structureColumnFields(for: databaseType).contains(.autoIncrement))
+    }
+
+    /// The columns tab reads its dropdown options by looking each boolean field up in the ordered
+    /// list, so a field the engine stops declaring silently loses its editor rather than failing.
+    @Test(
+        "Every boolean field an engine declares resolves to a column",
+        arguments: [DatabaseType.postgresql, .mysql, .sqlite, .cockroachdb, .pglite]
+    )
+    func declaredBooleanFieldsResolve(databaseType: DatabaseType) {
+        let ordered = StructureRowProvider.orderedFields(for: databaseType)
+        let declared = Set(PluginManager.shared.structureColumnFields(for: databaseType))
+        for field in [StructureColumnField.nullable, .autoIncrement, .onUpdate] where declared.contains(field) {
+            #expect(ordered.contains(field), "\(databaseType.rawValue) declares \(field) but cannot order it")
         }
     }
 

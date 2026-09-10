@@ -44,7 +44,7 @@ extension TextViewController {
 
     /// Updates all relevant content insets including the find panel, scroll view, minimap and gutter position.
     package func updateContentInsets() {
-        updateTextInsets()
+        updateFloatingSubviewInsets()
 
         scrollView.contentView.postsBoundsChangedNotifications = true
         if let contentInsets = configuration.layout.contentInsets {
@@ -82,14 +82,23 @@ extension TextViewController {
         // Update scrollview tiling
         scrollView.reflectScrolledClipView(scrollView.contentView)
         minimapView.scrollView.reflectScrolledClipView(minimapView.scrollView.contentView)
+
+        // The host's insets change the width the text has to fill, and a change on the trailing side alone reaches the
+        // text view through no other route.
+        textView.updateFrameIfNeeded()
     }
 
-    /// Updates the text view's text insets. See ``textViewInsets`` for calculation.
-    func updateTextInsets() {
+    /// Reserves the gutter's and the minimap's widths on the scroll view. See ``floatingSubviewInsets``.
+    ///
+    /// The reservation changes the width the text has to fill, which the text view does not hear about on its own when
+    /// only the trailing side moves, so its frame is brought up to date here.
+    func updateFloatingSubviewInsets() {
         // Allow this method to be called before ``loadView()``
-        guard textView != nil, minimapView != nil else { return }
-        if textView.textInsets != textViewInsets {
-            textView.textInsets = textViewInsets
-        }
+        guard scrollView != nil, textView != nil, gutterView != nil, minimapView != nil else { return }
+        let insets = floatingSubviewInsets
+        guard scrollView.floatingSubviewInsets != insets else { return }
+        scrollView.floatingSubviewInsets = insets
+        textView.updateFrameIfNeeded()
+        reformattingGuideView?.updatePosition(in: self)
     }
 }

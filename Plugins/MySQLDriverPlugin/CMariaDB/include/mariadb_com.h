@@ -170,7 +170,7 @@ enum enum_server_command
 #define CLIENT_SSL_VERIFY_SERVER_CERT_OBSOLETE CLIENT_SSL_VERIFY_SERVER_CERT
 #define CLIENT_REMEMBER_OPTIONS  (1UL << 31)
 
-/* MariaDB-specific capabilities */
+/* MariaDB specific capabilities */
 #define MARIADB_CLIENT_FLAGS 0xFFFFFFFF00000000ULL
 #define MARIADB_CLIENT_PROGRESS (1ULL << 32)
 #define MARIADB_CLIENT_RESERVED_1 (1ULL << 33) /* Former COM_MULTI, don't use */
@@ -419,7 +419,6 @@ void	ma_net_end(NET *net);
 void	ma_net_clear(NET *net);
 int	ma_net_flush(NET *net);
 int	ma_net_write(NET *net,const unsigned char *packet, size_t len);
-int ma_net_write_buff(NET *net, const char *packet, size_t len);
 int	ma_net_write_command(NET *net,unsigned char command,const char *packet,
 			  size_t len, my_bool disable_flush);
 int	ma_net_real_write(NET *net,const char *packet, size_t len);
@@ -429,28 +428,6 @@ struct rand_struct {
   unsigned long seed1,seed2,max_value;
   double max_value_dbl;
 };
-
-  /* The following is for user defined functions */
-
-typedef struct st_udf_args
-{
-  unsigned int arg_count;		/* Number of arguments */
-  enum Item_result *arg_type;		/* Pointer to item_results */
-  char **args;				/* Pointer to argument */
-  unsigned long *lengths;		/* Length of string arguments */
-  char *maybe_null;			/* Set to 1 for all maybe_null args */
-} UDF_ARGS;
-
-  /* This holds information about the result */
-
-typedef struct st_udf_init
-{
-  my_bool maybe_null;			/* 1 if function can return NULL */
-  unsigned int decimals;		/* for real functions */
-  unsigned int max_length;		/* For string functions */
-  char	  *ptr;				/* free pointer for function data */
-  my_bool const_item;			/* 0 if result is independent of arguments */
-} UDF_INIT;
 
 /* Connection types */
 #define MARIADB_CONNECTION_UNIXSOCKET   0

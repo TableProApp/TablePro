@@ -102,8 +102,15 @@ enum InspectorColumnMenuBuilder {
 
     private static func actionItem(title: String, action: Selector, column: Int) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-        item.tag = column
+        item.representedObject = column
         item.target = nil
         return item
+    }
+
+    /// A menu-bar item carries no column, so it has to resolve to nil and let the caller fall
+    /// back to the selection. Reading `tag` could not express that: every `NSMenuItem` has one,
+    /// and its default of 0 read as "column 0".
+    static func clickedColumn(from sender: Any?) -> Int? {
+        (sender as? NSMenuItem)?.representedObject as? Int
     }
 }

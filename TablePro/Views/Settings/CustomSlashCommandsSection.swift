@@ -108,6 +108,8 @@ struct CustomSlashCommandsSection: View {
                 Image(systemName: "trash")
             }
             .controlSize(.small)
+            .accessibilityLabel(String(format: String(localized: "Delete /%@"), command.name))
+            .help(String(localized: "Delete"))
         }
     }
 }

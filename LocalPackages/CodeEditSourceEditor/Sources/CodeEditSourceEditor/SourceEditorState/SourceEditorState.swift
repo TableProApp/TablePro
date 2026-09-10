@@ -13,18 +13,21 @@ public struct SourceEditorState: Equatable, Hashable, Sendable, Codable {
     public var findText: String?
     public var replaceText: String?
     public var findPanelVisible: Bool?
+    public var collapsedFoldRanges: [Range<Int>]?
 
     public init(
         cursorPositions: [CursorPosition]? = nil,
         scrollPosition: CGPoint? = nil,
         findText: String? = nil,
         replaceText: String? = nil,
-        findPanelVisible: Bool? = nil
+        findPanelVisible: Bool? = nil,
+        collapsedFoldRanges: [Range<Int>]? = nil
     ) {
         self.cursorPositions = cursorPositions
         self.scrollPosition = scrollPosition
         self.findText = findText
         self.replaceText = replaceText
         self.findPanelVisible = findPanelVisible
+        self.collapsedFoldRanges = collapsedFoldRanges
     }
 }

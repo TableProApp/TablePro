@@ -20,7 +20,8 @@ extension CreateTableGridDelegate: InspectorRowSource {
                 databaseType: connection.type,
                 additionalFields: [.primaryKey]
             ),
-            canEditSchema: true
+            canEditSchema: true,
+            rowOptions: { dataGridMenuOptions(forRow: displayRow, columnIndex: $0) }
         )
     }
 

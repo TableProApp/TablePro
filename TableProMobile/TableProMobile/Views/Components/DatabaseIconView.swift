@@ -34,6 +34,7 @@ struct DatabaseIconView: View {
         case .mongodb: return .green
         case .clickhouse: return .yellow
         case .mssql: return .indigo
+        case .oracle: return .red
         default: return .gray
         }
     }

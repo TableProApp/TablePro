@@ -16,7 +16,7 @@ enum RedisOperation {
     case set(key: String, value: Data, options: RedisSetOptions?)
     case del(keys: [String])
     case keys(pattern: String)
-    case scan(cursor: Int, pattern: String?, count: Int?)
+    case scan(cursor: String, pattern: String?, count: Int?)
     case keyBrowse(pattern: String?, typeScope: String?, limit: Int, offset: Int)
     case keyTree(pattern: String?, limit: Int)
     case type(key: String)
@@ -79,6 +79,26 @@ struct RedisSetOptions {
     var pxat: Int?
     var nx: Bool = false
     var xx: Bool = false
+
+    static let valueOptions: Set<String> = ["EX", "PX", "EXAT", "PXAT"]
+    static let flagOptions: Set<String> = ["NX", "XX"]
+
+    /// The driver rebuilds SET from the parsed options alone, so an option this type cannot carry
+    /// would be dropped on the way to the server: `SET k v KEEPTTL` would clear the very TTL it
+    /// asks to keep, and report OK. Anything unrecognised is sent verbatim instead.
+    static func modelsEveryOption(in tokens: [RedisArgument]) -> Bool {
+        var index = 0
+        while index < tokens.count {
+            let token = tokens[index].text.uppercased()
+            if valueOptions.contains(token) {
+                index += 2
+                continue
+            }
+            guard flagOptions.contains(token) else { return false }
+            index += 1
+        }
+        return true
+    }
 }
 
 /// Error from parsing Redis CLI syntax
@@ -239,7 +259,11 @@ struct RedisCommandParser {
 
         case "SET":
             guard args.count >= 2 else { throw RedisParseError.missingArgument("SET requires key and value") }
-            let options = try parseSetOptions(Array(args.dropFirst(2)))
+            let optionTokens = Array(args.dropFirst(2))
+            guard RedisSetOptions.modelsEveryOption(in: optionTokens) else {
+                return .command(args: tokens)
+            }
+            let options = try parseSetOptions(optionTokens)
             return .set(key: args[0].text, value: args[1].bytes, options: options)
 
         case "DEL":
@@ -251,8 +275,8 @@ struct RedisCommandParser {
             return .keys(pattern: args[0].text)
 
         case "SCAN":
-            guard args.count >= 1, let cursor = Int(args[0].text) else {
-                throw RedisParseError.missingArgument("SCAN requires a cursor (integer)")
+            guard let cursor = args.first?.text, !cursor.isEmpty else {
+                throw RedisParseError.missingArgument("SCAN requires a cursor")
             }
             let (pattern, count) = try parseScanOptions(Array(args.dropFirst()))
             return .scan(cursor: cursor, pattern: pattern, count: count)

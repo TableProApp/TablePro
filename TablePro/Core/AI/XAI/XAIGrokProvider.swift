@@ -33,8 +33,8 @@ final class XAIGrokProvider: ChatTransport {
         )
     }
 
-    func fetchAvailableModels() async throws -> [String] {
-        XAI.subscriptionModelIDs
+    func fetchAvailableModels() async throws -> [AIModelInfo] {
+        XAI.subscriptionModelIDs.map { AIModelInfo(id: $0) }
     }
 
     func testConnection() async throws -> Bool {

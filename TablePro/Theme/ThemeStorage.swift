@@ -12,12 +12,8 @@ import os
 internal struct ThemeStorage {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeStorage")
 
-    private static let userThemesDirectory: URL = {
-        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            return FileManager.default.temporaryDirectory.appendingPathComponent("TablePro/Themes", isDirectory: true)
-        }
-        return appSupport.appendingPathComponent("TablePro/Themes", isDirectory: true)
-    }()
+    private static let userThemesDirectory: URL =
+        AppStorageEnvironment.shared.applicationSupportRoot.appendingPathComponent("TablePro/Themes", isDirectory: true)
 
     private static let bundledThemesDirectory: URL? = {
         Bundle.main.resourceURL

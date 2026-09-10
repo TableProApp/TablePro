@@ -9,7 +9,7 @@ import os
 @Observable
 @MainActor
 final class CloudSQLProxyPaneViewModel {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "CloudSQLProxyPane")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CloudSQLProxyPane")
 
     var state = CloudSQLProxyFormState()
 
@@ -41,14 +41,6 @@ final class CloudSQLProxyPaneViewModel {
             issues.append(String(localized: "A service account key is required"))
         }
 
-        for other in coordinator?.value?.otherEnabledTunnels(excluding: .cloudSQLProxy) ?? [] {
-            issues.append(String(
-                format: String(localized: "Cannot use %@ and %@ at the same time"),
-                other.kind.displayName,
-                ConnectionTunnelKind.cloudSQLProxy.displayName
-            ))
-        }
-
         return issues
     }
 
@@ -73,7 +65,9 @@ final class CloudSQLProxyPaneViewModel {
             if let found {
                 resolvedBinaryPath = found
             } else {
-                resolvedBinaryPath = await CloudSQLProxyBinaryManager.shared.cachedBinaryPath
+                resolvedBinaryPath = await CloudSQLProxyBinaryManager.shared.isInstalled
+                    ? CloudSQLProxyBinaryManager.shared.binaryExecutablePath
+                    : nil
             }
             downloadedVersion = await CloudSQLProxyBinaryManager.shared.installedVersion()
             didResolveBinary = true

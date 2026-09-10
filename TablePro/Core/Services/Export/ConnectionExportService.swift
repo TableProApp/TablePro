@@ -29,7 +29,7 @@ struct PreparedConnectionImport {
 
 @MainActor
 enum ConnectionExportService {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionExportService")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionExportService")
     private static let currentFormatVersion = 1
 
     // MARK: - Export
@@ -111,12 +111,9 @@ enum ConnectionExportService {
             // Filter secure fields from additionalFields
             // If plugin metadata is unavailable, omit all fields to avoid leaking secrets
             let additionalFields: [String: String]?
-            if let snapshot = PluginMetadataRegistry.shared.snapshot(forTypeId: connection.type.pluginTypeId) {
+            if PluginMetadataRegistry.shared.snapshot(for: connection.type) != nil {
                 var filteredFields = connection.additionalFields
-                let secureFieldIds = snapshot.connection.additionalConnectionFields
-                    .filter(\.isSecure)
-                    .map(\.id)
-                for fieldId in secureFieldIds {
+                for fieldId in PluginManager.shared.secureConnectionFieldIds(for: connection.type) {
                     filteredFields.removeValue(forKey: fieldId)
                 }
                 additionalFields = filteredFields.isEmpty ? nil : filteredFields
@@ -143,7 +140,8 @@ enum ConnectionExportService {
                 additionalFields: additionalFields,
                 redisDatabase: connection.redisDatabase,
                 startupCommands: connection.startupCommands,
-                localOnly: connection.localOnly ? true : nil
+                localOnly: connection.localOnly ? true : nil,
+                tunnelCommand: connection.resolvedTunnelCommandConfig.map(ExportableTunnelCommand.init)
             )
 
             exportableConnections.append(exportable)
@@ -221,10 +219,8 @@ enum ConnectionExportService {
 
             // Collect plugin-specific secure fields
             var pluginSecureFields: [String: String]?
-            if let snapshot = PluginMetadataRegistry.shared.snapshot(forTypeId: connection.type.pluginTypeId) {
-                let secureFieldIds = snapshot.connection.additionalConnectionFields
-                    .filter(\.isSecure)
-                    .map(\.id)
+            if PluginMetadataRegistry.shared.snapshot(for: connection.type) != nil {
+                let secureFieldIds = PluginManager.shared.secureConnectionFieldIds(for: connection.type)
                 if !secureFieldIds.isEmpty {
                     var fields: [String: String] = [:]
                     for fieldId in secureFieldIds {
@@ -371,40 +367,45 @@ enum ConnectionExportService {
     @discardableResult
     static func performImport(
         _ preview: ConnectionImportPreview,
-        resolutions: [UUID: ImportResolution]
+        resolutions: [UUID: ImportResolution],
+        keepTunnelCommands: Bool = false
     ) -> ImportResult {
         if let envelopeGroups = preview.envelope.groups {
-            let existingGroups = GroupStorage.shared.loadGroups()
             for exportGroup in envelopeGroups {
-                let alreadyExists = existingGroups.contains {
+                /// Re-read per group rather than once for the envelope: two groups sharing a name
+                /// in one file both passed a snapshot taken before either was added.
+                let alreadyExists = GroupStorage.shared.loadGroups().contains {
                     $0.name.lowercased() == exportGroup.name.lowercased()
                 }
-                if !alreadyExists {
-                    let color = exportGroup.color.flatMap { ConnectionColor(rawValue: $0) } ?? .none
-                    let group = ConnectionGroup(name: exportGroup.name, color: color)
-                    GroupStorage.shared.addGroup(group)
+                guard !alreadyExists else { continue }
+                let color = exportGroup.color.flatMap { ConnectionColor(rawValue: $0) } ?? .none
+                let group = ConnectionGroup(name: exportGroup.name, color: color)
+                do {
+                    try GroupStorage.shared.addGroup(group)
+                } catch {
+                    Self.logger.error("Skipped importing group: \(error.localizedDescription, privacy: .public)")
                 }
             }
         }
 
         if let envelopeTags = preview.envelope.tags {
-            let existingTags = TagStorage.shared.loadTags()
             for exportTag in envelopeTags {
-                let alreadyExists = existingTags.contains {
+                /// Re-read per tag rather than once for the envelope: two tags sharing a name in
+                /// one file both passed a snapshot taken before either was added.
+                let alreadyExists = TagStorage.shared.loadTags().contains {
                     $0.name.lowercased() == exportTag.name.lowercased()
                 }
-                if !alreadyExists {
-                    // Match preset tags by name
-                    let preset = ConnectionTag.presets.first {
-                        $0.name.lowercased() == exportTag.name.lowercased()
-                    }
-                    if let preset {
-                        TagStorage.shared.addTag(preset)
-                    } else {
-                        let color = exportTag.color.flatMap { ConnectionColor(rawValue: $0) } ?? .gray
-                        let tag = ConnectionTag(name: exportTag.name, color: color)
-                        TagStorage.shared.addTag(tag)
-                    }
+                guard !alreadyExists else { continue }
+
+                let preset = ConnectionTag.presets.first {
+                    $0.name.lowercased() == exportTag.name.lowercased()
+                }
+                let color = exportTag.color.flatMap { ConnectionColor(rawValue: $0) } ?? .gray
+                let tag = preset ?? ConnectionTag(name: exportTag.name, color: color)
+                do {
+                    try TagStorage.shared.addTag(tag)
+                } catch {
+                    Self.logger.error("Skipped importing tag: \(error.localizedDescription, privacy: .public)")
                 }
             }
         }
@@ -414,18 +415,23 @@ enum ConnectionExportService {
             resolutions: resolutions,
             existingNames: ConnectionStorage.shared.loadConnections().map(\.name),
             tagIdsByName: tagIdsByName(),
-            groupIdsByName: groupIdsByName()
+            groupIdsByName: groupIdsByName(),
+            keepTunnelCommands: keepTunnelCommands
         )
 
         return performPreparedImport(prepared)
     }
 
+    /// `keepTunnelCommands` defaults to false so a route that has not asked the user cannot carry
+    /// one in by omission. Only the file import sheet, which shows the command and takes an answer,
+    /// passes true.
     static func prepareImport(
         _ preview: ConnectionImportPreview,
         resolutions: [UUID: ImportResolution],
         existingNames: [String] = [],
         tagIdsByName: [String: UUID],
-        groupIdsByName: [String: UUID]
+        groupIdsByName: [String: UUID],
+        keepTunnelCommands: Bool = false
     ) -> PreparedConnectionImport {
         var operations: [PreparedImportOperation] = []
         var connectionIdMap: [Int: UUID] = [:]
@@ -439,6 +445,7 @@ enum ConnectionExportService {
         for item in preview.items {
             let resolution = resolutions[item.id] ?? .skip
             guard let envelopeIndex = itemIndexMap[item.id] else { continue }
+            let exportable = keepTunnelCommands ? item.connection : item.connection.withoutTunnelCommand()
 
             switch resolution {
             case .skip:
@@ -448,14 +455,14 @@ enum ConnectionExportService {
                 let connectionId = UUID()
                 let name: String
                 if resolution == .importAsCopy {
-                    name = uniqueCopyName(for: item.connection.name, taken: takenNames)
+                    name = uniqueCopyName(for: exportable.name, taken: takenNames)
                 } else {
-                    name = item.connection.name
+                    name = exportable.name
                 }
                 takenNames.insert(normalizedLookupKey(name))
                 let connection = buildDatabaseConnection(
                     id: connectionId,
-                    from: item.connection,
+                    from: exportable,
                     name: name,
                     tagIdsByName: tagIdsByName,
                     groupIdsByName: groupIdsByName
@@ -467,8 +474,8 @@ enum ConnectionExportService {
             case .replace(let existingId):
                 let connection = buildDatabaseConnection(
                     id: existingId,
-                    from: item.connection,
-                    name: item.connection.name,
+                    from: exportable,
+                    name: exportable.name,
                     tagIdsByName: tagIdsByName,
                     groupIdsByName: groupIdsByName
                 )
@@ -713,6 +720,7 @@ enum ConnectionExportService {
             tagIds: tagIds,
             groupId: groupId,
             sshProfileId: parsedSSHProfileId,
+            tunnelCommandMode: exportable.tunnelCommand.map { .inline(TunnelCommandConfiguration($0)) } ?? .disabled,
             safeModeLevel: exportable.safeModeLevel.flatMap { SafeModeLevel(rawValue: $0) } ?? .silent,
             aiPolicy: exportable.aiPolicy.flatMap { AIConnectionPolicy(rawValue: $0) },
             redisDatabase: exportable.redisDatabase,
