@@ -501,6 +501,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     var settingsCancellable: AnyCancellable?
     var themeCancellable: AnyCancellable?
+    var systemTimeZoneCancellable: AnyCancellable?
     private var accessibilityActivationObserver: (any NSObjectProtocol)?
     private var accessibilityMountedRows = NSRange(location: 0, length: 0)
     private var lastDataGridSettings: DataGridSettings
@@ -573,6 +574,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         updateCache()
 
         observeThemeChanges()
+        observeSystemTimeZoneChanges()
         observeAccessibilityActivation()
 
         settingsCancellable = AppEvents.shared.dataGridSettingsChanged
@@ -599,13 +601,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             || previous.enableSmartValueDetection != settings.enableSmartValueDetection
 
         if dataChanged {
-            invalidateDisplayCache()
-            let visibleRect = tableView.visibleRect
-            let visibleRange = tableView.rows(in: visibleRect)
-            if visibleRange.length > 0 {
-                repaintRows(IndexSet(integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length)))
-            }
-            startBackgroundPrewarm()
+            reformatDisplayedText()
         }
     }
 
@@ -693,6 +689,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         settingsCancellable = nil
         themeCancellable?.cancel()
         themeCancellable = nil
+        systemTimeZoneCancellable?.cancel()
+        systemTimeZoneCancellable = nil
         detachAccessibilityActivationObserver()
         visualIndex.clear()
         displayCache.removeAll()

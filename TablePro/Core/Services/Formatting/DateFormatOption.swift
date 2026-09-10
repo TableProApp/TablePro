@@ -32,12 +32,37 @@ enum DateFormatOption: String, Codable, CaseIterable, Identifiable {
         }
     }
 
+    /// The slot a value's own fractional seconds are spliced into after formatting.
+    ///
+    /// A control character, because it has to survive `DateFormatter` as a quoted literal and then
+    /// be found again in text a database supplied. `DateFormatter` cannot render the digits itself:
+    /// measured, it keeps three significant places and zero-pads the rest, so `SSSSSS` turns
+    /// `.789012` into `.789000`, and `Date`'s own resolution at 2024 is about 119ns anyway.
+    static let fractionalSecondsMarker: Character = "\u{1}"
+
     func formatString(for components: TemporalComponents) -> String {
         switch components {
         case .dateOnly: return dateOnlyFormatString
         case .timeOnly: return timeOnlyFormatString
         case .dateAndTime: return rawValue
         }
+    }
+
+    /// The same pattern with the marker quoted in immediately after the seconds, or nil for a
+    /// rendering that carries no clock.
+    ///
+    /// The slot is placed by the pattern rather than by appending, because a fraction qualifies the
+    /// seconds and only the ISO patterns end there: `MM/dd/yyyy hh:mm:ss a` has to read
+    /// `11:59:59.123456 PM`, not `11:59:59 PM.123456`. It is derived from the pattern instead of
+    /// spelled out per case, so a seventh option cannot place it wrong.
+    func fractionalSecondsFormatString(for components: TemporalComponents) -> String? {
+        let pattern = formatString(for: components)
+        guard rendersTime(for: components),
+              let seconds = pattern.range(of: "ss", options: .backwards)
+        else {
+            return nil
+        }
+        return pattern.replacingCharacters(in: seconds, with: "ss'\(Self.fractionalSecondsMarker)'")
     }
 
     /// Whether the text this option produces for a column shape carries a clock, which is what

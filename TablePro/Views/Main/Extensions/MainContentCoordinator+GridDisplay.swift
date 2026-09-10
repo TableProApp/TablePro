@@ -60,7 +60,8 @@ extension MainContentCoordinator {
             displayFormats: displayFormats(for: tab),
             dateFormat: settings.dateFormat,
             nullDisplay: settings.nullDisplay,
-            smartValueDetection: settings.enableSmartValueDetection
+            smartValueDetection: settings.enableSmartValueDetection,
+            systemTimeZoneGeneration: DateFormattingService.shared.systemTimeZoneGeneration
         )
 
         displayStateClock &+= 1

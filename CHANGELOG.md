@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQLite, DuckDB and Teradata connections pinged every 30 seconds despite opting out of health checks. (#2700)
 - Data grid dropping the UTC offset from a `timestamp with time zone` value. (#2702)
 - Oracle `TIMESTAMP` values carrying a `Z` the column never stored. (#2702)
+- Timestamp shown an hour late, and its time lost on an edit, when the value falls in the reader's daylight-saving gap. (#2702)
+- Timestamp stored on a day the reader's time zone skipped rendering as raw text with no date picker. (#2702)
+- Sub-second precision missing from timestamp cells, merging distinct values into one entry in the column filter. (#2702)
+- Grid cells still reading in the old time zone after the Mac's time zone changed. (#2702)
 - Connection colour set on an iPhone not showing on the Mac, and the reverse.
 - Connection still reading as read-only on an iPhone after read-only was turned off on the Mac.
 - Window rebuilding its own layout three times while a connection opens.
