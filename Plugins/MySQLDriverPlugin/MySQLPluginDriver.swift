@@ -165,9 +165,22 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// And a released connection is healthy by definition: nothing is wrong with it, it is waiting
     /// to be used, so reconnecting to prove it works would undo the release 30 seconds after it
     /// happened and pay the reconnect cost for nothing.
+    /// And it never reconnects, through either door, which is what makes the answer mean anything.
+    ///
+    /// A private reconnect restores none of the session state the app put there: the startup
+    /// commands, the query timeout, the database and the schema all belong to
+    /// `DatabaseManager.reconnectDriver`. A ping that healed itself would report success into a
+    /// server session reset behind the user's back, and their next statement would run without the
+    /// role, search path or time zone their startup SQL set. Failing instead routes recovery
+    /// through the manager, which restores all of it.
+    ///
+    /// It still takes an operation slot, because `release(idleFor:)` only hands the connection
+    /// back while `activeOperations` is zero and would otherwise null the handle mid-ping.
     func ping() async throws {
         guard !sessionLock.withLock({ isReleased }) else { return }
-        _ = try await executeWithReconnect(query: "SELECT 1", isRetry: false, countsAsActivity: false)
+        let conn = try requireLiveConnection()
+        defer { endOperation() }
+        _ = try await conn.executeQuery("SELECT 1", rowCap: nil)
     }
 
     // MARK: - Transaction Management
@@ -338,6 +351,20 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         sessionLock.withLock { activeOperations += 1 }
         return conn
+    }
+
+    /// `requireConnection` without the reacquire. It is the second reconnect door: a nil handle
+    /// sends it through `reacquireOnce()`, which opens a fresh server connection and re-applies
+    /// only the query timeout. Anything that must not silently rebuild the session asks for the
+    /// connection this way instead.
+    private func requireLiveConnection() throws -> MariaDBPluginConnection {
+        try sessionLock.withLock {
+            guard !isDisconnected, let conn = mariadbConnection else {
+                throw MariaDBPluginError.notConnected
+            }
+            activeOperations += 1
+            return conn
+        }
     }
 
     private func endOperation() {
