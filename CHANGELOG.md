@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Update release notes show all changes for the offered version, with new features before fixes and properly formatted Markdown. The full changelog is also available from Help and Software Update settings.
 - Connection colour set on an iPhone not showing on the Mac, and the reverse.
 - Connection still reading as read-only on an iPhone after read-only was turned off on the Mac.
 

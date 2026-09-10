@@ -93,6 +93,10 @@ extension AppDelegate: NSMenuItemValidation {
         open(MainMenuLink.documentation)
     }
 
+    @objc func openChangelog(_ sender: Any?) {
+        open(MainMenuLink.changelog)
+    }
+
     @objc func openGitHubRepository(_ sender: Any?) {
         open(MainMenuLink.repository)
     }
@@ -119,6 +123,7 @@ extension AppDelegate: NSMenuItemValidation {
 }
 
 enum MainMenuLink {
+    static let changelog = "https://docs.tablepro.app/changelog"
     static let website = "https://tablepro.app"
     static let documentation = "https://docs.tablepro.app"
     static let repository = "https://github.com/TableProApp/TablePro"

@@ -29,6 +29,17 @@ private func flatten(_ menu: NSMenu) -> [NSMenuItem] {
 @Suite("Main menu structure")
 @MainActor
 struct MainMenuStructureTests {
+    @Test("What's New stays reachable from Help without an active connection")
+    func changelogIsReachable() throws {
+        let help = try #require(buildMenu().items.first { $0.title == String(localized: "Help") }?.submenu)
+        let item = try #require(help.items.first { $0.title == String(localized: "What's New") })
+        #expect(item.action == #selector(AppDelegate.openChangelog(_:)))
+        #expect(item.target == nil)
+        #expect(item.keyEquivalent.isEmpty)
+        #expect(AppDelegate().validateMenuItem(item))
+        #expect(MainMenuLink.changelog == "https://docs.tablepro.app/changelog")
+    }
+
     @Test("Top level order follows the macOS HIG")
     func topLevelOrder() {
         let titles = buildMenu().items.map(\.title)
