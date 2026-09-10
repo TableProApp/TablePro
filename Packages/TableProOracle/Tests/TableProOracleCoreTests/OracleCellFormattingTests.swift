@@ -24,6 +24,13 @@ final class OracleCellFormattingTests: XCTestCase {
         XCTAssertEqual(result, "2026-05-03T12:29:44.123Z")
     }
 
+    /// Oracle's plain `TIMESTAMP` names a wall clock and no zone. The text has to say the same, or
+    /// the grid prints an offset the column never held.
+    func testNaiveTimestampCarriesNoZone() {
+        let result = OracleCellFormatting.formatTimestamp(Self.referenceDate, style: .naive)
+        XCTAssertEqual(result, "2026-05-03T12:29:44.123")
+    }
+
     func testTimestampLocalMatchesHostOffset() {
         let result = OracleCellFormatting.formatTimestamp(Self.referenceDate, style: .local)
         let offsetSeconds = TimeZone.current.secondsFromGMT(for: Self.referenceDate)

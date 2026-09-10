@@ -161,6 +161,7 @@ extension DatabaseManager {
                 /// that gave up on this same entry, so the mark and the reason it carried go here.
                 session.liveness = .live
                 disconnectReasons.removeValue(forKey: connection.id)
+                markSessionVerified(connection.id)
                 if let passwordOverride, !connection.usesAWSIAM {
                     session.cachedPassword = passwordOverride
                 }
@@ -174,13 +175,7 @@ extension DatabaseManager {
             MacAnalyticsProvider.shared.markConnectionSucceeded()
             AppEvents.shared.databaseDidConnect.send(DatabaseDidConnect(connectionId: connection.id))
 
-            let supportsHealth = PluginMetadataRegistry.shared.snapshot(
-                for: connection.type
-            )?.supportsHealthMonitor ?? true
-
-            if supportsHealth {
-                await startHealthMonitor(for: connection.id)
-            }
+            await startHealthMonitor(for: connection.id)
         } catch {
             let cancelled = isAttemptCancelled(attempt, for: connection.id)
             var reportedError = error
@@ -320,6 +315,7 @@ extension DatabaseManager {
         guard !database.isEmpty else {
             throw DatabaseError.unsupportedOperation
         }
+        await verifyBeforeUse(connectionId)
         guard let driver = driver(for: connectionId) else {
             throw DatabaseError.notConnected
         }
@@ -412,6 +408,7 @@ extension DatabaseManager {
     }
 
     func switchSchema(to schema: String, for connectionId: UUID) async throws {
+        await verifyBeforeUse(connectionId)
         guard let driver = driver(for: connectionId),
               let schemaDriver = driver as? SchemaSwitchable else {
             throw DatabaseError.unsupportedOperation
@@ -675,6 +672,7 @@ extension DatabaseManager {
     internal func markSessionLive(_ sessionId: UUID) {
         guard activeSessions[sessionId] != nil else { return }
         disconnectReasons.removeValue(forKey: sessionId)
+        markSessionVerified(sessionId)
         updateSession(sessionId) { session in
             session.liveness = .live
         }
@@ -698,6 +696,7 @@ extension DatabaseManager {
     internal func removeSessionEntry(for connectionId: UUID) {
         activeSessions.removeValue(forKey: connectionId)
         connectionStatusVersions.removeValue(forKey: connectionId)
+        forgetVerification(for: connectionId)
         AppEvents.shared.connectionStatusChanged.send(
             ConnectionStatusChange(connectionId: connectionId, status: .disconnected)
         )

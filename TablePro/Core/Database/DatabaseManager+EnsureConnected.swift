@@ -14,7 +14,9 @@ extension DatabaseManager {
     ) async throws {
         /// An installed driver is only a reason to skip while it still answers. A reconnect that
         /// gave up leaves one behind, and returning here made Reconnect a button that did nothing
-        /// on the one connection that needed it.
+        /// on the one connection that needed it. A driver nobody has heard from in a while is the
+        /// same problem one step earlier, which is what the check answers.
+        await verifyBeforeUse(connection.id)
         if let session = activeSessions[connection.id], session.driver != nil, session.liveness == .live {
             return
         }

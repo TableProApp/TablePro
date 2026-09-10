@@ -27,6 +27,7 @@ final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pathFieldRole: PathFieldRole = .database
     static let requiresAuthentication = false
     static let connectionMode: ConnectionMode = .apiOnly
+    static let supportsHealthMonitor = false
     static let urlSchemes: [String] = ["duckdb", "quack"]
 
     static let additionalConnectionFields: [ConnectionField] = [

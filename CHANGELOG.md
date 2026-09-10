@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Empty state in the inspector and the assistant for a connection that is not up.
+- **Check connections** in Settings > General, including Only when I use the connection. (#2700)
 
 ### Changed
 
@@ -18,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Idle metadata connections held open for the life of the app, up to six per connection. (#2700)
+- SQLite, DuckDB and Teradata connections pinged every 30 seconds despite opting out of health checks. (#2700)
+- Data grid dropping the UTC offset from a `timestamp with time zone` value. (#2702)
+- Oracle `TIMESTAMP` values carrying a `Z` the column never stored. (#2702)
 - Connection colour set on an iPhone not showing on the Mac, and the reverse.
 - Connection still reading as read-only on an iPhone after read-only was turned off on the Mac.
 - Window rebuilding its own layout three times while a connection opens.

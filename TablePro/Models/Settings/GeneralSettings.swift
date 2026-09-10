@@ -79,6 +79,9 @@ struct GeneralSettings: Codable, Equatable {
     /// How tall sidebar rows are drawn, following the system Appearance setting unless overridden
     var sidebarRowSize: SidebarRowSizePreference
 
+    /// How often TablePro checks that an open connection still works
+    var connectionHealthCheck: ConnectionHealthCheck
+
     static let `default` = GeneralSettings(
         startupBehavior: .reopenLast,
         language: .system,
@@ -89,7 +92,8 @@ struct GeneralSettings: Codable, Equatable {
         showObjectComments: true,
         showObjectIcons: true,
         showWorkspaceRail: true,
-        sidebarRowSize: .matchSystem
+        sidebarRowSize: .matchSystem,
+        connectionHealthCheck: .every30Seconds
     )
 
     init(
@@ -102,7 +106,8 @@ struct GeneralSettings: Codable, Equatable {
         showObjectComments: Bool = true,
         showObjectIcons: Bool = true,
         showWorkspaceRail: Bool = true,
-        sidebarRowSize: SidebarRowSizePreference = .matchSystem
+        sidebarRowSize: SidebarRowSizePreference = .matchSystem,
+        connectionHealthCheck: ConnectionHealthCheck = .every30Seconds
     ) {
         self.startupBehavior = startupBehavior
         self.language = language
@@ -114,6 +119,7 @@ struct GeneralSettings: Codable, Equatable {
         self.showObjectIcons = showObjectIcons
         self.showWorkspaceRail = showWorkspaceRail
         self.sidebarRowSize = sidebarRowSize
+        self.connectionHealthCheck = connectionHealthCheck
     }
 
     init(from decoder: Decoder) throws {
@@ -130,5 +136,12 @@ struct GeneralSettings: Codable, Equatable {
         sidebarRowSize = try container.decodeIfPresent(
             SidebarRowSizePreference.self, forKey: .sidebarRowSize
         ) ?? .matchSystem
+        /// Decoded through its raw value rather than as the enum. Settings sync between devices,
+        /// so a newer TablePro can write an interval this build has no case for, and decoding that
+        /// as the enum throws and takes the whole of General down with it.
+        connectionHealthCheck = ConnectionHealthCheck(
+            rawValue: try container.decodeIfPresent(Int.self, forKey: .connectionHealthCheck)
+                ?? ConnectionHealthCheck.every30Seconds.rawValue
+        ) ?? .every30Seconds
     }
 }

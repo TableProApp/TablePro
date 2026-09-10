@@ -96,6 +96,25 @@ struct DatabaseDateParserTests {
         #expect(parsed.layout.timeZoneSuffix == "+07:00")
     }
 
+    /// Measured against PostgreSQL 17: the server widens the offset to whatever the zone needs and
+    /// never writes `Z`, so `2024-12-31 23:59:59+00` and `+05:45` are both ordinary output. The grid
+    /// prints this text back, so each spelling has to survive the parse intact.
+    @Test("Every offset spelling PostgreSQL writes is captured verbatim")
+    func offsetSpellingsSurvive() throws {
+        let spellings = ["+07", "+00", "-03:30", "+05:45", "Z", "+0700"]
+        for spelling in spellings {
+            let parsed = try #require(DatabaseDateParser.parse("2024-12-31 23:59:59\(spelling)"))
+            #expect(parsed.layout.timeZoneSuffix == spelling)
+        }
+    }
+
+    @Test("A value with no offset reports none rather than the reader's own")
+    func naiveValueCarriesNoSuffix() throws {
+        let parsed = try #require(DatabaseDateParser.parse("2024-12-31 23:59:59"))
+
+        #expect(parsed.layout.timeZoneSuffix == nil)
+    }
+
     @Test("Text that is not a date stays unparsed rather than becoming a plausible one")
     func rejectsNonDates() {
         #expect(DatabaseDateParser.date(from: "not a date") == nil)

@@ -21,6 +21,10 @@ final class AppEvents {
 
     let editorSettingsChanged = PassthroughSubject<Void, Never>()
 
+    /// A live session's health monitor is started once, at connect, so a change to how often
+    /// TablePro checks its connections reaches nothing already open without this.
+    let connectionHealthCheckChanged = PassthroughSubject<Void, Never>()
+
     let dataGridSettingsChanged = PassthroughSubject<Void, Never>()
 
     /// The menu bar re-syncs itself through `MainMenuBuilder`, but a window's toolbar advertises
