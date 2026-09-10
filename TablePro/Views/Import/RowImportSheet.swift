@@ -909,9 +909,6 @@ struct RowImportSheet: View {
 
     @MainActor
     private func clearRows(of tableName: String) async throws {
-        guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
-            throw DatabaseError.notConnected
-        }
         let generator = try SQLStatementGenerator(
             tableName: tableName,
             columns: [],
@@ -922,17 +919,33 @@ struct RowImportSheet: View {
         try await authorize(
             sql: sql, kind: .destructiveQuery, description: String(localized: "Clear Table")
         )
-        _ = try await driver.execute(query: sql)
+        try await runOnLeasedDriver(sql)
     }
 
     private func createTable(sql: String) async throws {
-        guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
-            throw DatabaseError.notConnected
-        }
         try await authorize(
             sql: sql, kind: .schemaMutation, description: String(localized: "Create Table")
         )
-        _ = try await driver.execute(query: sql)
+        try await runOnLeasedDriver(sql)
+    }
+
+    /// The sheet's own statements take the same lease the import does, one at a time and always
+    /// after `authorize` has returned. Taking it earlier would hold the connection's gate open
+    /// across a safe-mode confirmation the user has not answered yet, and the gate is not
+    /// reentrant, so the import that follows would then wait on a sheet waiting on the user.
+    @MainActor
+    private func runOnLeasedDriver(_ sql: String) async throws {
+        guard let scope = DatabaseManager.shared.browseScope(for: connection.id) else {
+            throw DatabaseError.notConnected
+        }
+        let route = DatabaseManager.shared.executionRoute(for: scope)
+        _ = try await DatabaseManager.shared.withScopedDriver(
+            scope: scope,
+            route: route,
+            cancellation: .protectedWrite
+        ) { driver in
+            try await driver.execute(query: sql)
+        }
     }
 
     /// Every statement this sheet issues on its own account goes through the gate. The retry path's

@@ -703,8 +703,12 @@ extension DatabaseManager {
     }
 
     #if DEBUG
+    /// Stands in for a completed connect, so it stamps what a completed connect stamps. Without
+    /// the timestamp every injected session reads as never having answered, and the first scoped
+    /// operation in a test pays a check that production would never make.
     internal func injectSession(_ session: ConnectionSession, for connectionId: UUID) {
         setSession(session, for: connectionId)
+        markSessionVerified(connectionId)
     }
 
     internal func removeSession(for connectionId: UUID) {

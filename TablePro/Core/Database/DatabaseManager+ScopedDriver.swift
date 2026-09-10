@@ -174,6 +174,11 @@ extension DatabaseManager {
         }
     }
 
+    /// Whether the connection is running work that must not be interrupted, whatever its age.
+    internal func holdsProtectedWrite(_ connectionId: UUID) -> Bool {
+        (runningDrivers[connectionId] ?? [:]).values.contains { $0.policy == .protectedWrite }
+    }
+
     private func withPinnedSessionDriver<T: Sendable>(
         scope: DatabaseScope,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T

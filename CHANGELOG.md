@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Idle metadata connections held open for the life of the app, up to six per connection. (#2700)
+- MongoDB connections reading as healthy after the server went away. (#2700)
+- Password prompt raised by a background reconnect, on whichever window was in front. (#2700)
+- Health check entering the same connection as a running import. (#2700)
 - SQLite, DuckDB and Teradata connections pinged every 30 seconds despite opting out of health checks. (#2700)
 - Data grid dropping the UTC offset from a `timestamp with time zone` value. (#2702)
 - Oracle `TIMESTAMP` values carrying a `Z` the column never stored. (#2702)
