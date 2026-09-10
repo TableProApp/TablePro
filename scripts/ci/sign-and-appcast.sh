@@ -71,7 +71,7 @@ for arch in "${ARCHS[@]}"; do
   # left Markdown visible and interpreted literal SQL/XML angle brackets as HTML tags.
   basename="${STAGING}/TablePro-${VERSION}-${arch}"
   {
-    printf '# What’s New in TablePro %s\n\n' "$VERSION"
+    printf "# What's New in TablePro %s\n\n" "$VERSION"
     cat release_notes.md
     printf '\n[View full changelog](https://docs.tablepro.app/changelog)\n'
   } > "${basename}.md"
