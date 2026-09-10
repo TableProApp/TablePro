@@ -61,6 +61,15 @@ extension DatabaseManager {
                         Self.logger.debug("Ping skipped — query in-flight for \(connectionId)")
                         return true // Query still within expected time
                     }
+                    /// The stale override exists for a read that hung, where pinging past it costs
+                    /// nothing. A protected write is the opposite case: an import or a dump runs
+                    /// for as long as it runs, legitimately past any query timeout, and a ping that
+                    /// fails there reconnects and disconnects the handle out from under a batch
+                    /// halfway through applying it.
+                    if await self.holdsProtectedWrite(connectionId) {
+                        Self.logger.debug("Ping skipped, protected write in flight for \(connectionId)")
+                        return true
+                    }
                     Self.logger.warning("Ping proceeding despite in-flight query (stale after \(maxStale)s) for \(connectionId)")
                 }
                 guard let mainDriver = await self.activeSessions[connectionId]?.driver else {
@@ -132,7 +141,14 @@ extension DatabaseManager {
 
         do {
             guard let result = try await trackOperation(sessionId: connectionId, operation: {
-                try await self.reconnectDriver(for: session)
+                /// Nobody asked for this reconnect, so it must not interrupt whatever the user is
+                /// doing to ask for a password. A `prompt-for-password` connection whose password
+                /// was rotated server-side used to raise a modal sheet on whichever window
+                /// happened to be key, for a connection that might not even be the one on screen,
+                /// and it blocked Disconnect and Quit until it was answered. Failing quietly puts
+                /// the connection into its inline unavailable state instead, where Reconnect is a
+                /// deliberate act and prompting is expected.
+                try await self.reconnectDriver(for: session, allowsCredentialPrompt: false)
             }) else {
                 updateSession(connectionId) { session in
                     session.status = .disconnected
@@ -221,7 +237,10 @@ extension DatabaseManager {
 
     /// Creates a fresh driver, connects, and applies timeout for the given session.
     /// For SSH-tunneled sessions, rebuilds the tunnel before connecting the driver.
-    internal func reconnectDriver(for session: ConnectionSession) async throws -> ReconnectResult? {
+    internal func reconnectDriver(
+        for session: ConnectionSession,
+        allowsCredentialPrompt: Bool
+    ) async throws -> ReconnectResult? {
         session.driver?.disconnect()
 
         // Rebuild the tunnel if needed; otherwise reuse effective connection
@@ -235,7 +254,8 @@ extension DatabaseManager {
         guard let connectResult = try await connectReconnectDriver(
             for: session,
             effectiveConnection: connectionForDriver,
-            passwordOverride: session.cachedPassword
+            passwordOverride: session.cachedPassword,
+            allowsCredentialPrompt: allowsCredentialPrompt
         ) else {
             return nil
         }
@@ -369,7 +389,8 @@ extension DatabaseManager {
             guard let connectResult = try await connectReconnectDriver(
                 for: session,
                 effectiveConnection: effectiveConnection,
-                passwordOverride: passwordOverride
+                passwordOverride: passwordOverride,
+                allowsCredentialPrompt: true
             ) else {
                 updateSession(sessionId) { $0.status = .disconnected }
                 markSessionUnreachable(sessionId, startedWith: attemptedDriver, info: Self.declinedReconnectInfo)
@@ -437,7 +458,8 @@ extension DatabaseManager {
     internal func connectReconnectDriver(
         for session: ConnectionSession,
         effectiveConnection: DatabaseConnection,
-        passwordOverride initialPasswordOverride: String?
+        passwordOverride initialPasswordOverride: String?,
+        allowsCredentialPrompt: Bool
     ) async throws -> (driver: DatabaseDriver, cachedPassword: String?)? {
         var passwordOverride = initialPasswordOverride
 
@@ -457,7 +479,8 @@ extension DatabaseManager {
                 switch await reconnectCredentialResolution(
                     for: session,
                     error: error,
-                    currentPassword: passwordOverride
+                    currentPassword: passwordOverride,
+                    allowsCredentialPrompt: allowsCredentialPrompt
                 ) {
                 case .retry(let newPassword):
                     passwordOverride = newPassword
@@ -476,8 +499,11 @@ extension DatabaseManager {
         for session: ConnectionSession,
         error: Error,
         currentPassword: String?,
+        allowsCredentialPrompt: Bool = true,
         prompt: @escaping @MainActor (_ connectionName: String, _ isAPIToken: Bool, _ window: NSWindow?) async -> String? = PasswordPromptHelper.prompt
     ) async -> ReconnectCredentialResolution {
+        /// An unattended reconnect never asks. See `performHealthMonitorReconnect`.
+        guard allowsCredentialPrompt else { return .fail }
         guard session.connection.promptForPassword,
               !pluginManager.hidesPassword(for: session.connection),
               isAuthenticationFailure(error)

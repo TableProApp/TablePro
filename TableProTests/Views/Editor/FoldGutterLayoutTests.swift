@@ -15,7 +15,8 @@ import Testing
 @MainActor
 struct FoldGutterLayoutTests {
 
-    /// The text view is inset by the gutter's width, so the inset is the gutter width as the reader sees it.
+    /// The scroll view reserves the gutter's width over its leading edge, so the reservation is the gutter width as the
+    /// reader sees it.
     private func gutterInset(showLineNumbers: Bool, showFoldingRibbon: Bool) -> CGFloat {
         gutterInset(
             peripherals: .init(
@@ -46,7 +47,7 @@ struct FoldGutterLayoutTests {
         controller.loadView()
         controller.textView.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
         controller.textView.updatedViewport(NSRect(x: 0, y: 0, width: 800, height: 600))
-        return controller.textView.textInsets.left
+        return controller.scrollView.floatingSubviewInsets.left
     }
 
     @Test("An editor showing only the ribbon keeps a thin gutter")

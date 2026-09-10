@@ -109,7 +109,7 @@ extension SourceEditorConfiguration {
                 controller.textView.layoutManager.wrapLines = wrapLines
                 controller.minimapView.layoutManager?.wrapLines = wrapLines
                 controller.scrollView.hasHorizontalScroller = !wrapLines
-                controller.updateTextInsets()
+                controller.updateFloatingSubviewInsets()
             }
 
             // useThemeBackground isn't needed
@@ -117,6 +117,15 @@ extension SourceEditorConfiguration {
             if oldConfig?.letterSpacing != letterSpacing {
                 controller.textView.letterSpacing = letterSpacing
                 needsHighlighterInvalidation = true
+            }
+
+            // A new font, letter spacing or theme restyles the whole document, a theme through the bold and italic
+            // traits it gives the highlighted text, so every width measured under the old one is wrong, including those
+            // of lines that are off screen and will not be laid out again soon. Reapplying the same configuration,
+            // which is what `reloadUI` does, leaves them alone.
+            if let oldConfig,
+               oldConfig.font != font || oldConfig.letterSpacing != letterSpacing || oldConfig.theme != theme {
+                controller.textView.layoutManager.invalidateLineWidths()
             }
 
             if oldConfig?.bracketPairEmphasis != bracketPairEmphasis {

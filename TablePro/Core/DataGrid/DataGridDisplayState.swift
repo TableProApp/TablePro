@@ -21,6 +21,9 @@ struct DataGridDisplayIdentity: Equatable {
     let dateFormat: DateFormatOption
     let nullDisplay: String
     let smartValueDetection: Bool
+    /// A Unix-timestamp column renders an instant in the reader's own zone, so text derived before
+    /// the Mac's zone moved is wrong. Nothing else in this identity moves with it.
+    let systemTimeZoneGeneration: Int
 }
 
 /// Whether the rows under a mounted grid were replaced, as opposed to the grid being rebuilt over

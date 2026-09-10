@@ -46,6 +46,7 @@ extension TextLayoutManager: NSTextStorageDelegate {
         let insertedStringRange = NSRange(location: editedRange.location, length: editedRange.length - delta)
         removeLayoutLinesIn(range: insertedStringRange)
         insertNewLines(for: editedRange)
+        forgetWidths(ofLinesIn: editedRange)
 
         attachments.textUpdated(atOffset: editedRange.location, delta: delta)
 
@@ -74,6 +75,24 @@ extension TextLayoutManager: NSTextStorageDelegate {
             } else {
                 lineStorage.update(atOffset: linePosition.range.location, delta: -intersection.length, deltaHeight: 0)
             }
+        }
+    }
+
+    /// Forgets the measured width of every line an edit or an attachment touched.
+    ///
+    /// Each one is measured again when it is next laid out. Without this, text replaced off screen, as a Find and
+    /// Replace across the document does, would leave the document as wide as the text that is gone, and a folded line
+    /// would go on counting at the width it had before the fold hid it.
+    /// - Parameter range: The range of the edit, after it was applied.
+    func forgetWidths(ofLinesIn range: NSRange) {
+        for linePosition in lineStorage.linesInRange(range) {
+            lineStorage.setWidth(0, forLineAt: linePosition.index)
+        }
+
+        // Deleting from the very end of the document finds no line in the range, the same case
+        // `invalidateLayoutForRange` handles, so the last line is forgotten by hand.
+        if range.location == textStorage?.length, let lastLine = lineStorage.last {
+            lineStorage.setWidth(0, forLineAt: lastLine.index)
         }
     }
 

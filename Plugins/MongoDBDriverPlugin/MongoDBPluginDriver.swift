@@ -106,6 +106,23 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         scriptRuntime = MongoScriptRuntime(connection: conn)
     }
 
+    /// Reports a server that has gone away, instead of the PluginKit default routing through
+    /// `execute`.
+    ///
+    /// `MongoDBConnection.ping()` answers with a Bool, and the "select 1" arm of `execute` threw
+    /// that answer away and returned a fabricated `ok = 1` row. So a paused Atlas cluster, a
+    /// replica-set failover or a dropped network read as healthy for as long as the app ran: the
+    /// health monitor never entered its reconnect and `ConnectionSession.liveness` stayed `.live`,
+    /// which is what `ensureConnected` returns early on.
+    func ping() async throws {
+        guard let conn = mongoConnection else {
+            throw MongoDBPluginError.notConnected
+        }
+        guard try await conn.ping() else {
+            throw MongoDBPluginError.notConnected
+        }
+    }
+
     func disconnect() {
         scriptRuntime?.reset()
         scriptRuntime = nil
@@ -128,9 +145,13 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Health monitor sends "SELECT 1" as a ping
+        /// `ping()` above is what the health monitor calls now. This arm remains for a user who
+        /// types `SELECT 1` into a MongoDB tab, and it reports the real answer rather than a row
+        /// saying the server replied when it did not.
         if trimmed.lowercased() == "select 1" {
-            _ = try await conn.ping()
+            guard try await conn.ping() else {
+                throw MongoDBPluginError.notConnected
+            }
             return PluginQueryResult(
                 columns: ["ok"],
                 columnTypeNames: ["Int32"],

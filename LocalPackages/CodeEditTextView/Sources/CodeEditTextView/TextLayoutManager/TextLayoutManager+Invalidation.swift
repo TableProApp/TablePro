@@ -34,6 +34,16 @@ extension TextLayoutManager {
         layoutView?.needsLayout = true
     }
 
+    /// Forgets the measured width of every line and lays them out again.
+    ///
+    /// Call this when something changes how wide every line is, such as the font or the letter spacing. Without it the
+    /// document keeps the width its lines measured before the change until each one is laid out again, and a line that
+    /// stays off screen never is.
+    public func invalidateLineWidths() {
+        lineStorage.resetWidths()
+        setNeedsLayout()
+    }
+
     public func setNeedsLayout() {
         needsLayout = true
         visibleLineIds.removeAll(keepingCapacity: true)

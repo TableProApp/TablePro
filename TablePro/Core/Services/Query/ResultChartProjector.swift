@@ -193,11 +193,11 @@ actor ResultChartProjector {
         case .date:
             guard case .text(let raw) = cell,
                   raw.utf8.count <= Self.maximumLabelLength,
-                  let date = DatabaseDateParser.date(from: raw.trimmingCharacters(in: .whitespacesAndNewlines))
+                  let parsed = DatabaseDateParser.parse(raw.trimmingCharacters(in: .whitespacesAndNewlines))
             else {
                 return nil
             }
-            return (.date(date), raw)
+            return (.date(parsed.plottableDate), raw)
         case nil:
             return nil
         }

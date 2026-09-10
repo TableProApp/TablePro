@@ -119,7 +119,7 @@ extension SourceEditorConfiguration {
 
             if shouldUpdateInsets && controller.scrollView != nil { // Check for view existence
                 controller.updateContentInsets()
-                controller.updateTextInsets()
+                controller.updateFloatingSubviewInsets()
             }
         }
     }

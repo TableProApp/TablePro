@@ -199,7 +199,9 @@ extension TableViewCoordinator {
 
         let columnType = tableRows.columnTypes[columnIndex]
         let parsed = DatabaseDateParser.parse(cellValue(at: row, column: columnIndex))
-        let initialDate = parsed?.date ?? Date()
+        /// The whole second, not the instant: a fraction near one second rounds the `Double` up, so
+        /// the picker would open a second, and sometimes a day, past the value the cell shows.
+        let initialDate = parsed?.wholeSecond ?? Date()
         let timeZone = parsed?.timeZone ?? DateEditingService.defaultTimeZone
         let components = DateEditingService.components(for: columnType)
 
@@ -213,6 +215,7 @@ extension TableViewCoordinator {
                 initialDate: initialDate,
                 components: components,
                 timeZone: timeZone,
+                carriesItsOwnZone: parsed?.carriesItsOwnZone ?? false,
                 onCommit: { picked in
                     guard picked != initialDate else { return }
                     let newValue = parsed

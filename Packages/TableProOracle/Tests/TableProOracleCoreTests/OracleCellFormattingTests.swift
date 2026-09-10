@@ -19,11 +19,6 @@ final class OracleCellFormattingTests: XCTestCase {
         XCTAssertEqual(OracleCellFormatting.formatDate(Self.referenceDate), "2026-05-03")
     }
 
-    func testTimestampUTC() {
-        let result = OracleCellFormatting.formatTimestamp(Self.referenceDate, style: .utc)
-        XCTAssertEqual(result, "2026-05-03T12:29:44.123Z")
-    }
-
     /// Oracle's plain `TIMESTAMP` names a wall clock and no zone. The text has to say the same, or
     /// the grid prints an offset the column never held.
     func testNaiveTimestampCarriesNoZone() {
@@ -36,15 +31,6 @@ final class OracleCellFormattingTests: XCTestCase {
         let offsetSeconds = TimeZone.current.secondsFromGMT(for: Self.referenceDate)
         let expectedSuffix = offsetSeconds == 0 ? "Z" : Self.isoOffset(seconds: offsetSeconds)
         XCTAssertTrue(result.hasSuffix(expectedSuffix), "expected \(expectedSuffix) at end of \(result)")
-    }
-
-    func testTimestampZonedAlwaysCarriesAnExplicitOffset() {
-        let result = OracleCellFormatting.formatTimestamp(Self.referenceDate, style: .zoned)
-        let offsetSeconds = TimeZone.current.secondsFromGMT(for: Self.referenceDate)
-        XCTAssertTrue(
-            result.hasSuffix(Self.isoOffset(seconds: offsetSeconds)),
-            "zoned style must spell the offset out even at UTC, got \(result)"
-        )
     }
 
     private static func isoOffset(seconds: Int) -> String {

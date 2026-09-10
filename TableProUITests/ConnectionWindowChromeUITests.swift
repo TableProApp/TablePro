@@ -59,6 +59,7 @@ final class ConnectionWindowChromeUITests: UITestCase {
     func testTheDetailPaneNeverDrawsNothingWhileConnecting() throws {
         let app = try launchApp()
         XCTAssertTrue(app.windows.firstMatch.waitToExist(timeout: 20))
+        dismissOnboarding(in: app)
 
         try openProbeConnection(in: app)
 
@@ -122,11 +123,14 @@ final class ConnectionWindowChromeUITests: UITestCase {
         save.click()
         XCTAssertTrue(waitForPredicate(timeout: 15) { !form.exists }, "Save should close the form")
 
-        let list = app.windows.firstMatch.outlines.firstMatch
-        XCTAssertTrue(waitForPredicate(timeout: 15) { list.outlineRows.count > 0 })
-        list.outlineRows.element(boundBy: 0)
-            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-            .doubleClick()
+        /// The row combines its children into one static text whose value carries the name and the
+        /// host, `Probe, 192.0.2.1`, and no label; the runner's element tree shows it that way.
+        let row = app.windows["welcome"].staticTexts
+            .matching(NSPredicate(format: "value BEGINSWITH %@", "Probe"))
+            .firstMatch
+        XCTAssertTrue(row.waitToExist(timeout: 15), "The saved connection must be listed on the welcome window")
+        XCTAssertTrue(waitUntilHittable(row, timeout: 10))
+        row.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).doubleClick()
     }
 
     private func disconnect(in app: XCUIApplication) {

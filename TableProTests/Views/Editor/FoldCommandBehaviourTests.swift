@@ -66,7 +66,7 @@ struct FoldCommandBehaviourTests {
         )
         try await waitForFolds(controller)
 
-        #expect(controller.textView.textInsets.left == 0, "No gutter means no reserved rail beside the code")
+        #expect(controller.scrollView.floatingSubviewInsets.left == 0, "No gutter means no reserved rail beside the code")
         #expect(!controller.foldRanges.isEmpty, "Folds are still calculated with nothing drawing them")
 
         controller.foldAll()

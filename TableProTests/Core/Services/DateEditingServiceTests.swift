@@ -106,23 +106,34 @@ struct DateEditingServiceTests {
         #expect(DatabaseDateParser.parse("Z") == nil)
     }
 
+    /// `defaultString` writes the reader's own wall clock, so the instant it is handed has to be
+    /// built in the reader's zone. Reading it off a parsed naive value would build it in GMT and
+    /// the assertion would only hold on a UTC host.
+    private static func readerLocalInstant() throws -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        return try #require(
+            calendar.date(from: DateComponents(year: 2_024, month: 3, day: 15, hour: 9, minute: 30, second: 45))
+        )
+    }
+
     @Test("default string for a date column emits date only")
     func defaultDateString() throws {
-        let parsed = try #require(DatabaseDateParser.parse("2024-03-15 09:30:45"))
-        #expect(DateEditingService.defaultString(from: parsed.date, columnType: .date(rawType: "DATE")) == "2024-03-15")
+        let instant = try Self.readerLocalInstant()
+        #expect(DateEditingService.defaultString(from: instant, columnType: .date(rawType: "DATE")) == "2024-03-15")
     }
 
     @Test("default string for a timestamp column emits date and time")
     func defaultTimestampString() throws {
-        let parsed = try #require(DatabaseDateParser.parse("2024-03-15 09:30:45"))
-        let value = DateEditingService.defaultString(from: parsed.date, columnType: .timestamp(rawType: "TIMESTAMP"))
+        let instant = try Self.readerLocalInstant()
+        let value = DateEditingService.defaultString(from: instant, columnType: .timestamp(rawType: "TIMESTAMP"))
         #expect(value == "2024-03-15 09:30:45")
     }
 
     @Test("default string for a time column emits time only")
     func defaultTimeString() throws {
-        let parsed = try #require(DatabaseDateParser.parse("2024-03-15 09:30:45"))
-        let value = DateEditingService.defaultString(from: parsed.date, columnType: .timestamp(rawType: "TIME"))
+        let instant = try Self.readerLocalInstant()
+        let value = DateEditingService.defaultString(from: instant, columnType: .timestamp(rawType: "TIME"))
         #expect(value == "09:30:45")
     }
 

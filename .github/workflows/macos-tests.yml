@@ -73,6 +73,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       run: ${{ steps.decide.outputs.run }}
+      oracle: ${{ steps.decide.outputs.oracle }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -101,6 +102,14 @@ jobs:
             'TableProMobile/project\.yml$' 'project\.yml$' \
             '\.github/workflows/macos-tests\.yml$')
           echo "run=$RUN" >> "$GITHUB_OUTPUT"
+          ORACLE=$(scripts/ci/detect-changed-paths.sh \
+            --event "$EVENT_NAME" \
+            --base "$BASE_SHA" \
+            --ref "$REF" \
+            --skip-release-commit \
+            'Packages/TableProOracle/' \
+            '\.github/workflows/macos-tests\.yml$')
+          echo "oracle=$ORACLE" >> "$GITHUB_OUTPUT"
 
   packages:
     name: Package Tests
@@ -118,6 +127,18 @@ jobs:
 
       - name: Run TableProCore package tests
         run: swift test --package-path Packages/TableProCore
+
+      # The only thing that runs TableProOracleCore's suites. AllPlugins proves the module
+      # compiles and nothing more, and the package is not a TableProTests dependency, so the cases
+      # cannot move there: importing it drags oracle-nio into the app test bundle. Gated on its own
+      # narrower filter because it resolves a second dependency graph, and pinned to the tracked
+      # Package.resolved so a manifest bump that forgets the lockfile fails here rather than
+      # silently floating. It cannot run on a developer Mac with Xcode 27 / Swift 6.4: oracle-nio's
+      # @TaskLocal macro expands to `unknown attribute 'usableFromInlinenonisolated'` there, which
+      # is the dependency and not your diff.
+      - name: Run TableProOracle package tests
+        if: needs.changes.outputs.oracle == 'true'
+        run: swift test --package-path Packages/TableProOracle --force-resolved-versions
 
       # CodeEditSourceEditor is deliberately not run here. `swift test` cannot build it on this
       # runner: its CodeEditSymbols dependency fails with "type 'Bundle' has no member 'module'",

@@ -476,11 +476,15 @@ struct TableTransferSheet: View {
             try await DatabaseManager.shared.withMetadataDriver(
                 scope: sourceScope, workload: .bulk
             ) { sourceDriver in
+                /// A transfer writes, inside its own transaction, across many statements. Left
+                /// untracked it registers nothing, so an unrelated Stop falls back to the session
+                /// driver and aborts it part-applied, and the health check counts the connection
+                /// as idle and pings straight into it.
                 try await DatabaseManager.shared.withScopedDriver(
                     scope: destinationScope,
                     route: destinationRoute,
                     workload: .bulk,
-                    cancellation: .untracked
+                    cancellation: .protectedWrite
                 ) { destinationDriver in
                     try await service.transfer(
                         request: request,

@@ -10,9 +10,7 @@ public enum OracleCellFormatting {
         /// grid dropped the suffix on the way to the cell, so the claim was invisible until the
         /// grid started printing the offset a value arrives with. (#2702)
         case naive
-        case utc
         case local
-        case zoned
     }
 
     public static let dateOnlyFormatter: DateFormatter = {
@@ -32,26 +30,11 @@ public enum OracleCellFormatting {
         return formatter
     }()
 
-    private static let utcFormatter: OSAllocatedUnfairLock<ISO8601DateFormatter> = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        return OSAllocatedUnfairLock(uncheckedState: formatter)
-    }()
-
     private static let localFormatter: OSAllocatedUnfairLock<ISO8601DateFormatter> = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        formatter.timeZone = .current
+        formatter.timeZone = .autoupdatingCurrent
         return OSAllocatedUnfairLock(uncheckedState: formatter)
-    }()
-
-    private static let zonedFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = .current
-        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSxxxxx"
-        return formatter
     }()
 
     public static func formatDate(_ date: Date) -> String {
@@ -62,12 +45,8 @@ public enum OracleCellFormatting {
         switch style {
         case .naive:
             return naiveFormatter.string(from: date)
-        case .utc:
-            return utcFormatter.withLockUnchecked { $0.string(from: date) }
         case .local:
             return localFormatter.withLockUnchecked { $0.string(from: date) }
-        case .zoned:
-            return zonedFormatter.string(from: date)
         }
     }
 

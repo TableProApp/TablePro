@@ -62,28 +62,19 @@ final class ImportService {
             throw PluginImportError.importFailed("Import format '\(formatId)' not found")
         }
 
-        /// An import is often the first thing done after a long idle spell, and it writes. With
-        /// scheduled checks turned down or off nothing else would have noticed the socket had gone,
-        /// so it is checked here rather than discovered partway through a batch of inserts.
-        await DatabaseManager.shared.verifyBeforeUse(connection.id)
-        guard DatabaseManager.shared.isUsable(connection.id),
-              let driver = DatabaseManager.shared.driver(for: connection.id)
-        else {
+        /// The scope the driver is already on, not the connection's saved default: a tab may have
+        /// moved it, and on an engine that reconnects to change database, pinning somewhere else
+        /// would refuse the import outright.
+        guard let scope = DatabaseManager.shared.browseScope(for: connection.id) else {
             throw DatabaseError.notConnected
         }
+        let route = DatabaseManager.shared.executionRoute(for: scope)
 
         state = ImportState(isImporting: true)
         defer {
             state.isImporting = false
             currentProgress = nil
         }
-
-        let sink = ImportDataSinkAdapter(
-            driver: driver,
-            databaseType: connection.type,
-            targetTable: targetTable,
-            columnMapping: columnMapping
-        )
 
         let source: any PluginImportSource
         if type(of: plugin).requiresTargetTable {
@@ -135,17 +126,37 @@ final class ImportService {
         let startedAt = Date()
         let operationStart = ContinuousClock.Instant.now
         do {
-            result = try await plugin.performImport(
-                source: source,
-                sink: sink,
-                progress: progress
-            )
+            /// The whole import runs inside one lease, because the plugin's own `BEGIN` spans the
+            /// run: a per-statement lease would let another tab's statement execute inside the
+            /// import's transaction and be committed or rolled back with it. Taking the lease is
+            /// also what registers the import, so the health check no longer enters the same
+            /// non-thread-safe driver partway through a batch of inserts. `.protectedWrite`
+            /// because an import writes, so Stop in another tab must not reach it.
+            result = try await DatabaseManager.shared.withScopedDriver(
+                scope: scope,
+                route: route,
+                workload: .bulk,
+                cancellation: .protectedWrite
+            ) { driver in
+                try await self.runImport(
+                    plugin: plugin,
+                    driver: driver,
+                    source: source,
+                    progress: progress,
+                    targetTable: targetTable,
+                    columnMapping: columnMapping
+                )
+            }
         } catch {
             state.errorMessage = error.localizedDescription
 
             // An import the user cancelled is not a failed import, and the query paths already
             // keep cancellations out of history for the same reason.
             guard !(error is PluginImportCancellationError) else { throw error }
+            /// Cancelling while the import is still queued behind another tab's operation throws
+            /// before a single statement runs. That is the same "they stopped it" case, arriving
+            /// from the gate rather than from the plugin.
+            guard !(error is CancellationError) else { throw error }
 
             await historyRecorder.record(
                 QueryHistoryRecordRequest(
@@ -192,6 +203,26 @@ final class ImportService {
         )
 
         return result
+    }
+
+    /// The sink is built here rather than before the lease so it cannot outlive the driver it
+    /// wraps, and so every statement it issues lands on the leased, pinned connection.
+    @MainActor
+    private func runImport(
+        plugin: any ImportFormatPlugin,
+        driver: DatabaseDriver,
+        source: any PluginImportSource,
+        progress: PluginImportProgress,
+        targetTable: String?,
+        columnMapping: [String: String]
+    ) async throws -> PluginImportResult {
+        let sink = ImportDataSinkAdapter(
+            driver: driver,
+            databaseType: connection.type,
+            targetTable: targetTable,
+            columnMapping: columnMapping
+        )
+        return try await plugin.performImport(source: source, sink: sink, progress: progress)
     }
 
     /// An import the user cancelled reports nothing, matching what history already does with one

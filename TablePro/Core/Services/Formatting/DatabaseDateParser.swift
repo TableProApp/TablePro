@@ -22,8 +22,38 @@ struct TemporalLayout: Equatable {
 /// The instant, the zone it was written in, and the spelling it arrived as.
 struct ParsedTemporalValue: Equatable {
     let date: Date
+    /// The same value with its sub-second digits dropped.
+    ///
+    /// `Date` is a `Double` of seconds, which at 2024 resolves to about 119ns, so a fraction does
+    /// not survive a round trip through it: `.000001` reads back as 953ns and `.999999999` rounds
+    /// the whole second up. Display renders this one and splices the digits from the layout, so a
+    /// value one microsecond before midnight prints its own second rather than the next one.
+    let wholeSecond: Date
     let timeZone: TimeZone
     let layout: TemporalLayout
+
+    /// The instant to plot on a chart's time axis, which is not always the instant the value names.
+    ///
+    /// Swift Charts labels a `Date` axis in the reader's zone and ignores `EnvironmentValues`,
+    /// measured, so a naive value has to be handed the instant whose reader-zone wall clock is the
+    /// text the grid prints. A value that carries its own offset names a real instant and is
+    /// plotted as it is.
+    var plottableDate: Date {
+        guard layout.timeZoneSuffix == nil else { return date }
+        var source = Calendar(identifier: .gregorian)
+        source.timeZone = timeZone
+        var reader = Calendar(identifier: .gregorian)
+        reader.timeZone = .autoupdatingCurrent
+        let wallClock = source.dateComponents(
+            [.year, .month, .day, .hour, .minute, .second, .nanosecond],
+            from: date
+        )
+        return reader.date(from: wallClock) ?? date
+    }
+
+    /// Whether the database supplied a zone at all. A `Z` suffix resolves to GMT and so does a
+    /// value with no suffix, so the zone cannot tell them apart and only this can.
+    var carriesItsOwnZone: Bool { layout.timeZoneSuffix != nil }
 }
 
 enum DatabaseDateParser {
@@ -42,10 +72,19 @@ enum DatabaseDateParser {
     private static let referenceDateComponents = (year: 2_000, month: 1, day: 1)
 
     /// A value carrying no offset is naive: `2024-03-01 12:00:00` names a wall clock, not an
-    /// instant. It resolves in the reader's own zone so the grid, the chart's axis and the picker
-    /// all show it as written, and the zone travels with the value so a write-back reproduces the
-    /// same text.
-    private static var naiveTimeZone: TimeZone { .current }
+    /// instant. It resolves in GMT, the one zone where every wall clock exists exactly once and
+    /// never twice, so display, the cell picker and the write-back cancel exactly instead of
+    /// accidentally. The zone travels with the value, so a write-back reproduces the same text.
+    ///
+    /// The reader's own zone could not do that. A wall clock inside a daylight-saving gap does not
+    /// exist there, so `Calendar` legally moves it: `2024-03-10 02:30:00` read in New York drew as
+    /// 03:30 and, once the picker was opened to change the date alone, wrote 03:30 back over it.
+    /// Worse where a zone skipped a whole day: Samoa has no 2011-12-30, so a value stored on that
+    /// date failed to parse at all and rendered as raw text with no picker.
+    ///
+    /// Anything that reads `date` without `timeZone` therefore holds a UTC anchor and wants
+    /// `plottableDate` instead.
+    private static var naiveTimeZone: TimeZone { .gmt }
 
     static func parse(_ rawValue: String?) -> ParsedTemporalValue? {
         guard let matcher, let raw = rawValue?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else {
@@ -90,7 +129,12 @@ enum DatabaseDateParser {
 
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
-        guard let date = calendar.date(from: components), keepsItsDay(components, in: calendar, at: date) else {
+        var wholeSecondComponents = components
+        wholeSecondComponents.nanosecond = 0
+        guard let date = calendar.date(from: components),
+              let wholeSecond = calendar.date(from: wholeSecondComponents),
+              keepsItsDay(components, in: calendar, at: wholeSecond)
+        else {
             return nil
         }
 
@@ -102,7 +146,7 @@ enum DatabaseDateParser {
             fractionalSeconds: fractionalSeconds,
             timeZoneSuffix: timeZoneSuffix
         )
-        return ParsedTemporalValue(date: date, timeZone: timeZone, layout: layout)
+        return ParsedTemporalValue(date: date, wholeSecond: wholeSecond, timeZone: timeZone, layout: layout)
     }
 
     static func date(from text: String) -> Date? {
@@ -123,6 +167,9 @@ enum DatabaseDateParser {
     /// Catches the day a range check cannot, such as `2024-02-30`, which `Calendar` moves into
     /// March. Only the date is compared: a naive wall clock inside a spring-forward gap is legally
     /// shifted by an hour, and that value is still the day it says it is.
+    ///
+    /// It reads the whole-second instant, because a fraction near one second rounds the `Double`
+    /// up: `2024-02-29 23:59:59.9999999999` landed on 1 March and was refused as not a date.
     private static func keepsItsDay(_ components: DateComponents, in calendar: Calendar, at date: Date) -> Bool {
         let rebuilt = calendar.dateComponents([.year, .month, .day], from: date)
         return rebuilt.year == components.year && rebuilt.month == components.month
@@ -132,9 +179,16 @@ enum DatabaseDateParser {
     /// Sub-second precision reaches the `Date` so a chart can separate points inside one second.
     /// The original text is kept in the layout as well, because rebuilding it from a `Double` would
     /// lose digits a database round-trip has to preserve.
+    ///
+    /// Counted in digits rather than scaled through a `Double`, which rounded `.789012` to
+    /// 789_011_955 and, past nine digits, to a whole 1_000_000_000: `Calendar` then rolled that
+    /// second forward and `keepsItsDay` rejected the value, so a high-precision timestamp on the
+    /// last day of a month rendered as raw text.
     private static func nanoseconds(from fractionalSeconds: String?) -> Int {
-        guard let fractionalSeconds, let fraction = Double(fractionalSeconds) else { return 0 }
-        return Int((fraction * 1_000_000_000).rounded())
+        guard let fractionalSeconds else { return 0 }
+        let digits = fractionalSeconds.dropFirst().prefix(9)
+        guard !digits.isEmpty, let value = Int(digits) else { return 0 }
+        return (0 ..< (9 - digits.count)).reduce(value) { scaled, _ in scaled * 10 }
     }
 
     static func timeZone(fromSuffix suffix: String) -> TimeZone {

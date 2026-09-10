@@ -16,19 +16,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 5 MB smaller app bundle.
 - 7 MB smaller DMG download.
+- Connect progress reads as a labelled bar, with a step named only where the app is waiting on something outside itself.
 
 ### Fixed
 
 - Update release notes show all changes for the offered version, with new features before fixes and properly formatted Markdown. The full changelog is also available from Help and Software Update settings.
 - Idle metadata connections held open for the life of the app, up to six per connection. (#2700)
+- MongoDB connections reading as healthy after the server went away. (#2700)
+- Password prompt raised by a background reconnect, on whichever window was in front. (#2700)
+- Health check entering the same connection as a running import. (#2700)
+- Startup commands, query timeout, database and schema lost after a health check quietly reconnected. (#2700)
+- Table transfer abortable by Stop from an unrelated tab, part-applied. (#2700)
 - SQLite, DuckDB and Teradata connections pinged every 30 seconds despite opting out of health checks. (#2700)
 - Data grid dropping the UTC offset from a `timestamp with time zone` value. (#2702)
 - Oracle `TIMESTAMP` values carrying a `Z` the column never stored. (#2702)
+- Timestamp shown an hour late, and its time lost on an edit, when the value falls in the reader's daylight-saving gap. (#2702)
+- Timestamp stored on a day the reader's time zone skipped rendering as raw text with no date picker. (#2702)
+- Sub-second precision missing from timestamp cells, merging distinct values into one entry in the column filter. (#2702)
+- Grid cells still reading in the old time zone after the Mac's time zone changed. (#2702)
 - Connection colour set on an iPhone not showing on the Mac, and the reverse.
 - Connection still reading as read-only on an iPhone after read-only was turned off on the Mac.
 - Window rebuilding its own layout three times while a connection opens.
 - Connecting screen naming the wrong step for the first half second of a connect.
 - Spinner flash in the object browser on Oracle, Snowflake, BigQuery, Trino and Dameng.
+- Start of every line hidden in the SQL editor after a long line was removed. (#2709)
+- Start of a line hidden under the line numbers after moving to it in a horizontally scrolled editor.
+- Editor jumping sideways on each keystroke in a long line while scrolled horizontally.
+- Cursor left off screen after pasting a long line.
+- Line number column keeping a stale width after the line count drops below 1,000 or the font size changes.
 
 ## [0.73.0] - 2026-09-09
 

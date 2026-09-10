@@ -130,7 +130,11 @@ extension DatabaseManager {
             try Task.checkCancellation()
             try ensureAttemptIsCurrent(attempt, for: connection.id, driver: driver)
 
-            reportStage(.preparingSession, attempt: attempt, for: connection.id)
+            reportStage(
+                Self.preparingSessionStage(for: resolvedConnection),
+                attempt: attempt,
+                for: connection.id
+            )
             await applyTimeoutAndStartupCommands(
                 on: driver,
                 startupCommands: resolvedConnection.startupCommands,
@@ -621,6 +625,16 @@ extension DatabaseManager {
         )
     }
 
+    /// Preparing the session is the app's own work and says nothing a reader can act on, with one
+    /// exception: it is also where their startup commands run, and a statement that hangs there
+    /// hangs the connect. Naming that case is the difference between a bar with no explanation and
+    /// one the reader knows to blame their own SQL for.
+    private static func preparingSessionStage(for connection: DatabaseConnection) -> ConnectionStage {
+        let commands = connection.startupCommands?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !commands.isEmpty else { return .preparingSession }
+        return .custom(String(localized: "Waiting for your startup commands"))
+    }
+
     /// The step an in-flight connect last reported, or nil when none is running.
     internal func currentStage(for connectionId: UUID) -> ConnectionStage? {
         connectionStages[connectionId]
@@ -703,8 +717,12 @@ extension DatabaseManager {
     }
 
     #if DEBUG
+    /// Stands in for a completed connect, so it stamps what a completed connect stamps. Without
+    /// the timestamp every injected session reads as never having answered, and the first scoped
+    /// operation in a test pays a check that production would never make.
     internal func injectSession(_ session: ConnectionSession, for connectionId: UUID) {
         setSession(session, for: connectionId)
+        markSessionVerified(connectionId)
     }
 
     internal func removeSession(for connectionId: UUID) {

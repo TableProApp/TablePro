@@ -20,7 +20,8 @@ public class TextLayoutManager: NSObject {
     }
     public var wrapLines: Bool {
         didSet {
-            setNeedsLayout()
+            guard wrapLines != oldValue else { return }
+            invalidateLineWidths()
         }
     }
     public var detectedLineEnding: LineEnding = .lineFeed
@@ -100,9 +101,12 @@ public class TextLayoutManager: NSObject {
 
     weak var layoutView: NSView?
 
-    /// The calculated maximum width of all laid out lines.
-    /// - Note: This does not indicate *the* maximum width of the text view if all lines have not been laid out.
-    ///         This will be updated if it comes across a wider line.
+    /// The width of the widest line laid out so far.
+    ///
+    /// Published from ``TextLineStorage/maxWidth`` when a layout pass finishes, so it falls when the widest line is
+    /// deleted or narrowed as well as rising when a wider one is laid out.
+    /// - Note: A line that has never been laid out counts as zero wide, so this is not *the* maximum width of the
+    ///         document until every line has been laid out.
     var maxLineWidth: CGFloat = 0 {
         didSet {
             delegate?.layoutManagerMaxWidthDidChange(newWidth: maxLineWidth + edgeInsets.horizontal)

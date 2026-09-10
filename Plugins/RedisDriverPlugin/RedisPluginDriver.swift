@@ -147,11 +147,19 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         redisConnection = nil
     }
 
-    /// The health monitor asks this every 30 seconds, and a reconnect is what it does with a no.
-    /// So the only answer worth failing on is the one a reconnect fixes: the session no longer
+    /// The health monitor asks this on its own schedule, and a reconnect is what it does with a
+    /// no. So the only answer worth failing on is the one a reconnect fixes: the session no longer
     /// holds an identity. Any reply at all, an error included, is the server answering on a live
     /// socket, and reconnecting cannot talk a restricted user into `+ping` or hurry a busy script
-    /// along. A lost socket does not reach here; it throws out of `executeCommand`.
+    /// along.
+    ///
+    /// A lost socket does not reach here either, but not for the reason this used to give: rather
+    /// than throwing, `executeCommand` reconnects and replays through
+    /// `executeCommandSyncRetrying`. That is survivable for Redis in a way it is not for the SQL
+    /// engines, whose pings are deliberately non-reconnecting, because `reconnectSync` re-selects
+    /// the database and Redis carries almost no other session state. What it does not restore is
+    /// the connection's startup commands, so a probe can still report success on a session that
+    /// lost them.
     func ping() async throws {
         guard let conn = redisConnection else {
             throw RedisPluginError.notConnected

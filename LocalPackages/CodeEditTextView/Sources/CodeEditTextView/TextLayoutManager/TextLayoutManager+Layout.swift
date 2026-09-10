@@ -83,7 +83,6 @@ extension TextLayoutManager {
         var didLayoutChange = false
         var newVisibleLines: Set<TextLine.ID> = []
         var yContentAdjustment: CGFloat = 0
-        var maxFoundLineWidth = maxLineWidth
 
         // The vertical span this pass laid out. The layout view draws its own decorations into a backing store
         // nothing else invalidates when the viewport moves, so a band drawn before its lines were laid out would
@@ -110,8 +109,7 @@ extension TextLayoutManager {
                     linePosition,
                     usedFragmentIDs: &usedFragmentIDs,
                     textStorage: textStorage,
-                    yRange: minY..<maxY,
-                    maxFoundLineWidth: &maxFoundLineWidth
+                    yRange: minY..<maxY
                 )
                 yContentAdjustment += yAdjustment
                 relaidOutMinY = min(relaidOutMinY, linePosition.yPos)
@@ -163,8 +161,8 @@ extension TextLayoutManager {
         layoutLock.unlock()
         CATransaction.commit()
 
-        if maxFoundLineWidth > maxLineWidth {
-            maxLineWidth = maxFoundLineWidth
+        if maxLineWidth != lineStorage.maxWidth {
+            maxLineWidth = lineStorage.maxWidth
         }
 
         if yContentAdjustment != 0 {
@@ -202,8 +200,7 @@ extension TextLayoutManager {
         _ linePosition: TextLineStorage<TextLine>.TextLinePosition,
         usedFragmentIDs: inout Set<LineFragment.ID>,
         textStorage: NSTextStorage,
-        yRange: Range<CGFloat>,
-        maxFoundLineWidth: inout CGFloat
+        yRange: Range<CGFloat>
     ) -> (CGFloat, wasLineHeightChanged: Bool) {
         let lineSize = layoutLineViews(
             linePosition,
@@ -226,9 +223,7 @@ extension TextLayoutManager {
                 yContentAdjustment += lineSize.height - linePosition.height
             }
         }
-        if maxFoundLineWidth < lineSize.width {
-            maxFoundLineWidth = lineSize.width
-        }
+        lineStorage.setWidth(lineSize.width, forLineAt: linePosition.index)
 
         return (yContentAdjustment, wasLineHeightChanged)
     }

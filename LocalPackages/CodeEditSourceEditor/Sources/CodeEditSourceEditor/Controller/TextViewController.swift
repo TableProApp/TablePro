@@ -26,7 +26,7 @@ public class TextViewController: NSViewController {
 
     weak var findViewController: FindViewController?
 
-    internal(set) public var scrollView: NSScrollView!
+    internal(set) public var scrollView: SourceEditorScrollView!
     internal(set) public var textView: TextView!
     var gutterView: GutterView!
     var minimapView: MinimapView!
@@ -68,6 +68,11 @@ public class TextViewController: NSViewController {
         didSet {
             highlighter?.setLanguage(language: language)
             setUpTextFormation()
+            // Another grammar highlights the text with other bold and italic runs, so the widths measured under the
+            // old one no longer hold.
+            if oldValue.id != language.id {
+                textView?.layoutManager?.invalidateLineWidths()
+            }
         }
     }
 
@@ -204,18 +209,34 @@ public class TextViewController: NSViewController {
 
     var cancellables = Set<AnyCancellable>()
 
-    /// The trailing inset for the editor. Grows when line wrapping is disabled or when the minimap is shown.
-    var textViewTrailingInset: CGFloat {
-        // See https://github.com/CodeEditApp/CodeEditTextView/issues/66
-        // wrapLines ? 1 : 48
-        (minimapView?.isHidden ?? false) ? 0 : (minimapView?.frame.width ?? 0.0)
-    }
-
-    var textViewInsets: HorizontalEdgeInsets {
+    /// The widths of the views floating along the editor's edges: the gutter on the leading side, and the minimap on
+    /// the trailing side while it is shown. ``SourceEditorScrollView`` reserves them so the text scrolls clear of both.
+    var floatingSubviewInsets: HorizontalEdgeInsets {
         HorizontalEdgeInsets(
             left: showGutter ? gutterView.frame.width : 0.0,
-            right: textViewTrailingInset
+            right: (minimapView?.isHidden ?? false) ? 0 : (minimapView?.frame.width ?? 0.0)
         )
+    }
+
+    /// Where the editor is scrolled, measured horizontally from where the text starts rather than from the gutter.
+    ///
+    /// The gutter's width is reserved on the clip view, so the clip view's own origin moves whenever the gutter shows,
+    /// hides or gains a digit. This is the position ``SourceEditorState`` records and restores, so a saved position
+    /// means the same text regardless.
+    var scrollPosition: CGPoint {
+        get {
+            let origin = scrollView.contentView.bounds.origin
+            return CGPoint(x: origin.x + scrollView.floatingSubviewInsets.left, y: origin.y)
+        }
+        set {
+            // The document is only as wide as the lines laid out so far, so the lines at the new vertical position are
+            // laid out before the horizontal position is applied, or it would be clamped to a width they have not
+            // reported yet.
+            textView.scroll(CGPoint(x: scrollView.contentView.bounds.minX, y: newValue.y))
+            textView.layoutManager.layoutLines()
+            textView.scroll(CGPoint(x: newValue.x - scrollView.floatingSubviewInsets.left, y: newValue.y))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+        }
     }
 
     // MARK: Init

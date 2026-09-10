@@ -100,8 +100,19 @@ final class LibPQDriverCore: @unchecked Sendable {
         libpqConnection = nil
     }
 
+    /// Non-reconnecting on purpose, which is what makes the answer mean anything.
+    ///
+    /// `execute` recovers a dropped connection privately, and that recovery restores none of the
+    /// session state the app put there: the startup commands, the query timeout, the database and
+    /// the schema all belong to `DatabaseManager.reconnectDriver`. A ping that healed itself that
+    /// way would report success into a server session reset behind the user's back, and the next
+    /// statement would run without the role, search path or time zone their startup SQL set.
+    /// Failing instead routes recovery through the manager, which restores all of it.
     func ping() async throws {
-        _ = try await execute(query: "SELECT 1")
+        guard let pqConn = libpqConnection else {
+            throw LibPQPluginError.notConnected
+        }
+        _ = try await pqConn.executeQuery("SELECT 1")
     }
 
     // MARK: - Query Execution

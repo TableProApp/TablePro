@@ -13,7 +13,7 @@ extension TextViewController {
     override public func viewWillAppear() {
         super.viewWillAppear()
         // The calculation this causes cannot be done until the view knows it's final position
-        updateTextInsets()
+        updateFloatingSubviewInsets()
         minimapView.layout()
     }
 
@@ -30,7 +30,7 @@ extension TextViewController {
     override public func loadView() {
         super.loadView()
 
-        scrollView = NSScrollView()
+        scrollView = SourceEditorScrollView()
         scrollView.documentView = textView
 
         gutterView = GutterView(
@@ -132,7 +132,7 @@ extension TextViewController {
         ) { [weak self] _ in
             self?.gutterView.needsDisplay = true
             self?.emphasisManager?.removeEmphases(for: EmphasisGroup.brackets)
-            self?.updateTextInsets()
+            self?.updateFloatingSubviewInsets()
             NotificationCenter.default.post(name: Self.scrollPositionDidUpdateNotification, object: self)
         }
     }
