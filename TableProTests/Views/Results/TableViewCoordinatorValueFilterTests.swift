@@ -327,10 +327,10 @@ struct TableViewCoordinatorValueFilterTests {
 
     @Test("Display format remapping is independent of row order")
     func displayFormatRemapHandlesOverlappingOldAndNewValues() throws {
-        let oldFirst = try #require(ValueDisplayFormatService.applyFormat("1000000", format: .unixTimestamp))
-        let oldSecond = try #require(ValueDisplayFormatService.applyFormat("1000", format: .unixTimestamp))
-        let newFirst = try #require(ValueDisplayFormatService.applyFormat("1000000", format: .unixTimestampMillis))
-        let newSecond = try #require(ValueDisplayFormatService.applyFormat("1000", format: .unixTimestampMillis))
+        let oldFirst = try #require(ValueDisplayFormatter.apply("1000000", format: .unixTimestamp))
+        let oldSecond = try #require(ValueDisplayFormatter.apply("1000", format: .unixTimestamp))
+        let newFirst = try #require(ValueDisplayFormatter.apply("1000000", format: .unixTimestampMillis))
+        let newSecond = try #require(ValueDisplayFormatter.apply("1000", format: .unixTimestampMillis))
         #expect(newFirst == oldSecond)
 
         let tableRows = TableRows(

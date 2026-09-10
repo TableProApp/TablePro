@@ -103,7 +103,7 @@ extension TableViewCoordinator {
             let format = columnIndex < columnDisplayFormats.count ? columnDisplayFormats[columnIndex] : nil
             let value = format.flatMap { format in
                 guard format.isApplicable(to: columnType, databaseType: databaseType) else { return nil }
-                return ValueDisplayFormatService.applyFormat(data, format: format, columnType: columnType)
+                return ValueDisplayFormatter.apply(data, format: format, columnType: columnType)
             }
                 ?? BlobFormattingService.shared.format(data, for: .copy)
                 ?? ""
@@ -114,7 +114,7 @@ extension TableViewCoordinator {
         let value = cell.asText ?? "NULL"
 
         if columnIndex < columnDisplayFormats.count, let format = columnDisplayFormats[columnIndex], format != .raw,
-           let formatted = ValueDisplayFormatService.applyFormat(value, format: format, columnType: columnType) {
+           let formatted = ValueDisplayFormatter.apply(value, format: format, columnType: columnType) {
             ClipboardService.shared.writeText(formatted)
             return
         }

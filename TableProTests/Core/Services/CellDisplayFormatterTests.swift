@@ -50,7 +50,7 @@ struct CellDisplayFormatterTests {
         )
 
         #expect(result == withoutFormat)
-        #expect(result != ValueDisplayFormatService.applyFormat(hex, format: .uuid))
+        #expect(result != ValueDisplayFormatter.apply(hex, format: .uuid))
     }
 
     @Test("binary read as text shows the text")

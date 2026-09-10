@@ -25,7 +25,7 @@ enum CellDisplayFormatter {
         case .bytes(let data):
             if let displayFormat,
                displayFormat.isApplicable(to: columnType, databaseType: databaseType),
-               let formatted = ValueDisplayFormatService.applyFormat(data, format: displayFormat, columnType: columnType) {
+               let formatted = ValueDisplayFormatter.apply(data, format: displayFormat, columnType: columnType) {
                 return fitToCell(formatted)
             }
             return BlobFormattingService.shared.format(data, for: .grid)
@@ -34,7 +34,7 @@ enum CellDisplayFormatter {
             var displayValue = value
             if let displayFormat, displayFormat != .raw,
                displayFormat.isApplicable(to: columnType, databaseType: databaseType),
-               let formatted = ValueDisplayFormatService.applyFormat(value, format: displayFormat, columnType: columnType) {
+               let formatted = ValueDisplayFormatter.apply(value, format: displayFormat, columnType: columnType) {
                 displayValue = formatted
             } else if let columnType {
                 if columnType.isDateType {
