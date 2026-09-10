@@ -489,7 +489,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
                 return OracleCellFormatting.formatDate(try cell.decode(Date.self))
 
             case .timestamp:
-                return OracleCellFormatting.formatTimestamp(try cell.decode(Date.self), style: .utc)
+                return OracleCellFormatting.formatTimestamp(try cell.decode(Date.self), style: .naive)
 
             case .timestampLTZ, .timestampTZ:
                 return OracleCellFormatting.formatTimestamp(try cell.decode(Date.self), style: .local)
