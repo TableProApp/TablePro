@@ -680,136 +680,15 @@ struct ExportDialog: View {
         isLoading = false
     }
 
-    private struct ExportRowSnapshot {
-        let isSelected: Bool
-        let optionValues: [Bool]
-    }
-
-    /// Keyed by kind too, so a routine and a table that share a name do not inherit each other's
-    /// checkboxes when the format changes and the tree reloads.
-    private func priorRowSnapshots() -> [String: ExportRowSnapshot] {
-        var snapshots: [String: ExportRowSnapshot] = [:]
-        for database in databaseItems {
-            for object in database.objects {
-                snapshots[Self.snapshotKey(container: database.name, object: object.name, kind: object.kind)] =
-                    ExportRowSnapshot(isSelected: object.isSelected, optionValues: object.optionValues)
-            }
-        }
-        return snapshots
-    }
-
-    private static func snapshotKey(container: String, object: String, kind: PluginExportObjectKind) -> String {
-        "\(container).\(kind.rawValue).\(object)"
-    }
-
     @MainActor
     private func loadDatabaseItems() async {
-        let priorRows = priorRowSnapshots()
-
+        let priorRows = ExportTreeBuilder.snapshots(of: databaseItems)
         do {
-            var items: [ExportDatabaseItem] = []
-
-            let dbType = connection.type
-            let grouping = PluginManager.shared.databaseGroupingStrategy(for: dbType)
-            switch grouping {
-            case .bySchema, .hierarchicalSchema:
-                let schemas = try await withExportDriver { driver in
-                    try await driver.fetchSchemas()
-                }
-                let defaultSchema = PluginManager.shared.defaultSchemaName(for: dbType)
-                for schema in schemas {
-                    let tables = try await fetchTablesForSchema(schema)
-                    let isDefaultSchema = schema.caseInsensitiveCompare(defaultSchema) == .orderedSame
-                    let loaded = await loadObjects(
-                        containerName: schema,
-                        schema: schema,
-                        tables: tables,
-                        includesPrincipals: isDefaultSchema
-                    )
-                    let objectItems = loaded.map { object in
-                        restoring(
-                            object,
-                            priorRows: priorRows,
-                            container: schema,
-                            containerRef: .schema(database: exportDatabaseName, schema: schema),
-                            isCurrentContainer: isDefaultSchema
-                        )
-                    }
-                    if !objectItems.isEmpty {
-                        items.append(ExportDatabaseItem(
-                            name: schema,
-                            objects: objectItems,
-                            /// The preselected table's own schema opens too. `isDefaultSchema` cannot
-                            /// carry that: it is "" on the five engines that hang tables off schemas,
-                            /// so every section stayed shut and a correctly ticked row read as nothing
-                            /// selected.
-                            isExpanded: isDefaultSchema
-                                || preselection.containerNames.contains(schema)
-                                || preselection.scopedSchema == schema
-                        ))
-                    }
-                }
-                items.sort { item1, item2 in
-                    if item1.name.caseInsensitiveCompare(defaultSchema) == .orderedSame { return true }
-                    if item2.name.caseInsensitiveCompare(defaultSchema) == .orderedSame { return false }
-                    return item1.name < item2.name
-                }
-            case .flat:
-                let fallbackName = PluginManager.shared.defaultGroupName(for: dbType)
-                let dbItem = try await buildFlatDatabaseItem(
-                    name: connection.database.isEmpty ? fallbackName : connection.database,
-                    priorRows: priorRows
-                )
-                if let dbItem { items.append(dbItem) }
-            case .byDatabase:
-                let databases = try await withExportDriver { driver in
-                    try await driver.fetchDatabases()
-                }
-                let tablesByDatabase = try await fetchTablesGroupedByDatabase()
-                for dbName in databases {
-                    let tables = tablesByDatabase[dbName] ?? []
-                    let isCurrentDB = dbName == connection.database
-                    let loaded = await loadObjects(
-                        containerName: dbName,
-                        schema: isCurrentDB ? nil : dbName,
-                        tables: tables,
-                        includesPrincipals: isCurrentDB
-                    )
-                    let objectItems = loaded.map { object in
-                        restoring(
-                            object,
-                            priorRows: priorRows,
-                            container: dbName,
-                            containerRef: .database(dbName),
-                            isCurrentContainer: isCurrentDB
-                        )
-                    }
-                    if !objectItems.isEmpty {
-                        items.append(ExportDatabaseItem(
-                            name: dbName,
-                            objects: objectItems,
-                            isExpanded: isCurrentDB || preselection.containerNames.contains(dbName)
-                        ))
-                    }
-                }
-                items.sort { item1, item2 in
-                    if item1.name == connection.database { return true }
-                    if item2.name == connection.database { return false }
-                    return item1.name < item2.name
-                }
-            }
-
+            let items = try await treeBuilder.build(priorRows: priorRows)
             loadedObjectKinds = supportedObjectKinds
             databaseItems = normalizedForCurrentFormat(items)
             isLoading = false
-
-            if let singleTable = preselection.singleTableName {
-                config.fileName = singleTable
-            } else if preselection.containerNames.count == 1, let container = preselection.containerNames.first {
-                config.fileName = container
-            } else if !connection.database.isEmpty {
-                config.fileName = connection.database
-            }
+            applyDefaultFileName()
         } catch {
             isLoading = false
             AlertHelper.showErrorSheet(
@@ -820,127 +699,36 @@ struct ExportDialog: View {
         }
     }
 
-    private func buildFlatDatabaseItem(
-        name: String,
-        priorRows: [String: ExportRowSnapshot] = [:]
-    ) async throws -> ExportDatabaseItem? {
-        let tables = try await withExportDriver { driver in
-            try await driver.fetchTables()
-        }
-        let loaded = await loadObjects(
-            containerName: "", schema: nil, tables: tables, includesPrincipals: true)
-        let objectItems = loaded.map { object in
-            restoring(
-                object,
-                priorRows: priorRows,
-                container: name,
-                containerRef: .database(name),
-                isCurrentContainer: true
-            )
-        }
-        guard !objectItems.isEmpty else { return nil }
-        return ExportDatabaseItem(name: name, objects: objectItems, isExpanded: true)
+    private var metadataReader: ExportDriverMetadataReader {
+        ExportDriverMetadataReader(scope: exportScope)
     }
 
-    /// Reads one container's objects for the kinds the chosen format can write. Principals are
-    /// server-wide, so only the container the dialog opened on offers them: listing them under
-    /// every schema would offer the same GRANT statements several times over.
-    private func loadObjects(
-        containerName: String,
-        schema: String?,
-        tables: [TableInfo],
-        includesPrincipals: Bool
-    ) async -> [ExportObjectItem] {
-        var kinds = supportedObjectKinds
-        if !includesPrincipals { kinds.remove(.grant) }
-        guard !kinds.isEmpty else { return [] }
-        let request = ExportObjectLoader.Request(
-            containerName: containerName, schema: schema, kinds: kinds)
-        do {
-            return try await withExportDriver { driver in
-                await ExportObjectLoader.loadObjects(request: request, tables: tables, driver: driver)
-            }
-        } catch {
-            Self.logger.warning("Failed to load export objects: \(error.localizedDescription)")
-            return []
-        }
-    }
-
-    /// The column names the row-scope popover offers. Read on demand, because a tree of forty
-    /// tables would otherwise pay for forty column lists nobody opens.
-    @MainActor
-    private func columnNames(for object: ExportObjectItem) async -> [String] {
-        guard object.kind.carriesRows else { return [] }
-        do {
-            return try await withExportDriver(workload: .interactive) { driver in
-                guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else { return [] }
-                let schema = object.databaseName.isEmpty ? nil : object.databaseName
-                return try await pluginDriver.fetchColumns(table: object.name, schema: schema).map(\.name)
-            }
-        } catch {
-            Self.logger.warning("Failed to read columns for the export scope: \(error.localizedDescription)")
-            return []
-        }
-    }
-
-    /// Carries a row's checkboxes across a reload, falling back to what the preselection asked for.
-    private func restoring(
-        _ object: ExportObjectItem,
-        priorRows: [String: ExportRowSnapshot],
-        container: String,
-        containerRef: DatabaseContainerRef,
-        isCurrentContainer: Bool
-    ) -> ExportObjectItem {
-        let priorRow = priorRows[
-            Self.snapshotKey(container: container, object: object.name, kind: object.kind)]
-        return ExportObjectItem(
-            name: object.name,
-            databaseName: object.databaseName,
-            kind: object.kind,
-            identity: object.identity,
-            parentTable: object.parentTable,
-            isSelected: priorRow?.isSelected ?? preselection.selects(
-                object: object.name,
-                kind: object.kind,
-                inContainer: containerRef,
-                isCurrentContainer: isCurrentContainer
-            ),
-            optionValues: priorRow?.optionValues ?? []
+    private var treeBuilder: ExportTreeBuilder {
+        ExportTreeBuilder(
+            connection: connection,
+            exportDatabaseName: exportDatabaseName,
+            preselection: preselection,
+            supportedObjectKinds: supportedObjectKinds,
+            reader: metadataReader
         )
     }
 
-    private func fetchTablesForSchema(_ schema: String) async throws -> [TableInfo] {
-        try await withExportDriver { driver in
-            try await driver.fetchTables(schema: schema)
+    private func applyDefaultFileName() {
+        if let singleTable = preselection.singleTableName {
+            config.fileName = singleTable
+        } else if preselection.containerNames.count == 1, let container = preselection.containerNames.first {
+            config.fileName = container
+        } else if !connection.database.isEmpty {
+            config.fileName = connection.database
         }
     }
 
-    /// One server-wide read for every database. The query carries no WHERE clause, so a
-    /// connection per database would return the same rows and only cost a connect, and a
-    /// database the user can list but not open becomes an empty group instead of an error
-    /// that fails the whole dialog.
-    private func fetchTablesGroupedByDatabase() async throws -> [String: [TableInfo]] {
-        try await withExportDriver { driver in
-            let query = """
-                SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE
-                FROM information_schema.TABLES
-                ORDER BY TABLE_NAME
-                """
-            let result = try await driver.execute(query: query)
-
-            var grouped: [String: [TableInfo]] = [:]
-            for row in result.rows {
-                guard row.count >= 2,
-                      let rowSchema = row[0].asText,
-                      let name = row[1].asText else {
-                    continue
-                }
-                let typeStr = row.count > 2 ? (row[2].asText ?? "BASE TABLE") : "BASE TABLE"
-                let type: TableInfo.TableType = typeStr.uppercased().contains("VIEW") ? .view : .table
-                grouped[rowSchema, default: []].append(TableInfo(name: name, type: type, rowCount: nil))
-            }
-            return grouped
-        }
+    private func columnNames(for object: ExportObjectItem) async -> [String] {
+        guard object.kind.carriesRows else { return [] }
+        return await metadataReader.columnNames(
+            table: object.name,
+            schema: object.databaseName.isEmpty ? nil : object.databaseName
+        )
     }
 
     @MainActor
@@ -1008,18 +796,6 @@ struct ExportDialog: View {
     /// The name of that database, for the container refs the preselection is matched against.
     private var exportDatabaseName: String {
         exportScope?.database ?? connection.database
-    }
-
-    /// Every list in this dialog reads from the database it will export from, not from wherever
-    /// the sidebar happens to be browsing. Those were the same connection until a container in
-    /// another database could be exported, and then the dialog listed one database's schemas while
-    /// `exportScope` pointed at another.
-    private func withExportDriver<T: Sendable>(
-        workload: MetadataConnectionPool.Workload = .bulk,
-        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
-    ) async throws -> T {
-        guard let scope = exportScope else { throw ExportError.notConnected }
-        return try await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: workload, body)
     }
 
     private func showExportError(_ error: Error) {
