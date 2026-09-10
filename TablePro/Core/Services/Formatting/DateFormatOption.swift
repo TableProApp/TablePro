@@ -32,9 +32,35 @@ enum DateFormatOption: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    var formatString: String { rawValue }
+    func formatString(for components: TemporalComponents) -> String {
+        switch components {
+        case .dateOnly: return dateOnlyFormatString
+        case .timeOnly: return timeOnlyFormatString
+        case .dateAndTime: return rawValue
+        }
+    }
 
-    var dateOnlyFormatString: String {
+    /// Whether the text this option produces for a column shape carries a clock, which is what
+    /// decides whether a UTC offset belongs on it: an offset qualifies a time and says nothing
+    /// about a bare date.
+    ///
+    /// Only the date-and-time shape depends on the option, and it is switched exhaustively rather
+    /// than defaulted, so a seventh pattern has to state which it is instead of silently picking.
+    func rendersTime(for components: TemporalComponents) -> Bool {
+        switch components {
+        case .dateOnly:
+            return false
+        case .timeOnly:
+            return true
+        case .dateAndTime:
+            switch self {
+            case .iso8601, .usLong, .euLong: return true
+            case .iso8601Date, .usShort, .euShort: return false
+            }
+        }
+    }
+
+    private var dateOnlyFormatString: String {
         switch self {
         case .iso8601, .iso8601Date: return "yyyy-MM-dd"
         case .usLong, .usShort: return "MM/dd/yyyy"
@@ -42,7 +68,7 @@ enum DateFormatOption: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    var timeOnlyFormatString: String {
+    private var timeOnlyFormatString: String {
         switch self {
         case .usLong: return "hh:mm:ss a"
         default: return "HH:mm:ss"
