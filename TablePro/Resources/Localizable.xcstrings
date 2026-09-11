@@ -185,6 +185,40 @@
     "-- Once the rows are in" : {
 
     },
+    "A single click opens each table in the same preview tab. Double-click a table, or press Return, to keep it open." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "한 번 클릭하면 각 테이블이 같은 미리보기 탭에서 열립니다. 테이블을 이중 클릭하거나 Return 키를 누르면 열린 상태로 유지됩니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tek tıklama her tabloyu aynı önizleme sekmesinde açar. Açık tutmak için tabloya çift tıklayın veya Return tuşuna basın."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhấp một lần sẽ mở từng bảng trong cùng một tab xem trước. Nhấp đúp vào bảng hoặc nhấn Return để giữ nó mở."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "单击会在同一个预览标签页中打开每个表格。双击表格或按 Return 键即可保持打开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按一下會在同一個預覽標籤頁中開啟每個表格。按兩下表格或按 Return 鍵即可保持開啟。"
+          }
+        }
+      }
+    },
     "Are you sure you want to delete the group \"%@\" and its subgroups? Their connections will be moved to the top level." : {
       "localizations" : {
         "ko" : {
@@ -283,6 +317,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在表格中修改儲存格，儲存前先檢查 SQL。"
+          }
+        }
+      }
+    },
+    "Choose File > Open Quickly… and type part of a name to open a table, database, or saved query." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "파일 > 빠르게 열기…를 선택하고 이름의 일부를 입력하여 테이블, 데이터베이스 또는 저장된 쿼리를 여세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir tabloyu, veritabanını veya kayıtlı sorguyu açmak için Dosya > Hızlı Aç… öğesini seçin ve adının bir kısmını yazın."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chọn Tệp > Mở nhanh… và gõ một phần tên để mở bảng, cơ sở dữ liệu hoặc truy vấn đã lưu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择“文件 > 快速打开…”并输入名称的一部分，即可打开表格、数据库或已保存的查询。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇「檔案 > 快速開啟…」並輸入名稱的一部分，即可開啟表格、資料庫或已儲存的查詢。"
           }
         }
       }
@@ -419,6 +487,142 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "就地編輯資料"
+          }
+        }
+      }
+    },
+    "Every query you run is saved. Choose View > Show Query History to search them and load one back into the editor." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "실행한 모든 쿼리는 저장됩니다. 보기 > 쿼리 기록 보기를 선택하여 검색하고 편집기로 다시 불러오세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Çalıştırdığınız her sorgu kaydedilir. Aramak ve birini düzenleyiciye geri yüklemek için Görünüm > Sorgu Geçmişini Göster öğesini seçin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mọi truy vấn bạn chạy đều được lưu. Chọn Xem > Hiện lịch sử truy vấn để tìm và nạp lại một truy vấn vào trình soạn thảo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你运行的每条查询都会被保存。选择“显示 > 显示查询历史”搜索它们，并将其中一条载回编辑器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你執行的每個查詢都會儲存。選擇「顯示方式 > 顯示查詢記錄」搜尋它們，並將其中一個載回編輯器。"
+          }
+        }
+      }
+    },
+    "Every query you run is saved. Press %@ to search them and load one back into the editor." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "실행한 모든 쿼리는 저장됩니다. %@을(를) 눌러 검색하고 편집기로 다시 불러오세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Çalıştırdığınız her sorgu kaydedilir. Aramak ve birini düzenleyiciye geri yüklemek için %@ tuşlarına basın."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mọi truy vấn bạn chạy đều được lưu. Nhấn %@ để tìm và nạp lại một truy vấn vào trình soạn thảo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你运行的每条查询都会被保存。按 %@ 搜索它们，并将其中一条载回编辑器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你執行的每個查詢都會儲存。按 %@ 搜尋它們，並將其中一個載回編輯器。"
+          }
+        }
+      }
+    },
+    "Find Past Queries" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "지난 쿼리 찾기"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geçmiş Sorguları Bulun"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tìm các truy vấn trước đây"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查找过去的查询"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尋找過去的查詢"
+          }
+        }
+      }
+    },
+    "Keep a Table Open" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "테이블 열어 두기"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir Tabloyu Açık Tutun"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giữ bảng luôn mở"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保持表格打开"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保持表格開啟"
           }
         }
       }
@@ -593,6 +797,40 @@
         }
       }
     },
+    "Open Any Table by Name" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이름으로 테이블 열기"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herhangi Bir Tabloyu Adıyla Açın"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mở bất kỳ bảng nào theo tên"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按名称打开任意表格"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "依名稱開啟任何表格"
+          }
+        }
+      }
+    },
     "Passwords stay in your Keychain. Tunnel through SSH or connect over SSL/TLS." : {
       "localizations" : {
         "ko" : {
@@ -623,6 +861,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "密碼保存在你的鑰匙圈中。可透過 SSH 通道或 SSL/TLS 連線。"
+          }
+        }
+      }
+    },
+    "Press %@ and type part of a name to open a table, database, or saved query." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@을(를) 누르고 이름의 일부를 입력하여 테이블, 데이터베이스 또는 저장된 쿼리를 여세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir tabloyu, veritabanını veya kayıtlı sorguyu açmak için %@ tuşlarına basın ve adının bir kısmını yazın."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhấn %@ và gõ một phần tên để mở bảng, cơ sở dữ liệu hoặc truy vấn đã lưu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按 %@ 并输入名称的一部分，即可打开表格、数据库或已保存的查询。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按 %@ 並輸入名稱的一部分，即可開啟表格、資料庫或已儲存的查詢。"
           }
         }
       }

@@ -106,6 +106,7 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             switch sidebarState.selectedSidebarTab {
             case .tables:
+                FeatureTipInline(tip: OpenQuicklyTip(shortcut: FeatureTipShortcut.display(for: .quickSwitcher)))
                 tablesContent
             case .favorites:
                 if let coordinator {

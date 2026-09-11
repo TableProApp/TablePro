@@ -463,6 +463,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
                 forceNonPreview: forceNonPreview,
                 activateGridFocus: activateGridFocus
             )
+            FeatureTipSignals.sidebarTableOpened()
             publishSelection()
         }
     }
@@ -662,6 +663,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     ) {
         switch intent {
         case .openPermanently(let ref):
+            FeatureTipSignals.tableKeptOpen()
             pendingOpenWork?.cancel()
             pendingOpenWork = nil
             open(ref, activateGridFocus: true, forceNonPreview: true)
