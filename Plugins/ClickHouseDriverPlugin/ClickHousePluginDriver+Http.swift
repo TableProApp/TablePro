@@ -47,7 +47,7 @@ extension ClickHousePluginDriver {
 
         let httpResponse = response as? HTTPURLResponse
         if let httpResponse, httpResponse.statusCode >= 400 {
-            let body = String(data: data, encoding: .utf8) ?? "Unknown error"
+            let body = String(decoding: data, as: UTF8.self) // swiftlint:disable:this optional_data_string_conversion
             let exceptionCode = httpResponse.value(forHTTPHeaderField: "X-ClickHouse-Exception-Code") ?? "none"
             Self.logger.error("ClickHouse HTTP \(httpResponse.statusCode) exception \(exceptionCode): \(body)")
             throw ClickHouseError(message: body.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -153,55 +153,5 @@ extension ClickHousePluginDriver {
         request.httpBody = trimmedQuery.data(using: .utf8)
 
         return request
-    }
-
-    /// Convert `?` placeholders to `{p1:String}` and build parameter map for ClickHouse HTTP params.
-    static func buildClickHouseParams(
-        query: String,
-        parameters: [PluginCellValue]
-    ) -> (String, [String: String?]) {
-        var converted = ""
-        var paramIndex = 0
-        var inSingleQuote = false
-        var inDoubleQuote = false
-        var isEscaped = false
-
-        for char in query {
-            if isEscaped {
-                isEscaped = false
-                converted.append(char)
-                continue
-            }
-            if char == "\\" && (inSingleQuote || inDoubleQuote) {
-                isEscaped = true
-                converted.append(char)
-                continue
-            }
-            if char == "'" && !inDoubleQuote {
-                inSingleQuote.toggle()
-            } else if char == "\"" && !inSingleQuote {
-                inDoubleQuote.toggle()
-            }
-            if char == "?" && !inSingleQuote && !inDoubleQuote && paramIndex < parameters.count {
-                paramIndex += 1
-                converted.append("{p\(paramIndex):String}")
-            } else {
-                converted.append(char)
-            }
-        }
-
-        var paramMap: [String: String?] = [:]
-        for i in 0..<paramIndex where i < parameters.count {
-            switch parameters[i] {
-            case .null:
-                paramMap["p\(i + 1)"] = nil
-            case .text(let s):
-                paramMap["p\(i + 1)"] = s
-            case .bytes(let d):
-                paramMap["p\(i + 1)"] = "0x" + d.map { String(format: "%02X", $0) }.joined()
-            }
-        }
-
-        return (converted, paramMap)
     }
 }

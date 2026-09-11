@@ -128,7 +128,8 @@ struct TableQueryBuilder {
         if let dialect {
             let activeFilters = filters.filter { $0.isEnabled }
             let filterGen = FilterSQLGenerator(
-                dialect: dialect, columns: columns, columnTypes: columnTypes, quoteIdentifier: dialectQuote
+                dialect: dialect, columns: columns, columnTypes: columnTypes, quoteIdentifier: dialectQuote,
+                stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType)
             )
             let whereClause = filterGen.generateWhereClause(from: activeFilters, logicMode: logicMode)
             if !whereClause.isEmpty {
@@ -196,7 +197,8 @@ struct TableQueryBuilder {
         let quotedTable = qualifiedTable(tableName, schema: schemaName)
         let activeFilters = filters.filter { $0.isEnabled }
         let filterGen = FilterSQLGenerator(
-            dialect: dialect, columns: columns, columnTypes: columnTypes, quoteIdentifier: dialectQuote
+            dialect: dialect, columns: columns, columnTypes: columnTypes, quoteIdentifier: dialectQuote,
+            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType)
         )
         let whereClause = filterGen.generateWhereClause(from: activeFilters, logicMode: logicMode)
 

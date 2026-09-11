@@ -164,6 +164,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Edit View Definition** enabled in the Database menu on a read-only connection. (#2726)
 - Enum types and sequences written in front of a PostgreSQL view's DDL. (#2726)
 - Display As formats lost on a rename, and kept with column layouts after deleting a connection.
+- Garbled ClickHouse text whenever another value in the same result held binary data.
+- Carriage returns, quotes, NUL bytes and Enum type names shown with backslash escapes on ClickHouse.
+- Edits and deletes matching no row on ClickHouse tables with a binary value in the row.
+- Non-ASCII SQL Server filter values turned into `?` and matching the wrong rows on non-Unicode collations.
+- Empty structure, missing indexes and failed renames for non-ASCII SQL Server object names on non-Unicode collations.
+- Changing a defaulted SQL Server column failing when a name contains a quote or non-ASCII text.
 
 ### Security
 

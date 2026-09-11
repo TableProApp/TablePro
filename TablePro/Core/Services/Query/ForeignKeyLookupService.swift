@@ -72,6 +72,7 @@ enum ForeignKeyLookupService {
                 label: label,
                 searchTerm: term,
                 dialect: dialect,
+                stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType),
                 quoteIdentifier: driver.quoteIdentifier
             ) else {
                 return []

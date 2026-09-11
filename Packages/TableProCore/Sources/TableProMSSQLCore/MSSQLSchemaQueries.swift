@@ -2,7 +2,7 @@ import Foundation
 
 public enum MSSQLSchemaQueries {
     public static func escape(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
+        MSSQLStringLiteral.escaped(value)
     }
 
     public static func escapeBracket(_ value: String) -> String {
@@ -127,19 +127,19 @@ public enum MSSQLSchemaQueries {
         """
 
     public static func tables(schema: String) -> String {
-        let s = escape(schema)
+        let s = MSSQLStringLiteral.quoted(schema)
         return """
             SELECT t.TABLE_NAME, t.TABLE_TYPE
             FROM INFORMATION_SCHEMA.TABLES t
-            WHERE t.TABLE_SCHEMA = '\(s)'
+            WHERE t.TABLE_SCHEMA = \(s)
               AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')
             ORDER BY t.TABLE_NAME
             """
     }
 
     public static func columns(schema: String, table: String) -> String {
-        let s = escape(schema)
-        let t = escape(table)
+        let s = MSSQLStringLiteral.quoted(schema)
+        let t = MSSQLStringLiteral.quoted(table)
         return """
             SELECT
                 c.COLUMN_NAME,
@@ -160,17 +160,17 @@ public enum MSSQLSchemaQueries {
                     ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
                     AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA
                 WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
-                    AND tc.TABLE_SCHEMA = '\(s)'
-                    AND tc.TABLE_NAME = '\(t)'
+                    AND tc.TABLE_SCHEMA = \(s)
+                    AND tc.TABLE_NAME = \(t)
             ) pk ON c.COLUMN_NAME = pk.COLUMN_NAME
-            WHERE c.TABLE_NAME = '\(t)'
-              AND c.TABLE_SCHEMA = '\(s)'
+            WHERE c.TABLE_NAME = \(t)
+              AND c.TABLE_SCHEMA = \(s)
             ORDER BY c.ORDINAL_POSITION
             """
     }
 
     public static func indexes(schema: String, table: String) -> String {
-        let object = bracketed(schema: schema, table: table)
+        let object = MSSQLStringLiteral.quoted(bracketed(schema: schema, table: table))
         return """
             SELECT i.name, i.is_unique, i.is_primary_key, c.name AS column_name
             FROM sys.indexes i
@@ -178,15 +178,15 @@ public enum MSSQLSchemaQueries {
                 ON i.object_id = ic.object_id AND i.index_id = ic.index_id
             JOIN sys.columns c
                 ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-            WHERE i.object_id = OBJECT_ID('\(object)')
+            WHERE i.object_id = OBJECT_ID(\(object))
               AND i.name IS NOT NULL
             ORDER BY i.index_id, ic.key_ordinal
             """
     }
 
     public static func foreignKeys(schema: String, table: String) -> String {
-        let s = escape(schema)
-        let t = escape(table)
+        let s = MSSQLStringLiteral.quoted(schema)
+        let t = MSSQLStringLiteral.quoted(table)
         return """
             SELECT
                 fk.name AS constraint_name,
@@ -204,7 +204,7 @@ public enum MSSQLSchemaQueries {
             JOIN sys.schemas sr ON tr.schema_id = sr.schema_id
             JOIN sys.columns cr
                 ON fkc.referenced_object_id = cr.object_id AND fkc.referenced_column_id = cr.column_id
-            WHERE tp.name = '\(t)' AND s.name = '\(s)'
+            WHERE tp.name = \(t) AND s.name = \(s)
             ORDER BY fk.name
             """
     }

@@ -27,16 +27,25 @@ struct FilterSQLGenerator {
     private let dialect: SQLDialectDescriptor
     private let quoteIdentifierFn: (String) -> String
     private let columnTypesByName: [String: ColumnType]
+    private let stringLiteralPrefix: String
 
     init(
         dialect: SQLDialectDescriptor,
         columns: [String] = [],
         columnTypes: [ColumnType] = [],
-        quoteIdentifier: ((String) -> String)? = nil
+        quoteIdentifier: ((String) -> String)? = nil,
+        stringLiteralPrefix: String = ""
     ) {
         self.dialect = dialect
         self.quoteIdentifierFn = quoteIdentifier ?? quoteIdentifierFromDialect(dialect)
         self.columnTypesByName = ColumnTypeSQLQuoting.lookupByName(columns: columns, columnTypes: columnTypes)
+        self.stringLiteralPrefix = stringLiteralPrefix
+    }
+
+    /// The one place a string literal is spelled, so the engine's prefix cannot be forgotten on
+    /// one arm and applied on another.
+    private func quotedLiteral(_ escapedBody: String) -> String {
+        "\(stringLiteralPrefix)'\(escapedBody)'"
     }
 
     // MARK: - Public API
@@ -147,7 +156,7 @@ struct FilterSQLGenerator {
         case .regex:
             let operand = patternOperand(quotedColumn, columnType: columnType)
             guard dialect.regexSyntax != .unsupported else {
-                let pattern = "'%\(escapeSQLQuote(filter.value))%'"
+                let pattern = quotedLiteral("%\(escapeSQLQuote(filter.value))%")
                 return "\(folding.foldingLikeOperand(operand)) \(folding.likeKeyword) "
                     + folding.foldingLikeOperand(pattern)
             }
@@ -292,7 +301,7 @@ struct FilterSQLGenerator {
         negated: Bool,
         folding: PluginSQLCaseFolding
     ) -> String {
-        let quotedPattern = "'\(escapeSQLQuote(pattern))'"
+        let quotedPattern = quotedLiteral(escapeSQLQuote(pattern))
         let keyword = negated ? folding.notLikeKeyword : folding.likeKeyword
         let operand = folding.foldingLikeOperand(column)
         return "\(operand) \(keyword) \(folding.foldingLikeOperand(quotedPattern))\(likeEscapeClause)"
@@ -357,7 +366,7 @@ struct FilterSQLGenerator {
             guard ignoresCase else { return "match(\(column), '\(escapedPattern)')" }
             return "match(\(column), '(?i)\(escapedPattern)')"
         case .unsupported:
-            return "\(column) LIKE '%\(escapedPattern)%'"
+            return "\(column) LIKE \(quotedLiteral("%\(escapedPattern)%"))"
         }
     }
 
@@ -379,7 +388,7 @@ struct FilterSQLGenerator {
             return .value(trimmed)
         }
 
-        return .value("'\(escapeStringValue(trimmed))'")
+        return .value(quotedLiteral(escapeStringValue(trimmed)))
     }
 
     private func booleanLiteral(for value: String, columnType: ColumnType?) -> String? {

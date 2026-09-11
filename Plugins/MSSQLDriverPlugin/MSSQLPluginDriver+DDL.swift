@@ -116,22 +116,25 @@ extension MSSQLPluginDriver {
 
         // Rename column first so subsequent statements reference the correct name
         if oldColumn.name != newColumn.name {
-            let escapedPath = "\(escapeStringLiteral(_currentSchema)).\(escapeStringLiteral(table)).\(escapeStringLiteral(oldColumn.name))"
-            stmts.append("EXEC sp_rename '\(escapedPath)', '\(escapeStringLiteral(newColumn.name))', 'COLUMN'")
+            let path = MSSQLStringLiteral.quoted("\(_currentSchema).\(table).\(oldColumn.name)")
+            let renamed = MSSQLStringLiteral.quoted(newColumn.name)
+            stmts.append("EXEC sp_rename \(path), \(renamed), 'COLUMN'")
         }
 
         let colName = quoteIdentifier(newColumn.name)
 
         // Drop existing default constraint before ALTER COLUMN or default change
         if (defaultChanged || needsTypeChange) && oldColumn.defaultValue != nil {
-            let objectId = escapeStringLiteral("\(_currentSchema).\(table)")
+            let objectLiteral = MSSQLStringLiteral.quoted(qt)
+            let dropPrefix = MSSQLStringLiteral.quoted("ALTER TABLE \(qt) DROP CONSTRAINT ")
             stmts.append("""
                 DECLARE @dfName NVARCHAR(256); \
                 SELECT @dfName = dc.name FROM sys.default_constraints dc \
                 JOIN sys.columns c ON dc.parent_column_id = c.column_id AND dc.parent_object_id = c.object_id \
-                WHERE c.name = '\(escapeStringLiteral(newColumn.name))' \
-                AND dc.parent_object_id = OBJECT_ID('\(objectId)'); \
-                IF @dfName IS NOT NULL EXEC('ALTER TABLE \(qt) DROP CONSTRAINT [' + @dfName + ']')
+                WHERE c.name = \(MSSQLStringLiteral.quoted(newColumn.name)) \
+                AND dc.parent_object_id = OBJECT_ID(\(objectLiteral)); \
+                IF @dfName IS NOT NULL BEGIN DECLARE @dropSql NVARCHAR(MAX) = \(dropPrefix) + QUOTENAME(@dfName); \
+                EXEC(@dropSql); END
                 """)
         }
 
@@ -185,17 +188,14 @@ extension MSSQLPluginDriver {
     /// `sys.check_constraints.parent_column_id` is 0 for a multi-column check, so the columns come
     /// from `sys.sql_expression_dependencies`, which lists them for both shapes.
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
-        // Bracket-quoting makes `target` a safe identifier, but it lands inside a string literal
-        // here, so it needs literal escaping too: a legal name like O'Reilly would otherwise
-        // terminate the literal.
-        let target = escapeStringLiteral(mssqlQualifiedTable(table))
+        let targetLiteral = MSSQLStringLiteral.quoted(mssqlQualifiedTable(table))
         let query = """
             SELECT cc.name, cc.definition, cc.is_not_trusted,
                    COL_NAME(d.referenced_id, d.referenced_minor_id)
             FROM sys.check_constraints cc
             LEFT JOIN sys.sql_expression_dependencies d
                 ON d.referencing_id = cc.object_id AND d.referenced_minor_id > 0
-            WHERE cc.parent_object_id = OBJECT_ID(\'\(target)\')
+            WHERE cc.parent_object_id = OBJECT_ID(\(targetLiteral))
             ORDER BY cc.name
             """
         let result = try await execute(query: query)

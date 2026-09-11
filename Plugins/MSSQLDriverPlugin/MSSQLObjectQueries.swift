@@ -6,17 +6,18 @@
 //
 
 import Foundation
+import TableProMSSQLCore
 
 public enum MSSQLObjectQueries {
     public static func escapeLiteral(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
+        MSSQLStringLiteral.escaped(value)
     }
 
     /// Reads sys.sql_modules, never INFORMATION_SCHEMA.ROUTINES.ROUTINE_DEFINITION. That column is
     /// nvarchar(4000) and silently returns the first 4000 characters of a longer body, which looks
     /// like a routine that ends mid-statement.
     public static func routineList(schema: String) -> String {
-        let schemaLiteral = escapeLiteral(schema)
+        let schemaLiteral = MSSQLStringLiteral.quoted(schema)
         return """
             SELECT
                 o.name,
@@ -41,7 +42,7 @@ public enum MSSQLObjectQueries {
             FROM sys.objects o
             JOIN sys.schemas s ON s.schema_id = o.schema_id
             LEFT JOIN sys.sql_modules m ON m.object_id = o.object_id
-            WHERE s.name = '\(schemaLiteral)'
+            WHERE s.name = \(schemaLiteral)
                 AND o.type IN ('P', 'FN', 'IF', 'TF')
                 AND o.is_ms_shipped = 0
             ORDER BY o.type, o.name
@@ -54,7 +55,7 @@ public enum MSSQLObjectQueries {
         FROM sys.sql_modules m
         JOIN sys.objects o ON o.object_id = m.object_id
         JOIN sys.schemas s ON s.schema_id = o.schema_id
-        WHERE s.name = '\(escapeLiteral(schema))' AND o.name = '\(escapeLiteral(name))'
+        WHERE s.name = \(MSSQLStringLiteral.quoted(schema)) AND o.name = \(MSSQLStringLiteral.quoted(name))
         """
     }
 
@@ -62,8 +63,8 @@ public enum MSSQLObjectQueries {
     /// one table is one more predicate on the same query, so the per-table list and the
     /// schema-wide list cannot disagree.
     public static func triggerList(schema: String, table: String?) -> String {
-        let schemaLiteral = escapeLiteral(schema)
-        let tablePredicate = table.map { "AND parent.name = '\(escapeLiteral($0))'" } ?? ""
+        let schemaLiteral = MSSQLStringLiteral.quoted(schema)
+        let tablePredicate = table.map { "AND parent.name = \(MSSQLStringLiteral.quoted($0))" } ?? ""
         return """
             SELECT
                 t.name,
@@ -78,7 +79,7 @@ public enum MSSQLObjectQueries {
             JOIN sys.schemas s ON s.schema_id = parent.schema_id
             JOIN sys.trigger_events te ON te.object_id = t.object_id
             WHERE t.parent_class = 1
-                AND s.name = '\(schemaLiteral)'
+                AND s.name = \(schemaLiteral)
                 \(tablePredicate)
             ORDER BY parent.name, t.name, te.type_desc
             """

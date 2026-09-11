@@ -172,7 +172,7 @@ struct MSSQLObjectQueryTests {
         let all = MSSQLObjectQueries.triggerList(schema: "dbo", table: nil)
         let one = MSSQLObjectQueries.triggerList(schema: "dbo", table: "Orders")
         #expect(!all.contains("parent.name ="))
-        #expect(one.contains("parent.name = 'Orders'"))
+        #expect(one.contains("parent.name = N'Orders'"))
         #expect(all.contains("sys.trigger_events"))
     }
 
@@ -186,8 +186,23 @@ struct MSSQLObjectQueryTests {
 
     @Test("A quote in a schema or table is escaped")
     func literalsAreEscaped() {
-        #expect(MSSQLObjectQueries.routineList(schema: "it's").contains("'it''s'"))
-        #expect(MSSQLObjectQueries.triggerList(schema: "dbo", table: "o'brien").contains("'o''brien'"))
+        #expect(MSSQLObjectQueries.routineList(schema: "it's").contains("N'it''s'"))
+        #expect(MSSQLObjectQueries.triggerList(schema: "dbo", table: "o'brien").contains("N'o''brien'"))
+    }
+
+    @Test("A non-ASCII schema, routine or table name is an nvarchar literal")
+    func catalogNamesAreNationalLiterals() {
+        #expect(MSSQLObjectQueries.routineList(schema: "販売").contains("s.name = N'販売'"))
+        let definition = MSSQLObjectQueries.routineDefinition(schema: "販売", name: "集計")
+        #expect(definition.contains("s.name = N'販売' AND o.name = N'集計'"))
+        let triggers = MSSQLObjectQueries.triggerList(schema: "販売", table: "注文")
+        #expect(triggers.contains("s.name = N'販売'"))
+        #expect(triggers.contains("parent.name = N'注文'"))
+    }
+
+    @Test("Fixed catalog type codes stay plain literals")
+    func catalogTypeCodesStayPlain() {
+        #expect(MSSQLObjectQueries.routineList(schema: "dbo").contains("o.type IN ('P', 'FN', 'IF', 'TF')"))
     }
 }
 
