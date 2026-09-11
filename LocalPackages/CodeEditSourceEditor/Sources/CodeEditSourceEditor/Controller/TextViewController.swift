@@ -311,6 +311,9 @@ public class TextViewController: NSViewController {
         self.foldModel?.documentDidReplace()
         self.setUpHighlighter()
         self.gutterView.setNeedsDisplay(self.gutterView.frame)
+        for coordinator in textCoordinators.values() {
+            coordinator.textViewDidReplaceDocument(controller: self)
+        }
     }
 
     /// Release the caches an editor can rebuild (tree-sitter, highlighter, coordinators, observers)

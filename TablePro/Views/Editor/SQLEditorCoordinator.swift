@@ -95,8 +95,6 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
             foldRestorePending = ranges
             return
         }
-        statementRunController.refreshControls(in: controller)
-        statementRunController.refreshHighlight(in: controller)
         guard let ranges, !ranges.isEmpty else { return }
         controller.restoreCollapsedFolds(ranges)
     }
@@ -176,6 +174,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         installStatementRunControls(controller: controller)
         installInlineSuggestionManager(controller: controller)
         diagnosticsController.configure(databaseType: databaseType)
+        diagnosticsController.install(on: controller)
         diagnosticsController.scheduleRefresh(for: controller)
         installVimModeIfEnabled(controller: controller)
         installEditorSettingsObserver(controller: controller)
@@ -236,10 +235,26 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
         uppercaseKeywordIfNeeded(textView: textView, range: range, string: string)
         statementRunController.scheduleControlsRefresh(in: controller)
+        refreshDiagnostics(in: controller, isLargeDocument: isLargeDocument)
+    }
 
-        if !isLargeDocument {
-            diagnosticsController.scheduleRefresh(for: controller)
+    func textViewDidReplaceDocument(controller: TextViewController) {
+        vimEngine?.invalidateLineCache()
+        foldPreview.dismiss()
+        inlineSuggestionManager?.dismissSuggestion()
+        statementRunController.refreshControls(in: controller)
+        statementRunController.refreshHighlight(in: controller)
+        diagnosticsController.clear(in: controller)
+        guard controller.textView.textStorage.length <= Self.languageServiceLengthLimit else { return }
+        diagnosticsController.scheduleRefresh(for: controller)
+    }
+
+    private func refreshDiagnostics(in controller: TextViewController?, isLargeDocument: Bool) {
+        guard !isLargeDocument else {
+            diagnosticsController.clear(in: controller)
+            return
         }
+        diagnosticsController.scheduleRefresh(for: controller)
     }
 
     func textViewDidChangeSelection(controller: TextViewController, newPositions: [CursorPosition]) {
@@ -289,6 +304,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         onRunStatement = nil
         statementRunController.onRun = nil
         statementRunController.clear(in: controller)
+        diagnosticsController.clear(in: controller)
         onAIExplain = nil
         onAIOptimize = nil
         onSaveAsFavorite = nil

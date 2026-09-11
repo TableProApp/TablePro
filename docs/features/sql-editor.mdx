@@ -99,6 +99,8 @@ A structural mistake is underlined in red 500ms after you stop typing, and the u
 
 A half-written statement is never flagged. An opener you have not closed yet, a string you are still typing, and brackets inside a string or a comment are all left alone. Documents over 100,000 characters are not checked at all.
 
+Switching tabs or loading a query checks the new text the same way, without a keystroke. Rest the pointer on an underline to read its message. In VoiceOver, the rotor lists every underline under **Query Issues**, each read with its message.
+
 On MongoDB connections the query parser runs as well, so an unknown collection method or a query that does not start with `db.` is underlined with the reason. Where the parser names the method, the method name itself is what gets marked.
 
 ## Per-tab database picker

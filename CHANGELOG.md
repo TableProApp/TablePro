@@ -58,6 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connecting screen naming the wrong step for the first half second of a connect.
 - Spinner flash in the object browser on Oracle, Snowflake, BigQuery, Trino and Dameng.
 - Start of every line hidden in the SQL editor after a long line was removed. (#2709)
+- Query error underlines on the wrong text or missing after a tab switch or loaded query, with no way to read them.
 - Start of a line hidden under the line numbers after moving to it in a horizontally scrolled editor.
 - Editor jumping sideways on each keystroke in a long line while scrolled horizontally.
 - Cursor left off screen after pasting a long line.

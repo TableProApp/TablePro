@@ -31,17 +31,21 @@ public struct Emphasis: Equatable {
     /// this object's ``Emphasis/range`` value.
     public let selectInDocument: Bool
 
+    public let toolTip: String?
+
     public init(
         range: NSRange,
         style: EmphasisStyle = .standard,
         flash: Bool = false,
         inactive: Bool = false,
-        selectInDocument: Bool = false
+        selectInDocument: Bool = false,
+        toolTip: String? = nil
     ) {
         self.range = range
         self.style = style
         self.flash = flash
         self.inactive = inactive
         self.selectInDocument = selectInDocument
+        self.toolTip = toolTip
     }
 }
