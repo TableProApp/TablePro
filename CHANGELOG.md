@@ -86,6 +86,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connecting silently switching a disabled plugin back on.
 - Plugin install error replaced by "not installed" when connecting.
 - Test Connection doing nothing after installing the plugin it asked for.
+- Safe Mode and run buttons misreading statements beside invisible characters, CRLF or MySQL conditional comments.
 - Connecting removing a plugin that failed to load, and its settings, when no replacement could be downloaded.
 - Disabled plugin's code loaded when a connection looked up its driver.
 - Failed connect from an opened file or URL titled "Disconnected", with Reconnect as its only fix.

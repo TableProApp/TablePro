@@ -174,8 +174,11 @@ internal actor DatabaseAccessBridge {
         timeoutSeconds: Int,
         cancellation: (any StatementCancellationSignal)?
     ) async throws -> StatementOutcome {
-        let databaseType = try await ensureConnected(scope.connectionId)
         let normalizedQuery = Self.stripTrailingSemicolons(query)
+        guard !normalizedQuery.isEmpty else {
+            throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
+        }
+        let databaseType = try await ensureConnected(scope.connectionId)
         let classification = QueryClassifier.classify(normalizedQuery, databaseType: databaseType)
         let hasReturning = normalizedQuery.range(
             of: #"\bRETURNING\b"#,
@@ -236,10 +239,9 @@ internal actor DatabaseAccessBridge {
     }
 
     internal static func stripTrailingSemicolons(_ query: String) -> String {
-        var result = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        var result = StatementBlank.trimming(query)
         while result.hasSuffix(";") {
-            result = String(result.dropLast())
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            result = StatementBlank.trimming(String(result.dropLast()))
         }
         return result
     }

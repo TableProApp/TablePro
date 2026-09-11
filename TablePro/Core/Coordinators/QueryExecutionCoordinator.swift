@@ -20,11 +20,8 @@ final class QueryExecutionCoordinator {
               !parent.tabExecution.isExecuting(tab.id),
               tab.tabType == .query else { return }
 
-        let fullQuery = tab.content.query
-        guard !fullQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-
         let statements = QueryStatementScanner.executableStatements(
-            in: fullQuery, model: parent.statementModel, dialect: parent.sqlDialect
+            in: tab.content.query, model: parent.statementModel, dialect: parent.sqlDialect
         )
         guard !statements.isEmpty else { return }
 

@@ -84,6 +84,20 @@ struct ExternalStatementGateTests {
         #expect(refusal(statement("SELECT 1", externalAccess: access)) == nil)
     }
 
+    @Test(
+        "A write hidden from the classifier by a comment is still refused on a read-only connection",
+        arguments: [
+            ("-- note\r\nDROP TABLE users", DatabaseType.postgresql),
+            ("-- note\rDROP TABLE users", DatabaseType.postgresql),
+            ("/*!50000 DROP TABLE users */", DatabaseType.mysql),
+            ("/*M!100000 DROP TABLE users */", DatabaseType.mariadb),
+        ]
+    )
+    func commentedWriteRefusedOnReadOnlyConnection(sql: String, databaseType: DatabaseType) {
+        let refused = refusal(statement(sql, databaseType: databaseType, externalAccess: .readOnly))
+        #expect(refused == .denied(String(localized: "This connection is read only for external clients.")))
+    }
+
     @Test("A destructive statement is refused when the caller may not run one")
     func destructiveRefusedWithoutPermission() {
         let refused = refusal(statement("DROP TABLE users", allowsDestructive: false))

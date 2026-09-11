@@ -29,16 +29,8 @@ enum SQLStatementScanner {
         /// lands on the newline that ended the previous line. A decoration or a gutter anchor placed from ``range``
         /// therefore starts a line early, and uses this instead.
         var contentRange: NSRange {
-            let text = sql as NSString
-            var start = 0
-            var end = text.length
-            while start < end, SqlLexer.isWhitespace(text.character(at: start)) {
-                start += 1
-            }
-            while end > start, SqlLexer.isWhitespace(text.character(at: end - 1)) {
-                end -= 1
-            }
-            return NSRange(location: offset + start, length: end - start)
+            let content = StatementBlank.contentRange(of: sql)
+            return NSRange(location: offset + content.location, length: content.length)
         }
     }
 
@@ -155,11 +147,8 @@ enum SQLStatementScanner {
     /// The same statements ``allStatements(in:dialect:)`` returns, each with its span in the document.
     ///
     /// One enumeration produces both, because the alternative is two filters that have to agree and that nothing
-    /// checks. ``navigableStatements(in:dialect:)`` is deliberately not that second filter: it trims only
-    /// ``SqlLexer/isWhitespace`` and keeps the terminating semicolon, while execution trims the wider
-    /// `.whitespacesAndNewlines` and strips one semicolon, so a segment can survive one and not the other. Pointing
-    /// execution at the navigation filter would change which text reaches the driver, which is not a change a
-    /// feature about labelling results is allowed to make.
+    /// checks. ``navigableStatements(in:dialect:)`` is deliberately not that second filter: it keeps the terminating
+    /// semicolon, while execution strips one, so pointing execution at it would change which text reaches the driver.
     static func executableStatements(in sql: String, dialect: SqlDialect = .generic) -> [ExecutableStatement] {
         var results: [ExecutableStatement] = []
         scan(sql: sql, cursorPosition: nil, dialect: dialect) { rawSQL, offset, hasStatementContent in
@@ -172,43 +161,27 @@ enum SQLStatementScanner {
     }
 
     private static func executableStatement(rawSQL: String, offset: Int) -> ExecutableStatement? {
-        let text = rawSQL as NSString
-        guard var range = trimmedRange(in: text, range: NSRange(location: 0, length: text.length)) else { return nil }
-
-        if text.character(at: range.upperBound - 1) == semicolon {
-            range.length -= 1
-            guard let withoutSemicolon = trimmedRange(in: text, range: range) else { return nil }
-            range = withoutSemicolon
+        var content = StatementBlank.trimming(rawSQL[...])
+        if content.last == ";" {
+            content = StatementBlank.trimming(content.dropLast())
         }
+        guard !content.isEmpty else { return nil }
 
+        let range = NSRange(content.startIndex..<content.endIndex, in: rawSQL)
         return ExecutableStatement(
-            sql: text.substring(with: range),
+            sql: String(content),
             range: NSRange(location: offset + range.location, length: range.length)
         )
     }
-
-    /// The span of `range` with `.whitespacesAndNewlines` trimmed off both ends, or `nil` when nothing is left.
-    ///
-    /// Matches what `String.trimmingCharacters(in:)` would produce, but in UTF-16 offsets, so the text and the span
-    /// handed to a caller describe the same characters by construction rather than by two separate calculations.
-    private static func trimmedRange(in text: NSString, range: NSRange) -> NSRange? {
-        let content = CharacterSet.whitespacesAndNewlines.inverted
-        let first = text.rangeOfCharacter(from: content, options: [], range: range)
-        guard first.location != NSNotFound else { return nil }
-        let last = text.rangeOfCharacter(from: content, options: .backwards, range: range)
-        return NSRange(location: first.location, length: last.upperBound - first.location)
-    }
-
-    private static let semicolon: unichar = 59
 
     /// Returns statements preserving trailing semicolons, for display/history/favorites.
     static func allStatementsPreservingSemicolons(in sql: String) -> [String] {
         var results: [String] = []
         scan(sql: sql, cursorPosition: nil) { rawSQL, _, hasStatementContent in
             guard hasStatementContent else { return true }
-            let trimmed = rawSQL.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmed = StatementBlank.trimming(rawSQL)
             let withoutSemicolon = trimmed.hasSuffix(";")
-                ? String(trimmed.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+                ? StatementBlank.trimming(String(trimmed.dropLast()))
                 : trimmed
             if !withoutSemicolon.isEmpty {
                 results.append(trimmed)
@@ -219,12 +192,11 @@ enum SQLStatementScanner {
     }
 
     static func statementAtCursor(in sql: String, cursorPosition: Int, dialect: SqlDialect = .generic) -> String {
-        var result = locatedStatementAtCursor(in: sql, cursorPosition: cursorPosition, dialect: dialect)
-            .sql
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        var result = StatementBlank.trimming(
+            locatedStatementAtCursor(in: sql, cursorPosition: cursorPosition, dialect: dialect).sql
+        )
         if result.hasSuffix(";") {
-            result = String(result.dropLast())
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            result = StatementBlank.trimming(String(result.dropLast()))
         }
         return result
     }
@@ -396,7 +368,12 @@ enum SQLStatementScanner {
                 sawStatementKeyword = false
                 opensRoutineDefinition = false
                 blockDepth = 0
-            } else if !SqlLexer.isWhitespace(ch) {
+            } else if !hasStatementContent {
+                let blankLength = StatementBlank.blankLength(in: nsQuery, at: i)
+                guard blankLength == 0 else {
+                    i += blankLength
+                    continue
+                }
                 hasStatementContent = true
             }
 

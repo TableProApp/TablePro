@@ -252,6 +252,96 @@ struct QueryClassifierFailClosedTests {
     }
 }
 
+@Suite("QueryClassifier comment boundaries")
+struct QueryClassifierCommentBoundaryTests {
+    @Test(
+        "A line comment ends at a carriage return as well as a line feed",
+        arguments: ["-- note\r\nDROP TABLE users", "-- note\rDROP TABLE users", "/* a */ -- b\r\nDROP TABLE users"]
+    )
+    func lineCommentEndsAtAnyLineBreak(sql: String) {
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .postgresql) == .destructive)
+    }
+
+    @Test("A DELETE after a CRLF comment is still an unqualified delete")
+    func deleteAfterCRLFCommentIsDangerous() {
+        #expect(QueryClassifier.isDangerousQuery("-- note\r\nDELETE FROM users", databaseType: .mysql))
+    }
+
+    @Test("A CRLF comment inside a statement does not hide what follows it")
+    func crlfCommentDoesNotSwallowTheBody() {
+        #expect(
+            QueryClassifier.classifyTier(
+                "WITH x AS (SELECT 1) -- note\r\nDELETE FROM users",
+                databaseType: .postgresql
+            ) == .write
+        )
+        #expect(
+            QueryClassifier.reachesFilesystemOrExecutesCode(
+                "SELECT * FROM users -- note\r\nINTO OUTFILE '/tmp/users.csv'",
+                databaseType: .mysql
+            )
+        )
+    }
+
+    @Test("A CRLF comment between EXPLAIN and ANALYZE does not hide the write it runs")
+    func explainAnalyzeAfterCRLFComment() {
+        #expect(
+            QueryClassifier.isWriteQuery("EXPLAIN -- options\r\nANALYZE DELETE FROM users", databaseType: .postgresql)
+        )
+    }
+
+    @Test(
+        "A conditional comment that drops data is destructive",
+        arguments: [
+            "/*!50000 DROP TABLE users */",
+            "/*M!100000 DROP TABLE users */",
+            "/*!99999 SELECT 1 */ /*!1 TRUNCATE users */",
+        ]
+    )
+    func conditionalCommentDropIsDestructive(sql: String) {
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .mysql) == .destructive)
+    }
+
+    @Test(
+        "A conditional comment may or may not run, so a statement carrying one is never safe",
+        arguments: [
+            "/*!99999 SELECT 1 */ /*!1 DELETE FROM users */",
+            "/*!99999 SELECT 1 */ DELETE FROM users",
+            "SELECT /*!40001 SQL_NO_CACHE */ * FROM users",
+        ]
+    )
+    func conditionalCommentIsNeverSafe(sql: String) {
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .mysql) == .write)
+    }
+
+    @Test(
+        "A file or code surface inside a conditional comment is flagged",
+        arguments: [
+            "SELECT * FROM users /*!50000 INTO OUTFILE '/tmp/users.csv' */",
+            "/*!40000 LOAD DATA INFILE '/etc/passwd' INTO TABLE t */",
+        ]
+    )
+    func conditionalCommentFilesystemIsFlagged(sql: String) {
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode(sql, databaseType: .mysql))
+        #expect(QueryClassifier.isWriteQuery(sql, databaseType: .mysql))
+    }
+
+    @Test("A WHERE inside a conditional comment does not qualify the DELETE")
+    func conditionalWhereDoesNotQualifyDelete() {
+        #expect(
+            QueryClassifier.isDangerousQuery("DELETE FROM users /*!99999 WHERE id = 1 */", databaseType: .mysql)
+        )
+    }
+
+    @Test(
+        "The conditional comment opener only counts where a comment could start",
+        arguments: ["SELECT '/*! DROP TABLE users */' AS note", "/* see /*! */ SELECT 1", "-- /*! DROP\nSELECT 1"]
+    )
+    func conditionalOpenerInsideLiteralOrCommentIsInert(sql: String) {
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .mysql) == .safe)
+    }
+}
+
 @Suite("QueryClassifier non-SQL engines")
 struct QueryClassifierNonSqlTests {
     @Test("MongoDB read methods stay safe and writes never look like reads")

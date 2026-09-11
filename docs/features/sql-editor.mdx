@@ -160,7 +160,7 @@ Control characters never arrive by typing. A stray backspace an input method sen
 
 Choose **Query > Remove Invisible Characters** to clean a query. With nothing selected, it removes marked characters outside string literals, quoted identifiers and comments. Special spaces, form feeds and vertical tabs become ordinary spaces, and a line or paragraph separator becomes a line break. Select text first to clean inside a literal as well. `Cmd+Z` undoes the whole change.
 
-A statement containing a NUL character is not sent to the database. Remove the character and run it again.
+Invisible characters around a statement, such as a byte order mark in front of `SELECT` or a non-breaking space on the line after it, are not sent with it, and a line holding nothing else gets no run button. A NUL character inside a statement stops it from being sent. Remove the character and run it again.
 
 To hide the marks in the editor, turn off **Show invisible characters** in **Settings > Editor**. Read-only views, such as the AI assistant's code blocks, always show them.
 
