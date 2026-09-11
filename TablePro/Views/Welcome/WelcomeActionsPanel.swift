@@ -40,27 +40,20 @@ struct WelcomeActionsPanel: View {
 
             VStack(spacing: 8) {
                 Button(action: onNewConnection) {
-                    Label(String(localized: "New Connection…"), systemImage: "plus.circle")
+                    Text("New Connection…")
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
                 .buttonStyle(.borderedProminent)
-                .controlSize(.large)
 
-                Menu {
-                    Button(String(localized: "Import Connections…"), action: onImportConnectionsFile)
-                    Button(String(localized: "Import from URL…"), action: onImportFromURL)
-                    Button(String(localized: "Import from Other App…"), action: onImportFromApp)
-                    Divider()
-                    Button(String(localized: "Open Project Folder…"), action: onOpenProjectFolder)
-                } label: {
-                    Label(String(localized: "Import"), systemImage: "square.and.arrow.down")
-                        .frame(maxWidth: .infinity, alignment: .center)
-                }
-                .menuStyle(.button)
-                .buttonStyle(.bordered)
-                .controlSize(.large)
+                WelcomeImportMenuButton(actions: WelcomeImportActions(
+                    importConnectionsFile: onImportConnectionsFile,
+                    importFromURL: onImportFromURL,
+                    importFromApp: onImportFromApp,
+                    openProjectFolder: onOpenProjectFolder
+                ))
                 .frame(maxWidth: .infinity)
             }
+            .controlSize(.large)
             .padding(.horizontal, 24)
 
             Spacer()
