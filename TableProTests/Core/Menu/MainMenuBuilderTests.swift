@@ -637,6 +637,45 @@ struct MainMenuValidationTests {
         #expect(enabled(#selector(MainSplitViewController.editViewDefinition(_:)), context))
     }
 
+    /// The sidebar hides Edit View Definition on a read-only connection. The menu bar used to leave
+    /// it enabled, so it opened the definition and the save then failed at the gate.
+    @Test("Editing a view definition is disabled on a read-only connection")
+    func editViewDefinitionNeedsWriteAccess() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        context.canEditViewDefinition = true
+        #expect(enabled(#selector(MainSplitViewController.editViewDefinition(_:)), context))
+        context.isReadOnly = true
+        #expect(!enabled(#selector(MainSplitViewController.editViewDefinition(_:)), context))
+    }
+
+    /// Reading a definition writes nothing, so these stay available on a read-only connection,
+    /// exactly as the sidebar offers them there.
+    @Test("Show DDL and Copy DDL need a view and survive read-only")
+    func ddlCommandsFollowTheSelectedObject() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        #expect(!enabled(#selector(MainSplitViewController.showObjectDDL(_:)), context))
+        #expect(!enabled(#selector(MainSplitViewController.copyObjectDDL(_:)), context))
+        context.canShowObjectDDL = true
+        #expect(enabled(#selector(MainSplitViewController.showObjectDDL(_:)), context))
+        #expect(enabled(#selector(MainSplitViewController.copyObjectDDL(_:)), context))
+        context.isReadOnly = true
+        #expect(enabled(#selector(MainSplitViewController.showObjectDDL(_:)), context))
+    }
+
+    @Test("Refresh and Edit Comment need the driver and the object to support them")
+    func refreshAndCommentNeedSupport() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        #expect(!enabled(#selector(MainSplitViewController.refreshMaterializedView(_:)), context))
+        #expect(!enabled(#selector(MainSplitViewController.editObjectComment(_:)), context))
+        context.canRefreshMaterializedView = true
+        context.canEditObjectComment = true
+        #expect(enabled(#selector(MainSplitViewController.refreshMaterializedView(_:)), context))
+        #expect(enabled(#selector(MainSplitViewController.editObjectComment(_:)), context))
+    }
+
     @Test("Maintenance stays disabled when the driver offers no operations")
     func maintenanceNeedsOperations() {
         var context = MenuValidationContext()

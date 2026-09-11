@@ -529,7 +529,8 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
                   WHEN a.atthasdef \(defaultGuard)
                     THEN ' DEFAULT ' || pg_get_expr(d.adbin, d.adrelid)
                   ELSE ''
-                END
+                END,
+                c.relkind::text
             FROM pg_attribute a
             JOIN pg_class c ON c.oid = a.attrelid
             JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -558,6 +559,14 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         async let constraintsResult = execute(query: constraintsQuery)
 
         let (cols, cons) = try await (columnsResult, constraintsResult)
+
+        /// `pg_attribute` covers views and materialized views as well as tables, so a view reached
+        /// here as a `CREATE TABLE` of its columns. The Structure tab's DDL and every other caller
+        /// that asks for a relation's DDL by name get the view's own statement instead.
+        if let relkind = cols.rows.first?[safe: 1]?.asText,
+           PostgreSQLViewDefinition.kind(forRelkind: relkind) != nil {
+            return try await fetchViewDefinition(view: table, schema: resolvedSchema)
+        }
 
         let columnDefs = cols.rows.compactMap { $0[0].asText }
         guard !columnDefs.isEmpty else {
@@ -599,37 +608,6 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             """
         let result = try await execute(query: query)
         return result.rows.compactMap { $0[0].asText }
-    }
-
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
-        let query = """
-            SELECT 'CREATE OR REPLACE VIEW ' || quote_ident(schemaname) || '.' || quote_ident(viewname) || ' AS ' || E'\\n' || definition AS ddl
-            FROM pg_views
-            WHERE viewname = '\(escapeLiteral(view))'
-              AND schemaname = '\(schemaLiteral)'
-            """
-        let result = try await execute(query: query)
-        if let firstRow = result.rows.first, let ddl = firstRow[0].asText {
-            return ddl
-        }
-
-        /// `pg_views` excludes materialized views, so a name that is one reaches here with no rows.
-        /// Falling through to `fetchTableDDL` instead, which succeeds on a matview because
-        /// `pg_class` and `pg_attribute` both cover one, put a `CREATE TABLE` in the dump under a
-        /// `DROP MATERIALIZED VIEW` and restored an empty ordinary table.
-        let matview = """
-            SELECT 'CREATE MATERIALIZED VIEW ' || quote_ident(schemaname) || '.' || quote_ident(matviewname)
-                   || ' AS ' || E'\\n' || definition AS ddl
-            FROM pg_matviews
-            WHERE matviewname = '\(escapeLiteral(view))'
-              AND schemaname = '\(schemaLiteral)'
-            """
-        let matviewResult = try await execute(query: matview)
-        guard let row = matviewResult.rows.first, let ddl = row[0].asText else {
-            throw LibPQPluginError(message: "Failed to fetch definition for view '\(view)'", sqlState: nil, detail: nil)
-        }
-        return ddl
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
@@ -730,6 +708,11 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         }
     }
 
+    /// The kinds `fetchTableDDL` writes a `CREATE TABLE` for. A view's DDL is its own statement, so
+    /// the enum types and sequences its columns happen to use are not a preamble to it: written in
+    /// front of a `CREATE VIEW` they recreated objects the view only reads.
+    private static let relkindsCreatedByTableDDL = "('r', 'p', 'f')"
+
     func fetchDependentTypes(table: String, schema: String?) async throws -> [(name: String, labels: [String])] {
         let safeTable = escapeLiteral(table)
         let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
@@ -743,6 +726,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             JOIN pg_enum e ON e.enumtypid = t.oid
             WHERE c.relname = '\(safeTable)'
               AND n.nspname = '\(schemaLiteral)'
+              AND c.relkind IN \(Self.relkindsCreatedByTableDDL)
               AND a.attnum > 0
               AND NOT a.attisdropped
             GROUP BY t.typname
@@ -778,6 +762,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
                  AND pg_get_expr(ad.adbin, ad.adrelid) LIKE '%' || quote_ident(s.sequencename) || '%'
             WHERE c.relname = '\(safeTable)'
               AND n.nspname = '\(schemaLiteral)'
+              AND c.relkind IN \(Self.relkindsCreatedByTableDDL)
               AND pg_get_expr(ad.adbin, ad.adrelid) LIKE '%nextval%'
             """
         let result = try await execute(query: query)
@@ -1317,7 +1302,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         }
 
         if let newComment = newColumn.comment, !newComment.isEmpty, newColumn.comment != oldColumn.comment {
-            stmts.append("COMMENT ON COLUMN \(qt).\(colName) IS '\(escapeLiteral(newComment))'")
+            stmts.append("COMMENT ON COLUMN \(qt).\(colName) IS \(PostgreSQLRelationSQL.commentValue(newComment))")
         } else if oldColumn.comment != nil && (newColumn.comment == nil || newColumn.comment?.isEmpty == true) {
             stmts.append("COMMENT ON COLUMN \(qt).\(colName) IS NULL")
         }

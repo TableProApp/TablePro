@@ -17,7 +17,12 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     /// The database a metadata read is scoped to. MySQL has no schema level, so this is what a
     /// caller means by "schema" everywhere in the catalog queries.
-    var activeDatabaseName: String { _activeDatabase }
+    ///
+    /// Guarded by `sessionLock`, because `switchDatabase` writes it from whichever task made the
+    /// switch and `connect()` reads it from the reacquire task to decide what to reconnect to.
+    var activeDatabaseName: String {
+        sessionLock.withLock { _activeDatabase }
+    }
 
     internal var cachedPrivilegeCatalog: PluginPrivilegeCatalog?
 
@@ -25,10 +30,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     var flavor: MySQLServerFlavor { sessionLock.withLock { _flavor } }
 
-    /// What the session is holding that a reconnect would destroy. Tracked from the statements
-    /// that go through the driver, because MySQL will not answer the question: measured on 8.4.11,
-    /// an ordinary user is refused on every table that would report its own temporary tables, user
-    /// variables, locks or transaction.
+    /// What the session is holding that a reconnect would destroy. The open transaction comes
+    /// from the server's status flags; the rest is read from the statements that go through the
+    /// driver, because MySQL will not answer those: measured on 8.4.11, an ordinary user is
+    /// refused on every table that would report its own temporary tables, variables or locks.
     private var footprint = MySQLSessionFootprint()
 
     /// Set by `applyQueryTimeout` so any reconnect can put it back. The server forgets it, and a
@@ -121,7 +126,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             port: config.port,
             user: config.username,
             password: config.password,
-            database: _activeDatabase,
+            database: activeDatabaseName,
             sslConfig: sslConfig,
             enableCleartextPlugin: config.additionalFields["enableCleartextPlugin"] == "true",
             queryTimeoutSeconds: config.additionalFields["queryTimeoutSeconds"].flatMap { Int($0) } ?? 0,
@@ -189,7 +194,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func ping() async throws {
         guard !sessionLock.withLock({ isReleased }) else { return }
         let conn = try requireLiveConnection()
-        defer { endOperation() }
+        defer { endOperation(on: conn) }
         _ = try await conn.executeQuery("SELECT 1", rowCap: nil)
     }
 
@@ -215,7 +220,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return try await executeWithReconnect(query: query, isRetry: false, rowCap: cap)
         }
         let conn = try await requireConnection()
-        defer { endOperation() }
+        defer { endOperation(on: conn) }
         noteActivity(query)
         let startTime = Date()
         let result = try await conn.executeParameterizedQuery(query, parameters: parameters, rowCap: cap)
@@ -241,7 +246,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         let conn = try await requireConnection()
-        defer { endOperation() }
+        defer { endOperation(on: conn) }
         noteActivity(query)
 
         let startTime = Date()
@@ -278,7 +283,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let startTime = Date()
 
         let conn = try await requireConnection()
-        defer { endOperation() }
+        defer { endOperation(on: conn) }
         if countsAsActivity {
             noteActivity(query)
         }
@@ -375,8 +380,14 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    private func endOperation() {
-        sessionLock.withLock { activeOperations = max(0, activeOperations - 1) }
+    /// The server's answer about the transaction arrives with the reply to the statement, so it
+    /// is taken where the statement is handed back rather than guessed from the text.
+    private func endOperation(on conn: MariaDBPluginConnection) {
+        let isInTransaction = conn.isInTransaction
+        sessionLock.withLock {
+            footprint.observeServerTransaction(isOpen: isInTransaction)
+            activeOperations = max(0, activeOperations - 1)
+        }
     }
 
     /// Concurrent callers wait on the one attempt rather than each starting their own. A metadata
@@ -554,7 +565,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let query = """
             SELECT COLUMN_NAME, GENERATION_EXPRESSION
             FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = \'\(mysqlEscapeStringLiteral(_activeDatabase))\'
+            WHERE TABLE_SCHEMA = \'\(mysqlEscapeStringLiteral(activeDatabaseName))\'
                 AND TABLE_NAME = \'\(mysqlEscapeStringLiteral(table))\'
                 AND GENERATION_EXPRESSION <> \'\'
             """
@@ -579,7 +590,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return []
         }
         guard !flavor.isTiDB else { return try await tidbCheckConstraints(table: table) }
-        let database = mysqlEscapeStringLiteral(_activeDatabase)
+        let database = mysqlEscapeStringLiteral(activeDatabaseName)
         let safeTable = mysqlEscapeStringLiteral(table)
         let query: String
         if flavor.isMariaDB {
@@ -616,7 +627,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// the bulk read reports a changed generation expression as no difference at all.
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         guard !flavor.isDatabend else { return try await databendAllColumns() }
-        let dbName = _activeDatabase
+        let dbName = activeDatabaseName
         let escapedDb = dbName.replacingOccurrences(of: "'", with: "''")
         let hasGenerationExpression = MySQLServerVersion.hasGenerationExpression(
             banner: _serverVersion, flavor: flavor
@@ -706,7 +717,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
         guard !flavor.isDatabend else { return [] }
-        let dbName = _activeDatabase
+        let dbName = activeDatabaseName
         let escapedDb = dbName.replacingOccurrences(of: "'", with: "''")
         let escapedTable = table.replacingOccurrences(of: "'", with: "''")
 
@@ -753,7 +764,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// The same builder the schema-wide list uses, with one more predicate.
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
         guard !flavor.isDatabend else { return [] }
-        let dbName = schema?.isEmpty == false ? (schema ?? _activeDatabase) : _activeDatabase
+        let dbName = schema?.isEmpty == false ? (schema ?? activeDatabaseName) : activeDatabaseName
         let triggers = try await triggerList(schema: dbName, table: table)
         Self.logger.info("[trigger] mysql fetchTriggers db=\(dbName, privacy: .public) table=\(table, privacy: .public) parsed=\(triggers.count)")
         return triggers
@@ -780,7 +791,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         guard !flavor.isDatabend else { return [:] }
-        let dbName = _activeDatabase
+        let dbName = activeDatabaseName
         let escapedDb = dbName.replacingOccurrences(of: "'", with: "''")
 
         let query = """
@@ -825,7 +836,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
-        let dbName = _activeDatabase
+        let dbName = activeDatabaseName
         let escapedDb = dbName.replacingOccurrences(of: "'", with: "''")
         let escapedTable = table.replacingOccurrences(of: "'", with: "''")
 
@@ -923,7 +934,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let task = Task {
                 do {
                     let conn = try await requireConnection()
-                    defer { self.endOperation() }
+                    defer { self.endOperation(on: conn) }
                     noteActivity(query)
                     for try await element in conn.streamQuery(query) {
                         continuation.yield(element)
@@ -1022,13 +1033,20 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// switched to is not the session's to lose, and counting it would leave the footprint dirty
     /// from the first database switch onward. A `USE` the user types is a different statement: the
     /// driver does not know about it, a reconnect silently undoes it, and the footprint says so.
+    ///
+    /// The clock still moves, because a database switch is the user using the connection: leaving
+    /// it alone let the idle timer fire seconds after a switch and charge the next click a full
+    /// reconnect.
     func switchDatabase(to database: String) async throws {
         _ = try await executeWithReconnect(
             query: "USE \(quoteIdentifier(database))",
             isRetry: false,
             countsAsActivity: false
         )
-        _activeDatabase = database
+        sessionLock.withLock {
+            _activeDatabase = database
+            lastActivity = ContinuousClock.now
+        }
     }
 
     // MARK: - Query Timeout

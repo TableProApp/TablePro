@@ -115,6 +115,29 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         return _isConnected
     }
 
+    /// Whether the server says the session is inside a transaction, from the status flags in the
+    /// reply to the last statement. This is the one thing about the session the server does
+    /// answer for free, and it is exact where reading the statement text is a guess: measured on
+    /// MySQL 8.4.11, it reports the transaction that `SET autocommit = 0` plus a plain `SELECT`
+    /// opens, the one inside `/*!40101 BEGIN */`, and the one an `XA START` opens, none of which
+    /// the text can show.
+    var isInTransaction: Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _isInTransaction
+    }
+
+    private var _isInTransaction = false
+
+    private func recordTransactionState(on mysql: UnsafeMutablePointer<MYSQL>) {
+        var serverStatus: UInt32 = 0
+        guard mariadb_get_info(mysql, MARIADB_CONNECTION_SERVER_STATUS, &serverStatus) == 0 else { return }
+        let isOpen = (serverStatus & UInt32(SERVER_STATUS_IN_TRANS)) != 0
+        stateLock.lock()
+        _isInTransaction = isOpen
+        stateLock.unlock()
+    }
+
     private var isShuttingDown: Bool {
         get {
             stateLock.lock()
@@ -524,6 +547,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         guard !isShuttingDown, let mysql = self.mysql else {
             throw MariaDBPluginError.notConnected
         }
+        defer { recordTransactionState(on: mysql) }
 
         let generation = cancellationGate.beginQuery()
         defer { cancellationGate.endQuery(generation) }
@@ -842,6 +866,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         guard !isShuttingDown, let mysql = self.mysql else {
             throw MariaDBPluginError.notConnected
         }
+        defer { recordTransactionState(on: mysql) }
 
         guard flavor.preparesOnServer else {
             return try executeQuerySync(DatabendLiteral.inline(query, parameters: parameters), rowCap: rowCap)
@@ -950,6 +975,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                     continuation.finish(throwing: MariaDBPluginError.notConnected)
                     return
                 }
+                defer { recordTransactionState(on: mysql) }
 
                 let generation = cancellationGate.beginQuery()
                 defer { cancellationGate.endQuery(generation) }

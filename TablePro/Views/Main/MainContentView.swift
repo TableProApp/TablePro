@@ -205,6 +205,8 @@ struct MainContentView: View {
             )
         case .copyObjects(let launch):
             CopyObjectsSheet(launch: launch, connection: connection)
+        case .editObjectComment(let target):
+            ObjectCommentSheet(target: target, connection: connection)
         case .exportDialog, .exportQueryResults, .importDialog, .rowImport,
              .transferTables, .backupDatabase, .restoreDatabase, .serverSideExport:
             transferSheetContent(for: sheet, dismiss: dismissBinding)

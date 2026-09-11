@@ -66,6 +66,14 @@ In the list editor, reorder rows with the arrows, add and remove elements, and s
 
 Enums, composites, domains and ranges are listed under **Types** in each schema, the `CREATE` statement rebuilt from `pg_type`. An enum's labels are edited in place with `ALTER TYPE … ADD VALUE` and, from PostgreSQL 10, `RENAME VALUE`; PostgreSQL has no statement that drops or reorders a label. The structure editor's type picker offers the schema's types under **User-Defined**. See [User-Defined Types](/features/user-defined-types).
 
+## Views and comments
+
+A view's definition is rebuilt to run anywhere. Every table it reads is schema-qualified, and `WITH (security_barrier)`, `WITH (security_invoker)` and `WITH CASCADED CHECK OPTION` are written back, so executing the statement elsewhere keeps the restrictions the original carried. Read it with **Show DDL**, copy it with **Copy DDL**, or edit it with **Edit View Definition**. A materialized view's statement carries its access method, storage parameters and tablespace, and the DDL tab adds its indexes.
+
+`REFRESH MATERIALIZED VIEW` runs from **Refresh Materialized View…**. A plain refresh holds an `ACCESS EXCLUSIVE` lock, so nothing reads the view until it finishes. **Refresh concurrently** takes `EXCLUSIVE` instead and leaves readers working, and PostgreSQL accepts it only for a populated view with a valid unique index on plain columns, no `WHERE` clause and no expressions; a partial or expression index does not qualify. The refresh runs on its own connection, outside any transaction a query editor holds open. Refreshing needs ownership of the view, or the `MAINTAIN` privilege from PostgreSQL 17.
+
+**Edit Comment…** writes `COMMENT ON`, picking `TABLE`, `VIEW`, `MATERIALIZED VIEW` or `FOREIGN TABLE` to match the object. Column comments are written from the Columns tab as `COMMENT ON COLUMN`. Clearing the field writes `IS NULL`, which removes the comment. Only the object's owner may comment on it.
+
 ## Cross-database tabs
 
 PostgreSQL has no in-place `USE`, so a tab bound to a database other than the connection's active one runs on a second connection opened for that database. It shares no temp tables, session variables, or open transaction with the query editor on the main connection: keep a multi-statement transaction or a `CREATE TEMP TABLE` on tabs bound to one database. Binding itself is on [Tabs](/features/tabs#where-a-tab-points).

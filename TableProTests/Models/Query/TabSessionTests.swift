@@ -23,6 +23,7 @@ struct TabSessionTests {
         #expect(session.tableRows.columns.isEmpty)
         #expect(session.isEvicted == false)
         #expect(session.dataRevision == 0)
+        #expect(session.rowSetRevision == 0)
     }
 
     @Test("A session keeps the id it was created with")

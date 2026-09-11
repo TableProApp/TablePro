@@ -34,7 +34,8 @@ struct DatabaseTreeMenuSpecTests {
         supportsRename: Bool = true,
         canCopyObjects: Bool = true,
         canDuplicateDatabase: Bool = true,
-        canCreateType: Bool = false
+        canCreateType: Bool = false,
+        objectToolSupport: DatabaseObjectToolEligibility.Support = .none
     ) -> DatabaseTreeMenuContext {
         DatabaseTreeMenuContext(
             clicked: clicked,
@@ -78,7 +79,17 @@ struct DatabaseTreeMenuSpecTests {
             hasDatabaseFilter: hasDatabaseFilter,
             canCopyObjects: canCopyObjects,
             canDuplicateDatabase: canDuplicateDatabase,
-            canCreateType: canCreateType
+            canCreateType: canCreateType,
+            objectToolSupport: objectToolSupport
+        )
+    }
+
+    /// What the PostgreSQL driver answers: every table-like kind can be commented on, and a
+    /// materialized view can be refreshed.
+    private var postgresSupport: DatabaseObjectToolEligibility.Support {
+        DatabaseObjectToolEligibility.Support(
+            canRefreshMaterializedViews: true,
+            commentableTypes: [.table, .partitionedTable, .view, .materializedView, .foreignTable]
         )
     }
 
@@ -378,6 +389,89 @@ struct DatabaseTreeMenuSpecTests {
             .contains(.editViewDefinition(view)))
         #expect(!commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .table(table))))
             .contains(.editViewDefinition(table)))
+    }
+
+    @Test("Show DDL and Copy DDL are offered for a view and a materialized view, and not for a table")
+    func showAndCopyDDLAreViewOnly() {
+        let view = tableRef("active_users", type: .view)
+        let matview = tableRef("sales_totals", type: .materializedView)
+        let table = tableRef("users")
+
+        for ref in [view, matview] {
+            let issued = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .table(ref))))
+            #expect(issued.contains(.copyDDL(ref)))
+            #expect(issued.contains { command in
+                guard case .showObjectSource(let objectRef) = command else { return false }
+                return objectRef.name == ref.table.name && objectRef.schema == "public" && objectRef.database == "app"
+            })
+        }
+
+        let tableCommands = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .table(table))))
+        #expect(!tableCommands.contains(.copyDDL(table)))
+        #expect(!tableCommands.contains { command in
+            if case .showObjectSource = command { return true }
+            return false
+        })
+    }
+
+    /// Reading a definition writes nothing, so a read-only connection still offers it. Editing the
+    /// definition is the command that disappears.
+    @Test("Read-only keeps Show DDL and Copy DDL")
+    func readOnlyKeepsDDLCommands() {
+        let view = tableRef("active_users", type: .view)
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .table(view), isReadOnly: true)))
+
+        #expect(issued.contains(.copyDDL(view)))
+        #expect(!issued.contains(.editViewDefinition(view)))
+    }
+
+    @Test("Only a materialized view offers Refresh Materialized View")
+    func refreshIsMaterializedViewOnly() {
+        let matview = tableRef("sales_totals", type: .materializedView)
+        let view = tableRef("active_users", type: .view)
+        let table = tableRef("users")
+
+        #expect(commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: .table(matview), objectToolSupport: postgresSupport)
+        )).contains(.refreshMaterializedView(matview)))
+
+        for ref in [view, table] {
+            #expect(!commands(DatabaseTreeMenuSpec.sections(
+                for: context(clicked: .table(ref), objectToolSupport: postgresSupport)
+            )).contains(.refreshMaterializedView(ref)))
+        }
+    }
+
+    @Test("Refresh is absent without a driver statement for it, and when read-only")
+    func refreshNeedsDriverSupportAndWriteAccess() {
+        let matview = tableRef("sales_totals", type: .materializedView)
+
+        #expect(!commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .table(matview))))
+            .contains(.refreshMaterializedView(matview)))
+        #expect(!commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: .table(matview), isReadOnly: true, objectToolSupport: postgresSupport)
+        )).contains(.refreshMaterializedView(matview)))
+    }
+
+    @Test("Edit Comment follows the kinds the driver can comment on")
+    func editCommentFollowsDriverSupport() {
+        let table = tableRef("users")
+        let matview = tableRef("sales_totals", type: .materializedView)
+        let external = tableRef("events", type: .externalTable)
+
+        for ref in [table, matview] {
+            #expect(commands(DatabaseTreeMenuSpec.sections(
+                for: context(clicked: .table(ref), objectToolSupport: postgresSupport)
+            )).contains(.editComment(ref)))
+        }
+        #expect(!commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: .table(external), objectToolSupport: postgresSupport)
+        )).contains(.editComment(external)))
+        #expect(!commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .table(table))))
+            .contains(.editComment(table)))
+        #expect(!commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: .table(table), isReadOnly: true, objectToolSupport: postgresSupport)
+        )).contains(.editComment(table)))
     }
 
     // MARK: - Containers

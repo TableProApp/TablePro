@@ -133,12 +133,36 @@ struct MySQLReplaySafetyTests {
             "CREATE TEMPORARY TABLE staging (a INT)",
             "PREPARE stmt FROM 'SELECT 1'",
             "LOCK TABLES users WRITE",
+            "FLUSH TABLES WITH READ LOCK",
+            "HANDLER users OPEN",
             "USE reporting",
             "BEGIN",
+            "/*!40101 BEGIN */",
             "CALL rebuild_report()",
             "/*!40103 SET TIME_ZONE='+00:00' */",
         ] {
             #expect(!mysqlMayReplay("SELECT * FROM users", on: footprint(after: statement)), "\(statement)")
+        }
+
+        var serverSideTransaction = MySQLSessionFootprint()
+        serverSideTransaction.observeServerTransaction(isOpen: true)
+        #expect(!mysqlMayReplay("SELECT * FROM users", on: serverSideTransaction))
+    }
+
+    /// These change nothing, so the footprint stays clean, and their answer still belongs to the
+    /// session that ran the statement before them. Measured on MySQL 8.4.11: a fresh connection
+    /// answers `SELECT LAST_INSERT_ID()` with `0`, so an `INSERT`, a dropped connection and a
+    /// replayed read showed `0` for a row that had an id.
+    @Test("A read of a session-scoped value is never replayed")
+    func sessionScopedReadsAreNotReplayed() {
+        for query in [
+            "SELECT LAST_INSERT_ID()",
+            "SELECT ROW_COUNT()",
+            "SELECT FOUND_ROWS()",
+            "SELECT CONNECTION_ID()",
+            "select last_insert_id()",
+        ] {
+            #expect(!mysqlMayReplay(query, on: MySQLSessionFootprint()), "\(query)")
         }
     }
 

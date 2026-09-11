@@ -43,6 +43,7 @@ final class TabSessionRegistry {
         session.isEvicted = false
         session.dataRevision &+= 1
         session.bufferEpoch &+= 1
+        session.rowSetRevision &+= 1
     }
 
     /// A mutation of what the tab already holds, so it cannot resurrect a tab that holds nothing.
@@ -53,15 +54,20 @@ final class TabSessionRegistry {
     /// mutation that leaves the buffer empty leaves a tab with no rows that `canAutoLoadTableTab`
     /// reads as already loaded, and eviction cannot re-mark it because it has nothing left to lose:
     /// the grid stays empty until an explicit refresh.
-    func updateTableRows(for tabId: UUID, _ mutate: (inout TableRows) -> Void) {
+    @discardableResult
+    func updateTableRows(for tabId: UUID, _ mutate: (inout TableRows) -> Delta) -> Delta {
         let session = ensureSession(for: tabId)
         var rows = session.tableRows
-        mutate(&rows)
+        let delta = mutate(&rows)
         session.tableRows = rows
         if !rows.rows.isEmpty {
             session.isEvicted = false
         }
         session.dataRevision &+= 1
+        if delta.changesRowSet {
+            session.rowSetRevision &+= 1
+        }
+        return delta
     }
 
     func removeTableRows(for tabId: UUID) {
@@ -70,6 +76,7 @@ final class TabSessionRegistry {
         session.isEvicted = false
         session.dataRevision &+= 1
         session.bufferEpoch &+= 1
+        session.rowSetRevision &+= 1
     }
 
     func isEvicted(_ tabId: UUID) -> Bool {
@@ -88,6 +95,7 @@ final class TabSessionRegistry {
         session.isEvicted = true
         session.dataRevision &+= 1
         session.bufferEpoch &+= 1
+        session.rowSetRevision &+= 1
     }
 
     private func ensureSession(for tabId: UUID) -> TabSession {

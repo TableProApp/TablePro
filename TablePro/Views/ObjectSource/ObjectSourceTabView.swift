@@ -2,7 +2,7 @@
 //  ObjectSourceTabView.swift
 //  TablePro
 //
-//  Tab showing the source of one stored procedure, function, trigger or user-defined type.
+//  Tab showing the source of one stored procedure, function, trigger, user-defined type or view.
 //
 
 import SwiftUI
@@ -107,6 +107,13 @@ final class ObjectSourceLoader {
                     enumLabels: fetched.enumLabels,
                     userType: fetched
                 )
+            case .view, .materializedView:
+                let source = try await TableDDLComposer.fetchDDL(
+                    for: objectRef.name,
+                    using: driver,
+                    includesDependencies: true
+                )
+                return Fetched(source: source, attributes: objectRef.attributes, enumLabels: [], userType: nil)
             }
         }
     }

@@ -27,6 +27,7 @@ final class LibPQDriverCore: @unchecked Sendable {
 
     var serverVersion: String? { libpqConnection?.serverVersion() }
     var serverVersionNumber: Int32 { libpqConnection?.serverVersionNumber() ?? 0 }
+    var isInsideTransactionBlock: Bool { libpqConnection?.isInsideTransactionBlock ?? false }
 
     init(
         config: DriverConnectionConfig,

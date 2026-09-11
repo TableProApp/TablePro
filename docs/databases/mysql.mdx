@@ -74,13 +74,13 @@ To stop the check itself, set **Check connections** to **Only when I use the con
 
 Reconnecting costs a TCP connect, the TLS handshake and authentication: measured at 2ms against a server on the same machine and 800ms to 1.9s across the internet. That cost lands on the first query after an idle period, so leave this at `0` for a remote server unless the slot matters more than the wait.
 
-A release is refused, with the reason, while the session holds anything a reconnect would destroy: an open transaction, a temporary table, a prepared statement, a `GET_LOCK`, `LOCK TABLES`, a user variable, a changed session setting, a database selected with `USE`, or a stored routine call, whose body is opaque. The statements a dump runs inside `/*!40101 ... */` count, since the server executes them.
+A release is refused, with the reason, while the session holds anything a reconnect would destroy: an open transaction, a temporary table, a prepared statement, a `GET_LOCK`, `LOCK TABLES`, `FLUSH TABLES WITH READ LOCK`, an open `HANDLER`, a user variable, a changed session setting, a database selected with `USE`, or a stored routine call, whose body is opaque. The statements a dump runs inside `/*!40101 ... */` count, since the server executes them. The transaction comes from the server itself, so one opened by `SET autocommit = 0` or by an `XA START` counts as well.
 
 ## When the server drops the connection
 
-A read that fails because the server closed the connection is run once more on a new one, and only from a session holding nothing: the same list as above. Every other statement reports the error, because the second session answers from different state. Measured on MySQL 8.4.11, replaying regardless: `SELECT @total` came back `NULL` where it had come back 42, and `SELECT DATABASE()` came back as the connection's own database rather than the one `USE` had selected, neither of them raising anything.
+A read that fails because the server closed the connection is run once more on a new one, and only from a session holding nothing: the same list as above. Every other statement reports the error, because the second session answers from different state. Measured on MySQL 8.4.11, replaying regardless: `SELECT @total` came back `NULL` where it had come back 42, and `SELECT DATABASE()` came back as the connection's own database rather than the one `USE` had selected, neither of them raising anything. `LAST_INSERT_ID()`, `ROW_COUNT()`, `FOUND_ROWS()` and `CONNECTION_ID()` are never replayed either, whatever the session holds: their answer belongs to the connection that is gone.
 
-**Database > Reconnect** takes a new connection and puts back the database, the schema and the startup commands.
+A connection with startup commands that run `SET` is holding a changed session setting from the moment it opens, so it reports the error rather than retrying. **Database > Reconnect** takes a new connection and puts back the database and the startup commands.
 
 ## Garbled non-Latin text
 

@@ -68,6 +68,9 @@ struct MenuValidationContext: Equatable {
     var canReleaseFileLock = false
     var canShowTableStructure = false
     var canEditViewDefinition = false
+    var canShowObjectDDL = false
+    var canRefreshMaterializedView = false
+    var canEditObjectComment = false
     var canCreateDatabase = false
     var canCopyObjects = false
     var canDuplicateDatabase = false
@@ -229,10 +232,13 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.canCopyObjects
         case #selector(duplicateCurrentDatabase(_:)):
             return context.canDuplicateDatabase
-        case #selector(showTableStructure(_:)):
-            return context.isConnected && context.canShowTableStructure
-        case #selector(editViewDefinition(_:)):
-            return context.isConnected && context.canEditViewDefinition
+        case #selector(showTableStructure(_:)),
+             #selector(editViewDefinition(_:)),
+             #selector(showObjectDDL(_:)),
+             #selector(copyObjectDDL(_:)),
+             #selector(refreshMaterializedView(_:)),
+             #selector(editObjectComment(_:)):
+            return objectCommandIsEnabled(selector, context: context)
         case #selector(runMaintenanceOperation(_:)):
             return context.isConnected && context.hasMaintenanceOperations
         case #selector(switchToSchema(_:)):
@@ -284,6 +290,27 @@ extension MainSplitViewController: NSMenuItemValidation {
         }
     }
 
+    /// The commands that act on the object selected in the sidebar. They answer on the same facts
+    /// the sidebar's own contextual menu reads, so a command the sidebar omits is dimmed here rather
+    /// than enabled over an object it cannot act on.
+    private static func objectCommandIsEnabled(_ selector: Selector, context: MenuValidationContext) -> Bool {
+        guard context.isConnected else { return false }
+        switch selector {
+        case #selector(showTableStructure(_:)):
+            return context.canShowTableStructure
+        case #selector(editViewDefinition(_:)):
+            return !context.isReadOnly && context.canEditViewDefinition
+        case #selector(showObjectDDL(_:)), #selector(copyObjectDDL(_:)):
+            return context.canShowObjectDDL
+        case #selector(refreshMaterializedView(_:)):
+            return context.canRefreshMaterializedView
+        case #selector(editObjectComment(_:)):
+            return context.canEditObjectComment
+        default:
+            return false
+        }
+    }
+
     /// The workspace-rail facts come from the window in both branches. They are true of the window,
     /// not of the connection it happens to be showing, and reading them off a connection that has
     /// no coordinator left disabled the only menu route to the window's other connections.
@@ -329,6 +356,9 @@ extension MainSplitViewController: NSMenuItemValidation {
             canReleaseFileLock: canReleaseFileLock,
             canShowTableStructure: actions.canShowTableStructure,
             canEditViewDefinition: actions.canEditViewDefinition,
+            canShowObjectDDL: actions.canShowObjectDDL,
+            canRefreshMaterializedView: actions.canRefreshMaterializedView,
+            canEditObjectComment: actions.canEditObjectComment,
             canCreateDatabase: actions.canCreateDatabase,
             canCopyObjects: actions.canCopyObjects,
             canDuplicateDatabase: actions.canDuplicateDatabase,

@@ -45,9 +45,9 @@ struct TableViewCoordinatorRowCountCacheTests {
     func updateCacheReflectsAppendedRows() {
         let coordinator = makeCoordinator(rows: [])
 
-        coordinator.tableRowsMutator { rows in
+        _ = coordinator.tableRowsMutator { rows in
             _ = rows.appendInsertedRow(values: [.text("a")])
-            _ = rows.appendInsertedRow(values: [.text("b")])
+            return rows.appendInsertedRow(values: [.text("b")])
         }
         coordinator.updateCache()
 
@@ -64,8 +64,8 @@ struct TableViewCoordinatorRowCountCacheTests {
         ]
         let coordinator = makeCoordinator(rows: rows)
 
-        coordinator.tableRowsMutator { rows in
-            _ = rows.remove(rowIDs: [.existing(1)])
+        _ = coordinator.tableRowsMutator { rows in
+            rows.remove(rowIDs: [.existing(1)])
         }
         coordinator.updateCache()
 
@@ -80,8 +80,8 @@ struct TableViewCoordinatorRowCountCacheTests {
         ]
         let coordinator = makeCoordinator(rows: rows)
 
-        coordinator.tableRowsMutator { rows in
-            _ = rows.replace(rows: [[.text("x")], [.text("y")], [.text("z")], [.text("w")]])
+        _ = coordinator.tableRowsMutator { rows in
+            rows.replace(rows: [[.text("x")], [.text("y")], [.text("z")], [.text("w")]])
         }
         coordinator.updateCache()
 
