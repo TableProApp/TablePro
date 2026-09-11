@@ -6,6 +6,9 @@ extension MainContentCoordinator {
     /// what tests use to observe the record without polling.
     @discardableResult
     func recordHistory(_ request: QueryHistoryRecordRequest) -> Task<Bool, Never> {
+        if request.source == .editor {
+            FeatureTipSignals.editorQueryRan()
+        }
         let recorder = services.queryHistoryManager
         return Task(priority: .utility) {
             await recorder.record(request)

@@ -11,14 +11,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Empty state in the inspector and the assistant for a connection that is not up.
 - **Check connections** in Settings > General, including Only when I use the connection. (#2700)
+- Tips for preview tabs, Open Quickly, and query history.
 
 ### Changed
 
 - 5 MB smaller app bundle.
 - 7 MB smaller DMG download.
 - Connect progress reads as a labelled bar, with a step named only where the app is waiting on something outside itself.
+- First launch opening on the welcome window, whose empty list offers the sample database and import from another app.
+- New Connection… and Import on the welcome window, named as in the File menu.
+- Open Project Folder… in File > Import.
+- First-launch tour replaced by a one-page welcome sheet, shown again from Help > Getting Started.
 
 ### Fixed
+
+- Blank welcome window list when a search matched nothing and a favorite existed.
+- Welcome window reading No Connections while a tag filter hid every connection.
+- Favorited connection inside a group listed twice on the welcome window.
+- Welcome window tag filter stuck on a tag no connection carries any more, hiding every connection.
+- Collapsing every group on the welcome window undone at the next launch.
+- Linked Folders and Team Library connections ignoring the welcome window search, with no context menu.
+- Dragging a connection in filtered welcome window results snapping back without moving it.
+- Welcome window context menu leaving linked connections out of a mixed selection.
 
 - Idle metadata connections held open for the life of the app, up to six per connection. (#2700)
 - MongoDB connections reading as healthy after the server went away. (#2700)
@@ -54,6 +68,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Column lines showing through the row numbers below the last row.
 - Empty rows below the last row striped brighter than the rows in dark mode.
 - Row numbers keeping their old stripes after turning alternate rows off or changing the row height.
+- SQL Server, CockroachDB, Cloudflare D1, libSQL and Elasticsearch connections imported from TablePlus with a database type that could never connect.
+- DuckDB file connections imported from TablePlus without their file.
+- Connections to an engine TablePro does not support imported silently and checked by default, or dropped from a Beekeeper Studio import.
+- Import preview calling an unrecognized database type "not installed".
+- Imported connections unable to connect when the source app spelled the engine name in a different case.
+- Wrong default port on Redshift and CockroachDB connections imported without one.
+- Object browser replaced by "No Tables" for a database with procedures but no tables.
+- Procedures, functions and triggers missing from the object browser on Oracle, Snowflake, BigQuery and Dameng.
+- Empty schema list labelled "No Datasets" on Oracle, Snowflake, Dameng and Trino.
 
 ## [0.73.0] - 2026-09-09
 

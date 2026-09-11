@@ -32,7 +32,7 @@ final class AppSettingsStorage: Sendable {
         static let sync = "com.TablePro.settings.sync"
         static let mcp = "com.TablePro.settings.mcp"
         static let notifications = "com.TablePro.settings.notifications"
-        static let hasCompletedOnboarding = "com.TablePro.settings.hasCompletedOnboarding"
+        static let hasSeenWelcomeSheet = "com.TablePro.settings.hasCompletedOnboarding"
         static let startupReopenMigration = "com.TablePro.settings.didMigrateStartupToReopenLast"
         static let jsonFieldHeightMigration = "com.TablePro.settings.didMigrateJsonFieldHeightKey"
         static let legacyJsonFieldHeight = "rightSidebar.jsonFieldHeight"
@@ -206,16 +206,14 @@ final class AppSettingsStorage: Sendable {
         defaults.string(forKey: "com.TablePro.lastSelectedSchema.\(connectionId)")
     }
 
-    // MARK: - Onboarding
+    // MARK: - Welcome Sheet
 
-    /// Check if user has completed onboarding
-    func hasCompletedOnboarding() -> Bool {
-        defaults.bool(forKey: Keys.hasCompletedOnboarding)
+    func hasSeenWelcomeSheet() -> Bool {
+        defaults.bool(forKey: Keys.hasSeenWelcomeSheet)
     }
 
-    /// Mark onboarding as completed
-    func setOnboardingCompleted() {
-        defaults.set(true, forKey: Keys.hasCompletedOnboarding)
+    func markWelcomeSheetSeen() {
+        defaults.set(true, forKey: Keys.hasSeenWelcomeSheet)
     }
 
     // MARK: - Reset

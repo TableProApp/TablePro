@@ -139,16 +139,15 @@ struct MobileConnectionImportSheet: View {
             return "\(item.connection.host):\(item.connection.port)"
         case .duplicate:
             return String(localized: "Already exists")
-        case .warnings(let messages):
-            return messages.first ?? "\(item.connection.host):\(item.connection.port)"
+        case .warnings, .unsupportedType:
+            return item.status.message ?? "\(item.connection.host):\(item.connection.port)"
         }
     }
 
     private func statusColor(for status: ImportItemStatus) -> Color {
         switch status {
         case .ready: return .secondary
-        case .duplicate: return .orange
-        case .warnings: return .orange
+        case .duplicate, .warnings, .unsupportedType: return .orange
         }
     }
 
@@ -203,14 +202,7 @@ struct MobileConnectionImportSheet: View {
 
     private func applyPreview(_ result: ConnectionImportPreview) {
         preview = result
-        for item in result.items {
-            switch item.status {
-            case .ready, .warnings:
-                selectedIds.insert(item.id)
-            case .duplicate:
-                break
-            }
-        }
+        selectedIds.formUnion(result.items.filter(\.status.isSelectedByDefault).map(\.id))
         phase = .preview
     }
 
@@ -220,7 +212,7 @@ struct MobileConnectionImportSheet: View {
         for item in preview.items {
             if selectedIds.contains(item.id) {
                 switch item.status {
-                case .ready, .warnings:
+                case .ready, .warnings, .unsupportedType:
                     resolved[item.id] = .importNew
                 case .duplicate:
                     resolved[item.id] = resolutions[item.id] ?? .importAsCopy

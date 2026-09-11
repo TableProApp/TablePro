@@ -269,7 +269,7 @@ struct DataGripImporter: ForeignAppImporter {
 
         let host = endpoint?.host ?? "localhost"
         let database = endpoint?.database ?? ""
-        let port = endpoint?.port ?? defaultPort(for: type)
+        let port = endpoint?.port ?? ForeignAppDatabaseType.defaultPort(for: type)
 
         return ExportableConnection(
             name: source.name,
@@ -399,21 +399,7 @@ struct DataGripImporter: ForeignAppImporter {
         case "cassandra": return "Cassandra"
         case "duckdb": return "DuckDB"
         case "bigquery": return "BigQuery"
-        default: return fallback
-        }
-    }
-
-    private func defaultPort(for type: String) -> Int {
-        switch type {
-        case "MySQL", "MariaDB": return 3_306
-        case "PostgreSQL", "CockroachDB", "Redshift": return 5_432
-        case "MongoDB": return 27_017
-        case "Redis": return 6_379
-        case "SQL Server": return 1_433
-        case "Oracle": return 1_521
-        case "ClickHouse": return 8_123
-        case "Cassandra": return 9_042
-        default: return 0
+        default: return ForeignAppDatabaseType.resolve(fallback)
         }
     }
 }

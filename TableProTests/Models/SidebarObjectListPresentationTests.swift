@@ -13,14 +13,12 @@ struct SidebarObjectListPresentationTests {
         _ state: SchemaState,
         hasActiveFilter: Bool = false,
         hasAnyMatch: Bool = true,
-        hasSideObjects: Bool = false,
         hasOutlastedGrace: Bool = true
     ) -> SidebarObjectListPresentation {
         SidebarObjectListPresentation.resolve(
             state: state,
             hasActiveFilter: hasActiveFilter,
             hasAnyMatch: hasAnyMatch,
-            hasSideObjects: hasSideObjects,
             hasOutlastedGrace: hasOutlastedGrace
         )
     }
@@ -35,15 +33,12 @@ struct SidebarObjectListPresentationTests {
         #expect(resolve(.loading) == .loading)
     }
 
-    @Test("A database that really has no objects says so")
-    func loadedAndEmptySaysEmpty() {
-        #expect(resolve(.loaded([])) == .empty)
-    }
-
-    @Test("A database whose only objects are routines, triggers or types is not empty")
-    func sideObjectsAloneAreNotEmpty() {
-        #expect(resolve(.loaded([]), hasSideObjects: true) == .list)
-        #expect(resolve(.loaded([]), hasSideObjects: false) == .empty)
+    /// The full-pane empty state took the whole outline with it: the Procedures, Functions and
+    /// Triggers of a database with no tables, and the Tables section whose menu creates the first
+    /// table. The outline says per section what is missing instead.
+    @Test("A loaded database with no tables still renders the list")
+    func loadedWithoutTablesRendersList() {
+        #expect(resolve(.loaded([])) == .list)
     }
 
     @Test("Loaded objects render the list")
@@ -98,7 +93,7 @@ struct SidebarObjectListPresentationTests {
     @Test("The grace never delays a failure or a finished list")
     func settledStatesIgnoreTheGrace() {
         #expect(resolve(.failed("boom"), hasOutlastedGrace: false) == .failed("boom"))
-        #expect(resolve(.loaded([]), hasOutlastedGrace: false) == .empty)
+        #expect(resolve(.loaded([]), hasOutlastedGrace: false) == .list)
         #expect(resolve(.loaded([table("users")]), hasOutlastedGrace: false) == .list)
     }
 
@@ -120,9 +115,6 @@ struct SidebarObjectListPresentationTests {
         #expect(SidebarObjectListPresentation.resolveDeferringEmptyStates(state: .loading) == .loading)
     }
 
-    /// The tree draws its own empty and no-match states, so a loaded read is a list to it whether
-    /// or not anything came back. Answering `.empty` here would put a second empty state over the
-    /// one the tree already has.
     @Test("A loaded schema is always a list to the tree, empty or not")
     func treeDefersItsOwnEmptyStates() {
         #expect(SidebarObjectListPresentation.resolveDeferringEmptyStates(state: .loaded([])) == .list)

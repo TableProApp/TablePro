@@ -46,3 +46,39 @@ enum MetadataLoadPhase: Sendable, Equatable {
 }
 
 extension MetadataLoadState: Equatable where Value: Equatable {}
+
+/// What one metadata fetch came back with, before it is committed over the state it refreshes.
+enum MetadataFetchOutcome<Value: Sendable>: Sendable {
+    case fetched(Value)
+    case failed(String)
+    case cancelled
+
+    var didFetch: Bool {
+        if case .fetched = self { return true }
+        return false
+    }
+}
+
+extension MetadataLoadState {
+    /// Loading is entered only with nothing to show, so a refresh keeps the rows it is refreshing.
+    var enteringLoad: MetadataLoadState {
+        if case .loaded = self { return self }
+        return .loading
+    }
+
+    /// A failure never replaces loaded rows unless those rows describe a scope the load has left,
+    /// and a cancelled fetch never leaves a spinner behind with nothing coming to replace it.
+    func settled(by outcome: MetadataFetchOutcome<Value>, discardingValue: Bool) -> MetadataLoadState {
+        switch outcome {
+        case .fetched(let value):
+            return .loaded(value)
+        case .failed(let message):
+            if case .loaded = self, !discardingValue { return self }
+            return .failed(message)
+        case .cancelled:
+            if discardingValue { return .idle }
+            if case .loading = self { return .idle }
+            return self
+        }
+    }
+}

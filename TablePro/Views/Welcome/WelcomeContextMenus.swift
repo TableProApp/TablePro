@@ -7,28 +7,80 @@ import AppKit
 import Combine
 import SwiftUI
 
-extension WelcomeWindowView {
+internal struct WelcomeNewConnectionMenu: View {
+    let vm: WelcomeViewModel
+
+    var body: some View {
+        Button(action: { WindowOpener.shared.openConnectionForm() }) {
+            Label("New Connection…", systemImage: "plus")
+        }
+
+        Divider()
+
+        Button {
+            vm.importConnectionsFromFile()
+        } label: {
+            Label(String(localized: "Import Connections…"), systemImage: "square.and.arrow.down")
+        }
+
+        Button {
+            vm.importConnectionsFromApp()
+        } label: {
+            Label(String(localized: "Import from Other App…"), systemImage: "square.and.arrow.down.on.square")
+        }
+    }
+}
+
+extension WelcomeConnectionList {
     @ViewBuilder
     func contextMenuContent(for ids: Set<UUID>) -> some View {
-        if ids.isEmpty {
-            newConnectionContextMenu
-        } else {
-            let connections = vm.connections.filter { ids.contains($0.id) }
-            if connections.count > 1 {
-                multiSelectionContextMenu(for: connections)
-            } else if let single = connections.first {
+        let connections = vm.connections.filter { ids.contains($0.id) }
+        let external = vm.externalConnections(for: ids)
+        switch WelcomeContextMenuKind.resolve(savedCount: connections.count, externalCount: external.count) {
+        case .newConnection:
+            WelcomeNewConnectionMenu(vm: vm)
+        case .singleConnection:
+            if let single = connections.first {
                 singleConnectionContextMenu(for: single)
+            }
+        case .multipleConnections:
+            multiSelectionContextMenu(
+                for: connections,
+                selection: ids,
+                selectionCount: connections.count + external.count
+            )
+        case .externalOnly:
+            externalConnectionContextMenu(for: external)
+        }
+    }
+
+    @ViewBuilder
+    private func externalConnectionContextMenu(for external: [LinkedConnection]) -> some View {
+        if !external.isEmpty {
+            Button { primaryAction(for: Set(external.map(\.id))) } label: {
+                Label(WelcomeSelectionLabels.connect(count: external.count), systemImage: "play.fill")
+            }
+
+            if external.count == 1, let linked = external.first, vm.isLinkedFolderConnection(linked.id) {
+                Divider()
+
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([linked.sourceFileURL])
+                } label: {
+                    Label(String(localized: "Show in Finder"), systemImage: "folder")
+                }
             }
         }
     }
 
     @ViewBuilder
-    private func multiSelectionContextMenu(for connections: [DatabaseConnection]) -> some View {
-        Button { primaryAction(for: Set(connections.map(\.id))) } label: {
-            Label(
-                String(format: String(localized: "Connect %d Connections"), connections.count),
-                systemImage: "play.fill"
-            )
+    private func multiSelectionContextMenu(
+        for connections: [DatabaseConnection],
+        selection: Set<UUID>,
+        selectionCount: Int
+    ) -> some View {
+        Button { primaryAction(for: selection) } label: {
+            Label(WelcomeSelectionLabels.connect(count: selectionCount), systemImage: "play.fill")
         }
 
         Divider()
@@ -49,29 +101,26 @@ extension WelcomeWindowView {
             Button {
                 vm.exportConnections(connections)
             } label: {
-                Label(
-                    String(format: String(localized: "Export %d Connections to File…"), connections.count),
-                    systemImage: "square.and.arrow.up"
-                )
+                Label(WelcomeSelectionLabels.exportToFile(count: connections.count), systemImage: "square.and.arrow.up")
             }
 
-            if LicenseManager.shared.isFeatureAvailable(.teamCatalog) {
+            if vm.services.licenseManager.isFeatureAvailable(.teamCatalog) {
                 Button {
                     vm.publishToTeamCatalog(connections)
                 } label: {
                     Label(
-                        String(format: String(localized: "Publish %d Connections to Team Catalog…"), connections.count),
+                        WelcomeSelectionLabels.publishToTeamCatalog(count: connections.count),
                         systemImage: "person.2.fill"
                     )
                 }
             }
 
-            if LicenseManager.shared.isFeatureAvailable(.teamLibrary) {
+            if vm.services.licenseManager.isFeatureAvailable(.teamLibrary) {
                 Button {
                     vm.publishConnectionsToTeamLibrary(connections)
                 } label: {
                     Label(
-                        String(format: String(localized: "Publish %d Connections to Team Library…"), connections.count),
+                        WelcomeSelectionLabels.publishToTeamLibrary(count: connections.count),
                         systemImage: "books.vertical.fill"
                     )
                 }
@@ -89,17 +138,12 @@ extension WelcomeWindowView {
             }
         }
 
-        if AppSettingsManager.shared.sync.enabled {
+        if vm.services.appSettings.sync.enabled {
             Divider()
 
             let allLocalOnly = connections.allSatisfy(\.localOnly)
             Button {
-                for conn in connections {
-                    var updated = conn
-                    updated.localOnly = !allLocalOnly
-                    ConnectionStorage.shared.updateConnection(updated)
-                }
-                AppEvents.shared.connectionUpdated.send(nil)
+                vm.setIncludedInSync(connections, included: allLocalOnly)
             } label: {
                 Label(
                     allLocalOnly
@@ -115,10 +159,7 @@ extension WelcomeWindowView {
         Button(role: .destructive) {
             vm.requestDeleteConnections(connections)
         } label: {
-            Label(
-                String(format: String(localized: "Delete %d Connections"), connections.count),
-                systemImage: "trash"
-            )
+            Label(WelcomeSelectionLabels.delete(count: connections.count), systemImage: "trash")
         }
     }
 
@@ -129,7 +170,7 @@ extension WelcomeWindowView {
         }
 
         if ConnectionMenuPolicy.showsDisconnect(
-            status: DatabaseManager.shared.session(for: connection.id)?.status ?? .disconnected
+            status: vm.services.databaseManager.session(for: connection.id)?.status ?? .disconnected
         ) {
             Button(role: .destructive) {
                 Task {
@@ -155,7 +196,7 @@ extension WelcomeWindowView {
         Divider()
 
         Button { CompareSyncLauncher.open(prefillSource: connection.id) } label: {
-            Label(String(localized: "Compare/Sync with…"), systemImage: "arrow.left.arrow.right.square")
+            Label(String(localized: "Compare & Sync With…"), systemImage: "arrow.left.arrow.right.square")
         }
 
         Divider()
@@ -173,23 +214,7 @@ extension WelcomeWindowView {
 
         Menu(String(localized: "Share")) {
             Button {
-                let pw = ConnectionStorage.shared.loadPassword(for: connection.id)
-                let sshPw: String?
-                let sshProfile: SSHProfile?
-                if let profileId = connection.sshProfileId {
-                    sshPw = SSHProfileStorage.shared.loadSSHPassword(for: profileId)
-                    sshProfile = SSHProfileStorage.shared.profile(for: profileId)
-                } else {
-                    sshPw = ConnectionStorage.shared.loadSSHPassword(for: connection.id)
-                    sshProfile = nil
-                }
-                let url = ConnectionURLFormatter.format(
-                    connection,
-                    password: pw,
-                    sshPassword: sshPw,
-                    sshProfile: sshProfile
-                )
-                ClipboardService.shared.writeSecretText(url)
+                ClipboardService.shared.writeSecretText(vm.connectionString(for: connection))
             } label: {
                 Label(String(localized: "Copy Connection String"), systemImage: "link")
             }
@@ -217,7 +242,7 @@ extension WelcomeWindowView {
                 Label(String(localized: "Export to File…"), systemImage: "square.and.arrow.up")
             }
 
-            if LicenseManager.shared.isFeatureAvailable(.teamCatalog) {
+            if vm.services.licenseManager.isFeatureAvailable(.teamCatalog) {
                 Button {
                     vm.publishToTeamCatalog([connection])
                 } label: {
@@ -225,7 +250,7 @@ extension WelcomeWindowView {
                 }
             }
 
-            if LicenseManager.shared.isFeatureAvailable(.teamLibrary) {
+            if vm.services.licenseManager.isFeatureAvailable(.teamLibrary) {
                 Button {
                     vm.publishConnectionsToTeamLibrary([connection])
                 } label: {
@@ -244,14 +269,11 @@ extension WelcomeWindowView {
             }
         }
 
-        if AppSettingsManager.shared.sync.enabled {
+        if vm.services.appSettings.sync.enabled {
             Divider()
 
             Button {
-                var updated = connection
-                updated.localOnly.toggle()
-                ConnectionStorage.shared.updateConnection(updated)
-                AppEvents.shared.connectionUpdated.send(connection.id)
+                vm.setIncludedInSync([connection], included: connection.localOnly)
             } label: {
                 Label(
                     connection.localOnly
@@ -322,61 +344,4 @@ extension WelcomeWindowView {
             }
         }
     }
-
-    @ViewBuilder
-    var newConnectionContextMenu: some View {
-        Button(action: { WindowOpener.shared.openConnectionForm() }) {
-            Label("New Connection…", systemImage: "plus")
-        }
-
-        Divider()
-
-        Button {
-            vm.importConnectionsFromFile()
-        } label: {
-            Label(String(localized: "Import Connections…"), systemImage: "square.and.arrow.down")
-        }
-
-        Button {
-            vm.importConnectionsFromApp()
-        } label: {
-            Label(String(localized: "Import from Other App…"), systemImage: "square.and.arrow.down.on.square")
-        }
-    }
-}
-
-// MARK: - Flat Group Entry
-
-struct FlatGroupEntry {
-    let group: ConnectionGroup
-    let depth: Int
-}
-
-func flattenGroupsForMenu(groups: [ConnectionGroup], parentId: UUID? = nil, depth: Int = 0) -> [FlatGroupEntry] {
-    let validGroupIds = Set(groups.map(\.id))
-    let levelGroups: [ConnectionGroup]
-    if parentId == nil {
-        levelGroups = groups
-            .filter { $0.parentId == nil || ($0.parentId.flatMap { validGroupIds.contains($0) } != true) }
-            .sorted {
-                $0.sortOrder != $1.sortOrder
-                    ? $0.sortOrder < $1.sortOrder
-                    : $0.name.localizedStandardCompare($1.name) == .orderedAscending
-            }
-    } else {
-        levelGroups = groups
-            .filter { $0.parentId == parentId }
-            .sorted {
-                $0.sortOrder != $1.sortOrder
-                    ? $0.sortOrder < $1.sortOrder
-                    : $0.name.localizedStandardCompare($1.name) == .orderedAscending
-            }
-    }
-
-    var result: [FlatGroupEntry] = []
-    for group in levelGroups {
-        result.append(FlatGroupEntry(group: group, depth: depth))
-        result.append(contentsOf: flattenGroupsForMenu(groups: groups, parentId: group.id, depth: depth + 1))
-    }
-    return result
 }

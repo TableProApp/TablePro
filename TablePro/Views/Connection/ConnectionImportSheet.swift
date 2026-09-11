@@ -247,14 +247,7 @@ struct ConnectionImportSheet: View {
     }
 
     private func selectReadyItems(_ result: ConnectionImportPreview) {
-        for item in result.items {
-            switch item.status {
-            case .ready, .warnings:
-                selectedIds.insert(item.id)
-            case .duplicate:
-                break
-            }
-        }
+        selectedIds.formUnion(result.items.filter(\.status.isSelectedByDefault).map(\.id))
     }
 
     private func performImport(_ preview: ConnectionImportPreview) {
@@ -262,7 +255,7 @@ struct ConnectionImportSheet: View {
         for item in preview.items {
             if selectedIds.contains(item.id) {
                 switch item.status {
-                case .ready, .warnings:
+                case .ready, .warnings, .unsupportedType:
                     resolutions[item.id] = .importNew
                 case .duplicate:
                     resolutions[item.id] = duplicateResolutions[item.id] ?? .importAsCopy

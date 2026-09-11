@@ -30,7 +30,10 @@ extension DatabaseTreeOutlineCoordinator {
                     ? hierarchicalSchemaMatches(schema)
                     : windowState?.expandedTreeSchemas.contains(schema) ?? false
                 setExpanded(sectionNode, want)
-                if outlineView.isItemExpanded(sectionNode) { triggerLoad(for: sectionNode) }
+                if outlineView.isItemExpanded(sectionNode) {
+                    triggerLoad(for: sectionNode)
+                    restoreObjectGroupExpansion(under: sectionNode)
+                }
             default:
                 break
             }
@@ -107,9 +110,9 @@ extension DatabaseTreeOutlineCoordinator {
         switch node.kind {
         case .database where !supportsSchemaLevel:
             restoreObjectGroupExpansion(under: node)
-        case .schema:
+        case .schema, .hierarchicalSchemaSection:
             restoreObjectGroupExpansion(under: node)
-        case .objectKindSection, .containerObjectKindSection, .hierarchicalSchemaSection:
+        case .objectKindSection, .containerObjectKindSection:
             restorePartitionExpansion(under: node)
         case .recentSection, .recentTable, .database, .table, .routine, .trigger, .userType, .status,
              .redisKeysSection, .redisNode:
@@ -183,7 +186,7 @@ extension DatabaseTreeOutlineCoordinator {
         case .table(let ref):
             loadPartitions(ref)
         case .hierarchicalSchemaSection(let schema):
-            loadHierarchicalSchemaTables(schema)
+            loadHierarchicalSchemaObjects(schema)
         case .recentSection, .recentTable, .routine, .trigger, .userType, .status,
              .objectKindSection, .containerObjectKindSection,
              .redisKeysSection, .redisNode:
@@ -191,11 +194,13 @@ extension DatabaseTreeOutlineCoordinator {
         }
     }
 
-    private func loadHierarchicalSchemaTables(_ schema: String) {
-        guard case .idle = schemaService.schemaState(for: connectionId, schema: schema),
-              let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
+    private func loadHierarchicalSchemaObjects(_ schema: String) {
+        guard case .idle = schemaService.schemaState(for: connectionId, schema: schema) else { return }
         let connectionId = connectionId
-        Task { await schemaService.loadSchemaTables(connectionId: connectionId, schema: schema, driver: driver) }
+        let database = browsingDatabase
+        Task {
+            await schemaService.loadSchemaObjects(connectionId: connectionId, schema: schema, database: database)
+        }
     }
 
     private func loadExternalSchemaNames(database: String) {

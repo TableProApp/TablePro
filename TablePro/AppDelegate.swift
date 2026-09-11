@@ -31,6 +31,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         _ = InspectorDocumentController()
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        FeatureTipsBootstrap.configure()
         PluginManager.shared.loadPlugins()
         LaunchTracer.shared.mark(.pluginsDiscovered)
         LaunchTracer.shared.mark(.willFinishLaunchingEnded)
