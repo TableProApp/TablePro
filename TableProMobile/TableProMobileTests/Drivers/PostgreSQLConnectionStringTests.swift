@@ -34,6 +34,11 @@ struct PostgreSQLConnectionStringTests {
         #expect(connStr.contains("sslmode='disable'"))
     }
 
+    @Test("the session is pinned to UTF8 in the startup packet, whatever the database's encoding")
+    func pinsClientEncoding() {
+        #expect(build(ssl: .disabled).contains("client_encoding='UTF8'"))
+    }
+
     @Test("a client certificate and key reach libpq as sslcert and sslkey")
     func clientCertificateIsSent() {
         let certPath = temporaryFile()

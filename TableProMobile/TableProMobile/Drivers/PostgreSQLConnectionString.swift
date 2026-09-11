@@ -2,6 +2,7 @@ import Foundation
 
 nonisolated enum PostgreSQLConnectionString {
     static let connectTimeoutSeconds = 10
+    static let clientEncoding = "UTF8"
 
     static func build(
         host: String,
@@ -19,6 +20,7 @@ nonisolated enum PostgreSQLConnectionString {
             ("password", password),
             ("connect_timeout", String(connectTimeoutSeconds)),
             ("sslmode", ssl.postgresSSLMode),
+            ("client_encoding", clientEncoding),
         ]
 
         if let caPath = ssl.existingCACertificatePath {
