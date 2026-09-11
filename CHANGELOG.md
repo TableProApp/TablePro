@@ -53,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Wrong SQLSTATE code in PostgreSQL, Redshift, CockroachDB and PGlite error messages.
 - Read-only write explanation never shown on PostgreSQL servers.
 - Safe Mode minimum from a configuration profile missing from the toolbar, the Database menu and the connection form. (#2030)
+- PostgreSQL connection hanging after running `COPY FROM STDIN` or `COPY TO STDOUT` in the query editor and on iOS.
 - Stop not ending queries on MySQL and MariaDB servers without TLS.
 - Wrong results after MySQL retakes a dropped connection, on a session that had set a variable, a session setting or a database.
 - Session state set by the `/*! ... */` statements a MySQL dump writes counting as a comment.
