@@ -43,6 +43,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Editor jumping sideways on each keystroke in a long line while scrolled horizontally.
 - Cursor left off screen after pasting a long line.
 - Line number column keeping a stale width after the line count drops below 1,000 or the font size changes.
+- Line after the data grid's row numbers drawn twice as thick as the other column lines.
+- `#` heading in the data grid darker and dimmer than the headings beside it.
+- Row numbers showing the scrolled columns through them on every other row in dark mode.
+- Row numbers keeping the selection's accent colour after the data grid lost focus.
+- Clicks and double-clicks below the last row ignored in the row-number column.
+- Column headings out of line with their columns after moving to a column hidden under the row numbers.
 - SQL Server, CockroachDB, Cloudflare D1, libSQL and Elasticsearch connections imported from TablePlus with a database type that could never connect.
 - DuckDB file connections imported from TablePlus without their file.
 - Connections to an engine TablePro does not support imported silently and checked by default, or dropped from a Beekeeper Studio import.
