@@ -25,18 +25,10 @@
         }
     },
     "dataGrid": {
-        "background": "#1E1E1E",
-        "text": "#D4D4D4",
-        "alternateRow": "#FFFFFF08",
-        "nullValue": "#858585",
-        "boolTrue": "#32D74B",
-        "boolFalse": "#FF453A",
-        "rowNumber": "#858585",
         "modified": "#FFD60A4D",
         "inserted": "#32D74B26",
         "deleted": "#FF453A26",
-        "deletedText": "#FF453A80",
-        "focusBorder": "#007AFF"
+        "deletedText": "#FF453A80"
     },
     "ui": {
         "accentColor": null,

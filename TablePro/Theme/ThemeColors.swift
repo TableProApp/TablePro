@@ -131,47 +131,44 @@ internal struct EditorThemeColors: Codable, Equatable, Sendable {
 // MARK: - Data Grid Theme Colors
 
 internal struct DataGridThemeColors: Codable, Equatable, Sendable {
-    var background: String
-    var text: String
-    var alternateRow: String
-    var nullValue: String
-    var boolTrue: String
-    var boolFalse: String
-    var rowNumber: String
+    var background: String?
+    var text: String?
+    var alternateRow: String?
+    var nullValue: String?
+    var boolTrue: String?
+    var boolFalse: String?
+    var rowNumber: String?
     var modified: String
     var inserted: String
     var deleted: String
     var deletedText: String
-    var focusBorder: String
 
     static let defaultLight = DataGridThemeColors(
-        background: "#FFFFFF",
-        text: "#000000",
-        alternateRow: "#F5F5F5",
-        nullValue: "#8E8E93",
-        boolTrue: "#248A3D",
-        boolFalse: "#D70015",
-        rowNumber: "#8E8E93",
+        background: nil,
+        text: nil,
+        alternateRow: nil,
+        nullValue: nil,
+        boolTrue: nil,
+        boolFalse: nil,
+        rowNumber: nil,
         modified: "#FFD60A4D",
         inserted: "#34C7594D",
         deleted: "#FF3B304D",
-        deletedText: "#FF3B3080",
-        focusBorder: "#007AFF"
+        deletedText: "#FF3B3080"
     )
 
     init(
-        background: String,
-        text: String,
-        alternateRow: String,
-        nullValue: String,
-        boolTrue: String,
-        boolFalse: String,
-        rowNumber: String,
+        background: String?,
+        text: String?,
+        alternateRow: String?,
+        nullValue: String?,
+        boolTrue: String?,
+        boolFalse: String?,
+        rowNumber: String?,
         modified: String,
         inserted: String,
         deleted: String,
-        deletedText: String,
-        focusBorder: String
+        deletedText: String
     ) {
         self.background = background
         self.text = text
@@ -184,25 +181,23 @@ internal struct DataGridThemeColors: Codable, Equatable, Sendable {
         self.inserted = inserted
         self.deleted = deleted
         self.deletedText = deletedText
-        self.focusBorder = focusBorder
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let fallback = DataGridThemeColors.defaultLight
 
-        background = try container.decodeIfPresent(String.self, forKey: .background) ?? fallback.background
-        text = try container.decodeIfPresent(String.self, forKey: .text) ?? fallback.text
-        alternateRow = try container.decodeIfPresent(String.self, forKey: .alternateRow) ?? fallback.alternateRow
-        nullValue = try container.decodeIfPresent(String.self, forKey: .nullValue) ?? fallback.nullValue
-        boolTrue = try container.decodeIfPresent(String.self, forKey: .boolTrue) ?? fallback.boolTrue
-        boolFalse = try container.decodeIfPresent(String.self, forKey: .boolFalse) ?? fallback.boolFalse
-        rowNumber = try container.decodeIfPresent(String.self, forKey: .rowNumber) ?? fallback.rowNumber
+        background = try container.decodeIfPresent(String.self, forKey: .background)
+        text = try container.decodeIfPresent(String.self, forKey: .text)
+        alternateRow = try container.decodeIfPresent(String.self, forKey: .alternateRow)
+        nullValue = try container.decodeIfPresent(String.self, forKey: .nullValue)
+        boolTrue = try container.decodeIfPresent(String.self, forKey: .boolTrue)
+        boolFalse = try container.decodeIfPresent(String.self, forKey: .boolFalse)
+        rowNumber = try container.decodeIfPresent(String.self, forKey: .rowNumber)
         modified = try container.decodeIfPresent(String.self, forKey: .modified) ?? fallback.modified
         inserted = try container.decodeIfPresent(String.self, forKey: .inserted) ?? fallback.inserted
         deleted = try container.decodeIfPresent(String.self, forKey: .deleted) ?? fallback.deleted
         deletedText = try container.decodeIfPresent(String.self, forKey: .deletedText) ?? fallback.deletedText
-        focusBorder = try container.decodeIfPresent(String.self, forKey: .focusBorder) ?? fallback.focusBorder
     }
 }
 

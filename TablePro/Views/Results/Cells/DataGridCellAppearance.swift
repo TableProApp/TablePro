@@ -42,10 +42,10 @@ struct DataGridCellAppearance: Equatable {
         switch content.placeholder {
         case .none:
             font = palette.regularFont
-            baseColor = deletedTextColor ?? .labelColor
+            baseColor = deletedTextColor ?? valueTextColor(kind: kind, rawValue: content.rawValue, palette: palette)
         case .null, .empty:
             font = palette.italicFont
-            baseColor = deletedTextColor ?? .secondaryLabelColor
+            baseColor = deletedTextColor ?? palette.placeholderText
         case .defaultMarker:
             font = palette.mediumFont
             baseColor = deletedTextColor ?? .systemBlue
@@ -103,5 +103,16 @@ struct DataGridCellAppearance: Equatable {
             drawsFocusBorder: isCursorVisible && onEmphasizedSelection,
             drawsFocusRing: isCursorVisible && !onEmphasizedSelection
         )
+    }
+
+    private static func valueTextColor(
+        kind: DataGridCellKind,
+        rawValue: String?,
+        palette: DataGridCellPalette
+    ) -> NSColor {
+        guard kind == .boolean, let rawValue, let isTrue = StoredBoolean.value(of: rawValue) else {
+            return palette.text
+        }
+        return (isTrue ? palette.booleanTrueText : palette.booleanFalseText) ?? palette.text
     }
 }

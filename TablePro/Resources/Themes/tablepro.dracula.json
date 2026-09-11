@@ -35,8 +35,7 @@
         "modified": "#FFB86C4D",
         "inserted": "#50FA7B26",
         "deleted": "#FF555526",
-        "deletedText": "#FF555580",
-        "focusBorder": "#BD93F9"
+        "deletedText": "#FF555580"
     },
     "ui": {
         "windowBackground": "#282A36",

@@ -18,6 +18,8 @@ struct ThemePreviewCard: View {
     let onSelect: () -> Void
     var size: CardSize = .standard
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         switch size {
         case .standard:
@@ -99,6 +101,20 @@ struct ThemePreviewCard: View {
                 dataGridArea
             }
         }
+        .environment(\.colorScheme, previewColorScheme)
+    }
+
+    /// The system colours a theme leaves undeclared resolve in the appearance the theme is used
+    /// in, not in whichever one Settings happens to be showing.
+    private var previewColorScheme: ColorScheme {
+        switch theme.appearance {
+        case .dark:
+            return .dark
+        case .light:
+            return .light
+        case .auto:
+            return colorScheme
+        }
     }
 
     private var sidebarStrip: some View {
@@ -169,22 +185,22 @@ struct ThemePreviewCard: View {
     }
 
     private var dataGridArea: some View {
-        VStack(spacing: 0) {
+        let colors = ResolvedDataGridColors(from: theme.dataGrid)
+        return VStack(spacing: 0) {
             ForEach(0..<dataGridRowCount, id: \.self) { row in
                 HStack(spacing: size == .compact ? 2 : 3) {
                     ForEach(0..<3, id: \.self) { _ in
                         RoundedRectangle(cornerRadius: 1)
-                            .fill(theme.dataGrid.text.swiftUIColor.opacity(0.3))
+                            .fill(colors.textSwiftUI.opacity(0.3))
                             .frame(height: codeLineHeight)
                     }
                 }
                 .padding(.horizontal, size == .compact ? 3 : 4)
                 .padding(.vertical, size == .compact ? 1 : 2)
-                .background(row % 2 == 0
-                    ? theme.dataGrid.background.swiftUIColor
-                    : theme.dataGrid.alternateRow.swiftUIColor)
+                .background(row % 2 == 0 ? Color.clear : colors.alternateRowSwiftUI)
             }
         }
+        .background(colors.backgroundSwiftUI)
         .frame(height: dataGridHeight)
     }
 }

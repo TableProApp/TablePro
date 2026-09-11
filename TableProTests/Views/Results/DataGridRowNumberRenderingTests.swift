@@ -449,6 +449,44 @@ struct DataGridRowNumberRenderingTests {
         #expect(grid.header.drawnPinnedHeadingRect == widened)
     }
 
+    /// `NSTableRowView` paints the system stripes whatever the table is told, so a theme's own pair
+    /// only shows because the row paints the stripe `DataGridBodyChrome` gives it. The strip reads the
+    /// same owner, so it has to keep matching the row under a theme too. Light mode, where the
+    /// system stripes are white and light grey, so a dark themed row cannot pass for one.
+    @Test("Rows paint the theme's stripes, and the strip still matches them")
+    func rowsPaintTheThemesStripes() throws {
+        let engine = ThemeEngine.shared
+        let original = engine.activeTheme
+        defer { engine.activateTheme(original) }
+        var theme = ThemeDefinition.default
+        theme.id = "test.grid-stripes"
+        theme.dataGrid.background = "#282A36"
+        theme.dataGrid.alternateRow = "#44475A"
+        engine.activateTheme(theme)
+
+        let grid = makeGrid(appearance: .aqua)
+        let rows = grid.rowsUnderTheStrip
+        #expect(rows.count >= 4, "too few rows under the strip to cover both stripes")
+        let firstData = try #require(grid.coordinator.firstPresentedColumnIndex())
+        let dataRect = grid.tableView.rect(ofColumn: firstData)
+        let raster = try #require(Raster(of: grid.scrollView, in: grid.scrollView.bounds))
+
+        var bodies: [Int: NSColor] = [:]
+        for row in rows {
+            let midY = grid.tableView.rect(ofRow: row).midY
+            let strip = try #require(raster.color(at: grid.pointInScrollView(NSPoint(x: 2, y: midY))))
+            let body = try #require(
+                raster.color(at: grid.pointInScrollView(NSPoint(x: dataRect.maxX - 12, y: midY)))
+            )
+            #expect(matches(strip, body), "row \(row): strip \(strip), row \(body)")
+            #expect(body.redComponent < 0.35, "row \(row) drew \(body), not the theme's dark stripe")
+            bodies[row] = body
+        }
+        let even = try #require(rows.first(where: { $0.isMultiple(of: 2) }).flatMap { bodies[$0] })
+        let odd = try #require(rows.first(where: { !$0.isMultiple(of: 2) }).flatMap { bodies[$0] })
+        #expect(!matches(even, odd), "both stripes drew \(even)")
+    }
+
     private func rightClick(at point: NSPoint, in grid: Grid) -> NSEvent? {
         NSEvent.mouseEvent(
             with: .rightMouseDown,

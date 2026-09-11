@@ -36,8 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Beancount connections held at Safe Mode Read-Only. (#2030)
 - MySQL sessions on the server's default `utf8mb4` collation.
 
+### Removed
+
+- Focus Border color in the theme editor.
+
 ### Fixed
 
+- Data grid ignoring the theme's background, text, alternate row, NULL, boolean and row number colors.
 - Wrong SQLSTATE code in PostgreSQL, Redshift, CockroachDB and PGlite error messages.
 - Read-only write explanation never shown on PostgreSQL servers.
 - Safe Mode minimum from a configuration profile missing from the toolbar, the Database menu and the connection form. (#2030)

@@ -19,6 +19,25 @@ struct DataGridCellAppearanceTests {
         regularFont: .systemFont(ofSize: 13),
         italicFont: .systemFont(ofSize: 13),
         mediumFont: .systemFont(ofSize: 13, weight: .medium),
+        text: .labelColor,
+        placeholderText: .secondaryLabelColor,
+        booleanTrueText: nil,
+        booleanFalseText: nil,
+        rowNumberText: .secondaryLabelColor,
+        deletedRowText: .systemRed,
+        modifiedColumnTint: .systemYellow,
+        findMatchTint: .systemOrange
+    )
+
+    private let themedPalette = DataGridCellPalette(
+        regularFont: .systemFont(ofSize: 13),
+        italicFont: .systemFont(ofSize: 13),
+        mediumFont: .systemFont(ofSize: 13, weight: .medium),
+        text: .systemPurple,
+        placeholderText: .systemBrown,
+        booleanTrueText: .systemGreen,
+        booleanFalseText: .systemPink,
+        rowNumberText: .systemTeal,
         deletedRowText: .systemRed,
         modifiedColumnTint: .systemYellow,
         findMatchTint: .systemOrange
@@ -36,7 +55,8 @@ struct DataGridCellAppearanceTests {
         isCurrentFindMatch: Bool = false,
         columnIndex: Int = 0,
         onEmphasizedSelection: Bool = false,
-        hasOverlay: Bool = false
+        hasOverlay: Bool = false,
+        palette: DataGridCellPalette? = nil
     ) -> DataGridCellAppearance {
         DataGridCellAppearance.resolve(
             kind: kind,
@@ -50,7 +70,7 @@ struct DataGridCellAppearanceTests {
                 row: 0,
                 columnIndex: columnIndex
             ),
-            palette: palette,
+            palette: palette ?? self.palette,
             nullDisplayString: "NULL",
             onEmphasizedSelection: onEmphasizedSelection,
             hasOverlay: hasOverlay
@@ -244,5 +264,61 @@ struct DataGridCellAppearanceTests {
         #expect(plain.drawnHighlightRule(forColumn: 0) == rowRule)
         #expect(modified.drawnHighlightRule(forColumn: 1) == rowRule)
         #expect(deleted.drawnHighlightRule(forColumn: 1) == nil)
+    }
+
+    // MARK: - Theme colors
+
+    @Test("A value takes the theme's text color, a placeholder its NULL color")
+    func themeTextAndPlaceholderColors() {
+        let value = resolve(palette: themedPalette)
+        let null = resolve(text: "", rawValue: nil, placeholder: .null, palette: themedPalette)
+        let empty = resolve(text: "", rawValue: "", placeholder: .empty, palette: themedPalette)
+
+        #expect(value.textColor == .systemPurple)
+        #expect(null.textColor == .systemBrown)
+        #expect(empty.textColor == .systemBrown)
+    }
+
+    @Test("A boolean cell takes the theme's true or false color", arguments: [
+        ("true", NSColor.systemGreen), ("1", .systemGreen), ("t", .systemGreen),
+        ("false", .systemPink), ("0", .systemPink), ("f", .systemPink),
+    ])
+    func booleanColors(raw: String, expected: NSColor) {
+        let appearance = resolve(kind: .boolean, text: raw, rawValue: raw, palette: themedPalette)
+
+        #expect(appearance.textColor == expected)
+    }
+
+    @Test("A boolean color stays off text columns and unreadable values")
+    func booleanColorNeedsABooleanValue() {
+        let textColumn = resolve(kind: .text, text: "true", rawValue: "true", palette: themedPalette)
+        let unreadable = resolve(kind: .boolean, text: "maybe", rawValue: "maybe", palette: themedPalette)
+
+        #expect(textColumn.textColor == .systemPurple)
+        #expect(unreadable.textColor == .systemPurple)
+    }
+
+    @Test("A theme without boolean colors draws booleans as plain text")
+    func booleanFallsBackToText() {
+        let appearance = resolve(kind: .boolean, text: "true", rawValue: "true")
+
+        #expect(appearance.textColor == .labelColor)
+    }
+
+    @Test("Selection, deletion and a find match outrank the boolean color")
+    func booleanColorYieldsToState() {
+        let selected = resolve(kind: .boolean, text: "1", rawValue: "1", onEmphasizedSelection: true, palette: themedPalette)
+        let deleted = resolve(
+            kind: .boolean,
+            text: "1",
+            rawValue: "1",
+            visualState: RowVisualState(isDeleted: true, isInserted: false, modifiedColumns: []),
+            palette: themedPalette
+        )
+        let found = resolve(kind: .boolean, text: "1", rawValue: "1", isCurrentFindMatch: true, palette: themedPalette)
+
+        #expect(selected.textColor == .alternateSelectedControlTextColor)
+        #expect(deleted.textColor == .systemRed)
+        #expect(found.textColor == .black)
     }
 }

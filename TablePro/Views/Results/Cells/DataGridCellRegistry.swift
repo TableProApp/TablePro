@@ -57,7 +57,6 @@ final class DataGridCellRegistry {
             cell.alignment = .right
             cell.font = ThemeEngine.shared.dataGridFonts.rowNumber
             cell.tag = DataGridFontVariant.rowNumber
-            cell.textColor = .secondaryLabelColor
             cell.translatesAutoresizingMaskIntoConstraints = false
 
             cellView.textField = cell
@@ -76,6 +75,7 @@ final class DataGridCellRegistry {
             ])
         }
 
+        cell.textColor = rowNumberColor(for: visualState)
         guard row >= 0 && row < cachedRowCount else {
             cell.stringValue = ""
             return cellView
@@ -83,10 +83,13 @@ final class DataGridCellRegistry {
 
         let displayNumber = row + pageOffset + 1
         cell.stringValue = "\(displayNumber)"
-        cell.textColor = visualState.isDeleted ? ThemeEngine.shared.colors.dataGrid.deletedText : .secondaryLabelColor
         cellView.setAccessibilityLabel(String(format: String(localized: "Row %d"), displayNumber))
         cellView.setAccessibilityRowIndexRange(NSRange(location: row, length: 1))
 
         return cellView
+    }
+
+    func rowNumberColor(for visualState: RowVisualState) -> NSColor {
+        visualState.isDeleted ? palette.deletedRowText : palette.rowNumberText
     }
 }

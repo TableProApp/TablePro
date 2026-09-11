@@ -25,7 +25,7 @@ struct HighlightCondition {
             let trimmed = raw.trimmingCharacters(in: .whitespaces)
             text = raw
             number = HighlightCondition.number(from: trimmed)
-            boolean = HighlightCondition.boolean(from: trimmed)
+            boolean = StoredBoolean.value(of: trimmed)
             isNullLiteral = allowsNullLiteral && HighlightCondition.isNullKeyword(trimmed)
         }
     }
@@ -138,7 +138,7 @@ struct HighlightCondition {
         if prefersNumbers, let lhs = Self.number(from: text), let rhs = operand.number {
             return Self.compare(lhs, rhs)
         }
-        if prefersBooleans, let lhs = Self.boolean(from: text), let rhs = operand.boolean {
+        if prefersBooleans, let lhs = StoredBoolean.value(of: text), let rhs = operand.boolean {
             return Self.compare(lhs ? 1 : 0, rhs ? 1 : 0)
         }
         return text.compare(operand.text, options: comparesCaseInsensitively ? [.caseInsensitive] : [.literal])
@@ -245,26 +245,6 @@ struct HighlightCondition {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
         guard PluginNumericLiteral.isValid(trimmed) else { return nil }
         return Decimal(string: trimmed, locale: Locale(identifier: "en_US_POSIX"))
-    }
-
-    static func boolean(from text: String) -> Bool? {
-        let trimmed = text.trimmingCharacters(in: .whitespaces)
-        switch PluginSQLLiteral.booleanSynonym(for: trimmed) {
-        case .isTrue:
-            return true
-        case .isFalse:
-            return false
-        default:
-            break
-        }
-        switch trimmed.lowercased() {
-        case "t":
-            return true
-        case "f":
-            return false
-        default:
-            return nil
-        }
     }
 
     private static func compare<Value: Comparable>(_ lhs: Value, _ rhs: Value) -> ComparisonResult {
