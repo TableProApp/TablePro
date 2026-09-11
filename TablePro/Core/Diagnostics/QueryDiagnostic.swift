@@ -28,14 +28,34 @@ protocol QueryDiagnosticsProducing: Sendable {
     func diagnostics(for text: String) -> [QueryDiagnostic]
 }
 
+enum QueryDiagnosticsLimits {
+    static let maximumDocumentLength = 100_000
+}
+
+struct CombinedQueryDiagnosticsProducer: QueryDiagnosticsProducing {
+    let producers: [QueryDiagnosticsProducing]
+
+    func diagnostics(for text: String) -> [QueryDiagnostic] {
+        producers.flatMap { $0.diagnostics(for: text) }
+    }
+}
+
 @MainActor
 enum QueryDiagnosticsFactory {
     static func make(for databaseType: DatabaseType?) -> QueryDiagnosticsProducing {
-        let dialect = databaseType ?? .mysql
+        let resolvedType = databaseType ?? .mysql
 
-        switch PluginManager.shared.editorLanguage(for: dialect) {
+        switch PluginManager.shared.editorLanguage(for: resolvedType) {
         case .javascript:
             return MongoDiagnosticsProducer()
+        case .sql:
+            return CombinedQueryDiagnosticsProducer(producers: [
+                SQLDiagnosticsProducer(),
+                SQLConfusableCharacterDiagnosticsProducer(rules: SQLLexicalRules(
+                    databaseType: resolvedType,
+                    descriptor: PluginManager.shared.sqlDialect(for: resolvedType)
+                ))
+            ])
         default:
             return SQLDiagnosticsProducer()
         }

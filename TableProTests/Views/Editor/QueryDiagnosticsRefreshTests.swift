@@ -185,6 +185,21 @@ struct QueryDiagnosticMessageTests {
         #expect(manager.toolTip(at: plain) == nil)
     }
 
+    @Test("A full-width semicolon is underlined as a warning that names it")
+    func confusableCharacterIsAWarning() throws {
+        let (_, controller) = makeChecked("SELECT 1\u{FF1B}\nSELECT 2")
+        let manager = try #require(controller.textView.emphasisManager)
+        let range = NSRange(location: 8, length: 1)
+
+        let emphases = manager.getEmphases(for: QueryDiagnosticsController.emphasisGroup)
+        #expect(emphases.map(\.range) == [range])
+        #expect(emphases.first?.style == .underline(color: .systemOrange))
+        #expect(
+            manager.toolTip(at: try center(of: range, in: controller))
+                == "Full-width semicolon (U+FF1B). SQL reads only ; as a statement separator."
+        )
+    }
+
     @Test("A cleared diagnostic takes its message with it")
     func clearedDiagnosticDropsToolTip() throws {
         let (diagnostics, controller) = makeChecked("SELECT 1)")

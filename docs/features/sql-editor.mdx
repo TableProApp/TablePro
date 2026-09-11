@@ -90,12 +90,27 @@ movement and `Shift`+arrow selection as the editor here.
 
 ## Inline diagnostics
 
-A structural mistake is underlined in red 500ms after you stop typing, and the underline clears as soon as you fix it. Only two things are reported, both of them problems more typing cannot fix:
+Problems more typing cannot fix are underlined 500ms after you stop typing, and the underline clears as soon as you fix it. A red underline marks a structural mistake:
 
-| Underlined | Message |
+| Underlined in red | Message |
 |---|---|
 | A closing bracket with no opener, or one closing the wrong kind | No matching opening bracket |
 | A `/*` with no `*/` after it | Unterminated comment |
+
+An orange underline marks a character that looks like SQL but reaches the server as something else. Chinese, Japanese and Korean input methods type these in full-width mode, and text pasted from a document or a chat often carries them. `SELECT 1；` looks like a complete statement, but `；` does not end it, so the editor and the server read it and the statement after it as one.
+
+| Underlined in orange | Type instead |
+|---|---|
+| Full-width punctuation, such as `；` `，` `（` `）` `＝` | The ASCII character it resembles |
+| Full-width letters and digits, such as `ＳＥＬＥＣＴ` or `１` | ASCII letters and digits |
+| Curly quotes `‘` `’` `“` `”` | A straight `'` or `"` |
+| A no-break space, an ideographic space, or a typographic space such as a thin space | An ordinary space |
+
+Each message names the character and the ASCII character to type instead. **Query > Remove Invisible Characters** turns every flagged space into an ordinary one in a single step. Orange underlines appear on SQL connections only, and none of them stops a query from running.
+
+Full-width letters and digits inside a name written in another script, such as `売上２０２４`, are not underlined. Full-width punctuation is, even inside a name: both parentheses in `价格（元）` are flagged. Write such a name as a quoted identifier and the underline goes.
+
+Text between `'`, `"` or `` ` `` quotes and text in a `--` or `/* */` comment is not checked. Neither is a `#` comment on MySQL and MariaDB, a `$$` body on PostgreSQL, or a `[bracketed]` name on SQL Server and SQLite. On other engines, a `#` comment, a `$$` body or a bracketed name is checked like the rest of the query.
 
 A half-written statement is never flagged. An opener you have not closed yet, a string you are still typing, and brackets inside a string or a comment are all left alone. Documents over 100,000 characters are not checked at all.
 

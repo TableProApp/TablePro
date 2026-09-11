@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Invisible characters shown in the SQL editor: control characters, zero-width spaces, bidi controls and special spaces. (#2717)
 - **Remove Invisible Characters** in the Query menu. (#2717)
 - **Show invisible characters** in Settings > Editor. (#2717)
+- Warnings in the SQL editor for full-width punctuation, curly quotes and non-ASCII spaces. (#2717)
 
 ### Changed
 
