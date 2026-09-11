@@ -142543,6 +142543,74 @@
         }
       }
     },
+    "Skipped settings this server does not recognize: %@." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 서버가 인식하지 못하는 설정을 건너뛰었습니다: %@."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sunucunun tanımadığı ayarlar atlandı: %@."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đã bỏ qua các thiết lập mà máy chủ này không nhận ra: %@."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已跳过此服务器无法识别的设置：%@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已略過此伺服器無法辨識的設定：%@。"
+          }
+        }
+      }
+    },
+    "Skipped the %@ setting, which this server does not recognize." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 서버가 인식하지 못하는 %@ 설정을 건너뛰었습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sunucunun tanımadığı %@ ayarı atlandı."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đã bỏ qua thiết lập %@ mà máy chủ này không nhận ra."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已跳过此服务器无法识别的 %@ 设置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已略過此伺服器無法辨識的 %@ 設定。"
+          }
+        }
+      }
+    },
     "Skips foreign key constraint checks for this operation" : {
       "extractionState" : "stale",
       "localizations" : {

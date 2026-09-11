@@ -6,7 +6,7 @@
 import CoreFoundation
 import Foundation
 
-internal struct MySQLCharacterSet: Hashable, Sendable {
+nonisolated internal struct MySQLCharacterSet: Hashable, Sendable {
     static let utf8mb4 = MySQLCharacterSet(serverName: "utf8mb4")
     static let latin1 = MySQLCharacterSet(serverName: "latin1")
 

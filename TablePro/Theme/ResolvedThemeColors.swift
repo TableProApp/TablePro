@@ -79,13 +79,9 @@ struct ResolvedDataGridColors {
     let alternateRow: NSColor
     let alternateRowSwiftUI: Color
     let nullValue: NSColor
-    let nullValueSwiftUI: Color
-    let boolTrue: NSColor
-    let boolTrueSwiftUI: Color
-    let boolFalse: NSColor
-    let boolFalseSwiftUI: Color
+    let boolTrue: NSColor?
+    let boolFalse: NSColor?
     let rowNumber: NSColor
-    let rowNumberSwiftUI: Color
 
     let modified: NSColor
     let modifiedSwiftUI: Color
@@ -99,24 +95,17 @@ struct ResolvedDataGridColors {
     let deletedText: NSColor
     let deletedTextSwiftUI: Color
 
-    let focusBorder: NSColor
-    let focusBorderCG: CGColor
-
     init(from colors: DataGridThemeColors) {
-        background = colors.background.nsColor
-        backgroundSwiftUI = colors.background.swiftUIColor
-        text = colors.text.nsColor
-        textSwiftUI = colors.text.swiftUIColor
-        alternateRow = colors.alternateRow.nsColor
-        alternateRowSwiftUI = colors.alternateRow.swiftUIColor
-        nullValue = colors.nullValue.nsColor
-        nullValueSwiftUI = colors.nullValue.swiftUIColor
-        boolTrue = colors.boolTrue.nsColor
-        boolTrueSwiftUI = colors.boolTrue.swiftUIColor
-        boolFalse = colors.boolFalse.nsColor
-        boolFalseSwiftUI = colors.boolFalse.swiftUIColor
-        rowNumber = colors.rowNumber.nsColor
-        rowNumberSwiftUI = colors.rowNumber.swiftUIColor
+        background = colors.background?.nsColor ?? .controlBackgroundColor
+        backgroundSwiftUI = colors.background?.swiftUIColor ?? Color(nsColor: .controlBackgroundColor)
+        text = colors.text?.nsColor ?? .labelColor
+        textSwiftUI = colors.text?.swiftUIColor ?? Color(nsColor: .labelColor)
+        alternateRow = colors.alternateRow?.nsColor ?? Self.systemAlternateRow
+        alternateRowSwiftUI = colors.alternateRow?.swiftUIColor ?? Color(nsColor: Self.systemAlternateRow)
+        nullValue = colors.nullValue?.nsColor ?? .secondaryLabelColor
+        boolTrue = colors.boolTrue?.nsColor
+        boolFalse = colors.boolFalse?.nsColor
+        rowNumber = colors.rowNumber?.nsColor ?? .secondaryLabelColor
 
         modified = colors.modified.nsColor
         modifiedSwiftUI = colors.modified.swiftUIColor
@@ -129,9 +118,10 @@ struct ResolvedDataGridColors {
         deletedCG = colors.deleted.cgColor
         deletedText = colors.deletedText.nsColor
         deletedTextSwiftUI = colors.deletedText.swiftUIColor
+    }
 
-        focusBorder = colors.focusBorder.nsColor
-        focusBorderCG = colors.focusBorder.cgColor
+    private static var systemAlternateRow: NSColor {
+        NSColor.alternatingContentBackgroundColors.last ?? .controlBackgroundColor
     }
 }
 

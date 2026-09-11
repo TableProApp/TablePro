@@ -31,6 +31,10 @@ struct TableScope: Hashable, Codable, Sendable {
         return encode(parts) + "."
     }
 
+    static func storagePrefix(connectionId: UUID) -> String {
+        encode([connectionId.uuidString]) + "."
+    }
+
     private static func encode(_ parts: [String]) -> String {
         parts
             .map { $0.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? $0 }

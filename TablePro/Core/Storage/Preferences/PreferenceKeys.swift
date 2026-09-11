@@ -28,8 +28,11 @@ enum PreferenceKeys {
         lastBackupDirectory.name,
     ]
 
+    static let columnDisplayFormatsPrefix = "com.TablePro.columns.displayFormat."
+    static let foreignKeyLabelColumnPrefix = "com.TablePro.foreignKey.labelColumn."
+
     static func columnDisplayFormats(_ scope: TableScope) -> DefaultsKey<[String: ValueDisplayFormat]> {
-        DefaultsKey("com.TablePro.columns.displayFormat." + scope.storageComponent)
+        DefaultsKey(columnDisplayFormatsPrefix + scope.storageComponent)
     }
 
     static func recentTables(connectionId: UUID) -> DefaultsKey<[RecentTableEntry]> {
@@ -37,6 +40,6 @@ enum PreferenceKeys {
     }
 
     static func foreignKeyLabelColumn(_ scope: TableScope) -> DefaultsKey<String> {
-        DefaultsKey("com.TablePro.foreignKey.labelColumn." + scope.storageComponent)
+        DefaultsKey(foreignKeyLabelColumnPrefix + scope.storageComponent)
     }
 }

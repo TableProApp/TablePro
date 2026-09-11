@@ -114,13 +114,35 @@ enum DataGridBodyChrome {
         return bands
     }
 
-    /// The alternate stripe `NSTableRowView` paints for a row, or nil when the table does not
-    /// alternate, where a row shows the table's own background.
+    /// The theme's background, falling back to the system's, for the table to paint itself with.
+    ///
+    /// Set on the table rather than read from the theme at each draw, because AppKit reads the
+    /// table's own `backgroundColor` too, for the area an elastic scroll uncovers.
+    static func applyBackground(to tableView: NSTableView) {
+        let background = ThemeEngine.shared.colors.dataGrid.background
+        guard tableView.backgroundColor != background else { return }
+        tableView.backgroundColor = background
+    }
+
+    /// The alternate stripe a row carries, or nil when the table does not alternate, where a row
+    /// shows the table's own background.
+    ///
+    /// The theme's pair when it declares one, otherwise `NSColor.alternatingContentBackgroundColors`,
+    /// which is the pair `NSTableView` itself hands its row views.
     static func stripeColor(forRow row: Int, of tableView: NSTableView) -> NSColor? {
         guard tableView.usesAlternatingRowBackgroundColors else { return nil }
-        let stripes = NSColor.alternatingContentBackgroundColors
-        guard !stripes.isEmpty else { return nil }
-        return stripes[row % stripes.count]
+        return row.isMultiple(of: 2)
+            ? ThemeEngine.shared.colors.dataGrid.background
+            : ThemeEngine.shared.colors.dataGrid.alternateRow
+    }
+
+    /// What a row view lays down before its tint and selection: its stripe, or the table's own
+    /// background when the table does not alternate.
+    ///
+    /// Painted by `DataGridRowView` itself rather than by `NSTableRowView`, which paints the system
+    /// stripes whatever the theme declares.
+    static func rowBackgroundColor(forRow row: Int, of tableView: NSTableView) -> NSColor {
+        stripeColor(forRow: row, of: tableView) ?? tableView.backgroundColor
     }
 
     /// Lays `background` down and blends `layers` over it bottom to top, which is the colour a row

@@ -138,3 +138,5 @@ A non-zero exit shows the last 64 KB of the tool's stderr in a scrollable monosp
 | An authentication failure | The password goes through the environment or a config file rather than a prompt, so this is the account or the database. Check that the role can log in |
 | Objects that conflict with the dump | Restore into a fresh database, or drop the conflicting objects first |
 | *"a single transaction can only write to a single attached database"* | A DuckDB query tab has an open transaction that has already written. Commit or roll it back, then run the backup again |
+
+One non-zero exit is not a failure. A `pg_restore` newer than the server sets parameters the server does not have, such as `transaction_timeout` on anything before PostgreSQL 17, and exits 1 after restoring everything. When those are its only errors, the restore reports complete and names the settings the server skipped. Any other error in the same run still fails it. So does a server whose `lc_messages` is not English, because its errors cannot be read.

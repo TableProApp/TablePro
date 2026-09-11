@@ -36,12 +36,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Beancount connections held at Safe Mode Read-Only. (#2030)
 - MySQL sessions on the server's default `utf8mb4` collation.
 
+### Removed
+
+- Focus Border color in the theme editor.
+
 ### Fixed
 
+- Data grid ignoring the theme's background, text, alternate row, NULL, boolean and row number colors.
+- Garbled non-Latin text saved from iPhone and iPad to MySQL servers that force a Latin 1 session. (#2725)
+- **Encoding** ignored on iPhone and iPad by a MySQL connection synced from the Mac. (#2725)
+- Binary MySQL columns shown as text on iPhone and iPad, and searched with `LIKE`.
+- Crash opening a MySQL result whose column has no name on iPhone and iPad.
 - Wrong SQLSTATE code in PostgreSQL, Redshift, CockroachDB and PGlite error messages.
 - Read-only write explanation never shown on PostgreSQL servers.
 - Safe Mode minimum from a configuration profile missing from the toolbar, the Database menu and the connection form. (#2030)
 - Stop not ending queries on MySQL and MariaDB servers without TLS.
+- Wrong results after MySQL retakes a dropped connection, on a session that had set a variable, a session setting or a database.
+- Session state set by the `/*! ... */` statements a MySQL dump writes counting as a comment.
 - Users & Roles failing, Stop not ending queries and sequences listed as tables on TiDB servers opened as MySQL.
 - Update release notes show all changes for the offered version, with new features before fixes and properly formatted Markdown. The full changelog is also available from Help and Software Update settings.
 - Blank welcome window list when a search matched nothing and a favorite existed.
@@ -129,12 +140,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Numeric-looking filter values sent unquoted to text columns when a table first opens or after a foreign key jump.
 - Missing column comments on PostgreSQL views, partitioned tables and foreign tables, and missing identity and generated flags on partitioned and foreign tables.
 - Wrong primary key columns when another table reuses the key's constraint name on PostgreSQL and Redshift.
+- Restore reported as failed after a complete restore into a PostgreSQL server older than `pg_restore`.
 - Garbled non-Latin text saved to MySQL and MariaDB servers that force a Latin 1 session. (#2725)
 - Garbled non-Latin text when restoring a MySQL or MariaDB SQL export through a Latin 1 client. (#2725)
 - Curly quotes, € and other Windows-1252 symbols shown as invisible characters after `SET NAMES latin1`.
 - `Illegal mix of collations` comparing a column with a user variable on MySQL 8.
 - GEOMETRY values from a parameterized MySQL query shown as raw bytes.
 - Earlier row's text repeated in later rows of a parameterized MySQL query once a value passed 64 KB.
+- Garbled non-ASCII text on PostgreSQL databases not encoded in UTF-8 after `RESET ALL` or `DISCARD ALL`.
+- Garbled or double-encoded non-ASCII text on iOS with PostgreSQL databases not encoded in UTF-8.
+- Garbled non-ASCII text when restoring a PostgreSQL SQL export into a database not encoded in UTF-8.
+- Display As formats and foreign key labels lost on a rename, and kept with column layouts after deleting a connection.
 
 ### Security
 

@@ -8,7 +8,7 @@
 
 import Foundation
 
-enum GeometryWKBParser {
+nonisolated enum GeometryWKBParser {
     /// Parses MySQL's internal geometry binary format to WKT string.
     ///
     /// MySQL internal binary format:

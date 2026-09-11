@@ -73,9 +73,14 @@ public final class SyncMetadataStorage: @unchecked Sendable {
     }
 
     public func removeDirty(_ id: String, type: SyncRecordType) {
-        var ids = dirtyIds(for: type)
-        ids.remove(id)
-        saveDirtyIds(ids, for: type)
+        removeDirty([id], type: type)
+    }
+
+    public func removeDirty(_ ids: [String], type: SyncRecordType) {
+        guard !ids.isEmpty else { return }
+        var current = dirtyIds(for: type)
+        current.subtract(ids)
+        saveDirtyIds(current, for: type)
     }
 
     public func clearDirty(type: SyncRecordType) {
@@ -95,8 +100,13 @@ public final class SyncMetadataStorage: @unchecked Sendable {
     }
 
     public func addTombstone(_ id: String, type: SyncRecordType) {
+        addTombstones([id], type: type)
+    }
+
+    public func addTombstones(_ ids: [String], type: SyncRecordType) {
+        guard !ids.isEmpty else { return }
         var current = tombstones(for: type)
-        current.append(Tombstone(id: id))
+        current.append(contentsOf: ids.map { Tombstone(id: $0) })
         saveTombstones(current, for: type)
     }
 

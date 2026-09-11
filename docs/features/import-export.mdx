@@ -133,7 +133,15 @@ As SQL, a results export writes `INSERT` statements only. A result set is the ou
 
     Splitting writes `dump.part1.sql`, `dump.part2.sql` and so on, rotating between statements so no part ends mid-`INSERT`. Restore the parts in order. A gzipped export is one file, so the two settings do not combine and the summary says so.
 
-    A MySQL or MariaDB dump is UTF-8 and says so: every part opens with `SET NAMES utf8mb4` and ends by putting the session's character set back, as `mysqldump` does. `mysql < dump.sql` then restores Japanese, emoji and other non-Latin text intact, even from a client whose default is Latin 1.
+    A dump is UTF-8 and says so in every part, the way the engine's own dump tool does:
+
+    | Engine | Each part opens with |
+    |---|---|
+    | MySQL, MariaDB | `SET NAMES utf8mb4`, and ends by putting the session's character set back |
+    | PostgreSQL, CockroachDB, PGlite | `SET client_encoding = 'UTF8';` |
+    | Amazon Redshift | Nothing. Set `PGCLIENTENCODING=UTF8` before restoring it into a database that is not UTF-8 |
+
+    `mysql < dump.sql` and `psql < dump.sql` then restore Japanese, emoji and other non-Latin text intact, even into a `LATIN1` or `EUC_JP` database or from a client whose default is Latin 1.
 
     One snapshot opens `START TRANSACTION WITH CONSISTENT SNAPSHOT` on MySQL, `BEGIN ISOLATION LEVEL REPEATABLE READ` on PostgreSQL, and a deferred transaction on SQLite. It holds that transaction open for the whole export.
 

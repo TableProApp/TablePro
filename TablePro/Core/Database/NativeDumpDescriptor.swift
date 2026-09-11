@@ -122,6 +122,10 @@ struct NativeDumpDescriptor: Sendable {
         /// from the binary's name, which is what `buildCommand` used to do.
         let needsCredentialsFile: Bool
 
+        internal let restoreExitPolicy: NativeDumpExitPolicy
+
+        internal let requiresUntranslatedMessages: Bool
+
         let backupArguments: @Sendable (Request) -> [String]
         let restoreArguments: @Sendable (Request) -> [String]
         let environment: @Sendable (Request) -> [String: String]
@@ -134,6 +138,8 @@ struct NativeDumpDescriptor: Sendable {
             restoreDelivery: OutputDelivery,
             exposesPasswordInArguments: Bool = false,
             needsCredentialsFile: Bool = false,
+            restoreExitPolicy: NativeDumpExitPolicy = .zeroExitOnly,
+            requiresUntranslatedMessages: Bool = false,
             backupArguments: @escaping @Sendable (Request) -> [String],
             restoreArguments: @escaping @Sendable (Request) -> [String],
             environment: @escaping @Sendable (Request) -> [String: String] = { _ in [:] }
@@ -145,6 +151,8 @@ struct NativeDumpDescriptor: Sendable {
             self.restoreDelivery = restoreDelivery
             self.exposesPasswordInArguments = exposesPasswordInArguments
             self.needsCredentialsFile = needsCredentialsFile
+            self.restoreExitPolicy = restoreExitPolicy
+            self.requiresUntranslatedMessages = requiresUntranslatedMessages
             self.backupArguments = backupArguments
             self.restoreArguments = restoreArguments
             self.environment = environment
@@ -160,6 +168,10 @@ struct NativeDumpDescriptor: Sendable {
 
         func delivery(for kind: NativeDumpKind) -> OutputDelivery {
             kind == .backup ? backupDelivery : restoreDelivery
+        }
+
+        internal func exitPolicy(for kind: NativeDumpKind) -> NativeDumpExitPolicy {
+            kind == .backup ? .zeroExitOnly : restoreExitPolicy
         }
     }
 

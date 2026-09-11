@@ -15,7 +15,7 @@ struct BackupResultSheet: View {
 
     enum Outcome {
         case backupSuccess(database: String, destination: URL, bytes: Int64)
-        case restoreSuccess(database: String, source: URL)
+        case restoreSuccess(database: String, source: URL, skippedSettings: [String])
         /// A run over several databases, where one failing does not stop the rest, so the sheet
         /// reports every database rather than one verdict for the batch.
         case batch(outcomes: [NativeDumpBatchOutcome], directory: URL)
@@ -84,16 +84,32 @@ struct BackupResultSheet: View {
             scrollingDetail(message)
         case .batch(let outcomes, let directory):
             scrollingDetail(Self.batchDetail(outcomes, directory: directory))
-        default:
-            if let detail {
-                Text(detail)
+        case .restoreSuccess(_, _, let skippedSettings):
+            summaryDetail
+            if let note = Self.skippedSettingsNote(skippedSettings) {
+                Text(note)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                    .lineLimit(6)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .textSelection(.enabled)
             }
+        default:
+            summaryDetail
+        }
+    }
+
+    @ViewBuilder
+    private var summaryDetail: some View {
+        if let detail {
+            Text(detail)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(6)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .textSelection(.enabled)
         }
     }
 
@@ -179,7 +195,7 @@ struct BackupResultSheet: View {
                 database,
                 destination.path
             )
-        case .restoreSuccess(let database, let source):
+        case .restoreSuccess(let database, let source, _):
             return String(
                 format: String(localized: "Restored \u{201C}%@\u{201D} from %@"),
                 database,
@@ -196,6 +212,20 @@ struct BackupResultSheet: View {
         case .batch(let outcomes, let directory):
             return Self.batchDetail(outcomes, directory: directory)
         }
+    }
+
+    internal static func skippedSettingsNote(_ settings: [String]) -> String? {
+        guard let first = settings.first else { return nil }
+        guard settings.count > 1 else {
+            return String(
+                format: String(localized: "Skipped the %@ setting, which this server does not recognize."),
+                first
+            )
+        }
+        return String(
+            format: String(localized: "Skipped settings this server does not recognize: %@."),
+            settings.formatted(.list(type: .and))
+        )
     }
 
     /// One line per database, so a run where the second of three failed says which one and keeps
@@ -242,7 +272,21 @@ struct BackupResultSheet: View {
         kind: .restore,
         outcome: .restoreSuccess(
             database: "production",
-            source: URL(fileURLWithPath: "/Users/me/Desktop/production.dump")
+            source: URL(fileURLWithPath: "/Users/me/Desktop/production.dump"),
+            skippedSettings: []
+        ),
+        onClose: {},
+        onShowInFinder: nil
+    )
+}
+
+#Preview("Restore Success With Skipped Settings") {
+    BackupResultSheet(
+        kind: .restore,
+        outcome: .restoreSuccess(
+            database: "production",
+            source: URL(fileURLWithPath: "/Users/me/Desktop/production.dump"),
+            skippedSettings: ["idle_in_transaction_session_timeout", "transaction_timeout"]
         ),
         onClose: {},
         onShowInFinder: nil

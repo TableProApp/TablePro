@@ -47,6 +47,12 @@ public enum SQLStatementSplitting {
 
     /// Everything before the first token that is not a comment. A statement is classified by its
     /// first word, and a comment in front of it is not that word.
+    ///
+    /// `/*!50601 ... */`, and MariaDB's `/*M!100301 ... */`, are not comments. MySQL parses the
+    /// body as SQL whenever the server is at least that version, and mysqldump writes its whole
+    /// preamble that way, so stripping them hid every `SET` a restore ran. They are left whole for
+    /// the driver that knows how to read them; to an engine that does treat them as comments the
+    /// statement is one it does not recognise, which is what an ignored comment already was.
     public static func stripLeadingComments(_ statement: String) -> String {
         var remainder = Substring(statement)
         while true {
@@ -56,13 +62,17 @@ public enum SQLStatementSplitting {
                 remainder = trimmed[trimmed.index(after: newline)...]
                 continue
             }
-            if trimmed.hasPrefix("/*") {
+            if trimmed.hasPrefix("/*"), !isExecutableComment(trimmed) {
                 guard let end = trimmed.range(of: "*/") else { return "" }
                 remainder = trimmed[end.upperBound...]
                 continue
             }
             return String(trimmed)
         }
+    }
+
+    private static func isExecutableComment(_ text: Substring) -> Bool {
+        text.hasPrefix("/*!") || text.hasPrefix("/*M!")
     }
 
     /// Tracks whether the scan currently sits inside something a `;` cannot end.

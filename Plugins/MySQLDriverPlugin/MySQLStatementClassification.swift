@@ -35,6 +35,19 @@ private let mysqlSideEffectingMarkers: [String] = [
     "BENCHMARK", "SLEEP", ":=",
 ]
 
+/// Whether a statement the server dropped the connection under can be run again on the session
+/// that replaces it. It takes both halves: the statement has to be one that means the same thing
+/// twice, and the new session has to be able to answer it the same way.
+///
+/// Only a session holding nothing can. Measured against MySQL 8.4.11 by killing the connection
+/// and replaying: `SELECT @probe` answered `NULL` where it had answered 42, `SELECT DATABASE()`
+/// answered the driver's own database over the one a `USE` had selected, and `@@SESSION.sql_mode`
+/// came back as the server default over the session's `ANSI_QUOTES`. All three answered, none
+/// raised, and the grid showed a value that was never true.
+internal func mysqlMayReplay(_ query: String, on footprint: MySQLSessionFootprint) -> Bool {
+    footprint.isClean && mysqlStatementIsSafeToReplay(query)
+}
+
 internal func mysqlStatementIsSafeToReplay(_ query: String) -> Bool {
     guard mysqlStatementIsReadOnly(query) else { return false }
     let collapsed = query

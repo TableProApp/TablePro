@@ -110,6 +110,45 @@ struct MySQLSessionFootprintTests {
         #expect(footprint(after: "SELECT @counter := 1").hasUserVariables)
     }
 
+    /// mysqldump writes its whole preamble as version-gated comments, which MySQL executes. They
+    /// read as comments, so the statement splitter used to drop them and a restore run from the
+    /// editor left the session holding six user variables and two session settings that the
+    /// footprint reported as nothing.
+    @Test("A version-gated comment sets session state, and is seen")
+    func versionGatedCommentsAreSeen() {
+        let preamble = """
+        /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+        /*!40103 SET TIME_ZONE='+00:00' */;
+        INSERT INTO `t` VALUES (1);
+        """
+        let result = footprint(after: preamble)
+        #expect(result.hasUserVariables)
+        #expect(result.hasSessionSettings)
+        #expect(result.blockingReason != nil)
+
+        #expect(footprint(after: "/*M!100301 SET @x = 1 */").hasUserVariables)
+        #expect(footprint(after: "/*! SET SESSION sql_mode = 'ANSI' */").hasSessionSettings)
+    }
+
+    /// Only a statement that is entirely one of them. A version-gated comment inside a `CREATE
+    /// TABLE`, which is how mysqldump writes a partition clause, is part of that statement.
+    @Test("A version-gated comment inside another statement is left alone")
+    func versionGatedCommentsInsideAStatementAreLeftAlone() {
+        #expect(footprint(after: "CREATE TABLE t (a INT) /*!50100 PARTITION BY HASH (a) */").isClean)
+        #expect(footprint(after: "SELECT '/*!40101 SET NAMES utf8 */'").isClean)
+    }
+
+    /// `USE` moves the session to another database, and a reconnect puts it back on the one the
+    /// driver holds without saying so. Measured on MySQL 8.4.11: after the connection was killed,
+    /// `SELECT DATABASE()` answered the connection's own database, not the one `USE` had selected.
+    @Test("A database switched with USE is tracked")
+    func useIsTracked() {
+        let result = footprint(after: "USE reporting")
+        #expect(result.hasChangedDatabase)
+        #expect(result.blockingReason != nil)
+        #expect(footprint(after: "SELECT * FROM t USE INDEX (i)").isClean)
+    }
+
     @Test("A reset clears everything, for a session that is genuinely new")
     func resetClearsEverything() {
         var result = footprint(after: "BEGIN", "CREATE TEMPORARY TABLE staging (a INT)")
