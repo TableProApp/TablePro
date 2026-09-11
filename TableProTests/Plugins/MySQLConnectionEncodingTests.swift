@@ -18,6 +18,13 @@ struct MySQLConnectionEncodingTests {
         #expect(MySQLConnectionEncoding(fieldValue: "utf8ViaLatin1") == .utf8ViaLatin1)
     }
 
+    @Test("The connection's additional fields resolve to an encoding")
+    func additionalFieldsParsing() {
+        #expect(MySQLConnectionEncoding(additionalFields: [:]) == .utf8)
+        #expect(MySQLConnectionEncoding(additionalFields: ["mysqlConnectionEncoding": "utf8ViaLatin1"]) == .utf8ViaLatin1)
+        #expect(MySQLConnectionEncoding(additionalFields: ["other": "utf8ViaLatin1"]) == .utf8)
+    }
+
     @Test("Only UTF-8 via Latin 1 changes the client character set, and only the client's")
     func sessionStatements() {
         #expect(MySQLConnectionEncoding.utf8.sessionStatements.isEmpty)

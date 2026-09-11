@@ -229,12 +229,25 @@ class DataGridRowView: NSTableRowView {
     }
 
     override func drawBackground(in dirtyRect: NSRect) {
-        super.drawBackground(in: dirtyRect)
+        drawRowBackground(in: dirtyRect)
         if !isSelected, let tint = visualState.tint {
             tint.setFill()
             bounds.fill()
         }
         drawCellSelectionFill(in: dirtyRect)
+    }
+
+    /// The row's stripe from `DataGridBodyChrome`, the owner the pinned gutter and the area past the
+    /// last row read too, rather than the `backgroundColor` the table assigns, which is only ever the
+    /// system's. A row outside a table has no stripe, and AppKit's own drawing already leaves it clear:
+    /// its `backgroundColor` is nil there, so it must not be read.
+    private func drawRowBackground(in dirtyRect: NSRect) {
+        guard let tableView = coordinator?.tableView else {
+            super.drawBackground(in: dirtyRect)
+            return
+        }
+        DataGridBodyChrome.rowBackgroundColor(forRow: rowIndex, of: tableView).setFill()
+        dirtyRect.fill()
     }
 
     /// A cell range on a row the table has selected is already covered by `NSTableRowView`'s own

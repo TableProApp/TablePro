@@ -70,6 +70,10 @@ Enums, composites, domains and ranges are listed under **Types** in each schema,
 
 PostgreSQL has no in-place `USE`, so a tab bound to a database other than the connection's active one runs on a second connection opened for that database. It shares no temp tables, session variables, or open transaction with the query editor on the main connection: keep a multi-statement transaction or a `CREATE TEMP TABLE` on tabs bound to one database. Binding itself is on [Tabs](/features/tabs#where-a-tab-points).
 
+## Text encoding
+
+Sessions run in `UTF8` whatever encoding the database was created with, and the server converts text both ways. Japanese in an `EUC_JP` database or accented names in a `LATIN1` one read and save intact, and stay that way after `RESET ALL` or `DISCARD ALL` in a query tab. A `-c client_encoding=…` in **Connection Options** is overridden; other settings there still apply.
+
 ## Tools
 
 `EXPLAIN` and `EXPLAIN ANALYZE` run with `FORMAT JSON` and render as a plan diagram or tree. See [EXPLAIN Visualization](/features/explain-visualization). **Database > Users & Roles** shows where each privilege comes from before you grant or revoke it. **Backup Dump** and **Restore Dump** shell out to your local `pg_dump` and `pg_restore`; see [Backup & Restore](/features/backup-restore).
@@ -89,5 +93,7 @@ New connections default to **Preferred** (libpq `sslmode=prefer`): TLS first, pl
 **Connection refused**: check the server is running, that `listen_addresses` in `postgresql.conf` covers remote connections, and that the firewall allows port 5432.
 
 **FATAL: password authentication failed for user "…"**: the role and password are checked against `pg_hba.conf`. Confirm the method on the matching line (`scram-sha-256` or `md5` for passwords, `trust` for local dev), and that the line matches the host you are connecting from.
+
+**ERROR: invalid byte sequence for encoding "UTF8": 0x…**: the database's encoding is `SQL_ASCII`, which stores bytes without checking them, and a value in the result is not UTF-8. Run `SHOW server_encoding` to confirm. Move the data to a `UTF8` database: dump it with `pg_dump --encoding=` and the encoding the text was written in, such as `EUC_JP` or `WIN1252`, then restore that dump into a database created with `ENCODING 'UTF8'`.
 
 **A Postgres-compatible engine loads no tables**: wire-compatible engines connect under the PostgreSQL type, and the catalogs they omit are probed for rather than assumed. An engine without `pg_matviews` still lists its tables; object kinds it does not expose will not appear at all.

@@ -87,4 +87,100 @@ struct ValueDisplayFormatStorageTests {
         #expect(defaults.data(forKey: legacyKey) == nil)
         #expect(defaults.data(forKey: PreferenceKeys.columnDisplayFormats(target).name) != nil)
     }
+
+    @Test("A table rename moves its formats and leaves a longer name alone")
+    func renameTableMovesOnlyThatTable() throws {
+        let (storage, _) = try makeStorage()
+        let conn = UUID()
+        let other = UUID()
+        storage.save(["id": .uuid], for: scope("public", connectionId: conn))
+        storage.save(["ref": .json], for: scope("public", connectionId: conn, table: "orders_archive"))
+        storage.save(["id": .json], for: scope("public", connectionId: other))
+
+        storage.renameTable(
+            from: scope("public", connectionId: conn),
+            to: scope("public", connectionId: conn, table: "purchases")
+        )
+
+        #expect(storage.load(for: scope("public", connectionId: conn)) == nil)
+        #expect(storage.load(for: scope("public", connectionId: conn, table: "purchases")) == ["id": .uuid])
+        #expect(storage.load(for: scope("public", connectionId: conn, table: "orders_archive")) == ["ref": .json])
+        #expect(storage.load(for: scope("public", connectionId: other)) == ["id": .json])
+    }
+
+    @Test("A table rename carries formats still stored under the legacy key")
+    func renameTableMigratesLegacy() throws {
+        let (storage, defaults) = try makeStorage()
+        let conn = UUID()
+        let legacyKey = "com.TablePro.columns.displayFormat.\(conn.uuidString).orders"
+        defaults.set(try JSONEncoder().encode(["id": ValueDisplayFormat.uuid]), forKey: legacyKey)
+
+        storage.renameTable(
+            from: scope("public", connectionId: conn),
+            to: scope("public", connectionId: conn, table: "purchases")
+        )
+
+        #expect(defaults.data(forKey: legacyKey) == nil)
+        #expect(storage.load(for: scope("public", connectionId: conn, table: "purchases")) == ["id": .uuid])
+        #expect(storage.load(for: scope("public", connectionId: conn)) == nil)
+    }
+
+    @Test("A schema rename moves every table in it and nothing outside it")
+    func renameContainerMovesTheSchema() throws {
+        let (storage, _) = try makeStorage()
+        let conn = UUID()
+        let other = UUID()
+        storage.save(["id": .uuid], for: scope("public", connectionId: conn))
+        storage.save(["ref": .json], for: scope("public", connectionId: conn, table: "items"))
+        storage.save(["id": .json], for: scope("public_old", connectionId: conn))
+        storage.save(["id": .uuid], for: scope("public", connectionId: other))
+
+        storage.renameContainer(
+            connectionId: conn, fromDatabase: "shop", fromSchema: "public", toDatabase: "shop", toSchema: "sales"
+        )
+
+        #expect(storage.load(for: scope("sales", connectionId: conn)) == ["id": .uuid])
+        #expect(storage.load(for: scope("sales", connectionId: conn, table: "items")) == ["ref": .json])
+        #expect(storage.load(for: scope("public", connectionId: conn)) == nil)
+        #expect(storage.load(for: scope("public_old", connectionId: conn)) == ["id": .json])
+        #expect(storage.load(for: scope("public", connectionId: other)) == ["id": .uuid])
+    }
+
+    @Test("A database rename moves every schema in it")
+    func renameDatabaseMovesEverySchema() throws {
+        let (storage, _) = try makeStorage()
+        let conn = UUID()
+        storage.save(["id": .uuid], for: scope("public", connectionId: conn))
+        storage.save(["id": .json], for: scope("archive", connectionId: conn))
+        let longerName = TableScope(connectionId: conn, database: "shopping", schema: "public", table: "orders")
+        storage.save(["id": .text], for: longerName)
+
+        storage.renameContainer(
+            connectionId: conn, fromDatabase: "shop", fromSchema: nil, toDatabase: "store", toSchema: nil
+        )
+
+        let moved = TableScope(connectionId: conn, database: "store", schema: "public", table: "orders")
+        let movedArchive = TableScope(connectionId: conn, database: "store", schema: "archive", table: "orders")
+        #expect(storage.load(for: moved) == ["id": .uuid])
+        #expect(storage.load(for: movedArchive) == ["id": .json])
+        #expect(storage.load(for: longerName) == ["id": .text])
+        #expect(storage.load(for: scope("public", connectionId: conn)) == nil)
+    }
+
+    @Test("Deleting a connection removes its formats, legacy keys included, and keeps the rest")
+    func purgeConnectionsRemovesOnlyThatConnection() throws {
+        let (storage, defaults) = try makeStorage()
+        let conn = UUID()
+        let other = UUID()
+        let legacyKey = "com.TablePro.columns.displayFormat.\(conn.uuidString).customers"
+        defaults.set(try JSONEncoder().encode(["id": ValueDisplayFormat.uuid]), forKey: legacyKey)
+        storage.save(["id": .uuid], for: scope("public", connectionId: conn))
+        storage.save(["id": .json], for: scope("public", connectionId: other))
+
+        storage.purgeConnections([conn])
+
+        #expect(defaults.data(forKey: PreferenceKeys.columnDisplayFormats(scope("public", connectionId: conn)).name) == nil)
+        #expect(defaults.data(forKey: legacyKey) == nil)
+        #expect(storage.load(for: scope("public", connectionId: other)) == ["id": .json])
+    }
 }

@@ -26,7 +26,7 @@ enum NativeDumpState: Equatable {
     case idle
     case running(database: String, fileURL: URL, bytesProcessed: Int64, totalBytes: Int64?)
     case cancelling
-    case finished(database: String, fileURL: URL, bytesProcessed: Int64)
+    case finished(database: String, fileURL: URL, bytesProcessed: Int64, skippedSettings: [String] = [])
     /// A restore that fails part way through has already replayed some of the dump, and the
     /// target is left in whatever state that reached. A backup writes only to its own file, which
     /// is removed, so nothing of the user's is touched.
@@ -64,6 +64,20 @@ enum NativeDumpError: LocalizedError, Equatable {
     }
 }
 
+internal enum NativeDumpExitPolicy: Equatable, Sendable {
+    case zeroExitOnly
+    case toleratesUnrecognizedSessionSettings
+
+    internal func skippedSettings(exitCode: Int32, stderr: String) -> [String]? {
+        switch self {
+        case .zeroExitOnly:
+            return nil
+        case .toleratesUnrecognizedSessionSettings:
+            return PostgresRestoreDiagnostics.skippedSessionSettings(exitCode: exitCode, stderr: stderr)
+        }
+    }
+}
+
 /// Parameters for a single backup or restore subprocess.
 struct NativeDumpCommand: Equatable {
     let executable: URL
@@ -87,6 +101,8 @@ struct NativeDumpCommand: Equatable {
     /// takes standard output and writes it out.
     let isRestore: Bool
 
+    internal let exitPolicy: NativeDumpExitPolicy
+
     init(
         executable: URL,
         arguments: [String],
@@ -95,7 +111,8 @@ struct NativeDumpCommand: Equatable {
         delivery: NativeDumpDescriptor.OutputDelivery = .toolWritesFile,
         redirectedFileURL: URL? = nil,
         temporaryCredentialsFileURL: URL? = nil,
-        isRestore: Bool = false
+        isRestore: Bool = false,
+        exitPolicy: NativeDumpExitPolicy = .zeroExitOnly
     ) {
         self.executable = executable
         self.arguments = arguments
@@ -105,6 +122,7 @@ struct NativeDumpCommand: Equatable {
         self.redirectedFileURL = redirectedFileURL
         self.temporaryCredentialsFileURL = temporaryCredentialsFileURL
         self.isRestore = isRestore
+        self.exitPolicy = exitPolicy
     }
 }
 
@@ -122,6 +140,13 @@ struct NativeDumpStatementJob: Sendable, Equatable {
 enum NativeDumpJob {
     case process(NativeDumpCommand)
     case statements(NativeDumpStatementJob)
+}
+
+internal extension NativeDumpJob {
+    var exitPolicy: NativeDumpExitPolicy {
+        guard case .process(let command) = self else { return .zeroExitOnly }
+        return command.exitPolicy
+    }
 }
 
 /// Captured terminal state of a finished/cancelled run.
@@ -305,6 +330,7 @@ final class NativeDumpService {
         let runner = runnerFactory(job)
         try runner.start()
         self.runner = runner
+        let exitPolicy = job.exitPolicy
 
         setState(.running(database: database, fileURL: fileURL, bytesProcessed: 0, totalBytes: totalBytesEstimate))
         if kind == .backup {
@@ -313,7 +339,7 @@ final class NativeDumpService {
 
         Task { @MainActor [weak self] in
             guard let result = await self?.runner?.result else { return }
-            self?.handleTermination(result: result, database: database, fileURL: fileURL)
+            self?.handleTermination(result: result, database: database, fileURL: fileURL, exitPolicy: exitPolicy)
         }
     }
 
@@ -389,6 +415,9 @@ final class NativeDumpService {
         var arguments = tool.arguments(for: kind, request: request)
         var environment = minimalEnvironment()
         environment.merge(tool.environment(request)) { _, new in new }
+        if tool.requiresUntranslatedMessages {
+            environment = untranslatedMessagesEnvironment(environment)
+        }
 
         var credentialsFileURL: URL?
         if tool.needsCredentialsFile,
@@ -408,7 +437,8 @@ final class NativeDumpService {
             delivery: delivery,
             redirectedFileURL: delivery == .standardOutput ? request.fileURL : nil,
             temporaryCredentialsFileURL: credentialsFileURL,
-            isRestore: kind == .restore
+            isRestore: kind == .restore,
+            exitPolicy: tool.exitPolicy(for: kind)
         )
     }
 
@@ -440,6 +470,17 @@ final class NativeDumpService {
         "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL"
     ]
 
+    nonisolated internal static let untranslatedMessagesLocale = "C"
+
+    nonisolated internal static func untranslatedMessagesEnvironment(_ environment: [String: String]) -> [String: String] {
+        var result = environment
+        if let everyCategory = result.removeValue(forKey: "LC_ALL"), result["LC_CTYPE"] == nil {
+            result["LC_CTYPE"] = everyCategory
+        }
+        result["LC_MESSAGES"] = untranslatedMessagesLocale
+        return result
+    }
+
     nonisolated static func minimalEnvironment() -> [String: String] {
         let parent = ProcessInfo.processInfo.environment
         var env: [String: String] = [:]
@@ -454,7 +495,8 @@ final class NativeDumpService {
     private func handleTermination(
         result: NativeDumpRunResult,
         database: String,
-        fileURL: URL
+        fileURL: URL,
+        exitPolicy: NativeDumpExitPolicy
     ) {
         byteSizeTask?.cancel()
         byteSizeTask = nil
@@ -472,6 +514,23 @@ final class NativeDumpService {
         if result.exitCode == 0 {
             setState(.finished(database: database, fileURL: fileURL, bytesProcessed: writtenBytes))
             Self.logger.info("\(self.toolName, privacy: .public) finished bytes=\(writtenBytes) db=\(database, privacy: .public)")
+            return
+        }
+
+        if let skipped = exitPolicy.skippedSettings(exitCode: result.exitCode, stderr: result.stderr) {
+            setState(.finished(
+                database: database,
+                fileURL: fileURL,
+                bytesProcessed: writtenBytes,
+                skippedSettings: skipped
+            ))
+            let settings = skipped.joined(separator: ",")
+            Self.logger.notice(
+                """
+                \(self.toolName, privacy: .public) finished skipping settings=\(settings, privacy: .public) \
+                db=\(database, privacy: .public)
+                """
+            )
             return
         }
 

@@ -611,6 +611,9 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         themeCancellable = AppEvents.shared.themeChanged
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
+                if let tableView = self?.tableView {
+                    DataGridBodyChrome.applyBackground(to: tableView)
+                }
                 self?.reloadVisibleRowsAndStates()
                 /// The row-number font is a theme value and it decides the column's width, which
                 /// the pinned gutter mirrors. Nothing re-measured it on a theme change before, so

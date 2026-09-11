@@ -22,7 +22,8 @@ internal enum ConnectionLocalState {
     internal static func purge(
         connectionIds: Set<UUID>,
         origin: Origin,
-        appSettings: AppSettingsStorage = .shared
+        appSettings: AppSettingsStorage = .shared,
+        tableScopedStores: [any TableScopedSettingsStore] = TableScopedSettingsRegistry.stores
     ) {
         guard !connectionIds.isEmpty else { return }
 
@@ -37,8 +38,9 @@ internal enum ConnectionLocalState {
             QueryInsightsPreferencesStorage.remove(for: connectionId)
         }
 
-        FilterSettingsStorage.shared.removeFilters(for: connectionIds)
-        HighlightRuleStorage.shared.removeRules(for: connectionIds)
+        for store in tableScopedStores {
+            store.purgeConnections(connectionIds)
+        }
         DatabaseTreeFilterStorage.shared.removeFilters(for: connectionIds)
         RecentlyClosedTabStore.shared.removeEntries(for: connectionIds)
         WorkspaceRailOrderStore.shared.removeEntries(for: connectionIds)

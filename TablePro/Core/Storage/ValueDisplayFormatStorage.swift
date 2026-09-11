@@ -6,7 +6,7 @@
 import Foundation
 
 @MainActor
-internal final class ValueDisplayFormatStorage {
+internal final class ValueDisplayFormatStorage: TableScopedSettingsStore {
     static let shared = ValueDisplayFormatStorage()
 
     private let store: KeyValueStore
@@ -38,6 +38,37 @@ internal final class ValueDisplayFormatStorage {
         removeLegacy(for: scope)
     }
 
+    func renameTable(from oldScope: TableScope, to newScope: TableScope) {
+        let oldKey = PreferenceKeys.columnDisplayFormats(oldScope).name
+        if store.dataValue(forKey: oldKey) == nil {
+            migrateLegacy(for: oldScope)
+        }
+        store.moveValue(fromKey: oldKey, toKey: PreferenceKeys.columnDisplayFormats(newScope).name)
+    }
+
+    func renameContainer(
+        connectionId: UUID,
+        fromDatabase: String,
+        fromSchema: String?,
+        toDatabase: String,
+        toSchema: String?
+    ) {
+        store.moveValues(
+            withPrefix: Self.keyPrefix
+                + TableScope.storagePrefix(connectionId: connectionId, database: fromDatabase, schema: fromSchema),
+            toPrefix: Self.keyPrefix
+                + TableScope.storagePrefix(connectionId: connectionId, database: toDatabase, schema: toSchema)
+        )
+    }
+
+    func purgeConnections(_ connectionIds: Set<UUID>) {
+        for connectionId in connectionIds {
+            store.removeValues(withPrefix: Self.keyPrefix + TableScope.storagePrefix(connectionId: connectionId))
+            store.removeValues(withPrefix: Self.legacyKeyPrefix(for: connectionId))
+        }
+    }
+
+    @discardableResult
     private func migrateLegacy(for scope: TableScope) -> [String: ValueDisplayFormat]? {
         let legacyKey = Self.legacyKey(for: scope)
         guard let data = store.dataValue(forKey: legacyKey),
@@ -56,7 +87,13 @@ internal final class ValueDisplayFormatStorage {
         store.setDataValue(nil, forKey: Self.legacyKey(for: scope))
     }
 
+    private static let keyPrefix = PreferenceKeys.columnDisplayFormatsPrefix
+
     private static func legacyKey(for scope: TableScope) -> String {
-        "com.TablePro.columns.displayFormat.\(scope.connectionId.uuidString).\(scope.table)"
+        legacyKeyPrefix(for: scope.connectionId) + scope.table
+    }
+
+    private static func legacyKeyPrefix(for connectionId: UUID) -> String {
+        "\(keyPrefix)\(connectionId.uuidString)."
     }
 }

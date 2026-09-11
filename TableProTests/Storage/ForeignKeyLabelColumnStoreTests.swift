@@ -76,4 +76,79 @@ struct ForeignKeyLabelColumnStoreTests {
         #expect(store.labelColumn(for: target) == "full name")
         #expect(store.labelColumn(for: scope(connectionId: target.connectionId)) == nil)
     }
+
+    @Test("A table rename moves its choice and leaves a longer name alone")
+    func renameTableMovesOnlyThatTable() throws {
+        let store = try makeStore()
+        let connection = UUID()
+        let other = UUID()
+        store.setLabelColumn("Name", for: scope(connectionId: connection))
+        store.setLabelColumn("Title", for: scope(connectionId: connection, table: "Artist_archive"))
+        store.setLabelColumn("Code", for: scope(connectionId: other))
+
+        store.renameTable(
+            from: scope(connectionId: connection),
+            to: scope(connectionId: connection, table: "Performer")
+        )
+
+        #expect(store.labelColumn(for: scope(connectionId: connection)) == nil)
+        #expect(store.labelColumn(for: scope(connectionId: connection, table: "Performer")) == "Name")
+        #expect(store.labelColumn(for: scope(connectionId: connection, table: "Artist_archive")) == "Title")
+        #expect(store.labelColumn(for: scope(connectionId: other)) == "Code")
+    }
+
+    @Test("A schema rename moves every table in it and nothing outside it")
+    func renameContainerMovesTheSchema() throws {
+        let store = try makeStore()
+        let connection = UUID()
+        let other = UUID()
+        store.setLabelColumn("Name", for: scope(connectionId: connection, schema: "music"))
+        store.setLabelColumn("Title", for: scope(connectionId: connection, schema: "music", table: "Album"))
+        store.setLabelColumn("Code", for: scope(connectionId: connection, schema: "music_old"))
+        store.setLabelColumn("Email", for: scope(connectionId: other, schema: "music"))
+
+        store.renameContainer(
+            connectionId: connection, fromDatabase: "chinook", fromSchema: "music",
+            toDatabase: "chinook", toSchema: "catalog"
+        )
+
+        #expect(store.labelColumn(for: scope(connectionId: connection, schema: "catalog")) == "Name")
+        #expect(store.labelColumn(for: scope(connectionId: connection, schema: "catalog", table: "Album")) == "Title")
+        #expect(store.labelColumn(for: scope(connectionId: connection, schema: "music")) == nil)
+        #expect(store.labelColumn(for: scope(connectionId: connection, schema: "music_old")) == "Code")
+        #expect(store.labelColumn(for: scope(connectionId: other, schema: "music")) == "Email")
+    }
+
+    @Test("A database rename moves its tables and leaves a longer database name alone")
+    func renameDatabaseMovesItsTables() throws {
+        let store = try makeStore()
+        let connection = UUID()
+        store.setLabelColumn("Name", for: scope(connectionId: connection))
+        store.setLabelColumn("Title", for: scope(connectionId: connection, database: "chinook_backup"))
+
+        store.renameContainer(
+            connectionId: connection, fromDatabase: "chinook", fromSchema: nil,
+            toDatabase: "music", toSchema: nil
+        )
+
+        #expect(store.labelColumn(for: scope(connectionId: connection, database: "music")) == "Name")
+        #expect(store.labelColumn(for: scope(connectionId: connection)) == nil)
+        #expect(store.labelColumn(for: scope(connectionId: connection, database: "chinook_backup")) == "Title")
+    }
+
+    @Test("Deleting a connection removes its choices and keeps every other connection's")
+    func purgeConnectionsRemovesOnlyThatConnection() throws {
+        let store = try makeStore()
+        let connection = UUID()
+        let other = UUID()
+        store.setLabelColumn("Name", for: scope(connectionId: connection))
+        store.setLabelColumn("Title", for: scope(connectionId: connection, table: "Album"))
+        store.setLabelColumn("Code", for: scope(connectionId: other))
+
+        store.purgeConnections([connection])
+
+        #expect(store.labelColumn(for: scope(connectionId: connection)) == nil)
+        #expect(store.labelColumn(for: scope(connectionId: connection, table: "Album")) == nil)
+        #expect(store.labelColumn(for: scope(connectionId: other)) == "Code")
+    }
 }

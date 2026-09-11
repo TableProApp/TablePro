@@ -125,9 +125,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             sslConfig: sslConfig,
             enableCleartextPlugin: config.additionalFields["enableCleartextPlugin"] == "true",
             queryTimeoutSeconds: config.additionalFields["queryTimeoutSeconds"].flatMap { Int($0) } ?? 0,
-            connectionEncoding: MySQLConnectionEncoding(
-                fieldValue: config.additionalFields[MySQLConnectionEncoding.fieldId]
-            )
+            connectionEncoding: MySQLConnectionEncoding(additionalFields: config.additionalFields)
         )
 
         try await conn.connect()
@@ -268,10 +266,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     /// The reconnect this does is not the idle release: it is recovery from a connection the
-    /// server dropped, where the session state is already gone. `mysqlStatementIsSafeToReplay`
-    /// decides whether the statement can be run twice, and the footprint decides whether running
-    /// it again would land it somewhere different. Replaying a statement outside the transaction
-    /// the user opened for it commits work they meant to be able to roll back.
+    /// server dropped, where the session state is already gone. `mysqlMayReplay` owns the
+    /// decision, and takes both halves of it: whether the statement means the same thing run
+    /// twice, and whether the session that replaces this one can answer it the same way.
     private func executeWithReconnect(
         query: String,
         isRetry: Bool,
@@ -321,8 +318,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 columnMeta: result.columnMeta
             )
         } catch let error as MariaDBPluginError
-            where !isRetry && isConnectionLostError(error) && mysqlStatementIsSafeToReplay(query)
-                && !hasOpenTransaction {
+            where !isRetry && isConnectionLostError(error) && mayReplay(query) {
             try await reconnect()
             return try await executeWithReconnect(
                 query: query,
@@ -346,8 +342,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    private var hasOpenTransaction: Bool {
-        sessionLock.withLock { footprint.hasOpenTransaction }
+    private func mayReplay(_ query: String) -> Bool {
+        sessionLock.withLock { mysqlMayReplay(query, on: footprint) }
     }
 
     /// Takes a server connection again if the last one was handed back. A connection that was
@@ -1021,8 +1017,17 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Database Switching
 
+    /// The `USE` goes in the way the query timeout does, as the driver's own setup rather than as
+    /// use. `_activeDatabase` is what every reconnect connects to, so the database the driver
+    /// switched to is not the session's to lose, and counting it would leave the footprint dirty
+    /// from the first database switch onward. A `USE` the user types is a different statement: the
+    /// driver does not know about it, a reconnect silently undoes it, and the footprint says so.
     func switchDatabase(to database: String) async throws {
-        _ = try await execute(query: "USE \(quoteIdentifier(database))")
+        _ = try await executeWithReconnect(
+            query: "USE \(quoteIdentifier(database))",
+            isRetry: false,
+            countsAsActivity: false
+        )
         _activeDatabase = database
     }
 

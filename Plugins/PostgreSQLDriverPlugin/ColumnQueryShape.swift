@@ -36,4 +36,19 @@ enum ColumnQueryShape {
             orderBy: includesTableName ? "c.table_name, c.ordinal_position" : "c.ordinal_position"
         )
     }
+
+    static func primaryKeyJoin(schemaLiteral: String, fragments: Fragments) -> String {
+        """
+        LEFT JOIN (
+                SELECT DISTINCT \(fragments.pkSelect)
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                    ON tc.constraint_name = kcu.constraint_name
+                    AND tc.table_schema = kcu.table_schema
+                    AND tc.table_name = kcu.table_name
+                WHERE tc.constraint_type = 'PRIMARY KEY'
+                    AND tc.table_schema = '\(schemaLiteral)'\(fragments.pkTableFilter)
+            ) pk ON \(fragments.pkJoin)
+        """
+    }
 }

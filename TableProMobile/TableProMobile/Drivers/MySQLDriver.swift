@@ -3,6 +3,7 @@ import Foundation
 import TableProDatabase
 import TableProModels
 import TableProMSSQLCore
+import TableProPluginKit
 
 nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     private let actor = MySQLActor()
@@ -13,6 +14,7 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     private let database: String
     let ssl: DriverSSLConfiguration
     let databaseType: DatabaseType
+    private let connectionEncoding: MySQLConnectionEncoding
 
     var supportsSchemas: Bool { false }
     var currentSchema: String? { nil }
@@ -32,7 +34,8 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
         password: String,
         database: String,
         ssl: DriverSSLConfiguration = .disabled,
-        databaseType: DatabaseType = .mysql
+        databaseType: DatabaseType = .mysql,
+        connectionEncoding: MySQLConnectionEncoding = .utf8
     ) {
         self.host = host
         self.port = port
@@ -41,13 +44,17 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
         self.database = database
         self.ssl = ssl
         self.databaseType = databaseType
+        self.connectionEncoding = connectionEncoding
     }
 
     // MARK: - Connection
 
     func connect() async throws {
         try await LocalNetworkPermission.shared.ensureAccess(for: host)
-        try await actor.connect(host: host, port: port, user: user, password: password, database: database, ssl: ssl)
+        try await actor.connect(
+            host: host, port: port, user: user, password: password, database: database,
+            ssl: ssl, encoding: connectionEncoding
+        )
         serverVersion = await actor.serverVersion()
     }
 
@@ -271,7 +278,13 @@ private actor MySQLActor {
 
     private static let connectDeadline: DispatchTimeInterval = .seconds(15)
 
-    func connect(host: String, port: Int, user: String, password: String, database: String, ssl: DriverSSLConfiguration) async throws {
+    private var encoding: MySQLConnectionEncoding = .utf8
+
+    func connect(
+        host: String, port: Int, user: String, password: String, database: String,
+        ssl: DriverSSLConfiguration, encoding: MySQLConnectionEncoding
+    ) async throws {
+        self.encoding = encoding
         // Close existing connection if reconnecting
         if let mysql { mysql_close(mysql); self.mysql = nil }
 
@@ -279,7 +292,7 @@ private actor MySQLActor {
             throw MySQLError.connectionFailed("Failed to initialize MySQL client")
         }
 
-        mysql_options(handle, MYSQL_SET_CHARSET_NAME, "utf8mb4")
+        mysql_options(handle, MYSQL_SET_CHARSET_NAME, MySQLConnectionEncoding.sessionCharacterSetName)
 
         var timeout: UInt32 = 10
         mysql_options(handle, MYSQL_OPT_CONNECT_TIMEOUT, &timeout)
@@ -333,7 +346,13 @@ private actor MySQLActor {
         )
 
         guard connected else {
-            let msg = String(cString: mysql_error(handle))
+            let msg = message(from: handle)
+            mysql_close(handle)
+            throw MySQLError.connectionFailed(msg)
+        }
+
+        guard MariaDBCharacterSet.establishSession(on: handle, encoding: encoding) else {
+            let msg = message(from: handle)
             mysql_close(handle)
             throw MySQLError.connectionFailed(msg)
         }
@@ -351,9 +370,35 @@ private actor MySQLActor {
     func ping() throws -> Bool {
         guard let mysql else { throw MySQLError.notConnected }
         if mysql_ping(mysql) != 0 {
-            throw MySQLError.queryFailed(String(cString: mysql_error(mysql)))
+            throw MySQLError.queryFailed(message(from: mysql))
         }
         return true
+    }
+
+    private func legacyText(_ value: PluginCellValue) -> String? {
+        switch value {
+        case .null:
+            return nil
+        case .text(let text):
+            return text
+        case .bytes(let data):
+            return Self.hexText(data)
+        @unknown default:
+            return nil
+        }
+    }
+
+    private static func hexText(_ data: Data) -> String {
+        let shown = data.prefix(hexPreviewBytes)
+        let hex = shown.map { String(format: "%02X", $0) }.joined()
+        return data.count > hexPreviewBytes ? "0x\(hex)…" : "0x\(hex)"
+    }
+
+    private static let hexPreviewBytes = 256
+
+    private func message(from mysql: UnsafeMutablePointer<MYSQL>) -> String {
+        guard let text = mysql_error(mysql) else { return "" }
+        return mysqlSessionText(cString: text, encoding: encoding)
     }
 
     func serverVersion() -> String? {
@@ -367,12 +412,12 @@ private actor MySQLActor {
         let start = Date()
 
         guard mysql_real_query(mysql, query, UInt(query.utf8.count)) == 0 else {
-            throw MySQLError.queryFailed(String(cString: mysql_error(mysql)))
+            throw MySQLError.queryFailed(message(from: mysql))
         }
 
         guard let result = mysql_store_result(mysql) else {
             if mysql_field_count(mysql) != 0 {
-                throw MySQLError.queryFailed(String(cString: mysql_error(mysql)))
+                throw MySQLError.queryFailed(message(from: mysql))
             }
             let raw = mysql_affected_rows(mysql)
             let affected = raw == .max ? 0 : Int(clamping: raw)
@@ -384,16 +429,11 @@ private actor MySQLActor {
         defer { mysql_free_result(result) }
 
         let fieldCount = Int(mysql_num_fields(result))
-        var columns: [String] = []
-        var columnTypes: [String] = []
-
-        if let fields = mysql_fetch_fields(result) {
-            for i in 0..<fieldCount {
-                let field = fields[i]
-                columns.append(String(cString: field.name))
-                columnTypes.append(mysqlFieldTypeName(field.type.rawValue))
-            }
-        }
+        let described = MariaDBCharacterSet.describeColumns(
+            of: mysql_fetch_fields(result), count: fieldCount, encoding: encoding
+        )
+        let columns = described.names
+        let columnTypes = described.typeNames
 
         var rows: [[String?]] = []
         let maxRows = 100_000
@@ -404,17 +444,10 @@ private actor MySQLActor {
             }
 
             let lengths = mysql_fetch_lengths(result)
-            var rowData: [String?] = []
-            for i in 0..<fieldCount {
-                if let value = row[i] {
-                    let len = Int(clamping: lengths?[i] ?? 0)
-                    let data = Data(bytes: value, count: len)
-                    rowData.append(String(data: data, encoding: .utf8) ?? String(cString: value))
-                } else {
-                    rowData.append(nil)
-                }
-            }
-            rows.append(rowData)
+            rows.append(described.row(encoding: encoding) { index in
+                guard let value = row[index] else { return nil }
+                return UnsafeRawBufferPointer(start: value, count: Int(clamping: lengths?[index] ?? 0))
+            }.map(legacyText))
         }
 
         let isTruncated = rows.count >= maxRows
@@ -435,6 +468,7 @@ private actor MySQLActor {
 
     private var streamingResult: UnsafeMutablePointer<MYSQL_RES>?
     private var streamingColumns: [ColumnInfo] = []
+    private var streamingDecoding = MySQLResultColumns()
 
     func beginStream(query: String) throws -> MySQLBeginStreamResult {
         guard let mysql else { throw MySQLError.notConnected }
@@ -443,12 +477,12 @@ private actor MySQLActor {
         }
 
         guard mysql_real_query(mysql, query, UInt(query.utf8.count)) == 0 else {
-            throw MySQLError.queryFailed(String(cString: mysql_error(mysql)))
+            throw MySQLError.queryFailed(message(from: mysql))
         }
 
         guard let result = mysql_use_result(mysql) else {
             if mysql_field_count(mysql) != 0 {
-                throw MySQLError.queryFailed(String(cString: mysql_error(mysql)))
+                throw MySQLError.queryFailed(message(from: mysql))
             }
             let raw = mysql_affected_rows(mysql)
             let affected = raw == .max ? 0 : Int(clamping: raw)
@@ -457,23 +491,21 @@ private actor MySQLActor {
 
         streamingResult = result
 
-        let fieldCount = Int(mysql_num_fields(result))
-        var columns: [ColumnInfo] = []
-        if let fields = mysql_fetch_fields(result) {
-            for i in 0..<fieldCount {
-                let field = fields[i]
-                let name = field.name.map { String(cString: $0) } ?? ""
-                columns.append(ColumnInfo(
-                    name: name,
-                    typeName: mysqlFieldTypeName(field.type.rawValue),
-                    isPrimaryKey: false,
-                    isNullable: true,
-                    defaultValue: nil,
-                    comment: nil,
-                    characterMaxLength: nil,
-                    ordinalPosition: i
-                ))
-            }
+        let described = MariaDBCharacterSet.describeColumns(
+            of: mysql_fetch_fields(result), count: Int(mysql_num_fields(result)), encoding: encoding
+        )
+        streamingDecoding = described
+        let columns = described.names.enumerated().map { index, name in
+            ColumnInfo(
+                name: name,
+                typeName: described.typeNames[index],
+                isPrimaryKey: false,
+                isNullable: true,
+                defaultValue: nil,
+                comment: nil,
+                characterMaxLength: nil,
+                ordinalPosition: index
+            )
         }
         streamingColumns = columns
         return .rowSet(columns)
@@ -484,26 +516,29 @@ private actor MySQLActor {
         guard let row = mysql_fetch_row(result) else { return nil }
 
         let lengths = mysql_fetch_lengths(result)
-        var cells: [Cell] = []
-        cells.reserveCapacity(columns.count)
+        let values = streamingDecoding.row(encoding: encoding) { index in
+            guard let value = row[index] else { return nil }
+            return UnsafeRawBufferPointer(start: value, count: Int(clamping: lengths?[index] ?? 0))
+        }
 
-        for i in 0..<columns.count {
-            if let value = row[i] {
-                let len = Int(clamping: lengths?[i] ?? 0)
-                let data = Data(bytes: value, count: len)
-                let str = String(data: data, encoding: .utf8) ?? String(cString: value)
-                let cell = Cell.from(
-                    legacyValue: str,
-                    columnTypeName: columns[i].typeName,
+        return zip(values, columns).map { value, column in
+            let ref = makeCellRef(column: column.name, row: row, options: options, columns: columns)
+            switch value {
+            case .null:
+                return .null
+            case .bytes(let data):
+                return .binary(byteCount: data.count, ref: ref)
+            case .text(let text):
+                return Cell.from(
+                    legacyValue: text,
+                    columnTypeName: column.typeName,
                     options: options,
-                    ref: makeCellRef(column: columns[i].name, row: row, options: options, columns: columns)
+                    ref: ref
                 )
-                cells.append(cell)
-            } else {
-                cells.append(.null)
+            @unknown default:
+                return .null
             }
         }
-        return cells
     }
 
     func endStream() {
@@ -512,6 +547,7 @@ private actor MySQLActor {
         mysql_free_result(result)
         streamingResult = nil
         streamingColumns = []
+        streamingDecoding = MySQLResultColumns()
     }
 
     private func makeCellRef(column: String, row: MYSQL_ROW, options: StreamOptions, columns: [ColumnInfo]) -> CellRef? {
@@ -521,7 +557,8 @@ private actor MySQLActor {
         for pkColumn in lazyContext.primaryKeyColumns {
             guard let columnIndex = columns.firstIndex(where: { $0.name == pkColumn }) else { return nil }
             guard let cValue = row[columnIndex] else { return nil }
-            pkComponents.append(PrimaryKeyComponent(column: pkColumn, value: String(cString: cValue)))
+            let value = mysqlSessionText(cString: cValue, encoding: encoding)
+            pkComponents.append(PrimaryKeyComponent(column: pkColumn, value: value))
         }
         return CellRef(table: lazyContext.table, column: column, primaryKey: pkComponents)
     }
@@ -530,39 +567,6 @@ private actor MySQLActor {
 nonisolated enum MySQLBeginStreamResult: Sendable {
     case rowSet([ColumnInfo])
     case noResult(affectedRows: Int)
-}
-
-// MARK: - MySQL Field Type Names
-
-nonisolated private func mysqlFieldTypeName(_ typeValue: UInt32) -> String {
-    switch typeValue {
-    case 0: return "DECIMAL"
-    case 1: return "TINYINT"
-    case 2: return "SMALLINT"
-    case 3: return "INT"
-    case 4: return "FLOAT"
-    case 5: return "DOUBLE"
-    case 6: return "NULL"
-    case 7: return "TIMESTAMP"
-    case 8: return "BIGINT"
-    case 9: return "MEDIUMINT"
-    case 10: return "DATE"
-    case 11: return "TIME"
-    case 12: return "DATETIME"
-    case 13: return "YEAR"
-    case 15: return "VARCHAR"
-    case 16: return "BIT"
-    case 245: return "JSON"
-    case 246: return "NEWDECIMAL"
-    case 249: return "TINYTEXT"
-    case 250: return "MEDIUMTEXT"
-    case 251: return "LONGTEXT"
-    case 252: return "TEXT"
-    case 253: return "VARCHAR"
-    case 254: return "CHAR"
-    case 255: return "GEOMETRY"
-    default: return "UNKNOWN"
-    }
 }
 
 nonisolated private struct RawMySQLResult: Sendable {

@@ -38,6 +38,12 @@ struct MySQLSessionFootprint: Equatable {
     private(set) var hasLockedTables = false
     private(set) var hasSessionSettings = false
 
+    /// A `USE` the user ran themselves. The driver's own database switch does not come through
+    /// here, because it records the database it moved to and every reconnect connects to that one;
+    /// a `USE` typed into the editor does not, so a reconnect silently puts the session back on
+    /// the database the driver still thinks it is on.
+    private(set) var hasChangedDatabase = false
+
     /// A `CALL` runs a body this driver never sees, and a routine is free to create a temporary
     /// table, take a lock or open a transaction. Opaque is the only honest reading.
     private(set) var ranOpaqueRoutine = false
@@ -69,6 +75,9 @@ struct MySQLSessionFootprint: Equatable {
         if hasSessionSettings {
             return String(localized: "This connection has session settings changed, which reconnecting would reset.")
         }
+        if hasChangedDatabase {
+            return String(localized: "This connection switched database with USE, which reconnecting would undo.")
+        }
         if ranOpaqueRoutine {
             return String(localized: "This connection called a stored routine, so TablePro cannot tell what the session is holding.")
         }
@@ -95,7 +104,7 @@ struct MySQLSessionFootprint: Equatable {
     }
 
     private mutating func observeStatement(_ statement: String) {
-        let normalized = statement.uppercased()
+        let normalized = Self.executableBody(of: statement).uppercased()
         guard !normalized.isEmpty else { return }
 
         if normalized.hasPrefix("CREATE TEMPORARY ") || normalized.hasPrefix("CREATE OR REPLACE TEMPORARY ") {
@@ -121,6 +130,9 @@ struct MySQLSessionFootprint: Equatable {
         if normalized.hasPrefix("CALL ") {
             ranOpaqueRoutine = true
         }
+        if normalized.hasPrefix("USE ") {
+            hasChangedDatabase = true
+        }
         if normalized.contains("GET_LOCK(") {
             hasAdvisoryLocks = true
         }
@@ -136,6 +148,26 @@ struct MySQLSessionFootprint: Equatable {
         if normalized.contains("INTO @") || normalized.contains("@") && normalized.contains(":=") {
             hasUserVariables = true
         }
+    }
+
+    /// What MySQL runs when the statement is one of its version-gated comments, and the statement
+    /// itself otherwise.
+    ///
+    /// `/*!40101 SET NAMES utf8mb4 */` is executed by any server from 4.1.1, and MariaDB spells
+    /// its own `/*M!100301 ... */`. mysqldump writes its whole preamble this way, so a restore run
+    /// from the editor sets `character_set_client`, the time zone and half a dozen `@OLD_`
+    /// variables inside them. `SQLStatementSplitting` leaves them whole rather than reading them
+    /// as comments, because only the engine that executes the body can say what it is.
+    private static func executableBody(of statement: String) -> String {
+        guard statement.hasPrefix("/*!") || statement.hasPrefix("/*M!") else { return statement }
+        guard let close = statement.range(of: "*/"),
+              statement[close.upperBound...].allSatisfy({ $0.isWhitespace }) else { return statement }
+        let marked = statement[statement.index(statement.startIndex, offsetBy: 2)..<close.lowerBound]
+        return marked
+            .drop(while: { $0 == "M" })
+            .dropFirst()
+            .drop(while: { $0.isNumber })
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// `SET` covers three different things: a user variable (`SET @x = 1`), a session setting

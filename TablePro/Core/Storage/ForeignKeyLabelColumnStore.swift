@@ -12,8 +12,10 @@ import Foundation
 /// setting it once for `users` is what a user means by remembering it. Device-local, so this needs
 /// no CloudKit record type.
 @MainActor
-internal final class ForeignKeyLabelColumnStore {
+internal final class ForeignKeyLabelColumnStore: TableScopedSettingsStore {
     static let shared = ForeignKeyLabelColumnStore()
+
+    private static let keyPrefix = PreferenceKeys.foreignKeyLabelColumnPrefix
 
     private let store: KeyValueStore
 
@@ -35,5 +37,33 @@ internal final class ForeignKeyLabelColumnStore {
             return
         }
         store.setDataValue(Data(name.utf8), forKey: PreferenceKeys.foreignKeyLabelColumn(scope).name)
+    }
+
+    func renameTable(from oldScope: TableScope, to newScope: TableScope) {
+        store.moveValue(
+            fromKey: PreferenceKeys.foreignKeyLabelColumn(oldScope).name,
+            toKey: PreferenceKeys.foreignKeyLabelColumn(newScope).name
+        )
+    }
+
+    func renameContainer(
+        connectionId: UUID,
+        fromDatabase: String,
+        fromSchema: String?,
+        toDatabase: String,
+        toSchema: String?
+    ) {
+        store.moveValues(
+            withPrefix: Self.keyPrefix
+                + TableScope.storagePrefix(connectionId: connectionId, database: fromDatabase, schema: fromSchema),
+            toPrefix: Self.keyPrefix
+                + TableScope.storagePrefix(connectionId: connectionId, database: toDatabase, schema: toSchema)
+        )
+    }
+
+    func purgeConnections(_ connectionIds: Set<UUID>) {
+        for connectionId in connectionIds {
+            store.removeValues(withPrefix: Self.keyPrefix + TableScope.storagePrefix(connectionId: connectionId))
+        }
     }
 }

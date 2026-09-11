@@ -55,7 +55,7 @@ struct HighlightRuleStorageTests {
         let rules = [HighlightRule(columnName: "status", value: "paid")]
         storage.setRules(rules, for: scope(table: "orders"))
 
-        storage.rename(from: scope(table: "orders"), to: scope(table: "purchases"))
+        storage.renameTable(from: scope(table: "orders"), to: scope(table: "purchases"))
 
         let reloaded = HighlightRuleStorage(storageDirectory: directory)
         #expect(reloaded.rules(for: scope(table: "orders")).isEmpty)
@@ -69,7 +69,7 @@ struct HighlightRuleStorageTests {
         storage.setRules(rules, for: scope(table: "orders"))
         storage.setRules(rules, for: scope(table: "items"))
 
-        storage.renameScope(
+        storage.renameContainer(
             connectionId: connectionId, fromDatabase: "shop", fromSchema: "public",
             toDatabase: "shop", toSchema: "sales"
         )
@@ -84,10 +84,24 @@ struct HighlightRuleStorageTests {
         let storage = HighlightRuleStorage(storageDirectory: directory)
         storage.setRules([HighlightRule(columnName: "status", value: "paid")], for: scope(table: "orders"))
 
-        storage.removeRules(for: [connectionId])
+        storage.purgeConnections([connectionId])
 
         #expect(storage.rules(for: scope(table: "orders")).isEmpty)
         #expect(!FileManager.default.fileExists(atPath: fileURL.path))
+    }
+
+    @Test("Deleting a connection removes a set-aside unreadable file too")
+    func purgeRemovesUnreadableFile() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("{ not json".utf8).write(to: fileURL)
+        let storage = HighlightRuleStorage(storageDirectory: directory)
+        _ = storage.rules(for: scope(table: "orders"))
+        let preserved = directory.appendingPathComponent("\(connectionId.uuidString).unreadable.json")
+        #expect(FileManager.default.fileExists(atPath: preserved.path))
+
+        storage.purgeConnections([connectionId])
+
+        #expect(!FileManager.default.fileExists(atPath: preserved.path))
     }
 
     @Test("Every change moves the observed revision")

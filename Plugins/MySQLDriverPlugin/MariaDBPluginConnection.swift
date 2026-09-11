@@ -45,38 +45,6 @@ struct MariaDBPluginQueryResult {
     var firstRowTime: TimeInterval?
 }
 
-// MARK: - SSL Configuration
-
-// MARK: - Type Mapping
-
-func mysqlTypeToString(_ fieldPtr: UnsafePointer<MYSQL_FIELD>) -> String {
-    let field = fieldPtr.pointee
-    let flags = UInt(field.flags)
-    let length = field.length
-
-    // MariaDB extended metadata: detect JSON stored as LONGTEXT.
-    // `MARIADB_CONST_STRING` is length-prefixed (not null-terminated), so we must read
-    // exactly `attr.length` bytes. `String(cString:)` would scan past the buffer into
-    // adjacent memory and intermittently fail the comparison when that memory is non-zero.
-    var attr = MARIADB_CONST_STRING()
-    if mariadb_field_attr(&attr, fieldPtr, MARIADB_FIELD_ATTR_FORMAT_NAME) == 0,
-       let str = attr.str, attr.length > 0,
-       let value = String(data: Data(bytes: str, count: Int(attr.length)), encoding: .utf8),
-       value == "json" {
-        return "JSON"
-    }
-
-    if (flags & mysqlEnumFlag) != 0 { return "ENUM" }
-    if (flags & mysqlSetFlag) != 0 { return "SET" }
-
-    return mariaDBTypeName(
-        typeRaw: field.type.rawValue,
-        flags: flags,
-        charsetnr: field.charsetnr,
-        length: field.length
-    )
-}
-
 // MARK: - Connection Class
 
 final class MariaDBPluginConnection: @unchecked Sendable {
@@ -318,40 +286,12 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             }
         }
 
-        if result == nil {
+        guard result != nil, MariaDBCharacterSet.establishSession(on: mysql, encoding: connectionEncoding) else {
             let error = readError(from: mysql)
             mysql_close(mysql)
             throw error
         }
-        do {
-            try establishSessionCharacterSet(on: mysql)
-        } catch {
-            mysql_close(mysql)
-            throw error
-        }
         return mysql
-    }
-
-    private func establishSessionCharacterSet(on mysql: UnsafeMutablePointer<MYSQL>) throws {
-        if mysql_set_character_set(mysql, MySQLConnectionEncoding.sessionCharacterSetName) != 0 {
-            let refusal = errorMessage(from: mysql)
-            if runSessionStatement(MySQLConnectionEncoding.sessionFallbackStatement, on: mysql) {
-                logger.notice("Server refused utf8mb4 (\(refusal, privacy: .public)), so the session uses utf8")
-            } else {
-                logger.warning("Server refused a UTF-8 session (\(refusal, privacy: .public)); keeping its own")
-            }
-        }
-        for statement in connectionEncoding.sessionStatements where !runSessionStatement(statement, on: mysql) {
-            throw readError(from: mysql)
-        }
-    }
-
-    private func runSessionStatement(_ statement: String, on mysql: UnsafeMutablePointer<MYSQL>) -> Bool {
-        let status = statement.withCString { mysql_real_query(mysql, $0, UInt(strlen($0))) }
-        if let discarded = mysql_store_result(mysql) {
-            mysql_free_result(discarded)
-        }
-        return status == 0
     }
 
     private func readError(from mysql: UnsafeMutablePointer<MYSQL>) -> MariaDBPluginError {
@@ -622,7 +562,12 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
 
         let sessionFlavor = flavor
-        let columns = describeColumns(mysql_fetch_fields(resultPtr), count: Int(mysql_num_fields(resultPtr)))
+        let columns = MariaDBCharacterSet.describeColumns(
+            of: mysql_fetch_fields(resultPtr),
+            count: Int(mysql_num_fields(resultPtr)),
+            encoding: connectionEncoding,
+            flavor: sessionFlavor
+        )
 
         var rows: [[PluginCellValue]] = []
         rows.reserveCapacity(min(1_000, PluginRowLimits.emergencyMax))
@@ -970,7 +915,12 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             mysql_free_result(metadata)
         }
 
-        let columns = describeColumns(mysql_fetch_fields(metadata), count: Int(mysql_num_fields(metadata)))
+        let columns = MariaDBCharacterSet.describeColumns(
+            of: mysql_fetch_fields(metadata),
+            count: Int(mysql_num_fields(metadata)),
+            encoding: connectionEncoding,
+            flavor: flavor
+        )
 
         let fetchResult = try fetchResultSet(
             from: stmt, metadata: metadata,
@@ -1037,9 +987,11 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                     return
                 }
 
-                let columns = describeColumns(
-                    mysql_fetch_fields(resultPtr),
-                    count: Int(mysql_num_fields(resultPtr))
+                let columns = MariaDBCharacterSet.describeColumns(
+                    of: mysql_fetch_fields(resultPtr),
+                    count: Int(mysql_num_fields(resultPtr)),
+                    encoding: connectionEncoding,
+                    flavor: flavor
                 )
 
                 continuation.yield(.header(PluginStreamHeader(
@@ -1117,48 +1069,6 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private func sqlState(_ state: UnsafePointer<CChar>?) -> String? {
         guard let state, state[0] != 0 else { return nil }
         return String(cString: state)
-    }
-
-    private func describeColumns(_ fields: UnsafeMutablePointer<MYSQL_FIELD>?, count: Int) -> MySQLResultColumns {
-        var columns = MySQLResultColumns()
-        guard let fields else { return columns }
-        let sessionFlavor = flavor
-        for index in 0..<count {
-            let field = fields[index]
-            let flags = UInt(field.flags)
-            let decoding = MySQLColumnDecoding(
-                typeRaw: field.type.rawValue,
-                length: field.length,
-                charsetnr: field.charsetnr,
-                characterSetName: Self.characterSetName(forCollation: field.charsetnr),
-                flavor: sessionFlavor
-            )
-            columns.append(
-                name: columnName(of: field, at: index),
-                typeCode: Self.typeCode(of: field, flags: flags),
-                typeName: decoding == .databendBoolean ? DatabendResultShape.booleanTypeName : mysqlTypeToString(fields + index),
-                decoding: decoding,
-                flags: flags
-            )
-        }
-        return columns
-    }
-
-    private func columnName(of field: MYSQL_FIELD, at index: Int) -> String {
-        guard let name = field.name else { return "column_\(index)" }
-        let bytes = UnsafeRawBufferPointer(start: name, count: strnlen(name, Int(field.name_length)))
-        return mysqlSessionText(bytes, encoding: connectionEncoding)
-    }
-
-    private static func typeCode(of field: MYSQL_FIELD, flags: UInt) -> UInt32 {
-        if (flags & mysqlSetFlag) != 0 { return 248 }
-        if (flags & mysqlEnumFlag) != 0 { return 247 }
-        return field.type.rawValue
-    }
-
-    private static func characterSetName(forCollation collation: UInt32) -> String? {
-        guard let info = mariadb_get_charset_by_nr(collation), let name = info.pointee.csname else { return nil }
-        return String(cString: name)
     }
 
     private func textProtocolRow(

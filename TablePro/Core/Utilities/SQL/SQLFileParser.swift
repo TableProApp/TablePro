@@ -417,31 +417,6 @@ final class SQLFileParser: Sendable {
         return StepResult(advanced: true, deferred: false)
     }
 
-    private static func decodeChunkOrCarryTail(
-        rawData: Data,
-        pendingTail: inout Data,
-        encoding: String.Encoding
-    ) -> String? {
-        var data = pendingTail
-        data.append(rawData)
-        pendingTail.removeAll(keepingCapacity: true)
-
-        if let decoded = String(data: data, encoding: encoding) {
-            return decoded
-        }
-
-        guard encoding == .utf8 else { return nil }
-
-        for trim in 1...3 where data.count > trim {
-            let head = data.prefix(data.count - trim)
-            if let decoded = String(data: head, encoding: .utf8) {
-                pendingTail = Data(data.suffix(trim))
-                return decoded
-            }
-        }
-        return nil
-    }
-
     func parseFile(
         url: URL,
         encoding: String.Encoding,
@@ -463,7 +438,7 @@ final class SQLFileParser: Sendable {
         private var fileHandle: FileHandle?
         private var ctx: ParserContext
         private let nsBuffer = NSMutableString()
-        private var pendingTail = Data()
+        private var decoder: SQLChunkDecoder
         private var emitIndex = 0
         private var finished = false
 
@@ -471,6 +446,7 @@ final class SQLFileParser: Sendable {
             self.url = url
             self.encoding = encoding
             self.dialect = dialect
+            self.decoder = SQLChunkDecoder(encoding: encoding)
             self.ctx = ParserContext(
                 dialect: dialect,
                 currentStatement: countOnly ? nil : NSMutableString()
@@ -515,7 +491,7 @@ final class SQLFileParser: Sendable {
             let handle = try openFileIfNeeded()
             let rawData = handle.readData(ofLength: chunkSize)
 
-            if rawData.isEmpty && pendingTail.isEmpty {
+            if rawData.isEmpty && !decoder.hasPendingBytes {
                 emitTrailingStatement()
                 finished = true
                 closeFile()
@@ -523,15 +499,13 @@ final class SQLFileParser: Sendable {
             }
 
             let isFinalChunk = rawData.isEmpty
-            guard let chunk = SQLFileParser.decodeChunkOrCarryTail(
-                rawData: rawData, pendingTail: &pendingTail, encoding: encoding
-            ) else {
+            guard let chunk = decoder.decode(rawData) else {
                 throw DecompressionError.fileReadFailed(
                     "Failed to decode file with \(encoding.description) encoding"
                 )
             }
 
-            if isFinalChunk && !pendingTail.isEmpty {
+            if isFinalChunk && decoder.hasPendingBytes {
                 throw DecompressionError.fileReadFailed(
                     "Trailing bytes did not form a valid \(encoding.description) sequence at end of file"
                 )

@@ -6,15 +6,15 @@
 import Foundation
 import TableProPluginKit
 
-internal let mysqlNotNullFlag: UInt = 0x0001
-internal let mysqlPriKeyFlag: UInt = 0x0002
-internal let mysqlBinaryFlag: UInt = 0x0080
-internal let mysqlEnumFlag: UInt = 0x0100
-internal let mysqlAutoIncrementFlag: UInt = 0x0200
-internal let mysqlSetFlag: UInt = 0x0800
-internal let mysqlBinaryCharset: UInt32 = 63
+nonisolated internal let mysqlNotNullFlag: UInt = 0x0001
+nonisolated internal let mysqlPriKeyFlag: UInt = 0x0002
+nonisolated internal let mysqlBinaryFlag: UInt = 0x0080
+nonisolated internal let mysqlEnumFlag: UInt = 0x0100
+nonisolated internal let mysqlAutoIncrementFlag: UInt = 0x0200
+nonisolated internal let mysqlSetFlag: UInt = 0x0800
+nonisolated internal let mysqlBinaryCharset: UInt32 = 63
 
-internal func makeColumnMeta(name: String, typeName: String, flags: UInt) -> PluginColumnInfo {
+nonisolated internal func makeColumnMeta(name: String, typeName: String, flags: UInt) -> PluginColumnInfo {
     PluginColumnInfo(
         name: name,
         dataType: typeName,
@@ -24,7 +24,7 @@ internal func makeColumnMeta(name: String, typeName: String, flags: UInt) -> Plu
     )
 }
 
-internal func mariaDBTypeName(
+nonisolated internal func mariaDBTypeName(
     typeRaw: UInt32,
     flags: UInt,
     charsetnr: UInt32,

@@ -43,18 +43,18 @@ Custom themes get color wells here. A built-in or registry theme shows a lock an
 |-------|----------|
 | Editor | Background, text, cursor, current line, selection, line number, invisibles |
 | Syntax Colors | Keyword, string, number, comment, NULL, operator, function, type |
-| Data Grid | Background, text, alternate row, NULL value, bool true/false, row number, modified/inserted/deleted rows, deleted text, focus border |
+| Data Grid | Background, text, alternate row, NULL value, bool true/false, row number, modified/inserted/deleted rows, deleted text |
 | Interface | Window, control, and card backgrounds, border, primary/secondary/tertiary text, selection, hover |
 | Status Colors | Success, warning, error, info |
 | Badges | Badge background, primary key, auto increment |
 | Sidebar | Background, text, selected item, hover, section header |
 | Toolbar | Secondary and tertiary text |
 
-Interface, Sidebar, and Toolbar colors sit on macOS system colors until you override one, which is why an untouched theme follows your system accent color. An overridden well grows a reset button that puts the system color back.
+Interface, Sidebar, and Toolbar colors sit on macOS system colors until you override one, which is why an untouched theme follows your system accent color. So do the grid's background, text, alternate row, NULL value, and row number. Bool true and false show in the grid's text color until you set them. An overridden well grows a reset button that puts the system color back.
 
 ## Theme files
 
-A theme is one JSON file. **Export…** in the gear menu writes the active theme with every key filled in, which is the shortest way to start a new one; **Import…** in the **+** menu reads one back into `~/Library/Application Support/TablePro/Themes/`. Community themes install from the [registry](/features/plugins) under **Settings > Plugins > Browse**, Themes category.
+A theme is one JSON file. **Export…** in the gear menu writes every color the active theme sets, which is the shortest way to start a new one; **Import…** in the **+** menu reads one back into `~/Library/Application Support/TablePro/Themes/`. Community themes install from the [registry](/features/plugins) under **Settings > Plugins > Browse**, Themes category.
 
 | Key | Holds |
 |-----|-------|
@@ -86,7 +86,7 @@ A theme is one JSON file. **Export…** in the gear menu writes the active theme
 
 Colors are sRGB hex, `#RRGGBB` or `#RRGGBBAA` for a translucent overlay such as a selection band. A value that is neither renders as the system label color, which is how a typo shows up.
 
-Every key is optional. A group you leave out falls back to Default Light, and a color left out of `ui`, `sidebar`, or `toolbar` is the macOS system color rather than a fixed value.
+Every key is optional. A group you leave out falls back to Default Light. A color left out of `ui`, `sidebar`, or `toolbar` is the macOS system color rather than a fixed value, and so is a `dataGrid` `background`, `text`, `alternateRow`, `nullValue`, or `rowNumber`. A missing `boolTrue` or `boolFalse` uses the grid's text color.
 
 ## Connection colors
 

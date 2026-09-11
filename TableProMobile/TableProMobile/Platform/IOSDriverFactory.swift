@@ -41,7 +41,8 @@ nonisolated final class IOSDriverFactory: DriverFactory {
                 password: password ?? "",
                 database: connection.database,
                 ssl: try ssl(for: connection),
-                databaseType: connection.type
+                databaseType: connection.type,
+                connectionEncoding: MySQLConnectionEncoding(additionalFields: connection.additionalFields)
             )
         case .postgresql, .redshift:
             return PostgreSQLDriver(

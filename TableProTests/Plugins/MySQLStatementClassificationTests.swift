@@ -111,4 +111,40 @@ struct MySQLReplaySafetyTests {
         #expect(mysqlStatementIsSafeToReplay("SELECT *\n  FROM users\n  FOR   UPDATE") == false)
         #expect(mysqlStatementIsSafeToReplay("SELECT NEXT\n VALUE\tFOR order_seq") == false)
     }
+
+    private func footprint(after statements: String...) -> MySQLSessionFootprint {
+        var footprint = MySQLSessionFootprint()
+        for statement in statements {
+            footprint.observe(statement)
+        }
+        return footprint
+    }
+
+    /// The session that replaces a dropped one is a new one, and the statement is answered from
+    /// it. Measured on MySQL 8.4.11: `SELECT @probe` came back `NULL` where it had come back 42,
+    /// with nothing raised. A replay is therefore only for a session holding nothing.
+    @Test("A read is replayed only on a session that holds nothing")
+    func replayNeedsACleanSession() {
+        #expect(mysqlMayReplay("SELECT * FROM users", on: footprint(after: "SELECT 1")))
+
+        for statement in [
+            "SET @total = 5",
+            "SET SESSION sql_mode = 'ANSI'",
+            "CREATE TEMPORARY TABLE staging (a INT)",
+            "PREPARE stmt FROM 'SELECT 1'",
+            "LOCK TABLES users WRITE",
+            "USE reporting",
+            "BEGIN",
+            "CALL rebuild_report()",
+            "/*!40103 SET TIME_ZONE='+00:00' */",
+        ] {
+            #expect(!mysqlMayReplay("SELECT * FROM users", on: footprint(after: statement)), "\(statement)")
+        }
+    }
+
+    @Test("A statement that is unsafe on its own is not replayed on a clean session either")
+    func replayStillNeedsASafeStatement() {
+        #expect(!mysqlMayReplay("UPDATE users SET name = 'a'", on: MySQLSessionFootprint()))
+        #expect(!mysqlMayReplay("SELECT GET_LOCK('job', 10)", on: MySQLSessionFootprint()))
+    }
 }

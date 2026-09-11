@@ -142,7 +142,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         let writer = try SQLExportFileWriter(
             destination: actualDestination,
             splitSizeMegabytes: splitSize,
-            encodingDeclaration: .forDialect(SqlDialect.from(databaseTypeId: dataSource.databaseTypeId))
+            encodingDeclaration: .forDatabaseType(dataSource.databaseTypeId)
         )
         var committed = false
         defer {

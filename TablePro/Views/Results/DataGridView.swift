@@ -138,6 +138,7 @@ struct DataGridView: NSViewRepresentable {
         tableView.intercellSpacing = NSSize(width: 1, height: 0)
         tableView.rowHeight = CGFloat(settings.rowHeight.rawValue)
         tableView.usesAutomaticRowHeights = false
+        DataGridBodyChrome.applyBackground(to: tableView)
 
         tableView.delegate = context.coordinator
         tableView.dataSource = context.coordinator

@@ -11,14 +11,10 @@ extension PostgreSQLPluginDriver {
         let safeSchema = escapeStringLiteral(schema ?? core.currentSchema)
         let safeTable = escapeStringLiteral(table)
         let catalog = try await fetchTypeCatalog()
-        let projections = columnProjections()
         let query = PostgreSQLSchemaQueries.columnsQuery(
             schemaLiteral: safeSchema,
             tableLiteral: safeTable,
-            identityProjection: projections.identity,
-            generatedProjection: projections.generated,
-            generationExpressionProjection: projections.generationExpression,
-            attributeJoin: projections.attributeJoin
+            capabilities: versionedCapabilities
         )
         let result = try await execute(query: query)
         return result.rows.compactMap { row in
@@ -29,14 +25,10 @@ extension PostgreSQLPluginDriver {
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let safeSchema = escapeStringLiteral(schema ?? core.currentSchema)
         let catalog = try await fetchTypeCatalog()
-        let projections = columnProjections()
         let query = PostgreSQLSchemaQueries.columnsQuery(
             schemaLiteral: safeSchema,
             tableLiteral: nil,
-            identityProjection: projections.identity,
-            generatedProjection: projections.generated,
-            generationExpressionProjection: projections.generationExpression,
-            attributeJoin: projections.attributeJoin
+            capabilities: versionedCapabilities
         )
         let result = try await execute(query: query)
         var allColumns: [String: [PluginColumnInfo]] = [:]
@@ -70,21 +62,6 @@ extension PostgreSQLPluginDriver {
                 isValidated: row[safe: 2]?.asText?.lowercased() != "f"
             )
         }
-    }
-
-    private func columnProjections()
-        -> (identity: String, generated: String, generationExpression: String, attributeJoin: String) {
-        let caps = versionedCapabilities
-        let identity = caps.hasIdentityColumns ? "a.attidentity" : "NULL::text"
-        let generated = caps.hasGeneratedColumns ? "a.attgenerated" : "NULL::text"
-        let attributeJoin = (caps.hasIdentityColumns || caps.hasGeneratedColumns) ? """
-            LEFT JOIN pg_catalog.pg_attribute a
-                ON a.attrelid = st.relid
-                AND a.attname = c.column_name
-                AND NOT a.attisdropped
-            """ : ""
-        let generationExpression = caps.hasGeneratedColumns ? "c.generation_expression" : "NULL::text"
-        return (identity, generated, generationExpression, attributeJoin)
     }
 
     fileprivate func fetchEnumLabelMap() async throws -> [String: [String]] {

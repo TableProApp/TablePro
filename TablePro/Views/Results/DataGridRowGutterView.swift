@@ -152,7 +152,7 @@ final class DataGridRowGutterView: NSView {
                 band.row + pageOffset + 1,
                 in: NSRect(x: cellFrame.minX, y: stripRect.minY, width: cellFrame.width, height: stripRect.height),
                 font: font,
-                color: numberColor(isSelected: isSelected, emphasized: emphasized, state: state)
+                color: numberColor(isSelected: isSelected, emphasized: emphasized, state: state, coordinator: coordinator)
             )
         }
 
@@ -182,10 +182,14 @@ final class DataGridRowGutterView: NSView {
         return layers
     }
 
-    private func numberColor(isSelected: Bool, emphasized: Bool, state: RowVisualState) -> NSColor {
+    private func numberColor(
+        isSelected: Bool,
+        emphasized: Bool,
+        state: RowVisualState,
+        coordinator: TableViewCoordinator
+    ) -> NSColor {
         if isSelected, emphasized { return .alternateSelectedControlTextColor }
-        if state.isDeleted { return ThemeEngine.shared.colors.dataGrid.deletedText }
-        return .secondaryLabelColor
+        return coordinator.cellRegistry.rowNumberColor(for: state)
     }
 
     /// Right-aligned inside the cell frame AppKit gives the mounted row-number cell, with the insets

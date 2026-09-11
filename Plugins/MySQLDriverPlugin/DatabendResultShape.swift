@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-internal enum DatabendResultShape {
+nonisolated internal enum DatabendResultShape {
     static let booleanTypeName = "BOOLEAN"
 
     private static let shortFieldType: UInt32 = 2
