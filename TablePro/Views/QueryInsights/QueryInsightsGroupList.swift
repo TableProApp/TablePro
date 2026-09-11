@@ -46,7 +46,7 @@ struct QueryInsightsGroupList: View {
                     .foregroundStyle(.secondary)
 
                 if let error = group.latestErrorMessage, case .failures = metric {
-                    Text(error)
+                    RevealedTextView(error)
                         .font(.caption)
                         .foregroundStyle(.orange)
                         .lineLimit(2)

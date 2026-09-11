@@ -309,7 +309,7 @@ internal struct DatabaseEndpointPicker: View {
         ContentUnavailableView {
             Label("Cannot Read This Connection", systemImage: "exclamationmark.triangle")
         } description: {
-            Text(message)
+            RevealedTextView(message)
         } actions: {
             Button("Try Again") {
                 Task { await retry() }

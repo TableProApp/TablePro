@@ -43,7 +43,7 @@ struct UsersRolesTabView: View {
         ) { _ in
             Button(String(localized: "OK"), role: .cancel) { viewModel.actionError = nil }
         } message: { message in
-            Text(message)
+            Text(verbatim: RevealedText(message).plainText)
         }
         .onAppear { install() }
         .onDisappear { teardown() }

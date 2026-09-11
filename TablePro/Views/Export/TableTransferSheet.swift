@@ -157,7 +157,7 @@ struct TableTransferSheet: View {
                 .toggleStyle(.checkbox)
 
             if let errorMessage {
-                Text(errorMessage)
+                RevealedTextView(errorMessage)
                     .font(.subheadline)
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)

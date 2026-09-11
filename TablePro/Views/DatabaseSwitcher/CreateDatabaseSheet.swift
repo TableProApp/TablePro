@@ -96,7 +96,7 @@ struct CreateDatabaseSheet: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(String(localized: "Failed to load options"))
                 .font(.body.weight(.medium))
-            Text(message)
+            RevealedTextView(message)
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Button(String(localized: "Retry")) {
@@ -110,7 +110,7 @@ struct CreateDatabaseSheet: View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
-            Text(message)
+            RevealedTextView(message)
                 .font(.callout)
                 .foregroundStyle(.primary)
                 .lineLimit(2)

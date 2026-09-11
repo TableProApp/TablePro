@@ -76,7 +76,7 @@ internal struct CopyObjectsListView: View {
             ContentUnavailableView {
                 Label("Cannot Read the Source", systemImage: "exclamationmark.triangle")
             } description: {
-                Text(message)
+                RevealedTextView(message)
             } actions: {
                 Button("Try Again") { Task { await session.loadObjects() } }
             }

@@ -68,7 +68,7 @@ internal struct CompareProgressView: View {
 
     private func messageLabel(_ text: String, systemImage: String, tint: Color) -> some View {
         Label {
-            Text(text)
+            RevealedTextView(text)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
         } icon: {
@@ -146,7 +146,7 @@ internal struct CompareMessageBanner: View {
     ) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Label {
-                Text(text)
+                RevealedTextView(text)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             } icon: {

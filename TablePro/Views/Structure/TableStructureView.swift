@@ -590,7 +590,7 @@ struct TableStructureView: View {
                 .font(.largeTitle)
                 .foregroundStyle(.orange)
                 .accessibilityHidden(true)
-            Text(message)
+            RevealedTextView(message)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

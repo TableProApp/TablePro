@@ -117,7 +117,7 @@ struct TriggerDetailView: View {
         ) {
             Button(String(localized: "OK"), role: .cancel) { actionError = nil }
         } message: {
-            Text(actionError ?? "")
+            Text(verbatim: RevealedText(actionError ?? "").plainText)
         }
     }
 

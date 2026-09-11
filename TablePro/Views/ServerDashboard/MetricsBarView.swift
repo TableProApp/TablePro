@@ -11,9 +11,13 @@ struct MetricsBarView: View {
                     .font(.headline)
                 Spacer()
                 if let error {
-                    Label(error, systemImage: "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundStyle(.red)
+                    Label {
+                        RevealedTextView(error)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.red)
                 }
             }
             .padding(.horizontal, 12)

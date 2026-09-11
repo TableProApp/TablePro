@@ -23,7 +23,7 @@ struct InlineErrorBanner: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)
             ScrollView(.vertical) {
-                Text(message)
+                RevealedTextView(message)
                     .font(.subheadline)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)

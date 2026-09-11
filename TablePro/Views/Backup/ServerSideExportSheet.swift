@@ -154,7 +154,7 @@ struct ServerSideExportSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let errorMessage {
-                Text(errorMessage)
+                RevealedTextView(errorMessage)
                     .font(.subheadline)
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)

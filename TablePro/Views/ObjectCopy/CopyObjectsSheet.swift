@@ -109,12 +109,16 @@ internal struct CopyObjectsSheet: View {
             /// A driver's message is the only account of what went wrong, and it is routinely
             /// longer than two lines, so it stays selectable and reachable in full from the
             /// pointer rather than being truncated into something nobody can act on.
-            Label(message, systemImage: "exclamationmark.triangle")
-                .font(.callout)
-                .foregroundStyle(.red)
-                .lineLimit(2)
-                .textSelection(.enabled)
-                .help(message)
+            Label {
+                RevealedTextView(message)
+            } icon: {
+                Image(systemName: "exclamationmark.triangle")
+            }
+            .font(.callout)
+            .foregroundStyle(.red)
+            .lineLimit(2)
+            .textSelection(.enabled)
+            .help(RevealedText(message).plainText)
         } else if session.step == .configuring, let reason = session.reviewDisabledReason {
             Text(reason)
                 .font(.callout)

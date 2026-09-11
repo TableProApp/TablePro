@@ -16,6 +16,14 @@ public struct ClassifiedSpecialCharacter: Equatable, Sendable {
     public let scalar: Unicode.Scalar
 }
 
+public extension ClassifiedSpecialCharacter {
+    var name: String {
+        SpecialCharacter.controlName(for: scalar.value)
+            ?? scalar.properties.name?.lowercased()
+            ?? String(format: "U+%04X", scalar.value)
+    }
+}
+
 public extension SpecialCharacter {
     static func classify(in string: NSString, at index: Int) -> ClassifiedSpecialCharacter? {
         guard index >= 0, index < string.length else { return nil }
@@ -73,6 +81,26 @@ private extension SpecialCharacter {
     static let c1Labels: [String] = [
         "PAD", "HOP", "BPH", "NBH", "IND", "NEL", "SSA", "ESA", "HTS", "HTJ", "VTS", "PLD", "PLU", "RI", "SS2", "SS3",
         "DCS", "PU1", "PU2", "STS", "CCH", "MW", "SPA", "EPA", "SOS", "SGC", "SCI", "CSI", "ST", "OSC", "PM", "APC"
+    ]
+
+    static let controlNames: [String] = [
+        "null", "start of heading", "start of text", "end of text", "end of transmission", "enquiry",
+        "acknowledge", "bell", "backspace", "horizontal tabulation", "line feed", "vertical tabulation",
+        "form feed", "carriage return", "shift out", "shift in", "data link escape", "device control one",
+        "device control two", "device control three", "device control four", "negative acknowledge",
+        "synchronous idle", "end of transmission block", "cancel", "end of medium", "substitute", "escape",
+        "file separator", "group separator", "record separator", "unit separator"
+    ]
+
+    static let c1Names: [String] = [
+        "padding character", "high octet preset", "break permitted here", "no break here", "index", "next line",
+        "start of selected area", "end of selected area", "horizontal tabulation set",
+        "horizontal tabulation with justification", "vertical tabulation set", "partial line down",
+        "partial line up", "reverse index", "single shift two", "single shift three", "device control string",
+        "private use one", "private use two", "set transmit state", "cancel character", "message waiting",
+        "start of protected area", "end of protected area", "start of string",
+        "single graphic character introducer", "single character introducer", "control sequence introducer",
+        "string terminator", "operating system command", "privacy message", "application program command"
     ]
 
     static let formatLabels: [UInt32: String] = [
@@ -145,6 +173,19 @@ private extension SpecialCharacter {
             return c1Labels[Int(value - 0x80)]
         default:
             return hexLabel(for: value)
+        }
+    }
+
+    static func controlName(for value: UInt32) -> String? {
+        switch value {
+        case 0x00...0x1F:
+            return controlNames[Int(value)]
+        case 0x7F:
+            return "delete"
+        case 0x80...0x9F:
+            return c1Names[Int(value - 0x80)]
+        default:
+            return nil
         }
     }
 

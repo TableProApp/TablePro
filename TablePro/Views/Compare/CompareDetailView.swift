@@ -81,7 +81,7 @@ internal struct CompareDefinitionsPane: View {
         VStack(alignment: .leading, spacing: 16) {
             if let error = result.comparisonError {
                 Label {
-                    Text(error)
+                    RevealedTextView(error)
                         .textSelection(.enabled)
                 } icon: {
                     Image(systemName: "exclamationmark.triangle.fill")

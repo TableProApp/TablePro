@@ -23,6 +23,30 @@ struct SpecialCharacterTests {
     }
 
     @Test(
+        "A control is named by what it does and every other character by its Unicode name",
+        arguments: [
+            ("\u{0}", "null"), ("\u{8}", "backspace"), ("\u{1B}", "escape"), ("\u{1F}", "unit separator"),
+            ("\u{7F}", "delete"), ("\u{80}", "padding character"), ("\u{85}", "next line"),
+            ("\u{9B}", "control sequence introducer"), ("\u{9F}", "application program command"),
+            ("\u{A0}", "no-break space"), ("\u{200B}", "zero width space"), ("\u{202E}", "right-to-left override"),
+            ("\u{E0001}", "language tag")
+        ]
+    )
+    func names(text: String, name: String) {
+        #expect(SpecialCharacter.classify(in: text as NSString, at: 0)?.name == name)
+    }
+
+    @Test("Every control the classifier marks has a name of its own")
+    func everyControlIsNamed() {
+        for value in UInt32(0)...0x9F {
+            guard let scalar = Unicode.Scalar(value),
+                  let classified = SpecialCharacter.classify(in: String(Character(scalar)) as NSString, at: 0),
+                  case .marker = classified.character else { continue }
+            #expect(!classified.name.isEmpty && !classified.name.hasPrefix("U+"), "U+\(String(value, radix: 16))")
+        }
+    }
+
+    @Test(
         "Spaces that draw as an ordinary blank are outlined",
         arguments: ["\u{A0}", "\u{2002}", "\u{200A}", "\u{202F}", "\u{205F}", "\u{3000}"]
     )

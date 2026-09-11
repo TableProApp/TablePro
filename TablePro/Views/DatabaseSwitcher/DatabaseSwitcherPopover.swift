@@ -390,7 +390,7 @@ struct DatabaseSwitcherPopover: View {
                 .foregroundStyle(.orange)
             Text(String(format: String(localized: "Failed to load %@"), containerNamePlural.lowercased()))
                 .font(.callout.weight(.medium))
-            Text(message)
+            RevealedTextView(message)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

@@ -162,7 +162,9 @@ Choose **Query > Remove Invisible Characters** to clean a query. With nothing se
 
 A statement containing a NUL character is not sent to the database. Remove the character and run it again.
 
-To hide the marks in the editor, turn off **Show invisible characters** in **Settings > Editor**. Read-only views, such as the AI assistant's code blocks, always show them.
+A database often quotes the offending character back in its error message. Error messages show each marked character as its short name in angle brackets, so SQLite's reply to a stray backspace reads `unrecognized token: "<BS>"`. The error banner, query history and the other panes that show a database error also color the name orange and tint a special space. In an error alert, a special space shows as an ordinary space. The banner's copy button copies the database's text as it arrived, for a search or a bug report.
+
+To hide the marks in the editor, turn off **Show invisible characters** in **Settings > Editor**. Read-only views, such as the AI assistant's code blocks, and error messages always show them.
 
 ## AI assistance
 

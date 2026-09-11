@@ -60,11 +60,15 @@ struct TriggerEditorView: View {
             )
             if let errorMessage {
                 Divider()
-                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
-                    .font(.callout)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(8)
+                Label {
+                    RevealedTextView(errorMessage)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                }
+                .foregroundStyle(.red)
+                .font(.callout)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(8)
             }
         }
         .frame(minWidth: 560, idealWidth: 680, minHeight: 360, idealHeight: 460)

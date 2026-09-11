@@ -89,6 +89,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connecting removing a plugin that failed to load, and its settings, when no replacement could be downloaded.
 - Disabled plugin's code loaded when a connection looked up its driver.
 - Failed connect from an opened file or URL titled "Disconnected", with Reconnect as its only fix.
+- Database error messages hiding invisible characters, such as a backspace quoted back from a query. (#2717)
 - Connection Failed alert covering the window that already showed the same failure.
 - Invisible control characters typed into a query by an input method or a Control-key chord such as Ctrl+Option+H. (#2717)
 - Statement with a NUL character running only up to it on SQLite and PostgreSQL, dropping its WHERE clause. (#2717)
