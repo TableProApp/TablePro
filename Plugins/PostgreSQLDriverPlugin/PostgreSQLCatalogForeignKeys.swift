@@ -1,7 +1,7 @@
 import Foundation
 import TableProPluginKit
 
-enum PostgreSQLCatalogForeignKeys {
+nonisolated enum PostgreSQLCatalogForeignKeys {
     static let constraintParentMinimumServerVersion: Int32 = 110_000
 
     enum Column: Int, CaseIterable {
@@ -93,7 +93,7 @@ enum PostgreSQLCatalogForeignKeys {
     }
 }
 
-private struct CatalogKeyRow {
+nonisolated private struct CatalogKeyRow {
     let constraintIdentity: String
     let constraintName: String
     let referencedSchema: String?
@@ -144,7 +144,7 @@ private struct CatalogKeyRow {
     }
 }
 
-private struct CatalogForeignKey {
+nonisolated private struct CatalogForeignKey {
     let name: String
     let referencedSchema: String?
     let referencedTable: String
