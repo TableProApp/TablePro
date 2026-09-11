@@ -18,12 +18,14 @@ final class KeyHandlingTableView: NSTableView {
         window.makeFirstResponder(self)
     }
 
-    /// Continues the column separators past the last row.
+    /// The table's background, and the column separators continued past the last row.
     ///
-    /// A row view covers whatever the table view drew beneath it, so this reaches only the area no
-    /// row occupies, which is exactly the area the rows cannot draw. See `DataGridBodyChrome`.
+    /// A row view covers whatever the table view drew beneath it, so the separators here reach only
+    /// the area no row occupies, which is exactly the area the rows cannot draw. The background is
+    /// the grid's own rather than `super`'s, for the reason on
+    /// `DataGridBodyChrome.drawTableBackground(in:of:)`.
     override func drawBackground(inClipRect clipRect: NSRect) {
-        super.drawBackground(inClipRect: clipRect)
+        DataGridBodyChrome.drawTableBackground(in: clipRect, of: self)
         guard let coordinator else { return }
         let lastRowBottom = numberOfRows > 0 ? rect(ofRow: numberOfRows - 1).maxY : bounds.minY
         let belowRows = clipRect.intersection(
@@ -237,6 +239,10 @@ final class KeyHandlingTableView: NSTableView {
     /// `autoscroll(with:)` measures against the clip view, which the gutter does not shrink, so a
     /// drag parked over the strip never scrolls and the column under it resolves normally. The user
     /// would then be extending the selection over a column the gutter is hiding.
+    ///
+    /// Scrolled through `scroll(_:)`, which moves the header with the rows. Scrolling the clip view
+    /// and reflecting it leaves the header clip where it was, measured on macOS 27, so the headings
+    /// stop lining up with their columns.
     private func pointClearOfPinnedGutter(_ point: NSPoint) -> NSPoint {
         guard let clipView = enclosingScrollView?.contentView else { return point }
         let gutterWidth = DataGridRowGutterView.width(of: self)
@@ -245,8 +251,7 @@ final class KeyHandlingTableView: NSTableView {
         guard point.x < edge else { return point }
         let target = max(0, clipView.bounds.origin.x - gutterWidth)
         if target != clipView.bounds.origin.x {
-            clipView.scroll(to: NSPoint(x: target, y: clipView.bounds.origin.y))
-            enclosingScrollView?.reflectScrolledClipView(clipView)
+            scroll(NSPoint(x: target, y: clipView.bounds.origin.y))
             return NSPoint(x: max(point.x, target + gutterWidth), y: point.y)
         }
         return NSPoint(x: edge, y: point.y)

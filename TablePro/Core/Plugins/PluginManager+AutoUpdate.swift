@@ -276,7 +276,7 @@ extension PluginManager {
         rejectedPlugins.first { $0.isOutdated && $0.providedDatabaseTypeIds.contains(typeId) }?.reason
     }
 
-    func prepareForConnecting(to type: DatabaseType) async {
+    func prepareForConnecting(to type: DatabaseType, registryClient: RegistryClient = .shared) async throws {
         let typeId = type.pluginTypeId
         if driverPlugin(for: type) == nil, !hasFinishedInitialLoad {
             Self.logger.info("Plugin '\(typeId)' not loaded yet, waiting for background load")
@@ -286,13 +286,26 @@ extension PluginManager {
             Self.logger.info("Plugin '\(typeId)' is installed but outdated, updating it before connect")
             await ensurePluginReady(forTypeId: typeId)
         }
-        if driverPlugin(for: type) == nil, type.isDownloadablePlugin, !hasOutdatedRejectedPlugin(forTypeId: typeId) {
-            Self.logger.info("Plugin '\(typeId)' not installed, installing on demand before connect")
-            do {
-                try await installMissingPlugin(for: type) { _ in }
-            } catch {
-                Self.logger.warning("On-demand install for '\(typeId)' did not complete: \(error.localizedDescription)")
-            }
+        guard driverPlugin(for: type) == nil else { return }
+        if PluginMetadataRegistry.shared.snapshot(for: type) == nil {
+            await registryClient.ensureManifest(.ifStale)
+        }
+        let unavailability = driverUnavailability(for: type, registryManifest: registryClient.manifest)
+        guard unavailability == .notInstalled else {
+            Self.logger.info("Plugin '\(typeId, privacy: .public)' unavailable to connect: \(String(describing: unavailability), privacy: .public)")
+            return
+        }
+        Self.logger.info("Plugin '\(typeId)' not installed, installing on demand before connect")
+        do {
+            try await installMissingPlugin(for: type, registryClient: registryClient) { _ in }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            Self.logger.warning("On-demand install for '\(typeId)' did not complete: \(error.localizedDescription)")
+            throw PluginError.pluginInstallFailed(
+                databaseType: Self.registryDisplayName(of: type),
+                reason: error.localizedDescription
+            )
         }
     }
 

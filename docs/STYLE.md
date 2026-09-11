@@ -257,7 +257,7 @@ paths were wrong at once because the Database menu shipped and nobody re-checked
 never a glyph. Apple's `Command-K` is deliberately rejected: the app's own menus render `Cmd`.
 
 **Labels** are bold and never in backticks. Drop a trailing ellipsis when instructing
-(`Choose **Save as**`), keep it when the label alone is ambiguous (`**Create Connection…**`).
+(`Choose **Save as**`), keep it when the label alone is ambiguous (`**New Connection…**`).
 
 ---
 

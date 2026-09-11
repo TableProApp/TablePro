@@ -182,10 +182,14 @@ struct DatabaseManagerTunnelTests {
         #expect(DatabaseManager.shared.activeSessions[connection.id] == nil)
 
         let reason = DatabaseManager.shared.disconnectReason(for: connection.id)
-        #expect(reason?.message == "The SSH tunnel closed.")
-        #expect(reason?.failureReason?.contains("10") == true)
+        guard case .sessionLost(let info) = reason else {
+            Issue.record("An exhausted tunnel recovery is a lost session, not a failed connect: \(String(describing: reason))")
+            return
+        }
+        #expect(info.message == "The SSH tunnel closed.")
+        #expect(info.failureReason?.contains("10") == true)
 
-        let snapshot = ConnectionSessionSnapshot(exists: false, hasDriver: false, disconnectInfo: reason)
+        let snapshot = ConnectionSessionSnapshot(exists: false, hasDriver: false, endReason: reason)
         let phase = ConnectionWindowPhaseMachine.onSessionChanged(
             phase: .connecting,
             session: snapshot,

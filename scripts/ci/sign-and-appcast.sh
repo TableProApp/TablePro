@@ -20,7 +20,12 @@ if [ -z "${SPARKLE_PRIVATE_KEY:-}" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 1. Locate Sparkle tools
+# 1. Extract the same version-specific notes used by the GitHub release
+# ---------------------------------------------------------------------------
+bash "$(dirname "$0")/extract-release-notes.sh" "$VERSION"
+
+# ---------------------------------------------------------------------------
+# 2. Locate Sparkle tools
 # ---------------------------------------------------------------------------
 # Pinned and checksum-verified rather than installed from a cask that tracks latest. This step
 # holds the EdDSA private key that signs every update every user receives, so it should not run a
@@ -34,35 +39,6 @@ curl -sSLo "$SPARKLE_DIR/sparkle.tar.xz" \
 echo "$SPARKLE_SHA256  $SPARKLE_DIR/sparkle.tar.xz" | shasum -a 256 -c -
 tar xf "$SPARKLE_DIR/sparkle.tar.xz" -C "$SPARKLE_DIR"
 SPARKLE_BIN="$SPARKLE_DIR/bin"
-
-# ---------------------------------------------------------------------------
-# 2. Extract release notes from CHANGELOG.md → HTML
-# ---------------------------------------------------------------------------
-if [ -f release_notes.md ]; then
-  NOTES=$(cat release_notes.md)
-else
-  NOTES=$(awk "/^## \\[${VERSION}\\]/{flag=1; next} /^## \\[/{flag=0} flag" CHANGELOG.md)
-fi
-
-if [ -z "$NOTES" ]; then
-  RELEASE_HTML="<ul><li>Bug fixes and improvements</li></ul>"
-else
-  RELEASE_HTML=$(echo "$NOTES" | sed -E \
-    -e 's/^### (.+)$/<h3>\1<\/h3>/' \
-    -e 's/^- (.+)$/<li>\1<\/li>/' \
-    -e '/^[[:space:]]*$/d' \
-  | awk '
-    /<li>/ {
-      if (!in_list) { print "<ul>"; in_list=1 }
-      print; next
-    }
-    {
-      if (in_list) { print "</ul>"; in_list=0 }
-      print
-    }
-    END { if (in_list) print "</ul>" }
-  ')
-fi
 
 DOWNLOAD_PREFIX="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-TableProApp/TablePro}/releases/download/v${VERSION}/"
 
@@ -91,9 +67,14 @@ for arch in "${ARCHS[@]}"; do
 
   cp "$ZIP" "$STAGING/"
 
-  # Release notes file matching archive name
+  # Sparkle 2.9 renders Markdown natively, including code and links. Feeding hand-built HTML
+  # left Markdown visible and interpreted literal SQL/XML angle brackets as HTML tags.
   basename="${STAGING}/TablePro-${VERSION}-${arch}"
-  echo "$RELEASE_HTML" > "${basename}.html"
+  {
+    printf "# What's New in TablePro %s\n\n" "$VERSION"
+    cat release_notes.md
+    printf '\n[View full changelog](https://docs.tablepro.app/changelog)\n'
+  } > "${basename}.md"
 
   # Seed the generator with the feed that is actually published, so every version already in it
   # survives. The default is the checkout's own appcast.xml, which is the file as of the tag
@@ -106,6 +87,7 @@ for arch in "${ARCHS[@]}"; do
     --ed-key-file "$KEY_FILE" \
     --download-url-prefix "$DOWNLOAD_PREFIX" \
     --embed-release-notes \
+    --full-release-notes-url "https://docs.tablepro.app/changelog" \
     --maximum-versions 0 \
     "$STAGING"
 

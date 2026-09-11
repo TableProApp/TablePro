@@ -618,7 +618,7 @@ enum DatabaseDriverFactory {
         passwordOverride: String? = nil,
         awaitPlugins: Bool
     ) async throws -> DatabaseDriver {
-        await PluginManager.shared.prepareForConnecting(to: connection.type)
+        try await PluginManager.shared.prepareForConnecting(to: connection.type)
         return try await createDriverFromPlugin(for: connection, passwordOverride: passwordOverride)
     }
 
@@ -626,17 +626,8 @@ enum DatabaseDriverFactory {
         for connection: DatabaseConnection,
         passwordOverride: String? = nil
     ) async throws -> DatabaseDriver {
-        let pluginId = connection.type.pluginTypeId
         guard let plugin = PluginManager.shared.driverPlugin(for: connection.type) else {
-            if let reason = PluginManager.shared.outdatedReconcileReason(forTypeId: pluginId) {
-                throw PluginError.pluginUpdateUnavailable(reason: reason)
-            }
-            if connection.type.isDownloadablePlugin {
-                throw PluginError.pluginNotInstalled(connection.type.rawValue)
-            }
-            throw DatabaseError.connectionFailed(
-                "\(pluginId) driver plugin not loaded. The plugin may be disabled or missing from the PlugIns directory."
-            )
+            throw PluginManager.shared.driverUnavailableError(for: connection.type)
         }
         var ssl = connection.sslConfig
         var additionalFields = buildAdditionalFields(for: connection, plugin: plugin)

@@ -112,7 +112,10 @@ internal extension MainSplitViewController {
         let target = workspace.connection.flatMap { PluginManager.shared.containerSwitchTarget(for: $0.type) }
         interaction.commands = EditorTabCommands(
             activate: { [weak manager] id in manager?.selectedTabId = id },
-            keepOpen: { [weak manager] id in manager?.promotePreviewTab(id: id) },
+            keepOpen: { [weak manager] id in
+                manager?.promotePreviewTab(id: id)
+                FeatureTipSignals.tableKeptOpen()
+            },
             canKeepOpen: { [weak manager] id in manager?.canPromotePreviewTab(id: id) ?? false },
             close: { [weak workspace] id in
                 workspace?.sessionState?.coordinator.commandActions?.closeTab(id: id)

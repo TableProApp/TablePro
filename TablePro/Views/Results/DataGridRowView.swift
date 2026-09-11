@@ -206,13 +206,7 @@ class DataGridRowView: NSTableRowView {
     /// an unchanged state would ignore the theme, which is the input a theme change moves.
     func applyVisualState(_ state: RowVisualState) {
         visualState = state
-        let nextTint: NSColor? = if state.isDeleted {
-            ThemeEngine.shared.colors.dataGrid.deleted
-        } else if state.isInserted {
-            ThemeEngine.shared.colors.dataGrid.inserted
-        } else {
-            nil
-        }
+        let nextTint = state.tint
         guard !colorsEqual(rowTint, nextTint) else { return }
         rowTint = nextTint
         needsDisplay = true
@@ -377,11 +371,7 @@ class DataGridRowView: NSTableRowView {
     /// offers the same item rather than leaving the pointer with no route to a value the keyboard
     /// can already copy: the Structure tab had `Cmd+C` copying the clicked cell and no menu item
     /// for it at all.
-    internal func makeCopyItem(for event: NSEvent) -> NSMenuItem {
-        makeCopyItem(target: menuTarget(for: event))
-    }
-
-    private func makeCopyItem(target: MenuTarget) -> NSMenuItem {
+    func makeCopyItem(target: MenuTarget) -> NSMenuItem {
         let copyTarget: CopyContextTarget = switch target {
         case .cell(let dataColumn): .cell(dataColumn)
         case .row: .row

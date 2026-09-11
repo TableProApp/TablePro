@@ -14,6 +14,7 @@ private final class FakeColumnLayoutPersister: ColumnLayoutPersisting {
 
 @MainActor
 private struct GutterGrid {
+    let window: NSWindow
     let scrollView: NSScrollView
     let tableView: KeyHandlingTableView
     let coordinator: TableViewCoordinator
@@ -43,6 +44,8 @@ private struct GutterGrid {
         tableView.dataSource = coordinator
         tableView.rowHeight = 22
         tableView.allowsMultipleSelection = true
+        tableView.gridStyleMask = []
+        tableView.intercellSpacing = NSSize(width: 1, height: 0)
         tableView.headerView = NSTableHeaderView(frame: NSRect(x: 0, y: 0, width: 400, height: 28))
 
         let rowNumberColumn = DataGridView.makeRowNumberColumn()
@@ -58,6 +61,13 @@ private struct GutterGrid {
         scrollView.hasHorizontalScroller = true
         scrollView.hasVerticalScroller = true
         scrollView.documentView = tableView
+        window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = scrollView
 
         coordinator.tableView = tableView
         coordinator.rebuildColumnMetadataCache(from: tableRows)
@@ -73,13 +83,23 @@ private struct GutterGrid {
         gutter.synchronizeGeometry()
     }
 
+    /// Through `scroll(_:)`, which moves the header with the rows. Scrolling the clip view and
+    /// reflecting it moves the rows alone.
     func scrollHorizontally(to x: CGFloat) {
-        scrollView.contentView.scroll(to: NSPoint(x: x, y: scrollView.contentView.bounds.origin.y))
-        scrollView.reflectScrolledClipView(scrollView.contentView)
+        tableView.scroll(NSPoint(x: x, y: scrollView.contentView.bounds.origin.y))
         scrollView.layoutSubtreeIfNeeded()
     }
 
     var gutterWindowMinX: CGFloat { gutter.convert(gutter.bounds, to: nil).minX }
+
+    var headerClipOriginX: CGFloat? {
+        (tableView.headerView?.superview as? NSClipView)?.bounds.origin.x
+    }
+
+    /// A point the gutter's hit test receives, which is in its superview's space.
+    func pointForHitTest(_ localPoint: NSPoint) -> NSPoint? {
+        gutter.superview.map { gutter.convert(localPoint, to: $0) }
+    }
 }
 
 @Suite("Pinned row gutter")
@@ -93,20 +113,84 @@ struct DataGridRowGutterTests {
         grid.scrollHorizontally(to: 900)
         #expect(grid.gutterWindowMinX == atOrigin)
 
-        grid.scrollHorizontally(to: 2400)
+        grid.scrollHorizontally(to: 2_400)
         #expect(grid.gutterWindowMinX == atOrigin)
     }
 
-    @Test("the gutter is as wide as the row-number column it mirrors")
-    func gutterMirrorsColumnWidth() {
+    /// `column.width` is a point short of the span, and a gutter that wide drew its edge beside the
+    /// grid's own line instead of on it.
+    @Test("the gutter spans the row-number column's rect, so its edge is the first data column's")
+    func gutterSpansTheColumnRect() {
         let grid = GutterGrid()
-        let column = grid.tableView.tableColumns.first {
-            $0.identifier == ColumnIdentitySchema.rowNumberIdentifier
-        }
+        let rowNumber = grid.tableView.column(withIdentifier: ColumnIdentitySchema.rowNumberIdentifier)
+        #expect(rowNumber == 0)
+        let span = grid.tableView.rect(ofColumn: rowNumber)
 
-        #expect(column != nil)
-        #expect(grid.gutter.frame.width == column?.width)
-        #expect(grid.gutter.frame.width > 0)
+        #expect(grid.gutter.frame.width == span.width)
+        #expect(span.maxX == grid.tableView.rect(ofColumn: rowNumber + 1).minX)
+        #expect(grid.gutter.frame.width > grid.tableView.tableColumns[rowNumber].width)
+    }
+
+    @Test("a press below the last row passes through the gutter to the grid")
+    func belowTheLastRowPassesThrough() throws {
+        let grid = GutterGrid(rowCount: 3)
+        let lastRow = grid.gutter.convert(grid.tableView.rect(ofRow: 2), from: grid.tableView)
+        #expect(grid.gutter.bounds.maxY > lastRow.maxY + 30, "the gutter still reaches below the rows")
+
+        let onRow = try #require(grid.pointForHitTest(NSPoint(x: 4, y: lastRow.midY)))
+        let belowRows = try #require(grid.pointForHitTest(NSPoint(x: 4, y: lastRow.maxY + 30)))
+
+        #expect(grid.gutter.hitTest(onRow) === grid.gutter)
+        #expect(grid.gutter.hitTest(belowRows) == nil)
+    }
+
+    /// The strip is drawn chrome with no place in the accessibility tree, so AppKit's own hit test
+    /// stopped at the scroll area and a pointer over a row's number found no row at all.
+    @Test("an accessibility hit test over a pinned number finds that row's number cell, not the scroll area")
+    func accessibilityHitTestFindsTheRowNumberCell() throws {
+        let wasActive = DataGridAccessibility.isActive
+        defer { DataGridAccessibility.isActive = wasActive }
+        let grid = GutterGrid(rowCount: 3)
+        let row = try #require(firstRowUnderTheStrip(in: grid))
+        let band = grid.gutter.convert(grid.tableView.rect(ofRow: row), from: grid.tableView)
+
+        let hit = grid.gutter.accessibilityHitTest(screenPoint(x: 4, y: band.midY, in: grid)) as AnyObject?
+        let cell = grid.tableView.view(atColumn: 0, row: row, makeIfNecessary: false)
+        #expect(cell != nil)
+        #expect(hit === cell, "hit \(String(describing: hit))")
+
+        let below = grid.gutter.accessibilityHitTest(screenPoint(x: 4, y: band.maxY + 60, in: grid)) as AnyObject?
+        #expect(!(below is NSScrollView), "below the rows the hit belongs to the grid")
+    }
+
+    /// `NSTableView` keeps the row-number cell mounted at its own position however far the grid
+    /// scrolls, so past the viewport its frame is far off screen and the row is the better answer.
+    @Test("scrolled sideways, an accessibility hit test over a pinned number finds the row")
+    func accessibilityHitTestFindsTheRowWhenScrolled() throws {
+        let wasActive = DataGridAccessibility.isActive
+        defer { DataGridAccessibility.isActive = wasActive }
+        let grid = GutterGrid(rowCount: 3)
+        grid.scrollHorizontally(to: 2_400)
+        let row = try #require(firstRowUnderTheStrip(in: grid))
+        let band = grid.gutter.convert(grid.tableView.rect(ofRow: row), from: grid.tableView)
+
+        let hit = grid.gutter.accessibilityHitTest(screenPoint(x: 4, y: band.midY, in: grid)) as AnyObject?
+        let rowView = grid.tableView.rowView(atRow: row, makeIfNecessary: false)
+        #expect(rowView != nil)
+        #expect(hit === rowView, "hit \(String(describing: hit))")
+    }
+
+    /// Offscreen, the floating container sits a header's height below the table, so the strip
+    /// misses the first rows there; asking the geometry keeps the check on a row it covers.
+    private func firstRowUnderTheStrip(in grid: GutterGrid) -> Int? {
+        (0..<grid.tableView.numberOfRows).first { row in
+            let band = grid.gutter.convert(grid.tableView.rect(ofRow: row), from: grid.tableView)
+            return grid.gutter.bounds.contains(NSPoint(x: 4, y: band.midY))
+        }
+    }
+
+    private func screenPoint(x: CGFloat, y: CGFloat, in grid: GutterGrid) -> NSPoint {
+        grid.window.convertPoint(toScreen: grid.gutter.convert(NSPoint(x: x, y: y), to: nil))
     }
 
     @Test("the gutter width follows the column when the row count crosses a digit boundary")
@@ -142,7 +226,7 @@ struct GutterAwareColumnScrollTests {
     @Test("a column reached from off screen lands clear of the gutter")
     func columnLandsClearOfGutter() {
         let grid = GutterGrid()
-        grid.scrollHorizontally(to: 2400)
+        grid.scrollHorizontally(to: 2_400)
         let gutterWidth = DataGridRowGutterView.width(of: grid.tableView)
 
         let target = grid.tableView.tableColumns.count - 20
@@ -152,6 +236,19 @@ struct GutterAwareColumnScrollTests {
         let origin = grid.scrollView.contentView.bounds.origin.x
         let columnRect = grid.tableView.rect(ofColumn: target)
         #expect(columnRect.minX >= origin + gutterWidth)
+    }
+
+    /// The correction used to scroll the clip view and reflect it, which moves the rows and leaves
+    /// the header clip behind, so every heading sat as far off its column as the correction moved.
+    @Test("the header moves with the rows when a column is scrolled clear of the gutter")
+    func headerFollowsTheCorrection() {
+        let grid = GutterGrid()
+        grid.scrollHorizontally(to: 2_400)
+
+        grid.coordinator.scrollColumnToVisible(tableColumnIndex: grid.tableView.tableColumns.count - 20)
+        grid.scrollView.layoutSubtreeIfNeeded()
+
+        #expect(grid.headerClipOriginX == grid.scrollView.contentView.bounds.origin.x)
     }
 
     @Test("a column already clear of the gutter is not scrolled at all")

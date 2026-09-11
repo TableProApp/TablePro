@@ -102,65 +102,96 @@ struct DatabaseTreeFilterTests {
         #expect(result == ["sales"])
     }
 
+    private func isVisible(
+        _ schema: String,
+        searchText: String,
+        isLoaded: Bool,
+        tables: [TableInfo] = [],
+        routines: [RoutineInfo] = [],
+        triggers: [TriggerInfo] = []
+    ) -> Bool {
+        DatabaseTreeFilter.hierarchicalSchemaIsVisible(
+            schema,
+            searchText: searchText,
+            isLoaded: isLoaded,
+            tables: tables,
+            routines: routines,
+            triggers: triggers,
+            userTypes: []
+        )
+    }
+
+    private func buckets(
+        schema: String,
+        tables: [TableInfo],
+        routines: [RoutineInfo] = [],
+        searchText: String
+    ) -> DatabaseTreeObjectBuckets {
+        DatabaseTreeFilter.hierarchicalObjectBuckets(
+            schema: schema,
+            tables: tables,
+            routines: routines,
+            triggers: [],
+            userTypes: [],
+            searchText: searchText
+        )
+    }
+
     /// A search fires a per-schema load, and the pane must not blank out while it runs.
     @Test("An unloaded schema stays visible during a search")
     func unloadedSchemaStaysVisible() {
-        #expect(
-            DatabaseTreeFilter.hierarchicalSchemaIsVisible(
-                "analytics", searchText: "invoice", isLoaded: false, tables: []
-            )
-        )
+        #expect(isVisible("analytics", searchText: "invoice", isLoaded: false))
     }
 
     @Test("A loaded schema is dropped only when nothing inside it matches")
     func loadedSchemaNeedsAMatch() {
-        #expect(
-            !DatabaseTreeFilter.hierarchicalSchemaIsVisible(
-                "analytics", searchText: "invoice", isLoaded: true, tables: [table("events")]
-            )
-        )
-        #expect(
-            DatabaseTreeFilter.hierarchicalSchemaIsVisible(
-                "analytics", searchText: "invoice", isLoaded: true, tables: [table("invoices")]
-            )
-        )
+        #expect(!isVisible("analytics", searchText: "invoice", isLoaded: true, tables: [table("events")]))
+        #expect(isVisible("analytics", searchText: "invoice", isLoaded: true, tables: [table("invoices")]))
+    }
+
+    /// A schema holding only a matching procedure was dropped because the check read tables alone.
+    @Test("A procedure, function or trigger that matches keeps its schema")
+    func sideObjectMatchKeepsSchema() {
+        #expect(isVisible("billing", searchText: "invoice", isLoaded: true, routines: [routine("close_invoice")]))
+        let trigger = TriggerInfo(name: "audit", timing: "BEFORE", event: "INSERT", statement: "", table: "invoices")
+        #expect(isVisible("billing", searchText: "invoice", isLoaded: true, triggers: [trigger]))
+        #expect(!isVisible("billing", searchText: "invoice", isLoaded: true, routines: [routine("refund")]))
     }
 
     @Test("A schema whose own name matches stays visible with nothing loaded inside it")
     func nameMatchedSchemaStaysVisible() {
-        #expect(
-            DatabaseTreeFilter.hierarchicalSchemaIsVisible(
-                "analytics", searchText: "analy", isLoaded: true, tables: []
-            )
-        )
+        #expect(isVisible("analytics", searchText: "analy", isLoaded: true))
     }
 
-    /// Filtering the tables of a schema the query already matched leaves it reporting no items.
-    @Test("A name-matched schema shows every table it holds")
+    /// Filtering the objects of a schema the query already matched leaves it reporting no items.
+    @Test("A name-matched schema shows every object it holds")
     func nameMatchedSchemaShowsEverything() {
-        let tables = [table("events"), table("sessions")]
-        #expect(
-            DatabaseTreeFilter.hierarchicalTables(tables, schema: "analytics", searchText: "analytics")
-                .map(\.name) == ["events", "sessions"]
+        let result = buckets(
+            schema: "analytics",
+            tables: [table("events"), table("sessions")],
+            routines: [routine("rollup")],
+            searchText: "analytics"
         )
+        #expect(result.tables[.table]?.map(\.name) == ["events", "sessions"])
+        #expect(result.routines[.function]?.map(\.name) == ["rollup"])
     }
 
-    @Test("A schema the query did not match still filters its tables")
-    func unmatchedSchemaFiltersTables() {
-        let tables = [table("events"), table("sessions")]
-        #expect(
-            DatabaseTreeFilter.hierarchicalTables(tables, schema: "analytics", searchText: "sess")
-                .map(\.name) == ["sessions"]
+    @Test("A schema the query did not match still filters its objects")
+    func unmatchedSchemaFiltersObjects() {
+        let result = buckets(
+            schema: "analytics",
+            tables: [table("events"), table("sessions")],
+            routines: [routine("session_count"), routine("rollup")],
+            searchText: "sess"
         )
+        #expect(result.tables[.table]?.map(\.name) == ["sessions"])
+        #expect(result.routines[.function]?.map(\.name) == ["session_count"])
     }
 
-    @Test("An empty search shows every table")
+    @Test("An empty search shows every object")
     func emptySearchShowsEverything() {
-        let tables = [table("events"), table("sessions")]
-        #expect(
-            DatabaseTreeFilter.hierarchicalTables(tables, schema: "analytics", searchText: "")
-                .map(\.name) == ["events", "sessions"]
-        )
+        let result = buckets(schema: "analytics", tables: [table("events"), table("sessions")], searchText: "")
+        #expect(result.tables[.table]?.map(\.name) == ["events", "sessions"])
     }
 
     @Test("matches is a case-insensitive substring test, not a subsequence test")

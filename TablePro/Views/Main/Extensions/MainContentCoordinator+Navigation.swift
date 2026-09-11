@@ -285,6 +285,7 @@ extension MainContentCoordinator {
         createAsPreview: Bool
     ) -> Bool {
         let previousTableName = tabManager.selectedTab?.tableContext.tableName
+        let replacesPreviewTab = tabManager.selectedTab?.isPreview == true
         let departing = captureNavigationEntry()
         if let previousTableName {
             saveLastFilters(for: previousTableName)
@@ -335,6 +336,9 @@ extension MainContentCoordinator {
             cancelTableLoad(for: tabId)
         }
         lazyLoadCurrentTabIfNeeded()
+        if replacesPreviewTab, createAsPreview {
+            FeatureTipSignals.previewTabReplaced()
+        }
         return true
     }
 

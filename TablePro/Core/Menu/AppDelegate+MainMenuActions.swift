@@ -21,6 +21,10 @@ extension AppDelegate: NSMenuItemValidation {
         SupportWindowController.present()
     }
 
+    @objc func showWelcomeSheet(_ sender: Any?) {
+        WelcomeRouter.shared.route(.showWelcomeSheet)
+    }
+
     @objc func checkForUpdates(_ sender: Any?) {
         UpdaterBridge.shared.checkForUpdates()
     }
@@ -77,6 +81,10 @@ extension AppDelegate: NSMenuItemValidation {
         WelcomeRouter.shared.route(.importFromApp)
     }
 
+    @objc func openProjectFolder(_ sender: Any?) {
+        WelcomeRouter.shared.route(.openProjectFolder)
+    }
+
     @objc func openSampleDatabase(_ sender: Any?) {
         SampleDatabaseLauncher.open()
     }
@@ -91,6 +99,10 @@ extension AppDelegate: NSMenuItemValidation {
 
     @objc func openDocumentation(_ sender: Any?) {
         open(MainMenuLink.documentation)
+    }
+
+    @objc func openChangelog(_ sender: Any?) {
+        open(MainMenuLink.changelog)
     }
 
     @objc func openGitHubRepository(_ sender: Any?) {
@@ -119,6 +131,7 @@ extension AppDelegate: NSMenuItemValidation {
 }
 
 enum MainMenuLink {
+    static let changelog = "https://docs.tablepro.app/changelog"
     static let website = "https://tablepro.app"
     static let documentation = "https://docs.tablepro.app"
     static let repository = "https://github.com/TableProApp/TablePro"

@@ -182,23 +182,6 @@ internal class UITestCase: XCTestCase {
         waitForPredicate(timeout: timeout) { element.exists && element.isHittable }
     }
 
-    /// Every case gets a fresh sandbox, and a sandbox that has never completed onboarding opens the
-    /// welcome window on `OnboardingContentView`. The window carries the `welcome` identifier
-    /// either way, so a test that only waits for the window is satisfied by a screen holding
-    /// nothing but Skip, three page dots and Continue, and a test that then looks for the
-    /// connection list finds none: a saved connection has nowhere to be listed.
-    ///
-    /// The defaults suite is per-sandbox, so seeding `hasCompletedOnboarding` through a launch
-    /// argument cannot work: `NSArgumentDomain` reaches the standard domain alone, and an override
-    /// aimed at a suite opened by name is an ordinary argument nothing reads. Skip is the supported
-    /// way past it and costs one click.
-    internal func dismissOnboarding(in app: XCUIApplication) {
-        let skip = app.windows["welcome"].links["Skip"]
-        XCTAssertTrue(skip.waitToExist(timeout: 10), "A fresh sandbox must open the welcome window on onboarding")
-        XCTAssertTrue(waitUntilHittable(skip, timeout: 5))
-        skip.click()
-    }
-
     /// Switches the result to its Structure editor, through **View > Result View > Structure**
     /// rather than the `Structure` segment of the results status bar.
     ///

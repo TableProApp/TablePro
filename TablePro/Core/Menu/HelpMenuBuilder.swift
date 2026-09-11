@@ -25,7 +25,15 @@ enum HelpMenuBuilder {
                 String(localized: "GitHub Repository"),
                 action: #selector(AppDelegate.openGitHubRepository(_:))
             ),
+            MenuItemFactory.item(
+                String(localized: "What's New"),
+                action: #selector(AppDelegate.openChangelog(_:))
+            ),
             MenuItemFactory.separator,
+            MenuItemFactory.item(
+                String(localized: "Getting Started"),
+                action: #selector(AppDelegate.showWelcomeSheet(_:))
+            ),
             MenuItemFactory.item(
                 String(localized: "Open Sample Database"),
                 action: #selector(AppDelegate.openSampleDatabase(_:))

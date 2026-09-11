@@ -6,6 +6,39 @@ public enum ImportItemStatus: Sendable {
     case ready
     case duplicate(existingId: UUID, existingName: String)
     case warnings([String])
+    case unsupportedType(String)
+
+    public var isSelectedByDefault: Bool {
+        switch self {
+        case .ready, .warnings:
+            return true
+        case .duplicate, .unsupportedType:
+            return false
+        }
+    }
+
+    public var message: String? {
+        switch self {
+        case .ready, .duplicate:
+            return nil
+        case .warnings(let messages):
+            return messages.first
+        case .unsupportedType(let typeId):
+            return String(format: String(localized: "TablePro doesn't support “%@” connections"), typeId)
+        }
+    }
+}
+
+// MARK: - Type Resolution
+
+public enum ConnectionTypeResolver {
+    public static func canonicalTypeId(_ typeId: String, registeredTypeIds: Set<String>) -> String? {
+        if registeredTypeIds.contains(typeId) { return typeId }
+        let folded = typeId.lowercased()
+        let matches = registeredTypeIds.filter { $0.lowercased() == folded }
+        guard matches.count == 1 else { return nil }
+        return matches.first
+    }
 }
 
 public struct ImportItem: Identifiable, Sendable {
@@ -81,12 +114,19 @@ public enum ConnectionImportAnalyzer {
             }
         }
 
-        let items: [ImportItem] = envelope.connections.map { exportable in
+        let items: [ImportItem] = envelope.connections.map { original in
+            let typeId = ConnectionTypeResolver.canonicalTypeId(original.type, registeredTypeIds: registeredTypeIds)
+            let exportable = typeId.map { original.retyped(to: $0) } ?? original
+
             if let duplicate = duplicateMap[duplicateKey(for: exportable)] {
                 return ImportItem(
                     connection: exportable,
                     status: .duplicate(existingId: duplicate.id, existingName: duplicate.name)
                 )
+            }
+
+            guard typeId != nil else {
+                return ImportItem(connection: exportable, status: .unsupportedType(original.type))
             }
 
             var warnings: [String] = []
@@ -123,13 +163,6 @@ public enum ConnectionImportAnalyzer {
                         }
                     }
                 }
-            }
-
-            if !registeredTypeIds.contains(exportable.type) {
-                warnings.append(String(
-                    format: String(localized: "Database type \"%@\" is not installed"),
-                    exportable.type
-                ))
             }
 
             if !warnings.isEmpty {

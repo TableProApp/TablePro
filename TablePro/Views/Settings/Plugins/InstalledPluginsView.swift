@@ -11,6 +11,7 @@ struct InstalledPluginsView: View {
     private let pluginManager = PluginManager.shared
     private let registryClient = RegistryClient.shared
     private let installTracker = PluginInstallTracker.shared
+    private let navigation = PluginsSettingsNavigation.shared
 
     @State private var selectedPluginId: String?
     @State private var searchText = ""
@@ -246,15 +247,25 @@ struct InstalledPluginsView: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
 
-            List(selection: $selectedPluginId) {
-                ForEach(filteredPlugins) { plugin in
-                    pluginRow(plugin)
-                        .tag(plugin.id)
+            ScrollViewReader { proxy in
+                List(selection: $selectedPluginId) {
+                    ForEach(filteredPlugins) { plugin in
+                        pluginRow(plugin)
+                            .tag(plugin.id)
+                            .id(plugin.id)
+                    }
                 }
-            }
-            .listStyle(.inset)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                listBottomBar
+                .listStyle(.inset)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    listBottomBar
+                }
+                .onChange(of: navigation.pendingRequest, initial: true) {
+                    revealRequestedPlugin()
+                }
+                .onChange(of: selectedPluginId) { _, pluginId in
+                    guard let pluginId else { return }
+                    proxy.scrollTo(pluginId)
+                }
             }
         }
         .onChange(of: searchText) {
@@ -547,6 +558,17 @@ struct InstalledPluginsView: View {
     }
 
     // MARK: - Actions
+
+    private func revealRequestedPlugin() {
+        guard let request = navigation.consumePendingRequest() else { return }
+        guard let pluginId = request.pluginId,
+              pluginManager.plugins.contains(where: { $0.id == pluginId }) else {
+            dismissedRejectedBanner = false
+            return
+        }
+        searchText = ""
+        selectedPluginId = pluginId
+    }
 
     private func installFromFile() {
         let panel = NSOpenPanel()

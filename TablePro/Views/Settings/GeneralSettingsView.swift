@@ -130,6 +130,10 @@ struct GeneralSettingsView: View {
                     updaterBridge.checkForUpdates()
                 }
                 .disabled(!updaterBridge.canCheckForUpdates)
+
+                if let changelogURL = URL(string: MainMenuLink.changelog) {
+                    Link("What's New", destination: changelogURL)
+                }
             }
 
             Section {

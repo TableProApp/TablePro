@@ -102,8 +102,24 @@ build_symbol_index() {
     frameworks="AppKit SwiftUI Foundation Combine CoreData Observation UniformTypeIdentifiers"
     for fw in $frameworks; do
         iface="$sdk_root/$fw.framework/Modules/$fw.swiftmodule/arm64e-apple-macos.swiftinterface"
-        [ -f "$iface" ] || continue
-        grep -hoE '\b[A-Z][A-Za-z0-9_]{3,}\b' "$iface" 2> /dev/null
+        if [ -f "$iface" ]; then
+            grep -hoE '\b[A-Z][A-Za-z0-9_]{3,}\b' "$iface" 2> /dev/null
+        fi
+        # The Objective-C headers too. A Swift interface carries only the overlay, so an AppKit
+        # constant the docs name by its C spelling, `NSAccessibilitySortDirectionAttribute`, was
+        # reported as a symbol that exists nowhere. Comments are stripped first, for the reason the
+        # Swift sources get the same pass: header prose is full of plain words like `Session` and
+        # `Connection`, and a deleted type of that name must not pass because a comment says it.
+        # `Headers` is a symlink into `Versions/Current`, and `find` does not follow a symlinked
+        # starting point unless the path ends in a slash: without it this finds nothing, silently.
+        headers="$sdk_root/$fw.framework/Headers"
+        if [ -d "$headers" ]; then
+            find "$headers/" -name '*.h' -type f 2> /dev/null |
+                while IFS= read -r header; do
+                    perl -0777 -pe 's{/\*.*?\*/}{}gs' "$header" 2> /dev/null |
+                        perl -pe 's{//.*$}{}' 2> /dev/null
+                done | grep -hoE '\b[A-Z][A-Za-z0-9_]{3,}\b'
+        fi
     done | sort -u >> "$WORK/symbols"
     sort -u -o "$WORK/symbols" "$WORK/symbols"
 }
