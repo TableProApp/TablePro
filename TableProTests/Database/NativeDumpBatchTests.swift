@@ -56,7 +56,7 @@ private final class FakeDumpService: NativeDumpRunning {
     }
 
     private func substituted(_ state: NativeDumpState, database: String, fileURL: URL) -> NativeDumpState {
-        guard case .finished(_, _, let bytes) = state else { return state }
+        guard case .finished(_, _, let bytes, _) = state else { return state }
         return .finished(database: database, fileURL: fileURL, bytesProcessed: bytes)
     }
 

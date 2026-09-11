@@ -20,7 +20,7 @@ struct RestoreDatabaseFlow: View {
         case resolvingTarget
         case pickDatabase
         case running(database: String)
-        case finished(database: String)
+        case finished(database: String, skippedSettings: [String])
         case failed(message: String, targetMayBeModified: Bool)
         case cancelled
     }
@@ -41,10 +41,11 @@ struct RestoreDatabaseFlow: View {
                     isCancelling: service.state == .cancelling,
                     onCancel: { service.cancel() }
                 )
-            case .finished(let database):
+            case .finished(let database, let skippedSettings):
                 BackupResultSheet(
                     kind: .restore,
-                    outcome: .restoreSuccess(database: database, source: sourceURL),
+                    outcome: .restoreSuccess(
+                        database: database, source: sourceURL, skippedSettings: skippedSettings),
                     onClose: { isPresented = false },
                     onShowInFinder: nil
                 )
@@ -152,8 +153,8 @@ struct RestoreDatabaseFlow: View {
         switch state {
         case .running(let database, _, _, _):
             phase = .running(database: database)
-        case .finished(let database, _, _):
-            phase = .finished(database: database)
+        case .finished(let database, _, _, let skippedSettings):
+            phase = .finished(database: database, skippedSettings: skippedSettings)
         case .failed(let message, let targetMayBeModified):
             phase = .failed(message: message, targetMayBeModified: targetMayBeModified)
         case .cancelled:

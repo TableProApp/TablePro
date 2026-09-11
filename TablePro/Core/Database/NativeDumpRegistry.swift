@@ -79,6 +79,8 @@ enum NativeDumpRegistry {
                     installHint: String(localized: "Install it with `brew install libpq` and link it."),
                     backupDelivery: .toolWritesFile,
                     restoreDelivery: .toolWritesFile,
+                    restoreExitPolicy: .toleratesUnrecognizedSessionSettings,
+                    requiresUntranslatedMessages: true,
                     backupArguments: { request in
                         connectionFlags(request)
                             + ["-Fc", "-d", request.database]

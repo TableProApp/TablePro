@@ -195,7 +195,7 @@ final class NativeDumpBatch {
             case .running(_, _, let bytes, let total):
                 state.bytesProcessed = bytes
                 state.totalBytes = total ?? state.totalBytes
-            case .finished(_, _, let bytes):
+            case .finished(_, _, let bytes, _):
                 record(item, .succeeded(bytes: bytes))
                 return
             case .failed(let message, _):

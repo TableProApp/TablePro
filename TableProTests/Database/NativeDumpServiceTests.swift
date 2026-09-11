@@ -98,6 +98,92 @@ struct NativeDumpServiceCommandTests {
         #expect(!command.arguments.contains("-f"))
     }
 
+    @Test("pg_restore tolerates unrecognized session settings; pg_dump does not")
+    func postgresExitPolicies() throws {
+        let restore = try NativeDumpService.buildCommand(
+            kind: .restore,
+            tool: postgresTool,
+            executable: URL(fileURLWithPath: "/usr/bin/pg_restore"),
+            request: request(connection: connection(), fileURL: URL(fileURLWithPath: "/tmp/sales.dump"))
+        )
+        let backup = try NativeDumpService.buildCommand(
+            kind: .backup,
+            tool: postgresTool,
+            executable: URL(fileURLWithPath: "/usr/bin/pg_dump"),
+            request: request(connection: connection(), fileURL: URL(fileURLWithPath: "/tmp/sales.dump"))
+        )
+        #expect(restore.exitPolicy == .toleratesUnrecognizedSessionSettings)
+        #expect(backup.exitPolicy == .zeroExitOnly)
+    }
+
+    @Test("Every other engine's restore keeps the strict exit policy")
+    func otherEnginesStayStrict() throws {
+        for type in [DatabaseType.mysql, .mongodb, .sqlite, .mssql] {
+            let tool = try #require(NativeDumpRegistry.descriptor(for: type)?.commandLineTool)
+            #expect(tool.exitPolicy(for: .restore) == .zeroExitOnly)
+            #expect(tool.exitPolicy(for: .backup) == .zeroExitOnly)
+        }
+    }
+
+    @Test("A job the engine runs for itself never tolerates a failure")
+    func statementJobsStayStrict() {
+        let job = NativeDumpJob.statements(
+            NativeDumpStatementJob(
+                statements: ["SELECT 1"],
+                cleanupStatements: [],
+                scope: DatabaseScope(connectionId: UUID(), database: "sales", schema: nil)
+            )
+        )
+        #expect(job.exitPolicy == .zeroExitOnly)
+    }
+
+    @Test("pg_dump and pg_restore print untranslated messages")
+    func postgresToolsPrintUntranslatedMessages() throws {
+        for kind in [NativeDumpKind.backup, .restore] {
+            let command = try NativeDumpService.buildCommand(
+                kind: kind,
+                tool: postgresTool,
+                executable: URL(fileURLWithPath: "/usr/bin/pg_restore"),
+                request: request(connection: connection(), fileURL: URL(fileURLWithPath: "/tmp/sales.dump"))
+            )
+            #expect(command.environment["LC_MESSAGES"] == "C")
+            #expect(command.environment["LC_ALL"] == nil)
+        }
+    }
+
+    @Test("Other engines' tools keep the user's message language")
+    func otherToolsKeepTheirLanguage() throws {
+        let tool = try #require(NativeDumpRegistry.descriptor(for: .mysql)?.commandLineTool)
+        #expect(!tool.requiresUntranslatedMessages)
+    }
+
+    @Test("LC_ALL moves to LC_CTYPE so character handling survives, and messages become untranslated")
+    func untranslatedMessagesMovesLcAll() {
+        let environment = NativeDumpService.untranslatedMessagesEnvironment(
+            ["LANG": "fr_FR.UTF-8", "LC_ALL": "fr_FR.UTF-8", "PATH": "/usr/bin"]
+        )
+        #expect(environment == [
+            "LANG": "fr_FR.UTF-8",
+            "LC_CTYPE": "fr_FR.UTF-8",
+            "LC_MESSAGES": "C",
+            "PATH": "/usr/bin"
+        ])
+    }
+
+    @Test("An LC_CTYPE already present is kept over LC_ALL")
+    func untranslatedMessagesKeepsLcCtype() {
+        let environment = NativeDumpService.untranslatedMessagesEnvironment(
+            ["LC_ALL": "fr_FR.UTF-8", "LC_CTYPE": "de_DE.UTF-8"]
+        )
+        #expect(environment == ["LC_CTYPE": "de_DE.UTF-8", "LC_MESSAGES": "C"])
+    }
+
+    @Test("Without LC_ALL only LC_MESSAGES is added")
+    func untranslatedMessagesWithoutLcAll() {
+        let environment = NativeDumpService.untranslatedMessagesEnvironment(["LANG": "ko_KR.UTF-8"])
+        #expect(environment == ["LANG": "ko_KR.UTF-8", "LC_MESSAGES": "C"])
+    }
+
     @Test("empty host falls back to 127.0.0.1")
     func hostFallback() throws {
         let command = try NativeDumpService.buildCommand(
@@ -191,7 +277,7 @@ struct NativeDumpServiceCommandTests {
             )
         )
         let allowed: Set<String> = [
-            "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL",
+            "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_CTYPE", "LC_MESSAGES",
             "PGPASSWORD", "PGSSLMODE"
         ]
         let unexpected = Set(command.environment.keys).subtracting(allowed)
@@ -257,15 +343,101 @@ private final class FakeDumpRunner: NativeDumpRunner, @unchecked Sendable {
 @Suite("NativeDumpService state machine", .serialized)
 @MainActor
 struct NativeDumpServiceStateMachineTests {
-    private func fakeJob() -> NativeDumpJob {
+    private func fakeJob(exitPolicy: NativeDumpExitPolicy = .zeroExitOnly) -> NativeDumpJob {
         .process(
             NativeDumpCommand(
                 executable: URL(fileURLWithPath: "/usr/bin/true"),
                 arguments: [],
                 environment: [:],
-                stderrByteCap: 64_000
+                stderrByteCap: 64_000,
+                exitPolicy: exitPolicy
             )
         )
+    }
+
+    private static let skippedSettingsStderr = """
+        pg_restore: error: could not execute query: ERROR:  unrecognized configuration parameter "transaction_timeout"
+        Command was: SET transaction_timeout = 0;
+        pg_restore: warning: errors ignored on restore: 1
+        """
+
+    @Test("A restore whose only errors are unrecognized settings finishes and names them")
+    func restoreFinishesSkippingSettings() async throws {
+        let runner = FakeDumpRunner()
+        let service = service(kind: .restore, runner: runner)
+        let updates = service.stateUpdates()
+
+        try service.run(
+            job: fakeJob(exitPolicy: .toleratesUnrecognizedSessionSettings),
+            database: "sales",
+            fileURL: URL(fileURLWithPath: "/tmp/test-skipped.dump")
+        )
+        runner.finish(.init(exitCode: 1, stderr: Self.skippedSettingsStderr, wasCancelled: false))
+        let finalState = try await firstMatching(updates) {
+            switch $0 {
+            case .finished, .failed: return true
+            default: return false
+            }
+        }
+
+        guard case .finished(let db, _, _, let skipped) = finalState else {
+            Issue.record("expected finished, got \(finalState)")
+            return
+        }
+        #expect(db == "sales")
+        #expect(skipped == ["transaction_timeout"])
+    }
+
+    @Test("The same output under the strict policy is still a failure")
+    func strictPolicyStillFails() async throws {
+        let runner = FakeDumpRunner()
+        let service = service(kind: .restore, runner: runner)
+        let updates = service.stateUpdates()
+
+        try service.run(
+            job: fakeJob(),
+            database: "sales",
+            fileURL: URL(fileURLWithPath: "/tmp/test-strict.dump")
+        )
+        runner.finish(.init(exitCode: 1, stderr: Self.skippedSettingsStderr, wasCancelled: false))
+        let finalState = try await firstMatching(updates) {
+            switch $0 {
+            case .finished, .failed: return true
+            default: return false
+            }
+        }
+
+        guard case .failed(let message, let targetMayBeModified) = finalState else {
+            Issue.record("expected failed, got \(finalState)")
+            return
+        }
+        #expect(message == Self.skippedSettingsStderr)
+        #expect(targetMayBeModified)
+    }
+
+    @Test("A real error under the tolerant policy is still a failure")
+    func tolerantPolicyRealError() async throws {
+        let runner = FakeDumpRunner()
+        let service = service(kind: .restore, runner: runner)
+        let updates = service.stateUpdates()
+
+        try service.run(
+            job: fakeJob(exitPolicy: .toleratesUnrecognizedSessionSettings),
+            database: "sales",
+            fileURL: URL(fileURLWithPath: "/tmp/test-real-error.dump")
+        )
+        runner.finish(.init(exitCode: 1, stderr: "FATAL: connection refused", wasCancelled: false))
+        let finalState = try await firstMatching(updates) {
+            switch $0 {
+            case .finished, .failed: return true
+            default: return false
+            }
+        }
+
+        guard case .failed = finalState else {
+            Issue.record("expected failed, got \(finalState)")
+            return
+        }
     }
 
     private func service(kind: NativeDumpKind, runner: FakeDumpRunner) -> NativeDumpService {
@@ -299,7 +471,7 @@ struct NativeDumpServiceStateMachineTests {
         runner.finish(.init(exitCode: 0, stderr: "", wasCancelled: false))
         let finalState = try await firstMatching(updates) { if case .finished = $0 { return true }; return false }
 
-        if case .finished(let db, _, _) = finalState {
+        if case .finished(let db, _, _, _) = finalState {
             #expect(db == "sales")
         } else {
             Issue.record("expected finished, got \(finalState)")
