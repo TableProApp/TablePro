@@ -43,6 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Data grid ignoring the theme's background, text, alternate row, NULL, boolean and row number colors.
+- Garbled non-Latin text saved from iPhone and iPad to MySQL servers that force a Latin 1 session. (#2725)
+- **Encoding** ignored on iPhone and iPad by a MySQL connection synced from the Mac. (#2725)
+- Binary MySQL columns shown as text on iPhone and iPad, and searched with `LIKE`.
+- Crash opening a MySQL result whose column has no name on iPhone and iPad.
 - Wrong SQLSTATE code in PostgreSQL, Redshift, CockroachDB and PGlite error messages.
 - Read-only write explanation never shown on PostgreSQL servers.
 - Safe Mode minimum from a configuration profile missing from the toolbar, the Database menu and the connection form. (#2030)
@@ -138,6 +142,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Illegal mix of collations` comparing a column with a user variable on MySQL 8.
 - GEOMETRY values from a parameterized MySQL query shown as raw bytes.
 - Earlier row's text repeated in later rows of a parameterized MySQL query once a value passed 64 KB.
+- Garbled non-ASCII text on PostgreSQL databases not encoded in UTF-8 after `RESET ALL` or `DISCARD ALL`.
+- Garbled or double-encoded non-ASCII text on iOS with PostgreSQL databases not encoded in UTF-8.
+- Garbled non-ASCII text when restoring a PostgreSQL SQL export into a database not encoded in UTF-8.
 
 ### Security
 

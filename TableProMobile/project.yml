@@ -52,6 +52,17 @@ targets:
       - ../Plugins/RedisDriverPlugin/RedisAuthCommand.swift
       - ../Plugins/RedisDriverPlugin/RedisConnectProbe.swift
       - ../Plugins/RedisDriverPlugin/RedisDatabaseIndex.swift
+      # MySQL session character set and result decoding the iOS driver shares with the macOS plugin.
+      - ../Plugins/MySQLDriverPlugin/DatabendResultShape.swift
+      - ../Plugins/MySQLDriverPlugin/GeometryWKBParser.swift
+      - ../Plugins/MySQLDriverPlugin/MariaDBCharacterSet.swift
+      - ../Plugins/MySQLDriverPlugin/MariaDBFieldClassifier.swift
+      - ../Plugins/MySQLDriverPlugin/MariaDBFieldMetadata.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLCharacterSet.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLColumnDecoding.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLConnectionEncoding.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLLatin1.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLServerFlavor.swift
     configFiles:
       Debug: ../Configs/Version-iOS.xcconfig
       Release: ../Configs/Version-iOS.xcconfig
