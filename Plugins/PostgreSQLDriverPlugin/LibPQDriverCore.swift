@@ -185,7 +185,7 @@ final class LibPQDriverCore: @unchecked Sendable {
         libpqConnection?.cancelCurrentQuery()
     }
 
-    func setPostgisOidMap(_ map: [UInt32: String]) {
+    func setPostgisOidMap(_ map: [UInt32: PostGISType]) {
         libpqConnection?.setPostgisOidMap(map)
     }
 

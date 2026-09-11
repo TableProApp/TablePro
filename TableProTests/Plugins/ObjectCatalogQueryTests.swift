@@ -16,7 +16,7 @@ struct PostgreSQLObjectQueryTests {
     /// name once per overload, which is what produced duplicate rows and an arbitrary definition.
     @Test("Routine listing reads pg_proc, never information_schema")
     func routineListReadsPgProc() {
-        let sql = PostgreSQLObjectQueries.routineList(schema: "public", serverVersionNumber: 160_000)
+        let sql = PostgreSQLObjectQueries.routineList(schema: "public", capabilities: .assumingModernWhenUnknown(160_000))
         #expect(sql.contains("pg_catalog.pg_proc"))
         #expect(!sql.contains("information_schema"))
         #expect(sql.contains("p.oid::text"))
@@ -27,19 +27,19 @@ struct PostgreSQLObjectQueryTests {
     /// `proisagg`, which PostgreSQL 11 dropped, and failed the listing on every current server.
     @Test("An unknown server version reads as modern, not ancient")
     func unknownVersionIsModern() {
-        #expect(PostgreSQLObjectQueries.usesProkind(serverVersionNumber: 0))
-        #expect(PostgreSQLObjectQueries.usesProkind(serverVersionNumber: 170_000))
-        #expect(!PostgreSQLObjectQueries.usesProkind(serverVersionNumber: 100_000))
-        #expect(!PostgreSQLObjectQueries.routineList(schema: "public", serverVersionNumber: 0)
+        #expect(PostgreSQLCapabilities.assumingModernWhenUnknown(0).hasProcedureKind)
+        #expect(PostgreSQLCapabilities(serverVersion: 170_000).hasProcedureKind)
+        #expect(!PostgreSQLCapabilities(serverVersion: 100_000).hasProcedureKind)
+        #expect(!PostgreSQLObjectQueries.routineList(schema: "public", capabilities: .assumingModernWhenUnknown(0))
             .contains("proisagg"))
     }
 
     @Test("Aggregates and window functions are excluded because pg_get_functiondef raises on them")
     func aggregatesExcluded() {
-        let modern = PostgreSQLObjectQueries.routineList(schema: "public", serverVersionNumber: 160_000)
+        let modern = PostgreSQLObjectQueries.routineList(schema: "public", capabilities: .assumingModernWhenUnknown(160_000))
         #expect(modern.contains("p.prokind IN ('f', 'p')"))
 
-        let legacy = PostgreSQLObjectQueries.routineList(schema: "public", serverVersionNumber: 100_000)
+        let legacy = PostgreSQLObjectQueries.routineList(schema: "public", capabilities: .assumingModernWhenUnknown(100_000))
         #expect(legacy.contains("NOT p.proisagg AND NOT p.proiswindow"))
         #expect(!legacy.contains("prokind IN"))
     }
@@ -70,9 +70,17 @@ struct PostgreSQLObjectQueryTests {
         #expect(one.contains("pg_catalog.pg_get_triggerdef"))
     }
 
+    @Test("Trigger events are joined with concat_ws, which 9.1 has and array_remove does not")
+    func triggerEventsUseConcatWs() {
+        let sql = PostgreSQLObjectQueries.triggerList(schema: "public", table: nil)
+        #expect(sql.contains("concat_ws(' OR ',"))
+        #expect(!sql.contains("array_remove"))
+        #expect(!sql.contains("array_to_string"))
+    }
+
     @Test("A quote in a name or schema is escaped in every query")
     func literalsAreEscaped() {
-        let list = PostgreSQLObjectQueries.routineList(schema: "it's", serverVersionNumber: 160_000)
+        let list = PostgreSQLObjectQueries.routineList(schema: "it's", capabilities: .assumingModernWhenUnknown(160_000))
         #expect(list.contains("'it''s'"))
 
         let byName = PostgreSQLObjectQueries.routineDefinitionByName(

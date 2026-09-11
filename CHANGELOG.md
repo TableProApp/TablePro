@@ -55,6 +55,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Crash opening a MySQL result whose column has no name on iPhone and iPad.
 - Wrong SQLSTATE code in PostgreSQL, Redshift, CockroachDB and PGlite error messages.
 - Read-only write explanation never shown on PostgreSQL servers.
+- Table list, foreign keys, triggers, check constraints, types and grants failing on PostgreSQL 9.1 to 9.5. (#2734)
+- Wrong index column order on PostgreSQL 9.4 and earlier.
+- Sequences missing from SQL dumps of PostgreSQL 9.6 and earlier.
+- Create Database failing on PostgreSQL 9.6 and earlier.
+- PostgreSQL unique and primary key indexes shown as plain indexes.
+- PostgreSQL triggers shown as disabled.
+- PostgreSQL `NOT VALID` check constraints shown as validated.
+- Redshift `DISTKEY` missing from a table's indexes.
+- `CYCLE` dropped from PostgreSQL sequences in SQL dumps.
+- PostgreSQL index columns and enum labels containing a comma or a space split apart.
+- Foreign keys to a partitioned table listed once per partition on PostgreSQL 12 and later.
+- PostGIS values left as hex after switching schema.
+- Open transaction aborted when a PostGIS value could not be converted.
+- PostgreSQL all-tables metadata failing for a mixed-case table name.
+- Default PostgreSQL schema taken from the schema list rather than the search path.
 - Safe Mode minimum from a configuration profile missing from the toolbar, the Database menu and the connection form. (#2030)
 - PostgreSQL connection hanging after running `COPY FROM STDIN` or `COPY TO STDOUT` in the query editor and on iOS.
 - Stop not ending queries on MySQL and MariaDB servers without TLS.

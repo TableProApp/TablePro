@@ -124,17 +124,20 @@ enum PostgreSQLPrincipalQueries {
 
     static func columnGrants(roleLiteral: String) -> String {
         """
-        SELECT n.nspname, c.relname, a.attname, acl.privilege_type, acl.is_grantable
-        FROM pg_attribute a
-        JOIN pg_class c ON c.oid = a.attrelid
-        JOIN pg_namespace n ON n.oid = c.relnamespace
-        CROSS JOIN LATERAL aclexplode(a.attacl) AS acl
-        JOIN pg_roles r ON r.oid = acl.grantee
+        SELECT s.nspname, s.relname, s.attname, (s.acl).privilege_type, (s.acl).is_grantable
+        FROM (
+            SELECT n.nspname, c.relname, a.attname, pg_catalog.aclexplode(a.attacl) AS acl
+            FROM pg_attribute a
+            JOIN pg_class c ON c.oid = a.attrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE a.attacl IS NOT NULL
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+              AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+        ) s
+        JOIN pg_roles r ON r.oid = (s.acl).grantee
         WHERE r.rolname = '\(roleLiteral)'
-          AND a.attnum > 0
-          AND NOT a.attisdropped
-          AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-        ORDER BY n.nspname, c.relname, a.attname, acl.privilege_type
+        ORDER BY s.nspname, s.relname, s.attname, (s.acl).privilege_type
         """
     }
 
@@ -167,39 +170,48 @@ enum PostgreSQLPrincipalQueries {
 
     static func databaseGrants(roleLiteral: String) -> String {
         """
-        SELECT d.datname, a.privilege_type, a.is_grantable
-        FROM pg_database d
-        CROSS JOIN LATERAL aclexplode(d.datacl) AS a
-        JOIN pg_roles r ON r.oid = a.grantee
+        SELECT s.datname, (s.acl).privilege_type, (s.acl).is_grantable
+        FROM (
+            SELECT d.datname, pg_catalog.aclexplode(d.datacl) AS acl
+            FROM pg_database d
+            WHERE d.datacl IS NOT NULL
+              AND NOT d.datistemplate
+        ) s
+        JOIN pg_roles r ON r.oid = (s.acl).grantee
         WHERE r.rolname = '\(roleLiteral)'
-          AND NOT d.datistemplate
-        ORDER BY d.datname, a.privilege_type
+        ORDER BY s.datname, (s.acl).privilege_type
         """
     }
 
     static func schemaGrants(roleLiteral: String) -> String {
         """
-        SELECT n.nspname, a.privilege_type, a.is_grantable
-        FROM pg_namespace n
-        CROSS JOIN LATERAL aclexplode(n.nspacl) AS a
-        JOIN pg_roles r ON r.oid = a.grantee
+        SELECT s.nspname, (s.acl).privilege_type, (s.acl).is_grantable
+        FROM (
+            SELECT n.nspname, pg_catalog.aclexplode(n.nspacl) AS acl
+            FROM pg_namespace n
+            WHERE n.nspacl IS NOT NULL
+              AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+        ) s
+        JOIN pg_roles r ON r.oid = (s.acl).grantee
         WHERE r.rolname = '\(roleLiteral)'
-          AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-        ORDER BY n.nspname, a.privilege_type
+        ORDER BY s.nspname, (s.acl).privilege_type
         """
     }
 
     static func tableGrants(roleLiteral: String) -> String {
         """
-        SELECT n.nspname, c.relname, a.privilege_type, a.is_grantable
-        FROM pg_class c
-        JOIN pg_namespace n ON n.oid = c.relnamespace
-        CROSS JOIN LATERAL aclexplode(c.relacl) AS a
-        JOIN pg_roles r ON r.oid = a.grantee
+        SELECT s.nspname, s.relname, (s.acl).privilege_type, (s.acl).is_grantable
+        FROM (
+            SELECT n.nspname, c.relname, pg_catalog.aclexplode(c.relacl) AS acl
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relacl IS NOT NULL
+              AND c.relkind IN ('r', 'v', 'm', 'p', 'f')
+              AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+        ) s
+        JOIN pg_roles r ON r.oid = (s.acl).grantee
         WHERE r.rolname = '\(roleLiteral)'
-          AND c.relkind IN ('r', 'v', 'm', 'p', 'f')
-          AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-        ORDER BY n.nspname, c.relname, a.privilege_type
+        ORDER BY s.nspname, s.relname, (s.acl).privilege_type
         """
     }
 

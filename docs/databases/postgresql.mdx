@@ -1,6 +1,6 @@
 ---
 title: PostgreSQL
-description: Connect to PostgreSQL 12 and later with the libpq driver, including PostGIS display, AWS IAM auth, and pg_dump backups
+description: Connect to PostgreSQL with the libpq driver, including PostGIS display, AWS IAM auth, and pg_dump backups
 ---
 
 Unlike MySQL, PostgreSQL will not connect without a **Database**, and it changes database only by reconnecting. Everything else on the form is ordinary. The libpq driver ships inside the app and also serves [Amazon Redshift](/databases/redshift), [CockroachDB](/databases/cockroachdb), and [PGlite](/databases/pglite).
@@ -16,7 +16,7 @@ Unlike MySQL, PostgreSQL will not connect without a **Database**, and it changes
 
 Fill in the form and click **Save & Connect**. For remote servers use [SSH tunneling](/connections/ssh-tunneling); Google Cloud SQL instances can connect through the [Cloud SQL Auth Proxy](/connections/cloud-sql-proxy).
 
-Support starts at 12. An older server still connects, with whatever its catalogs carry: generated columns need 12, declarative partitioning and identity columns need 10.
+The sidebar, the structure view, Users & Roles privileges and SQL export work from PostgreSQL 9.1. Generated columns need 12, declarative partitioning and identity columns need 10, and materialized views need 9.3. Some editing still needs a newer server; see [Limitations](#limitations).
 
 <Frame caption="PostgreSQL connection form">
   <img className="block dark:hidden" src="/images/postgresql-connection-form.png" alt="PostgreSQL connection form" />
@@ -94,7 +94,8 @@ New connections default to **Preferred** (libpq `sslmode=prefer`): TLS first, pl
 
 - Columns cannot be reordered. The structure editor adds, renames, retypes, and drops; changing the order of existing columns means recreating the table.
 - A cross-database tab cannot share session state with the main connection. Statements that depend on a temp table or an open transaction have to run on one database.
-- Backup and restore need `pg_dump` and `pg_restore` on your Mac. Neither is bundled; install them with Homebrew.
+- Backup and restore need `pg_dump` and `pg_restore` on your Mac. Neither is bundled; install them with Homebrew. `pg_dump` 15 and later refuse PostgreSQL 9.1, so back one up with `pg_dump` 14 or earlier.
+- Some edits fail with a syntax error on older servers: editing or creating a trigger before 14, creating a role or changing its attributes before 9.5, and copying objects into a schema that does not exist yet before 9.3. Run the statement from the query editor instead, with `DROP TRIGGER` then `CREATE TRIGGER`, or without `BYPASSRLS` and `IF NOT EXISTS`.
 
 ## Troubleshooting
 

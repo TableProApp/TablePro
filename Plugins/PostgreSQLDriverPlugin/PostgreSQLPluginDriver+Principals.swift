@@ -49,7 +49,7 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
 
         return result.rows.compactMap { row -> PluginPrincipalInfo? in
             guard let name = row[safe: 0]?.asText else { return nil }
-            let canLogin = Self.decodeBoolean(row[safe: 1]?.asText)
+            let canLogin = PostgreSQLCatalogBoolean.isTrue(row[safe: 1]?.asText)
             let attributes = Self.decodeAttributes(row: row)
             let connectionLimit = row[safe: 8]?.asText.flatMap(Int.init)
 
@@ -152,7 +152,7 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
             return PluginGrantInfo(
                 privilege: privilege,
                 scope: .column(database: database, schema: schema, table: table, column: column),
-                isGrantable: Self.decodeBoolean(row[safe: 4]?.asText)
+                isGrantable: PostgreSQLCatalogBoolean.isTrue(row[safe: 4]?.asText)
             )
         }
     }
@@ -168,7 +168,7 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
             roleLiteral: escapeStringLiteral(principal.name)
         )
         let result = try await execute(query: query)
-        return Self.decodeBoolean(result.rows.first?[safe: 0]?.asText)
+        return PostgreSQLCatalogBoolean.isTrue(result.rows.first?[safe: 0]?.asText)
     }
 
     private func fetchMemberships() async throws -> [String: [String]] {
@@ -196,7 +196,7 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
             return PluginGrantInfo(
                 privilege: privilege,
                 scope: .database(database),
-                isGrantable: Self.decodeBoolean(row[safe: 2]?.asText)
+                isGrantable: PostgreSQLCatalogBoolean.isTrue(row[safe: 2]?.asText)
             )
         }
     }
@@ -210,7 +210,7 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
             return PluginGrantInfo(
                 privilege: privilege,
                 scope: .schema(database: database, schema: schema),
-                isGrantable: Self.decodeBoolean(row[safe: 2]?.asText)
+                isGrantable: PostgreSQLCatalogBoolean.isTrue(row[safe: 2]?.asText)
             )
         }
     }
@@ -225,7 +225,7 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
             return PluginGrantInfo(
                 privilege: privilege,
                 scope: .table(database: database, schema: schema, table: table),
-                isGrantable: Self.decodeBoolean(row[safe: 3]?.asText)
+                isGrantable: PostgreSQLCatalogBoolean.isTrue(row[safe: 3]?.asText)
             )
         }
     }
@@ -243,13 +243,8 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
             PluginPrincipalAttribute(
                 key: attribute.rawValue,
                 label: attribute.label,
-                isEnabled: decodeBoolean(row[safe: offset]?.asText)
+                isEnabled: PostgreSQLCatalogBoolean.isTrue(row[safe: offset]?.asText)
             )
         }
-    }
-
-    private static func decodeBoolean(_ value: String?) -> Bool {
-        guard let value else { return false }
-        return value == "t" || value == "true" || value == "1"
     }
 }

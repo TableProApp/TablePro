@@ -518,15 +518,21 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/LibPQSSLMapping.swift
       - Plugins/PostgreSQLDriverPlugin/PostGISSpatialRewrite.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCapabilities.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogBoolean.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogPresence.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogTypeNames.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCheckConstraintDefinition.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLForeignKeyQueries.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLIndexQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLObjectQueries.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLPrincipalQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLRelationSQL.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLViewDefinition.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSchemaQueries.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLSequenceQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSystemDatabases.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTableListingLadder.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLTextArray.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTransactionStatement.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTypeDefinition.swift
       - Plugins/PostgreSQLDriverPlugin/RedshiftExternalSchemaQueries.swift
