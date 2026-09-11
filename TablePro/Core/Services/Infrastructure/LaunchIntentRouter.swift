@@ -84,6 +84,34 @@ internal final class LaunchIntentRouter {
         WindowOpener.shared.openSettings(tab: .plugins)
     }
 
+    private func hostingWindow(for connectionId: UUID) -> MainSplitViewController? {
+        let window = WindowLifecycleMonitor.shared.mostRecentWindow(for: connectionId)
+            ?? WindowManager.shared.window(for: connectionId)
+        guard let host = window?.contentViewController as? MainSplitViewController,
+              host.workspaces.contains(connectionId) else { return nil }
+        return host
+    }
+
+    private func presentRecoverableError(_ error: Error, for intent: LaunchIntent, title: String) -> Bool {
+        guard let connectionId = connectionId(for: intent),
+              let connection = ConnectionStorage.shared.loadConnections().first(where: { $0.id == connectionId }),
+              let action = ConnectionFailureClassifier.recoveryAction(for: error)
+        else { return false }
+        let info = ConnectionFailureClassifier.info(for: error)
+        AlertHelper.showRecoverableErrorSheet(
+            title: title,
+            message: [info.message, info.failureReason].compactMap { $0 }.joined(separator: "\n\n"),
+            recoverySuggestion: info.recoverySuggestion,
+            recoveryTitle: action.title,
+            window: NSApp.keyWindow
+        ) {
+            ConnectionRecoveryPerformer.perform(action, for: connection) {
+                Task { await LaunchIntentRouter.shared.route(intent) }
+            }
+        }
+        return true
+    }
+
     private func connectionId(for intent: LaunchIntent) -> UUID? {
         switch intent {
         case .openConnection(let id):
@@ -102,8 +130,9 @@ internal final class LaunchIntentRouter {
     private func presentError(_ error: Error, for intent: LaunchIntent) async {
         if let connectionId = connectionId(for: intent),
            WindowManager.shared.hasOpenWindow(for: connectionId) {
+            let adopted = hostingWindow(for: connectionId)?.adoptRecoverableConnectFailure(error, for: connectionId) ?? false
             Self.logger.info(
-                "Failure already shown in the connection window connId=\(connectionId, privacy: .public)"
+                "Failure left to the connection window connId=\(connectionId, privacy: .public) adoptedRecovery=\(adopted, privacy: .public)"
             )
             return
         }
@@ -125,6 +154,7 @@ internal final class LaunchIntentRouter {
         case .importConnection, .openConnectionShare, .startMCPServer:
             title = String(localized: "Action Failed")
         }
+        if presentRecoverableError(error, for: intent, title: title) { return }
         AlertHelper.showErrorSheet(
             title: title,
             message: error.localizedDescription,

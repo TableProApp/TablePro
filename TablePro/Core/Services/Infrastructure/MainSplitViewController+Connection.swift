@@ -126,12 +126,13 @@ internal extension MainSplitViewController {
     }
 
     func performUnavailablePrimaryAction(_ reason: ConnectionUnavailableReason, for connectionId: UUID) {
-        switch reason {
-        case .pluginMissing:
-            guard let connection = workspaces.workspace(for: connectionId)?.connection else { return }
-            WelcomeRouter.shared.routePluginInstall(connection)
-        case .notConnected, .cancelled, .disconnected, .disconnectedByUser, .failed:
+        guard case .actionRequired(_, let action) = reason else {
             reconnectWorkspace(connectionId)
+            return
+        }
+        guard let connection = workspaces.workspace(for: connectionId)?.connection else { return }
+        ConnectionRecoveryPerformer.perform(action, for: connection) { [weak self] in
+            self?.reconnectWorkspace(connectionId)
         }
     }
 
@@ -165,7 +166,10 @@ internal extension MainSplitViewController {
                 self?.finishAttempt(
                     token,
                     for: connection.id,
-                    outcome: ConnectionFailureClassifier.outcome(for: error)
+                    outcome: ConnectionFailureClassifier.outcome(
+                        for: error,
+                        canEditConnection: ConnectionRecoveryPerformer.canEdit(connection)
+                    )
                 )
             }
         }
@@ -194,6 +198,29 @@ internal extension MainSplitViewController {
         )
         guard signedIn else { return false }
         reconnectWorkspace(connection.id)
+        return true
+    }
+
+    func adoptRecoverableConnectFailure(_ error: Error, for connectionId: UUID) -> Bool {
+        guard let workspace = workspaces.workspace(for: connectionId),
+              let connection = workspace.connection,
+              ConnectionWindowPhaseMachine.acceptsExternalFailure(
+                  phase: workspace.phase,
+                  ownsAttempt: workspace.attemptToken != nil
+              ) else { return false }
+        let outcome = ConnectionFailureClassifier.outcome(
+            for: error,
+            canEditConnection: ConnectionRecoveryPerformer.canEdit(connection)
+        )
+        guard case .actionRequired = outcome else { return false }
+        transition(
+            to: ConnectionWindowPhaseMachine.onAttemptFinished(
+                phase: workspace.phase,
+                isCurrentAttempt: true,
+                outcome: outcome
+            ),
+            for: connectionId
+        )
         return true
     }
 

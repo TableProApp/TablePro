@@ -533,7 +533,7 @@ struct MainMenuValidationTests {
             .unavailable(.disconnected(nil)),
             .unavailable(.disconnectedByUser),
             .unavailable(.failed(ConnectionFailureInfo(message: "connection refused"))),
-            .unavailable(.pluginMissing(ConnectionFailureInfo(message: "plugin missing"))),
+            .unavailable(.actionRequired(ConnectionFailureInfo(message: "plugin missing"), .installPlugin)),
             .closing
         ]
         let gated = connectionScopedSelectors + contentScopedSelectors

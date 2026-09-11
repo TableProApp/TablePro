@@ -198,6 +198,7 @@ extension WelcomeViewModel {
     func openSampleDatabase() {
         SampleDatabaseLauncher.open { [weak self] error in
             guard let self else { return }
+            self.connectionErrorRecovery = nil
             self.connectionError = SSLHandshakeError.formatted(error)
             self.showConnectionError = true
         }

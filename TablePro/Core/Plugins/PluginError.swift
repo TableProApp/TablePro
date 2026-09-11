@@ -24,6 +24,10 @@ enum PluginError: LocalizedError {
     case pluginUpdateUnavailable(reason: String)
     case incompatibleWithCurrentApp(minimumRequired: String)
     case invalidDescriptor(pluginId: String, reason: String)
+    case unknownDatabaseType(String)
+    case pluginDisabled(pluginId: String, pluginName: String)
+    case pluginLoadFailed(pluginId: String?, pluginName: String, reason: String?)
+    case pluginInstallFailed(databaseType: String, reason: String)
 
     var errorDescription: String? {
         switch self {
@@ -67,6 +71,38 @@ enum PluginError: LocalizedError {
             return String(format: String(localized: "This plugin requires TablePro %@ or later"), minimumRequired)
         case .invalidDescriptor(let pluginId, let reason):
             return String(format: String(localized: "Plugin '%@' has an invalid descriptor: %@"), pluginId, reason)
+        case .unknownDatabaseType(let databaseType):
+            return String(format: String(localized: "TablePro doesn't recognize the database type “%@”."), databaseType)
+        case .pluginDisabled(_, let pluginName):
+            return String(format: String(localized: "The %@ plugin is turned off."), pluginName)
+        case .pluginLoadFailed(_, let pluginName, _):
+            return String(format: String(localized: "The %@ plugin could not be loaded."), pluginName)
+        case .pluginInstallFailed(let databaseType, let reason):
+            return String(format: String(localized: "The %1$@ plugin could not be installed: %2$@"), databaseType, reason)
+        }
+    }
+
+    var failureReason: String? {
+        switch self {
+        case .pluginLoadFailed(_, _, let reason):
+            return reason
+        default:
+            return nil
+        }
+    }
+
+    var recoverySuggestion: String? {
+        switch self {
+        case .unknownDatabaseType:
+            return String(localized: "Edit the connection and choose its database type.")
+        case .pluginDisabled:
+            return String(localized: "Turn the plugin on to connect.")
+        case .pluginLoadFailed:
+            return String(localized: "Update or reinstall the plugin in Settings > Plugins.")
+        case .pluginInstallFailed:
+            return String(localized: "Try again, or install the plugin from Settings > Plugins.")
+        default:
+            return nil
         }
     }
 

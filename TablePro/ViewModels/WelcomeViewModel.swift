@@ -75,6 +75,7 @@ final class WelcomeViewModel {
     var groupErrorMessage: String?
 
     var connectionError: String?
+    var connectionErrorRecovery: PendingConnectionRecovery?
     var showConnectionError = false
     var pluginDiagnostic: PluginDiagnosticItem?
 
@@ -706,9 +707,36 @@ final class WelcomeViewModel {
             error: error, connection: connection, username: connection.username
         ) {
             pluginDiagnostic = item
-        } else {
+            return
+        }
+        guard let action = ConnectionFailureClassifier.recoveryAction(
+            for: error,
+            canEditConnection: ConnectionRecoveryPerformer.canEdit(connection)
+        ) else {
+            connectionErrorRecovery = nil
             connectionError = SSLHandshakeError.formatted(error)
             showConnectionError = true
+            return
         }
+        let info = ConnectionFailureClassifier.info(for: error)
+        connectionErrorRecovery = PendingConnectionRecovery(action: action, connection: connection)
+        connectionError = [info.message, info.failureReason, info.recoverySuggestion]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n\n")
+        showConnectionError = true
+    }
+
+    func performConnectionErrorRecovery() {
+        guard let recovery = connectionErrorRecovery else { return }
+        dismissConnectionError()
+        ConnectionRecoveryPerformer.perform(recovery.action, for: recovery.connection) { [weak self] in
+            self?.connectToDatabase(recovery.connection)
+        }
+    }
+
+    func dismissConnectionError() {
+        connectionError = nil
+        connectionErrorRecovery = nil
     }
 }

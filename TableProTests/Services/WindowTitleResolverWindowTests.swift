@@ -33,7 +33,7 @@ struct WindowTitleResolverWindowTests {
         .unavailable(.cancelled),
         .unavailable(.disconnected(nil)),
         .unavailable(.failed(ConnectionFailureInfo(message: "refused"))),
-        .unavailable(.pluginMissing(ConnectionFailureInfo(message: "missing"))),
+        .unavailable(.actionRequired(ConnectionFailureInfo(message: "missing"), .installPlugin)),
     ]
 
     @Test("A window that is not showing content is named after its connection, never a tab")

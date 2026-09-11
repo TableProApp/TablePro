@@ -160,8 +160,17 @@ struct WelcomeWindowView: View {
             String(localized: "Connection Failed"),
             isPresented: $vm.showConnectionError
         ) {
-            Button(String(localized: "OK"), role: .cancel) {
-                vm.connectionError = nil
+            if let recovery = vm.connectionErrorRecovery {
+                Button(recovery.action.title) {
+                    vm.performConnectionErrorRecovery()
+                }
+                Button(String(localized: "Cancel"), role: .cancel) {
+                    vm.dismissConnectionError()
+                }
+            } else {
+                Button(String(localized: "OK"), role: .cancel) {
+                    vm.dismissConnectionError()
+                }
             }
         } message: {
             if let error = vm.connectionError {

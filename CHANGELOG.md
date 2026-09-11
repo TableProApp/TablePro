@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Empty state in the inspector and the assistant for a connection that is not up.
 - **Check connections** in Settings > General, including Only when I use the connection. (#2700)
+- **Enable Plugin**, **Open Plugin Settings** and **Edit Connection…** on a connection whose driver cannot load.
 
 ### Changed
 
@@ -43,6 +44,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Editor jumping sideways on each keystroke in a long line while scrolled horizontally.
 - Cursor left off screen after pasting a long line.
 - Line number column keeping a stale width after the line count drops below 1,000 or the font size changes.
+- Connect error blaming a missing plugin for a connection whose database type is not recognized.
+- Connecting silently switching a disabled plugin back on.
+- Plugin install error replaced by "not installed" when connecting.
+- Test Connection doing nothing after installing the plugin it asked for.
+- Connecting removing a plugin that failed to load, and its settings, when no replacement could be downloaded.
+- Disabled plugin's code loaded when a connection looked up its driver.
 
 ## [0.73.0] - 2026-09-09
 

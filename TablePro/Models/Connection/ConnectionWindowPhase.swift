@@ -41,7 +41,7 @@ internal enum ConnectionUnavailableReason: Equatable, Sendable {
     case disconnected(ConnectionFailureInfo?)
     case disconnectedByUser
     case failed(ConnectionFailureInfo)
-    case pluginMissing(ConnectionFailureInfo)
+    case actionRequired(ConnectionFailureInfo, ConnectionRecoveryAction)
 }
 
 internal enum ConnectionWindowPhase: Equatable, Sendable {
@@ -55,5 +55,5 @@ internal enum ConnectionWindowPhase: Equatable, Sendable {
 internal enum ConnectionAttemptOutcome: Equatable, Sendable {
     case cancelled
     case failed(ConnectionFailureInfo)
-    case pluginMissing(ConnectionFailureInfo)
+    case actionRequired(ConnectionFailureInfo, ConnectionRecoveryAction)
 }

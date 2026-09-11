@@ -102,8 +102,33 @@ internal enum ConnectionWindowPhaseMachine {
             return .unavailable(.cancelled)
         case .failed(let info):
             return .unavailable(.failed(info))
-        case .pluginMissing(let info):
-            return .unavailable(.pluginMissing(info))
+        case .actionRequired(let info, let action):
+            return .unavailable(.actionRequired(info, action))
+        }
+    }
+
+    internal static func onConnectionRecordChanged(
+        phase: ConnectionWindowPhase,
+        databaseTypeChanged: Bool
+    ) -> ConnectionWindowPhase {
+        guard databaseTypeChanged, case .unavailable(.actionRequired) = phase else { return phase }
+        return .unavailable(.notConnected)
+    }
+
+    internal static func acceptsExternalFailure(phase: ConnectionWindowPhase, ownsAttempt: Bool) -> Bool {
+        guard !ownsAttempt else { return false }
+        switch phase {
+        case .connecting:
+            return true
+        case .unavailable(let reason):
+            switch reason {
+            case .notConnected, .disconnected, .failed:
+                return true
+            case .cancelled, .disconnectedByUser, .actionRequired:
+                return false
+            }
+        case .idle, .connected, .closing:
+            return false
         }
     }
 
@@ -115,7 +140,7 @@ internal enum ConnectionWindowPhaseMachine {
             switch reason {
             case .cancelled, .disconnectedByUser:
                 return false
-            case .notConnected, .disconnected, .failed, .pluginMissing:
+            case .notConnected, .disconnected, .failed, .actionRequired:
                 return true
             }
         case .idle, .closing:
@@ -132,10 +157,8 @@ internal enum ConnectionWindowPhaseMachine {
             return true
         case .unavailable(let reason):
             switch reason {
-            case .notConnected, .cancelled, .disconnected, .disconnectedByUser, .failed:
+            case .notConnected, .cancelled, .disconnected, .disconnectedByUser, .failed, .actionRequired:
                 return true
-            case .pluginMissing:
-                return false
             }
         case .connecting, .connected, .closing:
             return false
@@ -150,7 +173,7 @@ internal enum ConnectionWindowPhaseMachine {
             switch reason {
             case .notConnected, .disconnected, .failed:
                 return true
-            case .cancelled, .disconnectedByUser, .pluginMissing:
+            case .cancelled, .disconnectedByUser, .actionRequired:
                 return false
             }
         case .connecting, .connected, .closing:
