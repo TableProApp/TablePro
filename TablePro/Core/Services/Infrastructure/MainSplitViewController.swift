@@ -229,7 +229,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
             session: ConnectionSessionSnapshot(
                 exists: resolvedSession != nil,
                 hasDriver: resolvedSession?.driver != nil,
-                disconnectInfo: DatabaseManager.shared.disconnectReason(for: connectionId),
+                endReason: DatabaseManager.shared.disconnectReason(for: connectionId),
                 liveness: resolvedSession?.liveness ?? .live
             ),
             ownsAttempt: false
@@ -494,7 +494,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         let snapshot = ConnectionSessionSnapshot(
             exists: session != nil,
             hasDriver: session?.driver != nil,
-            disconnectInfo: DatabaseManager.shared.disconnectReason(for: sid),
+            endReason: DatabaseManager.shared.disconnectReason(for: sid),
             wasDisconnectedByUser: DatabaseManager.shared.wasDisconnectedByUser(sid),
             liveness: session?.liveness ?? .live
         )

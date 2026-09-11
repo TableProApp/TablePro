@@ -84,16 +84,8 @@ internal final class LaunchIntentRouter {
         WindowOpener.shared.openSettings(tab: .plugins)
     }
 
-    private func hostingWindow(for connectionId: UUID) -> MainSplitViewController? {
-        let window = WindowLifecycleMonitor.shared.mostRecentWindow(for: connectionId)
-            ?? WindowManager.shared.window(for: connectionId)
-        guard let host = window?.contentViewController as? MainSplitViewController,
-              host.workspaces.contains(connectionId) else { return nil }
-        return host
-    }
-
     private func presentRecoverableError(_ error: Error, for intent: LaunchIntent, title: String) -> Bool {
-        guard let connectionId = connectionId(for: intent),
+        guard let connectionId = Self.connectionId(for: intent),
               let connection = ConnectionStorage.shared.loadConnections().first(where: { $0.id == connectionId }),
               let action = ConnectionFailureClassifier.recoveryAction(for: error)
         else { return false }
@@ -112,7 +104,7 @@ internal final class LaunchIntentRouter {
         return true
     }
 
-    private func connectionId(for intent: LaunchIntent) -> UUID? {
+    private static func connectionId(for intent: LaunchIntent) -> UUID? {
         switch intent {
         case .openConnection(let id):
             return id
@@ -127,12 +119,15 @@ internal final class LaunchIntentRouter {
         }
     }
 
+    internal static func failedConnectionId(for intent: LaunchIntent, error: Error) -> UUID? {
+        connectionId(for: intent) ?? (error as? TabRouterError)?.windowConnectionId
+    }
+
     private func presentError(_ error: Error, for intent: LaunchIntent) async {
-        if let connectionId = connectionId(for: intent),
+        if let connectionId = Self.failedConnectionId(for: intent, error: error),
            WindowManager.shared.hasOpenWindow(for: connectionId) {
-            let adopted = hostingWindow(for: connectionId)?.adoptRecoverableConnectFailure(error, for: connectionId) ?? false
             Self.logger.info(
-                "Failure left to the connection window connId=\(connectionId, privacy: .public) adoptedRecovery=\(adopted, privacy: .public)"
+                "Failure already shown in the connection window connId=\(connectionId, privacy: .public)"
             )
             return
         }
@@ -170,6 +165,7 @@ extension TabRouterError: Equatable {
         case (.connectionNotFound(let l), .connectionNotFound(let r)): return l == r
         case (.malformedDatabaseURL(let l), .malformedDatabaseURL(let r)): return l == r
         case (.unsupportedIntent(let l), .unsupportedIntent(let r)): return l == r
+        case (.connectFailedInWindow(let l, _), .connectFailedInWindow(let r, _)): return l == r
         default: return false
         }
     }

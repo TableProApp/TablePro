@@ -7,12 +7,13 @@ import Foundation
 
 /// `exists` and `hasDriver` alone cannot tell "still dialing" from "gave up", which is why a
 /// session left behind by an exhausted tunnel recovery used to read as `.connecting` forever.
-/// `disconnectInfo` carries the reason the session went away so the window can say what happened
-/// instead of falling back to the generic closed-connection copy.
+/// `endReason` carries why the session went away so the window can say what happened, and whether
+/// it was a connect that failed or a session that was lost, instead of falling back to the generic
+/// closed-connection copy.
 internal struct ConnectionSessionSnapshot: Equatable, Sendable {
     internal let exists: Bool
     internal let hasDriver: Bool
-    internal let disconnectInfo: ConnectionFailureInfo?
+    internal let endReason: ConnectionEndReason?
     /// The user asked for this. A session that goes away on its own is something to report and
     /// recover from; one the user ended is neither, and it must not be replayed on the next launch.
     internal let wasDisconnectedByUser: Bool
@@ -24,13 +25,13 @@ internal struct ConnectionSessionSnapshot: Equatable, Sendable {
     internal init(
         exists: Bool,
         hasDriver: Bool,
-        disconnectInfo: ConnectionFailureInfo? = nil,
+        endReason: ConnectionEndReason? = nil,
         wasDisconnectedByUser: Bool = false,
         liveness: ConnectionLiveness = .live
     ) {
         self.exists = exists
         self.hasDriver = hasDriver
-        self.disconnectInfo = disconnectInfo
+        self.endReason = endReason
         self.wasDisconnectedByUser = wasDisconnectedByUser
         self.liveness = liveness
     }
@@ -38,7 +39,8 @@ internal struct ConnectionSessionSnapshot: Equatable, Sendable {
     internal static let absent = ConnectionSessionSnapshot(exists: false, hasDriver: false)
 
     internal var lostSessionReason: ConnectionUnavailableReason {
-        wasDisconnectedByUser ? .disconnectedByUser : .disconnected(disconnectInfo)
+        if wasDisconnectedByUser { return .disconnectedByUser }
+        return endReason?.unavailableReason ?? .disconnected(nil)
     }
 }
 
@@ -69,7 +71,7 @@ internal enum ConnectionWindowPhaseMachine {
             /// connected would put its rows back on screen for the length of its own reconnect, over
             /// the very handle that stopped answering.
             guard !ownsAttempt else { return .connecting }
-            return .unavailable(.disconnected(info ?? session.disconnectInfo))
+            return .unavailable(.disconnected(info ?? session.endReason?.info))
         }
         if session.hasDriver { return .connected }
 
@@ -115,22 +117,6 @@ internal enum ConnectionWindowPhaseMachine {
         return .unavailable(.notConnected)
     }
 
-    internal static func acceptsExternalFailure(phase: ConnectionWindowPhase, ownsAttempt: Bool) -> Bool {
-        guard !ownsAttempt else { return false }
-        switch phase {
-        case .connecting:
-            return true
-        case .unavailable(let reason):
-            switch reason {
-            case .notConnected, .disconnected, .failed:
-                return true
-            case .cancelled, .disconnectedByUser, .actionRequired:
-                return false
-            }
-        case .idle, .connected, .closing:
-            return false
-        }
-    }
 
     internal static func retainsRestoreIntent(phase: ConnectionWindowPhase) -> Bool {
         switch phase {

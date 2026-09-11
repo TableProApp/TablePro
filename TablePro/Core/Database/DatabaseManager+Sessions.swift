@@ -243,8 +243,11 @@ extension DatabaseManager {
             clearConnectionStage(for: connectionId)
         }
         guard !cancelled else { return }
-        if let error, !ConnectionFailureClassifier.isUserCancelled(error) {
-            recordDisconnectReason(ConnectionFailureClassifier.info(for: error), for: connectionId)
+        if let error, let reason = ConnectionFailureClassifier.endReason(
+            for: error,
+            canEditConnection: connectionStorage.loadConnection(id: connectionId) != nil
+        ) {
+            recordDisconnectReason(reason, for: connectionId)
         }
         removeSessionEntry(for: connectionId)
         if lastActiveSessionId == connectionId {
@@ -656,8 +659,8 @@ extension DatabaseManager {
         }
     }
 
-    internal func recordDisconnectReason(_ info: ConnectionFailureInfo, for connectionId: UUID) {
-        disconnectReasons[connectionId] = info
+    internal func recordDisconnectReason(_ reason: ConnectionEndReason, for connectionId: UUID) {
+        disconnectReasons[connectionId] = reason
     }
 
     /// Says that a session's driver has stopped answering, so the window stops presenting rows over
@@ -675,7 +678,7 @@ extension DatabaseManager {
     ) {
         guard let current = activeSessions[sessionId] else { return }
         guard current.driver === driver else { return }
-        if let info { recordDisconnectReason(info, for: sessionId) }
+        if let info { recordDisconnectReason(.sessionLost(info), for: sessionId) }
         updateSession(sessionId) { session in
             session.liveness = .unreachable(info)
         }
@@ -699,7 +702,7 @@ extension DatabaseManager {
         }
     }
 
-    internal func disconnectReason(for connectionId: UUID) -> ConnectionFailureInfo? {
+    internal func disconnectReason(for connectionId: UUID) -> ConnectionEndReason? {
         disconnectReasons[connectionId]
     }
 

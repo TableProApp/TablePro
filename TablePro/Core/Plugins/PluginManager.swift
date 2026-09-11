@@ -13,7 +13,7 @@ import TableProPluginKit
 
 @MainActor @Observable
 final class PluginManager {
-    static let shared = PluginManager()
+    static let shared = PluginManager(userDefaults: AppStorageEnvironment.shared.defaults)
     /// Raised to 23 for `releasableResourceCommandTitle` and `releaseIdleResource` on
     /// `PluginDatabaseDriver`, plus the `PluginResourceRelease` they answer with. Together they let
     /// a driver hand back a resource its session is holding without ending the session. DuckDB is

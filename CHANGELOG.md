@@ -56,6 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Test Connection doing nothing after installing the plugin it asked for.
 - Connecting removing a plugin that failed to load, and its settings, when no replacement could be downloaded.
 - Disabled plugin's code loaded when a connection looked up its driver.
+- Failed connect from an opened file or URL titled "Disconnected", with Reconnect as its only fix.
+- Connection Failed alert covering the window that already showed the same failure.
 
 ## [0.73.0] - 2026-09-09
 

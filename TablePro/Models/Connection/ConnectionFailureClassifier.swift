@@ -15,6 +15,17 @@ internal enum ConnectionFailureClassifier {
         return .failed(info(for: error))
     }
 
+    internal static func endReason(for error: Error, canEditConnection: Bool) -> ConnectionEndReason? {
+        switch outcome(for: error, canEditConnection: canEditConnection) {
+        case .cancelled:
+            return nil
+        case .failed(let info):
+            return .connectFailed(info, nil)
+        case .actionRequired(let info, let action):
+            return .connectFailed(info, action)
+        }
+    }
+
     internal static func recoveryAction(for error: Error, canEditConnection: Bool = true) -> ConnectionRecoveryAction? {
         guard let pluginError = error as? PluginError else { return nil }
         switch pluginError {

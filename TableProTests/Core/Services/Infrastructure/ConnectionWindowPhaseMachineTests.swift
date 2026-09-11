@@ -119,19 +119,6 @@ struct ConnectionWindowPhaseMachineTests {
         }
     }
 
-    @Test("A failure reported from outside the window lands only where nothing newer owns the phase")
-    func externalFailureRespectsTheAttemptFence() {
-        #expect(ConnectionWindowPhaseMachine.acceptsExternalFailure(phase: .connecting, ownsAttempt: false))
-        #expect(ConnectionWindowPhaseMachine.acceptsExternalFailure(phase: .unavailable(.disconnected(nil)), ownsAttempt: false))
-        #expect(ConnectionWindowPhaseMachine.acceptsExternalFailure(phase: .unavailable(.failed(Self.failure)), ownsAttempt: false))
-
-        #expect(!ConnectionWindowPhaseMachine.acceptsExternalFailure(phase: .connecting, ownsAttempt: true))
-        #expect(!ConnectionWindowPhaseMachine.acceptsExternalFailure(phase: .unavailable(.cancelled), ownsAttempt: false))
-        #expect(!ConnectionWindowPhaseMachine.acceptsExternalFailure(phase: .unavailable(.disconnectedByUser), ownsAttempt: false))
-        #expect(!ConnectionWindowPhaseMachine.acceptsExternalFailure(phase: .connected, ownsAttempt: false))
-        #expect(!ConnectionWindowPhaseMachine.acceptsExternalFailure(phase: .closing, ownsAttempt: false))
-    }
-
     @Test("An outcome from a superseded attempt never moves the phase")
     func supersededAttemptIsIgnored() {
         let phase = ConnectionWindowPhaseMachine.onAttemptFinished(
@@ -222,12 +209,66 @@ struct ConnectionWindowPhaseMachineTests {
     func disconnectReasonReachesThePhase() {
         let phase = ConnectionWindowPhaseMachine.onSessionChanged(
             phase: .connected,
-            session: ConnectionSessionSnapshot(exists: false, hasDriver: false, disconnectInfo: Self.failure),
+            session: ConnectionSessionSnapshot(exists: false, hasDriver: false, endReason: .sessionLost(Self.failure)),
             ownsAttempt: false
         )
 
         #expect(phase == .unavailable(.disconnected(Self.failure)))
         #expect(phase != .unavailable(.disconnected(nil)))
+    }
+
+    /// A connect driven from outside the window, opening a file or a table from a URL, is not the
+    /// window's attempt, so the window learns its result only from the session going away. That
+    /// used to read as "Disconnected" with Reconnect, for a connection that never connected and
+    /// whose only fix was switching its plugin on.
+    @Test("A connect the window did not start that failed for its plugin offers the plugin's fix")
+    func unownedFailedConnectKeepsItsFix() {
+        let action = ConnectionRecoveryAction.enablePlugin(pluginId: "com.TablePro.SQLiteDriver")
+        let phase = ConnectionWindowPhaseMachine.onSessionChanged(
+            phase: .connecting,
+            session: ConnectionSessionSnapshot(exists: false, hasDriver: false, endReason: .connectFailed(Self.failure, action)),
+            ownsAttempt: false
+        )
+
+        #expect(phase == .unavailable(.actionRequired(Self.failure, action)))
+    }
+
+    @Test("A connect the window did not start that failed is a failure, not a disconnect")
+    func unownedFailedConnectIsAFailure() {
+        let phase = ConnectionWindowPhaseMachine.onSessionChanged(
+            phase: .connecting,
+            session: ConnectionSessionSnapshot(exists: false, hasDriver: false, endReason: .connectFailed(Self.failure, nil)),
+            ownsAttempt: false
+        )
+
+        #expect(phase == .unavailable(.failed(Self.failure)))
+    }
+
+    @Test("A window's own attempt still decides its own outcome")
+    func ownedAttemptIgnoresTheRecordedReason() {
+        let phase = ConnectionWindowPhaseMachine.onSessionChanged(
+            phase: .connecting,
+            session: ConnectionSessionSnapshot(exists: false, hasDriver: false, endReason: .connectFailed(Self.failure, .editConnection)),
+            ownsAttempt: true
+        )
+
+        #expect(phase == .connecting)
+    }
+
+    @Test("A user's disconnect outranks any recorded reason")
+    func deliberateDisconnectOutranksTheReason() {
+        let phase = ConnectionWindowPhaseMachine.onSessionChanged(
+            phase: .connected,
+            session: ConnectionSessionSnapshot(
+                exists: false,
+                hasDriver: false,
+                endReason: .connectFailed(Self.failure, .installPlugin),
+                wasDisconnectedByUser: true
+            ),
+            ownsAttempt: false
+        )
+
+        #expect(phase == .unavailable(.disconnectedByUser))
     }
 
     @Test("A driverless session does not drag an unavailable window back to a spinner")

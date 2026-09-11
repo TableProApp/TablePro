@@ -201,29 +201,6 @@ internal extension MainSplitViewController {
         return true
     }
 
-    func adoptRecoverableConnectFailure(_ error: Error, for connectionId: UUID) -> Bool {
-        guard let workspace = workspaces.workspace(for: connectionId),
-              let connection = workspace.connection,
-              ConnectionWindowPhaseMachine.acceptsExternalFailure(
-                  phase: workspace.phase,
-                  ownsAttempt: workspace.attemptToken != nil
-              ) else { return false }
-        let outcome = ConnectionFailureClassifier.outcome(
-            for: error,
-            canEditConnection: ConnectionRecoveryPerformer.canEdit(connection)
-        )
-        guard case .actionRequired = outcome else { return false }
-        transition(
-            to: ConnectionWindowPhaseMachine.onAttemptFinished(
-                phase: workspace.phase,
-                isCurrentAttempt: true,
-                outcome: outcome
-            ),
-            for: connectionId
-        )
-        return true
-    }
-
     private func finishAttempt(_ token: UUID, for connectionId: UUID, outcome: ConnectionAttemptOutcome?) {
         guard let workspace = workspaces.workspace(for: connectionId) else { return }
         let isCurrentAttempt = workspace.attemptToken == token
