@@ -27,6 +27,7 @@ final class LibPQDriverCore: @unchecked Sendable {
 
     var serverVersion: String? { libpqConnection?.serverVersion() }
     var serverVersionNumber: Int32 { libpqConnection?.serverVersionNumber() ?? 0 }
+    var standardConformingStrings: Bool { libpqConnection?.standardConformingStrings ?? true }
 
     init(
         config: DriverConnectionConfig,
@@ -332,6 +333,10 @@ extension LibPQBackedDriver {
 
     var serverVersion: String? { core.serverVersion }
     var parameterStyle: ParameterStyle { .dollar }
+
+    func escapeStringLiteral(_ value: String) -> String {
+        LibPQStringConformance.escape(value, standardConformingStrings: core.standardConformingStrings)
+    }
 
     func escapeLiteral(_ str: String) -> String {
         escapeStringLiteral(str)

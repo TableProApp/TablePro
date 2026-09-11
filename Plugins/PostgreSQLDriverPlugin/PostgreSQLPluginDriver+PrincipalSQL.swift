@@ -13,7 +13,7 @@ extension PostgreSQLPluginDriver {
         options.append(contentsOf: attributeKeywords(definition.attributes))
 
         if let password = definition.password, !password.isEmpty {
-            options.append("PASSWORD '\(escapeStringLiteral(password))'")
+            options.append("PASSWORD \(PostgreSQLObjectQueries.quoteLiteral(password))")
         }
         if let limit = definition.connectionLimit {
             options.append("CONNECTION LIMIT \(limit)")
@@ -24,7 +24,7 @@ extension PostgreSQLPluginDriver {
             "GRANT \(quoteIdentifier($0)) TO \(role)"
         })
         if let comment = definition.comment, !comment.isEmpty {
-            statements.append("COMMENT ON ROLE \(role) IS '\(escapeStringLiteral(comment))'")
+            statements.append("COMMENT ON ROLE \(role) IS \(PostgreSQLObjectQueries.quoteLiteral(comment))")
         }
         return statements
     }
@@ -52,7 +52,7 @@ extension PostgreSQLPluginDriver {
 
         if old.comment != new.comment {
             let comment = new.comment ?? ""
-            let value = comment.isEmpty ? "NULL" : "'\(escapeStringLiteral(comment))'"
+            let value = comment.isEmpty ? "NULL" : PostgreSQLObjectQueries.quoteLiteral(comment)
             statements.append("COMMENT ON ROLE \(role) IS \(value)")
         }
         if old.ref.name != new.ref.name {
@@ -63,7 +63,7 @@ extension PostgreSQLPluginDriver {
 
     func generateSetPasswordSQL(principal: PluginPrincipalRef, password: String) -> [String]? {
         let role = quoteIdentifier(principal.name)
-        return ["ALTER ROLE \(role) WITH PASSWORD '\(escapeStringLiteral(password))'"]
+        return ["ALTER ROLE \(role) WITH PASSWORD \(PostgreSQLObjectQueries.quoteLiteral(password))"]
     }
 
     func generateDropPrincipalSQL(

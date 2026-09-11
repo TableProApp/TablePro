@@ -1317,7 +1317,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         }
 
         if let newComment = newColumn.comment, !newComment.isEmpty, newColumn.comment != oldColumn.comment {
-            stmts.append("COMMENT ON COLUMN \(qt).\(colName) IS '\(escapeLiteral(newComment))'")
+            stmts.append("COMMENT ON COLUMN \(qt).\(colName) IS \(PostgreSQLObjectQueries.quoteLiteral(newComment))")
         } else if oldColumn.comment != nil && (newColumn.comment == nil || newColumn.comment?.isEmpty == true) {
             stmts.append("COMMENT ON COLUMN \(qt).\(colName) IS NULL")
         }

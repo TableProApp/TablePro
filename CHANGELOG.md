@@ -158,6 +158,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - BigQuery Google sign-in accepting an authorization response without PKCE or a state check.
+- SQL injection and mangled backslashes in PostgreSQL literals when `standard_conforming_strings` is off.
 
 ## [0.73.0] - 2026-09-09
 
