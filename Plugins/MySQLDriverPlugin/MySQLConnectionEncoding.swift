@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-internal enum MySQLConnectionEncoding: String, CaseIterable, Sendable {
+nonisolated internal enum MySQLConnectionEncoding: String, CaseIterable, Sendable {
     case utf8 = ""
     case utf8ViaLatin1
 
@@ -25,6 +25,10 @@ internal enum MySQLConnectionEncoding: String, CaseIterable, Sendable {
 
     init(fieldValue: String?) {
         self = fieldValue.flatMap(Self.init(rawValue:)) ?? .utf8
+    }
+
+    init(additionalFields: [String: String]) {
+        self.init(fieldValue: additionalFields[Self.fieldId])
     }
 
     var displayName: String {

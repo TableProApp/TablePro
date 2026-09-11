@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-internal enum MySQLColumnDecoding: Equatable, Sendable {
+nonisolated internal enum MySQLColumnDecoding: Equatable, Sendable {
     case geometry
     case bit
     case bytes
@@ -59,7 +59,7 @@ internal enum MySQLColumnDecoding: Equatable, Sendable {
     }
 }
 
-internal struct MySQLResultColumns {
+nonisolated internal struct MySQLResultColumns {
     private(set) var names: [String] = []
     private(set) var typeCodes: [UInt32] = []
     private(set) var typeNames: [String] = []
@@ -93,10 +93,10 @@ internal struct MySQLResultColumns {
     }
 }
 
-internal func mysqlSessionText(_ bytes: UnsafeRawBufferPointer, encoding: MySQLConnectionEncoding) -> String {
+nonisolated internal func mysqlSessionText(_ bytes: UnsafeRawBufferPointer, encoding: MySQLConnectionEncoding) -> String {
     encoding.presentedText(MySQLCharacterSet.decodeUTF8OrMySQLLatin1(bytes))
 }
 
-internal func mysqlSessionText(cString: UnsafePointer<CChar>, encoding: MySQLConnectionEncoding) -> String {
+nonisolated internal func mysqlSessionText(cString: UnsafePointer<CChar>, encoding: MySQLConnectionEncoding) -> String {
     mysqlSessionText(UnsafeRawBufferPointer(start: cString, count: strlen(cString)), encoding: encoding)
 }

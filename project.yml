@@ -488,6 +488,7 @@ targets:
       - Plugins/MySQLDriverPlugin/MySQLIdleRelease.swift
       - Plugins/MySQLDriverPlugin/MySQLSessionFootprint.swift
       - Plugins/MySQLDriverPlugin/MySQLGeneratedColumnClassification.swift
+      - Plugins/MySQLDriverPlugin/MySQLKillTarget.swift
       - Plugins/MySQLDriverPlugin/MySQLObjectQueries.swift
       - Plugins/MySQLDriverPlugin/MySQLSelectLimitStatement.swift
       - Plugins/MySQLDriverPlugin/MySQLServerFlavor.swift

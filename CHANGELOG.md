@@ -38,6 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Garbled non-Latin text saved from iPhone and iPad to MySQL servers that force a Latin 1 session. (#2725)
+- **Encoding** ignored on iPhone and iPad by a MySQL connection synced from the Mac. (#2725)
+- Binary MySQL columns shown as text on iPhone and iPad, and searched with `LIKE`.
+- Crash opening a MySQL result whose column has no name on iPhone and iPad.
 - Wrong SQLSTATE code in PostgreSQL, Redshift, CockroachDB and PGlite error messages.
 - Read-only write explanation never shown on PostgreSQL servers.
 - Safe Mode minimum from a configuration profile missing from the toolbar, the Database menu and the connection form. (#2030)
