@@ -81,7 +81,7 @@ private struct WelcomeGroupLabel: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
 
-            Text("\(vm.connectionCountByGroup[group.id] ?? 0)")
+            Text(vm.connectionCountByGroup[group.id] ?? 0, format: .number)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
 
@@ -98,14 +98,14 @@ private struct WelcomeGroupLabel: View {
         Button {
             vm.beginRenameGroup(group)
         } label: {
-            Label(String(localized: "Rename"), systemImage: "pencil")
+            Label(String(localized: "Rename…"), systemImage: "pencil")
         }
 
         let currentGroupDepth = vm.depthByGroup[group.id] ?? 0
         Button {
             vm.createSubgroup(under: group.id)
         } label: {
-            Label(String(localized: "New Subgroup"), systemImage: "folder.badge.plus")
+            Label(String(localized: "New Subgroup…"), systemImage: "folder.badge.plus")
         }
         .disabled(currentGroupDepth >= 3)
 
@@ -130,7 +130,7 @@ private struct WelcomeGroupLabel: View {
         }
 
         if vm.groups.count > 1 {
-            Menu(String(localized: "Move Group to…")) {
+            Menu(String(localized: "Move Group To")) {
                 Button {
                     vm.moveGroup(group, toParent: nil)
                 } label: {

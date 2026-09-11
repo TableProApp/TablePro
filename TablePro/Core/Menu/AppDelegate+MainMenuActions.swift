@@ -77,6 +77,10 @@ extension AppDelegate: NSMenuItemValidation {
         WelcomeRouter.shared.route(.importFromApp)
     }
 
+    @objc func openProjectFolder(_ sender: Any?) {
+        WelcomeRouter.shared.route(.openProjectFolder)
+    }
+
     @objc func openSampleDatabase(_ sender: Any?) {
         SampleDatabaseLauncher.open()
     }

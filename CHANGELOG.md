@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 7 MB smaller DMG download.
 - Connect progress reads as a labelled bar, with a step named only where the app is waiting on something outside itself.
 - First launch opening on the welcome window, whose empty list offers the sample database and import from another app.
+- New Connection… and Import on the welcome window, named as in the File menu.
+- Open Project Folder… in File > Import.
 
 ### Removed
 
@@ -32,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Collapsing every group on the welcome window undone at the next launch.
 - Linked Folders and Team Library connections ignoring the welcome window search, with no context menu.
 - Dragging a connection in filtered welcome window results snapping back without moving it.
+- Welcome window context menu leaving linked connections out of a mixed selection.
 
 - Idle metadata connections held open for the life of the app, up to six per connection. (#2700)
 - MongoDB connections reading as healthy after the server went away. (#2700)

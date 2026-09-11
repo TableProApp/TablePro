@@ -99,7 +99,7 @@ internal struct WelcomeConnectionsPanel: View {
 
             NativeSearchField(
                 text: $vm.searchText,
-                placeholder: String(localized: "Search for connection…"),
+                placeholder: String(localized: "Search Connections"),
                 controlSize: .regular,
                 onMoveDown: { focus.wrappedValue = .connectionList },
                 onSubmit: { focus.wrappedValue = .connectionList },

@@ -48,7 +48,7 @@ internal struct WelcomeConnectionList: View {
                             WelcomeExternalConnectionRow(linked: linked, badgeSystemImage: "folder.fill")
                         }
                     } header: {
-                        sectionHeader(String(localized: "Linked"))
+                        sectionHeader(String(localized: "Linked Folders"))
                     }
                 }
 

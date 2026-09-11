@@ -7,11 +7,11 @@ import SwiftUI
 
 struct WelcomeActionsPanel: View {
     let onActivateLicense: () -> Void
-    let onCreateConnection: () -> Void
+    let onNewConnection: () -> Void
     let onImportFromURL: () -> Void
     let onImportFromApp: () -> Void
-    let onOpenProjectFolder: () -> Void
     let onImportConnectionsFile: () -> Void
+    let onOpenProjectFolder: () -> Void
 
     private let updaterBridge = UpdaterBridge.shared
 
@@ -39,26 +39,27 @@ struct WelcomeActionsPanel: View {
                 .frame(height: 28)
 
             VStack(spacing: 8) {
-                Button(action: onCreateConnection) {
-                    Label(String(localized: "Create Connection…"), systemImage: "plus.circle")
+                Button(action: onNewConnection) {
+                    Label(String(localized: "New Connection…"), systemImage: "plus.circle")
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
 
                 Menu {
+                    Button(String(localized: "Import Connections…"), action: onImportConnectionsFile)
                     Button(String(localized: "Import from URL…"), action: onImportFromURL)
                     Button(String(localized: "Import from Other App…"), action: onImportFromApp)
-                    Button(String(localized: "Open Project Folder…"), action: onOpenProjectFolder)
                     Divider()
-                    Button(String(localized: "Import Connections…"), action: onImportConnectionsFile)
+                    Button(String(localized: "Open Project Folder…"), action: onOpenProjectFolder)
                 } label: {
-                    Label(String(localized: "Add from Existing"), systemImage: "square.and.arrow.down")
+                    Label(String(localized: "Import"), systemImage: "square.and.arrow.down")
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
                 .menuStyle(.button)
                 .buttonStyle(.bordered)
                 .controlSize(.large)
+                .frame(maxWidth: .infinity)
             }
             .padding(.horizontal, 24)
 

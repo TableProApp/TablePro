@@ -157,7 +157,7 @@ private struct WelcomeGroupAlerts: ViewModifier {
                 }
             } message: {
                 if let group = vm.groupToDelete {
-                    Text("Are you sure you want to delete the group \"\(group.name)\"? Connections in this group will be moved to the top level.")
+                    Text("Are you sure you want to delete the group \"\(group.name)\" and its subgroups? Their connections will be moved to the top level.")
                 }
             }
             .alert(String(localized: "Rename Group"), isPresented: $vm.showRenameGroupAlert) {

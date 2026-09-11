@@ -18,11 +18,11 @@ struct WelcomeWindowView: View {
         HStack(spacing: 0) {
             WelcomeActionsPanel(
                 onActivateLicense: { vm.activeSheet = .activation },
-                onCreateConnection: { WindowOpener.shared.openConnectionForm() },
+                onNewConnection: { WindowOpener.shared.openConnectionForm() },
                 onImportFromURL: { vm.urlImportPresented = true },
                 onImportFromApp: { vm.importConnectionsFromApp() },
-                onOpenProjectFolder: { vm.openProjectFolder() },
-                onImportConnectionsFile: { vm.importConnectionsFromFile() }
+                onImportConnectionsFile: { vm.importConnectionsFromFile() },
+                onOpenProjectFolder: { vm.openProjectFolder() }
             )
             .frame(width: 240)
             .themeMaterial(.sidebar, .regularMaterial)
