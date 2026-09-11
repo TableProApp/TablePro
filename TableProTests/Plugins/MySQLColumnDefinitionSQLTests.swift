@@ -223,7 +223,9 @@ struct MySQLColumnDefinitionSQLTests {
         ]
     )
     func catalogQuotingFollowsTheVersion(banner: String, isMariaDB: Bool, expected: Bool) {
-        #expect(MySQLServerVersion.quotesColumnDefault(banner: banner, isMariaDB: isMariaDB) == expected)
+        #expect(
+            MySQLServerVersion.quotesColumnDefault(banner: banner, flavor: isMariaDB ? .mariadb : .mysql) == expected
+        )
     }
 
     @Test("An older MariaDB literal is quoted rather than passed through")

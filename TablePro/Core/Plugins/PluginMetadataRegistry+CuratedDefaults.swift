@@ -11,8 +11,8 @@ import TableProPluginKit
 /// The primary type ids here are overwritten by `buildMetadataSnapshot` the moment the plugin
 /// registers, so these are the pre-load answer for those. For a variant id they are the whole
 /// answer: `registerVariant` keeps the curated entry and ignores the plugin's own statics, which
-/// is the only reason MariaDB, Redshift, CockroachDB and PGlite can differ from the plugin that
-/// drives them.
+/// is the only reason MariaDB, TiDB, Databend, Redshift, CockroachDB and PGlite can differ from
+/// the plugin that drives them.
 extension PluginMetadataRegistry {
     // swiftlint:disable:next function_body_length
     static func curatedDefaults() -> [(typeId: String, snapshot: PluginMetadataSnapshot)] {
@@ -213,7 +213,7 @@ extension PluginMetadataRegistry {
 
         let awsIAMFields = AWSAuthFields.standard() + [AWSAuthFields.rdsEndpointField()]
 
-        /// MySQL and MariaDB only. PostgreSQL shares `awsIAMFields` and must not pick this up:
+        /// The MySQL plugin's types only. PostgreSQL shares `awsIAMFields` and must not pick this up:
         /// its driver holds no releasable resource, so the setting would do nothing.
         let mysqlIdleReleaseField = ConnectionField(
             id: "mysqlIdleReleaseMinutes",
@@ -684,6 +684,8 @@ extension PluginMetadataRegistry {
                 )
             ))
         ]
-        return defaults
+        return defaults + mysqlVariantDefaults(
+            dialect: mysqlDialect, mysqlColumnTypes: mysqlColumnTypes, idleReleaseField: mysqlIdleReleaseField
+        )
     }
 }

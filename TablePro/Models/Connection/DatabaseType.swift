@@ -16,6 +16,8 @@ extension DatabaseType {
     // Built-in types (bundled plugins)
     static let mysql = DatabaseType(rawValue: "MySQL")
     static let mariadb = DatabaseType(rawValue: "MariaDB")
+    static let tidb = DatabaseType(rawValue: "TiDB")
+    static let databend = DatabaseType(rawValue: "Databend")
     static let postgresql = DatabaseType(rawValue: "PostgreSQL")
     static let sqlite = DatabaseType(rawValue: "SQLite")
     static let redshift = DatabaseType(rawValue: "Redshift")

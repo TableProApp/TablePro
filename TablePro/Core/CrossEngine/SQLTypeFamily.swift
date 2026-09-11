@@ -42,6 +42,7 @@ internal enum SQLTypeFamily: String, Hashable, Sendable, CaseIterable {
     private static let familiesByTypeId: [String: SQLTypeFamily] = [
         "MySQL": .mysql,
         "MariaDB": .mysql,
+        "TiDB": .mysql,
         "PostgreSQL": .postgres,
         "Redshift": .postgres,
         "CockroachDB": .postgres,

@@ -15,7 +15,7 @@ final class CompareSQLLiteralTests: XCTestCase {
     private let png = Data([0x89, 0x50, 0x4E, 0x47])
 
     func testBitStringEnginesKeepTheDefaultSpelling() throws {
-        for type in [DatabaseType.mysql, .mariadb, .sqlite, .clickhouse, .duckdb, .libsql, .turso, .cloudflareD1] {
+        for type in [DatabaseType.mysql, .mariadb, .tidb, .databend, .sqlite, .clickhouse, .duckdb, .libsql, .turso, .cloudflareD1] {
             let literal = try XCTUnwrap(CompareSQLLiteral.binaryLiteral(for: png, databaseType: type))
             XCTAssertEqual(literal, "X'89504E47'", "\(type.rawValue) uses a bit-string literal")
         }

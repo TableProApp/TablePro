@@ -140,12 +140,10 @@ nonisolated enum ClipboardExporter {
         driver: (any DatabaseDriver)?
     ) -> String {
         if let driver { return driver.escapeStringLiteral(value) }
-        switch databaseType {
-        case .mysql, .mariadb:
-            return SQLEscaping.backslashStringLiteral(value)
-        default:
+        guard SQLBuilder.speaksMySQLDialect(databaseType) else {
             return SQLEscaping.ansiStringLiteral(value)
         }
+        return SQLEscaping.backslashStringLiteral(value)
     }
 
     private static func csvField(_ value: String?) -> String {

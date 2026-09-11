@@ -45,6 +45,10 @@ struct PluginManagerVariantAccessorTests {
     func variantsNameTheirOwnSystemDatabases() {
         #expect(manager.systemDatabaseNames(for: .redshift) == ["padb_harvest"])
         #expect(manager.systemDatabaseNames(for: .cockroachdb) == ["system"])
+        #expect(manager.systemDatabaseNames(for: .tidb) == [
+            "INFORMATION_SCHEMA", "METRICS_SCHEMA", "PERFORMANCE_SCHEMA", "mysql", "sys"
+        ])
+        #expect(manager.systemDatabaseNames(for: .databend) == ["information_schema", "system"])
     }
 
     /// The reason the editor half of this was reported: Redshift has no non-ASCII ILIKE, so it

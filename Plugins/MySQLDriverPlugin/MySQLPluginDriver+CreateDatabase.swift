@@ -3,6 +3,7 @@ import TableProPluginKit
 
 extension MySQLPluginDriver {
     func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec? {
+        guard !flavor.isDatabend else { return PluginCreateDatabaseFormSpec(fields: [], footnote: nil) }
         let charsetDefaults = try await fetchCharsetDefaults()
         let collations = try await fetchCollationCatalog()
         let serverDefaults = await fetchServerCharsetDefaults()
@@ -58,6 +59,7 @@ extension MySQLPluginDriver {
     }
 
     func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
+        guard !flavor.isDatabend else { return try await databendCreateDatabase(request) }
         guard let charset = request.values["charset"], !charset.isEmpty else {
             throw MariaDBPluginError(
                 code: 0,

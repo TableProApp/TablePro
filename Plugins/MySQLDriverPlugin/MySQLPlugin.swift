@@ -15,7 +15,7 @@ import TableProPluginKit
 final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "MySQL Driver"
     static let pluginVersion = "1.0.0"
-    static let pluginDescription = "MySQL/MariaDB support via libmariadb"
+    static let pluginDescription = "MySQL, MariaDB, TiDB, and Databend support via libmariadb"
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "MySQL"
@@ -32,7 +32,7 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
             section: .advanced
         )
         ]
-    static let additionalDatabaseTypeIds: [String] = ["MariaDB"]
+    static let additionalDatabaseTypeIds: [String] = ["MariaDB", "TiDB", "Databend"]
 
     // MARK: - UI/Capability Metadata
 
@@ -119,6 +119,15 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsCheckConstraints = true
     static let supportsCheckConstraintEditing = true
     static let supportsGeneratedColumns = true
+
+    static func driverVariant(for databaseTypeId: String) -> String? {
+        switch databaseTypeId {
+        case MySQLServerFlavor.tidbVariant, MySQLServerFlavor.databendVariant:
+            return databaseTypeId
+        default:
+            return nil
+        }
+    }
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         MySQLPluginDriver(config: config)

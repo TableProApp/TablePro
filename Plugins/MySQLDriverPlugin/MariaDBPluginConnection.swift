@@ -191,6 +191,28 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     /// `KILL` connection has to repeat what worked rather than what was asked for.
     private var effectiveSSLEnforced = false
 
+    private var _flavor: MySQLServerFlavor = .mysql
+    private var _killTarget: MySQLKillTarget = .threadId
+
+    private var flavor: MySQLServerFlavor {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _flavor
+    }
+
+    private var killTarget: MySQLKillTarget {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _killTarget
+    }
+
+    func adopt(flavor: MySQLServerFlavor, killTarget: MySQLKillTarget) {
+        stateLock.lock()
+        _flavor = flavor
+        _killTarget = killTarget
+        stateLock.unlock()
+    }
+
     var isConnected: Bool {
         stateLock.lock()
         defer { stateLock.unlock() }
@@ -422,11 +444,14 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     func cancelCurrentQuery() {
         guard cancellationGate.cancel() != nil else { return }
 
-        guard let mysql = mysql else { return }
-        let threadId = mysql_thread_id(mysql)
+        guard let mysql = mysql, let statement = killStatement(for: mysql) else { return }
         cancelQueue.async { [self] in
-            killQueryOnServer(threadId: threadId)
+            killQueryOnServer(statement: statement)
         }
+    }
+
+    private func killStatement(for mysql: UnsafeMutablePointer<MYSQL>) -> String? {
+        killTarget.statement(threadId: mysql_thread_id(mysql))
     }
 
     /// The kill has to reach the server the query is running on, which means repeating the transport
@@ -434,16 +459,13 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     /// to the default unix socket and the `port` argument is ignored, so `KILL QUERY` lands on a
     /// different server, where that thread id belongs to somebody else's session.
     ///
-    /// It carries the same credentials, so it may not be a weaker channel than the primary. TLS is
-    /// enforced whenever the primary's own connection negotiated it, and left unset otherwise so the
-    /// connector can still negotiate opportunistically; `MYSQL_OPT_SSL_ENFORCE` set to 0 does not mean
-    /// "no preference", it turns TLS off outright. Reading the configured mode instead of what the
-    /// connection actually got would break `.preferred`, the default, on a server with no TLS: the
-    /// primary succeeds through its plaintext fallback and every kill after it repeats the attempt
-    /// that already failed.
-    private func killQueryOnServer(threadId: UInt) {
-        guard threadId > 0 else { return }
-
+    /// It carries the same credentials, so it may not be a weaker channel than the primary, and it
+    /// repeats the transport the primary actually got rather than the configured mode. Both TLS
+    /// options are always set: left unset, the bundled connector requires TLS, so every kill against
+    /// a server without TLS failed with 2026 and Stop did nothing. Reading the configured mode
+    /// instead would break `.preferred`, the default, the same way: the primary succeeds through its
+    /// plaintext fallback and every kill after it repeats the attempt that already failed.
+    private func killQueryOnServer(statement killQuery: String) {
         let killConn = mysql_init(nil)
         guard let killConn = killConn else { return }
 
@@ -458,11 +480,11 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var killAllowLocalInfile: UInt32 = 0
         mysql_options(killConn, MYSQL_OPT_LOCAL_INFILE, &killAllowLocalInfile)
 
+        var killSSLEnforce: my_bool = effectiveSSLEnforced ? 1 : 0
+        mysql_options(killConn, MYSQL_OPT_SSL_ENFORCE, &killSSLEnforce)
+        var killSSLVerify: my_bool = effectiveSSLEnforced && sslConfig.verifiesCertificate ? 1 : 0
+        mysql_options(killConn, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &killSSLVerify)
         if effectiveSSLEnforced {
-            var killSSLEnforce: my_bool = 1
-            mysql_options(killConn, MYSQL_OPT_SSL_ENFORCE, &killSSLEnforce)
-            var killSSLVerify: my_bool = sslConfig.verifiesCertificate ? 1 : 0
-            mysql_options(killConn, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &killSSLVerify)
             if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {
                 _ = sslConfig.caCertificatePath.withCString { mysql_options(killConn, MYSQL_OPT_SSL_CA, $0) }
             }
@@ -492,15 +514,14 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
 
         if killResult != nil {
-            let killQuery = "KILL QUERY \(threadId)"
             let killStatus = killQuery.withCString { queryPtr in
                 mysql_real_query(killConn, queryPtr, UInt(killQuery.utf8.count))
             }
             if killStatus != 0 {
-                logger.warning("KILL QUERY \(threadId) rejected: \(self.errorMessage(from: killConn))")
+                logger.warning("\(killQuery, privacy: .public) rejected: \(self.errorMessage(from: killConn))")
             }
         } else {
-            logger.warning("KILL QUERY \(threadId) could not connect: \(self.errorMessage(from: killConn))")
+            logger.warning("\(killQuery, privacy: .public) could not connect: \(self.errorMessage(from: killConn))")
         }
 
         mysql_close(killConn)
@@ -525,7 +546,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         guard !hasCapturedBaselineSelectLimit else { return }
         hasCapturedBaselineSelectLimit = true
 
-        let probe = mysqlSelectLimitProbeStatement()
+        let probe = flavor.selectLimitProbeStatement
         let status = probe.withCString { probePtr in
             mysql_real_query(mysql, probePtr, UInt(probe.utf8.count))
         }
@@ -548,16 +569,17 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
 
         let desired = mysqlClampedRowCap(rowCap).map { mysqlSelectLimitRows(forRowCap: $0) }
+        let sessionFlavor = flavor
         let statement: String
         switch mysqlSelectLimitAction(applied: appliedSelectLimit, desired: desired) {
         case .none:
             return
         case .apply(let rows):
             captureBaselineSelectLimit(from: mysql)
-            statement = mysqlSelectLimitStatement(rows: rows)
+            statement = sessionFlavor.selectLimitStatement(rows: rows)
         case .reset:
-            statement = baselineSelectLimit.map { mysqlSelectLimitStatement(rows: $0) }
-                ?? mysqlSelectLimitResetStatement()
+            statement = baselineSelectLimit.map { sessionFlavor.selectLimitStatement(rows: $0) }
+                ?? sessionFlavor.selectLimitResetStatement
         }
 
         let status = statement.withCString { statementPtr in
@@ -578,8 +600,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         appliedSelectLimit = desired
     }
 
-    private static func isExpectedInterruption(errno: UInt32, wasTruncated: Bool) -> Bool {
-        wasTruncated && errno == UInt32(ER_QUERY_INTERRUPTED)
+    private func isExpectedInterruption(errno: UInt32, message: String, wasTruncated: Bool) -> Bool {
+        wasTruncated && flavor.isInterruptedByKill(errno: errno, message: message)
     }
 
     // MARK: - Query Execution
@@ -653,12 +675,15 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var columnTypes: [UInt32] = []
         var columnTypeNames: [String] = []
         var columnIsBinary: [Bool] = []
+        var columnIsBoolean: [Bool] = []
         var columnMeta: [PluginColumnInfo] = []
         columns.reserveCapacity(numFields)
         columnTypes.reserveCapacity(numFields)
         columnTypeNames.reserveCapacity(numFields)
         columnIsBinary.reserveCapacity(numFields)
+        columnIsBoolean.reserveCapacity(numFields)
         columnMeta.reserveCapacity(numFields)
+        let sessionFlavor = flavor
 
         if let fields = mysql_fetch_fields(resultPtr) {
             for i in 0..<numFields {
@@ -670,7 +695,10 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 if (fieldFlags & mysqlEnumFlag) != 0 { fieldType = 247 }
                 if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
                 columnTypes.append(fieldType)
-                let typeName = mysqlTypeToString(fields + i)
+                let isBoolean = sessionFlavor.isDatabend
+                    && DatabendResultShape.isBoolean(typeRaw: field.type.rawValue, length: field.length)
+                columnIsBoolean.append(isBoolean)
+                let typeName = isBoolean ? DatabendResultShape.booleanTypeName : mysqlTypeToString(fields + i)
                 columnTypeNames.append(typeName)
                 columnIsBinary.append(
                     MariaDBFieldClassifier.isBinary(
@@ -709,24 +737,18 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             row.reserveCapacity(numFields)
 
             for i in 0..<numFields {
-                if let fieldPtr = rowPtr[i] {
-                    let length = Int(clamping: lengths?[i] ?? 0)
-                    let bufferPtr = UnsafeRawBufferPointer(start: fieldPtr, count: length)
-
-                    if columnTypes[i] == 255 {
-                        row.append(.text(GeometryWKBParser.parse(bufferPtr)))
-                    } else if MariaDBFieldClassifier.isBit(typeRaw: columnTypes[i]) {
-                        row.append(.text(MariaDBFieldClassifier.bitFieldToString(bufferPtr)))
-                    } else if columnIsBinary[i] {
-                        row.append(.bytes(Data(bufferPtr)))
-                    } else if let str = String(bytes: bufferPtr, encoding: .utf8) {
-                        row.append(.text(str))
-                    } else {
-                        row.append(.text(String(bytes: bufferPtr, encoding: .isoLatin1) ?? ""))
-                    }
-                } else {
+                guard let fieldPtr = rowPtr[i] else {
                     row.append(.null)
+                    continue
                 }
+                let length = Int(clamping: lengths?[i] ?? 0)
+                row.append(Self.cellValue(
+                    UnsafeRawBufferPointer(start: fieldPtr, count: length),
+                    typeRaw: columnTypes[i],
+                    isBinary: columnIsBinary[i],
+                    isBoolean: columnIsBoolean[i],
+                    flavor: sessionFlavor
+                ))
             }
             rows.append(row)
         }
@@ -742,7 +764,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             rows.removeLast(rows.count - outcome.keptRows)
         }
         if outcome.serverIgnoredLimit {
-            killQueryOnServer(threadId: mysql_thread_id(mysql))
+            if !sessionFlavor.dropsIdleSessionOnKillQuery, let statement = killStatement(for: mysql) {
+                killQueryOnServer(statement: statement)
+            }
             while mysql_fetch_row(resultPtr) != nil {}
         }
 
@@ -752,13 +776,26 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
 
         let fetchErrno = mysql_errno(mysql)
-        if fetchErrno != 0, !Self.isExpectedInterruption(errno: fetchErrno, wasTruncated: outcome.serverIgnoredLimit) {
+        if fetchErrno != 0 {
             let error = getError()
-            mysql_free_result(resultPtr)
-            throw error
+            if !isExpectedInterruption(
+                errno: fetchErrno, message: error.message, wasTruncated: outcome.serverIgnoredLimit
+            ) {
+                mysql_free_result(resultPtr)
+                throw error
+            }
         }
 
         mysql_free_result(resultPtr)
+
+        if sessionFlavor.isDatabend, let affected = DatabendResultShape.affectedRowCount(columns: columns, rows: rows) {
+            return MariaDBPluginQueryResult(
+                columns: [], columnTypes: [], columnTypeNames: [],
+                rows: [], affectedRows: affected, insertId: 0, isTruncated: false,
+                columnMeta: [],
+                firstRowTime: firstRowTime ?? Date().timeIntervalSince(sentAt)
+            )
+        }
 
         return MariaDBPluginQueryResult(
             columns: columns, columnTypes: columnTypes, columnTypeNames: columnTypeNames,
@@ -980,6 +1017,10 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             throw MariaDBPluginError.notConnected
         }
 
+        guard flavor.preparesOnServer else {
+            return try executeQuerySync(DatabendLiteral.inline(query, parameters: parameters), rowCap: rowCap)
+        }
+
         let generation = cancellationGate.beginQuery()
         defer { cancellationGate.endQuery(generation) }
 
@@ -1148,10 +1189,13 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 var columnTypes: [UInt32] = []
                 var columnTypeNames: [String] = []
                 var columnIsBinary: [Bool] = []
+                var columnIsBoolean: [Bool] = []
                 columns.reserveCapacity(numFields)
                 columnTypes.reserveCapacity(numFields)
                 columnTypeNames.reserveCapacity(numFields)
                 columnIsBinary.reserveCapacity(numFields)
+                columnIsBoolean.reserveCapacity(numFields)
+                let sessionFlavor = flavor
 
                 if let fields = mysql_fetch_fields(resultPtr) {
                     for i in 0..<numFields {
@@ -1166,7 +1210,12 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                         if (fieldFlags & mysqlEnumFlag) != 0 { fieldType = 247 }
                         if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
                         columnTypes.append(fieldType)
-                        columnTypeNames.append(mysqlTypeToString(fields + i))
+                        let isBoolean = sessionFlavor.isDatabend
+                            && DatabendResultShape.isBoolean(typeRaw: field.type.rawValue, length: field.length)
+                        columnIsBoolean.append(isBoolean)
+                        columnTypeNames.append(
+                            isBoolean ? DatabendResultShape.booleanTypeName : mysqlTypeToString(fields + i)
+                        )
                         columnIsBinary.append(
                             MariaDBFieldClassifier.isBinary(
                                 typeRaw: field.type.rawValue,
@@ -1189,7 +1238,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                     if abort.isAborted || cancellationGate.isCancelled(generation) {
                         /// Same shape as the capped buffered read: stop the server first, then
                         /// drain what is already in flight so the connection stays usable.
-                        killQueryOnServer(threadId: mysql_thread_id(mysql))
+                        if let statement = killStatement(for: mysql) {
+                            killQueryOnServer(statement: statement)
+                        }
                         while mysql_fetch_row(resultPtr) != nil {}
                         mysql_free_result(resultPtr)
                         continuation.finish(throwing: CancellationError())
@@ -1202,24 +1253,18 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                     row.reserveCapacity(numFields)
 
                     for i in 0..<numFields {
-                        if let fieldPtr = rowPtr[i] {
-                            let length = Int(clamping: lengths?[i] ?? 0)
-                            let bufferPtr = UnsafeRawBufferPointer(start: fieldPtr, count: length)
-
-                            if columnTypes[i] == 255 {
-                                row.append(.text(GeometryWKBParser.parse(bufferPtr)))
-                            } else if MariaDBFieldClassifier.isBit(typeRaw: columnTypes[i]) {
-                                row.append(.text(MariaDBFieldClassifier.bitFieldToString(bufferPtr)))
-                            } else if columnIsBinary[i] {
-                                row.append(.bytes(Data(bufferPtr)))
-                            } else if let str = String(bytes: bufferPtr, encoding: .utf8) {
-                                row.append(.text(str))
-                            } else {
-                                row.append(.text(String(bytes: bufferPtr, encoding: .isoLatin1) ?? ""))
-                            }
-                        } else {
+                        guard let fieldPtr = rowPtr[i] else {
                             row.append(.null)
+                            continue
                         }
+                        let length = Int(clamping: lengths?[i] ?? 0)
+                        row.append(Self.cellValue(
+                            UnsafeRawBufferPointer(start: fieldPtr, count: length),
+                            typeRaw: columnTypes[i],
+                            isBinary: columnIsBinary[i],
+                            isBoolean: columnIsBoolean[i],
+                            flavor: sessionFlavor
+                        ))
                     }
 
                     batch.append(row)
@@ -1249,6 +1294,39 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     func serverVersion() -> String? {
         _cachedServerVersion
+    }
+
+    private static func cellValue(
+        _ buffer: UnsafeRawBufferPointer,
+        typeRaw: UInt32,
+        isBinary: Bool,
+        isBoolean: Bool,
+        flavor: MySQLServerFlavor
+    ) -> PluginCellValue {
+        if flavor.isDatabend {
+            if isBoolean {
+                return .text(DatabendResultShape.booleanText(fromWireText: String(bytes: buffer, encoding: .utf8) ?? ""))
+            }
+            if isBinary {
+                return .bytes(DatabendResultShape.binaryValue(fromWireText: Data(buffer)))
+            }
+            if typeRaw == 255 {
+                return .text(String(bytes: buffer, encoding: .utf8) ?? "")
+            }
+        }
+        if typeRaw == 255 {
+            return .text(GeometryWKBParser.parse(buffer))
+        }
+        if MariaDBFieldClassifier.isBit(typeRaw: typeRaw) {
+            return .text(MariaDBFieldClassifier.bitFieldToString(buffer))
+        }
+        if isBinary {
+            return .bytes(Data(buffer))
+        }
+        if let text = String(bytes: buffer, encoding: .utf8) {
+            return .text(text)
+        }
+        return .text(String(bytes: buffer, encoding: .isoLatin1) ?? "")
     }
 
     // MARK: - Private Helpers

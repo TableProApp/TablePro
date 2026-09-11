@@ -88,6 +88,31 @@ enum SqlLexer {
         return Span(next: length, newlines: newlines)
     }
 
+    static func skipNestedBlockComment(_ text: NSString, from offset: Int, length: Int) -> Span {
+        var cursor = offset + 2
+        var depth = 1
+        var newlines = 0
+        while cursor < length {
+            let character = text.character(at: cursor)
+            if character == newline {
+                newlines += 1
+            }
+            if startsBlockComment(text, at: cursor, length: length) {
+                depth += 1
+                cursor += 2
+                continue
+            }
+            if character == star, cursor + 1 < length, text.character(at: cursor + 1) == slash {
+                depth -= 1
+                cursor += 2
+                guard depth > 0 else { return Span(next: cursor, newlines: newlines) }
+                continue
+            }
+            cursor += 1
+        }
+        return Span(next: length, newlines: newlines)
+    }
+
     /// Runs past the closing quote, or to the end of the document when the string is never closed.
     ///
     /// A doubled quote always escapes. A backslash only escapes where the dialect says it does, so `'a\'` ends the
@@ -99,9 +124,24 @@ enum SqlLexer {
         length: Int,
         dialect: SqlDialect
     ) -> Span {
+        skipQuotedString(
+            text,
+            from: offset,
+            quote: quote,
+            length: length,
+            backslashEscapes: dialect.requiresBackslashEscapesInSingleQuotes
+        )
+    }
+
+    static func skipQuotedString(
+        _ text: NSString,
+        from offset: Int,
+        quote: UInt16,
+        length: Int,
+        backslashEscapes: Bool
+    ) -> Span {
         var cursor = offset + 1
         var newlines = 0
-        let backslashEscapes = dialect.requiresBackslashEscapesInSingleQuotes
         while cursor < length {
             let character = text.character(at: cursor)
             if character == newline {

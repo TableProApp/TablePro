@@ -5,6 +5,8 @@ enum DatabaseTypeStyle {
         switch type {
         case "MySQL": return "mysql-icon"
         case "MariaDB": return "mariadb-icon"
+        case "TiDB": return "tidb-icon"
+        case "Databend": return "databend-icon"
         case "PostgreSQL": return "postgresql-icon"
         case "Redshift": return "redshift-icon"
         case "SQLite": return "sqlite-icon"
@@ -41,6 +43,8 @@ enum DatabaseTypeStyle {
     static func iconColor(for type: String) -> Color {
         switch type {
         case "MySQL", "MariaDB": return .orange
+        case "TiDB": return .red
+        case "Databend": return .blue
         case "PostgreSQL", "Redshift": return .blue
         case "SQLite": return .green
         case "Redis": return .red

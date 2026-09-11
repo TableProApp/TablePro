@@ -47,6 +47,8 @@ struct PluginMetadataRegistrySystemDatabaseTests {
             ("PGlite", "postgres"),
             ("Redshift", "dev"),
             ("CockroachDB", "defaultdb"),
+            ("TiDB", "test"),
+            ("Databend", "default"),
         ]
         for (typeId, database) in defaults {
             guard let names = systemDatabaseNames(forTypeId: typeId) else {

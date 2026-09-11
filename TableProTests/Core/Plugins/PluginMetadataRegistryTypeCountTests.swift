@@ -11,7 +11,7 @@ import Testing
 /// this registry, `docs/snippets/driver-counts.mdx`, and the marketing site. Nothing at runtime
 /// reconciles them, and by August 2026 they read 28, 27 and 25 at once.
 ///
-/// The answer is 31, and the reason it once read 28 is worth keeping. Turso is served by
+/// The answer is 33, and the reason it once read 28 is worth keeping. Turso is served by
 /// the libSQL plugin and was the only alias in `reverseTypeIndex` with no curated entry of its
 /// own, so it was the only type the picker could not offer before its plugin was installed.
 /// ScyllaDB is the shape every other alias already had: an alias of Cassandra with a curated
@@ -24,17 +24,17 @@ import Testing
 /// `docs/scripts/check-docs-against-source.py` reads the registry and holds the docs half.
 ///
 /// The count is taken from the built-in defaults rather than from `allRegisteredTypeIds()`.
-/// Both answer 31 under XCTest, where no plugin bundle ever loads, but the registry is a
+/// Both answer 33 under XCTest, where no plugin bundle ever loads, but the registry is a
 /// process-global singleton and suites that register a synthetic type run alongside this one.
 @MainActor
 @Suite("PluginMetadataRegistry engine count")
 struct PluginMetadataRegistryTypeCountTests {
     private static let expectedTypeIds: Set<String> = [
         "Beancount", "BigQuery", "Cassandra", "ClickHouse", "Cloudflare D1", "Cloudflare R2 SQL",
-        "CockroachDB", "Dameng", "DuckDB", "DynamoDB", "Elasticsearch", "etcd", "Kafka", "libSQL",
-        "MariaDB", "MongoDB", "MySQL", "Oracle", "PGlite", "PostgreSQL", "Redis", "Redshift",
-        "ScyllaDB", "Snowflake", "SQL Server", "SQLite", "SurrealDB", "Teradata", "Trino", "Turso",
-        "Typesense"
+        "CockroachDB", "Dameng", "Databend", "DuckDB", "DynamoDB", "Elasticsearch", "etcd", "Kafka",
+        "libSQL", "MariaDB", "MongoDB", "MySQL", "Oracle", "PGlite", "PostgreSQL", "Redis", "Redshift",
+        "ScyllaDB", "Snowflake", "SQL Server", "SQLite", "SurrealDB", "Teradata", "TiDB", "Trino",
+        "Turso", "Typesense"
     ]
 
     private static func builtInTypeIds() -> Set<String> {
@@ -43,10 +43,10 @@ struct PluginMetadataRegistryTypeCountTests {
         return Set(curated + registry)
     }
 
-    @Test("The app ships 31 database types before any plugin loads")
+    @Test("The app ships 33 database types before any plugin loads")
     func builtInDefaultsCoverTwentyNineTypes() {
         let ids = Self.builtInTypeIds()
-        #expect(ids.count == 31)
+        #expect(ids.count == 33)
         #expect(ids == Self.expectedTypeIds)
     }
 
@@ -62,6 +62,8 @@ struct PluginMetadataRegistryTypeCountTests {
     /// name, icon and tagline. Turso had exactly that gap.
     private static let aliasesToTheirPlugin = [
         "MariaDB": "MySQL",
+        "TiDB": "MySQL",
+        "Databend": "MySQL",
         "Redshift": "PostgreSQL",
         "CockroachDB": "PostgreSQL",
         "PGlite": "PostgreSQL",

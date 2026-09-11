@@ -38,6 +38,7 @@ struct SQLStatementGenerator {
     /// Server-computed columns. They reject any written value, so they are
     /// dropped from every INSERT and UPDATE this generator produces.
     let generatedColumns: Set<String>
+    let rowMatchExcludedColumns: Set<String>
     let databaseType: DatabaseType
     let parameterStyle: ParameterStyle
     private let quoteIdentifierFn: (String) -> String
@@ -49,6 +50,7 @@ struct SQLStatementGenerator {
         primaryKeyColumns: [String],
         databaseType: DatabaseType,
         generatedColumns: Set<String> = [],
+        rowMatchExcludedColumns: Set<String> = [],
         parameterStyle: ParameterStyle? = nil,
         dialect: SQLDialectDescriptor? = nil,
         quoteIdentifier: ((String) -> String)? = nil
@@ -58,6 +60,7 @@ struct SQLStatementGenerator {
         self.columns = columns
         self.primaryKeyColumns = primaryKeyColumns
         self.generatedColumns = generatedColumns
+        self.rowMatchExcludedColumns = rowMatchExcludedColumns
         self.databaseType = databaseType
         self.parameterStyle = parameterStyle ?? Self.defaultParameterStyle(for: databaseType)
         if let quoteIdentifier {
@@ -222,8 +225,16 @@ struct SQLStatementGenerator {
                 sql: "INSERT INTO \(qualifiedTableName) () VALUES ()", parameters: []
             )
         default:
-            return nil
+            return defaultKeywordInsertStatement()
         }
+    }
+
+    private func defaultKeywordInsertStatement() -> ParameterizedStatement? {
+        guard databaseType == .databend,
+              let column = columns.first(where: { !generatedColumns.contains($0) }) else { return nil }
+        return ParameterizedStatement(
+            sql: "INSERT INTO \(qualifiedTableName) (\(quoteIdentifierFn(column))) VALUES (DEFAULT)", parameters: []
+        )
     }
 
     func insertStatement(columns insertColumns: [String], values: [PluginCellValue])
@@ -372,7 +383,7 @@ struct SQLStatementGenerator {
 
             var conditions: [String] = []
             for (index, columnName) in columns.enumerated() {
-                guard index < originalRow.count else { continue }
+                guard index < originalRow.count, !rowMatchExcludedColumns.contains(columnName) else { continue }
                 let value = originalRow[index]
                 let quotedColumn = quoteIdentifierFn(columnName)
                 if value.isNull {
@@ -414,9 +425,11 @@ struct SQLStatementGenerator {
             )
         }
 
+        let matchesOneRowPerStatement = primaryKeyColumns.isEmpty && !rowMatchExcludedColumns.isEmpty
         for matches in rowMatches {
             let rowParameterCount = matches.count(where: { $0.boundValue != nil })
-            if !chunk.isEmpty, chunkParameterCount + rowParameterCount > maxBindParameters {
+            if !chunk.isEmpty,
+               matchesOneRowPerStatement || chunkParameterCount + rowParameterCount > maxBindParameters {
                 flush()
                 chunk = []
                 chunkParameterCount = 0
@@ -450,7 +463,7 @@ struct SQLStatementGenerator {
 
         var matches: [DeleteColumnMatch] = []
         for (index, columnName) in columns.enumerated() {
-            guard index < originalRow.count else { continue }
+            guard index < originalRow.count, !rowMatchExcludedColumns.contains(columnName) else { continue }
             let value = originalRow[index]
             if value.isNull {
                 matches.append(DeleteColumnMatch(column: columnName, boundValue: nil))

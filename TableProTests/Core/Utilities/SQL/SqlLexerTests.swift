@@ -73,6 +73,42 @@ struct SqlLexerTests {
         #expect(mysql.next > postgres.next, "MySQL treats the backslash as an escape and reads further")
     }
 
+    @Test("A caller can ask for backslash escapes whatever the dialect")
+    func explicitBackslashEscapes() {
+        let text = "'a\\' , 'b'" as NSString
+        let escaping = SqlLexer.skipQuotedString(
+            text,
+            from: 0,
+            quote: SqlLexer.singleQuote,
+            length: text.length,
+            backslashEscapes: true
+        )
+        let literal = SqlLexer.skipQuotedString(
+            text,
+            from: 0,
+            quote: SqlLexer.singleQuote,
+            length: text.length,
+            backslashEscapes: false
+        )
+        #expect(literal.next == 4)
+        #expect(escaping.next == 8)
+    }
+
+    @Test("A nested block comment runs past its outermost terminator")
+    func nestedBlockComment() {
+        let text = "/* a /* b\n */ c */x" as NSString
+        let span = SqlLexer.skipNestedBlockComment(text, from: 0, length: text.length)
+        #expect(span.next == 18)
+        #expect(span.newlines == 1)
+        #expect(SqlLexer.skipBlockComment(text, from: 0, length: text.length).next == 13)
+    }
+
+    @Test("An unterminated nested block comment stops at the end of the document")
+    func unterminatedNestedBlockComment() {
+        let text = "/* a /* b */ c" as NSString
+        #expect(SqlLexer.skipNestedBlockComment(text, from: 0, length: text.length).next == text.length)
+    }
+
     @Test("An unterminated string stops at the end of the document")
     func unterminatedString() {
         let text = "'abc" as NSString

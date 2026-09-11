@@ -58,6 +58,7 @@ final class DataChangeManager: ChangeManaging {
     /// Columns the server computes. They reject any written value, so they are
     /// never editable and never appear in a generated INSERT or UPDATE.
     var generatedColumns: Set<String> = []
+    private(set) var rowMatchExcludedColumns: Set<String> = []
     var databaseType: DatabaseType?
     var pluginDriver: (any PluginDatabaseDriver)?
 
@@ -102,6 +103,7 @@ final class DataChangeManager: ChangeManaging {
         primaryKeyColumns: [String],
         databaseType: DatabaseType,
         generatedColumns: Set<String>,
+        rowMatchExcludedColumns: Set<String> = [],
         triggerReload: Bool = true
     ) {
         self.tableName = tableName
@@ -110,6 +112,7 @@ final class DataChangeManager: ChangeManaging {
         self.primaryKeyColumns = primaryKeyColumns
         self.databaseType = databaseType
         self.generatedColumns = generatedColumns
+        self.rowMatchExcludedColumns = rowMatchExcludedColumns
 
         pending.clear()
         undoManagerProvider?()?.removeAllActions(withTarget: self)
@@ -126,6 +129,10 @@ final class DataChangeManager: ChangeManaging {
 
     func setGeneratedColumns(_ generatedColumns: Set<String>) {
         self.generatedColumns = generatedColumns
+    }
+
+    func setRowMatchExcludedColumns(_ rowMatchExcludedColumns: Set<String>) {
+        self.rowMatchExcludedColumns = rowMatchExcludedColumns
     }
 
     /// Whether the app may send a value for this column at all: the server computes or allocates it,
@@ -480,6 +487,7 @@ final class DataChangeManager: ChangeManaging {
             columns: columns,
             primaryKeyColumns: primaryKeyColumns,
             generatedColumns: generatedColumns,
+            rowMatchExcludedColumns: rowMatchExcludedColumns,
             databaseType: databaseType,
             pluginDriver: pluginDriver
         )
@@ -518,7 +526,8 @@ final class DataChangeManager: ChangeManaging {
         tableName: String,
         schemaName: String? = nil,
         databaseType: DatabaseType,
-        generatedColumns: Set<String>
+        generatedColumns: Set<String>,
+        rowMatchExcludedColumns: Set<String> = []
     ) {
         self.tableName = tableName
         self.schemaName = schemaName
@@ -526,6 +535,7 @@ final class DataChangeManager: ChangeManaging {
         self.primaryKeyColumns = state.primaryKeyColumns
         self.databaseType = databaseType
         self.generatedColumns = generatedColumns
+        self.rowMatchExcludedColumns = rowMatchExcludedColumns
         pending.restore(from: state)
         self.hasChanges = !pending.isEmpty
     }

@@ -585,6 +585,15 @@ extension PluginManager {
             .capabilities.supportsRenameSchema ?? false
     }
 
+    func rowMatchExcludedTypePrefixes(for databaseType: DatabaseType) -> [String] {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.schema.rowMatchExcludedTypePrefixes ?? []
+    }
+
+    func supportsPrincipalConnectionLimit(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsPrincipalConnectionLimit ?? true
+    }
+
     func autoLimitStyle(for databaseType: DatabaseType) -> AutoLimitStyle {
         guard let snapshot = PluginMetadataRegistry.shared.snapshot(for: databaseType) else {
             return .limit

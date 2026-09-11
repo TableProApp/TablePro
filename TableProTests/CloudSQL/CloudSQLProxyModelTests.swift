@@ -106,6 +106,8 @@ struct CloudSQLProxyModelTests {
         #expect(DatabaseType.postgresql.supportsCloudSQLProxy)
         #expect(DatabaseType.mssql.supportsCloudSQLProxy)
         #expect(!DatabaseType.mariadb.supportsCloudSQLProxy)
+        #expect(!DatabaseType.tidb.supportsCloudSQLProxy)
+        #expect(!DatabaseType.databend.supportsCloudSQLProxy)
         #expect(!DatabaseType.sqlite.supportsCloudSQLProxy)
         #expect(!DatabaseType.mongodb.supportsCloudSQLProxy)
     }

@@ -33,14 +33,15 @@ nonisolated final class IOSDriverFactory: DriverFactory {
                 ? nil
                 : bookmarkStore.bookmark(for: connection.id)
             return DuckDBDriver(path: connection.database, bookmark: bookmark)
-        case .mysql, .mariadb:
+        case .mysql, .mariadb, .tidb:
             return MySQLDriver(
                 host: connection.host,
                 port: connection.port,
                 user: connection.username,
                 password: password ?? "",
                 database: connection.database,
-                ssl: try ssl(for: connection)
+                ssl: try ssl(for: connection),
+                databaseType: connection.type
             )
         case .postgresql, .redshift:
             return PostgreSQLDriver(
@@ -74,6 +75,6 @@ nonisolated final class IOSDriverFactory: DriverFactory {
     }
 
     func supportedTypes() -> [DatabaseType] {
-        [.sqlite, .duckdb, .mysql, .mariadb, .postgresql, .redshift, .redis, .mssql, .oracle]
+        [.sqlite, .duckdb, .mysql, .mariadb, .tidb, .postgresql, .redshift, .redis, .mssql, .oracle]
     }
 }

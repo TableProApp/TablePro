@@ -23,6 +23,16 @@ struct ConnectionURLFormatterTests {
         #expect(url == "mysql://root:pass@localhost/testdb")
     }
 
+    @Test("A Databend connection copies as a mysql:// URL for its MySQL handler, port kept")
+    func testDatabendCopiesAsMySQLURL() {
+        let conn = DatabaseConnection(
+            name: "", host: "warehouse", port: 3_307, database: "default",
+            username: "root", type: .databend
+        )
+        let url = ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil)
+        #expect(url == "mysql://root@warehouse:3307/default")
+    }
+
     @Test("Basic PostgreSQL URL")
     func testBasicPostgreSQLURL() {
         let conn = DatabaseConnection(

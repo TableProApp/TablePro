@@ -63,16 +63,18 @@ struct PrincipalAttributesForm: View {
                 }
             }
 
-            Section(String(localized: "Limits")) {
-                LabeledContent(String(localized: "Connection limit")) {
-                    TextField(
-                        "",
-                        value: connectionLimitBinding,
-                        format: .number,
-                        prompt: Text("Unlimited")
-                    )
-                    .frame(width: 90)
-                    .labelsHidden()
+            if viewModel.capabilities.connectionLimit {
+                Section(String(localized: "Limits")) {
+                    LabeledContent(String(localized: "Connection limit")) {
+                        TextField(
+                            "",
+                            value: connectionLimitBinding,
+                            format: .number,
+                            prompt: Text("Unlimited")
+                        )
+                        .frame(width: 90)
+                        .labelsHidden()
+                    }
                 }
             }
         }

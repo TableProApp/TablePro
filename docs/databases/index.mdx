@@ -1,11 +1,11 @@
 ---
 title: Supported Databases
-description: All 31 engines TablePro connects to, their default ports, and which ones need a plugin
+description: All 33 engines TablePro connects to, their default ports, and which ones need a plugin
 ---
 
 import DriverCounts from "/snippets/driver-counts.mdx";
 
-Thirty-one engines, and every one of them is free to use. What differs between them is where the
+Thirty-three engines, and every one of them is free to use. What differs between them is where the
 driver comes from, not what the license covers.
 
 <DriverCounts />
@@ -23,6 +23,7 @@ driver comes from, not what the license covers.
 | [Cloudflare R2 SQL](/databases/cloudflare-r2-sql) | API-based | Plugin |
 | [CockroachDB](/databases/cockroachdb) | 26257 | Built-in |
 | [Dameng DM8](/databases/dameng) | 5236 | Plugin |
+| [Databend](/databases/databend) | 3307 | Built-in |
 | [DuckDB](/databases/duckdb) | File, or 9494 remote | Plugin |
 | [DynamoDB](/databases/dynamodb) | API-based | Plugin |
 | [Elasticsearch](/databases/elasticsearch) | 9200 | Plugin |
@@ -42,12 +43,14 @@ driver comes from, not what the license covers.
 | [SQLite](/databases/sqlite) | File-based | Built-in |
 | [SurrealDB](/databases/surrealdb) | 8000 | Plugin |
 | [Teradata](/databases/teradata) | 1025 | Plugin |
+| [TiDB](/databases/tidb) | 4000 | Built-in |
 | [Trino](/databases/trino) | 8080 | Plugin |
 | [Typesense](/databases/typesense) | 8108 | Plugin |
 | [Turso](/databases/libsql) | API-based | Plugin |
 
 Rows sharing a page share a driver. MariaDB reads as MySQL, ScyllaDB as Cassandra, Turso as libSQL,
-and Redshift, CockroachDB and PGlite all speak the PostgreSQL wire protocol.
+and Redshift, CockroachDB and PGlite all speak the PostgreSQL wire protocol. TiDB and Databend
+also run on the bundled MySQL driver.
 
 ## Built-in against plugin
 

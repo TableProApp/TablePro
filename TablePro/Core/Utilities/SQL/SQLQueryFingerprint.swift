@@ -5,6 +5,7 @@
 
 import CryptoKit
 import Foundation
+import TableProPluginKit
 
 /// Collapses a statement to the shape it was asked in, so `WHERE id = 1` and `WHERE id = 2` count
 /// as one query the user ran twice rather than two they ran once.
@@ -154,12 +155,12 @@ enum SQLQueryFingerprint {
         return Int64(bitPattern: result)
     }
 
-    /// MySQL and MariaDB read `"…"` as a string literal unless `ANSI_QUOTES` is set; everyone else
+    /// MySQL, MariaDB and TiDB read `"…"` as a string literal unless `ANSI_QUOTES` is set; everyone else
     /// reads it as an identifier. The unknowable case is a MySQL server running `ANSI_QUOTES`, and
     /// guessing wrong there only splits a group, where guessing wrong the other way would merge
     /// two different tables into one row.
     private static func treatsDoubleQuoteAsString(_ databaseType: DatabaseType) -> Bool {
-        databaseType == .mysql || databaseType == .mariadb
+        SqlDialect.from(databaseTypeId: databaseType.rawValue) == .mysql
     }
 
     private static func appendLiteral(to parts: inout [Part], previousWasLiteral: inout Bool) {

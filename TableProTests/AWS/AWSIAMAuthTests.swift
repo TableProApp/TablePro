@@ -382,6 +382,8 @@ struct RegistryAWSIAMFieldsTests {
     func excludedTypesHaveNoIAM() {
         #expect(!fieldIds(forTypeId: "Redshift").contains("awsAuth"))
         #expect(!fieldIds(forTypeId: "CockroachDB").contains("awsAuth"))
+        #expect(!fieldIds(forTypeId: "TiDB").contains("awsAuth"))
+        #expect(!fieldIds(forTypeId: "Databend").contains("awsAuth"))
     }
 }
 

@@ -51,6 +51,7 @@ final class ConnectionCoordinator {
 
     var supportsDatabaseSwitching: Bool {
         connection.type == .mysql || connection.type == .mariadb ||
+        connection.type == .tidb ||
         connection.type == .postgresql || connection.type == .redshift ||
         connection.type == .mssql
     }

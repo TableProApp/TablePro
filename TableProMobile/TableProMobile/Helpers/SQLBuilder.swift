@@ -5,10 +5,15 @@ import TableProPluginKit
 import TableProQuery
 
 nonisolated enum SQLBuilder {
+    static func speaksMySQLDialect(_ type: DatabaseType) -> Bool {
+        SqlDialect.from(databaseTypeId: type.rawValue) == .mysql
+    }
+
     static func quoteIdentifier(_ name: String, for type: DatabaseType) -> String {
-        switch type {
-        case .mysql, .mariadb:
+        if speaksMySQLDialect(type) {
             return "`\(name.replacingOccurrences(of: "`", with: "``"))`"
+        }
+        switch type {
         case .postgresql, .redshift:
             return "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
         case .mssql:
@@ -97,13 +102,14 @@ nonisolated enum SQLBuilder {
         return "INSERT INTO \(qualifiedTable) (\(cols)) VALUES (\(vals))"
     }
 
-    /// Every column left on its database default. MySQL and MariaDB take an empty column list;
+    /// Every column left on its database default. The MySQL dialect takes an empty column list;
     /// the PostgreSQL family, SQLite and SQL Server take `DEFAULT VALUES`. Oracle accepts
     /// neither, so it gets no statement.
     static func buildAllDefaultsInsert(qualifiedTable: String, for type: DatabaseType) -> String? {
-        switch type {
-        case .mysql, .mariadb:
+        if speaksMySQLDialect(type) {
             return "INSERT INTO \(qualifiedTable) () VALUES ()"
+        }
+        switch type {
         case .postgresql, .redshift, .sqlite, .mssql, .duckdb:
             return "INSERT INTO \(qualifiedTable) DEFAULT VALUES"
         default:
@@ -262,26 +268,30 @@ nonisolated enum SQLBuilder {
 
         let conditions = columns.map { col -> String in
             let quotedCol = quoteIdentifier(col.name, for: type)
-            let castExpr: String
-            switch type {
-            case .mysql, .mariadb:
-                castExpr = "CAST(\(quotedCol) AS CHAR)"
-            case .postgresql, .redshift:
-                castExpr = "CAST(\(quotedCol) AS TEXT)"
-            case .mssql:
-                castExpr = "CAST(\(quotedCol) AS NVARCHAR(MAX))"
-            case .oracle:
-                castExpr = "CAST(\(quotedCol) AS VARCHAR2(4000))"
-            case .clickhouse:
-                castExpr = "toString(\(quotedCol))"
-            default:
-                castExpr = "CAST(\(quotedCol) AS TEXT)"
-            }
+            let castExpr = searchCastExpression(quotedCol, for: type)
             let likeOp = (type == .postgresql || type == .redshift) ? "ILIKE" : "LIKE"
             return "\(castExpr) \(likeOp) '%\(pattern)%'\(likeEscape)"
         }
 
         return "(\(conditions.joined(separator: " OR ")))"
+    }
+
+    private static func searchCastExpression(_ quotedColumn: String, for type: DatabaseType) -> String {
+        if speaksMySQLDialect(type) {
+            return "CAST(\(quotedColumn) AS CHAR)"
+        }
+        switch type {
+        case .postgresql, .redshift:
+            return "CAST(\(quotedColumn) AS TEXT)"
+        case .mssql:
+            return "CAST(\(quotedColumn) AS NVARCHAR(MAX))"
+        case .oracle:
+            return "CAST(\(quotedColumn) AS VARCHAR2(4000))"
+        case .clickhouse:
+            return "toString(\(quotedColumn))"
+        default:
+            return "CAST(\(quotedColumn) AS TEXT)"
+        }
     }
 
     private static func escapeLikePattern(_ value: String, dialect: SQLDialectDescriptor) -> String {
@@ -322,8 +332,7 @@ nonisolated enum SQLBuilder {
     /// same filter on the Mac. `SQLDialectParityTests` is what stops a new driver landing here
     /// without an arm.
     private static func dialectDescriptor(for type: DatabaseType) -> SQLDialectDescriptor {
-        switch type {
-        case .mysql, .mariadb:
+        if speaksMySQLDialect(type) {
             return SQLDialectDescriptor(
                 identifierQuote: "`",
                 keywords: [],
@@ -333,6 +342,8 @@ nonisolated enum SQLBuilder {
                 requiresBackslashEscaping: true,
                 caseSensitivityStyle: .collationDefined
             )
+        }
+        switch type {
         case .postgresql:
             return SQLDialectDescriptor(
                 identifierQuote: "\"",

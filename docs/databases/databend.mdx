@@ -1,0 +1,56 @@
+---
+title: Databend
+description: Connect to Databend and Databend Cloud through Databend's MySQL handler on port 3307
+---
+
+Choose **Databend** as the connection type. A connection saved as MySQL that reaches a Databend server fails at connect and asks for the type to be changed. Port 8000 is Databend's HTTP API and does not connect.
+
+## Quick setup
+
+A local server in Docker, with the handler on 3307:
+
+```bash
+docker run -d -p 3307:3307 datafuselabs/databend
+```
+
+Connect as `root` with an empty password and database `default`. Set `QUERY_DEFAULT_USER` and `QUERY_DEFAULT_PASSWORD` on the container to change them.
+
+## Connection settings
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| **Port** | `3307` | The MySQL handler. 8000 is HTTP and does not connect |
+| **Database** | empty | Optional. New servers start with `default` |
+| **SSL Mode** | Preferred | TLS first, plain text if the server refuses |
+
+Host, user, password, SSH tunnels and `Cmd+K` database switching work as on [MySQL](/databases/mysql). No minimum Databend version is enforced.
+
+## Connection URL
+
+No URL scheme opens a Databend connection, and `databend://` URLs, which point at the HTTP API, do not open one either. Create the connection in the form. **Copy Connection String** gives a `mysql://` URL for the MySQL handler, which other MySQL clients accept.
+
+## Databend Cloud
+
+The MySQL endpoint of a Databend Cloud warehouse is off by default. Ask Databend support to turn it on, then copy the host and port from the warehouse's **Connect** dialog.
+
+## Editing rows
+
+Databend tables have no primary keys, so a row edit or delete matches on every column of the row. ARRAY, MAP, TUPLE, VARIANT, JSON, BITMAP, BINARY, GEOMETRY, GEOGRAPHY and VECTOR columns are left out of that match. A save that would change more than one row is refused and rolled back; add a column that tells the rows apart, or run the statement in the editor.
+
+ARRAY, MAP and TUPLE cells cannot be written from text. Change them with an `UPDATE` in the SQL editor.
+
+## Limitations
+
+- The sidebar hides `system` and `information_schema`.
+- No indexes, primary keys or foreign keys. The Structure tab edits columns and CHECK constraints and renames tables, views and columns; column reordering, AUTO_INCREMENT, charset and collation are not offered.
+- No Users & Roles, Server Dashboard, triggers, routines or events. **File > Backup Dump…** stays dimmed.
+- Create Database takes a name only. Table Maintenance offers `ANALYZE TABLE` only.
+- `EXPLAIN` and `EXPLAIN ANALYZE` show the plan as text, not as a plan tree.
+- [Compare & Sync](/features/compare-sync) is not available.
+- The SQL editor splits statements without backslash escapes, so write a quote inside a string as `''` rather than `\'`.
+- Not available on iPhone and iPad. A synced Databend connection appears in the list there but does not open.
+
+## Related
+
+- [MySQL](/databases/mysql), for connection fields, SSL/TLS, and troubleshooting
+- [SSH Tunneling](/connections/ssh-tunneling)

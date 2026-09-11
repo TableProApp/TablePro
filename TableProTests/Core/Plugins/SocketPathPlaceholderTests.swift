@@ -17,6 +17,12 @@ struct SocketPathPlaceholderTests {
         #expect(PluginManager.shared.defaultUnixSocketPath(for: .mariadb) == "/var/run/mysqld/mysqld.sock")
     }
 
+    @Test("TiDB and Databend have no default Unix socket")
+    func mysqlProtocolVariantsHaveNoSocket() {
+        #expect(PluginManager.shared.defaultUnixSocketPath(for: .tidb) == nil)
+        #expect(PluginManager.shared.defaultUnixSocketPath(for: .databend) == nil)
+    }
+
     @Test("PostgreSQL uses the PGSQL socket")
     func postgresqlUsesPgsqlSocket() {
         #expect(PluginManager.shared.defaultUnixSocketPath(for: .postgresql) == "/var/run/postgresql/.s.PGSQL.5432")

@@ -13,6 +13,19 @@ struct SQLBuilderDefaultValuesTests {
             == "INSERT INTO `t` () VALUES ()")
     }
 
+    @Test("TiDB speaks the MySQL dialect and takes an empty column list")
+    func tiDBTakesEmptyColumnList() {
+        #expect(SQLBuilder.buildAllDefaultsInsert(qualifiedTable: "`t`", for: .tidb)
+            == "INSERT INTO `t` () VALUES ()")
+        #expect(SQLBuilder.quoteIdentifier("a`b", for: .tidb) == "`a``b`")
+    }
+
+    @Test("Databend is not a MySQL dialect on iOS")
+    func databendIsNotMySQLDialect() {
+        #expect(!SQLBuilder.speaksMySQLDialect(.databend))
+        #expect(SQLBuilder.buildAllDefaultsInsert(qualifiedTable: "\"t\"", for: .databend) == nil)
+    }
+
     @Test("the PostgreSQL family, SQLite, SQL Server and DuckDB take DEFAULT VALUES")
     func defaultValuesDialects() {
         for type in [DatabaseType.postgresql, .redshift, .sqlite, .mssql, .duckdb] {
