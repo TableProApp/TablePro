@@ -130,6 +130,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Curly quotes, € and other Windows-1252 symbols shown as invisible characters after `SET NAMES latin1`.
 - `Illegal mix of collations` comparing a column with a user variable on MySQL 8.
 - GEOMETRY values from a parameterized MySQL query shown as raw bytes.
+- Earlier row's text repeated in later rows of a parameterized MySQL query once a value passed 64 KB.
 
 ### Security
 

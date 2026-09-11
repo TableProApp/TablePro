@@ -842,8 +842,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 break
             }
 
-            // Re-fetch truncated columns with correctly sized buffers
             if fetchStatus == MYSQL_DATA_TRUNCATED {
+                var grewBuffer = false
                 for i in 0..<numFields {
                     let actualLength = Int(resultBinds[i].length?.pointee ?? 0)
                     if actualLength > Int(resultBinds[i].buffer_length) {
@@ -854,10 +854,14 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                         resultBuffers[i] = newBuffer
                         resultBinds[i].buffer = newBuffer
                         resultBinds[i].buffer_length = UInt(actualLength)
+                        grewBuffer = true
                         if mysql_stmt_fetch_column(stmt, &resultBinds[i], UInt32(i), 0) != 0 {
                             logger.warning("mysql_stmt_fetch_column failed for column \(i)")
                         }
                     }
+                }
+                if grewBuffer, mysql_stmt_bind_result(stmt, &resultBinds) != 0 {
+                    throw getStmtError(stmt)
                 }
             }
 
