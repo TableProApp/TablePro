@@ -135,6 +135,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Earlier row's text repeated in later rows of a parameterized MySQL query once a value passed 64 KB.
 - Garbled non-ASCII text on PostgreSQL databases not encoded in UTF-8 after `RESET ALL` or `DISCARD ALL`.
 - Garbled or double-encoded non-ASCII text on iOS with PostgreSQL databases not encoded in UTF-8.
+- Garbled non-ASCII text when restoring a PostgreSQL SQL export into a database not encoded in UTF-8.
 
 ### Security
 

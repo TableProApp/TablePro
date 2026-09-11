@@ -12,10 +12,16 @@ internal struct SQLExportEncodingDeclaration: Equatable {
     let prologue: String
     let epilogue: String
 
-    static func forDialect(_ dialect: SqlDialect) -> SQLExportEncodingDeclaration {
-        switch dialect {
+    private static let typesAcceptingSetClientEncoding: Set<String> = [
+        "PostgreSQL", "Greenplum", "AlloyDB", "Citus", "CockroachDB", "PGlite"
+    ]
+
+    static func forDatabaseType(_ databaseTypeId: String) -> SQLExportEncodingDeclaration {
+        switch SqlDialect.from(databaseTypeId: databaseTypeId) {
         case .mysql:
             return mysql
+        case .postgres where typesAcceptingSetClientEncoding.contains(databaseTypeId):
+            return postgres
         default:
             return .empty
         }
@@ -38,5 +44,14 @@ internal struct SQLExportEncodingDeclaration: Equatable {
         /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 
         """
+    )
+
+    private static let postgres = SQLExportEncodingDeclaration(
+        prologue: """
+        SET client_encoding = 'UTF8';
+
+
+        """,
+        epilogue: ""
     )
 }
