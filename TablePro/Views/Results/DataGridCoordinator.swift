@@ -525,7 +525,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// after it, the reader's own gestures are the only thing that moves the selection.
     var hasRestoredSelection = false
     weak var rowGutter: DataGridRowGutterView?
-    weak var rowGutterHeader: DataGridRowGutterHeaderView?
     /// The last value `publishRowSelection()` wrote, or nil before it has written one. `nil` has to
     /// mean "nothing published yet" rather than "empty", or a tab restoring an empty selection would
     /// be mistaken for one this coordinator produced and never reach the table view.

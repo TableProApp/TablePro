@@ -237,6 +237,10 @@ final class KeyHandlingTableView: NSTableView {
     /// `autoscroll(with:)` measures against the clip view, which the gutter does not shrink, so a
     /// drag parked over the strip never scrolls and the column under it resolves normally. The user
     /// would then be extending the selection over a column the gutter is hiding.
+    ///
+    /// Scrolled through `scroll(_:)`, which moves the header with the rows. Scrolling the clip view
+    /// and reflecting it leaves the header clip where it was, measured on macOS 27, so the headings
+    /// stop lining up with their columns.
     private func pointClearOfPinnedGutter(_ point: NSPoint) -> NSPoint {
         guard let clipView = enclosingScrollView?.contentView else { return point }
         let gutterWidth = DataGridRowGutterView.width(of: self)
@@ -245,8 +249,7 @@ final class KeyHandlingTableView: NSTableView {
         guard point.x < edge else { return point }
         let target = max(0, clipView.bounds.origin.x - gutterWidth)
         if target != clipView.bounds.origin.x {
-            clipView.scroll(to: NSPoint(x: target, y: clipView.bounds.origin.y))
-            enclosingScrollView?.reflectScrolledClipView(clipView)
+            scroll(NSPoint(x: target, y: clipView.bounds.origin.y))
             return NSPoint(x: max(point.x, target + gutterWidth), y: point.y)
         }
         return NSPoint(x: edge, y: point.y)

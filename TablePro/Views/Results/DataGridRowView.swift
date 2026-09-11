@@ -206,13 +206,7 @@ class DataGridRowView: NSTableRowView {
     /// an unchanged state would ignore the theme, which is the input a theme change moves.
     func applyVisualState(_ state: RowVisualState) {
         visualState = state
-        let nextTint: NSColor? = if state.isDeleted {
-            ThemeEngine.shared.colors.dataGrid.deleted
-        } else if state.isInserted {
-            ThemeEngine.shared.colors.dataGrid.inserted
-        } else {
-            nil
-        }
+        let nextTint = state.tint
         guard !colorsEqual(rowTint, nextTint) else { return }
         rowTint = nextTint
         needsDisplay = true

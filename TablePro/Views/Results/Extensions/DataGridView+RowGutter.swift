@@ -12,6 +12,10 @@ extension TableViewCoordinator {
     /// where the pinned row gutter sits, so the column it just scrolled to would arrive underneath
     /// it. The correction is one-sided: a column already clear of the gutter must produce no scroll
     /// at all, or every arrow keypress fights AppKit and the viewport drifts.
+    ///
+    /// The correction scrolls through `scroll(_:)`, which moves the header with the rows. Scrolling
+    /// the clip view and reflecting it leaves the header clip where it was, measured on macOS 27, so
+    /// every heading sat as far off its column as the correction had moved.
     func scrollColumnToVisible(tableColumnIndex index: Int) {
         guard let tableView, index >= 0, index < tableView.numberOfColumns else { return }
         tableView.scrollColumnToVisible(index)
@@ -22,8 +26,7 @@ extension TableViewCoordinator {
         guard columnRect.width > 0 else { return }
         let hidden = clipView.bounds.origin.x + gutterWidth - columnRect.minX
         guard hidden > 0 else { return }
-        clipView.scroll(to: NSPoint(x: clipView.bounds.origin.x - hidden, y: clipView.bounds.origin.y))
-        tableView.enclosingScrollView?.reflectScrolledClipView(clipView)
+        tableView.scroll(NSPoint(x: clipView.bounds.origin.x - hidden, y: clipView.bounds.origin.y))
     }
 
     /// Re-reads the pinned gutter's geometry from the column it mirrors. The width moves when the
@@ -31,8 +34,6 @@ extension TableViewCoordinator {
     /// changes; the height moves with the row count.
     func synchronizeRowGutter() {
         rowGutter?.synchronizeGeometry()
-        guard let scrollView = tableView?.enclosingScrollView else { return }
-        rowGutterHeader?.synchronizeGeometry(scrollView: scrollView)
     }
 
     func repaintRowGutter() {

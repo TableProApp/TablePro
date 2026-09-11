@@ -112,7 +112,14 @@ final class SortableHeaderView: NSTableHeaderView {
     }
 
     private let emphasisObservers = OSAllocatedUnfairLock<[any NSObjectProtocol]>(uncheckedState: [])
+    private let scrollObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
     private var firstResponderObservation: NSKeyValueObservation?
+    /// Where the pinned row-number heading was last painted, so a scroll can clear it from there.
+    ///
+    /// Recorded by the drawing itself rather than by the scroll, because the heading is also painted
+    /// when nothing scrolled: row numbers turned on, or the column widening for a longer number,
+    /// while the grid is already scrolled sideways.
+    private(set) var drawnPinnedHeadingRect: NSRect?
 
     override init(frame frameRect: NSRect) {
         naturalHeight = frameRect.height > 0 ? frameRect.height : Self.fallbackHeight
@@ -121,6 +128,7 @@ final class SortableHeaderView: NSTableHeaderView {
 
     deinit {
         emphasisObservers.withLockUnchecked { $0.forEach(NotificationCenter.default.removeObserver) }
+        scrollObserver.withLockUnchecked { $0.map(NotificationCenter.default.removeObserver) }
     }
 
     required init?(coder: NSCoder) {
@@ -158,6 +166,28 @@ final class SortableHeaderView: NSTableHeaderView {
         }
     }
 
+    /// The header scrolls in a clip view of its own, and the pinned row-number heading is drawn at that
+    /// clip's leading edge, so the clip's bounds are the one signal that always agrees with where the
+    /// heading belongs. The rows' clip view is not: scrolling it alone, measured on macOS 27, leaves
+    /// this one where it was.
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        scrollObserver.withLockUnchecked { observer in
+            observer.map(NotificationCenter.default.removeObserver)
+            observer = nil
+        }
+        guard let clipView = superview as? NSClipView else { return }
+        clipView.postsBoundsChangedNotifications = true
+        let observer = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: clipView,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.pinnedRowNumberHeadingDidMove() }
+        }
+        scrollObserver.withLockUnchecked { $0 = observer }
+    }
+
     private func refreshEmphasis() {
         applyEmphasis(
             SortableHeaderEmphasis.isEmphasized(
@@ -178,6 +208,10 @@ final class SortableHeaderView: NSTableHeaderView {
         }
         guard changed else { return }
         needsDisplay = true
+        /// The pinned row gutter paints the row selection itself, from this same rule, and nothing else
+        /// tells it the answer changed: its selected rows kept the accent colour after the grid lost
+        /// focus, beside rows that had already turned grey.
+        coordinator?.repaintRowGutter()
     }
 
     private func applyHeaderHeight() {
@@ -187,16 +221,95 @@ final class SortableHeaderView: NSTableHeaderView {
         }
         tableView?.enclosingScrollView?.tile()
         needsDisplay = true
-        /// The pinned gutter's header cap sizes itself from this view. Comments can appear without
-        /// the column set changing, and that fires no geometry callback of its own, so the cap would
-        /// keep the old height and leave a gap or overlap the header.
-        coordinator?.synchronizeRowGutter()
     }
 
     override func draw(_ dirtyRect: NSRect) {
         SortableHeaderChrome.fillBackground(dirtyRect)
         super.draw(dirtyRect)
+        drawPinnedRowNumberHeading(in: dirtyRect)
         SortableHeaderChrome.drawBottomSeparator(in: bounds)
+    }
+
+    // MARK: - Pinned row-number heading
+
+    /// The row-number heading's own rect held at the visible leading edge, where the pinned row gutter
+    /// below it sits. Nil when row numbers are off.
+    var pinnedRowNumberHeadingRect: NSRect? {
+        guard let index = rowNumberColumnIndex else { return nil }
+        let heading = headerRect(ofColumn: index)
+        guard heading.width > 0 else { return nil }
+        return NSRect(x: visibleRect.minX, y: heading.minY, width: heading.width, height: heading.height)
+    }
+
+    func isInPinnedRowNumberHeading(_ point: NSPoint) -> Bool {
+        pinnedRowNumberHeadingRect?.contains(point) ?? false
+    }
+
+    private var rowNumberColumnIndex: Int? {
+        guard let tableView else { return nil }
+        let index = tableView.column(withIdentifier: ColumnIdentitySchema.rowNumberIdentifier)
+        guard index >= 0, !tableView.tableColumns[index].isHidden else { return nil }
+        return index
+    }
+
+    /// Paints the row-number heading again at the visible leading edge, over the heading scrolled
+    /// under it.
+    ///
+    /// It is the drawing that paints the heading unscrolled, moved: the heading's rect goes through
+    /// this view's own fill and `super.draw`, translated to the leading edge and clipped to it. No
+    /// separate view can stand in for this. On macOS 27 `NSTableHeaderView.draw` lays its own
+    /// translucent grey over the fill, measured at 50 against the fill's 30 in dark mode, and nothing
+    /// else goes through it: the view that pinned this heading before was always darker than the
+    /// headings beside it. The fill replaces pixels rather than blending over them, so the heading
+    /// scrolled underneath is gone from the strip rather than showing through it.
+    private func drawPinnedRowNumberHeading(in dirtyRect: NSRect) {
+        guard let index = rowNumberColumnIndex, let pinned = pinnedRowNumberHeadingRect else {
+            drawnPinnedHeadingRect = nil
+            return
+        }
+        let heading = headerRect(ofColumn: index)
+        guard pinned.minX != heading.minX else {
+            drawnPinnedHeadingRect = nil
+            return
+        }
+        guard pinned.intersects(dirtyRect), let context = NSGraphicsContext.current?.cgContext else { return }
+        context.saveGState()
+        pinned.clip()
+        context.translateBy(x: pinned.minX - heading.minX, y: 0)
+        SortableHeaderChrome.fillBackground(heading)
+        super.draw(heading)
+        context.restoreGState()
+        drawnPinnedHeadingRect = pinned
+    }
+
+    /// Clears the heading from where it was last painted and asks for it where it now belongs.
+    private func pinnedRowNumberHeadingDidMove() {
+        if let drawn = drawnPinnedHeadingRect {
+            setNeedsDisplay(drawn)
+        }
+        if let current = pinnedRowNumberHeadingRect {
+            setNeedsDisplay(current)
+        }
+    }
+
+    /// The pinned heading answers for the row-number column, which has no header menu. Left to AppKit
+    /// the click resolves to whichever column is scrolled underneath and offers to sort that.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard !isInPinnedRowNumberHeading(convert(event.locationInWindow, from: nil)) else { return nil }
+        return super.menu(for: event)
+    }
+
+    /// The pinned heading has the row-number column's tooltip, which is none. AppKit resolves the tooltip
+    /// of the column under the point, which there is the column scrolled out of sight, and would show its
+    /// name, type and comment over the `#`. An empty string is AppKit's own "no tooltip here".
+    override func view(
+        _ view: NSView,
+        stringForToolTip tag: NSView.ToolTipTag,
+        point: NSPoint,
+        userData data: UnsafeMutableRawPointer?
+    ) -> String {
+        guard !isInPinnedRowNumberHeading(point) else { return "" }
+        return super.view(view, stringForToolTip: tag, point: point, userData: data)
     }
 
     override func updateTrackingAreas() {
@@ -246,8 +359,11 @@ final class SortableHeaderView: NSTableHeaderView {
     /// `headerRect(ofColumn:)` gives a hidden column a zero rect, so its trailing edge is x = 0. The
     /// pool keeps user-hidden columns and the surplus slots of a wider result attached with
     /// `userResizingMask` set, and each one reports a divider at the header's leading edge.
+    ///
+    /// Nothing under the pinned row-number heading is a resize zone either: the edges scrolled under
+    /// it belong to columns the reader cannot see there.
     internal func isInResizeZone(point: NSPoint) -> Bool {
-        guard let tableView, let coordinator else { return false }
+        guard let tableView, let coordinator, !isInPinnedRowNumberHeading(point) else { return false }
         let zone = Self.resizeZoneWidth
         return tableView.tableColumns.enumerated().contains { index, column in
             guard column.resizingMask.contains(.userResizingMask),
@@ -258,7 +374,7 @@ final class SortableHeaderView: NSTableHeaderView {
     }
 
     private func hoverableColumn(at point: NSPoint) -> Int? {
-        guard let tableView else { return nil }
+        guard let tableView, !isInPinnedRowNumberHeading(point) else { return nil }
         let columnIndex = column(at: point)
         guard columnIndex >= 0, columnIndex < tableView.numberOfColumns else { return nil }
         guard tableView.tableColumns[columnIndex].identifier != ColumnIdentitySchema.rowNumberIdentifier else { return nil }
@@ -458,6 +574,9 @@ final class SortableHeaderView: NSTableHeaderView {
         }
 
         let pointInHeader = convert(event.locationInWindow, from: nil)
+        /// A press on the pinned heading is a press on the row-number heading, which sorts, reorders
+        /// and resizes nothing. Handed to AppKit it would track the column scrolled underneath.
+        guard !isInPinnedRowNumberHeading(pointInHeader) else { return }
         if isInResizeZone(point: pointInHeader) {
             super.mouseDown(with: event)
             return
