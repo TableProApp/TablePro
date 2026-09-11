@@ -58,7 +58,7 @@ struct ConnectionFormEdits: Equatable {
         result.cloudSQLProxyMode = cloudSQLProxyMode
         result.socksProxyMode = socksProxyMode
         result.tunnelCommandMode = tunnelCommandMode
-        result.safeModeLevel = safeModeLevel
+        result.preferredSafeModeLevel = safeModeLevel
         result.aiPolicy = aiPolicy
         result.aiRules = aiRules
         result.externalAccess = externalAccess

@@ -17,11 +17,6 @@ struct OptionsPaneView: View {
 
     private var databaseType: DatabaseType { coordinator.network.type }
     private var aiIsEnabled: Bool { AppSettingsManager.shared.ai.enabled }
-    private var isEngineReadOnly: Bool { PluginManager.shared.isEngineReadOnly(for: databaseType) }
-
-    private static let engineReadOnlyHelp = String(
-        localized: "This engine only runs read queries, so the connection is always read-only."
-    )
 
     var body: some View {
         Form {
@@ -101,13 +96,7 @@ struct OptionsPaneView: View {
 
     private var safetySection: some View {
         Section {
-            Picker(String(localized: "Safe Mode"), selection: $coordinator.customization.safeModeLevel) {
-                ForEach(SafeModeLevel.allCases) { level in
-                    Text(level.displayName).tag(level)
-                }
-            }
-            .disabled(isEngineReadOnly)
-            .help(isEngineReadOnly ? Self.engineReadOnlyHelp : "")
+            safeModeRow
             if aiIsEnabled {
                 Picker(String(localized: "AI Policy"), selection: $coordinator.advanced.aiPolicy) {
                     Text(String(localized: "Use Default"))
@@ -132,8 +121,24 @@ struct OptionsPaneView: View {
     }
 
     @ViewBuilder
+    private var safeModeRow: some View {
+        if coordinator.readOnlyEnforcement != nil {
+            LabeledContent(String(localized: "Safe Mode"), value: SafeModeLevel.readOnly.displayName)
+        } else {
+            Picker(String(localized: "Safe Mode"), selection: $coordinator.customization.safeModeLevel) {
+                ForEach(SafeModeLevel.allCases) { level in
+                    Text(level.displayName).tag(level)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
     private var accessFooter: some View {
-        Group {
+        VStack(alignment: .leading, spacing: 4) {
+            if let enforcement = coordinator.readOnlyEnforcement {
+                Text(enforcement.explanation)
+            }
             if aiIsEnabled {
                 // swiftlint:disable:next line_length
                 Text(String(localized: "AI Policy controls in-app AI agents. External Clients controls Raycast, Cursor, Claude Desktop, other MCP clients, and AppleScript. Effective scope is the minimum of the requesting token's scope and the External Clients level."))

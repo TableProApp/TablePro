@@ -241,9 +241,6 @@ final class ConnectionFormCoordinator {
             network.applyTypeDefaults(forNewType: newType)
         }
         ssl.resetForType(newType)
-        if services.pluginManager.isEngineReadOnly(for: newType) {
-            customization.safeModeLevel = .readOnly
-        }
     }
 
     // MARK: - Save

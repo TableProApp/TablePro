@@ -9,11 +9,8 @@ internal enum ExecutionGateProvider {
     static let shared: ExecutionGate = DefaultExecutionGate(
         confirming: AlertOperationConfirming(),
         authenticating: BiometricOperationAuthenticating(),
-        safeModeLevelResolver: { connectionId, databaseType in
+        safeModeLevelResolver: { connectionId in
             let connectionLevel: SafeModeLevel = await MainActor.run {
-                if PluginManager.shared.isEngineReadOnly(for: databaseType) {
-                    return .readOnly
-                }
                 switch DatabaseManager.shared.connectionState(connectionId) {
                 case .live(_, let session):
                     return session.safeModeLevel

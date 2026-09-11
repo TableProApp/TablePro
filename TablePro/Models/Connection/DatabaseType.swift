@@ -35,6 +35,7 @@ extension DatabaseType {
     static let scylladb = DatabaseType(rawValue: "ScyllaDB")
     static let etcd = DatabaseType(rawValue: "etcd")
     static let cloudflareD1 = DatabaseType(rawValue: "Cloudflare D1")
+    static let cloudflareR2SQL = DatabaseType(rawValue: "Cloudflare R2 SQL")
     static let dynamodb = DatabaseType(rawValue: "DynamoDB")
     static let bigQuery = DatabaseType(rawValue: "BigQuery")
     static let libsql = DatabaseType(rawValue: "libSQL")

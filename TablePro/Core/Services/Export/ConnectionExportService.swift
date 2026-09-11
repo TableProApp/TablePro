@@ -104,7 +104,8 @@ enum ConnectionExportService {
 
             let color: String? = connection.color == .none ? nil : connection.color.rawValue
 
-            let safeModeLevel: String? = connection.safeModeLevel == .silent ? nil : connection.safeModeLevel.rawValue
+            let preferredLevel = connection.preferredSafeModeLevel
+            let safeModeLevel: String? = preferredLevel == .silent ? nil : preferredLevel.rawValue
 
             let aiPolicy: String? = connection.aiPolicy?.rawValue
 

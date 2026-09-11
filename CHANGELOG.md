@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New Connection… and Import on the welcome window, named as in the File menu.
 - Open Project Folder… in File > Import.
 - First-launch tour replaced by a one-page welcome sheet, shown again from Help > Getting Started.
+- Beancount connections held at Safe Mode Read-Only. (#2030)
 
 ### Fixed
 
@@ -45,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Table transfer abortable by Stop from an unrelated tab, part-applied. (#2700)
 - SQLite, DuckDB and Teradata connections pinged every 30 seconds despite opting out of health checks. (#2700)
 - Data grid dropping the UTC offset from a `timestamp with time zone` value. (#2702)
+- Edits accepted on a SQLite remote file, which only ever changed the local copy. (#2030)
 - Oracle `TIMESTAMP` values carrying a `Z` the column never stored. (#2702)
 - Timestamp shown an hour late, and its time lost on an edit, when the value falls in the reader's daylight-saving gap. (#2702)
 - Timestamp stored on a day the reader's time zone skipped rendering as raw text with no date picker. (#2702)

@@ -165,7 +165,7 @@ struct DatabaseConnection: Identifiable, Hashable {
     var cloudSQLProxyMode: CloudSQLProxyMode = .disabled
     var socksProxyMode: SOCKSProxyMode = .disabled
     var tunnelCommandMode: TunnelCommandMode = .disabled
-    var safeModeLevel: SafeModeLevel
+    var preferredSafeModeLevel: SafeModeLevel
     var aiPolicy: AIConnectionPolicy?
     var aiRules: String?
     var aiAlwaysAllowedTools: Set<String> = []
@@ -306,7 +306,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         self.tagIds = tagIds
         self.groupId = groupId
         self.sshProfileId = sshProfileId
-        self.safeModeLevel = safeModeLevel
+        self.preferredSafeModeLevel = safeModeLevel
 
         // Auto-derive sshTunnelMode from legacy fields if not explicitly set
         if sshTunnelMode == .disabled {
@@ -421,7 +421,7 @@ extension DatabaseConnection: Codable {
         }
         groupId = try container.decodeIfPresent(UUID.self, forKey: .groupId)
         sshProfileId = try container.decodeIfPresent(UUID.self, forKey: .sshProfileId)
-        safeModeLevel = try container.decodeIfPresent(SafeModeLevel.self, forKey: .safeModeLevel) ?? .silent
+        preferredSafeModeLevel = try container.decodeIfPresent(SafeModeLevel.self, forKey: .safeModeLevel) ?? .silent
         aiPolicy = try container.decodeIfPresent(AIConnectionPolicy.self, forKey: .aiPolicy)
         aiRules = try container.decodeIfPresent(String.self, forKey: .aiRules)
         aiAlwaysAllowedTools = try container.decodeIfPresent(Set<String>.self, forKey: .aiAlwaysAllowedTools) ?? []
@@ -486,7 +486,7 @@ extension DatabaseConnection: Codable {
         if case .inline = tunnelCommandMode {
             try container.encode(tunnelCommandMode, forKey: .tunnelCommandMode)
         }
-        try container.encode(safeModeLevel, forKey: .safeModeLevel)
+        try container.encode(preferredSafeModeLevel, forKey: .safeModeLevel)
         try container.encodeIfPresent(aiPolicy, forKey: .aiPolicy)
         try container.encodeIfPresent(aiRules, forKey: .aiRules)
         if !aiAlwaysAllowedTools.isEmpty {

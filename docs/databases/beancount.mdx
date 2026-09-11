@@ -147,7 +147,7 @@ Table browsing, row counts, and pagination work on a BQL result. SQL parameters 
 
 ## Limitations
 
-- No writes. INSERT, UPDATE, DELETE, and every form of schema editing are rejected. Edit the ledger in a text editor; the next query picks the change up.
+- No writes. The connection runs at Safe Mode **Read-Only** whatever level it was given, so INSERT, UPDATE, DELETE, cell editing and schema editing are all refused. Edit the ledger in a text editor; the next query picks the change up. See [Safe Mode](/features/safe-mode#connections-held-at-read-only).
 - No import, SSH, SSL, or ledger switching. One connection is one ledger file.
 - BQL needs `rledger` even when the ledger opened on the Python backend. The query is refused. Install `rledger`, or drop the `BQL:` prefix and query the projected tables.
 - Directives outside those tables are not projected. They stay in the source files.

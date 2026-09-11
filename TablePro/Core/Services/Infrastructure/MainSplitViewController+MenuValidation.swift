@@ -356,6 +356,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             return isAssistantVisible || (currentPane == .content && AppSettingsManager.shared.ai.enabled)
         }
         if action == #selector(setResultView(_:)) { return canShowResultView(menuItem) }
+        if action == #selector(setSafeModeLevel(_:)) { return canChooseSafeModeLevel(menuItem) }
         if action == #selector(requestDisconnect) { return canDisconnect }
         if action == #selector(retryConnection) { return canReconnect }
         return Self.isEnabled(action, context: menuValidationContext)
@@ -432,6 +433,16 @@ extension MainSplitViewController: NSMenuItemValidation {
         guard let raw = menuItem.representedObject as? String,
               let mode = ResultsViewMode(rawValue: raw) else { return false }
         return commandActions?.availableResultsViewModes.contains(mode) ?? false
+    }
+
+    private func canChooseSafeModeLevel(_ menuItem: NSMenuItem) -> Bool {
+        guard isConnected,
+              let raw = menuItem.representedObject as? String,
+              let level = SafeModeLevel(rawValue: raw) else { return false }
+        return ReadOnlyEnforcement.allowsChoosing(
+            level,
+            under: commandActions?.coordinator?.connection.readOnlyEnforcement
+        )
     }
 
     private func isCurrentResultView(_ menuItem: NSMenuItem) -> Bool {

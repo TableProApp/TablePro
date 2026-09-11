@@ -220,7 +220,7 @@ extension DatabaseManager {
     internal func resolvedConnectionDefinition(for connection: DatabaseConnection) -> DatabaseConnection {
         guard let stored = connectionStorage.loadConnection(id: connection.id) else { return connection }
         var resolved = connection
-        resolved.safeModeLevel = stored.safeModeLevel
+        resolved.preferredSafeModeLevel = stored.preferredSafeModeLevel
         return resolved
     }
 
@@ -557,7 +557,7 @@ extension DatabaseManager {
             guard let session = activeSessions[id],
                   let stored = connectionStorage.loadConnection(id: id) else { continue }
             adoptDisplayFields(from: stored, into: session, for: id)
-            setSafeModeLevel(stored.safeModeLevel, for: id)
+            setSafeModeLevel(stored.preferredSafeModeLevel, for: id)
         }
     }
 
@@ -590,9 +590,11 @@ extension DatabaseManager {
 
     func setSafeModeLevel(_ level: SafeModeLevel, for connectionId: UUID) {
         guard var session = activeSessions[connectionId] else { return }
-        guard session.safeModeLevel != level || session.connection.safeModeLevel != level else { return }
-        session.safeModeLevel = level
-        session.connection.safeModeLevel = level
+        guard session.connection.preferredSafeModeLevel != level
+            || session.safeModeLevel != session.connection.safeModeLevel
+        else { return }
+        session.connection.preferredSafeModeLevel = level
+        session.safeModeLevel = session.connection.safeModeLevel
         setSession(session, for: connectionId)
         _ = connectionStorage.updateSafeModeLevel(level, for: connectionId)
     }

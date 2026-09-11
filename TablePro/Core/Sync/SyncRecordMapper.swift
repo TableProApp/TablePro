@@ -86,12 +86,12 @@ struct SyncRecordMapper {
         fields[.username] = connection.username
         fields[.type] = connection.type.rawValue
         fields[.color] = connection.color.rawValue
-        fields[.safeModeLevel] = connection.safeModeLevel.rawValue
+        fields[.safeModeLevel] = connection.preferredSafeModeLevel.rawValue
         /// `safeModeLevel` superseded `isReadOnly`, but both are still on the wire and this mapper
         /// still reads the old one when the new one is absent. Writing only the new one left the
         /// old one holding whatever it last held, so a connection taken out of read-only on a Mac
         /// stayed read-only for anything reading the legacy field.
-        fields[.isReadOnly] = Int64(connection.safeModeLevel == .readOnly ? 1 : 0)
+        fields[.isReadOnly] = Int64(connection.preferredSafeModeLevel == .readOnly ? 1 : 0)
         fields[.modifiedAtLocal] = Date()
         fields[.schemaVersion] = schemaVersion
         fields[.sortOrder] = Int64(connection.sortOrder)

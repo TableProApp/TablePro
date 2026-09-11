@@ -126,7 +126,7 @@ struct StoredConnection: Codable {
         self.groupId = connection.groupId?.uuidString
         self.sshProfileId = connection.sshProfileId?.uuidString
 
-        self.safeModeLevel = connection.safeModeLevel.rawValue
+        self.safeModeLevel = connection.preferredSafeModeLevel.rawValue
 
         self.externalAccess = connection.externalAccess.rawValue
 

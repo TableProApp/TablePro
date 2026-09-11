@@ -20,7 +20,15 @@ New connections start at **Silent**, which is the right choice for a local datab
 
 Four things the table cannot carry. The confirmation dialog previews the SQL it is about to run. Touch ID falls back to your macOS password on a Mac without it. **Silent** is not a free pass: `DROP`, `TRUNCATE`, and a `DELETE` with no `WHERE` still raise the built-in dangerous query warning even there. And **Read-Only** goes past queries to the interface itself, disabling inline cell editing, adding, deleting and duplicating rows, table truncate and drop, and import.
 
-Some engines run read queries and nothing else. [Cloudflare R2 SQL](/databases/cloudflare-r2-sql) is one: its connections are pinned to **Read-Only** and the Safe Mode picker in the connection form is disabled.
+## Connections held at Read-Only
+
+A connection that cannot take a write runs at **Read-Only** whatever level it was given. Its edit form shows the level as fixed text, and every other level is dimmed in the toolbar padlock and in **Database > Safe Mode Level**. The level you chose stays saved and applies again once the condition no longer holds.
+
+| Connection | Condition |
+|------------|-----------|
+| [Beancount](/databases/beancount) | The engine runs read queries only |
+| [Cloudflare R2 SQL](/databases/cloudflare-r2-sql) | The engine runs read queries only |
+| [SQLite](/databases/sqlite) with **Remote File** | The file is a copy fetched over SFTP, and nothing writes it back |
 
 ## What the level gates
 

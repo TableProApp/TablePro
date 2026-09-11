@@ -8,14 +8,14 @@ import Foundation
 internal actor DefaultExecutionGate: ExecutionGate {
     private let confirming: OperationConfirming
     private let authenticating: OperationAuthenticating
-    private let safeModeLevelResolver: @Sendable (UUID, DatabaseType) async -> SafeModeLevel
+    private let safeModeLevelResolver: @Sendable (UUID) async -> SafeModeLevel
     private let forcesWriteResolver: @Sendable (DatabaseType) async -> Bool
     private let auditLog: any ExecutionAuditLogging
 
     init(
         confirming: OperationConfirming,
         authenticating: OperationAuthenticating,
-        safeModeLevelResolver: @escaping @Sendable (UUID, DatabaseType) async -> SafeModeLevel,
+        safeModeLevelResolver: @escaping @Sendable (UUID) async -> SafeModeLevel,
         forcesWriteResolver: @escaping @Sendable (DatabaseType) async -> Bool,
         auditLog: any ExecutionAuditLogging = ExecutionAuditLog.shared
     ) {
@@ -35,7 +35,7 @@ internal actor DefaultExecutionGate: ExecutionGate {
     }
 
     private func decide(_ request: OperationRequest) async -> OperationDecision {
-        let level = await safeModeLevelResolver(request.connectionId, request.databaseType)
+        let level = await safeModeLevelResolver(request.connectionId)
         let caps = request.capabilities
 
         let tier = request.sql.map { QueryClassifier.classifyTier($0, databaseType: request.databaseType) }

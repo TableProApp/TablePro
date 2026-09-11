@@ -41,15 +41,7 @@ extension DatabaseManager {
             forceRefetch: false
         )
 
-        var effective = connection.substitutingLocalFilePath(file.workingCopy.path, in: field)
-
-        // Read-only is enforced here rather than promised in the pane's copy. The driver opens a
-        // copy on this Mac, so an edit would succeed locally, change nothing on the server, and be
-        // discarded the next time the file is fetched. Routing it through the same `safeModeLevel`
-        // the rest of the app already honours means the grid, the editor and the AI tools all
-        // refuse the write for the same reason, instead of each having to learn about remote files.
-        effective.safeModeLevel = .readOnly
-        return effective
+        return connection.substitutingLocalFilePath(file.workingCopy.path, in: field)
     }
 
     /// Answers Test Connection without fetching the database.

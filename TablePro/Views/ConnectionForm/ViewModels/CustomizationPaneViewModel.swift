@@ -21,6 +21,6 @@ final class CustomizationPaneViewModel {
         color = connection.color
         tagIds = connection.tagIds
         groupId = connection.groupId
-        safeModeLevel = connection.safeModeLevel
+        safeModeLevel = connection.preferredSafeModeLevel
     }
 }

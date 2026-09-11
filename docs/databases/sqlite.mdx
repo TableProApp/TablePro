@@ -53,7 +53,7 @@ One connection is one file, with no database to switch between, and the object l
 
 ## A database on another machine
 
-The **Remote File** pane points the connection at a database on an SSH server. It is fetched over SFTP and opened read-only from a copy on this Mac, and the original is never written to.
+The **Remote File** pane points the connection at a database on an SSH server. It is fetched over SFTP and opened from a copy on this Mac, and the original is never written to. The connection runs at Safe Mode [**Read-Only**](/features/safe-mode#connections-held-at-read-only), so the grid and the editor refuse edits that would only change the copy.
 
 Where the server has `sqlite3` 3.27 or newer, the copy is a `VACUUM INTO` snapshot, which stays consistent even while other programs write to the database. See [Remote Database Files](/connections/remote-database-files).
 

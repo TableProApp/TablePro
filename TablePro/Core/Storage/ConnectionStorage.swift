@@ -244,9 +244,9 @@ final class ConnectionStorage {
             return false
         }
 
-        guard connections[index].safeModeLevel != level else { return true }
+        guard connections[index].preferredSafeModeLevel != level else { return true }
 
-        connections[index].safeModeLevel = level
+        connections[index].preferredSafeModeLevel = level
         guard saveConnections(connections) else {
             Self.logger.error(
                 "Aborted updateSafeModeLevel: persistence failed for \(connectionId, privacy: .public)"
@@ -367,7 +367,7 @@ final class ConnectionStorage {
             cloudSQLProxyMode: connection.cloudSQLProxyMode,
             socksProxyMode: connection.socksProxyMode,
             tunnelCommandMode: connection.tunnelCommandMode,
-            safeModeLevel: connection.safeModeLevel,
+            safeModeLevel: connection.preferredSafeModeLevel,
             aiPolicy: connection.aiPolicy,
             aiRules: connection.aiRules,
             aiAlwaysAllowedTools: connection.aiAlwaysAllowedTools,
