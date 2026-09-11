@@ -42,6 +42,7 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
 
     func fetchPrincipals() async throws -> [PluginPrincipalInfo] {
         let memberships = try await fetchMemberships()
+        let supportedAttributes = PostgreSQLVersionedStatements.roleAttributes(capabilities: versionedCapabilities)
         let query = PostgreSQLPrincipalQueries.principals(
             includeBypassRLS: versionedCapabilities.hasBypassRLS
         )
@@ -50,7 +51,7 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
         return result.rows.compactMap { row -> PluginPrincipalInfo? in
             guard let name = row[safe: 0]?.asText else { return nil }
             let canLogin = Self.decodeBoolean(row[safe: 1]?.asText)
-            let attributes = Self.decodeAttributes(row: row)
+            let attributes = Self.decodeAttributes(row: row, supported: supportedAttributes)
             let connectionLimit = row[safe: 8]?.asText.flatMap(Int.init)
 
             return PluginPrincipalInfo(
@@ -230,7 +231,10 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
         }
     }
 
-    private static func decodeAttributes(row: [PluginCellValue]) -> [PluginPrincipalAttribute] {
+    private static func decodeAttributes(
+        row: [PluginCellValue],
+        supported: Set<PostgreSQLRoleAttribute>
+    ) -> [PluginPrincipalAttribute] {
         let columnOffsets: [(PostgreSQLRoleAttribute, Int)] = [
             (.superuser, 2),
             (.createdb, 3),
@@ -239,7 +243,7 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
             (.bypassrls, 6),
             (.inherit, 7)
         ]
-        return columnOffsets.map { attribute, offset in
+        return columnOffsets.filter { supported.contains($0.0) }.map { attribute, offset in
             PluginPrincipalAttribute(
                 key: attribute.rawValue,
                 label: attribute.label,

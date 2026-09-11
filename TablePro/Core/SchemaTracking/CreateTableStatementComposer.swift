@@ -36,6 +36,18 @@ enum CreateTableStatementComposer {
         }
 
         var issues = plan.issues
+        let columnRefusals = definition.columns.compactMap { driver.schemaOperationRefusal(.addColumn($0)) }
+        issues += columnRefusals.map { SchemaDraftIssue(tab: .columns, row: nil, message: $0) }
+        var refusedIndexRows: Set<Int> = []
+        for (row, index) in plan.indexes.enumerated() {
+            guard let reason = driver.schemaOperationRefusal(.addIndex(index)) else { continue }
+            refusedIndexRows.insert(row)
+            issues.append(SchemaDraftIssue(tab: .indexes, row: row, message: reason))
+        }
+        guard columnRefusals.isEmpty else {
+            return CreateTableStatements(statements: [], issues: issues, tableName: definition.tableName)
+        }
+
         guard let createTable = driver.generateCreateTableSQL(definition: definition) else {
             issues.append(SchemaDraftIssue(
                 tab: .columns, row: nil,
@@ -45,7 +57,7 @@ enum CreateTableStatementComposer {
         }
 
         var statements = [createTable]
-        for (row, index) in plan.indexes.enumerated() {
+        for (row, index) in plan.indexes.enumerated() where !refusedIndexRows.contains(row) {
             guard let sql = driver.generateAddIndexSQL(table: definition.tableName, index: index) else {
                 issues.append(SchemaDraftIssue(
                     tab: .indexes, row: row,

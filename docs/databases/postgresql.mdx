@@ -1,6 +1,6 @@
 ---
 title: PostgreSQL
-description: Connect to PostgreSQL 12 and later with the libpq driver, including PostGIS display, AWS IAM auth, and pg_dump backups
+description: Connect to PostgreSQL 9.1 and later with the libpq driver, including PostGIS display, AWS IAM auth, and pg_dump backups
 ---
 
 Unlike MySQL, PostgreSQL will not connect without a **Database**, and it changes database only by reconnecting. Everything else on the form is ordinary. The libpq driver ships inside the app and also serves [Amazon Redshift](/databases/redshift), [CockroachDB](/databases/cockroachdb), and [PGlite](/databases/pglite).
@@ -16,7 +16,14 @@ Unlike MySQL, PostgreSQL will not connect without a **Database**, and it changes
 
 Fill in the form and click **Save & Connect**. For remote servers use [SSH tunneling](/connections/ssh-tunneling); Google Cloud SQL instances can connect through the [Cloud SQL Auth Proxy](/connections/cloud-sql-proxy).
 
-Support starts at 12. An older server still connects, with whatever its catalogs carry: generated columns need 12, declarative partitioning and identity columns need 10.
+Any server from 9.1 on works. A feature the server predates stays out of the sidebar and the structure editor:
+
+| Feature | Needs |
+|---|---|
+| Materialized views | 9.3 |
+| BRIN indexes, the **Bypass row level security** role attribute | 9.5 |
+| Declarative partitioning, identity columns, renaming an enum label | 10 |
+| Generated columns | 12 |
 
 <Frame caption="PostgreSQL connection form">
   <img className="block dark:hidden" src="/images/postgresql-connection-form.png" alt="PostgreSQL connection form" />
@@ -95,6 +102,7 @@ New connections default to **Preferred** (libpq `sslmode=prefer`): TLS first, pl
 - Columns cannot be reordered. The structure editor adds, renames, retypes, and drops; changing the order of existing columns means recreating the table.
 - A cross-database tab cannot share session state with the main connection. Statements that depend on a temp table or an open transaction have to run on one database.
 - Backup and restore need `pg_dump` and `pg_restore` on your Mac. Neither is bundled; install them with Homebrew.
+- Before PostgreSQL 12, the [`run_maintenance`](/external-api/mcp-tools) tool's `REINDEX` with no `table` runs without `CONCURRENTLY` and rebuilds the system catalog indexes as well. While an index rebuilds, writes to its table wait, and so do reads that use that index. Run it when the database is quiet.
 
 ## Troubleshooting
 

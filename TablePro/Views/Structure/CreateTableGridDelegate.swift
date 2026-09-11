@@ -16,6 +16,7 @@ final class CreateTableGridDelegate: DataGridViewDelegate {
     let connection: DatabaseConnection
     var onSelectedRowsChanged: ((Set<Int>) -> Void)?
     var orderedFields: [StructureColumnField] = []
+    var serverSupport = StructureServerSupport.unrestricted
     /// The lists behind the Foreign Keys grid's reference cells. Held per delegate, so the column
     /// cache dies with the tab rather than outliving every connection.
     let referenceMenus: ForeignKeyReferenceMenus

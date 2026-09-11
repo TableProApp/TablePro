@@ -48,4 +48,12 @@ struct PostgreSQLCapabilities: Sendable, Equatable {
     var hasDatabaseICULocale: Bool { serverVersion >= 150_000 }
     var hasDatabaseLocale: Bool { serverVersion >= 170_000 }
     var hasModernICUSyntax: Bool { serverVersion >= 160_000 }
+
+    var hasRenameConstraint: Bool { serverVersion >= 90_200 }
+    var hasCreateSchemaIfNotExists: Bool { serverVersion >= 90_300 }
+    var hasBrinIndexes: Bool { serverVersion >= 90_500 }
+    var hasExecuteFunctionTriggerSyntax: Bool { serverVersion >= 110_000 }
+    var hasReindexConcurrently: Bool { serverVersion >= 120_000 }
+    var hasCreateOrReplaceTrigger: Bool { serverVersion >= 140_000 }
+    var hasUnnamedReindexDatabase: Bool { serverVersion >= 160_000 }
 }

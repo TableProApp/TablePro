@@ -389,6 +389,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     var supportsTransactionalDDL: Bool { pluginDriver.supportsTransactionalDDL }
 
+    var unsupportedStructureColumnFields: Set<StructureColumnField> { pluginDriver.unsupportedStructureColumnFields }
+
+    var unsupportedIndexTypes: Set<String> { pluginDriver.unsupportedIndexTypes }
+
     func fetchApproximateRowCount(table: String) async throws -> Int? {
         try await pluginDriver.fetchApproximateRowCount(table: table, schema: pluginDriver.currentSchema)
     }

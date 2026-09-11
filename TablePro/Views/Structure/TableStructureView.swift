@@ -501,6 +501,7 @@ struct TableStructureView: View {
             tab: selectedTab,
             databaseType: connection.type,
             additionalFields: [.primaryKey],
+            serverSupport: session.serverSupport,
             filterText: searchText.isEmpty ? nil : searchText,
             sortDescriptor: structureSortDescriptor
         )
@@ -517,6 +518,7 @@ struct TableStructureView: View {
         let provider = makeCurrentProvider()
 
         gridDelegate.selectedTab = selectedTab
+        gridDelegate.serverSupport = session.serverSupport
         gridDelegate.currentProvider = provider
         gridDelegate.orderedFields = provider.orderedColumnFields
         coordinator?.inspectorRowSourceRevision += 1

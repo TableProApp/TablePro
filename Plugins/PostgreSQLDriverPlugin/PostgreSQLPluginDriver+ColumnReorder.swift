@@ -47,13 +47,12 @@ extension PostgreSQLPluginDriver {
         var statements: [String] = []
         statements.append("ALTER TABLE \(qualified) RENAME TO \(quoteIdentifier("\(table)_tablepro_reorder"))")
         statements.append("CREATE TABLE \(qualified) (\n  " + body.joined(separator: ",\n  ") + "\n)")
-        /// `OVERRIDING SYSTEM VALUE` unconditionally. A `GENERATED ALWAYS AS IDENTITY` column
-        /// refuses a written value without it and takes the whole rebuild down; measured, the
-        /// clause is accepted and does nothing on a `BY DEFAULT` identity and on a table that has
-        /// no identity column at all.
-        statements.append("""
-            INSERT INTO \(qualified) (\(copyList)) OVERRIDING SYSTEM VALUE SELECT \(copyList) FROM \(staging)
-            """)
+        statements.append(PostgreSQLVersionedStatements.copyRows(
+            into: qualified,
+            from: staging,
+            columnList: copyList,
+            capabilities: versionedCapabilities
+        ))
         statements.append(contentsOf: parts.identityResets(qualified: qualified, quote: quoteIdentifier))
         statements.append(contentsOf: parts.inboundForeignKeyDrops)
         /// A `serial` column's default still calls the sequence the staging table owns, so `DROP

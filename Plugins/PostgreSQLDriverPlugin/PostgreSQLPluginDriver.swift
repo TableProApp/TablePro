@@ -19,10 +19,15 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     private static let undefinedFunctionSQLState = PostgreSQLTableListingLadder.undefinedFunctionSQLState
 
     private var catalogPresence: PostgreSQLCatalogPresence?
+    let sessionFacts = OSAllocatedUnfairLock(initialState: PostgreSQLSessionFacts.unknown)
 
-    var serverVersionNumber: Int32 { core.serverVersionNumber }
+    var serverVersionNumber: Int32 {
+        let reported = core.serverVersionNumber
+        return sessionFacts.withLock { $0.resolvedServerVersion(reported: reported) }
+    }
+
     var versionedCapabilities: PostgreSQLCapabilities {
-        PostgreSQLCapabilities(serverVersion: core.serverVersionNumber)
+        PostgreSQLCapabilities(serverVersion: serverVersionNumber)
     }
 
     var capabilities: PluginCapabilities {
@@ -51,6 +56,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func connect() async throws {
         core.onPostConnect = { [weak self] in
+            await self?.probeSessionFacts()
             await self?.probeCatalogPresence()
             await self?.probePostgisOids()
             await self?.probeEnumOids()
@@ -116,7 +122,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     /// A duplicated database arrives with `public` alone, so every other schema its tables are
     /// qualified with has to be made before the first `CREATE TABLE` names one.
     func createSchemaStatement(name: String) -> String? {
-        "CREATE SCHEMA IF NOT EXISTS \(quoteIdentifier(name))"
+        PostgreSQLVersionedStatements.createSchema(name, capabilities: versionedCapabilities)
     }
 
     // MARK: - Maintenance
@@ -138,7 +144,11 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         case "ANALYZE":
             return [target.map { "ANALYZE \($0)" } ?? "ANALYZE"]
         case "REINDEX":
-            return [target.map { "REINDEX TABLE \($0)" } ?? "REINDEX DATABASE CONCURRENTLY"]
+            if let target { return ["REINDEX TABLE \(target)"] }
+            return PostgreSQLVersionedStatements.reindexDatabase(
+                currentDatabase: connectedDatabase,
+                capabilities: versionedCapabilities
+            ).map { [$0] }
         case "CLUSTER":
             return target.map { ["CLUSTER \($0)"] }
         default:
@@ -327,70 +337,6 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         }
         Self.logger.info("[trigger] postgres fetchTriggers schema=\(resolvedSchema, privacy: .public) table=\(table, privacy: .public) rows=\(result.rows.count) parsed=\(triggers.count)")
         return triggers
-    }
-
-    var triggerEditUsesReplace: Bool { true }
-
-    var supportsTransactionalDDL: Bool { true }
-
-    private func qualifiedTable(_ table: String, schema: String?) -> String {
-        let resolved = schema ?? core.currentSchema
-        return "\(quoteIdentifier(resolved)).\(quoteIdentifier(table))"
-    }
-
-    func createTriggerTemplate(table: String, schema: String?) -> String? {
-        let qualified = qualifiedTable(table, schema: schema)
-        let fn = qualifiedTable("trigger_function", schema: schema)
-        return """
-        CREATE OR REPLACE FUNCTION \(fn)()
-        RETURNS trigger
-        LANGUAGE plpgsql
-        AS $function$
-        BEGIN
-            -- NEW.updated_at := now();
-            RETURN NEW;
-        END;
-        $function$;
-
-        CREATE OR REPLACE TRIGGER \(quoteIdentifier("trigger_name"))
-            BEFORE INSERT ON \(qualified)
-            FOR EACH ROW
-            EXECUTE FUNCTION \(fn)();
-        """
-    }
-
-    func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String? {
-        let resolvedSchema = schema ?? core.currentSchema
-        let query = """
-            SELECT pg_get_functiondef(t.tgfoid), pg_get_triggerdef(t.oid)
-            FROM pg_catalog.pg_trigger t
-            JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
-            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-            WHERE t.tgname = '\(escapeLiteral(name))'
-                AND c.relname = '\(escapeLiteral(table))'
-                AND n.nspname = '\(escapeLiteral(resolvedSchema))'
-                AND NOT t.tgisinternal
-            LIMIT 1
-            """
-        let result = try await execute(query: query)
-        guard let row = result.rows.first, row.count >= 2,
-              let functionDef = row[0].asText,
-              let triggerDef = row[1].asText else { return nil }
-        let editableTrigger: String
-        if triggerDef.range(of: "CREATE CONSTRAINT TRIGGER", options: .caseInsensitive) != nil {
-            let drop = generateDropTriggerSQL(name: name, table: table, schema: schema) ?? ""
-            editableTrigger = "\(drop);\n\(triggerDef)"
-        } else {
-            editableTrigger = triggerDef.replacingOccurrences(
-                of: "CREATE TRIGGER ",
-                with: "CREATE OR REPLACE TRIGGER "
-            )
-        }
-        return "\(functionDef);\n\n\(editableTrigger);"
-    }
-
-    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
-        "DROP TRIGGER IF EXISTS \(quoteIdentifier(name)) ON \(qualifiedTable(table, schema: schema))"
     }
 
     /// PostgreSQL allows `f(integer)` and `f(text)` in one schema, so a drop that names only `f`
@@ -975,7 +921,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         case "icu":
             guard supportsProvider else {
                 throw LibPQPluginError(
-                    message: String(localized: "ICU provider requires PostgreSQL 15 or newer"),
+                    message: String(localized: "ICU provider requires PostgreSQL 15 or later"),
                     sqlState: nil,
                     detail: nil
                 )
@@ -1112,7 +1058,9 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     // MARK: - Create Table DDL
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
-        guard !definition.columns.isEmpty else { return nil }
+        guard !definition.columns.isEmpty,
+              PostgreSQLVersionedStatements.refusal(for: definition, capabilities: versionedCapabilities) == nil
+        else { return nil }
 
         let schema = core.currentSchema
         let qualifiedTable = "\(quoteIdentifier(schema)).\(quoteIdentifier(definition.tableName))"
@@ -1210,7 +1158,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let unique = index.isUnique ? "UNIQUE " : ""
         var def = "CREATE \(unique)INDEX \(quoteIdentifier(index.name)) ON \(qualifiedTable)"
         if let type = index.indexType?.uppercased(),
-           ["BTREE", "HASH", "GIN", "GIST", "BRIN"].contains(type) {
+           PostgreSQLVersionedStatements.postgreSQLIndexMethods.contains(type) {
             def += " USING \(type.lowercased())"
         }
         def += " (\(cols))"
@@ -1246,10 +1194,12 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     // MARK: - Definition SQL (clipboard copy)
 
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? {
-        pgColumnDefinition(column, inlinePK: false)
+        guard schemaOperationRefusal(.addColumn(column)) == nil else { return nil }
+        return pgColumnDefinition(column, inlinePK: false)
     }
 
     func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String? {
+        guard schemaOperationRefusal(.addIndex(index)) == nil else { return nil }
         let qualifiedTable = tableName.map { quoteIdentifier($0) } ?? "\"table\""
         return pgIndexDefinition(index, qualifiedTable: qualifiedTable)
     }
@@ -1265,6 +1215,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
+        guard schemaOperationRefusal(.addColumn(column)) == nil else { return nil }
         let qt = qualifiedTableName(table)
         let colDef = pgColumnDefinition(column, inlinePK: false)
         return "ALTER TABLE \(qt) ADD COLUMN \(colDef)"
@@ -1315,7 +1266,8 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
-        pgIndexDefinition(index, qualifiedTable: qualifiedTableName(table))
+        guard schemaOperationRefusal(.addIndex(index)) == nil else { return nil }
+        return pgIndexDefinition(index, qualifiedTable: qualifiedTableName(table))
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
@@ -1343,9 +1295,12 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func generateRenameCheckConstraintSQL(table: String, from oldName: String, to newName: String) -> String? {
-        guard !oldName.isEmpty, !newName.isEmpty else { return nil }
-        return "ALTER TABLE \(qualifiedTableName(table)) RENAME CONSTRAINT "
-            + "\(quoteIdentifier(oldName)) TO \(quoteIdentifier(newName))"
+        PostgreSQLVersionedStatements.renameConstraint(
+            qualifiedTable: qualifiedTableName(table),
+            from: oldName,
+            to: newName,
+            capabilities: versionedCapabilities
+        )
     }
 
     func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? {

@@ -30,6 +30,7 @@ final class StructureRowProvider {
     private let tab: StructureTab
     private let databaseType: DatabaseType
     private let additionalFields: Set<StructureColumnField>
+    private let serverSupport: StructureServerSupport
     let orderedColumnFields: [StructureColumnField]
     private let filterText: String?
     private let sortDescriptor: StructureSortDescriptor?
@@ -122,7 +123,8 @@ final class StructureRowProvider {
                 6: GridMenuOption.values(updateActions.map(\.rawValue))
             ]
         case .indexes:
-            let types = EditableIndexDefinition.IndexType.allCases.map(\.rawValue)
+            let offered = serverSupport.offeredIndexTypes(from: EditableIndexDefinition.IndexType.allCases)
+            let types = offered.map(\.rawValue)
             return [2: GridMenuOption.values(types), 3: GridMenuOption.values(Self.booleanOptions)]
         case .columns:
             var result: [Int: [GridMenuOption]] = [:]
@@ -170,6 +172,7 @@ final class StructureRowProvider {
         tab: StructureTab,
         databaseType: DatabaseType = .mysql,
         additionalFields: Set<StructureColumnField> = [],
+        serverSupport: StructureServerSupport,
         filterText: String? = nil,
         sortDescriptor: StructureSortDescriptor? = nil
     ) {
@@ -177,9 +180,14 @@ final class StructureRowProvider {
         self.tab = tab
         self.databaseType = databaseType
         self.additionalFields = additionalFields
+        self.serverSupport = serverSupport
         self.filterText = filterText
         self.sortDescriptor = sortDescriptor
-        self.orderedColumnFields = Self.orderedFields(for: databaseType, additionalFields: additionalFields)
+        self.orderedColumnFields = Self.orderedFields(
+            for: databaseType,
+            additionalFields: additionalFields,
+            serverSupport: serverSupport
+        )
 
         let allRows = Self.buildAllRows(
             tab: tab, changeManager: changeManager, orderedColumnFields: self.orderedColumnFields
@@ -191,11 +199,12 @@ final class StructureRowProvider {
 
     static func orderedFields(
         for databaseType: DatabaseType,
-        additionalFields: Set<StructureColumnField> = []
+        additionalFields: Set<StructureColumnField> = [],
+        serverSupport: StructureServerSupport
     ) -> [StructureColumnField] {
         let pluginFields = Set(PluginManager.shared.structureColumnFields(for: databaseType))
         let fields = pluginFields.union(additionalFields)
-        return canonicalFieldOrder.filter { fields.contains($0) }
+        return canonicalFieldOrder.filter { fields.contains($0) && serverSupport.offers($0) }
     }
 
     // MARK: - Row Access

@@ -31,7 +31,7 @@ struct StructureColumnFieldRegistrationTests {
 
     @Test("On update is ordered next to the default it complements")
     func onUpdateFollowsDefaultValue() {
-        let fields = StructureRowProvider.orderedFields(for: .mysql)
+        let fields = StructureRowProvider.orderedFields(for: .mysql, serverSupport: .unrestricted)
         guard let defaultIndex = fields.firstIndex(of: .defaultValue),
               let onUpdateIndex = fields.firstIndex(of: .onUpdate) else {
             Issue.record("MySQL is missing the default or on update field")
@@ -79,7 +79,7 @@ struct StructureColumnFieldRegistrationTests {
         arguments: [DatabaseType.postgresql, .mysql, .sqlite, .cockroachdb, .pglite]
     )
     func declaredBooleanFieldsResolve(databaseType: DatabaseType) {
-        let ordered = StructureRowProvider.orderedFields(for: databaseType)
+        let ordered = StructureRowProvider.orderedFields(for: databaseType, serverSupport: .unrestricted)
         let declared = Set(PluginManager.shared.structureColumnFields(for: databaseType))
         for field in [StructureColumnField.nullable, .autoIncrement, .onUpdate] where declared.contains(field) {
             #expect(ordered.contains(field), "\(databaseType.rawValue) declares \(field) but cannot order it")

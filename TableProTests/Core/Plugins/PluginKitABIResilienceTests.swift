@@ -36,6 +36,9 @@ struct PluginKitABIResilienceTests {
         #expect(driver.defaultExportQuery(table: "users") == nil)
         #expect(driver.createViewTemplate() == nil)
         #expect(driver.generateCreateTableSQL(definition: .init(tableName: "users", columns: [], primaryKeyColumns: [])) == nil)
+        #expect(driver.unsupportedStructureColumnFields.isEmpty)
+        #expect(driver.unsupportedIndexTypes.isEmpty)
+        #expect(driver.schemaOperationRefusal(.renameCheckConstraint(from: "a", to: "b")) == nil)
     }
 
     @Test("A driver that omits defaulted requirements falls back to the documented asynchronous defaults")

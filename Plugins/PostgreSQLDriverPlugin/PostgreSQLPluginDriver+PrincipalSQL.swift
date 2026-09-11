@@ -117,9 +117,16 @@ extension PostgreSQLPluginDriver {
         }
     }
 
+    private var supportedRoleAttributes: Set<PostgreSQLRoleAttribute> {
+        PostgreSQLVersionedStatements.roleAttributes(capabilities: versionedCapabilities)
+    }
+
     private func attributeKeywords(_ attributes: [PluginPrincipalAttribute]) -> [String] {
-        attributes.compactMap { attribute in
-            guard let known = PostgreSQLRoleAttribute(rawValue: attribute.key) else { return nil }
+        let supported = supportedRoleAttributes
+        return attributes.compactMap { attribute in
+            guard let known = PostgreSQLRoleAttribute(rawValue: attribute.key), supported.contains(known) else {
+                return nil
+            }
             return known.keyword(isEnabled: attribute.isEnabled)
         }
     }
@@ -129,8 +136,11 @@ extension PostgreSQLPluginDriver {
         new: [PluginPrincipalAttribute]
     ) -> [String] {
         let oldByKey = Dictionary(uniqueKeysWithValues: old.map { ($0.key, $0.isEnabled) })
+        let supported = supportedRoleAttributes
         return new.compactMap { attribute in
-            guard let known = PostgreSQLRoleAttribute(rawValue: attribute.key) else { return nil }
+            guard let known = PostgreSQLRoleAttribute(rawValue: attribute.key), supported.contains(known) else {
+                return nil
+            }
             guard oldByKey[attribute.key] != attribute.isEnabled else { return nil }
             return known.keyword(isEnabled: attribute.isEnabled)
         }

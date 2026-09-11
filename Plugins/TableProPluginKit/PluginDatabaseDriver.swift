@@ -315,6 +315,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// answer, which stands the check down for an engine TablePro never runs a rebuild on anyway.
     func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String?
 
+    var unsupportedStructureColumnFields: Set<StructureColumnField> { get }
+    var unsupportedIndexTypes: Set<String> { get }
+    func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String?
+
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String?
 
     // Definition SQL for clipboard copy (optional — return nil if not supported)
@@ -781,6 +785,10 @@ public extension PluginDatabaseDriver {
     ) async throws -> PluginColumnReorderPlan? { nil }
 
     func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String? { nil }
+
+    var unsupportedStructureColumnFields: Set<StructureColumnField> { [] }
+    var unsupportedIndexTypes: Set<String> { [] }
+    func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? { nil }
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? { nil }
 
