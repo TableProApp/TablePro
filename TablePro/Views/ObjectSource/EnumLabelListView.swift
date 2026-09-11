@@ -57,12 +57,16 @@ struct EnumLabelListView: View {
             .environment(\.defaultMinListRowHeight, Self.rowHeight)
             .frame(height: listHeight)
             if let errorMessage {
-                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
-                    .font(.callout)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal)
-                    .padding(.bottom, 6)
+                Label {
+                    RevealedTextView(errorMessage)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                }
+                .foregroundStyle(.red)
+                .font(.callout)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
+                .padding(.bottom, 6)
             }
             if canEdit {
                 Divider()

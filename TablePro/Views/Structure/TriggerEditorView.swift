@@ -60,11 +60,15 @@ struct TriggerEditorView: View {
             )
             if let errorMessage {
                 Divider()
-                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
-                    .font(.callout)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(8)
+                Label {
+                    RevealedTextView(errorMessage)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                }
+                .foregroundStyle(.red)
+                .font(.callout)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(8)
             }
         }
         .frame(minWidth: 560, idealWidth: 680, minHeight: 360, idealHeight: 460)
@@ -139,7 +143,8 @@ struct TriggerEditorView: View {
             layout: .init(contentInsets: NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)),
             peripherals: EditorPeripherals.inline(
                 lineNumbers: true,
-                folding: AppSettingsManager.shared.editor.codeFoldingEnabled
+                folding: AppSettingsManager.shared.editor.codeFoldingEnabled,
+                invisibleCharacters: AppSettingsManager.shared.editor.showInvisibleCharacters
             )
         )
     }

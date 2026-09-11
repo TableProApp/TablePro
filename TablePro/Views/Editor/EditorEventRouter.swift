@@ -107,6 +107,11 @@ internal final class EditorEventRouter {
         coordinator.performFormatSQL()
     }
 
+    internal func performRemoveInvisibleCharactersForKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.performRemoveInvisibleCharacters()
+    }
+
     internal func performToggleFoldForKeyWindow() {
         guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
         coordinator.toggleFoldAtCursor()

@@ -44,7 +44,7 @@ struct ServerDashboardView: View {
             Button(String(localized: "OK"), role: .cancel) { viewModel.actionError = nil }
         } message: {
             if let error = viewModel.actionError {
-                Text(error)
+                Text(verbatim: RevealedText(error).plainText)
             }
         }
     }

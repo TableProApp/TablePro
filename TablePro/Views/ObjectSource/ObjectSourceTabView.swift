@@ -197,7 +197,7 @@ struct ObjectSourceTabView: View {
             ContentUnavailableView {
                 Label("Source Unavailable", systemImage: "exclamationmark.triangle")
             } description: {
-                Text(message)
+                RevealedTextView(message)
             } actions: {
                 Button("Try Again") {
                     Task { await loader.load() }

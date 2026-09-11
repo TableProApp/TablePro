@@ -32,6 +32,13 @@ struct QueryClassification: Sendable, Equatable {
         )
     }
 
+    func escalated(with other: QueryClassification) -> QueryClassification {
+        QueryClassification(
+            tier: QueryClassification.worse(tier, other.tier),
+            reachesFilesystemOrExecutesCode: reachesFilesystemOrExecutesCode || other.reachesFilesystemOrExecutesCode
+        )
+    }
+
     static func worse(_ lhs: QueryTier, _ rhs: QueryTier) -> QueryTier {
         if lhs == .destructive || rhs == .destructive { return .destructive }
         if lhs == .write || rhs == .write { return .write }
@@ -41,7 +48,7 @@ struct QueryClassification: Sendable, Equatable {
 
 enum QueryClassifier {
     static func classify(_ sql: String, databaseType: DatabaseType) -> QueryClassification {
-        let trimmed = strippingLeadingComments(sql).trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = StatementBlank.trimming(strippingLeadingComments(sql))
         guard !trimmed.isEmpty else { return .safe }
         if let redis = redisClassification(trimmed, databaseType: databaseType) { return redis }
         if let document = documentStoreClassification(trimmed, databaseType: databaseType) { return document }
@@ -56,7 +63,7 @@ enum QueryClassifier {
         let classification = classify(sql, databaseType: databaseType)
         if classification.tier == .destructive { return true }
         guard databaseType != .redis else { return false }
-        let trimmed = strippingLeadingComments(sql).trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = StatementBlank.trimming(strippingLeadingComments(sql))
         guard leadingKeyword(of: trimmed) == "DELETE" else { return false }
         return !hasWhereClause(trimmed)
     }
@@ -88,7 +95,7 @@ enum QueryClassifier {
     }
 
     static func explainedStatement(in sql: String) -> String? {
-        let trimmed = strippingLeadingComments(sql).trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = StatementBlank.trimming(strippingLeadingComments(sql))
         let keyword = leadingKeyword(of: trimmed)
         guard explainPrefixes.contains(keyword) else { return nil }
         return explainInnerStatement(trimmed, keyword: keyword)?.statement
@@ -101,7 +108,7 @@ enum QueryClassifier {
     static func leadingKeyword(of sql: String) -> String {
         var remaining = strippingLeadingComments(sql)[...]
         while remaining.first == "(" {
-            remaining = remaining.dropFirst().drop { $0.isWhitespace }
+            remaining = StatementBlank.trimmingLeading(remaining.dropFirst())
             guard remaining.hasPrefix("--") || remaining.hasPrefix("/*") else { continue }
             remaining = strippingLeadingComments(String(remaining))[...]
         }
@@ -111,11 +118,11 @@ enum QueryClassifier {
     static func strippingLeadingComments(_ sql: String) -> String {
         var remaining = sql[...]
         while true {
-            let trimmed = remaining.drop { $0.isWhitespace }
+            let trimmed = StatementBlank.trimmingLeading(remaining)
             if trimmed.hasPrefix("--") {
-                guard let newline = trimmed.firstIndex(of: "\n") else { return "" }
-                remaining = trimmed[trimmed.index(after: newline)...]
-            } else if trimmed.hasPrefix("/*") {
+                guard let lineBreak = trimmed.firstIndex(where: endsLineComment) else { return "" }
+                remaining = trimmed[trimmed.index(after: lineBreak)...]
+            } else if trimmed.hasPrefix("/*"), !startsConditionalComment(trimmed) {
                 guard let close = trimmed.range(of: "*/") else { return "" }
                 remaining = trimmed[close.upperBound...]
             } else {
@@ -124,7 +131,7 @@ enum QueryClassifier {
         }
     }
 
-    static func strippingStringLiterals(_ sql: String) -> String {
+    static func strippingStringLiterals(_ sql: String, revealingConditionalComments: Bool = false) -> String {
         var output = ""
         output.reserveCapacity(sql.count)
         var characters = Array(sql)
@@ -141,10 +148,11 @@ enum QueryClassifier {
                 continue
             }
             if character == "-", index + 1 < characters.count, characters[index + 1] == "-" {
-                while index < characters.count, characters[index] != "\n" { index += 1 }
+                while index < characters.count, !endsLineComment(characters[index]) { index += 1 }
                 continue
             }
-            if character == "/", index + 1 < characters.count, characters[index + 1] == "*" {
+            if character == "/", index + 1 < characters.count, characters[index + 1] == "*",
+               !(revealingConditionalComments && startsConditionalComment(characters, at: index)) {
                 index += 2
                 while index + 1 < characters.count, !(characters[index] == "*" && characters[index + 1] == "/") {
                     index += 1
@@ -215,6 +223,10 @@ private extension QueryClassifier {
 
     static let destructiveKeywords: Set<String> = ["DROP", "TRUNCATE"]
 
+    static let conditionalCommentOpeners: [String] = ["/*!", "/*M!"]
+
+    static let lineCommentTerminators: Set<Character> = ["\n", "\r", "\r\n"]
+
     static let filesystemOrCodeKeywords: Set<String> = [
         "COPY", "ATTACH", "DETACH", "DO", "LOAD", "INSTALL", "IMPORT", "EXPORT",
         "BACKUP", "RESTORE", "DUMP", "SOURCE", "UNLOAD"
@@ -259,7 +271,35 @@ private extension QueryClassifier {
         let body = strippingStringLiterals(trimmed).uppercased()
         let touchesUnsafeSurface = filesystemMarkers.contains { body.contains($0) }
         let base = keywordClassification(trimmed, body: body)
-        return touchesUnsafeSurface ? base.markingUnsafeSurface() : base
+        let classification = touchesUnsafeSurface ? base.markingUnsafeSurface() : base
+        guard let conditional = conditionalCommentClassification(trimmed) else { return classification }
+        return classification.escalated(with: conditional)
+    }
+
+    static func conditionalCommentClassification(_ trimmed: String) -> QueryClassification? {
+        guard conditionalCommentOpeners.contains(where: { trimmed.contains($0) }) else { return nil }
+        let revealed = strippingStringLiterals(trimmed, revealingConditionalComments: true).uppercased()
+        guard conditionalCommentOpeners.contains(where: { revealed.contains($0) }) else { return nil }
+        let dropsData = destructiveKeywords.contains { containsWord(revealed, $0) }
+        let reachesFilesystemOrExecutesCode = filesystemMarkers.contains { revealed.contains($0) }
+            || filesystemOrCodeKeywords.contains { containsWord(revealed, $0) }
+        return QueryClassification(
+            tier: dropsData ? .destructive : .write,
+            reachesFilesystemOrExecutesCode: reachesFilesystemOrExecutesCode
+        )
+    }
+
+    static func startsConditionalComment(_ text: Substring) -> Bool {
+        conditionalCommentOpeners.contains { text.hasPrefix($0) }
+    }
+
+    static func startsConditionalComment(_ characters: [Character], at index: Int) -> Bool {
+        let end = min(index + 4, characters.count)
+        return startsConditionalComment(Substring(String(characters[index..<end])))
+    }
+
+    static func endsLineComment(_ character: Character) -> Bool {
+        lineCommentTerminators.contains(character)
     }
 
     static func keywordClassification(_ trimmed: String, body: String) -> QueryClassification {
@@ -343,8 +383,8 @@ private extension QueryClassifier {
             guard let first = remainder.first else { return nil }
             if remainder.hasPrefix("--") {
                 statementTriviaStart = statementTriviaStart ?? remainder.startIndex
-                guard let newline = remainder.firstIndex(where: { $0 == "\n" || $0 == "\r" }) else { return nil }
-                remainder = remainder[remainder.index(after: newline)...]
+                guard let lineBreak = remainder.firstIndex(where: endsLineComment) else { return nil }
+                remainder = remainder[remainder.index(after: lineBreak)...]
                 continue
             }
             if remainder.hasPrefix("/*") {

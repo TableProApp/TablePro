@@ -28,7 +28,7 @@ struct ERDiagramView: View {
                         .font(.largeTitle)
                         .foregroundStyle(.secondary)
                         .accessibilityHidden(true)
-                    Text(message)
+                    RevealedTextView(message)
                         .foregroundStyle(.secondary)
                     Button(String(localized: "Retry")) {
                         Task { await viewModel.loadDiagram() }

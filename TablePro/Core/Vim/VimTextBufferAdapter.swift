@@ -38,7 +38,7 @@ final class VimTextBufferAdapter: VimTextBuffer {
         var count = 0
         var index = 0
         while index < nsString.length {
-            let lineRange = nsString.lineRange(for: NSRange(location: index, length: 0))
+            let lineRange = nsString.lineRangeBreakingAtLineEndings(for: NSRange(location: index, length: 0))
             count += 1
             index = lineRange.location + lineRange.length
         }
@@ -114,7 +114,7 @@ final class VimTextBufferAdapter: VimTextBuffer {
         guard let textView else { return NSRange(location: 0, length: 0) }
         let nsString = textView.string as NSString
         let clampedOffset = min(max(0, offset), nsString.length)
-        return nsString.lineRange(for: NSRange(location: clampedOffset, length: 0))
+        return nsString.lineRangeBreakingAtLineEndings(for: NSRange(location: clampedOffset, length: 0))
     }
 
     func lineAndColumn(forOffset offset: Int) -> (line: Int, column: Int) {
@@ -125,7 +125,9 @@ final class VimTextBufferAdapter: VimTextBuffer {
         if nsString.length == 0 { return (0, 0) }
 
         let safeOffset = min(clampedOffset, max(0, nsString.length - 1))
-        let lineRange = nsString.lineRange(for: NSRange(location: safeOffset, length: 0))
+        let lineRange = nsString.lineRangeBreakingAtLineEndings(
+            for: NSRange(location: safeOffset, length: 0)
+        )
         let column = clampedOffset - lineRange.location
 
         // Count newlines before lineRange.location — uses fast NSString search
@@ -147,12 +149,12 @@ final class VimTextBufferAdapter: VimTextBuffer {
         var currentLine = 0
         var index = 0
         while index < nsString.length && currentLine < line {
-            let lineRange = nsString.lineRange(for: NSRange(location: index, length: 0))
+            let lineRange = nsString.lineRangeBreakingAtLineEndings(for: NSRange(location: index, length: 0))
             currentLine += 1
             index = lineRange.location + lineRange.length
         }
         // Now index is at the start of the target line
-        let lineRange = nsString.lineRange(for: NSRange(location: min(index, nsString.length), length: 0))
+        let lineRange = nsString.lineRangeBreakingAtLineEndings(for: NSRange(location: min(index, nsString.length), length: 0))
         // Content length excludes trailing newline
         let contentLength: Int
         let lineEnd = lineRange.location + lineRange.length

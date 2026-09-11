@@ -130,7 +130,7 @@ struct CreateTableView: View {
         .alert(String(localized: "Create Table Failed"), isPresented: $showError) {
             Button("OK") {}
         } message: {
-            Text(errorMessage ?? "")
+            Text(verbatim: RevealedText(errorMessage ?? "").plainText)
         }
     }
 

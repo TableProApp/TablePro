@@ -62,7 +62,7 @@ struct ResultTabBar: View {
             return Self.truncated(query)
         }
         if let errorMessage = rs.errorMessage {
-            return Self.truncated(errorMessage)
+            return Self.truncated(RevealedText(errorMessage).plainText)
         }
         return rs.label
     }

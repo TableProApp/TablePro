@@ -260,7 +260,8 @@ struct SQLEditorView: View {
             peripherals: EditorPeripherals.editor(
                 lineNumbers: ThemeEngine.shared.showLineNumbers,
                 folding: AppSettingsManager.shared.editor.codeFoldingEnabled,
-                statementRunControls: AppSettingsManager.shared.editor.showStatementRunControls
+                statementRunControls: AppSettingsManager.shared.editor.showStatementRunControls,
+                invisibleCharacters: AppSettingsManager.shared.editor.showInvisibleCharacters
             )
         )
     }

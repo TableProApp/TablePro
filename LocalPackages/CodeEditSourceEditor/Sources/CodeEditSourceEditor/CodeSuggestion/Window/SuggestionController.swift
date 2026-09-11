@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Carbon.HIToolbox
 import CodeEditTextView
 import Combine
 import SwiftUI
@@ -269,31 +270,35 @@ public final class SuggestionController: NSWindowController {
         }
         localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
+            return self.handleKeyDown(event)
+        }
+    }
 
-            // Close if the active text view was removed from its window (e.g., tab closed)
-            if self.model.activeTextView == nil || self.model.activeTextView?.view.window == nil {
-                self.close()
-                return event
-            }
+    internal func handleKeyDown(_ event: NSEvent) -> NSEvent? {
+        guard let activeTextView = model.activeTextView, activeTextView.view.window != nil else {
+            close()
+            return event
+        }
 
-            switch event.keyCode {
-            case 53: // Escape
-                self.close()
-                return nil
-            case 125: // Down Arrow
-                self.model.moveDown()
-                return nil
-            case 126: // Up Arrow
-                self.model.moveUp()
-                return nil
-            case 36, 48: // Return, Tab
-                if let item = self.model.selectedItem {
-                    self.model.applySelectedItem(item: item)
-                }
-                return nil
-            default:
-                return event
+        guard !activeTextView.textView.hasMarkedText() else { return event }
+
+        switch Int(event.keyCode) {
+        case kVK_Escape:
+            close()
+            return nil
+        case kVK_DownArrow:
+            model.moveDown()
+            return nil
+        case kVK_UpArrow:
+            model.moveUp()
+            return nil
+        case kVK_Return, kVK_Tab:
+            if let item = model.selectedItem {
+                model.applySelectedItem(item: item)
             }
+            return nil
+        default:
+            return event
         }
     }
 

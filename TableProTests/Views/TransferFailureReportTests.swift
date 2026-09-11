@@ -109,6 +109,25 @@ struct TransferFailureReportTests {
         #expect(clipboard.text?.contains("Duplicate entry") == true)
         #expect(clipboard.text?.contains("INSERT INTO users VALUES (1)") == true)
     }
+
+    @Test("The box names a hidden character and the copy keeps the database's own text")
+    func hiddenCharactersAreShownButCopiedVerbatim() {
+        let original = ClipboardService.shared
+        defer { ClipboardService.shared = original }
+        let clipboard = TransferReportClipboard()
+        ClipboardService.shared = clipboard
+
+        let report = "Line 3: unrecognized token: \"\u{8}\""
+        let view = TransferReportView(report: report)
+        view.copyReport()
+
+        let shown = view.subviews
+            .compactMap { ($0 as? NSScrollView)?.documentView as? NSTextView }
+            .first?
+            .string
+        #expect(shown == "Line 3: unrecognized token: \"<BS>\"")
+        #expect(clipboard.text == report)
+    }
 }
 
 private struct TransferReportStubError: LocalizedError {

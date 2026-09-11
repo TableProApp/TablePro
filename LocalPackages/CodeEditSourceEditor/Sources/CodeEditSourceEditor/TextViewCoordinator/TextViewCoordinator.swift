@@ -39,6 +39,8 @@ public protocol TextViewCoordinator: AnyObject {
     /// - Parameter controller: The text controller.
     func textViewDidChangeText(controller: TextViewController)
 
+    func textViewDidReplaceDocument(controller: TextViewController)
+
     /// Called after the text view updated it's cursor positions.
     /// - Parameter newPositions: The new positions of the cursors.
     func textViewDidChangeSelection(controller: TextViewController, newPositions: [CursorPosition])
@@ -62,6 +64,7 @@ public extension TextViewCoordinator {
     func controllerDidAppear(controller: TextViewController) { }
     func controllerDidDisappear(controller: TextViewController) { }
     func textViewDidChangeText(controller: TextViewController) { }
+    func textViewDidReplaceDocument(controller: TextViewController) { }
     func textViewDidChangeSelection(controller: TextViewController, newPositions: [CursorPosition]) { }
     func textViewDidChangeHoveredFold(controller: TextViewController, hit: CollapsedFoldHit?) { }
     func destroy() { }

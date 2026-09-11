@@ -35,9 +35,9 @@ struct LeadingRowsStatement: Equatable {
 
     /// The clause goes on a line of its own, so a trailing `--` comment cannot swallow it.
     private static func appending(limit: Int, to sql: String, style: AutoLimitStyle) -> String? {
-        var statement = sql.trimmingCharacters(in: .whitespacesAndNewlines)
+        var statement = StatementBlank.trimming(sql)
         while statement.hasSuffix(";") {
-            statement = String(statement.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+            statement = StatementBlank.trimming(String(statement.dropLast()))
         }
         switch style {
         case .limit:

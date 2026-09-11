@@ -32,9 +32,7 @@ enum JavaScriptStatementScanner {
         /// statement to the scanner and nothing at all to the engine, so counting it adds an empty
         /// result and a gutter control that runs nothing.
         var hasContent: Bool {
-            !JavaScriptStatementScanner.strippingComments(text)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .isEmpty
+            StatementBlank.hasContent(JavaScriptStatementScanner.strippingComments(text))
         }
     }
 

@@ -194,14 +194,6 @@ final class VimKeyInterceptor {
         }
     }
 
-    /// Arrow key Unicode scalars → Vim motion characters
-    private static let arrowToVimKey: [UInt32: Character] = [
-        0xF700: "k", // Up
-        0xF701: "j", // Down
-        0xF702: "h", // Left
-        0xF703: "l"  // Right
-    ]
-
     // MARK: - Event Handling
 
     private func handleKeyEvent(_ event: NSEvent) -> NSEvent? {
@@ -237,47 +229,28 @@ final class VimKeyInterceptor {
             return event
         }
 
-        // Pass through all events with Cmd or Option modifiers
-        // (system shortcuts like Cmd+C, Cmd+V, Cmd+Z, etc.)
-        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        if modifiers.contains(.command) || modifiers.contains(.option) {
+        let keystroke = VimKeystroke(
+            characters: event.characters ?? "",
+            charactersIgnoringModifiers: event.charactersIgnoringModifiers ?? "",
+            modifiers: event.modifierFlags,
+            isKeypadEnter: event.semanticKeyCode == .enter
+        )
+        switch VimKeyRouteResolver.route(keystroke, in: engine.mode) {
+        case .textView:
             return event
+        case .discard:
+            return nil
+        case .engine(let character):
+            return process(character, shift: keystroke.modifiers.contains(.shift)) ? nil : event
         }
+    }
 
-        // Ctrl+R in Normal mode → redo (Vim convention)
-        if modifiers.contains(.control) {
-            if !engine.mode.isInsert && event.keyCode == 15 { // keyCode 15 = R
-                engine.redo()
-                return nil
-            }
-            return event // Pass through other Ctrl combinations
-        }
-
-        guard let characters = event.characters, let char = characters.first else {
-            return event
-        }
-
-        // In non-insert modes, translate arrow keys to h/j/k/l so the Vim engine
-        // handles them (critical for visual mode selection to work with arrows).
-        if let scalar = char.unicodeScalars.first, scalar.value >= 0xF700 {
-            if !engine.mode.isInsert, let vimChar = Self.arrowToVimKey[scalar.value] {
-                let consumed = engine.process(vimChar, shift: modifiers.contains(.shift))
-                return consumed ? nil : event
-            }
-            return event // Pass through non-arrow function keys and insert-mode arrows
-        }
-
-        // In non-normal modes, Escape should exit to Normal mode.
-        // Also dismiss any active inline suggestion and close autocomplete popup.
-        if engine.mode != .normal && char == "\u{1B}" {
+    private func process(_ character: Character, shift: Bool) -> Bool {
+        if character == "\u{1B}", engine.mode != .normal {
             inlineSuggestionManager?.dismissSuggestion()
             closeSuggestionPopup()
         }
-
-        let shift = modifiers.contains(.shift)
-        let consumed = engine.process(char, shift: shift)
-
-        return consumed ? nil : event
+        return engine.process(character, shift: shift)
     }
 
     private func closeSuggestionPopup() {

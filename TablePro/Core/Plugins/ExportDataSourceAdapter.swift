@@ -71,14 +71,16 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         requested.map(pagination.clampedRowCount) ?? pagination.maximumRows
     }
 
+    /// Streams through the adapter rather than the plugin, so the statement text is validated the
+    /// way every other statement is: a row scope carries a filter the user typed.
     private func streamLeadingRows(
         query: String,
         table: String
     ) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        guard let pluginDriver else {
+        guard let adapter = driver as? PluginDriverAdapter else {
             return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
         }
-        let stream = pluginDriver.streamRows(query: query)
+        let stream = adapter.streamRows(query: query)
         guard let maximum = pagination.maximumRows else { return stream }
         let cappedTables = cappedTables
         return AsyncThrowingStream { continuation in

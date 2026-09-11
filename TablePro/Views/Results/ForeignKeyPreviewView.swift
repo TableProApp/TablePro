@@ -103,7 +103,7 @@ struct ForeignKeyPreviewView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
                 .frame(height: 60)
         } else if let errorMessage {
-            Text(errorMessage)
+            RevealedTextView(errorMessage)
                 .foregroundStyle(.red)
                 .font(.callout)
                 .padding(10)

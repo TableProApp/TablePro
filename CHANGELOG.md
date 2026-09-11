@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cloudflare R2 SQL driver, read-only, for Iceberg tables in R2 Data Catalog. (#2030)
 - Tips for preview tabs, Open Quickly, and query history.
 - **Enable Plugin**, **Open Plugin Settings** and **Edit Connection…** on a connection whose driver cannot load.
+- Invisible characters shown in the SQL editor: control characters, zero-width spaces, bidi controls and special spaces. (#2717)
+- **Remove Invisible Characters** in the Query menu. (#2717)
+- **Show invisible characters** in Settings > Editor. (#2717)
 
 ### Changed
 
@@ -57,9 +60,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connecting screen naming the wrong step for the first half second of a connect.
 - Spinner flash in the object browser on Oracle, Snowflake, BigQuery, Trino and Dameng.
 - Start of every line hidden in the SQL editor after a long line was removed. (#2709)
+- Query error underlines on the wrong text or missing after a tab switch or loaded query, with no way to read them.
 - Start of a line hidden under the line numbers after moving to it in a horizontally scrolled editor.
 - Editor jumping sideways on each keystroke in a long line while scrolled horizontally.
 - Cursor left off screen after pasting a long line.
+- Option+Delete and Option+Arrow splitting an emoji or accented letter in the SQL and JSON editors.
 - Line number column keeping a stale width after the line count drops below 1,000 or the font size changes.
 - Line after the data grid's row numbers drawn twice as thick as the other column lines.
 - `#` heading in the data grid darker and dimmer than the headings beside it.
@@ -85,10 +90,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connecting silently switching a disabled plugin back on.
 - Plugin install error replaced by "not installed" when connecting.
 - Test Connection doing nothing after installing the plugin it asked for.
+- Safe Mode and run buttons misreading statements beside invisible characters, CRLF or MySQL conditional comments.
 - Connecting removing a plugin that failed to load, and its settings, when no replacement could be downloaded.
 - Disabled plugin's code loaded when a connection looked up its driver.
 - Failed connect from an opened file or URL titled "Disconnected", with Reconnect as its only fix.
+- Database error messages hiding invisible characters, such as a backspace quoted back from a query. (#2717)
 - Connection Failed alert covering the window that already showed the same failure.
+- Invisible control characters typed into a query by an input method or a Control-key chord such as Ctrl+Option+H. (#2717)
+- Escape and Tab taken from an input method mid-composition in the SQL editor, and AI suggestions shown during it.
+- Statement with a NUL character running only up to it on SQLite and PostgreSQL, dropping its WHERE clause. (#2717)
+- Vim Replace mode writing an invisible character for Backspace and keypad Enter. (#2717)
+- Option and Control chords editing text in Vim Normal and Visual mode, and Vim's Ctrl commands never running. (#2717)
+- Line and paragraph separators (U+2028, U+2029) shown as line breaks the database does not see. (#2717)
 
 ## [0.73.0] - 2026-09-09
 

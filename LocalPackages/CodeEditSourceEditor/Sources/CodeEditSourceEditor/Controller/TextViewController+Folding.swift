@@ -157,17 +157,17 @@ internal extension TextViewController {
     ///
     /// This reads the string rather than the layout manager because the lines inside a collapsed fold have no layout
     /// to ask: the fold hides them by zeroing their heights, and the layout manager resolves offsets through visible
-    /// positions only. `lineRange(for:)` answers from the text itself, so it is correct whether or not a line has
-    /// ever been laid out.
+    /// positions only. `lineRangeBreakingAtLineEndings(for:)` answers from the text itself, so it is correct whether
+    /// or not a line has ever been laid out.
     func blockRange(covering range: Range<Int>) -> Range<Int> {
         guard let storage = textView?.textStorage, storage.length > 0 else { return range }
         let string = storage.string as NSString
         let lower = max(0, min(range.lowerBound, string.length))
         let upper = max(lower, min(range.upperBound, string.length))
 
-        let first = string.lineRange(for: NSRange(location: lower, length: 0))
+        let first = string.lineRangeBreakingAtLineEndings(for: NSRange(location: lower, length: 0))
         let last = upper > lower
-            ? string.lineRange(for: NSRange(location: max(lower, upper - 1), length: 0))
+            ? string.lineRangeBreakingAtLineEndings(for: NSRange(location: max(lower, upper - 1), length: 0))
             : first
         return first.location..<max(first.location, last.upperBound)
     }

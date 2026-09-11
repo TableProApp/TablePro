@@ -193,18 +193,20 @@ internal enum TransferResultAlert {
 
         if let pluginError = error as? PluginImportError,
            case .statementFailed(let statement, let line, let underlyingError) = pluginError {
-            alert.informativeText = String(
+            alert.informativeText = RevealedText(String(
                 format: String(localized: "Failed at line %lld. %@"),
                 Int64(line),
                 underlyingError.localizedDescription
-            )
+            )).plainText
             alert.accessoryView = TransferReportView(
                 shown: statement,
                 copied: failureReport(for: error) ?? statement
             )
             alert.layout()
         } else {
-            alert.informativeText = error?.localizedDescription ?? String(localized: "Unknown error")
+            alert.informativeText = RevealedText(
+                error?.localizedDescription ?? String(localized: "Unknown error")
+            ).plainText
         }
 
         AlertHelper.present(alert, in: window) { _ in completion() }
@@ -320,7 +322,7 @@ internal final class TransferReportView: NSView {
             height: Self.textHeight + Self.spacing + button.frame.height
         ))
 
-        let scroll = TransferResultAlert.scrollingText(shown)
+        let scroll = TransferResultAlert.scrollingText(RevealedText(shown).plainText)
         scroll.frame = NSRect(
             x: 0,
             y: button.frame.height + Self.spacing,

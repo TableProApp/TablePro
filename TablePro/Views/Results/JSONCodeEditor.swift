@@ -65,7 +65,8 @@ internal struct JSONCodeEditor: View {
                 contentInsets: NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
             ),
             peripherals: EditorPeripherals.preview(
-                folding: AppSettingsManager.shared.editor.codeFoldingEnabled
+                folding: AppSettingsManager.shared.editor.codeFoldingEnabled,
+                invisibleCharacters: !isEditable || AppSettingsManager.shared.editor.showInvisibleCharacters
             )
         )
     }

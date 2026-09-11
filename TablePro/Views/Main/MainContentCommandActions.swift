@@ -1197,6 +1197,10 @@ final class MainContentCommandActions {
         EditorEventRouter.shared.performFormatSQLForKeyWindow()
     }
 
+    func removeInvisibleCharacters() {
+        EditorEventRouter.shared.performRemoveInvisibleCharactersForKeyWindow()
+    }
+
     func toggleFold() {
         EditorEventRouter.shared.performToggleFoldForKeyWindow()
     }

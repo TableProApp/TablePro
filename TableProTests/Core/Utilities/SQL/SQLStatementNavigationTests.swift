@@ -99,6 +99,43 @@ struct SQLStatementNavigationTests {
         #expect(SQLStatementScanner.statementStart(after: 0, in: "SELECT 1;\n   \n") == nil)
     }
 
+    @Test(
+        "A line of invisible characters after the last statement is not a destination",
+        arguments: [
+            "\u{00A0}", "\u{3000}", "\u{FEFF}", "\u{0008}", "\u{200B}", "\u{2028}", "\u{E0020}", " \u{00A0}\t\u{200E}",
+        ]
+    )
+    func invisibleLineIsNotADestination(line: String) {
+        let sql = "SELECT 1;\n" + line
+        #expect(SQLStatementScanner.navigableStatements(in: sql).count == 1)
+        #expect(SQLStatementScanner.statementStart(after: 0, in: sql) == nil)
+    }
+
+    @Test("A statement starts at its keyword, not at an invisible character in front of it")
+    func invisibleLeadingCharactersAreNotTheStart() throws {
+        let sql = "SELECT 1;\n\u{FEFF}\u{00A0}\u{0008}SELECT 2;"
+        let second = try #require(SQLStatementScanner.navigableStatements(in: sql).last)
+        #expect(second.contentRange.location == (sql as NSString).range(of: "SELECT 2").location)
+    }
+
+    @Test(
+        "Every statement offered a run control is a statement that runs",
+        arguments: [
+            "SELECT 1;\n\u{00A0}",
+            "SELECT 1;\u{0008};SELECT 2",
+            "\u{FEFF}",
+            "-- note\n\u{3000}",
+            "SELECT 1; \u{200B} ; SELECT 2;",
+            "\u{E0020}SELECT 1;\u{2029}",
+        ]
+    )
+    func runControlsMatchExecution(sql: String) {
+        #expect(
+            SQLStatementScanner.navigableStatements(in: sql).count
+                == SQLStatementScanner.executableStatements(in: sql).count
+        )
+    }
+
     @Test("An empty document has nowhere to go")
     func emptyDocument() {
         #expect(SQLStatementScanner.statementStart(after: 0, in: "") == nil)

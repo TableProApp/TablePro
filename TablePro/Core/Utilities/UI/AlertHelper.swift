@@ -265,9 +265,7 @@ final class AlertHelper {
     ) {
         let alert = NSAlert()
         alert.messageText = title
-        alert.informativeText = [message, recoverySuggestion]
-            .compactMap { $0 }
-            .joined(separator: "\n\n")
+        alert.informativeText = errorInformativeText(message: message, recoverySuggestion: recoverySuggestion)
         alert.alertStyle = .critical
         alert.addButton(withTitle: String(localized: "OK"))
         present(alert, in: window)
@@ -283,10 +281,7 @@ final class AlertHelper {
     ) {
         let alert = NSAlert()
         alert.messageText = title
-        alert.informativeText = [message, recoverySuggestion]
-            .compactMap { $0 }
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n\n")
+        alert.informativeText = errorInformativeText(message: message, recoverySuggestion: recoverySuggestion)
         alert.alertStyle = .warning
         alert.addButton(withTitle: recoveryTitle)
         addCancelButton(to: alert, title: String(localized: "Cancel"))
@@ -294,6 +289,14 @@ final class AlertHelper {
             guard response == .alertFirstButtonReturn else { return }
             onRecover()
         }
+    }
+
+    nonisolated static func errorInformativeText(message: String, recoverySuggestion: String?) -> String {
+        let text = [message, recoverySuggestion]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n\n")
+        return RevealedText(text).plainText
     }
 
     static func showInfoSheet(

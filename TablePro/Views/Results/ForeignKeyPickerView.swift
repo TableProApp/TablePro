@@ -95,7 +95,7 @@ struct ForeignKeyPickerView: View {
     @ViewBuilder
     private var content: some View {
         if let errorMessage {
-            Text(errorMessage)
+            RevealedTextView(errorMessage)
                 .foregroundStyle(.red)
                 .font(.callout)
                 .frame(maxWidth: .infinity, alignment: .leading)

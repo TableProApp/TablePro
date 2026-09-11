@@ -75,6 +75,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case cancelQuery
     case explainQuery
     case formatQuery
+    case removeInvisibleCharacters
     case foldAll
     case unfoldAll
     case toggleFold
@@ -150,7 +151,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
             return .connections
         case .openFile, .saveChanges, .saveAs, .executeQuery, .executeAllStatements,
              .executeQueryWithoutLimit, .cancelQuery, .explainQuery, .formatQuery,
-             .foldAll, .unfoldAll, .toggleFold,
+             .removeInvisibleCharacters, .foldAll, .unfoldAll, .toggleFold,
              .previousStatement, .nextStatement, .runStatementAndAdvance,
              .previewSQL, .find, .findNext, .findPrevious, .aiExplainQuery, .aiOptimizeQuery:
             return .editor
@@ -179,7 +180,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .find, .findNext, .findPrevious:
             return .global
         case .executeQuery, .executeAllStatements, .executeQueryWithoutLimit,
-             .cancelQuery, .explainQuery, .formatQuery, .foldAll, .unfoldAll,
+             .cancelQuery, .explainQuery, .formatQuery, .removeInvisibleCharacters, .foldAll, .unfoldAll,
              .toggleFold, .previousStatement, .nextStatement, .runStatementAndAdvance,
              .previewSQL, .aiExplainQuery, .aiOptimizeQuery:
             return .editor
@@ -226,6 +227,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .refresh: return String(localized: "Refresh")
         case .explainQuery: return String(localized: "Explain Query")
         case .formatQuery: return String(localized: "Format Query")
+        case .removeInvisibleCharacters: return String(localized: "Remove Invisible Characters")
         case .foldAll: return String(localized: "Fold All")
         case .unfoldAll: return String(localized: "Unfold All")
         case .toggleFold: return String(localized: "Toggle Fold")

@@ -3,9 +3,19 @@
 //  TablePro
 //
 
+import CodeEditTextView
 import Foundation
 
+enum VimInsertControl: Character {
+    case outdentLine = "\u{04}"
+    case indentLine = "\u{14}"
+    case deleteToLineStart = "\u{15}"
+    case deleteWordBackward = "\u{17}"
+}
+
 extension VimEngine {
+    nonisolated static let backspaceCharacters: Set<Character> = ["\u{08}", "\u{7F}"]
+
     func processInsert(_ char: Character) -> Bool {
         if char == "\u{1B}" {
             lastInsertOffset = buffer?.selectedRange().location
@@ -19,10 +29,9 @@ extension VimEngine {
             }
             return true
         }
-        if let buffer, handleInsertModeControl(char, in: buffer) {
-            return true
-        }
-        return false
+        guard let buffer, let control = VimInsertControl(rawValue: char) else { return false }
+        performInsertControl(control, in: buffer)
+        return true
     }
 
     func processReplace(_ char: Character) -> Bool {
@@ -36,10 +45,19 @@ extension VimEngine {
             }
             return true
         }
-        if handleInsertModeControl(char, in: buffer) { return true }
+        if let control = VimInsertControl(rawValue: char) {
+            replaceModeEdits.removeAll()
+            performInsertControl(control, in: buffer)
+            return true
+        }
         if char == "\r" || char == "\n" {
             return false
         }
+        if Self.backspaceCharacters.contains(char) {
+            backspaceInReplace(in: buffer)
+            return true
+        }
+        if Self.isUnwritableControl(char) { return true }
         let pos = buffer.selectedRange().location
         let lineRange = buffer.lineRange(forOffset: pos)
         let lineEnd = lineRange.location + lineRange.length
@@ -47,11 +65,31 @@ extension VimEngine {
             && lineEnd <= buffer.length
             && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
         if pos < contentEnd {
-            buffer.replaceCharacters(in: NSRange(location: pos, length: 1), with: String(char))
+            let overwritten = NSRange(location: pos, length: 1)
+            replaceModeEdits.append(VimReplaceModeEdit(offset: pos, original: buffer.string(in: overwritten)))
+            buffer.replaceCharacters(in: overwritten, with: String(char))
         } else {
+            replaceModeEdits.append(VimReplaceModeEdit(offset: pos, original: nil))
             buffer.replaceCharacters(in: NSRange(location: pos, length: 0), with: String(char))
         }
         return true
+    }
+
+    func backspaceInReplace(in buffer: VimTextBuffer) {
+        let pos = buffer.selectedRange().location
+        guard pos > 0 else { return }
+        if let last = replaceModeEdits.last, last.offset == pos - 1 {
+            replaceModeEdits.removeLast()
+            buffer.replaceCharacters(in: NSRange(location: pos - 1, length: 1), with: last.original ?? "")
+        } else {
+            replaceModeEdits.removeAll()
+        }
+        buffer.setSelectedRange(NSRange(location: pos - 1, length: 0))
+    }
+
+    nonisolated static func isUnwritableControl(_ char: Character) -> Bool {
+        guard char.unicodeScalars.count == 1, let scalar = char.unicodeScalars.first else { return false }
+        return SpecialCharacter.isTextInputControl(scalar)
     }
 
     func processCommandLine(_ char: Character, buffer commandBuffer: String) -> Bool {
@@ -71,7 +109,7 @@ extension VimEngine {
                 onCommand?(body)
             }
             return true
-        case "\u{7F}":
+        case "\u{7F}", "\u{08}":
             if (commandBuffer as NSString).length > 1 {
                 setMode(.commandLine(buffer: String(commandBuffer.dropLast())))
             } else {
@@ -79,58 +117,41 @@ extension VimEngine {
             }
             return true
         default:
+            guard !Self.isUnwritableControl(char) else { return true }
             setMode(.commandLine(buffer: commandBuffer + String(char)))
             return true
         }
     }
 
-    func handleInsertModeControl(_ char: Character, in buffer: VimTextBuffer) -> Bool {
-        switch char {
-        case "\u{17}":
-            deleteWordBackwardInInsert(in: buffer)
-            return true
-        case "\u{15}":
-            deleteToLineStartInInsert(in: buffer)
-            return true
-        case "\u{08}":
-            backspaceInInsert(in: buffer)
-            return true
-        case "\u{14}":
+    func performInsertControl(_ control: VimInsertControl, in buffer: VimTextBuffer) {
+        switch control {
+        case .deleteWordBackward:
+            deleteBackwardInInsert(to: wordStartBeforeCaret(in: buffer), in: buffer)
+        case .deleteToLineStart:
+            deleteBackwardInInsert(to: lineStartBeforeCaret(in: buffer), in: buffer)
+        case .indentLine:
             indentLineInInsert(outdent: false, in: buffer)
-            return true
-        case "\u{04}":
+        case .outdentLine:
             indentLineInInsert(outdent: true, in: buffer)
-            return true
-        default:
-            return false
         }
     }
 
-    func deleteWordBackwardInInsert(in buffer: VimTextBuffer) {
+    func wordStartBeforeCaret(in buffer: VimTextBuffer) -> Int {
         let pos = buffer.selectedRange().location
-        guard pos > 0 else { return }
-        let lineStart = buffer.lineRange(forOffset: pos).location
-        guard pos > lineStart else { return }
-        let target = max(lineStart, buffer.wordBoundary(forward: false, from: pos))
-        let range = NSRange(location: target, length: pos - target)
-        buffer.replaceCharacters(in: range, with: "")
+        let lineStart = lineStartBeforeCaret(in: buffer)
+        guard pos > lineStart else { return pos }
+        return max(lineStart, buffer.wordBoundary(forward: false, from: pos))
+    }
+
+    func lineStartBeforeCaret(in buffer: VimTextBuffer) -> Int {
+        buffer.lineRange(forOffset: buffer.selectedRange().location).location
+    }
+
+    func deleteBackwardInInsert(to target: Int, in buffer: VimTextBuffer) {
+        let pos = buffer.selectedRange().location
+        guard pos > target else { return }
+        buffer.replaceCharacters(in: NSRange(location: target, length: pos - target), with: "")
         buffer.setSelectedRange(NSRange(location: target, length: 0))
-    }
-
-    func deleteToLineStartInInsert(in buffer: VimTextBuffer) {
-        let pos = buffer.selectedRange().location
-        let lineStart = buffer.lineRange(forOffset: pos).location
-        guard pos > lineStart else { return }
-        let range = NSRange(location: lineStart, length: pos - lineStart)
-        buffer.replaceCharacters(in: range, with: "")
-        buffer.setSelectedRange(NSRange(location: lineStart, length: 0))
-    }
-
-    func backspaceInInsert(in buffer: VimTextBuffer) {
-        let pos = buffer.selectedRange().location
-        guard pos > 0 else { return }
-        buffer.replaceCharacters(in: NSRange(location: pos - 1, length: 1), with: "")
-        buffer.setSelectedRange(NSRange(location: pos - 1, length: 0))
     }
 
     func indentLineInInsert(outdent: Bool, in buffer: VimTextBuffer) {

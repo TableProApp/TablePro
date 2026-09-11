@@ -61,7 +61,7 @@ internal struct WelcomePresentations: ViewModifier {
                 }
             } message: {
                 if let error = vm.connectionError {
-                    Text(error)
+                    Text(verbatim: RevealedText(error).plainText)
                 }
             }
             .fileImporter(

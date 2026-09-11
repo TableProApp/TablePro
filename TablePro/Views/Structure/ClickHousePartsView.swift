@@ -32,7 +32,7 @@ struct ClickHousePartsView: View {
                         .font(.largeTitle)
                         .foregroundStyle(.orange)
                         .accessibilityHidden(true)
-                    Text(error)
+                    RevealedTextView(error)
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

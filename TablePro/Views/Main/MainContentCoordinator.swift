@@ -1125,10 +1125,6 @@ final class MainContentCoordinator {
         bypassRowLimit: Bool,
         sourceOffset: Int? = nil
     ) -> Bool {
-        guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return false
-        }
-
         let anchored = { (statements: [SQLStatementScanner.ExecutableStatement]) in
             guard let sourceOffset else { return statements }
             return statements.map { $0.offset(by: sourceOffset) }

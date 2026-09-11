@@ -173,17 +173,20 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> QueryResult {
+        try StatementTextValidator.validate(query)
         let pluginResult = try await pluginDriver.execute(query: query)
         return mapQueryResult(pluginResult)
     }
 
     func executeParameterized(query: String, parameters: [Any?]) async throws -> QueryResult {
+        try StatementTextValidator.validate(query)
         let cellParams: [PluginCellValue] = parameters.map(Self.cellValue(for:))
         let pluginResult = try await pluginDriver.executeParameterized(query: query, parameters: cellParams)
         return mapQueryResult(pluginResult)
     }
 
     func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult {
+        try StatementTextValidator.validate(query)
         let cellParams: [PluginCellValue]?
         if let parameters {
             cellParams = parameters.map(Self.cellValue(for:))
@@ -198,7 +201,15 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         return mapQueryResult(pluginResult)
     }
 
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        if let error = StatementTextValidator.error(for: query) {
+            return AsyncThrowingStream { $0.finish(throwing: error) }
+        }
+        return pluginDriver.streamRows(query: query)
+    }
+
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult? {
+        try StatementTextValidator.validate(query)
         guard let pluginResult = try await pluginDriver.executeBoundedQuery(query: query, rowCap: rowCap) else {
             return nil
         }

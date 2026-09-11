@@ -39,13 +39,34 @@ final class QueryErrorBannerUITests: UITestCase {
         )
     }
 
+    func testAHiddenCharacterInTheErrorIsNamed() throws {
+        let app = try launchWithSampleDatabase()
+        openQueryEditor(in: app)
+        app.typeText("SELECT")
+        app.typeKey(" ", modifierFlags: .option)
+        app.typeText("1;")
+        app.typeKey(.return, modifierFlags: .command)
+
+        let banner = app.windows.firstMatch.staticTexts["query-error-message"].firstMatch
+        XCTAssertTrue(banner.waitToExist(timeout: 20))
+        let exposed = [banner.value as? String, banner.label].compactMap { $0 }
+        XCTAssertTrue(
+            exposed.contains { $0.contains("no-break space") },
+            "The no-break space SQLite quotes back must be named, not read as a plain space; got \(exposed)"
+        )
+    }
+
     private func runQuery(_ sql: String, in app: XCUIApplication) {
+        openQueryEditor(in: app)
+        app.typeText(sql)
+        app.typeKey(.return, modifierFlags: .command)
+    }
+
+    private func openQueryEditor(in app: XCUIApplication) {
         app.typeKey("t", modifierFlags: .command)
         let queryEditor = editorTextView(in: app)
         XCTAssertTrue(queryEditor.waitToExist(timeout: 10))
         queryEditor.click()
-        app.typeText(sql)
-        app.typeKey(.return, modifierFlags: .command)
     }
 
     private func waitForDisappearance(of element: XCUIElement, timeout: TimeInterval) -> Bool {

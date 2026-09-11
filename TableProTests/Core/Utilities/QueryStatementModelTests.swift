@@ -72,4 +72,16 @@ struct QueryStatementModelTests {
         let end = QueryStatementScanner.statementSelectionEnd(after: 14, in: script, model: .javascript)
         #expect(end == (script as NSString).length)
     }
+
+    @Test("A trailing line of invisible characters is not a statement under the JavaScript model")
+    func javaScriptInvisibleTrailingLine() {
+        let script = "db.a.find();\n\u{FEFF}\u{0008}"
+        let located = QueryStatementScanner.locatedStatementAtCursor(
+            in: script, cursorPosition: (script as NSString).length, model: .javascript
+        )
+
+        #expect(located.sql.contains("db.a.find()"))
+        #expect(QueryStatementScanner.navigableStatements(in: script, model: .javascript).count == 1)
+        #expect(QueryStatementScanner.executableStatements(in: script, model: .javascript).count == 1)
+    }
 }

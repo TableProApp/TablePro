@@ -5,9 +5,10 @@
 //  Created by Khan Winter on 3/10/25.
 //
 
-import SwiftUI
 import AppKit
+import Carbon.HIToolbox
 import Combine
+import SwiftUI
 
 /// A subclass of `NSHostingView` that hosts the SwiftUI `FindPanelView` in an 
 /// AppKit context.
@@ -55,12 +56,16 @@ final class FindPanelHostingView: NSHostingView<FindPanelView> {
     func addEventMonitor() {
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event -> NSEvent? in
             guard let self else { return event }
-            if event.keyCode == 53 { // if esc pressed
-                self.viewModel?.dismiss?()
-                return nil // do not play "beep" sound
-            }
-            return event
+            return self.handleKeyDown(event)
         }
+    }
+
+    internal func handleKeyDown(_ event: NSEvent) -> NSEvent? {
+        guard Int(event.keyCode) == kVK_Escape else { return event }
+        let firstResponder = event.window?.firstResponder as? NSTextInputClient
+        guard firstResponder?.hasMarkedText() != true else { return event }
+        viewModel?.dismiss?()
+        return nil
     }
 
     func removeEventMonitor() {

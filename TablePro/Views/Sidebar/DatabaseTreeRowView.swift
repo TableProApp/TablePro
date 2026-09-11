@@ -227,10 +227,14 @@ struct DatabaseTreeRowView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
         case .error(let message):
-            Label(message, systemImage: "exclamationmark.triangle")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
+            Label {
+                RevealedTextView(message)
+            } icon: {
+                Image(systemName: "exclamationmark.triangle")
+            }
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
         case .truncated(let message):
             Text(message)
                 .font(.caption)

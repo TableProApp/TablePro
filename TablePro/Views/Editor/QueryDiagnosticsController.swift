@@ -18,8 +18,11 @@ final class QueryDiagnosticsController {
     private var producer: QueryDiagnosticsProducing
     private var pendingTask: Task<Void, Never>?
     private(set) var diagnostics: [QueryDiagnostic] = []
+    private lazy var rotorSearch = QueryDiagnosticsRotorSearch { [weak self] in
+        self?.diagnostics ?? []
+    }
 
-    private let debounceNanoseconds: UInt64 = 500_000_000
+    private static let debounce: Duration = .milliseconds(500)
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "QueryDiagnostics")
 
@@ -32,6 +35,18 @@ final class QueryDiagnosticsController {
         diagnostics = []
     }
 
+    func install(on controller: TextViewController) {
+        guard let textView = controller.textView else { return }
+        rotorSearch.textView = textView
+        let rotors = textView.accessibilityCustomRotors()
+        guard !rotors.contains(where: { $0.itemSearchDelegate === rotorSearch }) else { return }
+        let rotor = NSAccessibilityCustomRotor(
+            label: QueryDiagnosticsRotorSearch.label,
+            itemSearchDelegate: rotorSearch
+        )
+        textView.setAccessibilityCustomRotors(rotors + [rotor])
+    }
+
     func scheduleRefresh(for controller: TextViewController?) {
         pendingTask?.cancel()
 
@@ -41,13 +56,12 @@ final class QueryDiagnosticsController {
         }
 
         pendingTask = Task { [weak self, weak controller] in
-            guard let self else { return }
             do {
-                try await Task.sleep(nanoseconds: self.debounceNanoseconds)
+                try await Task.sleep(for: Self.debounce)
             } catch {
                 return
             }
-            guard !Task.isCancelled, let controller else { return }
+            guard !Task.isCancelled, let self, let controller else { return }
             self.refresh(for: controller)
         }
     }
@@ -65,11 +79,9 @@ final class QueryDiagnosticsController {
         pendingTask?.cancel()
         pendingTask = nil
         diagnostics = []
-        controller?.textView.emphasisManager?.removeEmphases(for: Self.emphasisGroup)
-    }
-
-    func diagnostic(at offset: Int) -> QueryDiagnostic? {
-        diagnostics.first { NSLocationInRange(offset, $0.range) }
+        guard let manager = controller?.textView.emphasisManager,
+              !manager.getEmphases(for: Self.emphasisGroup).isEmpty else { return }
+        manager.removeEmphases(for: Self.emphasisGroup)
     }
 
     private func apply(_ produced: [QueryDiagnostic], in controller: TextViewController) {
@@ -79,7 +91,11 @@ final class QueryDiagnosticsController {
         let emphases = produced.compactMap { diagnostic -> Emphasis? in
             guard diagnostic.range.location >= 0,
                   NSMaxRange(diagnostic.range) <= length else { return nil }
-            return Emphasis(range: diagnostic.range, style: .underline(color: color(for: diagnostic.severity)))
+            return Emphasis(
+                range: diagnostic.range,
+                style: .underline(color: color(for: diagnostic.severity)),
+                toolTip: diagnostic.message
+            )
         }
 
         manager.replaceEmphases(emphases, for: Self.emphasisGroup)

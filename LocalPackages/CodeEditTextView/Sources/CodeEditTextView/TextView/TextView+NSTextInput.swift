@@ -83,8 +83,19 @@ extension TextView: NSTextInputClient {
     /// is a single edit. Multi-cursor IME duplicates the marked range across every cursor; the
     /// `NSNotFound` path replaces all of them in one pass.
     @objc public func insertText(_ string: Any, replacementRange: NSRange) {
-        guard isEditable, let insertString = anyToString(string) else { return }
+        guard isEditable, let insertString = typedText(from: string) else { return }
+        commitText(insertString, replacementRange: replacementRange)
+    }
 
+    private func typedText(from input: Any) -> String? {
+        guard let receivedString = anyToString(input) else { return nil }
+        let typed = receivedString.removingTextInputControlCharacters
+        let droppedEverything = typed.isEmpty && !receivedString.isEmpty
+        guard !droppedEverything || layoutManager.markedTextManager.hasMarkedText else { return nil }
+        return typed
+    }
+
+    func commitText(_ insertString: String, replacementRange: NSRange) {
         layoutManager.markedTextManager.resolveRanges(inDocumentOfLength: textStorage.length)
         let markedRanges = layoutManager.markedTextManager.markedRanges
         let hadMarkedText = !markedRanges.isEmpty
@@ -124,7 +135,7 @@ extension TextView: NSTextInputClient {
     ///   - selectedRange: The range to set as the selection, computed from the beginning of the inserted string.
     ///   - replacementRange: The range to replace, computed from the beginning of the marked text.
     @objc public func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
-        guard isEditable, let insertString = anyToString(string) else { return }
+        guard isEditable, let insertString = typedText(from: string) else { return }
         // Needs to insert text, but not notify the undo manager.
         _undoManager?.disable()
         layoutManager.markedTextManager.resolveRanges(inDocumentOfLength: textStorage.length)
@@ -147,6 +158,10 @@ extension TextView: NSTextInputClient {
         selectionManager.setSelectedRanges(layoutManager.markedTextManager.markedRanges.map({
             NSRange(location: $0.max, length: 0)
         }))
+
+        if insertString.isEmpty {
+            layoutManager.markedTextManager.removeAll()
+        }
 
         _undoManager?.enable()
     }

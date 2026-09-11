@@ -35,9 +35,11 @@ Safe Mode sits in front of query execution, saving cell edits, structure and tab
 
 It does not sit in front of reading metadata. Loading the sidebar, opening a table's structure, and exporting data are never confirmed, which is why a backup stays available on a Read-Only connection.
 
-## Drivers without read-only support
+## What always counts as a write
 
 The Redis, MongoDB, and etcd drivers cannot open a read-only session, so Safe Mode treats every query on those connections as a write: the Alert and Safe Mode levels confirm everything, and Read-Only blocks everything. Every other driver classifies reads and writes normally.
+
+The server runs the text inside a MySQL conditional comment, `/*! ... */` or MariaDB's `/*M! ... */`, so a statement holding one counts as a write even when the rest of it only reads. Remove the comment to run the statement on a Read-Only connection.
 
 ## Changing the level while connected
 

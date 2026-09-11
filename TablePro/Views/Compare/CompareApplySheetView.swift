@@ -276,7 +276,7 @@ internal struct CompareApplySheetView: View {
                     .foregroundStyle(.secondary)
             }
             if let error = outcome.error {
-                Text(error)
+                RevealedTextView(error)
                     .font(.caption)
                     .foregroundStyle(CompareStatusStyle.error)
                     .textSelection(.enabled)

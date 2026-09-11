@@ -78,6 +78,61 @@ struct SQLExecutableStatementTests {
         #expect(shifted.sql == only.sql)
     }
 
+    @Test(
+        "Invisible characters around a statement are not sent to the driver",
+        arguments: [
+            "\u{0008}SELECT 1",
+            "\u{FEFF}SELECT 1;",
+            "\u{200B}\u{00A0}SELECT 1\u{3000};\u{2028}",
+            "SELECT 1\u{200E};",
+            "\u{E0020}SELECT 1;\u{E0020}",
+            "\u{2060}\u{0000}SELECT 1\u{00AD}\u{FFF9};",
+        ]
+    )
+    func invisibleEdgesAreTrimmed(sql: String) {
+        #expect(SQLStatementScanner.allStatements(in: sql) == ["SELECT 1"])
+    }
+
+    @Test(
+        "An invisible character that belongs to the last visible one reaches the driver with it",
+        arguments: [
+            "SET k \u{2764}\u{FE0F}",
+            "SET flag \u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}",
+            "SET k \u{0645}\u{06CC}\u{200C}",
+        ]
+    )
+    func attachedInvisibleCharacterIsSent(sql: String) {
+        #expect(SQLStatementScanner.allStatements(in: "\u{FEFF}" + sql + ";\u{0008}") == [sql])
+    }
+
+    @Test(
+        "A segment of nothing but invisible characters runs nothing",
+        arguments: ["\u{0008}", "\u{FEFF};", "\u{00A0}\u{200B}\u{FEFF}\u{0008}\u{3000}", "\u{E0020};\u{2028};"]
+    )
+    func invisibleOnlySegmentsRunNothing(sql: String) {
+        #expect(SQLStatementScanner.executableStatements(in: sql).isEmpty)
+    }
+
+    @Test("An invisible segment between two statements is not a statement of its own")
+    func invisibleSegmentBetweenStatements() {
+        #expect(SQLStatementScanner.allStatements(in: "SELECT 1;\u{0008};SELECT 2") == ["SELECT 1", "SELECT 2"])
+    }
+
+    @Test("An invisible character inside a word stays in the text the driver receives")
+    func invisibleInsideAWordIsKept() {
+        #expect(SQLStatementScanner.allStatements(in: "\u{FEFF}SEL\u{200B}ECT 1") == ["SEL\u{200B}ECT 1"])
+    }
+
+    @Test("The span starts at the first visible character after an invisible one")
+    func spanSkipsInvisibleLeadingCharacters() throws {
+        let sql = "SELECT 1;\n\u{FEFF}\u{0008}SELECT 2;"
+        let second = try #require(SQLStatementScanner.executableStatements(in: sql).last)
+        let text = sql as NSString
+
+        #expect(second.range.location == text.range(of: "SELECT 2").location)
+        #expect(text.substring(with: second.range) == second.sql)
+    }
+
     @Test("Offsets are UTF-16, so text outside the BMP does not shift the span")
     func offsetsAreUTF16() throws {
         let sql = "SELECT '👍';\nSELECT 2;"

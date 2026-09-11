@@ -188,7 +188,7 @@ struct DatabaseTreeView: View {
             Image(systemName: "exclamationmark.triangle")
                 .font(.title)
                 .foregroundStyle(.orange)
-            Text(message)
+            RevealedTextView(message)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

@@ -13,9 +13,13 @@ struct SessionsTableView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 if let error = viewModel.panelErrors[.activeSessions] {
-                    Label(error, systemImage: "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundStyle(.red)
+                    Label {
+                        RevealedTextView(error)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.red)
                 }
             }
             .padding(.horizontal, 12)

@@ -78,6 +78,7 @@ struct EditorSettings: Codable, Equatable {
     var codeFoldingEnabled: Bool
     var highlightCurrentStatement: Bool
     var showStatementRunControls: Bool
+    var showInvisibleCharacters: Bool
     var jsonViewerPreferredMode: JSONViewMode
 
     static let `default` = EditorSettings(
@@ -91,6 +92,7 @@ struct EditorSettings: Codable, Equatable {
         codeFoldingEnabled: true,
         highlightCurrentStatement: true,
         showStatementRunControls: true,
+        showInvisibleCharacters: true,
         jsonViewerPreferredMode: .text
     )
 
@@ -105,6 +107,7 @@ struct EditorSettings: Codable, Equatable {
         codeFoldingEnabled: Bool = true,
         highlightCurrentStatement: Bool = true,
         showStatementRunControls: Bool = true,
+        showInvisibleCharacters: Bool = true,
         jsonViewerPreferredMode: JSONViewMode = .text
     ) {
         self.showLineNumbers = showLineNumbers
@@ -117,6 +120,7 @@ struct EditorSettings: Codable, Equatable {
         self.codeFoldingEnabled = codeFoldingEnabled
         self.highlightCurrentStatement = highlightCurrentStatement
         self.showStatementRunControls = showStatementRunControls
+        self.showInvisibleCharacters = showInvisibleCharacters
         self.jsonViewerPreferredMode = jsonViewerPreferredMode
     }
 
@@ -132,6 +136,7 @@ struct EditorSettings: Codable, Equatable {
         codeFoldingEnabled = try container.decodeIfPresent(Bool.self, forKey: .codeFoldingEnabled) ?? true
         highlightCurrentStatement = try container.decodeIfPresent(Bool.self, forKey: .highlightCurrentStatement) ?? true
         showStatementRunControls = try container.decodeIfPresent(Bool.self, forKey: .showStatementRunControls) ?? true
+        showInvisibleCharacters = try container.decodeIfPresent(Bool.self, forKey: .showInvisibleCharacters) ?? true
         jsonViewerPreferredMode = try container.decodeIfPresent(JSONViewMode.self, forKey: .jsonViewerPreferredMode) ?? .text
     }
 

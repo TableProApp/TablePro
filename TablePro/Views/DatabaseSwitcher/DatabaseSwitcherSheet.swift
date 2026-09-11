@@ -189,7 +189,7 @@ struct DatabaseSwitcherSheet: View {
                 .foregroundStyle(.orange)
             Text(String(localized: "Failed to load databases"))
                 .font(.callout.weight(.medium))
-            Text(message)
+            RevealedTextView(message)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

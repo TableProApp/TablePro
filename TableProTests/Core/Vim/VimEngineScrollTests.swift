@@ -36,8 +36,6 @@ final class VimEngineScrollTests: XCTestCase {
     }
 
     private func ctrl(_ char: Character) -> Bool {
-        // Ctrl is handled at the interceptor layer, but for these engine-level tests
-        // we use the equivalent ASCII control code so the engine path can interpret it.
         let raw = char.asciiValue.map { UInt8($0 & 0x1F) } ?? 0
         let scalar = UnicodeScalar(raw)
         return engine.process(Character(scalar), shift: false)

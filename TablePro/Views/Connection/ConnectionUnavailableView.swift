@@ -23,7 +23,7 @@ internal struct ConnectionUnavailableView: View {
             VStack(spacing: 8) {
                 ConnectionEndpointLabel(connection: connection)
                 ForEach(Array(detailLines.enumerated()), id: \.offset) { _, line in
-                    Text(line)
+                    RevealedTextView(line)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
