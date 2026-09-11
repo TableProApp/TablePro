@@ -511,6 +511,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/ColumnQueryShape.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQByteaDecoder.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQCellDecoding.swift
+      - Plugins/PostgreSQLDriverPlugin/LibPQConnectionLoss.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQConnectionString.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQCopyDirection+UnsupportedMessage.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQPendingResultDrain.swift

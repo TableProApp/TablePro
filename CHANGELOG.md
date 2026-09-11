@@ -171,6 +171,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Non-ASCII SQL Server filter values turned into `?` and matching the wrong rows on non-Unicode collations.
 - Empty structure, missing indexes and failed renames for non-ASCII SQL Server object names on non-Unicode collations.
 - Changing a defaulted SQL Server column failing when a name contains a quote or non-ASCII text.
+- Silent replay of a PostgreSQL statement on a new connection after a drop, a lost `COMMIT` reported as saved included.
+- Query timeout and startup commands missing after the PostgreSQL driver reconnected on its own.
 
 ### Security
 

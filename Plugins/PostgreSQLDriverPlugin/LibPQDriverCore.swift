@@ -13,7 +13,13 @@ final class LibPQDriverCore: @unchecked Sendable {
     private let config: DriverConnectionConfig
     private let schemaFallbackQueries: [String]
     private let singleConnectionMode: Bool
-    private var libpqConnection: LibPQPluginConnection?
+    private let connectionLock = NSLock()
+    private var _libpqConnection: LibPQPluginConnection?
+    private var _lostConnection = false
+
+    private var libpqConnection: LibPQPluginConnection? {
+        connectionLock.withLock { _libpqConnection }
+    }
 
     var currentSchema: String = "public"
     private var selectedSchema: String?
@@ -26,6 +32,17 @@ final class LibPQDriverCore: @unchecked Sendable {
     var stageReporter: ConnectionStageReporter?
 
     var serverVersion: String? { libpqConnection?.serverVersion() }
+    /// Latched, because `disconnect()` drops the connection object that knew it and the app asks
+    /// this question of the driver it is still holding: the pool closes a lost entry, and the
+    /// before-use check pings one, both after something disconnected it.
+    var hasLostConnection: Bool {
+        connectionLock.withLock {
+            if _libpqConnection?.hasLostConnection == true {
+                _lostConnection = true
+            }
+            return _lostConnection
+        }
+    }
     var serverVersionNumber: Int32 { libpqConnection?.serverVersionNumber() ?? 0 }
     var isInsideTransactionBlock: Bool { libpqConnection?.isInsideTransactionBlock ?? false }
 
@@ -54,7 +71,10 @@ final class LibPQDriverCore: @unchecked Sendable {
         )
 
         try await pqConn.connect(reportingStage: stageReporter ?? { _ in })
-        libpqConnection = pqConn
+        connectionLock.withLock {
+            _libpqConnection = pqConn
+            _lostConnection = false
+        }
 
         switch await probeSchema(pqConn, query: PostgreSQLSchemaQueries.currentSchema) {
         case .schema(let schema):
@@ -97,18 +117,16 @@ final class LibPQDriverCore: @unchecked Sendable {
     }
 
     func disconnect() {
-        libpqConnection?.disconnect()
-        libpqConnection = nil
+        let pqConn = connectionLock.withLock { () -> LibPQPluginConnection? in
+            defer { _libpqConnection = nil }
+            if _libpqConnection?.hasLostConnection == true {
+                _lostConnection = true
+            }
+            return _libpqConnection
+        }
+        pqConn?.disconnect()
     }
 
-    /// Non-reconnecting on purpose, which is what makes the answer mean anything.
-    ///
-    /// `execute` recovers a dropped connection privately, and that recovery restores none of the
-    /// session state the app put there: the startup commands, the query timeout, the database and
-    /// the schema all belong to `DatabaseManager.reconnectDriver`. A ping that healed itself that
-    /// way would report success into a server session reset behind the user's back, and the next
-    /// statement would run without the role, search path or time zone their startup SQL set.
-    /// Failing instead routes recovery through the manager, which restores all of it.
     func ping() async throws {
         guard let pqConn = libpqConnection else {
             throw LibPQPluginError.notConnected
@@ -119,13 +137,21 @@ final class LibPQDriverCore: @unchecked Sendable {
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> PluginQueryResult {
-        try await executeWithReconnect(query: query, isRetry: false)
+        let pqConn = try connection()
+        let startTime = Date()
+        let result = try await pqConn.executeQuery(query)
+        return PluginQueryResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: result.rows,
+            rowsAffected: result.affectedRows,
+            executionTime: Date().timeIntervalSince(startTime),
+            isTruncated: result.isTruncated
+        )
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
-        guard let pqConn = libpqConnection else {
-            throw LibPQPluginError.notConnected
-        }
+        let pqConn = try connection()
         let startTime = Date()
         let result = try await pqConn.executeParameterizedQuery(query, parameters: parameters)
         return PluginQueryResult(
@@ -139,39 +165,20 @@ final class LibPQDriverCore: @unchecked Sendable {
     }
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
-        try await boundedQueryWithReconnect(query: query, rowCap: rowCap, isRetry: false)
-    }
-
-    /// A bounded read only ever runs a statement the host classified as a read, so retrying it after
-    /// a dropped connection is safe, the same way the buffered path retries.
-    private func boundedQueryWithReconnect(
-        query: String,
-        rowCap: Int,
-        isRetry: Bool
-    ) async throws -> PluginQueryResult {
-        guard let pqConn = libpqConnection else {
-            throw LibPQPluginError.notConnected
-        }
-
+        let pqConn = try connection()
         let startTime = Date()
-
-        do {
-            let result = try await pqConn.boundedQuery(query, rowCap: rowCap)
-            return PluginQueryResult(
-                columns: result.columns,
-                columnTypeNames: result.columnTypeNames,
-                rows: result.rows,
-                rowsAffected: result.affectedRows,
-                timing: PluginQueryTiming(
-                    total: Date().timeIntervalSince(startTime),
-                    firstRow: result.firstRowTime
-                ),
-                isTruncated: result.isTruncated
-            )
-        } catch let error as NSError where !isRetry && Self.isConnectionLostError(error) {
-            try await reconnect()
-            return try await boundedQueryWithReconnect(query: query, rowCap: rowCap, isRetry: true)
-        }
+        let result = try await pqConn.boundedQuery(query, rowCap: rowCap)
+        return PluginQueryResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: result.rows,
+            rowsAffected: result.affectedRows,
+            timing: PluginQueryTiming(
+                total: Date().timeIntervalSince(startTime),
+                firstRow: result.firstRowTime
+            ),
+            isTruncated: result.isTruncated
+        )
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
@@ -198,44 +205,11 @@ final class LibPQDriverCore: @unchecked Sendable {
         _ = try await execute(query: "SET statement_timeout = '\(ms)'")
     }
 
-    // MARK: - Reconnect
-
-    private func executeWithReconnect(query: String, isRetry: Bool) async throws -> PluginQueryResult {
+    private func connection() throws -> LibPQPluginConnection {
         guard let pqConn = libpqConnection else {
             throw LibPQPluginError.notConnected
         }
-
-        let startTime = Date()
-
-        do {
-            let result = try await pqConn.executeQuery(query)
-            return PluginQueryResult(
-                columns: result.columns,
-                columnTypeNames: result.columnTypeNames,
-                rows: result.rows,
-                rowsAffected: result.affectedRows,
-                executionTime: Date().timeIntervalSince(startTime),
-                isTruncated: result.isTruncated
-            )
-        } catch let error as NSError where !isRetry && Self.isConnectionLostError(error) {
-            try await reconnect()
-            return try await executeWithReconnect(query: query, isRetry: true)
-        }
-    }
-
-    private func reconnect() async throws {
-        libpqConnection?.disconnect()
-        libpqConnection = nil
-        try await connect()
-    }
-
-    private static func isConnectionLostError(_ error: NSError) -> Bool {
-        let errorMessage = error.localizedDescription.lowercased()
-        return errorMessage.contains("connection") &&
-            (errorMessage.contains("lost") ||
-                errorMessage.contains("closed") ||
-                errorMessage.contains("no connection") ||
-                errorMessage.contains("could not send"))
+        return pqConn
     }
 }
 
@@ -332,6 +306,7 @@ extension LibPQBackedDriver {
     }
 
     var serverVersion: String? { core.serverVersion }
+    var hasLostConnection: Bool { core.hasLostConnection }
     var parameterStyle: ParameterStyle { .dollar }
 
     func escapeLiteral(_ str: String) -> String {

@@ -53,8 +53,12 @@ final class FakeMSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var currentSchema: String? { "dbo" }
     var parameterStyle: ParameterStyle { .questionMark }
 
+    /// The one fact a driver reports about a connection the server has closed under it.
+    var hasLostConnection = false
+    private(set) var disconnectCallCount = 0
+
     func connect() async throws {}
-    func disconnect() {}
+    func disconnect() { disconnectCallCount += 1 }
 
     func execute(query: String) async throws -> PluginQueryResult {
         PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)

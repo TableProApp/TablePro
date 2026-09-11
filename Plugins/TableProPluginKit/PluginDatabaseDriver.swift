@@ -177,6 +177,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// it and say so. Throwing is reserved for a release that was attempted and failed.
     func releaseIdleResource() async throws -> PluginResourceRelease
     var serverVersion: String? { get }
+    var hasLostConnection: Bool { get }
     var parameterStyle: ParameterStyle { get }
     func resolveQueryCompletionProfile(
         databaseTypeId: String,
@@ -558,6 +559,8 @@ public extension PluginDatabaseDriver {
     }
 
     var serverVersion: String? { nil }
+
+    var hasLostConnection: Bool { false }
 
     var parameterStyle: ParameterStyle { .questionMark }
 

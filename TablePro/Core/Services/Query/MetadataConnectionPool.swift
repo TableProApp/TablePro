@@ -146,6 +146,18 @@ final class MetadataConnectionPool {
     internal var hasSweeper: Bool {
         sweeper != nil
     }
+
+    /// The sweeper is started by opening a pooled connection, which a test with no plugin cannot
+    /// do, so a test that wants to watch it stop has to start it the way `openEntry` does.
+    internal func startSweeperForTesting() {
+        startSweeperIfNeeded()
+    }
+
+    /// A pool of its own, so a test that moves the clock or empties the pool cannot close the
+    /// entries another test injected into the shared one.
+    internal static func isolatedForTesting() -> MetadataConnectionPool {
+        MetadataConnectionPool()
+    }
     #endif
 
     private func releaseEntry(_ entry: Entry) {
@@ -173,7 +185,7 @@ final class MetadataConnectionPool {
         /// closed. The old entry is closed rather than left behind: overwriting `entries[key]`
         /// with a fresh one used to leak the driver it replaced.
         if let entry = entries[key] {
-            if entry.driver.status == .connected, !Self.isStale(entry.lastUsed) {
+            if entry.driver.status == .connected, !entry.driver.hasLostConnection, !Self.isStale(entry.lastUsed) {
                 return entry
             }
             closeOrDeferEntry(forKey: key)

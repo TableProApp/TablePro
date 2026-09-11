@@ -23,6 +23,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         state.withLock { $0.status }
     }
 
+    var hasLostConnection: Bool {
+        pluginDriver.hasLostConnection
+    }
+
     var serverVersion: String? { pluginDriver.serverVersion }
     var parameterStyle: ParameterStyle { pluginDriver.parameterStyle }
 

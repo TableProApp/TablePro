@@ -19,6 +19,8 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Current connection status
     var status: ConnectionStatus { get }
 
+    var hasLostConnection: Bool { get }
+
     /// Server version string (e.g., "8.0.35" for MySQL)
     /// Optional - not all drivers may implement this
     var serverVersion: String? { get }
@@ -620,6 +622,8 @@ extension DatabaseDriver {
     }
 
     var supportsTransactions: Bool { true }
+
+    var hasLostConnection: Bool { false }
 
     func cancelQuery() throws {
     }
