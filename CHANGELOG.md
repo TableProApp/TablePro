@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Assistant mode for the connection window, with the conversation at full width.
+- Confirm Writes floor while Assistant mode is active.
+- Several AI sessions at once, each with its own approvals, transcript and status.
+- Session rail listing every session with its connection, including sessions whose window is closed.
+- Result pane in Assistant mode with proposed SQL, steps taken, query results and schema changes.
+- `explain_query` chat tool, so the assistant can ask for a query plan without running the statement.
+- Start an AI session from the welcome window, with running and stopped sessions listed there.
+- Outside MCP servers as tool sources for AI sessions, allowlisted per connection.
+- Mode submenu in the View menu, switching a window between Browse and Assistant.
 - Empty state in the inspector and the assistant for a connection that is not up.
 - **Check connections** in Settings > General, including Only when I use the connection. (#2700)
 - Tips for preview tabs, Open Quickly, and query history.
@@ -38,7 +47,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Linked Folders and Team Library connections ignoring the welcome window search, with no context menu.
 - Dragging a connection in filtered welcome window results snapping back without moving it.
 - Welcome window context menu leaving linked connections out of a mixed selection.
-
 - Idle metadata connections held open for the life of the app, up to six per connection. (#2700)
 - MongoDB connections reading as healthy after the server went away. (#2700)
 - Password prompt raised by a background reconnect, on whichever window was in front. (#2700)
@@ -94,6 +102,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Statement with a NUL character running only up to it on SQLite and PostgreSQL, dropping its WHERE clause. (#2717)
 - Vim Replace mode writing an invisible character for Backspace and keypad Enter. (#2717)
 - Line and paragraph separators (U+2028, U+2029) shown as line breaks the database does not see. (#2717)
+- Tool approvals resolved by a decision made in another chat session.
+- AI tool calls evaluated against the chat's own connection instead of the one the statement targets.
+- AI tool calls reaching a connection the chat session is not attached to.
+- Writes running unchecked when a message was sent before the chat panel had laid out.
+- Stop Generating cancelling tool approvals awaiting a decision in other chat sessions.
+- "Always for this connection" overriding a Safe Mode floor the user did not set.
+- The managed `minimumSafeModeLevel` floor not reaching AI-proposed writes.
+- A connection's AI policy and Safe Mode level not reaching an open chat panel until relaunch.
+- "Always for this connection" writing a stale connection record back over newer changes.
+- A new chat session adopting the most recent conversation from another connection.
+- Two chat sessions overwriting each other's saved transcript.
+- Clearing one chat session's conversation deleting every conversation in the app.
+- One chat session's New Conversation resetting the server-side conversation of another.
+- The chat tool mode being shared by every session instead of belonging to one.
+- A registered chat tool being able to take the name of a built-in one.
+- Closing a window, disconnecting, or losing a session erasing that connection's chat transcript.
+- Explain with AI and Fix Error doing nothing until the chat panel had been opened once.
+- The last turn of a chat lost when the app quit mid-reply.
+- Approving any tool call but the first in a turn doing nothing, leaving the reply parked.
+- Every proposed tool call taking `Return`, so the key acted on whichever button AppKit reached first.
+- VoiceOver reading the Browse and Assistant control as its SF Symbol names.
+- Two GitHub Copilot chats on one provider sharing a single server-side conversation, so each was answered with the other's context.
+- VoiceOver reading the sidebar toggle as its SF Symbol names, "List" and "favorite".
+- Tables and Favorites doing nothing when chosen from the toolbar's overflow menu.
+
+### Security
+
+- Outside MCP tools always require approval and are audited per call, with the payload's size and hash but not its contents.
 
 ## [0.73.0] - 2026-09-09
 

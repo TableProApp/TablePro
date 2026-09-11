@@ -20,6 +20,7 @@ internal struct WelcomeConnectionsPanel: View {
             }
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            agentPanel
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .controlBackgroundColor))
@@ -112,5 +113,32 @@ internal struct WelcomeConnectionsPanel: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
+    }
+
+    @ViewBuilder
+    private var agentPanel: some View {
+        if AppSettingsManager.shared.ai.enabled {
+            WelcomeAgentPanel(
+                registry: .shared,
+                selectedConnection: singleSelectedConnection,
+                onBrowse: { vm.connectToDatabase($0) },
+                onAsk: { connection, prompt in
+                    AgentSessionLauncher.launch(
+                        AgentLaunchRequest(connectionId: connection.id, prompt: prompt)
+                    )
+                },
+                onOpenSession: { session in
+                    AgentSessionLauncher.launch(
+                        AgentLaunchRequest(connectionId: session.connectionId, sessionId: session.id)
+                    )
+                }
+            )
+        }
+    }
+
+    private var singleSelectedConnection: DatabaseConnection? {
+        let selected = vm.selectedConnections
+        guard selected.count == 1 else { return nil }
+        return selected.first
     }
 }

@@ -33,6 +33,7 @@ struct MainWindowToolbarValidationTests {
         MainWindowToolbar.newTab,
         MainWindowToolbar.exportTables,
         MainWindowToolbar.sidebarToggle,
+        MainWindowToolbar.contentMode,
         MainWindowToolbar.saveChanges,
         MainWindowToolbar.previewSQL,
         MainWindowToolbar.database,
@@ -216,6 +217,7 @@ struct MainWindowToolbarValidationTests {
             MainWindowToolbar.newTab,
             MainWindowToolbar.exportTables,
             MainWindowToolbar.sidebarToggle,
+            MainWindowToolbar.contentMode,
             MainWindowToolbar.addRow,
             MainWindowToolbar.saveChanges,
             MainWindowToolbar.dashboard
@@ -230,6 +232,22 @@ struct MainWindowToolbarValidationTests {
         let context = makeContext(connected: false)
         let unknown = NSToolbarItem.Identifier("com.test.unknown")
         #expect(MainWindowToolbar.isEnabled(itemIdentifier: unknown, context: context) == true)
+    }
+
+    @Test("Content mode stays enabled whenever the session is live")
+    func contentModeFollowsTheSession() {
+        #expect(
+            MainWindowToolbar.isEnabled(
+                itemIdentifier: MainWindowToolbar.contentMode,
+                context: makeContext(connected: true)
+            )
+        )
+        #expect(
+            !MainWindowToolbar.isEnabled(
+                itemIdentifier: MainWindowToolbar.contentMode,
+                context: makeContext(connected: false)
+            )
+        )
     }
 
     /// The health monitor writes `.connecting` on every reconnect attempt while the window keeps

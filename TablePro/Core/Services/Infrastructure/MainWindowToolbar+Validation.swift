@@ -56,7 +56,8 @@ extension MainWindowToolbar: NSToolbarItemValidation {
             /// that sets it answers for as long as the session does. A window with no session has
             /// nothing to protect and nothing to write it to.
             return context.connected
-        case Self.refresh, Self.quickSwitcher, Self.newTab, Self.exportTables, Self.sidebarToggle:
+        case Self.refresh, Self.quickSwitcher, Self.newTab, Self.exportTables, Self.sidebarToggle,
+             Self.contentMode:
             return context.connected
         case Self.addRow:
             return context.connected && context.canAddRow

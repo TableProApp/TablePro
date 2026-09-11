@@ -55,6 +55,22 @@ struct ConnectionWindowPaneResolverTests {
         }
     }
 
+    @Test("Only assistant mode mounts a pre-connect surface, and never over content")
+    func preConnectSurfaceMatrix() {
+        #expect(ConnectionWindowPaneResolver.showsPreConnectAssistant(for: .connecting, mode: .assistant))
+        #expect(ConnectionWindowPaneResolver.showsPreConnectAssistant(
+            for: .unavailable(.failed(Self.failure)),
+            mode: .assistant
+        ))
+        #expect(!ConnectionWindowPaneResolver.showsPreConnectAssistant(for: .content, mode: .assistant))
+        #expect(!ConnectionWindowPaneResolver.showsPreConnectAssistant(for: .empty, mode: .assistant))
+        #expect(!ConnectionWindowPaneResolver.showsPreConnectAssistant(for: .connecting, mode: .browse))
+        #expect(!ConnectionWindowPaneResolver.showsPreConnectAssistant(
+            for: .unavailable(.cancelled),
+            mode: .browse
+        ))
+    }
+
     @Test("A lone workspace never earns a strip, whatever its pane is doing")
     func stripNeedsSomewhereToGo() {
         for count in [0, 1] {
@@ -363,5 +379,26 @@ struct ConnectionWindowPaneResolverTests {
         ] {
             #expect(!ConnectionWindowPaneResolver.showsTabStrip(for: pane, tabCount: 5))
         }
+    }
+
+    @Test("Assistant mode hides the editor tab strip however many tabs the connection has open")
+    func tabStripBandHiddenInAssistantMode() {
+        for tabCount in [0, 1, 2, 9] {
+            #expect(
+                !ConnectionWindowPaneResolver.showsTabStrip(
+                    for: .content,
+                    tabCount: tabCount,
+                    mode: .assistant
+                ),
+                "assistant mode must hide the strip at \(tabCount) tabs"
+            )
+        }
+    }
+
+    @Test("Browse mode is unchanged by the mode argument")
+    func tabStripBandUnchangedInBrowseMode() {
+        #expect(ConnectionWindowPaneResolver.showsTabStrip(for: .content, tabCount: 2, mode: .browse))
+        #expect(!ConnectionWindowPaneResolver.showsTabStrip(for: .content, tabCount: 1, mode: .browse))
+        #expect(!ConnectionWindowPaneResolver.showsTabStrip(for: .connecting, tabCount: 5, mode: .browse))
     }
 }

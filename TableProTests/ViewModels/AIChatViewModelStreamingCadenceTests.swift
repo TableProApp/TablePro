@@ -93,6 +93,7 @@ struct AIChatViewModelStreamingCadenceTests {
         viewModel: AIChatViewModel,
         transport: ChatTransport
     ) async -> ChatTurn {
+        viewModel.chatMode = Self.makeSettings().chatMode
         let assistant = ChatTurn(role: .assistant, blocks: [], modelId: "test-model", providerId: nil)
         viewModel.messages.append(assistant)
         viewModel.streamingState = .streaming(assistantID: assistant.id)
@@ -170,6 +171,7 @@ struct AIChatViewModelStreamingCadenceTests {
             events: [.textDelta("kept one "), .textDelta("kept two")]
         )
 
+        viewModel.chatMode = Self.makeSettings().chatMode
         let assistant = ChatTurn(role: .assistant, blocks: [], modelId: "test-model", providerId: nil)
         viewModel.messages.append(assistant)
         viewModel.streamingState = .streaming(assistantID: assistant.id)

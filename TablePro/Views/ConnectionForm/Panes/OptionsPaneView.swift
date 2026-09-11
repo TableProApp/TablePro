@@ -24,6 +24,9 @@ struct OptionsPaneView: View {
             startupSection
             preConnectSection
             safetySection
+            if aiIsEnabled, let connectionId = coordinator.connectionId {
+                ConnectionMCPServersView(connectionId: connectionId)
+            }
             if aiIsEnabled {
                 aiRulesSection
             }

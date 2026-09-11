@@ -65,6 +65,7 @@ Encryption sits below the transport. [SSL/TLS](/connections/ssl) covers the mode
 | **AI Policy** | Per-connection override for the in-app AI agents. **Never** also refuses external clients |
 | **AI Rules** | Guidance the AI reads on every chat turn for this connection: table conventions, columns to avoid, join hints. See [AI Assistant](/features/ai-assistant) |
 | **External Clients** | **Blocked**, **Read Only** (the default), or **Read & Write** for MCP clients such as Raycast, Cursor, and Claude Desktop, and for [AppleScript](/external-api/applescript). A token's own scope cannot raise it. See [External API](/external-api) |
+| **Outside MCP Servers** | Servers this connection's Assistant sessions may call. Add them under Settings > Integrations first. A connection with none ticked has no outside tools. See [MCP Server](/features/mcp#calling-an-outside-server) |
 | **Local only** | Keeps this connection off iCloud Sync. See [iCloud Sync](/features/icloud-sync) |
 | Plugin fields | Driver-specific options, such as MongoDB's `replicaSet` |
 

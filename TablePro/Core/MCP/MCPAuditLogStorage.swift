@@ -16,8 +16,11 @@ struct MCPAuditChainLink: Sendable, Equatable {
     let previousHash: String
     let hash: String
 
+    /// The v1 field list is frozen. Every row written before outbound calls existed hashed exactly
+    /// these fields in this order, so appending to the list would report all of them as tampered.
+    /// v2 rows hash the same fields, then a version marker, then the outbound ones.
     static func digest(entry: AuditEntry, sequence: Int, previousHash: String) -> String {
-        let fields = [
+        var fields = [
             String(sequence),
             entry.id.uuidString,
             String(entry.timestamp.timeIntervalSince1970),
@@ -27,9 +30,18 @@ struct MCPAuditChainLink: Sendable, Equatable {
             entry.connectionId?.uuidString ?? "",
             entry.action,
             entry.outcome,
-            entry.details ?? "",
-            previousHash
+            entry.details ?? ""
         ]
+        if entry.schemaVersion != .v1 {
+            fields.append("v\(entry.schemaVersion.rawValue)")
+            fields.append(entry.outbound?.serverId.uuidString ?? "")
+            fields.append(entry.outbound?.serverName ?? "")
+            fields.append(entry.outbound?.sessionId.uuidString ?? "")
+            fields.append(entry.outbound?.target ?? "")
+            fields.append(entry.outbound?.payloadSHA256 ?? "")
+            fields.append(entry.outbound.map { String($0.payloadBytes) } ?? "")
+        }
+        fields.append(previousHash)
         let joined = fields.joined(separator: "\u{1F}")
         return SHA256.hash(data: Data(joined.utf8)).hexEncoded
     }
@@ -175,7 +187,9 @@ actor MCPAuditLogStorage {
                 details TEXT,
                 sequence INTEGER,
                 previous_hash TEXT,
-                entry_hash TEXT
+                entry_hash TEXT,
+                schema_version INTEGER,
+                outbound TEXT
             );
             """)
         addMissingChainColumns()
@@ -189,7 +203,9 @@ actor MCPAuditLogStorage {
         let required: [(String, String)] = [
             ("sequence", "INTEGER"),
             ("previous_hash", "TEXT"),
-            ("entry_hash", "TEXT")
+            ("entry_hash", "TEXT"),
+            ("schema_version", "INTEGER"),
+            ("outbound", "TEXT")
         ]
         for (name, type) in required where !existing.contains(name) {
             execute("ALTER TABLE audit_entries ADD COLUMN \(name) \(type);")
@@ -293,8 +309,8 @@ actor MCPAuditLogStorage {
         let sql = """
             INSERT INTO audit_entries
                 (id, timestamp, category, token_id, token_name, connection_id, action, outcome, details,
-                 sequence, previous_hash, entry_hash)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                 sequence, previous_hash, entry_hash, schema_version, outbound)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """
 
         var statement: OpaquePointer?
@@ -316,6 +332,8 @@ actor MCPAuditLogStorage {
         sqlite3_bind_int64(statement, 10, Int64(sequence))
         sqlite3_bind_text(statement, 11, previousHash, -1, Self.SQLITE_TRANSIENT)
         sqlite3_bind_text(statement, 12, hash, -1, Self.SQLITE_TRANSIENT)
+        sqlite3_bind_int64(statement, 13, Int64(entry.schemaVersion.rawValue))
+        bindOptionalText(statement, index: 14, value: Self.encodeOutbound(entry.outbound))
 
         guard sqlite3_step(statement) == SQLITE_DONE else {
             Self.logger.warning("Failed to append audit entry \(entry.action, privacy: .public)")
@@ -328,6 +346,19 @@ actor MCPAuditLogStorage {
             AppEvents.shared.mcpAuditLogChanged.send(())
         }
         return true
+    }
+
+    /// The outbound detail is stored as JSON in one column rather than as six more columns. It is
+    /// read as a whole or not at all, and six nullable columns that are always null together would be
+    /// six more things every query has to name.
+    private static func encodeOutbound(_ outbound: AuditOutboundDetail?) -> String? {
+        guard let outbound, let data = try? JSONEncoder().encode(outbound) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private static func decodeOutbound(_ json: String) -> AuditOutboundDetail? {
+        guard let data = json.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(AuditOutboundDetail.self, from: data)
     }
 
     private func bindOptionalText(_ statement: OpaquePointer?, index: Int32, value: String?) {
@@ -350,7 +381,8 @@ actor MCPAuditLogStorage {
         if since != nil { conditions.append("timestamp >= ?") }
 
         var sql = """
-            SELECT id, timestamp, category, token_id, token_name, connection_id, action, outcome, details
+            SELECT id, timestamp, category, token_id, token_name, connection_id, action, outcome, details,
+                   sequence, previous_hash, entry_hash, schema_version, outbound
             FROM audit_entries
             """
         if !conditions.isEmpty {
@@ -392,7 +424,7 @@ actor MCPAuditLogStorage {
     func verify() -> MCPAuditVerification {
         let sql = """
             SELECT id, timestamp, category, token_id, token_name, connection_id, action, outcome, details,
-                   sequence, previous_hash, entry_hash
+                   sequence, previous_hash, entry_hash, schema_version, outbound
             FROM audit_entries
             ORDER BY sequence ASC;
             """
@@ -499,6 +531,15 @@ actor MCPAuditLogStorage {
         let outcome = String(cString: outcomeCString)
         let details = sqlite3_column_text(statement, 8).map { String(cString: $0) }
 
+        /// A row written before the version column existed reads it as 0, which is v1: those rows
+        /// hashed the v1 field list, and verifying them under v2 would report every one as tampered.
+        let columnCount = Int(sqlite3_column_count(statement))
+        let storedVersion = columnCount > 12 ? Int(sqlite3_column_int64(statement, 12)) : 0
+        let schemaVersion = AuditEntry.SchemaVersion(rawValue: storedVersion) ?? .v1
+        let outbound = columnCount > 13
+            ? sqlite3_column_text(statement, 13).flatMap { Self.decodeOutbound(String(cString: $0)) }
+            : nil
+
         return AuditEntry(
             id: id,
             timestamp: timestamp,
@@ -508,7 +549,9 @@ actor MCPAuditLogStorage {
             connectionId: connectionId,
             action: action,
             outcome: outcome,
-            details: details
+            details: details,
+            schemaVersion: schemaVersion,
+            outbound: outbound
         )
     }
 }

@@ -91,39 +91,42 @@ struct ValidateDriverDescriptorTests {
         try pm.validateDriverDescriptor(MockDriverPlugin.self, pluginId: "test")
     }
 
-    @Test("rejects duplicate primary type ID already registered")
-    /// The collision is set up here rather than assumed. `driverPlugins` is filled when a plugin
-    /// loads, and discovery ends with "will load on first use", so nothing had put MySQL in the
-    /// table and the duplicate check had nothing to collide with. Calling `loadPlugins()` does not
-    /// fill it either: the bundles do not register in the xctest host.
-    @MainActor func rejectsDuplicatePrimaryTypeId() {
-        let pm = PluginManager.shared
-        MockDriverPlugin.reset(typeId: "occupied-primary-id", displayName: "Occupant")
-        let occupant = MockDriverPlugin()
-        pm.driverPlugins["occupied-primary-id"] = occupant
-        defer { pm.driverPlugins.removeValue(forKey: "occupied-primary-id") }
+    /// The conflict is seeded here rather than taken from a built-in plugin.
+    ///
+    /// Both of these named "MySQL" and relied on the bundled MySQL plugin having claimed it. Nothing
+    /// claims it under XCTest: `applicationDidFinishLaunching` returns early when
+    /// `XCTestConfigurationFilePath` is set, so no plugin is ever loaded, `driverPlugins` is empty,
+    /// and the duplicate check these exist to prove had nothing to collide with.
+    @MainActor
+    private func withRegisteredDriver(typeId: String, _ body: (PluginManager) -> Void) {
+        let manager = PluginManager.shared
+        MockDriverPlugin.reset(typeId: typeId, displayName: "Occupant")
+        manager.driverPlugins[typeId] = MockDriverPlugin()
+        defer { manager.driverPlugins.removeValue(forKey: typeId) }
+        body(manager)
+    }
 
-        MockDriverPlugin.reset(typeId: "occupied-primary-id", displayName: "Fake Occupant")
-        #expect(throws: PluginError.self) {
-            try pm.validateDriverDescriptor(MockDriverPlugin.self, pluginId: "test")
+    @Test("rejects duplicate primary type ID already registered")
+    @MainActor func rejectsDuplicatePrimaryTypeId() {
+        withRegisteredDriver(typeId: "occupied-primary-id") { manager in
+            MockDriverPlugin.reset(typeId: "occupied-primary-id", displayName: "Fake Occupant")
+            #expect(throws: PluginError.self) {
+                try manager.validateDriverDescriptor(MockDriverPlugin.self, pluginId: "test")
+            }
         }
     }
 
     @Test("rejects duplicate additional type ID already registered")
     @MainActor func rejectsDuplicateAdditionalTypeId() {
-        let pm = PluginManager.shared
-        MockDriverPlugin.reset(typeId: "occupied-additional-id", displayName: "Occupant")
-        let occupant = MockDriverPlugin()
-        pm.driverPlugins["occupied-additional-id"] = occupant
-        defer { pm.driverPlugins.removeValue(forKey: "occupied-additional-id") }
-
-        MockDriverPlugin.reset(
-            typeId: "unique-test-db-type-2",
-            displayName: "Test DB",
-            additionalIds: ["occupied-additional-id"]
-        )
-        #expect(throws: PluginError.self) {
-            try pm.validateDriverDescriptor(MockDriverPlugin.self, pluginId: "test")
+        withRegisteredDriver(typeId: "occupied-additional-id") { manager in
+            MockDriverPlugin.reset(
+                typeId: "unique-test-db-type-2",
+                displayName: "Test DB",
+                additionalIds: ["occupied-additional-id"]
+            )
+            #expect(throws: PluginError.self) {
+                try manager.validateDriverDescriptor(MockDriverPlugin.self, pluginId: "test")
+            }
         }
     }
 }

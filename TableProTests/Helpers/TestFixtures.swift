@@ -229,6 +229,45 @@ enum TestFixtures {
         )
     }
 
+    /// The live service graph with one storage swapped out. Chat and session tests need a chat
+    /// storage pointed at a throwaway directory, because persisting a transcript is an ordinary part
+    /// of stopping a session and would otherwise write into the history of whoever is running the
+    /// suite.
+    @MainActor
+    static func makeServices(aiChatStorage: AIChatStorage) -> AppServices {
+        let live = AppServices.live
+        return AppServices(
+            appEvents: live.appEvents,
+            appSettings: live.appSettings,
+            appSettingsStorage: live.appSettingsStorage,
+            connectionStorage: live.connectionStorage,
+            databaseManager: live.databaseManager,
+            pluginManager: live.pluginManager,
+            schemaService: live.schemaService,
+            schemaRefreshService: live.schemaRefreshService,
+            schemaProviderRegistry: live.schemaProviderRegistry,
+            sqlFavoriteManager: live.sqlFavoriteManager,
+            favoriteTablesStorage: live.favoriteTablesStorage,
+            favoriteDatabasesStorage: live.favoriteDatabasesStorage,
+            aiChatStorage: aiChatStorage,
+            aiKeyStorage: live.aiKeyStorage,
+            groupStorage: live.groupStorage,
+            tagStorage: live.tagStorage,
+            sshProfileStorage: live.sshProfileStorage,
+            licenseManager: live.licenseManager,
+            syncMetadataStorage: live.syncMetadataStorage,
+            favoritesExpansionState: live.favoritesExpansionState,
+            linkedFolderWatcher: live.linkedFolderWatcher,
+            queryHistoryManager: live.queryHistoryManager,
+            dateFormattingService: live.dateFormattingService,
+            copilotService: live.copilotService,
+            mcpServerManager: live.mcpServerManager,
+            syncTracker: live.syncTracker,
+            themeEngine: live.themeEngine,
+            welcomeRouter: live.welcomeRouter
+        )
+    }
+
     static func makeConnection(
         id: UUID = UUID(),
         name: String = "Test",

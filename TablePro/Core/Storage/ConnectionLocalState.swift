@@ -35,6 +35,10 @@ internal enum ConnectionLocalState {
             RecentTablesStore.shared.removeEntries(for: connectionId)
             HistoryPanelPreferencesStorage.remove(for: connectionId)
             QueryInsightsPreferencesStorage.remove(for: connectionId)
+            /// An outside MCP server's allowlist holds connection ids, so a deleted connection would
+            /// stay in it and make the settings pane overstate how far that server reaches.
+            MCPServerStore.shared.forgetConnection(connectionId)
+            WorkspaceContentModeStore.shared.removeMode(for: connectionId)
         }
 
         FilterSettingsStorage.shared.removeFilters(for: connectionIds)

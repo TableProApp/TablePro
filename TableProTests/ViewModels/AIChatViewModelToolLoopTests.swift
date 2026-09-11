@@ -90,6 +90,7 @@ struct AIChatViewModelToolLoopTests {
     ) async {
         let registry = ChatToolRegistry()
         registry.register(NoopTool())
+        viewModel.chatMode = settings.chatMode
         let assistant = ChatTurn(role: .assistant, blocks: [], modelId: "test-model", providerId: nil)
         viewModel.messages.append(assistant)
         viewModel.streamingState = .streaming(assistantID: assistant.id)

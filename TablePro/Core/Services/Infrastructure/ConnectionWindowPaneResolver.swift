@@ -59,11 +59,38 @@ internal enum ConnectionWindowPaneResolver {
         }
     }
 
+    /// Whether the detail pane carries the pre-connect assistant surface rather than the connecting
+    /// or failure view.
+    ///
+    /// A prompt typed at Welcome lives on the session, not on the window, so there is content to
+    /// show before any database answers: the transcript, the session rail and the result pane.
+    internal static func showsPreConnectAssistant(
+        for pane: ConnectionWindowPane,
+        mode: ConnectionWorkspaceContentMode
+    ) -> Bool {
+        guard mode == .assistant else { return false }
+        switch pane {
+        case .connecting, .unavailable:
+            return true
+        case .content, .empty:
+            return false
+        }
+    }
+
     /// The tab strip's band is a list of tabs, so it appears only when there is a list worth
     /// showing: content behind it, and more than one tab in it. A window with a single tab keeps
     /// the chrome it always had, which is what the system does too.
-    internal static func showsTabStrip(for pane: ConnectionWindowPane, tabCount: Int) -> Bool {
-        pane == .content && tabCount > 1
+    ///
+    /// Assistant mode shows no editor tabs at all, so the band stays down however many the
+    /// connection has open. They are not closed, and returning to browse mode brings them back
+    /// along with the strip.
+    internal static func showsTabStrip(
+        for pane: ConnectionWindowPane,
+        tabCount: Int,
+        mode: ConnectionWorkspaceContentMode = .browse
+    ) -> Bool {
+        guard mode == .browse else { return false }
+        return pane == .content && tabCount > 1
     }
 
     /// Whether the connections strip stands, given the preference that normally governs it.

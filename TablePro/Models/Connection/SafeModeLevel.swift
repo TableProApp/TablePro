@@ -32,6 +32,30 @@ internal extension SafeModeLevel {
         self == .readOnly
     }
 
+    /// How much this level gates, as a monotonic rank. Used only by `raised(toFloor:)`, because a
+    /// floor has to know which of two levels asks more of the user. Nothing else orders these:
+    /// `alertFull` and `safeMode` gate different things (every query versus authentication), and
+    /// comparing them for any other purpose would be reading meaning into this number that is
+    /// not there.
+    private var gatingRank: Int {
+        switch self {
+        case .silent: return 0
+        case .alert: return 1
+        case .alertFull: return 2
+        case .safeMode: return 3
+        case .safeModeFull: return 4
+        case .readOnly: return 5
+        }
+    }
+
+    /// This level, or the floor if the floor asks more. A minimum, never a maximum: a user who
+    /// deliberately chose `.readOnly` keeps read-only, and one who chose `.safeModeFull` is not
+    /// dropped to `.alert`. Pure, so nothing is written to the connection and nothing has to be
+    /// restored after a crash: whatever turned the floor on turning off is enough.
+    func raised(toFloor floor: SafeModeLevel) -> SafeModeLevel {
+        gatingRank < floor.gatingRank ? floor : self
+    }
+
     var requiresConfirmation: Bool {
         switch self {
         case .alert, .alertFull, .safeMode, .safeModeFull: return true

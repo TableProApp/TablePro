@@ -77,10 +77,9 @@ extension MainContentView {
         updateAssistantContext()
     }
 
-    /// Built only once the assistant exists. The grid summary is for the chat, and a window whose
-    /// assistant was never revealed has nothing to tell.
+    /// Kept current even before the trailing assistant is revealed, because Assistant mode reads
+    /// this context from the conversation pane and that pane does not wait on `isActivated`.
     func updateAssistantContext() {
-        guard trailingPaneState.assistant.isActivated else { return }
         trailingPaneState.assistant.context = AssistantContext(
             currentQuery: coordinator.tabManager.selectedTab?.content.query,
             queryResults: cachedQueryResultsSummary()

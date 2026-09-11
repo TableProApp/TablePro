@@ -37,6 +37,7 @@ enum ViewMenuBuilder {
                 keyboard: keyboard
             ),
             MenuItemFactory.separator,
+            contentModeSubmenu(),
             /// The segmented control in the toolbar was the only route to either of these, so a
             /// window whose toolbar was narrow, hidden or customized could not switch what the
             /// sidebar lists. The HIG asks that every toolbar item also be a menu-bar command.
@@ -181,6 +182,24 @@ enum ViewMenuBuilder {
     }
 
     private static let allModes: [ResultsViewMode] = [.data, .structure, .json, .chart]
+
+    /// Browse and Assistant, one of N, the same shape as Sidebar Layout below.
+    ///
+    /// No key equivalent. The View menu's own shortcuts are already spoken for, and a duplicate one
+    /// blanks the loser rather than reporting a conflict, so a mode nobody asked to have a shortcut
+    /// for does not get one at the cost of an existing command.
+    private static func contentModeSubmenu() -> NSMenuItem {
+        MenuItemFactory.submenu(String(localized: "Mode"), items: [
+            MenuItemFactory.item(
+                String(localized: "Browse"),
+                action: #selector(MainSplitViewController.useBrowseMode(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Assistant"),
+                action: #selector(MainSplitViewController.useAssistantMode(_:))
+            )
+        ])
+    }
 
     private static func sidebarLayoutSubmenu() -> NSMenuItem {
         MenuItemFactory.submenu(String(localized: "Sidebar Layout"), items: [

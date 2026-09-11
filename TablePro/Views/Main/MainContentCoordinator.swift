@@ -201,13 +201,20 @@ final class MainContentCoordinator {
     /// Bumped whenever a published schema row changes, so the inspector re-reads it.
     var inspectorRowSourceRevision: Int = 0
 
-    /// Direct reference to AI chat viewmodel — eliminates notification broadcasts
-    /// The assistant's view model, and only if something has already brought one into existence.
+    weak var trailingPaneState: TrailingPaneState?
+
+    /// The session engine the editor's AI actions talk to. A live registry session wins, so Explain
+    /// and Fix Error talk to the same conversation the rail already lists. Otherwise the trailing
+    /// pane's view model, and only if something has already brought one into existence.
+    ///
     /// Reading this never builds one: an editor command that wants to talk to the assistant reveals
     /// it first, and revealing is what activates it.
-    var aiViewModel: AIChatViewModel? { trailingPaneState?.assistant.viewModelIfActivated }
-
-    weak var trailingPaneState: TrailingPaneState?
+    var aiViewModel: AIChatViewModel? {
+        if let session = AgentSessionRegistry.shared.existingDefaultSession(for: connectionId) {
+            return session.viewModel
+        }
+        return trailingPaneState?.assistant.viewModelIfActivated
+    }
 
     /// Direct reference to the data tab grid delegate — enables row mutation operations to
     /// Observable mirror of the grid's display revision, so views outside the grid re-render when
@@ -785,7 +792,7 @@ final class MainContentCoordinator {
         /// The gate comes first. Activating builds the view model, whose init reads the stored
         /// conversations, and the pane would then refuse to open it anyway.
         guard AppSettingsManager.shared.ai.enabled else { return }
-        trailingPaneState?.assistant.activate()
+        trailingPaneState?.assistant.activate(connection: connection)
         trailingPaneProxy?.showAssistant()
     }
 

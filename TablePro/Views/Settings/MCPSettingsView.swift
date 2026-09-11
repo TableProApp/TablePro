@@ -6,6 +6,7 @@ struct MCPSettingsView: View {
     var body: some View {
         Form {
             MCPSection(settings: $settings)
+            MCPOutsideServersSection()
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)

@@ -24,7 +24,7 @@ internal struct AssistantPaneView: View {
                 connection: connection,
                 currentQuery: state.context.currentQuery,
                 queryResults: state.context.queryResults,
-                viewModel: state.activate()
+                viewModel: state.activate(connection: connection)
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

@@ -27,7 +27,7 @@ import os
     }
 
     internal let inspector: RowInspectorState
-    internal let assistant = AssistantState()
+    internal let assistant: AssistantState
 
     internal init(connectionId: UUID? = nil, defaults: UserDefaults = .standard) {
         self.connectionId = connectionId
@@ -39,6 +39,7 @@ import os
             Self.migrateLegacyTabIfNeeded(connectionId: connectionId, defaults: defaults)
         }
         self.inspector = RowInspectorState(connectionId: connectionId, defaults: defaults)
+        self.assistant = AssistantState(connectionId: connectionId)
         if let connectionId,
            let raw = defaults.string(forKey: Self.surfaceKey(connectionId)),
            let stored = TrailingPaneSurface(rawValue: raw) {

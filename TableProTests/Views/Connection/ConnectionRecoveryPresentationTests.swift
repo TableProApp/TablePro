@@ -27,21 +27,56 @@ struct ConnectionRecoveryPresentationTests {
         for (action, title) in expected {
             let reason = ConnectionUnavailableReason.actionRequired(Self.failure, action)
             #expect(ConnectionUnavailableView.primaryActionTitle(for: reason) == title)
+            #expect(ConnectionUnavailablePresentation.primaryActionTitle(reason: reason) == title)
         }
     }
 
     @Test("A plain failure still offers Try Again")
     func plainFailureRetries() {
-        #expect(ConnectionUnavailableView.primaryActionTitle(for: .failed(Self.failure)) == String(localized: "Try Again"))
+        #expect(
+            ConnectionUnavailableView.primaryActionTitle(for: .failed(Self.failure))
+                == String(localized: "Try Again")
+        )
         #expect(!ConnectionUnavailableView.offersRetry(for: .failed(Self.failure)))
+        #expect(
+            ConnectionUnavailablePresentation.primaryActionTitle(reason: .failed(Self.failure))
+                == String(localized: "Try Again")
+        )
+        #expect(!ConnectionUnavailablePresentation.offersRetry(reason: .failed(Self.failure)))
     }
 
     @Test("Only a fix made in Settings offers a separate retry")
     func onlySettingsOffersRetry() {
-        #expect(ConnectionUnavailableView.offersRetry(for: .actionRequired(Self.failure, .openPluginSettings(pluginId: nil))))
+        let settings = ConnectionUnavailableReason.actionRequired(
+            Self.failure,
+            .openPluginSettings(pluginId: nil)
+        )
+        #expect(ConnectionUnavailableView.offersRetry(for: settings))
+        #expect(ConnectionUnavailablePresentation.offersRetry(reason: settings))
         #expect(!ConnectionUnavailableView.offersRetry(for: .actionRequired(Self.failure, .enablePlugin(pluginId: "p"))))
         #expect(!ConnectionUnavailableView.offersRetry(for: .actionRequired(Self.failure, .installPlugin)))
         #expect(!ConnectionUnavailableView.offersRetry(for: .actionRequired(Self.failure, .editConnection)))
+        #expect(
+            !ConnectionUnavailablePresentation.offersRetry(
+                reason: .actionRequired(Self.failure, .enablePlugin(pluginId: "p"))
+            )
+        )
+    }
+
+    @Test("A recovery action and a plain failure share one headline")
+    func headlineDoesNotNameTheFix() {
+        let name = "Staging"
+        #expect(
+            ConnectionUnavailablePresentation.headline(
+                reason: .actionRequired(Self.failure, .installPlugin),
+                connectionName: name
+            )
+            == String(format: String(localized: "Could not connect to %@"), name)
+        )
+        #expect(
+            ConnectionUnavailablePresentation.headline(reason: .failed(Self.failure), connectionName: name)
+            == String(format: String(localized: "Could not connect to %@"), name)
+        )
     }
 
     @Test("A request to show a plugin is answered once")

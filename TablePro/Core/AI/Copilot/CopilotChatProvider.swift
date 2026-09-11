@@ -9,15 +9,29 @@ import os
 final class CopilotChatProvider: ChatTransport, @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotChatProvider")
 
-    private var conversationId: String?
-    private var turnIds: [String] = []
+    /// Copilot keeps the conversation on its own side, and one provider instance is shared by every
+    /// chat session on a configuration, so the conversation has to be keyed by session rather than
+    /// held as a single field. It used to be a single field: two sessions on one Copilot
+    /// configuration appended their turns to one server-side conversation, so each of them was
+    /// answered with the other's context, across connections included, while their local
+    /// transcripts stayed correctly separate. `ProviderStreamLease` cannot fix that, because it
+    /// serializes turns and never swaps what the provider is pointing at.
+    ///
+    /// Keyed on the optional itself, so a caller with no session, a connection test or an inline
+    /// suggestion, shares one conversation under `nil` rather than needing a sentinel id.
+    private struct Conversation {
+        var id: String
+        var turnIds: [String] = []
+        var chatMode: String?
+    }
+
+    private var conversations: [UUID?: Conversation] = [:]
     private let progressHandlers = OSAllocatedUnfairLock(
         initialState: [String: AsyncThrowingStream<ChatStreamEvent, Error>.Continuation]()
     )
     private var isProgressHandlerRegistered = false
     private var isInvokeClientToolHandlerRegistered = false
     private var registeredToolNames: Set<String> = []
-    private var lastChatMode: String?
     private let activeStream = OSAllocatedUnfairLock<(UUID, AsyncThrowingStream<ChatStreamEvent, Error>.Continuation)?>(
         initialState: nil
     )
@@ -27,10 +41,12 @@ final class CopilotChatProvider: ChatTransport, @unchecked Sendable {
         options: ChatTransportOptions
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            let sessionId = UUID()
+            /// Identifies this one stream, not the chat session it belongs to. The session is
+            /// `options.sessionId` and outlives every stream on it.
+            let streamId = UUID()
             continuation.onTermination = { [weak self] _ in
                 self?.activeStream.withLock { current in
-                    if current?.0 == sessionId { current = nil }
+                    if current?.0 == streamId { current = nil }
                 }
             }
             let task = Task { @MainActor [weak self] in
@@ -53,25 +69,27 @@ final class CopilotChatProvider: ChatTransport, @unchecked Sendable {
                     await self.ensureInvokeClientToolHandler()
                     await self.ensureToolsRegistered(tools: options.tools)
 
+                    let session = options.sessionId
                     let desiredChatMode: String? = (!options.tools.isEmpty && !self.registeredToolNames.isEmpty)
                         ? "Agent" : nil
-                    if self.conversationId != nil, self.lastChatMode != desiredChatMode {
+                    /// A mode change is a property of the conversation, so only this session's is
+                    /// dropped. Clearing a shared field used to reset whichever conversation the
+                    /// provider happened to be holding.
+                    if let existing = self.conversations[session], existing.chatMode != desiredChatMode {
                         Self.logger.info(
-                            "Copilot chat mode changed; resetting conversation to apply new mode"
+                            "Copilot chat mode changed; resetting this session's conversation to apply it"
                         )
-                        self.conversationId = nil
-                        self.turnIds.removeAll()
+                        self.conversations[session] = nil
                     }
-                    self.lastChatMode = desiredChatMode
 
                     self.progressHandlers.withLock { $0[token] = continuation }
-                    self.activeStream.withLock { $0 = (sessionId, continuation) }
+                    self.activeStream.withLock { $0 = (streamId, continuation) }
 
                     let userMessage = turns.last(where: { $0.role == .user })?.plainText ?? ""
                     let effectiveModel: String? = options.model.isEmpty ? nil : options.model
                     let toolsAvailable = !options.tools.isEmpty && !self.registeredToolNames.isEmpty
 
-                    if self.conversationId == nil {
+                    if self.conversations[session] == nil {
                         let systemPrefix = options.systemPrompt.map { $0 + "\n\n" } ?? ""
                         let conversationTurns = [CopilotConversationTurn(
                             request: systemPrefix + userMessage,
@@ -93,13 +111,16 @@ final class CopilotChatProvider: ChatTransport, @unchecked Sendable {
                             needToolCallConfirmation: toolsAvailable ? false : nil
                         )
                         let result = try await client.conversationCreate(params: params)
-                        self.conversationId = result.conversationId
-                        self.turnIds.append(result.turnId)
+                        self.conversations[session] = Conversation(
+                            id: result.conversationId,
+                            turnIds: [result.turnId],
+                            chatMode: desiredChatMode
+                        )
                         Self.logger.info("Created Copilot conversation: \(result.conversationId)")
-                    } else if let conversationId = self.conversationId {
+                    } else if let conversation = self.conversations[session] {
                         let params = CopilotConversationTurnParams(
                             workDoneToken: token,
-                            conversationId: conversationId,
+                            conversationId: conversation.id,
                             message: userMessage,
                             source: "panel",
                             model: effectiveModel,
@@ -109,7 +130,7 @@ final class CopilotChatProvider: ChatTransport, @unchecked Sendable {
                             needToolCallConfirmation: toolsAvailable ? false : nil
                         )
                         let result = try await client.conversationTurn(params: params)
-                        self.turnIds.append(result.turnId)
+                        self.conversations[session]?.turnIds.append(result.turnId)
                     }
                 } catch {
                     self.progressHandlers.withLock { $0.removeValue(forKey: token) }
@@ -137,21 +158,26 @@ final class CopilotChatProvider: ChatTransport, @unchecked Sendable {
         await CopilotService.shared.isAuthenticated
     }
 
-    func resetConversation() {
-        isProgressHandlerRegistered = false
-        let id = conversationId
-        conversationId = nil
-        turnIds.removeAll()
-        guard let id else { return }
+    /// Ends one session's conversation and leaves every other session's alone.
+    ///
+    /// The progress handler is not disturbed. It is registered once per language server client, not
+    /// per conversation, and clearing its flag here used to force a re-registration that any other
+    /// session's in-flight stream was relying on.
+    func resetConversation(sessionId: UUID?) {
+        guard let conversation = conversations.removeValue(forKey: sessionId) else { return }
         Task { @MainActor in
             guard let client = CopilotService.shared.client else { return }
-            try? await client.conversationDestroy(conversationId: id)
-            Self.logger.info("Destroyed Copilot conversation: \(id)")
+            try? await client.conversationDestroy(conversationId: conversation.id)
+            Self.logger.info("Destroyed Copilot conversation: \(conversation.id)")
         }
     }
 
-    func deleteLastTurn() {
-        guard let conversationId, let turnId = turnIds.popLast() else { return }
+    func deleteLastTurn(sessionId: UUID?) {
+        guard var conversation = conversations[sessionId], let turnId = conversation.turnIds.popLast() else {
+            return
+        }
+        let conversationId = conversation.id
+        conversations[sessionId] = conversation
         Task { @MainActor in
             guard let client = CopilotService.shared.client else { return }
             try? await client.conversationTurnDelete(conversationId: conversationId, turnId: turnId)

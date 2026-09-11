@@ -229,6 +229,7 @@
             "icon": "sparkles",
             "pages": [
               "features/ai-assistant",
+              "features/assistant-mode",
               "features/mcp"
             ]
           },

@@ -51,7 +51,20 @@ extension AIChatViewModel {
             return
         }
 
-        if connection != nil, let policy = resolveConnectionPolicy(settings: settings) {
+        /// Fails closed. This used to read `if connection != nil`, so a send that landed before the
+        /// panel's first layout had assigned the connection skipped the `.never` policy, the
+        /// per-send consent alert, and every Safe Mode denial downstream. A session with no
+        /// connection now refuses instead of streaming unchecked.
+        guard connection != nil else {
+            errorMessage = String(
+                localized: "This chat session is not attached to a connection. Open a connection and try again."
+            )
+            if let last = messages.last, last.role == .user {
+                messages.removeLast()
+            }
+            return
+        }
+        if let policy = resolveConnectionPolicy(settings: settings) {
             if policy == .never {
                 errorMessage = String(localized: "AI is disabled for this connection.")
                 if let last = messages.last, last.role == .user {
@@ -151,13 +164,33 @@ extension AIChatViewModel {
         includeWalkthroughDirective: Bool = false,
         registry: ChatToolRegistry? = nil
     ) {
-        let chatMode = settings.chatMode
+        let chatMode = self.chatMode
+        let toolScope = ChatToolScope(sessionId: sessionId, connectionId: connection?.id, mode: chatMode)
+        let leaseSessionId = sessionId
+        let leaseConfigId = resolved.config.id
+        let leaseProviderName = resolved.config.name
         let roundtripLimit = min(
             settings.effectiveMaxToolRoundtrips ?? Self.hardToolRoundtripCeiling,
             Self.hardToolRoundtripCeiling
         )
         streamingTask = Task.detached(priority: .userInitiated) { [weak self] in
             var currentAssistantID = assistantID
+            await MainActor.run { [weak self] in
+                guard let holder = ProviderStreamLease.shared.holdingSession(configId: leaseConfigId),
+                      holder != leaseSessionId
+                else { return }
+                self?.providerWaitReason = ProviderStreamLease.waitMessage(providerName: leaseProviderName)
+            }
+            await ProviderStreamLease.shared.acquire(configId: leaseConfigId, sessionId: leaseSessionId)
+            await MainActor.run { [weak self] in
+                self?.providerWaitReason = nil
+            }
+            defer {
+                Task { @MainActor in
+                    ProviderStreamLease.shared.release(configId: leaseConfigId, sessionId: leaseSessionId)
+                }
+            }
+            if Task.isCancelled { return }
             do {
                 let systemPrompt = Self.buildSystemPrompt(
                     promptContext,
@@ -173,7 +206,7 @@ extension AIChatViewModel {
                 guard preflightOK else { return }
 
                 let toolSpecs = await MainActor.run {
-                    (registry ?? ChatToolRegistry.shared).allSpecs(for: chatMode)
+                    (registry ?? ChatToolRegistry.shared).specs(in: toolScope)
                 }
                 var workingTurns = chatMessages
                 var executedRoundtrips = 0
@@ -208,7 +241,8 @@ extension AIChatViewModel {
                         ChatToolContext(
                             connectionId: self.connection?.id,
                             bridge: ChatToolBootstrap.bridge,
-                            authPolicy: ChatToolBootstrap.authPolicy
+                            authPolicy: ChatToolBootstrap.authPolicy,
+                            sessionId: self.sessionId
                         )
                     }
                     let toolUseBlocks = await self.resolveAndAwaitApprovals(
@@ -223,7 +257,7 @@ extension AIChatViewModel {
                         return false
                     }
                     let executedResults = await Self.executeToolUses(
-                        approvedBlocks, mode: chatMode, context: context, registry: registry
+                        approvedBlocks, scope: toolScope, context: context, registry: registry
                     )
                     guard !Task.isCancelled else { return }
 
@@ -337,7 +371,8 @@ extension AIChatViewModel {
                 model: resolved.model,
                 systemPrompt: systemPrompt,
                 tools: toolSpecs,
-                reasoningEffort: resolved.config.reasoningEffort
+                reasoningEffort: resolved.config.reasoningEffort,
+                sessionId: sessionId
             )
         )
 
@@ -628,14 +663,14 @@ extension AIChatViewModel {
 
     nonisolated static func executeToolUses(
         _ blocks: [ToolUseBlock],
-        mode: AIChatMode,
+        scope: ChatToolScope,
         context: ChatToolContext,
         registry: ChatToolRegistry? = nil
     ) async -> [ToolResultBlock] {
         await withTaskGroup(of: (Int, ToolResultBlock).self) { group in
             for (index, block) in blocks.enumerated() {
                 group.addTask {
-                    (index, await runToolUse(block, mode: mode, context: context, registry: registry))
+                    (index, await runToolUse(block, scope: scope, context: context, registry: registry))
                 }
             }
             var indexed: [(Int, ToolResultBlock)] = []
@@ -646,7 +681,7 @@ extension AIChatViewModel {
 
     nonisolated private static func runToolUse(
         _ block: ToolUseBlock,
-        mode: AIChatMode,
+        scope: ChatToolScope,
         context: ChatToolContext,
         registry: ChatToolRegistry?
     ) async -> ToolResultBlock {
@@ -655,10 +690,10 @@ extension AIChatViewModel {
         }
         let resolution = await MainActor.run { () -> ToolResolution in
             let activeRegistry = registry ?? ChatToolRegistry.shared
-            guard activeRegistry.isToolAllowed(name: block.name, in: mode) else {
+            guard activeRegistry.isToolAllowed(name: block.name, in: scope) else {
                 return .blocked
             }
-            guard let tool = activeRegistry.tool(named: block.name, in: mode) else {
+            guard let tool = activeRegistry.tool(named: block.name, in: scope) else {
                 return .missing
             }
             return .resolved(tool)
@@ -667,11 +702,11 @@ extension AIChatViewModel {
         switch resolution {
         case .blocked:
             AIChatViewModel.logger.warning(
-                "Tool '\(block.name, privacy: .public)' blocked in \(mode.rawValue, privacy: .public) mode"
+                "Tool '\(block.name, privacy: .public)' blocked in \(scope.mode.rawValue, privacy: .public) mode"
             )
             return ToolResultBlock(
                 toolUseId: block.id,
-                content: "Tool '\(block.name)' is not available in \(mode.displayName) mode",
+                content: "Tool '\(block.name)' is not available in \(scope.mode.displayName) mode",
                 isError: true
             )
         case .missing:

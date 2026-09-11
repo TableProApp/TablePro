@@ -39,6 +39,22 @@ struct TrailingPaneStateTests {
         #expect(viewModel.messages.isEmpty)
     }
 
+    @Test("teardown releases a connection-less assistant's attachments and derived context")
+    @MainActor
+    func teardownReleasesConnectionlessAssistantState() {
+        let state = TrailingPaneState()
+        let viewModel = state.assistant.activate()
+        viewModel.attachedContext = [.currentQuery(text: "SELECT 1")]
+        viewModel.currentQuery = "SELECT 1"
+
+        state.teardown()
+
+        #expect(viewModel.attachedContext.isEmpty)
+        #expect(viewModel.currentQuery == nil)
+        #expect(state.assistant.viewModelIfActivated == nil)
+        #expect(!state.assistant.isActivated)
+    }
+
     /// `AIChatViewModel.init` reads the stored conversations, so a window that never opens the
     /// assistant must never build one. It used to be forced one line into the window's `onAppear`,
     /// which put that read on the window-open path for every connection, with the feature off.

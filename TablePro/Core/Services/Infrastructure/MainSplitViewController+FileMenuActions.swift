@@ -74,7 +74,7 @@ extension MainSplitViewController {
                 }
                 /// `closeWindowAwaiting`, not a raw `close()`. An inspector edit is connection
                 /// scoped, so `closeTabAwaiting` deliberately does not ask about it; closing the
-                /// window directly then tore down the per-window `RightPanelState` and dropped it
+                /// window directly then tore down the per-window `TrailingPaneState` and dropped it
                 /// with no prompt. With the tab already gone this window has none left, which is
                 /// the branch that closes it.
                 await actions.closeWindowAwaiting()

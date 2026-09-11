@@ -149,3 +149,44 @@ struct AIProviderFactoryResolveTests {
         #expect(resolved?.model == "")
     }
 }
+
+@Suite("AIProviderFactory config resolution")
+struct AIProviderFactoryResolveConfigTests {
+    private func settings(providers: [AIProviderConfig], activeID: UUID?) -> AISettings {
+        AISettings(enabled: true, providers: providers, activeProviderID: activeID)
+    }
+
+    @Test("An override naming a live provider resolves to it")
+    func overrideWins() {
+        let active = AIProviderConfig(name: "Active", type: .claude)
+        let other = AIProviderConfig(name: "Other", type: .claude)
+        let resolved = AIProviderFactory.resolveConfig(
+            settings: settings(providers: [active, other], activeID: active.id),
+            overrideProviderId: other.id
+        )
+        #expect(resolved?.id == other.id)
+    }
+
+    @Test("An override naming a deleted provider falls back to the active one")
+    func deletedOverrideFallsBackToActive() {
+        let active = AIProviderConfig(name: "Active", type: .claude)
+        let resolved = AIProviderFactory.resolveConfig(
+            settings: settings(providers: [active], activeID: active.id),
+            overrideProviderId: UUID()
+        )
+        #expect(resolved?.id == active.id)
+    }
+
+    @Test("resolveConfig agrees with the configuration resolve streams on")
+    func agreesWithResolve() {
+        let active = AIProviderConfig(name: "Active", type: .claude)
+        let live = settings(providers: [active], activeID: active.id)
+        defer { AIProviderFactory.invalidateCache(for: active.id) }
+
+        let staleOverride = UUID()
+        let streamed = AIProviderFactory.resolve(settings: live, overrideProviderId: staleOverride)
+        let keyed = AIProviderFactory.resolveConfig(settings: live, overrideProviderId: staleOverride)
+
+        #expect(streamed?.config.id == keyed?.id)
+    }
+}

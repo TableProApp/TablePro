@@ -15,14 +15,15 @@ enum ChatToolBootstrap {
 
     static func register() {
         let registry = ChatToolRegistry.shared
-        registry.register(ListConnectionsChatTool())
-        registry.register(GetConnectionStatusChatTool())
-        registry.register(ListDatabasesChatTool())
-        registry.register(ListSchemasChatTool())
-        registry.register(ListTablesChatTool())
-        registry.register(DescribeTableChatTool())
-        registry.register(GetTableDDLChatTool())
-        registry.register(ExecuteQueryChatTool())
-        registry.register(ConfirmDestructiveOperationChatTool())
+        registry.registerBuiltIn(ListConnectionsChatTool())
+        registry.registerBuiltIn(GetConnectionStatusChatTool())
+        registry.registerBuiltIn(ListDatabasesChatTool())
+        registry.registerBuiltIn(ListSchemasChatTool())
+        registry.registerBuiltIn(ListTablesChatTool())
+        registry.registerBuiltIn(DescribeTableChatTool())
+        registry.registerBuiltIn(GetTableDDLChatTool())
+        registry.registerBuiltIn(ExecuteQueryChatTool())
+        registry.registerBuiltIn(ExplainQueryChatTool())
+        registry.registerBuiltIn(ConfirmDestructiveOperationChatTool())
     }
 }
