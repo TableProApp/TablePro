@@ -34,17 +34,23 @@ internal struct WelcomeNewConnectionMenu: View {
 extension WelcomeConnectionList {
     @ViewBuilder
     func contextMenuContent(for ids: Set<UUID>) -> some View {
-        if ids.isEmpty {
+        let connections = vm.connections.filter { ids.contains($0.id) }
+        let external = vm.externalConnections(for: ids)
+        switch WelcomeContextMenuKind.resolve(savedCount: connections.count, externalCount: external.count) {
+        case .newConnection:
             WelcomeNewConnectionMenu(vm: vm)
-        } else {
-            let connections = vm.connections.filter { ids.contains($0.id) }
-            if connections.count > 1 {
-                multiSelectionContextMenu(for: connections)
-            } else if let single = connections.first {
+        case .singleConnection:
+            if let single = connections.first {
                 singleConnectionContextMenu(for: single)
-            } else {
-                externalConnectionContextMenu(for: vm.externalConnections(for: ids))
             }
+        case .multipleConnections:
+            multiSelectionContextMenu(
+                for: connections,
+                selection: ids,
+                selectionCount: connections.count + external.count
+            )
+        case .externalOnly:
+            externalConnectionContextMenu(for: external)
         }
     }
 
@@ -73,10 +79,14 @@ extension WelcomeConnectionList {
     }
 
     @ViewBuilder
-    private func multiSelectionContextMenu(for connections: [DatabaseConnection]) -> some View {
-        Button { primaryAction(for: Set(connections.map(\.id))) } label: {
+    private func multiSelectionContextMenu(
+        for connections: [DatabaseConnection],
+        selection: Set<UUID>,
+        selectionCount: Int
+    ) -> some View {
+        Button { primaryAction(for: selection) } label: {
             Label(
-                String(format: String(localized: "Connect %d Connections"), connections.count),
+                String(format: String(localized: "Connect %d Connections"), selectionCount),
                 systemImage: "play.fill"
             )
         }
@@ -200,7 +210,7 @@ extension WelcomeConnectionList {
         Divider()
 
         Button { CompareSyncLauncher.open(prefillSource: connection.id) } label: {
-            Label(String(localized: "Compare/Sync with…"), systemImage: "arrow.left.arrow.right.square")
+            Label(String(localized: "Compare & Sync With…"), systemImage: "arrow.left.arrow.right.square")
         }
 
         Divider()

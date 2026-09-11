@@ -17,6 +17,7 @@ internal final class WelcomeWindowController: NSWindowController {
     internal static func present() {
         let controller = shared ?? WelcomeWindowController(viewModel: WelcomeViewModel())
         shared = controller
+        controller.viewModel.refreshImportableApp()
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
         AppActivationPolicyController.shared.activate()

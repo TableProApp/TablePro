@@ -47,8 +47,12 @@ final class WelcomeViewModel {
     var tagFilter = TagFilter() { didSet { if tagFilter != oldValue { rebuildTree() } } }
     var selectedConnectionIds: Set<UUID> = []
     var groups: [ConnectionGroup] = []
-    var linkedConnections: [LinkedConnection] = []
-    var teamLibraryConnections: [LinkedConnection] = []
+    var linkedConnections: [LinkedConnection] = [] {
+        didSet { rebuildTree() }
+    }
+    var teamLibraryConnections: [LinkedConnection] = [] {
+        didSet { rebuildTree() }
+    }
     private(set) var hasImportableApp = false
     var connectionsToDelete: [DatabaseConnection] = []
     var showDeleteConfirmation = false
@@ -94,6 +98,7 @@ final class WelcomeViewModel {
     @ObservationIgnored private var connectionUpdatedCancellable: AnyCancellable?
     @ObservationIgnored private var linkedFoldersCancellable: AnyCancellable?
     @ObservationIgnored private var teamLibraryCancellable: AnyCancellable?
+    @ObservationIgnored private var licenseCancellable: AnyCancellable?
     @ObservationIgnored private var welcomeRouterTask: Task<Void, Never>?
     @ObservationIgnored private var searchDebounceTask: Task<Void, Never>?
     @ObservationIgnored private let importableAppDetector: @MainActor () -> Bool
@@ -180,12 +185,13 @@ final class WelcomeViewModel {
 
         let (tree, indices) = buildGroupTreeWithIndices(groups: groups, connections: connections)
         var baseItems = searchText.isEmpty ? tree : filterGroupTree(tree, searchText: searchText)
+        if showsFavoritesSection {
+            baseItems = removingConnections(from: baseItems, where: \.isFavorite)
+        }
         if tagFilter.isActive {
             baseItems = filterGroupTreeByTags(baseItems, filter: tagFilter)
         }
-        treeItems = showsFavoritesSection
-            ? removingConnections(from: baseItems, where: \.isFavorite)
-            : baseItems
+        treeItems = baseItems
 
         connectionCountByGroup = indices.connectionCountByGroup
         depthByGroup = indices.depthByGroup
@@ -261,8 +267,12 @@ final class WelcomeViewModel {
 
     // MARK: - Setup & Teardown
 
-    func setUp() {
+    func refreshImportableApp() {
         hasImportableApp = importableAppDetector()
+    }
+
+    func setUp() {
+        refreshImportableApp()
         guard connectionUpdatedCancellable == nil else { return }
 
         if !hasStoredGroupExpansion {
@@ -286,6 +296,12 @@ final class WelcomeViewModel {
             }
 
         teamLibraryCancellable = services.appEvents.teamLibraryDidUpdate
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.teamLibraryConnections = Self.buildTeamLibraryConnections()
+            }
+
+        licenseCancellable = services.appEvents.licenseStatusDidChange
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.teamLibraryConnections = Self.buildTeamLibraryConnections()

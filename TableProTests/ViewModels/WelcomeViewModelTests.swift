@@ -295,6 +295,57 @@ final class WelcomeViewModelTests: XCTestCase {
         XCTAssertTrue(reopened.expandedGroupIds.isEmpty, "Collapsing every group must be remembered")
     }
 
+    func testATaggedFavoriteLeavesNoEmptyGroupUnderTheTagFilter() throws {
+        let group = ConnectionGroup(name: "Acme")
+        try groupStorage.addGroup(group)
+        let tagId = UUID()
+        var favorite = DatabaseConnection(name: "Prod", type: .mysql, sortOrder: 0)
+        favorite.groupId = group.id
+        favorite.isFavorite = true
+        favorite.tagIds = [tagId]
+        var untagged = DatabaseConnection(name: "Dev", type: .mysql, sortOrder: 1)
+        untagged.groupId = group.id
+        connectionStorage.saveConnections([favorite, untagged])
+        viewModel.loadConnections()
+
+        viewModel.tagFilter = TagFilter(selectedIds: [tagId])
+
+        XCTAssertTrue(viewModel.treeItems.isEmpty, "A group whose only match moved to Favorites must not stay behind empty")
+        XCTAssertEqual(viewModel.favoriteConnections.map(\.id), [favorite.id])
+    }
+
+    func testReplacingLinkedConnectionsReappliesTheFilters() {
+        let tagId = UUID()
+        var tagged = DatabaseConnection(name: "Prod", type: .mysql, sortOrder: 0)
+        tagged.tagIds = [tagId]
+        let plain = DatabaseConnection(name: "Dev", type: .mysql, sortOrder: 1)
+        connectionStorage.saveConnections([tagged, plain])
+        viewModel.loadConnections()
+        viewModel.tagFilter = TagFilter(selectedIds: [tagId])
+        connectionStorage.saveConnections([plain])
+        viewModel.connections = connectionStorage.loadConnections()
+
+        viewModel.linkedConnections = []
+
+        XCTAssertFalse(viewModel.tagFilter.isActive, "A change to the linked rows must re-run the list's rules")
+    }
+
+    func testRefreshingTheImportOfferPicksUpANewlyInstalledApp() {
+        let installed = InstalledAppFlag()
+        let offering = WelcomeViewModel(
+            services: makeServices(),
+            importableAppDetector: { installed.value },
+            groupExpansionStore: WelcomeGroupExpansionStore(defaults: defaults)
+        )
+        offering.refreshImportableApp()
+        XCTAssertFalse(offering.hasImportableApp)
+
+        installed.value = true
+        offering.refreshImportableApp()
+
+        XCTAssertTrue(offering.hasImportableApp)
+    }
+
     func testLinkedConnectionsFollowTheSearchAndStepAsideForATagFilter() {
         let folderId = UUID()
         let external = ["Analytics", "Billing"].map { name in
@@ -592,6 +643,11 @@ final class WelcomeViewModelTests: XCTestCase {
         XCTAssertEqual(first, second, "A shared row must keep its identity across launches")
         XCTAssertNotEqual(first, otherFolder)
         XCTAssertNotEqual(first, otherPayload)
+    }
+
+    @MainActor
+    private final class InstalledAppFlag {
+        var value = false
     }
 
     private func makeExportable(name: String) -> ExportableConnection {
