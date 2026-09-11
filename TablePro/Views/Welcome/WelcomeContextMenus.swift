@@ -7,11 +7,35 @@ import AppKit
 import Combine
 import SwiftUI
 
-extension WelcomeWindowView {
+internal struct WelcomeNewConnectionMenu: View {
+    let vm: WelcomeViewModel
+
+    var body: some View {
+        Button(action: { WindowOpener.shared.openConnectionForm() }) {
+            Label("New Connection…", systemImage: "plus")
+        }
+
+        Divider()
+
+        Button {
+            vm.importConnectionsFromFile()
+        } label: {
+            Label(String(localized: "Import Connections…"), systemImage: "square.and.arrow.down")
+        }
+
+        Button {
+            vm.importConnectionsFromApp()
+        } label: {
+            Label(String(localized: "Import from Other App…"), systemImage: "square.and.arrow.down.on.square")
+        }
+    }
+}
+
+extension WelcomeConnectionList {
     @ViewBuilder
     func contextMenuContent(for ids: Set<UUID>) -> some View {
         if ids.isEmpty {
-            newConnectionContextMenu
+            WelcomeNewConnectionMenu(vm: vm)
         } else {
             let connections = vm.connections.filter { ids.contains($0.id) }
             if connections.count > 1 {
@@ -322,61 +346,4 @@ extension WelcomeWindowView {
             }
         }
     }
-
-    @ViewBuilder
-    var newConnectionContextMenu: some View {
-        Button(action: { WindowOpener.shared.openConnectionForm() }) {
-            Label("New Connection…", systemImage: "plus")
-        }
-
-        Divider()
-
-        Button {
-            vm.importConnectionsFromFile()
-        } label: {
-            Label(String(localized: "Import Connections…"), systemImage: "square.and.arrow.down")
-        }
-
-        Button {
-            vm.importConnectionsFromApp()
-        } label: {
-            Label(String(localized: "Import from Other App…"), systemImage: "square.and.arrow.down.on.square")
-        }
-    }
-}
-
-// MARK: - Flat Group Entry
-
-struct FlatGroupEntry {
-    let group: ConnectionGroup
-    let depth: Int
-}
-
-func flattenGroupsForMenu(groups: [ConnectionGroup], parentId: UUID? = nil, depth: Int = 0) -> [FlatGroupEntry] {
-    let validGroupIds = Set(groups.map(\.id))
-    let levelGroups: [ConnectionGroup]
-    if parentId == nil {
-        levelGroups = groups
-            .filter { $0.parentId == nil || ($0.parentId.flatMap { validGroupIds.contains($0) } != true) }
-            .sorted {
-                $0.sortOrder != $1.sortOrder
-                    ? $0.sortOrder < $1.sortOrder
-                    : $0.name.localizedStandardCompare($1.name) == .orderedAscending
-            }
-    } else {
-        levelGroups = groups
-            .filter { $0.parentId == parentId }
-            .sorted {
-                $0.sortOrder != $1.sortOrder
-                    ? $0.sortOrder < $1.sortOrder
-                    : $0.name.localizedStandardCompare($1.name) == .orderedAscending
-            }
-    }
-
-    var result: [FlatGroupEntry] = []
-    for group in levelGroups {
-        result.append(FlatGroupEntry(group: group, depth: depth))
-        result.append(contentsOf: flattenGroupsForMenu(groups: groups, parentId: group.id, depth: depth + 1))
-    }
-    return result
 }
