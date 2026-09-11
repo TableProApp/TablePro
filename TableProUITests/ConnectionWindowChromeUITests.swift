@@ -59,7 +59,6 @@ final class ConnectionWindowChromeUITests: UITestCase {
     func testTheDetailPaneNeverDrawsNothingWhileConnecting() throws {
         let app = try launchApp()
         XCTAssertTrue(app.windows.firstMatch.waitToExist(timeout: 20))
-        dismissOnboarding(in: app)
 
         try openProbeConnection(in: app)
 

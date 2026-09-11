@@ -23,6 +23,60 @@ internal enum DatabaseTreeObjectGroupResolver {
     }
 }
 
+internal extension DatabaseTreeNode.Status {
+    /// What a section with no rows says, from the fetch that fills it. A section still waiting and
+    /// a section whose fetch failed are not a section with nothing in it.
+    static func emptySection(_ phase: MetadataLoadPhase) -> DatabaseTreeNode.Status {
+        switch phase {
+        case .idle, .loading: return .loading
+        case .failed(let message): return .error(message)
+        case .loaded: return .empty
+        }
+    }
+
+    /// What a container with nothing to list says. Only the kinds the engine declares take part,
+    /// because a fetch the engine never runs stays idle and would hold the row on a spinner.
+    static func emptyContainer(sideStates: [MetadataLoadPhase]) -> DatabaseTreeNode.Status {
+        if let failure = sideStates.compactMap(\.failureMessage).first {
+            return .error(failure)
+        }
+        return sideStates.allSatisfy(\.isLoaded) ? .empty : .loading
+    }
+}
+
+/// Where each side kind's fetch stands for one container. A kind the engine does not declare has no
+/// phase, because a fetch the engine never runs stays idle and would read as loading forever.
+internal struct DatabaseTreeSidePhases: Equatable {
+    let routines: MetadataLoadPhase
+    let triggers: MetadataLoadPhase?
+    let types: MetadataLoadPhase?
+
+    var all: [MetadataLoadPhase] {
+        [routines] + [triggers, types].compactMap { $0 }
+    }
+
+    func phase(for category: SidebarObjectCategory) -> MetadataLoadPhase {
+        switch category {
+        case .table: return .loaded
+        case .routine: return routines
+        case .trigger: return triggers ?? .loaded
+        case .type: return types ?? .loaded
+        }
+    }
+
+    /// A failure shows on its own group's placeholder. Only a kind the container lists no group for
+    /// has nowhere to say so, and its failure goes on the container instead.
+    func unplacedFailure(listing categories: Set<SidebarObjectCategory>) -> String? {
+        let phases: [(SidebarObjectCategory, MetadataLoadPhase?)] = [
+            (.routine, routines), (.trigger, triggers), (.type, types)
+        ]
+        for (category, phase) in phases where !categories.contains(category) {
+            if let message = phase?.failureMessage { return message }
+        }
+        return nil
+    }
+}
+
 final class DatabaseTreeNode: SidebarOutlineNode {
     enum Status: Equatable {
         case loading

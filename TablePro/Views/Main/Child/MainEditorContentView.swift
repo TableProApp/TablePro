@@ -82,6 +82,11 @@ struct MainEditorContentView: View {
         return AnyChangeManager(changeManager)
     }
 
+    private var showsHistoryTip: Bool {
+        let historyState = HistoryPanelState.forConnection(connectionId)
+        return !historyState.isVisible && !historyState.isCapturePaused
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -109,6 +114,11 @@ struct MainEditorContentView: View {
             }
         )
         .background(.background)
+        .onChange(of: historyState.isVisible, initial: true) { _, isVisible in
+            if isVisible {
+                FeatureTipSignals.queryHistoryShown()
+            }
+        }
         .sheet(item: Binding(
             get: { coordinator.favoriteDialogQuery },
             set: { coordinator.favoriteDialogQuery = $0 }
@@ -457,6 +467,7 @@ struct MainEditorContentView: View {
                         onExecuteQuery: { coordinator.runQuery() },
                         onRunStatement: { sql, offset in coordinator.runStatement(sql, sourceOffset: offset) },
                         isExecuting: coordinator.tabExecution.isExecuting(tab.id),
+                        showsHistoryTip: showsHistoryTip,
                         onExplain: { variant in coordinator.runExplain(variant: variant) },
                         onAIExplain: { text in
                             coordinator.showAssistant()
@@ -580,7 +591,12 @@ struct MainEditorContentView: View {
 
     @ViewBuilder
     private func tableTabContent(tab: QueryTab) -> some View {
-        resultsSection(tab: tab)
+        VStack(spacing: 0) {
+            if tab.isPreview {
+                FeatureTipInline(tip: KeepTableOpenTip())
+            }
+            resultsSection(tab: tab)
+        }
     }
 
     // MARK: - Results Section

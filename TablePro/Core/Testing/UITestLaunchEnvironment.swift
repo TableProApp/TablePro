@@ -19,6 +19,11 @@ import Foundation
 /// `TABLEPRO_UI_TESTING` without a sandbox has already refused to launch.
 internal enum UITestLaunchEnvironment {
     internal static let sampleDatabaseVariable = "TABLEPRO_UI_TEST_OPEN_SAMPLE"
+    internal static let welcomeSheetVariable = "TABLEPRO_UI_TEST_SHOW_WELCOME_SHEET"
+
+    internal static var requestsWelcomeSheet: Bool {
+        isSet(welcomeSheetVariable)
+    }
 
     /// Delivered through the ordinary intent path rather than opened directly, so the launch
     /// counts as one somebody asked for. `runStartupBehaviorIfNeeded(skipping:)` skips a launch

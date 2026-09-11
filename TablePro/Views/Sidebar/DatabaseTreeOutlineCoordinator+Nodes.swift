@@ -47,7 +47,7 @@ extension DatabaseTreeOutlineCoordinator {
         case .containerObjectKindSection(let group):
             return containerObjectNodes(for: group)
         case .hierarchicalSchemaSection(let schema):
-            return hierarchicalTableNodes(schema: schema)
+            return hierarchicalSchemaNodes(schema: schema)
         case .redisKeysSection:
             return redisChildren(of: nil)
         case .redisNode(let redisNode):
@@ -78,7 +78,7 @@ extension DatabaseTreeOutlineCoordinator {
 
     /// Which shape the root takes. The three sidebar modes used to be three views; they are one
     /// outline now and this is the only thing that still differs between them.
-    private var rootShape: SidebarRootShape {
+    internal var rootShape: SidebarRootShape {
         SidebarRootShapeResolver.resolve(
             groupingStrategy: PluginManager.shared.databaseGroupingStrategy(for: databaseType),
             sidebarLayout: sidebarState?.sidebarLayout ?? .flat,
@@ -112,7 +112,7 @@ extension DatabaseTreeOutlineCoordinator {
         return nodes
     }
 
-    private var browsingDatabase: String? {
+    internal var browsingDatabase: String? {
         let name = mainCoordinator?.browseDatabaseName ?? activeDatabase ?? ""
         return name.isEmpty ? nil : name
     }
@@ -170,7 +170,30 @@ extension DatabaseTreeOutlineCoordinator {
         }
     }
 
+    /// A section with no rows says why, the way a tree container does: still loading, failed, or
+    /// genuinely empty. Left bare, an empty Procedures section read the same as one whose fetch never
+    /// came back. A search that matches nothing in a section is not a reason, so it stays bare.
     private func flatObjectNodes(for kind: SidebarObjectKind) -> [DatabaseTreeNode] {
+        let rows = flatObjectRows(for: kind)
+        guard rows.isEmpty, searchText.isEmpty, viewModel != nil else { return rows }
+        return [
+            statusNode(
+                parentId: DatabaseTreeNode.objectKindSectionId(kind),
+                status: .emptySection(flatLoadPhase(for: kind))
+            )
+        ]
+    }
+
+    private func flatLoadPhase(for kind: SidebarObjectKind) -> MetadataLoadPhase {
+        switch kind.category {
+        case .table: return .loaded
+        case .routine: return schemaService.routinesLoadState(for: connectionId).erased
+        case .trigger: return schemaService.triggersLoadState(for: connectionId).erased
+        case .type: return schemaService.userDefinedTypesLoadState(for: connectionId).erased
+        }
+    }
+
+    private func flatObjectRows(for kind: SidebarObjectKind) -> [DatabaseTreeNode] {
         guard let viewModel else { return [] }
         let database = browsingDatabase
         switch kind.category {
@@ -217,17 +240,17 @@ extension DatabaseTreeOutlineCoordinator {
         DatabaseTreeFilter.hierarchicalSchemaIsVisible(
             schema,
             searchText: searchText,
-            isLoaded: isSchemaLoaded(schema),
-            tables: schemaService.tables(for: connectionId, schema: schema)
+            isLoaded: schemaService.isSchemaSettled(for: connectionId, schema: schema),
+            tables: schemaService.tables(for: connectionId, schema: schema),
+            routines: schemaService.routines(for: connectionId, schema: schema),
+            triggers: schemaService.triggers(for: connectionId, schema: schema),
+            userTypes: schemaService.userDefinedTypes(for: connectionId, schema: schema)
         )
     }
 
-    private func isSchemaLoaded(_ schema: String) -> Bool {
-        if case .loaded = schemaService.schemaState(for: connectionId, schema: schema) { return true }
-        return false
-    }
-
-    private func hierarchicalTableNodes(schema: String) -> [DatabaseTreeNode] {
+    /// A schema lists its objects in the same kind groups a tree container uses, so a schema that
+    /// holds only procedures shows a Procedures group instead of reading as empty.
+    private func hierarchicalSchemaNodes(schema: String) -> [DatabaseTreeNode] {
         let parentId = DatabaseTreeNode.hierarchicalSchemaSectionId(schema)
         switch schemaService.schemaState(for: connectionId, schema: schema) {
         case .idle, .loading:
@@ -235,16 +258,45 @@ extension DatabaseTreeOutlineCoordinator {
         case .failed(let message):
             return [statusNode(parentId: parentId, status: .error(message))]
         case .loaded:
-            let tables = DatabaseTreeFilter.hierarchicalTables(
-                schemaService.tables(for: connectionId, schema: schema), schema: schema, searchText: searchText
+            let database = hierarchicalGroupDatabase
+            return groupedObjectNodes(
+                buckets: objectBuckets(database: database, schema: schema),
+                sidePhases: hierarchicalSideLoadStates(schema: schema),
+                database: database,
+                schema: schema,
+                parentId: parentId
             )
-            guard !tables.isEmpty else { return [statusNode(parentId: parentId, status: .empty)] }
-            let database = browsingDatabase
-            return tables.map { table in
-                let ref = DatabaseTreeTableRef(database: database, schema: schema, table: table)
-                return node(id: DatabaseTreeNode.tableId(ref), kind: .table(ref))
-            }
         }
+    }
+
+    /// An engine grouped by hierarchical schema browses no database, so its groups are keyed by
+    /// the browsed one when there is one and by nothing otherwise.
+    private var hierarchicalGroupDatabase: String {
+        browsingDatabase ?? ""
+    }
+
+    private func hierarchicalSideLoadStates(schema: String) -> DatabaseTreeSidePhases {
+        let declared = declaredObjectKinds
+        return DatabaseTreeSidePhases(
+            routines: schemaService.routinesLoadState(for: connectionId, schema: schema).erased,
+            triggers: declared.contains(.trigger)
+                ? schemaService.triggersLoadState(for: connectionId, schema: schema).erased
+                : nil,
+            types: declared.contains(.type)
+                ? schemaService.userDefinedTypesLoadState(for: connectionId, schema: schema).erased
+                : nil
+        )
+    }
+
+    private func hierarchicalObjectBuckets(schema: String) -> DatabaseTreeObjectBuckets {
+        DatabaseTreeFilter.hierarchicalObjectBuckets(
+            schema: schema,
+            tables: schemaService.tables(for: connectionId, schema: schema),
+            routines: schemaService.routines(for: connectionId, schema: schema),
+            triggers: schemaService.triggers(for: connectionId, schema: schema),
+            userTypes: schemaService.userDefinedTypes(for: connectionId, schema: schema),
+            searchText: searchText
+        )
     }
 
     private func redisChildren(of parent: RedisKeyNode?) -> [DatabaseTreeNode] {
@@ -315,16 +367,23 @@ extension DatabaseTreeOutlineCoordinator {
         }
     }
 
+    /// The schema-grouped shape reads its objects from the connection's own schema service and the
+    /// tree reads them per database, so the one shared bucket cache asks the source that shape owns.
     private func objectBuckets(database: String, schema: String?) -> DatabaseTreeObjectBuckets {
         let key = DatabaseTreeContainerKey(database: database, schema: schema, searchText: searchText)
         if let cached = objectBucketsCache[key] { return cached }
-        let buckets = DatabaseTreeFilter.objectBuckets(
-            tables: service.tables(connectionId: connectionId, database: database, schema: schema),
-            routines: service.routines(connectionId: connectionId, database: database, schema: schema),
-            triggers: service.triggers(connectionId: connectionId, database: database, schema: schema),
-            userTypes: service.userDefinedTypes(connectionId: connectionId, database: database, schema: schema),
-            searchText: searchText
-        )
+        let buckets: DatabaseTreeObjectBuckets
+        if rootShape == .hierarchicalSchema, let schema {
+            buckets = hierarchicalObjectBuckets(schema: schema)
+        } else {
+            buckets = DatabaseTreeFilter.objectBuckets(
+                tables: service.tables(connectionId: connectionId, database: database, schema: schema),
+                routines: service.routines(connectionId: connectionId, database: database, schema: schema),
+                triggers: service.triggers(connectionId: connectionId, database: database, schema: schema),
+                userTypes: service.userDefinedTypes(connectionId: connectionId, database: database, schema: schema),
+                searchText: searchText
+            )
+        }
         objectBucketsCache[key] = buckets
         return buckets
     }
@@ -332,30 +391,45 @@ extension DatabaseTreeOutlineCoordinator {
     /// A fetch the engine never runs stays idle for good, and idle is not loaded: counting it
     /// would hold every empty container on a spinner for a list that is never coming. So only the
     /// kinds this engine declares take part in deciding between "empty" and "loading".
-    private func sideLoadStates(database: String, schema: String?) -> [MetadataLoadPhase] {
-        var states = [service.routinesLoadState(connectionId: connectionId, database: database, schema: schema).erased]
+    private func sideLoadStates(database: String, schema: String?) -> DatabaseTreeSidePhases {
         let declared = declaredObjectKinds
-        if declared.contains(.trigger) {
-            states.append(service.triggersLoadState(connectionId: connectionId, database: database, schema: schema).erased)
+        return DatabaseTreeSidePhases(
+            routines: service.routinesLoadState(connectionId: connectionId, database: database, schema: schema).erased,
+            triggers: declared.contains(.trigger)
+                ? service.triggersLoadState(connectionId: connectionId, database: database, schema: schema).erased
+                : nil,
+            types: declared.contains(.type)
+                ? service.typesLoadState(connectionId: connectionId, database: database, schema: schema).erased
+                : nil
+        )
+    }
+
+    private func sidePhases(for group: DatabaseTreeObjectGroup) -> DatabaseTreeSidePhases {
+        if rootShape == .hierarchicalSchema, let schema = group.schema {
+            return hierarchicalSideLoadStates(schema: schema)
         }
-        if declared.contains(.type) {
-            states.append(service.typesLoadState(connectionId: connectionId, database: database, schema: schema).erased)
-        }
-        return states
+        return sideLoadStates(database: group.database, schema: group.schema)
     }
 
     private func loadedObjectNodes(database: String, schema: String?, parentId: String) -> [DatabaseTreeNode] {
-        let buckets = objectBuckets(database: database, schema: schema)
-        let sideStates = sideLoadStates(database: database, schema: schema)
-        let sideFailure = sideStates.compactMap(\.failureMessage).first
+        groupedObjectNodes(
+            buckets: objectBuckets(database: database, schema: schema),
+            sidePhases: sideLoadStates(database: database, schema: schema),
+            database: database,
+            schema: schema,
+            parentId: parentId
+        )
+    }
 
+    private func groupedObjectNodes(
+        buckets: DatabaseTreeObjectBuckets,
+        sidePhases: DatabaseTreeSidePhases,
+        database: String,
+        schema: String?,
+        parentId: String
+    ) -> [DatabaseTreeNode] {
         guard !buckets.isEmpty else {
-            if let sideFailure {
-                return [statusNode(parentId: parentId, status: .error(sideFailure))]
-            }
-            return sideStates.allSatisfy(\.isLoaded)
-                ? [statusNode(parentId: parentId, status: .empty)]
-                : [statusNode(parentId: parentId, status: .loading)]
+            return [statusNode(parentId: parentId, status: .emptyContainer(sideStates: sidePhases.all))]
         }
 
         let groups = DatabaseTreeObjectGroupResolver.groups(
@@ -370,8 +444,8 @@ extension DatabaseTreeOutlineCoordinator {
                 kind: .containerObjectKindSection(group)
             )
         }
-        if let sideFailure {
-            nodes.append(statusNode(parentId: parentId, status: .error(sideFailure)))
+        if let failure = sidePhases.unplacedFailure(listing: Set(groups.map(\.kind.category))) {
+            nodes.append(statusNode(parentId: parentId, status: .error(failure)))
         }
         return nodes
     }
@@ -379,38 +453,40 @@ extension DatabaseTreeOutlineCoordinator {
     private func containerObjectNodes(for group: DatabaseTreeObjectGroup) -> [DatabaseTreeNode] {
         let buckets = objectBuckets(database: group.database, schema: group.schema)
         let emptyId = DatabaseTreeNode.containerObjectKindSectionId(group)
+        /// A schema-grouped group carries no database, and a reference naming an empty one would
+        /// switch the session to a database called "" the moment the row opened.
+        let database: String? = group.database.isEmpty ? nil : group.database
+        let placeholder = DatabaseTreeNode.Status.emptySection(sidePhases(for: group).phase(for: group.kind.category))
         switch group.kind.category {
         case .table:
             let tables = buckets.tables[group.kind] ?? []
             guard !tables.isEmpty else {
-                return [statusNode(parentId: emptyId, status: .empty)]
+                return [statusNode(parentId: emptyId, status: placeholder)]
             }
             return tables.map { table in
-                let ref = DatabaseTreeTableRef(database: group.database, schema: group.schema, table: table)
+                let ref = DatabaseTreeTableRef(database: database, schema: group.schema, table: table)
                 return node(id: DatabaseTreeNode.tableId(ref), kind: .table(ref))
             }
         case .routine:
             let routines = buckets.routines[group.kind] ?? []
             guard !routines.isEmpty else {
-                return [statusNode(parentId: emptyId, status: .empty)]
+                return [statusNode(parentId: emptyId, status: placeholder)]
             }
-            return routineNodes(routines, database: group.database, schema: { _ in group.schema })
+            return routineNodes(routines, database: database, schema: { _ in group.schema })
         case .trigger:
             guard !buckets.triggers.isEmpty else {
-                return [statusNode(parentId: emptyId, status: .empty)]
+                return [statusNode(parentId: emptyId, status: placeholder)]
             }
             return buckets.triggers.map { trigger in
-                let ref = DatabaseTreeTriggerRef(
-                    database: group.database, schema: group.schema, trigger: trigger
-                )
+                let ref = DatabaseTreeTriggerRef(database: database, schema: group.schema, trigger: trigger)
                 return node(id: DatabaseTreeNode.triggerId(ref), kind: .trigger(ref))
             }
         case .type:
             guard !buckets.userTypes.isEmpty else {
-                return [statusNode(parentId: emptyId, status: .empty)]
+                return [statusNode(parentId: emptyId, status: placeholder)]
             }
             return buckets.userTypes.map { type in
-                let ref = DatabaseTreeUserTypeRef(database: group.database, schema: group.schema, type: type)
+                let ref = DatabaseTreeUserTypeRef(database: database, schema: group.schema, type: type)
                 return node(id: DatabaseTreeNode.userTypeId(ref), kind: .userType(ref))
             }
         }

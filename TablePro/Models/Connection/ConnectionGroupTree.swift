@@ -175,6 +175,20 @@ func filterGroupTreeByTags(_ items: [ConnectionGroupTreeNode], filter: TagFilter
     }
 }
 
+func removingConnections(
+    from items: [ConnectionGroupTreeNode],
+    where shouldRemove: (DatabaseConnection) -> Bool
+) -> [ConnectionGroupTreeNode] {
+    items.compactMap { item in
+        switch item {
+        case .connection(let conn):
+            return shouldRemove(conn) ? nil : item
+        case .group(let group, let children):
+            return .group(group, children: removingConnections(from: children, where: shouldRemove))
+        }
+    }
+}
+
 // MARK: - Tree Traversal
 
 func flattenVisibleConnections(
@@ -262,6 +276,32 @@ func connectionCount(in groupId: UUID, connections: [DatabaseConnection], groups
         return descendants.contains(gid)
     }.count
     return directCount + descendantCount
+}
+
+// MARK: - Menu Flattening
+
+struct FlatGroupEntry {
+    let group: ConnectionGroup
+    let depth: Int
+}
+
+func flattenGroupsForMenu(groups: [ConnectionGroup], parentId: UUID? = nil, depth: Int = 0) -> [FlatGroupEntry] {
+    let validGroupIds = Set(groups.map(\.id))
+    let levelGroups: [ConnectionGroup]
+    if parentId == nil {
+        levelGroups = sortGroups(groups.filter {
+            $0.parentId == nil || ($0.parentId.flatMap { validGroupIds.contains($0) } != true)
+        })
+    } else {
+        levelGroups = sortGroups(groups.filter { $0.parentId == parentId })
+    }
+
+    var result: [FlatGroupEntry] = []
+    for group in levelGroups {
+        result.append(FlatGroupEntry(group: group, depth: depth))
+        result.append(contentsOf: flattenGroupsForMenu(groups: groups, parentId: group.id, depth: depth + 1))
+    }
+    return result
 }
 
 // MARK: - Indexed Tree (O(G+C))

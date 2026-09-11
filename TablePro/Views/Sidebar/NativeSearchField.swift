@@ -91,6 +91,7 @@ struct NativeSearchField: NSViewRepresentable {
             field.invalidateIntrinsicContentSize()
         }
         field.placeholderString = placeholder
+        field.isEnabled = context.environment.isEnabled
         context.coordinator.onMoveUp = onMoveUp
         context.coordinator.onMoveDown = onMoveDown
         context.coordinator.onSubmit = onSubmit

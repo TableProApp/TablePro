@@ -28,8 +28,8 @@ struct SchemaServiceTests {
         ]
 
         let service = SchemaService()
-        await service.loadSchemaTables(connectionId: connectionId, schema: "sales", driver: driver)
-        await service.loadSchemaTables(connectionId: connectionId, schema: "hr", driver: driver)
+        await service.loadSchemaObjects(connectionId: connectionId, schema: "sales", driver: driver)
+        await service.loadSchemaObjects(connectionId: connectionId, schema: "hr", driver: driver)
 
         let names = Set(service.allLoadedTables(for: connectionId).map(\.name))
         #expect(names == ["orders", "leads", "employees"])
@@ -46,8 +46,8 @@ struct SchemaServiceTests {
         ]
 
         let service = SchemaService()
-        await service.loadSchemaTables(connectionId: connectionId, schema: "sales", driver: driver)
-        await service.loadSchemaTables(connectionId: connectionId, schema: "mirror", driver: driver)
+        await service.loadSchemaObjects(connectionId: connectionId, schema: "sales", driver: driver)
+        await service.loadSchemaObjects(connectionId: connectionId, schema: "mirror", driver: driver)
 
         let matching = service.allLoadedTables(for: connectionId).filter { $0.id == shared.id }
         #expect(matching.count == 1)
