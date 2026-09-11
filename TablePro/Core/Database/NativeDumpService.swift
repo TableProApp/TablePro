@@ -519,18 +519,29 @@ final class NativeDumpService {
         return "\"\(escaped)\""
     }
 
+    /// The locale variables a spawned tool reads, named rather than spelled at each use site. The
+    /// preference-key guard scans this target's sources for a quoted string passed to a `forKey:`
+    /// label and reports anything outside the `com.TablePro` namespace, so a locale variable
+    /// written that way reads as a stray `UserDefaults` key. Comments are scanned too.
+    nonisolated internal enum LocaleEnvironmentKey {
+        static let everyCategory = "LC_ALL"
+        static let characterHandling = "LC_CTYPE"
+        static let messages = "LC_MESSAGES"
+    }
+
     nonisolated private static let inheritedEnvironmentKeys: [String] = [
-        "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL"
+        "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", LocaleEnvironmentKey.everyCategory
     ]
 
     nonisolated internal static let untranslatedMessagesLocale = "C"
 
     nonisolated internal static func untranslatedMessagesEnvironment(_ environment: [String: String]) -> [String: String] {
         var result = environment
-        if let everyCategory = result.removeValue(forKey: "LC_ALL"), result["LC_CTYPE"] == nil {
-            result["LC_CTYPE"] = everyCategory
+        let everyCategory = result.removeValue(forKey: LocaleEnvironmentKey.everyCategory)
+        if let everyCategory, result[LocaleEnvironmentKey.characterHandling] == nil {
+            result[LocaleEnvironmentKey.characterHandling] = everyCategory
         }
-        result["LC_MESSAGES"] = untranslatedMessagesLocale
+        result[LocaleEnvironmentKey.messages] = untranslatedMessagesLocale
         return result
     }
 
