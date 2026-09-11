@@ -474,13 +474,6 @@ final class StructureGridDelegate: DataGridViewDelegate {
         rowView.isStructureEditable = connection.type.supportsSchemaEditing
 
         let src = sourceRow(for: row)
-        // Don't set `isDeleted` / visual state here. `DataGridView+Columns`
-        // calls `applyVisualState(visualState(for: row))` on every row view it
-        // returns from `tableView(_:rowViewForRow:)`. Setting it twice is a
-        // smell that previously hid the bug: when `applyVisualState` was a
-        // tint-only setter, this line was the only place the menu's
-        // `isDeleted` flag was assigned, and it was assigned only on row-view
-        // creation. Single source of truth now is `DataGridRowView.visualState`.
 
         if selectedTab == .foreignKeys, src < structureChangeManager.workingForeignKeys.count {
             rowView.referencedTableName = structureChangeManager.workingForeignKeys[src].referencedTable

@@ -16,6 +16,7 @@ struct DataGridUpdateSnapshotTests {
         reloadVersion: Int = 0,
         contentRevision: Int = 0,
         displayFormats: [ValueDisplayFormat?] = [],
+        highlightRules: [HighlightRule] = [],
         columnComments: [String: String] = [:]
     ) -> DataGridUpdateSnapshot {
         DataGridUpdateSnapshot(
@@ -24,6 +25,7 @@ struct DataGridUpdateSnapshotTests {
             columns: columns,
             valueFilteredIDsCount: nil,
             displayFormats: displayFormats,
+            highlightRules: highlightRules,
             configuration: DataGridConfiguration(),
             isEditable: true,
             rowReorder: .disabled,
@@ -77,6 +79,20 @@ struct DataGridUpdateSnapshotTests {
         let uuid = makeSnapshot(displayFormats: [.uuid])
 
         #expect(raw != uuid)
+    }
+
+    @Test("A highlight rule change invalidates the update snapshot")
+    func highlightRuleChangesSnapshot() {
+        let rule = HighlightRule(columnName: "type", value: "admin", color: .green)
+        var recolored = rule
+        recolored.color = .red
+
+        let highlighted = makeSnapshot(highlightRules: [rule])
+        let rebuilt = makeSnapshot(highlightRules: [rule])
+
+        #expect(makeSnapshot() != highlighted)
+        #expect(highlighted != makeSnapshot(highlightRules: [recolored]))
+        #expect(highlighted == rebuilt)
     }
 
     @Test("Display format cache entries are scoped to a pinned result set")

@@ -419,6 +419,17 @@ struct MainMenuValidationTests {
         #expect(enabled(#selector(MainSplitViewController.toggleFilterBar(_:)), context))
     }
 
+    @Test("Highlight Rules needs a connected data grid with columns")
+    func highlightRulesNeedsDataGrid() {
+        var context = MenuValidationContext()
+        context.canPresentHighlightRules = true
+        #expect(!enabled(#selector(MainSplitViewController.showHighlightRules(_:)), context))
+        context.isConnected = true
+        #expect(enabled(#selector(MainSplitViewController.showHighlightRules(_:)), context))
+        context.canPresentHighlightRules = false
+        #expect(!enabled(#selector(MainSplitViewController.showHighlightRules(_:)), context))
+    }
+
     @Test("Capability flags gate driver-specific commands")
     func capabilitiesGateCommands() {
         var context = MenuValidationContext()
@@ -445,6 +456,8 @@ struct MainMenuValidationTests {
     private func capableContext() -> MenuValidationContext {
         var context = MenuValidationContext()
         context.canUseTableResultCommands = true
+        context.canPresentHighlightRules = true
+        context.canNavigatePages = true
         context.isQueryTab = true
         context.hasResultRows = true
         context.hasQueryText = true
@@ -489,7 +502,8 @@ struct MainMenuValidationTests {
             #selector(MainSplitViewController.openContainerSwitcher(_:)),
             #selector(MainSplitViewController.showServerDashboard(_:)),
             #selector(MainSplitViewController.showUsersAndRoles(_:)),
-            #selector(MainSplitViewController.toggleFilterBar(_:))
+            #selector(MainSplitViewController.toggleFilterBar(_:)),
+            #selector(MainSplitViewController.showHighlightRules(_:))
         ]
     }
 

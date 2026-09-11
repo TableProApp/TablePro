@@ -13,6 +13,7 @@ struct DataGridUpdateSnapshot: Equatable {
     let columns: [String]
     let valueFilteredIDsCount: Int?
     let displayFormats: [ValueDisplayFormat?]
+    let highlightRules: [HighlightRule]
     let configuration: DataGridConfiguration
     let isEditable: Bool
     let rowReorder: DataGridRowReorder

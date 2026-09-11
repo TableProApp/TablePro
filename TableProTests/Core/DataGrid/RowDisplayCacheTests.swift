@@ -191,6 +191,27 @@ struct RowDisplayCacheTests {
         #expect(cache.box(forID: .existing(1)) == nil)
     }
 
+    @Test("A row's highlight lives and dies with its formatted text")
+    func highlightSharesTheTextLifetime() {
+        let cache = RowDisplayCache()
+        let highlight = RowHighlight(rowRule: HighlightRule(columnName: "c", value: "x"), cellRules: [:])
+        cache.setBox(makeBox(["x"]), forID: .existing(1))
+        cache.setHighlight(highlight, forID: .existing(1))
+        cache.setHighlight(highlight, forID: .existing(2))
+
+        cache.clearValues(forID: .existing(1))
+        #expect(cache.highlight(forID: .existing(1)) == nil)
+        #expect(cache.highlight(forID: .existing(2)) == highlight)
+
+        cache.clearHighlights()
+        #expect(cache.highlight(forID: .existing(2)) == nil)
+        #expect(cache.box(forID: .existing(1)) != nil)
+
+        cache.setHighlight(highlight, forID: .existing(3))
+        cache.removeAll()
+        #expect(cache.highlight(forID: .existing(3)) == nil)
+    }
+
     @Test("Inserted row IDs of both kinds round-trip")
     func mixedRowIDKinds() {
         let cache = RowDisplayCache()

@@ -50,4 +50,5 @@ final class DataGridDisplayState {
     /// reports a schema and a format change and clears the text it was just handed.
     var identitySchema: ColumnIdentitySchema?
     var displayFormats: [ValueDisplayFormat?]?
+    var highlightRuleSetKey: HighlightRuleSet.Key?
 }

@@ -24,6 +24,7 @@ struct ResultStatusBar: View {
     let snapshot: StatusBarSnapshot
     let filterState: TabFilterState
     let columnState: StatusBarColumnState
+    let highlightState: StatusBarHighlightState
     let paginationCallbacks: PaginationCallbacks
     let structureFooter: StructureFooterCapability
     let execution: ExecutionReadout
@@ -37,6 +38,7 @@ struct ResultStatusBar: View {
     let onStructureRemove: () -> Void
 
     @State private var showColumnPopover = false
+    @State private var showHighlightPopover = false
 
     var body: some View {
         HStack(spacing: StatusBarChrome.clusterSpacing) {
@@ -50,6 +52,15 @@ struct ResultStatusBar: View {
         .statusBarChrome()
         .onChange(of: snapshot.tabId) { _, _ in
             showColumnPopover = false
+            showHighlightPopover = false
+        }
+        .onChange(of: showHighlightPopover) { _, isShown in
+            guard !isShown else { return }
+            highlightState.onDismiss()
+        }
+        .onChange(of: highlightPresentation) { previous, current in
+            guard previous.tabId == current.tabId, model.controls.showsHighlightRules else { return }
+            showHighlightPopover = true
         }
     }
 
@@ -159,6 +170,9 @@ struct ResultStatusBar: View {
             if model.controls.showsColumns {
                 columnsButton
             }
+            if model.controls.showsHighlightRules {
+                highlightButton
+            }
             if model.controls.showsFilters {
                 filtersToggle
             }
@@ -238,6 +252,43 @@ struct ResultStatusBar: View {
                 }
             )
         }
+    }
+
+    private var highlightButton: some View {
+        Button {
+            showHighlightPopover.toggle()
+        } label: {
+            Label {
+                Text("Highlight Rules")
+            } icon: {
+                Image(systemName: "highlighter")
+            }
+        }
+        .labelStyle(.iconOnly)
+        .controlSize(.small)
+        .disabled(highlightState.columns.isEmpty)
+        .help(String(localized: "Highlight Rules"))
+        .accessibilityLabel(String(localized: "Highlight Rules"))
+        .accessibilityValue(highlightAccessibilityValue)
+        .accessibilityIdentifier("result-status-highlight")
+        .popover(isPresented: $showHighlightPopover, arrowEdge: .top) {
+            HighlightRulesPopover(
+                columns: highlightState.columns,
+                rules: highlightState.rules,
+                isPersisted: highlightState.isPersisted,
+                onChange: highlightState.onChange
+            )
+        }
+    }
+
+    private var highlightPresentation: HighlightPresentationRequest {
+        HighlightPresentationRequest(tabId: snapshot.tabId, count: highlightState.presentationRequest)
+    }
+
+    private var highlightAccessibilityValue: String {
+        let count = highlightState.activeRuleCount
+        guard count > 0 else { return String(localized: "No highlight rules") }
+        return String(format: String(localized: "%d rules"), count)
     }
 
     private var filtersToggle: some View {

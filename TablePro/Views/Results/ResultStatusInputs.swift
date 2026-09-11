@@ -16,6 +16,24 @@ struct PaginationCallbacks {
     let onRequestExactCount: () -> Void
 }
 
+struct HighlightPresentationRequest: Equatable {
+    let tabId: UUID?
+    let count: Int
+}
+
+struct StatusBarHighlightState {
+    let rules: [HighlightRule]
+    let columns: [String]
+    let isPersisted: Bool
+    let presentationRequest: Int
+    let onChange: ([HighlightRule]) -> Void
+    let onDismiss: () -> Void
+
+    var activeRuleCount: Int {
+        rules.filter { $0.isEnabled && $0.isValid }.count
+    }
+}
+
 struct StatusBarColumnState {
     let hidden: Set<String>
     let columns: [GridColumnEntry]

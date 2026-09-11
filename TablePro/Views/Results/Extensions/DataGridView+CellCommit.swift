@@ -20,6 +20,7 @@ extension TableViewCoordinator {
         invalidateDisplayCache()
         visualIndex.updateRow(row, from: changeManager, displayIDs: displayIDs)
 
+        invalidateRowDecoration(displayRow: row)
         guard let tableColumnIndex = tableColumnIndex(for: columnIndex) else { return }
         redrawCells(rows: IndexSet(integer: row), tableColumnIndexes: IndexSet(integer: tableColumnIndex))
     }

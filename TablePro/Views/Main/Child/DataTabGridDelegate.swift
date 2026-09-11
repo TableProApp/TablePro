@@ -134,6 +134,48 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         return menu
     }
 
+    func dataGridHighlightMenuItem(forRow displayRow: Int, dataColumn: Int) -> NSMenuItem? {
+        guard let coordinator,
+              let grid = tableViewCoordinator,
+              let tab = coordinator.tabManager.selectedTab,
+              let row = grid.displayRow(at: displayRow) else { return nil }
+        let tableRows = grid.tableRowsProvider()
+        let columns = tableRows.columns
+        guard columns.indices.contains(dataColumn), dataColumn < row.values.count else { return nil }
+
+        let tabId = tab.id
+        let context = HighlightMenuBuilder.CellContext(
+            columnName: columns[dataColumn],
+            columnOccurrence: HighlightRuleSet.occurrence(ofColumnAt: dataColumn, in: columns),
+            columnType: dataColumn < tableRows.columnTypes.count ? tableRows.columnTypes[dataColumn] : nil,
+            value: row.values[dataColumn],
+            existingRules: coordinator.highlightRules(for: tab)
+        )
+        let actions = HighlightMenuBuilder.Actions(
+            apply: { [weak coordinator] rule in
+                coordinator?.applyQuickHighlight(rule, forTab: tabId)
+            },
+            remove: { [weak coordinator] rule in
+                coordinator?.removeHighlightRules(sharingConditionWith: rule, forTab: tabId)
+            },
+            showRules: { [weak coordinator] in
+                coordinator?.presentHighlightRules()
+            }
+        )
+        return HighlightMenuBuilder.menuItem(for: context, actions: actions)
+    }
+
+    func dataGridHighlightValuesMenuItem(forColumn dataColumnIndex: Int) -> NSMenuItem? {
+        guard coordinator != nil, let grid = tableViewCoordinator else { return nil }
+        let columns = grid.tableRowsProvider().columns
+        guard columns.indices.contains(dataColumnIndex) else { return nil }
+        let columnName = columns[dataColumnIndex]
+        let occurrence = HighlightRuleSet.occurrence(ofColumnAt: dataColumnIndex, in: columns)
+        return ClosureMenuTarget.item(title: String(localized: "Highlight Values…")) { [weak coordinator] in
+            coordinator?.presentHighlightRules(addingRuleForColumn: columnName, occurrence: occurrence)
+        }
+    }
+
     weak var tableViewCoordinator: TableViewCoordinator?
 
     func dataGridAttach(tableViewCoordinator: TableViewCoordinator) {

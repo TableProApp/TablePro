@@ -21,6 +21,7 @@ struct MenuValidationContext: Equatable {
     var canUseGridFindCommands = false
     /// Jump to Column reads the mounted data grid, so it needs one on screen with columns to list.
     var canJumpToColumn = false
+    var canPresentHighlightRules = false
     /// Save As writes the selected tab's SQL, so it needs a query tab and not merely a connection.
     var isQueryTab = false
     /// Export Results exports the selected tab's rows, so an empty grid has nothing to offer.
@@ -261,6 +262,8 @@ extension MainSplitViewController: NSMenuItemValidation {
 
         case #selector(toggleFilterBar(_:)):
             return context.isConnected && context.canUseTableResultCommands
+        case #selector(showHighlightRules(_:)):
+            return context.isConnected && context.canPresentHighlightRules
         case #selector(pinResult(_:)):
             return context.canPinResultTab
         case #selector(navigateBack(_:)):
@@ -298,6 +301,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             canUseTableResultCommands: actions.canUseTableResultCommands,
             canUseGridFindCommands: actions.canUseGridFindCommands,
             canJumpToColumn: actions.canJumpToColumn,
+            canPresentHighlightRules: actions.canPresentHighlightRules,
             isQueryTab: actions.isQueryTab,
             hasResultRows: actions.hasResultRows,
             isCurrentTabEditable: actions.isCurrentTabEditable,

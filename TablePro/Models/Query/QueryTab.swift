@@ -74,6 +74,7 @@ struct QueryTab: Identifiable, Equatable {
     /// run with no `DataGridView` in the view tree. Living on the grid's SwiftUI coordinator meant
     /// switching result mode did not hide the order, it deleted it. (#2251)
     var valueFilter: GridValueFilterState
+    var sessionHighlightRules: [HighlightRule] = []
     var pagination: PaginationState
     var chartConfiguration: ResultChartConfiguration
     var hasUserInteraction: Bool
@@ -407,6 +408,7 @@ struct QueryTab: Identifiable, Equatable {
             && lhs.pagination == rhs.pagination
             && lhs.sortState == rhs.sortState
             && lhs.valueFilter == rhs.valueFilter
+            && lhs.sessionHighlightRules == rhs.sessionHighlightRules
             && lhs.chartConfiguration == rhs.chartConfiguration
             && lhs.display == rhs.display
             && lhs.tableContext.isEditable == rhs.tableContext.isEditable

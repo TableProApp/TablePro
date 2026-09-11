@@ -170,6 +170,11 @@ extension TableViewCoordinator {
             menu.addItem(clearAllItem)
         }
 
+        if let dataColumnIndex = dataColumnIndex(from: column.identifier),
+           let highlightItem = delegate?.dataGridHighlightValuesMenuItem(forColumn: dataColumnIndex) {
+            menu.addItem(highlightItem)
+        }
+
         if let dataColumnIndex = dataColumnIndex(from: column.identifier) {
             addDisplayFormatMenu(to: menu, dataColumnIndex: dataColumnIndex, tableRows: tableRows)
         }

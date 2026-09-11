@@ -58,27 +58,6 @@ internal enum EditorTabContextMenuBuilder {
         isEnabled: Bool = true,
         action: @escaping () -> Void
     ) {
-        let item = NSMenuItem(title: title, action: #selector(ClosureMenuTarget.fire), keyEquivalent: "")
-        let target = ClosureMenuTarget(action: action)
-        item.target = target
-        item.representedObject = target
-        item.isEnabled = isEnabled
-        menu.addItem(item)
-    }
-}
-
-/// `NSMenuItem` holds its target weakly, so the closure needs an owner that outlives the menu.
-/// `representedObject` is that owner: it is strong, it belongs to the item, and it goes when the
-/// item does.
-@MainActor
-private final class ClosureMenuTarget: NSObject {
-    private let action: () -> Void
-
-    init(action: @escaping () -> Void) {
-        self.action = action
-    }
-
-    @objc func fire() {
-        action()
+        menu.addItem(ClosureMenuTarget.item(title: title, isEnabled: isEnabled, action: action))
     }
 }

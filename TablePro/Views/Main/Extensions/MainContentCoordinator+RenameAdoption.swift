@@ -98,6 +98,11 @@ extension MainContentCoordinator {
                 connectionId: connectionId, databaseName: database, schemaName: schema, tableName: newName
             )
         )
+        let scopedDatabase = database.isEmpty ? nil : database
+        HighlightRuleStorage.shared.rename(
+            from: TableScope(connectionId: connectionId, database: scopedDatabase, schema: schema, table: oldName),
+            to: TableScope(connectionId: connectionId, database: scopedDatabase, schema: schema, table: newName)
+        )
     }
 
     private func moveFavorite(_ ref: DatabaseTreeTableRef, to newName: String, database: String?) {
@@ -136,6 +141,10 @@ extension MainContentCoordinator {
             toDatabase: toDatabase, toSchema: toSchema
         )
         FileColumnLayoutPersister.shared.renameScope(
+            connectionId: connectionId, fromDatabase: database, fromSchema: schema,
+            toDatabase: toDatabase, toSchema: toSchema
+        )
+        HighlightRuleStorage.shared.renameScope(
             connectionId: connectionId, fromDatabase: database, fromSchema: schema,
             toDatabase: toDatabase, toSchema: toSchema
         )

@@ -63,6 +63,10 @@ extension MainSplitViewController {
         commandActions?.toggleFilterPanel()
     }
 
+    @objc func showHighlightRules(_ sender: Any?) {
+        commandActions?.showHighlightRules()
+    }
+
     @objc func toggleQueryHistory(_ sender: Any?) {
         commandActions?.toggleHistoryPanel()
     }

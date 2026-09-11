@@ -51,6 +51,14 @@ struct ResultStatusBarLayoutTests {
                 onReset: {},
                 onJumpToColumn: nil
             ),
+            highlightState: StatusBarHighlightState(
+                rules: [],
+                columns: hasColumns ? ["id", "name"] : [],
+                isPersisted: tabType == .table,
+                presentationRequest: 0,
+                onChange: { _ in },
+                onDismiss: {}
+            ),
             paginationCallbacks: PaginationCallbacks(
                 onFirst: {},
                 onPrevious: {},

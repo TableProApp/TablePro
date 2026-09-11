@@ -657,6 +657,7 @@ struct TabDisplayState: Equatable {
     var isResultsCollapsed: Bool = false
     var resultSets: [ResultSet] = []
     var activeResultSetId: UUID?
+    var highlightRulesPresentationRequest: Int = 0
 
     var activeResultSet: ResultSet? {
         guard let id = activeResultSetId else { return resultSets.last }
@@ -698,5 +699,6 @@ struct TabDisplayState: Equatable {
             && lhs.isResultsCollapsed == rhs.isResultsCollapsed
             && lhs.resultSets.map(\.id) == rhs.resultSets.map(\.id)
             && lhs.activeResultSetId == rhs.activeResultSetId
+            && lhs.highlightRulesPresentationRequest == rhs.highlightRulesPresentationRequest
     }
 }

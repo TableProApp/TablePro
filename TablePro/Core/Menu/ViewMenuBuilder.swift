@@ -72,6 +72,10 @@ enum ViewMenuBuilder {
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
+                String(localized: "Highlight Rules…"),
+                action: #selector(MainSplitViewController.showHighlightRules(_:))
+            ),
+            MenuItemFactory.item(
                 String(localized: "Show Query History"),
                 action: #selector(MainSplitViewController.toggleQueryHistory(_:)),
                 shortcut: .toggleHistory,

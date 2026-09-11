@@ -916,6 +916,7 @@ struct MainEditorContentView: View {
                 editRefusalMessage: refusal?.message
             ),
             displayFormats: coordinator.displayFormats(for: tab),
+            highlightRules: coordinator.highlightRules(for: tab),
             delegate: dataTabDelegate,
             selectedRowIndices: Binding(
                 get: { selectionState.indices },
@@ -1018,6 +1019,18 @@ struct MainEditorContentView: View {
                     && !showsEmptyResultView(tab: tab, rows: resolvedRows)
                     ? { coordinator.showColumnJump(seededWith: $0) }
                     : nil
+            ),
+            highlightState: StatusBarHighlightState(
+                rules: coordinator.highlightRules(for: tab),
+                columns: resolvedRows.columns,
+                isPersisted: coordinator.highlightRuleScope(for: tab) != nil,
+                presentationRequest: tab.display.highlightRulesPresentationRequest,
+                onChange: { [coordinator, tabId = tab.id] rules in
+                    coordinator.setHighlightRules(rules, forTab: tabId)
+                },
+                onDismiss: { [coordinator, tabId = tab.id] in
+                    coordinator.discardIncompleteHighlightRules(forTab: tabId)
+                }
             ),
             paginationCallbacks: PaginationCallbacks(
                 onFirst: onFirstPage,

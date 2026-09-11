@@ -550,6 +550,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     static let rowViewIdentifier = NSUserInterfaceItemIdentifier("TableRowView")
     let visualIndex = RowVisualIndex()
+    var highlightRuleSet: HighlightRuleSet = .empty
     private let largeDatasetThreshold = 5_000
 
     var isLargeDataset: Bool { cachedRowCount > largeDatasetThreshold }
@@ -693,6 +694,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         systemTimeZoneCancellable = nil
         detachAccessibilityActivationObserver()
         visualIndex.clear()
+        highlightRuleSet = .empty
         displayCache.removeAll()
         columnDisplayFormats = []
         cachedRowCount = 0
@@ -747,6 +749,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         visualIndex.rebuild(from: changeManager, displayIDs: displayIDs)
         updateCache()
         tableView.insertRows(at: indices, withAnimation: Self.rowAnimation(.slideDown))
+        repaintVisibleRowDecorations()
     }
 
     /// Accessibility > Display > Reduce Motion asks for no sliding rows, and the app
@@ -764,6 +767,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         visualIndex.rebuild(from: changeManager, displayIDs: displayIDs)
         updateCache()
         tableView.removeRows(at: indices, withAnimation: Self.rowAnimation(.slideUp))
+        repaintVisibleRowDecorations()
     }
 
     private func bumpDisplayRevision() {
@@ -1046,6 +1050,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     private func invalidateDisplayCache(forDisplayRow displayIndex: Int, column: Int) {
         guard let row = displayRow(at: displayIndex) else { return }
+        displayCache.clearHighlight(forID: row.id)
         guard let box = displayCache.box(forID: row.id),
               column >= 0, column < box.values.count else { return }
         box.values[column] = nil
@@ -1062,6 +1067,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             invalidateDisplayCache(forDisplayRow: row, column: column)
             visualIndex.updateRow(row, from: changeManager, displayIDs: displayIDs)
             redrawCells(rows: IndexSet(integer: row), tableColumnIndexes: IndexSet(integer: tableColumn))
+            invalidateRowDecoration(displayRow: row)
         case .cellsChanged(let positions):
             guard !positions.isEmpty, let tableView else { return }
             var rowSet = IndexSet()
@@ -1080,6 +1086,9 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                 visualIndex.updateRow(row, from: changeManager, displayIDs: displayIDs)
             }
             redrawCells(rows: rowSet, tableColumnIndexes: colSet)
+            for row in rowSet {
+                invalidateRowDecoration(displayRow: row)
+            }
         case .rowsInserted(let indices):
             guard !indices.isEmpty else { return }
             overlayEditor?.dismiss(commit: false)
@@ -1128,21 +1137,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         invalidateDisplayCache(forDisplayRow: row)
         repaintRows(IndexSet(integer: row))
         refreshRowVisualState(at: row)
-    }
-
-    func refreshVisibleRowVisualStates() {
-        guard let tableView else { return }
-        tableView.enumerateAvailableRowViews { [weak self] rowView, row in
-            guard let self, let dataRowView = rowView as? DataGridRowView else { return }
-            dataRowView.applyVisualState(self.visualState(for: row))
-        }
-    }
-
-    func refreshRowVisualState(at row: Int) {
-        guard let tableView,
-              let dataRowView = tableView.rowView(atRow: row, makeIfNecessary: false) as? DataGridRowView
-        else { return }
-        dataRowView.applyVisualState(visualState(for: row))
     }
 
     func commitActiveCellEdit() {
@@ -1419,7 +1413,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         if let delegateState = delegate?.dataGridVisualState(forRow: row) {
             return delegateState
         }
-        return visualIndex.visualState(for: row)
+        return visualIndex.visualState(for: row).highlighted(highlight(forDisplayRow: row))
     }
 
     // MARK: - NSTableViewDataSource

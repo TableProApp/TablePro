@@ -19,9 +19,26 @@ struct RowVisualState: Equatable {
     let isDeleted: Bool
     let isInserted: Bool
     let modifiedColumns: Set<Int>
+    let highlight: RowHighlight
+
+    init(isDeleted: Bool, isInserted: Bool, modifiedColumns: Set<Int>, highlight: RowHighlight = .none) {
+        self.isDeleted = isDeleted
+        self.isInserted = isInserted
+        self.modifiedColumns = modifiedColumns
+        self.highlight = highlight
+    }
 
     func isModified(columnIndex: Int) -> Bool {
         modifiedColumns.contains(columnIndex)
+    }
+
+    func highlighted(_ highlight: RowHighlight) -> RowVisualState {
+        RowVisualState(
+            isDeleted: isDeleted,
+            isInserted: isInserted,
+            modifiedColumns: modifiedColumns,
+            highlight: highlight
+        )
     }
 
     static let empty = RowVisualState(isDeleted: false, isInserted: false, modifiedColumns: [])
@@ -33,7 +50,20 @@ extension RowVisualState {
     @MainActor var tint: NSColor? {
         if isDeleted { return ThemeEngine.shared.colors.dataGrid.deleted }
         if isInserted { return ThemeEngine.shared.colors.dataGrid.inserted }
-        return nil
+        return highlight.rowColor?.washColor
+    }
+
+    func cellHighlightColor(forColumn column: Int) -> HighlightColor? {
+        guard !isDeleted, !isInserted else { return nil }
+        return highlight.cellRule(forColumn: column)?.color
+    }
+
+    func drawnHighlightRule(forColumn column: Int) -> HighlightRule? {
+        guard !isDeleted, !isInserted else { return nil }
+        if !isModified(columnIndex: column), let cellRule = highlight.cellRule(forColumn: column) {
+            return cellRule
+        }
+        return highlight.rowRule
     }
 }
 
@@ -45,6 +75,7 @@ struct DataGridView: NSViewRepresentable {
     let isEditable: Bool
     var configuration: DataGridConfiguration = .init()
     var displayFormats: [ValueDisplayFormat?] = []
+    var highlightRules: [HighlightRule] = []
     var delegate: (any DataGridViewDelegate)?
     var layoutPersister: (any ColumnLayoutPersisting)?
     /// Whether a row may be dragged to a new position, and why not when it may not.
@@ -145,6 +176,7 @@ struct DataGridView: NSViewRepresentable {
 
         let initialRows = tableRowsProvider()
         coordinator.rebuildColumnMetadataCache(from: initialRows)
+        coordinator.syncHighlightRules(highlightRules, tableRows: initialRows)
 
         coordinator.isRebuildingColumns = true
         let storedInitialLayout = coordinator.layoutDiscardingUnownedWidths(
@@ -223,6 +255,7 @@ struct DataGridView: NSViewRepresentable {
             columns: latestRows.columns,
             valueFilteredIDsCount: coordinator.valueFilteredIDs?.count,
             displayFormats: displayFormats,
+            highlightRules: highlightRules,
             configuration: configuration,
             isEditable: isEditable,
             rowReorder: rowReorder,
@@ -320,6 +353,7 @@ struct DataGridView: NSViewRepresentable {
         let liveColumnWidths = latestRows.columns.isEmpty ? [:] : coordinator.currentColumnWidths()
         coordinator.apply(configuration: configuration, isEditable: isEditable)
         let schemaChanged = coordinator.rebuildColumnMetadataCache(from: latestRows)
+        let highlightsChanged = coordinator.syncHighlightRules(highlightRules, tableRows: latestRows)
         let presentationChanges = coordinator.updateColumnPresentations(from: latestRows)
         let needsFullReload = structureChanged
             || schemaChanged
@@ -385,6 +419,8 @@ struct DataGridView: NSViewRepresentable {
             coordinator.startBackgroundPrewarm()
         } else if displayFormatsChanged {
             coordinator.reloadAfterDisplayFormatChange()
+        } else if highlightsChanged {
+            coordinator.repaintVisibleRowDecorations()
         }
     }
 

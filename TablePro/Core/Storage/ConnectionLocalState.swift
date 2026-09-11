@@ -38,6 +38,7 @@ internal enum ConnectionLocalState {
         }
 
         FilterSettingsStorage.shared.removeFilters(for: connectionIds)
+        HighlightRuleStorage.shared.removeRules(for: connectionIds)
         DatabaseTreeFilterStorage.shared.removeFilters(for: connectionIds)
         RecentlyClosedTabStore.shared.removeEntries(for: connectionIds)
         WorkspaceRailOrderStore.shared.removeEntries(for: connectionIds)

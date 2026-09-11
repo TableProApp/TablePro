@@ -88,11 +88,20 @@ internal final class DataGridCellAccessibilityView: NSView {
     override internal func accessibilityValue() -> Any? { text }
 
     override internal func accessibilityLabel() -> String? {
-        String(
-            format: String(localized: "Row %d, column %d: %@"),
+        guard let highlight = coordinator?.highlightDescription(row: row, columnIndex: dataColumn) else {
+            return String(
+                format: String(localized: "Row %d, column %d: %@"),
+                row + 1,
+                dataColumn + 1,
+                text
+            )
+        }
+        return String(
+            format: String(localized: "Row %d, column %d: %@, highlighted where %@"),
             row + 1,
             dataColumn + 1,
-            text
+            text,
+            highlight
         )
     }
 

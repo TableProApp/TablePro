@@ -37,8 +37,9 @@ class DataGridRowView: NSTableRowView {
 
     private var seededRowIndex: Int = 0
 
-    private(set) var visualState: RowVisualState = .empty
-    private var rowTint: NSColor?
+    var visualState: RowVisualState {
+        coordinator?.visualState(for: rowIndex) ?? .empty
+    }
 
     /// Draws the row's data cells.
     ///
@@ -201,14 +202,7 @@ class DataGridRowView: NSTableRowView {
         "hidden": NSNull(),
     ]
 
-    /// The tint derives from the row state and the active theme, so it is recomputed on every call
-    /// and the colour comparison below decides whether anything needs redrawing. Returning early on
-    /// an unchanged state would ignore the theme, which is the input a theme change moves.
-    func applyVisualState(_ state: RowVisualState) {
-        visualState = state
-        let nextTint = state.tint
-        guard !colorsEqual(rowTint, nextTint) else { return }
-        rowTint = nextTint
+    func invalidateVisualState() {
         needsDisplay = true
     }
 
@@ -236,8 +230,8 @@ class DataGridRowView: NSTableRowView {
 
     override func drawBackground(in dirtyRect: NSRect) {
         super.drawBackground(in: dirtyRect)
-        if let rowTint, !isSelected {
-            rowTint.setFill()
+        if !isSelected, let tint = visualState.tint {
+            tint.setFill()
             bounds.fill()
         }
         drawCellSelectionFill(in: dirtyRect)
@@ -276,14 +270,6 @@ class DataGridRowView: NSTableRowView {
     }
 
     private static let emphasizedCellSelectionAlpha: CGFloat = 0.28
-
-    private func colorsEqual(_ lhs: NSColor?, _ rhs: NSColor?) -> Bool {
-        switch (lhs, rhs) {
-        case (nil, nil): return true
-        case let (l?, r?): return l == r
-        default: return false
-        }
-    }
 
     private func addForeignKeyMenuItems(to menu: NSMenu, dataColumnIndex: Int, tableRows: TableRows) {
         guard let coordinator, dataColumnIndex >= 0, dataColumnIndex < tableRows.columns.count else { return }
@@ -509,6 +495,14 @@ class DataGridRowView: NSTableRowView {
         )
         jsonViewItem.target = self
         menu.addItem(jsonViewItem)
+
+        if dataColumnIndex >= 0,
+           let highlightItem = coordinator.delegate?.dataGridHighlightMenuItem(
+               forRow: rowIndex,
+               dataColumn: dataColumnIndex
+           ) {
+            menu.addItem(highlightItem)
+        }
 
         let tableRows = coordinator.tableRowsProvider()
         addForeignKeyMenuItems(to: menu, dataColumnIndex: dataColumnIndex, tableRows: tableRows)

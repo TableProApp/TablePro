@@ -25,6 +25,7 @@ final class RowDisplayCache {
     }
 
     private var storage: [RowID: Entry] = [:]
+    private var highlights: [RowID: RowHighlight] = [:]
     private var insertionOrder: [RowID] = []
     private var insertionHead: Int = 0
     private var totalCost: Int = 0
@@ -52,8 +53,28 @@ final class RowDisplayCache {
         evictIfNeeded()
     }
 
+    func highlight(forID id: RowID) -> RowHighlight? {
+        highlights[id]
+    }
+
+    func setHighlight(_ highlight: RowHighlight, forID id: RowID) {
+        if highlights.count >= countLimit {
+            highlights.removeAll(keepingCapacity: true)
+        }
+        highlights[id] = highlight
+    }
+
+    func clearHighlight(forID id: RowID) {
+        highlights.removeValue(forKey: id)
+    }
+
+    func clearHighlights() {
+        highlights.removeAll(keepingCapacity: true)
+    }
+
     func removeAll() {
         storage.removeAll(keepingCapacity: true)
+        highlights.removeAll(keepingCapacity: true)
         insertionOrder.removeAll(keepingCapacity: true)
         insertionHead = 0
         totalCost = 0
@@ -64,6 +85,7 @@ final class RowDisplayCache {
     /// whose content changed in place keeps its id and would otherwise be served
     /// its pre-edit text.
     func clearValues(forID id: RowID) {
+        highlights.removeValue(forKey: id)
         guard let existing = storage[id] else { return }
         totalCost -= existing.cost
         for index in existing.box.values.indices {

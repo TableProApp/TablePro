@@ -41,6 +41,7 @@ struct ResultStatusControls: Equatable {
     var showsCountInProgress = false
     var showsFetchAll = false
     var showsColumns = false
+    var showsHighlightRules = false
     var showsFilters = false
     var showsPagination = false
     /// First, Previous, Next, Last and the page number, which an engine that cannot skip rows has
@@ -115,6 +116,7 @@ struct ResultStatusModel: Equatable {
             && !pagination.isLoadingMore
 
         controls.showsColumns = viewMode.showsColumnControls && describesAResult
+        controls.showsHighlightRules = viewMode == .data && describesAResult
         controls.showsFilters = viewMode.showsRowFilters && isTable && snapshot.hasTableName
         controls.showsPagination = viewMode.showsResultScope && isTable && snapshot.hasTableName
         controls.showsPageNavigation = controls.showsPagination && snapshot.paginationCapability.allowsSeeking

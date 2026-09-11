@@ -11,8 +11,8 @@ import AppKit
 /// Row view providing a context menu tailored to the Structure tab. Inherits
 /// selection/emphasis cell invalidation, deleted/inserted-row tint, and the
 /// `RowVisualState` source-of-truth from `DataGridRowView`. The context menu
-/// reads `visualState.isDeleted` directly, so a single `applyVisualState` call
-/// updates both the tint and the menu without a shadow flag to keep in sync.
+/// reads the same live `visualState` the tint is drawn from, so the two cannot
+/// disagree.
 final class StructureRowViewWithMenu: DataGridRowView {
     var structureTab: StructureTab = .columns
     var isStructureEditable: Bool = true

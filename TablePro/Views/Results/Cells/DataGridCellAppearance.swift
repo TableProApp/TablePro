@@ -15,7 +15,7 @@ struct DataGridCellAppearance: Equatable {
     let text: String
     let font: NSFont
     let textColor: NSColor
-    /// Painted behind the text, for a find match or a modified value.
+    /// Painted behind the text, for a find match, a modified value or a highlight rule.
     let backgroundTint: NSColor?
     let accessory: DataGridCellAccessory
     /// Which symbol the accessory draws, resolved here because it follows the row's state rather
@@ -52,18 +52,19 @@ struct DataGridCellAppearance: Equatable {
         }
 
         let findTint: NSColor? = state.isCurrentFindMatch ? palette.findMatchTint : nil
-        let modifiedTint: NSColor?
+        let highlightColor = state.visualState.cellHighlightColor(forColumn: state.columnIndex)
+        let stateTint: NSColor?
         if state.visualState.isDeleted || state.visualState.isInserted {
-            modifiedTint = nil
+            stateTint = nil
         } else if state.visualState.isModified(columnIndex: state.columnIndex) {
-            modifiedTint = palette.modifiedColumnTint
+            stateTint = palette.modifiedColumnTint
         } else {
-            modifiedTint = nil
+            stateTint = highlightColor?.washColor
         }
 
         // A find match keeps its own highlight whatever else is true, and the text turns black
         // against it. Otherwise a selected row's text takes the selection's own colour, and the
-        // modified tint stands down so the selection fill is not painted over.
+        // modified or highlight tint stands down so the selection fill is not painted over.
         let backgroundTint: NSColor?
         let textColor: NSColor
         if let findTint {
@@ -73,7 +74,7 @@ struct DataGridCellAppearance: Equatable {
             backgroundTint = nil
             textColor = .alternateSelectedControlTextColor
         } else {
-            backgroundTint = modifiedTint
+            backgroundTint = stateTint
             textColor = baseColor
         }
 

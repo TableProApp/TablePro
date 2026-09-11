@@ -936,6 +936,15 @@ final class MainContentCommandActions {
         coordinator.toggleFilterPanel()
     }
 
+    var canPresentHighlightRules: Bool {
+        coordinator?.canPresentHighlightRules ?? false
+    }
+
+    func showHighlightRules() {
+        guard canPresentHighlightRules, let coordinator else { return }
+        coordinator.presentHighlightRules()
+    }
+
     func showFindBar() {
         guard canUseGridFindCommands, let coordinator else { return }
         coordinator.findCoordinator.show()

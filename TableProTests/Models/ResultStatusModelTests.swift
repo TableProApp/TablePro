@@ -199,6 +199,21 @@ struct ResultStatusModelTests {
         #expect(!structure.controls.showsPagination)
     }
 
+    @Test("Highlight rules are offered only where the data grid draws the result")
+    func highlightRulesFollowTheDataGrid() {
+        let table = makeSnapshot(rowCount: 10)
+        #expect(model(table, viewMode: .data).controls.showsHighlightRules)
+        #expect(!model(table, viewMode: .json).controls.showsHighlightRules)
+        #expect(!model(table, viewMode: .chart).controls.showsHighlightRules)
+        #expect(!model(table, viewMode: .structure).controls.showsHighlightRules)
+
+        let query = makeSnapshot(tabType: .query, rowCount: 3, hasTableName: false)
+        #expect(model(query, viewMode: .data).controls.showsHighlightRules)
+
+        let noResult = makeSnapshot(tabType: .query, rowCount: 0, hasColumns: false, hasTableName: false)
+        #expect(!model(noResult, viewMode: .data).controls.showsHighlightRules)
+    }
+
     @Test("A query tab never offers table-only controls")
     func queryTabHasNoTableControls() {
         var pagination = PaginationState(pageSize: 1_000)

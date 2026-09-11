@@ -179,4 +179,70 @@ struct DataGridCellAppearanceTests {
     func noAccessoryNoRole() {
         #expect(resolve().accessoryRole == nil)
     }
+
+    // MARK: - Highlight rules
+
+    private func highlighted(
+        column: Int,
+        color: HighlightColor = .green,
+        isDeleted: Bool = false,
+        isInserted: Bool = false,
+        modifiedColumns: Set<Int> = []
+    ) -> RowVisualState {
+        let rule = HighlightRule(columnName: "status", value: "paid", color: color, target: .cell)
+        return RowVisualState(
+            isDeleted: isDeleted,
+            isInserted: isInserted,
+            modifiedColumns: modifiedColumns,
+            highlight: RowHighlight(rowRule: nil, cellRules: [column: rule])
+        )
+    }
+
+    @Test("A cell a highlight rule matches takes the rule's wash")
+    func highlightedCellTakesTheWash() {
+        let appearance = resolve(visualState: highlighted(column: 1), columnIndex: 1)
+
+        #expect(appearance.backgroundTint == HighlightColor.green.washColor)
+        #expect(resolve(visualState: highlighted(column: 1), columnIndex: 2).backgroundTint == nil)
+    }
+
+    @Test("A modified cell keeps the modified tint over a highlight")
+    func modifiedTintOutranksHighlight() {
+        let appearance = resolve(visualState: highlighted(column: 0, modifiedColumns: [0]), columnIndex: 0)
+
+        #expect(appearance.backgroundTint == palette.modifiedColumnTint)
+    }
+
+    @Test("A find match and a selection both outrank a highlight")
+    func findAndSelectionOutrankHighlight() {
+        let found = resolve(visualState: highlighted(column: 0), isCurrentFindMatch: true, columnIndex: 0)
+        let selected = resolve(visualState: highlighted(column: 0), columnIndex: 0, onEmphasizedSelection: true)
+
+        #expect(found.backgroundTint == palette.findMatchTint)
+        #expect(selected.backgroundTint == nil)
+    }
+
+    @Test("A pending insert or delete shows no cell highlight, so it cannot pass for one")
+    func pendingRowsShowNoCellHighlight() {
+        let inserted = resolve(visualState: highlighted(column: 0, isInserted: true), columnIndex: 0)
+        let deleted = resolve(visualState: highlighted(column: 0, isDeleted: true), columnIndex: 0)
+
+        #expect(inserted.backgroundTint == nil)
+        #expect(deleted.backgroundTint == nil)
+    }
+
+    @Test("Only a highlight that is drawn is named to VoiceOver")
+    func drawnHighlightRule() {
+        let rowRule = HighlightRule(columnName: "status", value: "paid", color: .green)
+        let cellRule = HighlightRule(columnName: "total", value: "9", color: .red, target: .cell)
+        let highlight = RowHighlight(rowRule: rowRule, cellRules: [1: cellRule])
+        let plain = RowVisualState(isDeleted: false, isInserted: false, modifiedColumns: [], highlight: highlight)
+        let modified = RowVisualState(isDeleted: false, isInserted: false, modifiedColumns: [1], highlight: highlight)
+        let deleted = RowVisualState(isDeleted: true, isInserted: false, modifiedColumns: [], highlight: highlight)
+
+        #expect(plain.drawnHighlightRule(forColumn: 1) == cellRule)
+        #expect(plain.drawnHighlightRule(forColumn: 0) == rowRule)
+        #expect(modified.drawnHighlightRule(forColumn: 1) == rowRule)
+        #expect(deleted.drawnHighlightRule(forColumn: 1) == nil)
+    }
 }

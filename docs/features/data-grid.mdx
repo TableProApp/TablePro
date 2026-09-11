@@ -1,9 +1,9 @@
 ---
 title: Data Grid
-description: Sort, size, hide, chart and copy the rows a table or a query puts in the grid
+description: Sort, size, hide, highlight, chart and copy the rows a table or a query puts in the grid
 ---
 
-Most of the grid's controls sit in the status bar beneath it. The view switcher is at the leading edge, the row count in the middle, then the columns, filter and page buttons at the trailing edge.
+Most of the grid's controls sit in the status bar beneath it. The view switcher is at the leading edge, the row count in the middle, then the columns, highlight, filter and page buttons at the trailing edge.
 
 <Frame caption="Data grid with query results">
   <img className="block dark:hidden" src="/images/data-grid.png" alt="Data grid" />
@@ -39,6 +39,23 @@ The header menu carries two filters that answer different questions.
 </Frame>
 
 A value filter lives as long as the result does: switching view mode or tab keeps it, replacing the result clears it. **Fetch All** keeps it and applies it to the rows it loads.
+
+## Highlighting
+
+Right-click a cell and open **Highlight**. A color under **Rows Where status = “paid”** tints every row holding that value; a color under **Cells Where status = “paid”** tints only that cell. The palette marks the color a matching rule already uses, and **Remove Highlight** takes the rule away.
+
+For anything other than an exact match, click the highlighter button in the status bar or choose **View > Highlight Rules**. A rule is a column, an operator from the [filter bar](/features/filtering), a value, a color, and **Row** or **Cell**. **Highlight Values…** in the header menu starts a rule on that column. A rule left without a value is dropped when the popover closes.
+
+<Frame caption="US invoices in green, Canadian in blue, and customer IDs under 10 in orange">
+  <img className="block dark:hidden" src="/images/highlight-rules.png" alt="Highlight Rules popover listing three rules over an Invoice grid with tinted rows and cells" />
+  <img className="hidden dark:block" src="/images/highlight-rules-dark.png" alt="Highlight Rules popover listing three rules over an Invoice grid with tinted rows and cells" />
+</Frame>
+
+Rules run top to bottom and the first match colors the row, so drag the rule that should win to the top. A rule picked from the cell menu goes in first. A cell rule tints its own cell over the row's color. Rules read the stored value rather than the text a **Display As** format shows: a numeric column compares as numbers, a boolean column accepts `true`, `1`, `t` and `yes` alike, and `NULL` never satisfies a comparison: match it with **is NULL** or **is empty**.
+
+A row waiting to be inserted or deleted keeps its [change tracking](/features/change-tracking) tint over any rule, and a selected row shows the selection. On a table you edit, give row rules a color other than the green and red those tints use, so a highlight never reads as a pending change.
+
+Rules belong to the table, scoped to the connection, database, and schema, and follow the table through a rename. A query result that comes from one table uses that table's rules. Rules on any other query result are not saved, and go when the tab closes or the app quits. Saved rules stay on this Mac and do not sync.
 
 ## Columns
 

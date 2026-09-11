@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Remove Invisible Characters** in the Query menu. (#2717)
 - **Show invisible characters** in Settings > Editor. (#2717)
 - Warnings in the SQL editor for full-width punctuation, curly quotes and non-ASCII spaces. (#2717)
+- Highlight rules that color data grid rows or cells by value. (#2723)
 
 ### Changed
 
@@ -42,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Blank welcome window list when a search matched nothing and a favorite existed.
 - Welcome window reading No Connections while a tag filter hid every connection.
 - Favorited connection inside a group listed twice on the welcome window.
+- Missing red wash on a row deleted together with a new, unsaved row.
 - Welcome window tag filter stuck on a tag no connection carries any more, hiding every connection.
 - Collapsing every group on the welcome window undone at the next launch.
 - Linked Folders and Team Library connections ignoring the welcome window search, with no context menu.
