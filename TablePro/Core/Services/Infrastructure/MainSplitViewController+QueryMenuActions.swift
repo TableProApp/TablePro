@@ -30,6 +30,10 @@ extension MainSplitViewController {
         commandActions?.formatQuery()
     }
 
+    @objc func removeInvisibleCharacters(_ sender: Any?) {
+        commandActions?.removeInvisibleCharacters()
+    }
+
     @objc func toggleFold(_ sender: Any?) {
         commandActions?.toggleFold()
     }

@@ -204,6 +204,7 @@ public class TextViewController: NSViewController {
 
     /// Filters used when applying edits..
     var textFilters: [TextFormation.Filter] = []
+    var isApplyingUnfilteredEdits = false
 
     var jumpToDefinitionModel: JumpToDefinitionModel
 

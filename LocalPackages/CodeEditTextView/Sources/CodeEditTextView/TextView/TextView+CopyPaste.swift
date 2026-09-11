@@ -17,8 +17,8 @@ extension TextView {
     }
 
     @objc open func paste(_ sender: AnyObject) {
-        guard let stringContents = PasteboardTextReader.plainText() else { return }
-        insertText(
+        guard isEditable, let stringContents = PasteboardTextReader.plainText() else { return }
+        commitText(
             normalizedLineEndings(in: stringContents),
             replacementRange: NSRange(location: NSNotFound, length: 0)
         )
@@ -83,7 +83,7 @@ extension TextView {
               selectionRange.location <= text.length else {
             return selectionRange
         }
-        return text.lineRange(for: NSRange(location: selectionRange.location, length: 0))
+        return text.lineRangeBreakingAtLineEndings(for: NSRange(location: selectionRange.location, length: 0))
     }
 }
 

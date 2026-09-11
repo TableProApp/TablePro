@@ -17,6 +17,7 @@ struct EditorSettingsView: View {
                 Toggle("Word wrap", isOn: $settings.wordWrap)
                 Toggle("Code folding", isOn: $settings.codeFoldingEnabled)
                 Toggle("Run button beside each statement", isOn: $settings.showStatementRunControls)
+                Toggle("Show invisible characters", isOn: $settings.showInvisibleCharacters)
                 Picker("Tab width:", selection: $settings.tabWidth) {
                     Text("2 spaces").tag(2)
                     Text("4 spaces").tag(4)

@@ -83,17 +83,20 @@ public final class TextLine: Identifiable, Equatable {
         public let lineHeightMultiplier: CGFloat
         public let estimatedLineHeight: CGFloat
         public let breakStrategy: LineBreakStrategy
+        public let specialCharacterStyle: SpecialCharacterStyle?
 
         public init(
             maxWidth: CGFloat,
             lineHeightMultiplier: CGFloat,
             estimatedLineHeight: CGFloat,
-            breakStrategy: LineBreakStrategy = .character
+            breakStrategy: LineBreakStrategy = .character,
+            specialCharacterStyle: SpecialCharacterStyle? = nil
         ) {
             self.maxWidth = maxWidth
             self.lineHeightMultiplier = lineHeightMultiplier
             self.estimatedLineHeight = estimatedLineHeight
             self.breakStrategy = breakStrategy
+            self.specialCharacterStyle = specialCharacterStyle
         }
     }
 }

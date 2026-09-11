@@ -68,7 +68,10 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         if let rowLimit = scope.rowLimit {
             query = pluginDriver.injectRowLimit(query, limit: rowLimit) ?? "\(query) LIMIT \(rowLimit)"
         }
-        return pluginDriver.streamRows(query: query)
+        guard let adapter = driver as? PluginDriverAdapter else {
+            return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
+        }
+        return adapter.streamRows(query: query)
     }
 
     func fetchTableDDL(table: String, databaseName: String) async throws -> String {

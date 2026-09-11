@@ -139,7 +139,8 @@ struct TriggerEditorView: View {
             layout: .init(contentInsets: NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)),
             peripherals: EditorPeripherals.inline(
                 lineNumbers: true,
-                folding: AppSettingsManager.shared.editor.codeFoldingEnabled
+                folding: AppSettingsManager.shared.editor.codeFoldingEnabled,
+                invisibleCharacters: AppSettingsManager.shared.editor.showInvisibleCharacters
             )
         )
     }

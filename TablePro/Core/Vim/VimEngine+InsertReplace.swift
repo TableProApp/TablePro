@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import CodeEditTextView
 import Foundation
 
 extension VimEngine {
@@ -40,6 +41,11 @@ extension VimEngine {
         if char == "\r" || char == "\n" {
             return false
         }
+        if char == "\u{7F}" {
+            backspaceInReplace(in: buffer)
+            return true
+        }
+        if Self.isUnwritableControl(char) { return true }
         let pos = buffer.selectedRange().location
         let lineRange = buffer.lineRange(forOffset: pos)
         let lineEnd = lineRange.location + lineRange.length
@@ -47,11 +53,31 @@ extension VimEngine {
             && lineEnd <= buffer.length
             && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
         if pos < contentEnd {
-            buffer.replaceCharacters(in: NSRange(location: pos, length: 1), with: String(char))
+            let overwritten = NSRange(location: pos, length: 1)
+            replaceModeEdits.append(VimReplaceModeEdit(offset: pos, original: buffer.string(in: overwritten)))
+            buffer.replaceCharacters(in: overwritten, with: String(char))
         } else {
+            replaceModeEdits.append(VimReplaceModeEdit(offset: pos, original: nil))
             buffer.replaceCharacters(in: NSRange(location: pos, length: 0), with: String(char))
         }
         return true
+    }
+
+    func backspaceInReplace(in buffer: VimTextBuffer) {
+        let pos = buffer.selectedRange().location
+        guard pos > 0 else { return }
+        if let last = replaceModeEdits.last, last.offset == pos - 1 {
+            replaceModeEdits.removeLast()
+            buffer.replaceCharacters(in: NSRange(location: pos - 1, length: 1), with: last.original ?? "")
+        } else {
+            replaceModeEdits.removeAll()
+        }
+        buffer.setSelectedRange(NSRange(location: pos - 1, length: 0))
+    }
+
+    static func isUnwritableControl(_ char: Character) -> Bool {
+        guard char.unicodeScalars.count == 1, let scalar = char.unicodeScalars.first else { return false }
+        return SpecialCharacter.isTextInputControl(scalar)
     }
 
     func processCommandLine(_ char: Character, buffer commandBuffer: String) -> Bool {

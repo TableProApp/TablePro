@@ -53,6 +53,7 @@ public final class LineFragment: Identifiable, Equatable {
     public var height: CGFloat
     public var descent: CGFloat
     public var scaledHeight: CGFloat
+    public internal(set) var specialCharacters: [SpecialCharacterMark] = []
 
     /// The difference between the real text height and the scaled height
     public var heightDifference: CGFloat {

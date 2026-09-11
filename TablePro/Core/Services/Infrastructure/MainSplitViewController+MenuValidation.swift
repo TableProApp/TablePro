@@ -174,6 +174,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.hasQueryText && AppSettingsManager.shared.ai.enabled
         case #selector(toggleFold(_:)), #selector(foldAll(_:)), #selector(unfoldAll(_:)):
             return context.hasEditorForFind
+        case #selector(removeInvisibleCharacters(_:)):
+            return context.hasEditorForFind && context.hasQueryText
         case #selector(goToPreviousStatement(_:)), #selector(goToNextStatement(_:)):
             return context.isQueryTab
         case #selector(runStatementAndAdvance(_:)):

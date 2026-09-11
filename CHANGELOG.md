@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Check connections** in Settings > General, including Only when I use the connection. (#2700)
 - Tips for preview tabs, Open Quickly, and query history.
 - **Enable Plugin**, **Open Plugin Settings** and **Edit Connection…** on a connection whose driver cannot load.
+- Invisible characters shown in the SQL editor: control characters, zero-width spaces, bidi controls and special spaces. (#2717)
+- **Remove Invisible Characters** in the Query menu. (#2717)
+- **Show invisible characters** in Settings > Editor. (#2717)
 
 ### Changed
 
@@ -87,6 +90,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Disabled plugin's code loaded when a connection looked up its driver.
 - Failed connect from an opened file or URL titled "Disconnected", with Reconnect as its only fix.
 - Connection Failed alert covering the window that already showed the same failure.
+- Invisible control characters typed into a query by an input method or a Control-key chord such as Ctrl+Option+H. (#2717)
+- Statement with a NUL character running only up to it on SQLite and PostgreSQL, dropping its WHERE clause. (#2717)
+- Vim Replace mode writing an invisible character for Backspace and keypad Enter. (#2717)
+- Line and paragraph separators (U+2028, U+2029) shown as line breaks the database does not see. (#2717)
 
 ## [0.73.0] - 2026-09-09
 

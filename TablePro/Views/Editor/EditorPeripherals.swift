@@ -29,32 +29,39 @@ enum EditorPeripherals {
     static func editor(
         lineNumbers: Bool,
         folding: Bool,
-        statementRunControls: Bool = false
+        statementRunControls: Bool = false,
+        invisibleCharacters: Bool = true
     ) -> SourceEditorConfiguration.Peripherals {
         make(
             lineNumbers: lineNumbers,
             folding: folding,
             fitsContent: false,
-            statementRunControls: statementRunControls
+            statementRunControls: statementRunControls,
+            invisibleCharacters: invisibleCharacters
         )
     }
 
     /// The settings for a listing embedded in another view, which sizes its gutter to the lines it was handed.
-    static func inline(lineNumbers: Bool, folding: Bool) -> SourceEditorConfiguration.Peripherals {
-        make(lineNumbers: lineNumbers, folding: folding, fitsContent: true)
+    static func inline(
+        lineNumbers: Bool,
+        folding: Bool,
+        invisibleCharacters: Bool = true
+    ) -> SourceEditorConfiguration.Peripherals {
+        make(lineNumbers: lineNumbers, folding: folding, fitsContent: true, invisibleCharacters: invisibleCharacters)
     }
 
     /// The settings for a read-only preview, which numbers its lines only when folding gives the gutter a reason to
     /// be there.
-    static func preview(folding: Bool) -> SourceEditorConfiguration.Peripherals {
-        inline(lineNumbers: folding, folding: folding)
+    static func preview(folding: Bool, invisibleCharacters: Bool = true) -> SourceEditorConfiguration.Peripherals {
+        inline(lineNumbers: folding, folding: folding, invisibleCharacters: invisibleCharacters)
     }
 
     private static func make(
         lineNumbers: Bool,
         folding: Bool,
         fitsContent: Bool,
-        statementRunControls: Bool = false
+        statementRunControls: Bool = false,
+        invisibleCharacters: Bool
     ) -> SourceEditorConfiguration.Peripherals {
         .init(
             showGutter: lineNumbers,
@@ -62,7 +69,8 @@ enum EditorPeripherals {
             showMinimap: false,
             showFoldingRibbon: folding,
             showStatementRunControls: lineNumbers && statementRunControls,
-            gutterFitsContent: fitsContent
+            gutterFitsContent: fitsContent,
+            showSpecialCharacters: invisibleCharacters
         )
     }
 }

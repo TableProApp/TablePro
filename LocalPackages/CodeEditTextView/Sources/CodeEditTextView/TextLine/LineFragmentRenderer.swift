@@ -102,7 +102,25 @@ public final class LineFragmentRenderer {
             currentPosition += content.width
             currentLocation += content.length
         }
+        drawSpecialCharacters(of: lineFragment, yPos: yPos, in: context)
         context.restoreGState()
+    }
+
+    private func drawSpecialCharacters(of lineFragment: LineFragment, yPos: CGFloat, in context: CGContext) {
+        guard !lineFragment.specialCharacters.isEmpty else { return }
+        let top = yPos + lineFragment.heightDifference / 2
+        let clip = context.boundingBoxOfClipPath
+        for mark in lineFragment.specialCharacters where mark.maxX >= clip.minX && mark.minX <= clip.maxX {
+            SpecialCharacterMarkRenderer.draw(
+                mark,
+                from: mark.minX,
+                to: mark.maxX,
+                top: top,
+                height: lineFragment.height,
+                color: mark.color,
+                in: context
+            )
+        }
     }
 
     private func drawInvisibles(
@@ -150,9 +168,13 @@ public final class LineFragmentRenderer {
         defer { drawingContext.context.restoreGState() }
 
         lazy var offset = CTLineGetStringRange(drawingContext.ctLine).location
+        lazy var markedOffsets = Set(drawingContext.lineFragment.specialCharacters.flatMap { mark in
+            mark.offset..<(mark.offset + mark.length)
+        })
 
         for (idx, character) in string.utf16.enumerated()
-        where delegate.triggerCharacters.contains(character) {
+        where delegate.triggerCharacters.contains(character)
+            && !markedOffsets.contains(drawingContext.contentOffset + idx) {
             processInvisibleCharacter(
                 character: character,
                 at: idx,

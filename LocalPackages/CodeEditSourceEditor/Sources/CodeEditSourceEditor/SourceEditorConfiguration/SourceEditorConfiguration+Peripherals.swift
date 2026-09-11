@@ -5,6 +5,8 @@
 //  Created by Khan Winter on 6/16/25.
 //
 
+import CodeEditTextView
+
 extension SourceEditorConfiguration {
     public struct Peripherals: Equatable {
         /// Whether to show the gutter.
@@ -48,6 +50,8 @@ extension SourceEditorConfiguration {
         /// non-standard quote character: `“ (0x201C)`.
         public var warningCharacters: Set<UInt16>
 
+        public var showSpecialCharacters: Bool
+
         public init(
             showGutter: Bool = true,
             showLineNumbers: Bool = true,
@@ -58,7 +62,8 @@ extension SourceEditorConfiguration {
             gutterFitsContent: Bool = false,
             foldingSizeLimit: Int = EditorHighlighting.maxHighlightableCharacters,
             invisibleCharactersConfiguration: InvisibleCharactersConfiguration = .empty,
-            warningCharacters: Set<UInt16> = []
+            warningCharacters: Set<UInt16> = [],
+            showSpecialCharacters: Bool = false
         ) {
             self.showGutter = showGutter
             self.showLineNumbers = showLineNumbers
@@ -70,6 +75,7 @@ extension SourceEditorConfiguration {
             self.foldingSizeLimit = foldingSizeLimit
             self.invisibleCharactersConfiguration = invisibleCharactersConfiguration
             self.warningCharacters = warningCharacters
+            self.showSpecialCharacters = showSpecialCharacters
         }
 
         @MainActor
@@ -115,6 +121,12 @@ extension SourceEditorConfiguration {
 
             if oldConfig?.warningCharacters != warningCharacters {
                 controller.invisibleCharactersCoordinator.warningCharacters = warningCharacters
+            }
+
+            if oldConfig?.showSpecialCharacters != showSpecialCharacters {
+                controller.textView.layoutManager.specialCharacterStyle = showSpecialCharacters
+                    ? SpecialCharacterStyle()
+                    : nil
             }
 
             if shouldUpdateInsets && controller.scrollView != nil { // Check for view existence

@@ -40,7 +40,11 @@ final public class Typesetter {
         markedRanges: MarkedRanges?,
         attachments: [AnyTextAttachment] = []
     ) {
-        let string = makeString(string: string, markedRanges: markedRanges)
+        let display = SpecialCharacterDisplay.make(
+            from: makeString(string: string, markedRanges: markedRanges),
+            style: displayData.specialCharacterStyle
+        )
+        let string = display.string
         lineFragments.removeAll()
 
         // Fast path
@@ -54,7 +58,29 @@ final public class Typesetter {
             displayData: displayData,
             attachments: attachments
         )
+        assignSpecialCharacters(display.marks, to: lines)
         lineFragments.build(from: lines, estimatedLineHeight: maxHeight)
+    }
+
+    private func assignSpecialCharacters(
+        _ marks: [SpecialCharacterMark],
+        to lines: [TextLineStorage<LineFragment>.BuildItem]
+    ) {
+        guard !marks.isEmpty else { return }
+        var markIndex = 0
+        var fragmentStart = 0
+        for line in lines {
+            let fragmentEnd = fragmentStart + line.length
+            var fragmentMarks: [SpecialCharacterMark] = []
+            while markIndex < marks.count, marks[markIndex].offset < fragmentEnd {
+                let mark = marks[markIndex].offset(by: -fragmentStart)
+                markIndex += 1
+                guard case .text = line.data.findContent(at: mark.offset)?.content.data else { continue }
+                fragmentMarks.append(mark)
+            }
+            line.data.specialCharacters = SpecialCharacterGeometry.positioned(fragmentMarks, in: line.data)
+            fragmentStart = fragmentEnd
+        }
     }
 
     private func makeString(string: NSAttributedString, markedRanges: MarkedRanges?) -> NSAttributedString {

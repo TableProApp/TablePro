@@ -138,6 +138,32 @@ HAVING COUNT(o.id) > 5
 ORDER BY order_count DESC;
 ```
 
+## Invisible characters
+
+Characters that would otherwise draw as nothing, or as an ordinary space, are marked where they sit. A mark is the character itself: select it, arrow past it, or delete it like any other text.
+
+<Frame caption="A backspace before SELECT, a non-breaking space before LIKE, a zero-width space after Composer">
+  <img className="block dark:hidden" src="/images/invisible-characters.png" alt="SQL editor with an orange BS box at the start of line 2, an outlined space on line 4 and a ZWSP box on line 5" />
+  <img className="hidden dark:block" src="/images/invisible-characters-dark.png" alt="SQL editor with an orange BS box at the start of line 2, an outlined space on line 4 and a ZWSP box on line 5" />
+</Frame>
+
+| Character | Shown as |
+|---|---|
+| Control characters, such as a backspace (U+0008) or NUL (U+0000) | A box with the character's short name: `BS`, `NUL`, `ESC` |
+| Zero-width and formatting characters: zero-width space, byte order mark, soft hyphen, bidirectional controls | A box with the short name: `ZWSP`, `BOM`, `SHY`, `RLO` |
+| Line and paragraph separators (U+2028, U+2029) | A box, `LSEP` or `PSEP`. The line continues past it, as it does for the database |
+| Non-breaking, ideographic and other special spaces | An outline around the space |
+
+Emoji sequences, variation selectors, and the joiners Arabic, Persian and Indic text rely on are left unmarked.
+
+Control characters never arrive by typing. A stray backspace an input method sends, or a chord such as `Ctrl+Option+H`, is dropped. Pasted text is kept exactly as copied, with every invisible character marked.
+
+Choose **Query > Remove Invisible Characters** to clean a query. With nothing selected, it removes marked characters outside string literals, quoted identifiers and comments. Special spaces, form feeds and vertical tabs become ordinary spaces, and a line or paragraph separator becomes a line break. Select text first to clean inside a literal as well. `Cmd+Z` undoes the whole change.
+
+A statement containing a NUL character is not sent to the database. Remove the character and run it again.
+
+To hide the marks in the editor, turn off **Show invisible characters** in **Settings > Editor**. Read-only views, such as the AI assistant's code blocks, always show them.
+
 ## AI assistance
 
 **Explain with AI** (`Cmd+L`) explains the query at the cursor and **Optimize with AI** (`Cmd+Option+L`) suggests improvements. When a query fails, **Fix with AI** in the error banner rewrites it. Inline suggestions complete your SQL as ghost text: `Tab` accepts, `Escape` dismisses. See [AI Assistant](/features/ai-assistant) for setup.
@@ -146,6 +172,6 @@ For the execution plan rather than an opinion, press `Cmd+Option+E` and see [Exp
 
 ## Editor settings
 
-**Settings > Editor** holds line numbers, current-line and current-statement highlighting, word wrap, [code folding](/features/code-folding), the per-statement run button, tab width, auto-uppercase keywords, [query parameters](/features/query-parameters), and [vim mode](/features/vim-mode). Editor font family and size are per theme, in **Settings > Appearance**.
+**Settings > Editor** holds line numbers, current-line and current-statement highlighting, word wrap, [code folding](/features/code-folding), the per-statement run button, [invisible characters](#invisible-characters), tab width, auto-uppercase keywords, [query parameters](/features/query-parameters), and [vim mode](/features/vim-mode). Editor font family and size are per theme, in **Settings > Appearance**.
 
 Editor windows remember their size, position and font zoom between launches. See [Query Tabs](/features/tabs#switching-tabs).

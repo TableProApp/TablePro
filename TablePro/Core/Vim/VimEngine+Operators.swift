@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import CodeEditTextView
 import Foundation
 
 extension VimEngine {
@@ -90,7 +91,7 @@ extension VimEngine {
         var lines: [String] = []
         var lineStart = 0
         while lineStart < nsText.length {
-            let lineRange = nsText.lineRange(for: NSRange(location: lineStart, length: 0))
+            let lineRange = nsText.lineRangeBreakingAtLineEndings(for: NSRange(location: lineStart, length: 0))
             lines.append(nsText.substring(with: lineRange))
             lineStart = lineRange.location + lineRange.length
         }
@@ -380,6 +381,7 @@ extension VimEngine {
 
     func executeReplaceChar(_ char: Character, in buffer: VimTextBuffer) -> Bool {
         let count = consumeCount()
+        guard !Self.isUnwritableControl(char) else { return true }
         let pos = buffer.selectedRange().location
         let lineRange = buffer.lineRange(forOffset: pos)
         let lineEnd = lineRange.location + lineRange.length

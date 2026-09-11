@@ -332,6 +332,7 @@ extension VimEngine {
         case "R":
             countPrefix = 0
             operatorCount = 0
+            replaceModeEdits.removeAll()
             setMode(.replace)
             return true
 

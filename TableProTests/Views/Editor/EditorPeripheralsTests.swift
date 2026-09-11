@@ -4,6 +4,7 @@
 //
 
 import CodeEditSourceEditor
+import Foundation
 import Testing
 @testable import TablePro
 
@@ -64,5 +65,24 @@ struct EditorPeripheralsTests {
     func minimapIsOff() {
         #expect(EditorPeripherals.editor(lineNumbers: true, folding: true).showMinimap == false)
         #expect(EditorPeripherals.inline(lineNumbers: true, folding: true).showMinimap == false)
+    }
+
+    @Test("Every editor reveals invisible characters unless the reader turned them off")
+    func invisibleCharactersAreRevealed() {
+        #expect(EditorPeripherals.editor(lineNumbers: true, folding: true).showSpecialCharacters)
+        #expect(EditorPeripherals.inline(lineNumbers: true, folding: true).showSpecialCharacters)
+        #expect(EditorPeripherals.preview(folding: false).showSpecialCharacters)
+        let hidden = EditorPeripherals.editor(lineNumbers: true, folding: true, invisibleCharacters: false)
+        #expect(hidden.showSpecialCharacters == false)
+        #expect(EditorPeripherals.inline(lineNumbers: true, folding: true, invisibleCharacters: false)
+            .showSpecialCharacters == false)
+        #expect(EditorPeripherals.preview(folding: false, invisibleCharacters: false).showSpecialCharacters == false)
+    }
+
+    @Test("Settings saved before the option existed reveal invisible characters")
+    func invisibleCharactersDefaultOn() throws {
+        let decoded = try JSONDecoder().decode(EditorSettings.self, from: Data("{}".utf8))
+        #expect(decoded.showInvisibleCharacters)
+        #expect(EditorSettings.default.showInvisibleCharacters)
     }
 }

@@ -312,13 +312,29 @@ public final class EmphasisManager {
         with originalString: NSAttributedString,
         emphasis: Emphasis
     ) {
+        let textColor = emphasis.inactive ? getInactiveTextColor() : NSColor.black
         let text = NSMutableAttributedString(attributedString: originalString)
-        text.addAttribute(
-            .foregroundColor,
-            value: emphasis.inactive ? getInactiveTextColor() : NSColor.black,
-            range: NSRange(location: 0, length: text.length)
+        text.addAttribute(.foregroundColor, value: textColor, range: NSRange(location: 0, length: text.length))
+        let display = SpecialCharacterDisplay.make(from: text, style: textView?.layoutManager.specialCharacterStyle)
+        textLayer.string = display.string
+        addSpecialCharacterLayers(for: display, color: textColor, to: textLayer)
+    }
+
+    private func addSpecialCharacterLayers(
+        for display: SpecialCharacterDisplay,
+        color: NSColor,
+        to textLayer: CATextLayer
+    ) {
+        let marks = SpecialCharacterGeometry.positioned(
+            display.marks,
+            in: CTLineCreateWithAttributedString(display.string)
         )
-        textLayer.string = text
+        guard !marks.isEmpty else { return }
+        let layer = SpecialCharacterMarksLayer(marks: marks, color: color)
+        layer.frame = textLayer.bounds
+        layer.contentsScale = textLayer.contentsScale
+        textLayer.addSublayer(layer)
+        layer.setNeedsDisplay()
     }
 
     private func getInactiveTextColor() -> NSColor {

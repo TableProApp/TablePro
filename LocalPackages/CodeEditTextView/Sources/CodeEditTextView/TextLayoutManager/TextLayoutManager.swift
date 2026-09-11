@@ -24,6 +24,13 @@ public class TextLayoutManager: NSObject {
             invalidateLineWidths()
         }
     }
+    public var specialCharacterStyle: SpecialCharacterStyle? {
+        didSet {
+            guard specialCharacterStyle != oldValue else { return }
+            invalidateLineWidths()
+            layoutView?.needsDisplay = true
+        }
+    }
     public var detectedLineEnding: LineEnding = .lineFeed
     /// The edge insets to inset all text layout with.
     public var edgeInsets: HorizontalEdgeInsets = .zero {

@@ -47,6 +47,12 @@ enum QueryMenuBuilder {
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
+                String(localized: "Remove Invisible Characters"),
+                action: #selector(MainSplitViewController.removeInvisibleCharacters(_:)),
+                shortcut: .removeInvisibleCharacters,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
                 String(localized: "Preview SQL"),
                 action: #selector(MainSplitViewController.previewSQL(_:)),
                 shortcut: .previewSQL,

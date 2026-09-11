@@ -253,9 +253,10 @@ final class VimKeyInterceptor {
             return event // Pass through other Ctrl combinations
         }
 
-        guard let characters = event.characters, let char = characters.first else {
+        guard let characters = event.characters, let typed = characters.first else {
             return event
         }
+        let char: Character = event.semanticKeyCode == .enter ? "\r" : typed
 
         // In non-insert modes, translate arrow keys to h/j/k/l so the Vim engine
         // handles them (critical for visual mode selection to work with arrows).

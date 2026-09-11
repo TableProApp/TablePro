@@ -94,6 +94,9 @@ extension TextViewController {
         if textView.undoManager?.isUndoing ?? false || textView.undoManager?.isRedoing ?? false {
             return true
         }
+        if isApplyingUnfilteredEdits {
+            return true
+        }
 
         let indentationUnit = configuration.behavior.indentOption.stringValue
         let indenter: TextualIndenter = getTextIndenter()
