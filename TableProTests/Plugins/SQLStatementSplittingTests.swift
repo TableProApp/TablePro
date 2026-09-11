@@ -44,10 +44,17 @@ struct SQLStatementSplittingTests {
         )
     }
 
-    /// Keeping it must not make it read as a transaction statement. The keyword is no longer the
-    /// first word of the statement, and closing already requires the whole statement to be one.
-    @Test("A transaction keyword inside a version-gated comment does not close a transaction")
+    /// Keeping it must not make it read as a transaction statement here. The keyword is no longer
+    /// the first word of the statement, and closing already requires the whole statement to be
+    /// one. `MySQLSessionFootprint` reads the body itself, because MySQL does run it; every other
+    /// caller treats the whole thing as a statement it does not recognise.
+    ///
+    /// `/*! */ COMMIT` is the case that tells the two implementations apart: stripping the
+    /// comment left a bare `COMMIT` and read as `.closes`.
+    @Test("A transaction keyword around a version-gated comment does not close a transaction")
     func executableCommentsNeverClose() {
+        #expect(SQLTransactionTracking.effect(of: "BEGIN; /*! */ COMMIT") == .opens)
+        #expect(SQLTransactionTracking.effect(of: "/*! */ COMMIT") == .unchanged)
         #expect(SQLTransactionTracking.effect(of: "BEGIN; /*!40101 COMMIT */") == .opens)
         #expect(SQLTransactionTracking.effect(of: "/*!40101 COMMIT */") == .unchanged)
     }
