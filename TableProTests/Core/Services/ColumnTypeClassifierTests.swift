@@ -7,8 +7,9 @@
 
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TablePro
 
 @Suite("Column Type Classifier")
 struct ColumnTypeClassifierTests {
@@ -191,6 +192,21 @@ struct ColumnTypeClassifierTests {
         @Test("SMALLINT classifies as integer")
         func smallint() {
             #expect(isInteger(classifier.classify(rawTypeName: "SMALLINT")))
+        }
+
+        @Test("The catalog's INT UNSIGNED classifies as integer and keeps its raw spelling")
+        func intUnsignedIsInteger() {
+            #expect(classifier.classify(rawTypeName: "INT UNSIGNED") == .integer(rawType: "INT UNSIGNED"))
+        }
+
+        @Test("Trailing UNSIGNED, SIGNED and ZEROFILL never decide the type")
+        func trailingAttributesAreIgnored() {
+            #expect(isInteger(classifier.classify(rawTypeName: "BIGINT UNSIGNED")))
+            #expect(isInteger(classifier.classify(rawTypeName: "int(10) unsigned zerofill")))
+            #expect(isInteger(classifier.classify(rawTypeName: "TINYINT SIGNED")))
+            #expect(isDecimal(classifier.classify(rawTypeName: "DECIMAL(10,2) UNSIGNED")))
+            #expect(isDecimal(classifier.classify(rawTypeName: "DOUBLE UNSIGNED")))
+            #expect(classifier.classify(rawTypeName: "TINYINT(1) UNSIGNED").isBooleanType)
         }
 
         @Test("ENUM('a','b','c') classifies as enum")

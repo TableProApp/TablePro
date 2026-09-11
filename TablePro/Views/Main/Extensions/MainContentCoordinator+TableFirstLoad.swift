@@ -61,7 +61,10 @@ extension MainContentCoordinator {
 
         let restoreApplied = applyPendingRestoredViewState(at: index)
         let sortApplied = restoreApplied ? false : applyResolvedDefaultSort(at: index, hint: hint)
-        if restoreApplied || sortApplied || !tabManager.tabs[index].columnLayout.hiddenColumns.isEmpty {
+        let loadedTab = tabManager.tabs[index]
+        if restoreApplied || sortApplied
+            || !loadedTab.columnLayout.hiddenColumns.isEmpty
+            || loadedTab.filterState.hasAppliedFilters {
             filterCoordinator.rebuildTableQuery(at: index)
         }
         return true
@@ -80,9 +83,13 @@ extension MainContentCoordinator {
         return true
     }
 
+    /// Applied filters wait for the schema because no rows have arrived to type their values, and
+    /// an untyped value is guessed from its text: `123` goes to a text column as a number, which
+    /// PostgreSQL rejects and MySQL answers by comparing numerically.
     func firstLoadNeedsSchemaColumns(for tab: QueryTab, hint: DefaultSortHint) -> Bool {
         wantsDefaultSort(for: tab, hint: hint)
             || !tab.columnLayout.hiddenColumns.isEmpty
+            || tab.filterState.hasAppliedFilters
             || tab.pendingRestoredSort != nil
             || tab.restoredPage != nil
     }

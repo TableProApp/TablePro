@@ -6,6 +6,10 @@ import Testing
 @Suite("SchemaColumnStore")
 @MainActor
 struct SchemaColumnStoreTests {
+    nonisolated private static func entry(_ columns: [String], primaryKeys: [String] = []) -> SchemaColumnStore.Entry {
+        SchemaColumnStore.Entry(columns: columns, primaryKeys: primaryKeys, columnTypes: [:])
+    }
+
     @Test("load fetches once and caches the entry")
     func loadFetchesOnceAndCaches() async {
         let store = SchemaColumnStore()
@@ -13,11 +17,11 @@ struct SchemaColumnStoreTests {
 
         await store.load("k") {
             fetchCount += 1
-            return (columns: ["id"], primaryKeys: ["id"])
+            return Self.entry(["id"], primaryKeys: ["id"])
         }
         await store.load("k") {
             fetchCount += 1
-            return (columns: ["other"], primaryKeys: [])
+            return Self.entry(["other"])
         }
 
         #expect(fetchCount == 1)
@@ -32,12 +36,12 @@ struct SchemaColumnStoreTests {
         async let first: Void = store.load("k") {
             await counter.increment()
             try? await Task.sleep(for: .milliseconds(50))
-            return (columns: ["id"], primaryKeys: ["id"])
+            return Self.entry(["id"], primaryKeys: ["id"])
         }
         async let second: Void = store.load("k") {
             await counter.increment()
             try? await Task.sleep(for: .milliseconds(50))
-            return (columns: ["id"], primaryKeys: ["id"])
+            return Self.entry(["id"], primaryKeys: ["id"])
         }
         _ = await (first, second)
 
@@ -58,7 +62,7 @@ struct SchemaColumnStoreTests {
 
         await store.load("k") {
             fetchCount += 1
-            return (columns: ["id"], primaryKeys: [])
+            return Self.entry(["id"])
         }
 
         #expect(fetchCount == 2)
@@ -68,23 +72,60 @@ struct SchemaColumnStoreTests {
     @Test("removeAll clears entries and allows a fresh fetch")
     func removeAllClearsAndRefetches() async {
         let store = SchemaColumnStore()
-        await store.load("k") { (columns: ["old"], primaryKeys: []) }
+        await store.load("k") { Self.entry(["old"]) }
 
         store.removeAll()
         #expect(store.cached("k") == nil)
 
-        await store.load("k") { (columns: ["new"], primaryKeys: []) }
+        await store.load("k") { Self.entry(["new"]) }
         #expect(store.cached("k")?.columns == ["new"])
     }
 
     @Test("store and cached round-trip")
     func storeAndCachedRoundTrip() {
         let store = SchemaColumnStore()
-        store.store((columns: ["a", "b"], primaryKeys: ["a"]), for: "k")
+        store.store(Self.entry(["a", "b"], primaryKeys: ["a"]), for: "k")
 
         #expect(store.cached("k")?.columns == ["a", "b"])
         #expect(store.cached("k")?.primaryKeys == ["a"])
         #expect(store.cached("missing") == nil)
+    }
+
+    @Test("An entry built from fetched columns types each column from its declared type")
+    func fetchedColumnsAreClassified() {
+        let entry = SchemaColumnStore.Entry(fetchedColumns: [
+            TestFixtures.makeColumnInfo(name: "id", dataType: "INT UNSIGNED", isPrimaryKey: true),
+            TestFixtures.makeColumnInfo(name: "code", dataType: "character varying", isPrimaryKey: false),
+            TestFixtures.makeColumnInfo(name: "active", dataType: "boolean", isPrimaryKey: false)
+        ])
+
+        #expect(entry.columns == ["id", "code", "active"])
+        #expect(entry.primaryKeys == ["id"])
+        #expect(entry.columnTypes["id"] == .integer(rawType: "INT UNSIGNED"))
+        #expect(entry.columnTypes["code"] == .text(rawType: "character varying"))
+        #expect(entry.columnTypes["active"] == .boolean(rawType: "boolean"))
+    }
+
+    @Test("Aligned types follow the order of the names asked for")
+    func alignedTypesFollowTheRequestedOrder() {
+        let entry = SchemaColumnStore.Entry(
+            columns: ["id", "code"],
+            primaryKeys: ["id"],
+            columnTypes: ["id": .integer(rawType: "INT"), "code": .text(rawType: "TEXT")]
+        )
+
+        #expect(entry.columnTypes(aligningWith: ["code", "id"]) == [.text(rawType: "TEXT"), .integer(rawType: "INT")])
+    }
+
+    @Test("A name the table does not have yields no types rather than a shifted list")
+    func unknownNameYieldsNoTypes() {
+        let entry = SchemaColumnStore.Entry(
+            columns: ["id", "code"],
+            primaryKeys: ["id"],
+            columnTypes: ["id": .integer(rawType: "INT"), "code": .text(rawType: "TEXT")]
+        )
+
+        #expect(entry.columnTypes(aligningWith: ["missing", "code"]).isEmpty)
     }
 }
 

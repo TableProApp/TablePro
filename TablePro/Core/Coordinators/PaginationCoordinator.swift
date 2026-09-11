@@ -164,10 +164,10 @@ final class PaginationCoordinator {
         let filters = tab.filterState.hasAppliedFilters ? tab.filterState.appliedFilters : []
         let logicMode = tab.filterState.filterLogicMode
         let isNonSQL = PluginManager.shared.editorLanguage(for: parent.connection.type) != .sql
-        let buffer = parent.tabSessionRegistry.tableRows(for: tabId)
+        let queryColumns = parent.queryColumns(for: tab)
         let countSQL = isNonSQL ? nil : parent.queryBuilder.buildFilteredCountQuery(
             tableName: tableName, schemaName: schemaName, filters: filters, logicMode: logicMode,
-            columns: buffer.columns, columnTypes: buffer.columnTypes
+            columns: queryColumns.columns, columnTypes: queryColumns.columnTypes
         )
 
         /// Taking the task slot supersedes whatever automatic count held it, so this claims that

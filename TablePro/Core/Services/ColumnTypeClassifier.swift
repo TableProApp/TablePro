@@ -11,7 +11,7 @@ import Foundation
 
 struct ColumnTypeClassifier {
     func classify(rawTypeName: String) -> ColumnType {
-        let stripped = stripWrappers(rawTypeName)
+        let stripped = stripTrailingAttributes(stripWrappers(rawTypeName))
         let (base, params) = extractBaseAndParams(stripped)
 
         if base.hasSuffix("[]") {
@@ -52,6 +52,18 @@ struct ColumnTypeClassifier {
         }
         return value
     }
+
+    /// MySQL's catalog spells a column `INT UNSIGNED` or `INT(10) UNSIGNED ZEROFILL`, while its
+    /// result metadata says `INT`. Without this the catalog spelling fell through to text.
+    private func stripTrailingAttributes(_ value: String) -> String {
+        var stripped = value
+        while let attribute = Self.trailingAttributes.first(where: { stripped.uppercased().hasSuffix(" \($0)") }) {
+            stripped = String(stripped.dropLast(attribute.count)).trimmingCharacters(in: .whitespaces)
+        }
+        return stripped
+    }
+
+    private static let trailingAttributes = ["UNSIGNED", "SIGNED", "ZEROFILL"]
 
     // MARK: - Base / Params Extraction
 

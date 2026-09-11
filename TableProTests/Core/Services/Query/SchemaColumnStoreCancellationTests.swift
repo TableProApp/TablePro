@@ -134,7 +134,7 @@ struct SchemaColumnStoreCancellationTests {
         await store.load("users", fetch: probe.fetch)
         #expect(store.cached("users") == nil)
 
-        probe.result = (["id"], ["id"])
+        probe.result = SchemaColumnStore.Entry(columns: ["id"], primaryKeys: ["id"], columnTypes: [:])
         await store.load("users", fetch: probe.fetch)
 
         #expect(probe.startCount == 2)
@@ -180,7 +180,7 @@ struct SchemaColumnStoreCancellationTests {
     func supersededFetchCannotOverwriteNewerResult() async {
         let store = SchemaColumnStore()
         let stale = FetchProbe()
-        stale.result = (["stale"], [])
+        stale.result = SchemaColumnStore.Entry(columns: ["stale"], primaryKeys: [], columnTypes: [:])
 
         let abandoned = Task { await store.load("users", fetch: stale.fetch) }
         #expect(await Self.wait(until: { stale.startCount == 1 }))
@@ -214,7 +214,11 @@ private final class FetchProbe {
     private(set) var startCount = 0
     private(set) var cancelCount = 0
     private(set) var finishCount = 0
-    var result: SchemaColumnStore.Entry? = (["id", "name"], ["id"])
+    var result: SchemaColumnStore.Entry? = SchemaColumnStore.Entry(
+        columns: ["id", "name"],
+        primaryKeys: ["id"],
+        columnTypes: [:]
+    )
 
     private var isReleased = false
 
