@@ -43,13 +43,13 @@ final class PluginDisabledRecoveryUITests: UITestCase {
         XCTAssertTrue(pluginsPane.waitToExist(timeout: 10))
         pluginsPane.click()
 
-        let row = settings.staticTexts["SQLite Driver"].firstMatch
+        let row = settings.staticTexts["SQLite"].firstMatch
         XCTAssertTrue(row.waitToExist(timeout: 15), "The bundled SQLite plugin is listed under Installed")
         XCTAssertTrue(waitUntilHittable(row, timeout: 10))
         row.click()
 
         let toggle = settings.descendants(matching: .any)
-            .matching(NSPredicate(format: "label == %@", "Enable SQLite Driver"))
+            .matching(NSPredicate(format: "label == %@", "Enable SQLite"))
             .firstMatch
         XCTAssertTrue(toggle.waitToExist(timeout: 10))
         XCTAssertTrue(waitUntilHittable(toggle, timeout: 10))
