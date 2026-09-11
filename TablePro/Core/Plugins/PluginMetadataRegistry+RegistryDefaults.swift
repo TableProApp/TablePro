@@ -717,6 +717,7 @@ extension PluginMetadataRegistry {
                     supportsAddIndex: false,
                     supportsDropIndex: false,
                     supportsModifyPrimaryKey: false,
+                    isEngineReadOnly: true,
                     localFilePathField: .database
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(

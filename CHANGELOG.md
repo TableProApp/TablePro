@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New Connection… and Import on the welcome window, named as in the File menu.
 - Open Project Folder… in File > Import.
 - First-launch tour replaced by a one-page welcome sheet, shown again from Help > Getting Started.
+- Beancount connections held at Safe Mode Read-Only. (#2030)
 
 ### Fixed
 

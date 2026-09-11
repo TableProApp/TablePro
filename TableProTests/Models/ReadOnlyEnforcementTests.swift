@@ -34,9 +34,11 @@ struct ReadOnlyEnforcementTests {
         #expect(ReadOnlyEnforcement.allowsChoosing(level, under: .remoteDatabaseFile) == (level == .readOnly))
     }
 
-    @Test("A read-only engine reads as Read-Only and keeps the user's own level")
-    func readOnlyEngine() {
-        let connection = DatabaseConnection(name: "Engine", type: .cloudflareR2SQL, safeModeLevel: .alert)
+    @Test("A read-only engine reads as Read-Only and keeps the user's own level", arguments: [
+        DatabaseType.cloudflareR2SQL, DatabaseType.beancount
+    ])
+    func readOnlyEngine(type: DatabaseType) {
+        let connection = DatabaseConnection(name: "Engine", type: type, safeModeLevel: .alert)
 
         #expect(connection.readOnlyEnforcement == .readOnlyEngine)
         #expect(connection.safeModeLevel == .readOnly)
@@ -96,12 +98,6 @@ struct ReadOnlyEnforcementTests {
         #expect(ConnectionSession(connection: engine).safeModeLevel == .readOnly)
     }
 
-    @Test("Beancount keeps the level it was given, because BQL queries do not classify as reads")
-    func beancountIsNotEnforced() {
-        let ledger = DatabaseConnection(name: "Ledger", type: .beancount, safeModeLevel: .silent)
-        #expect(ledger.readOnlyEnforcement == nil)
-        #expect(ledger.safeModeLevel == .silent)
-    }
 
     @Test("Choosing a weaker level on an enforced session keeps it Read-Only")
     func setSafeModeLevelKeepsEnforcement() {

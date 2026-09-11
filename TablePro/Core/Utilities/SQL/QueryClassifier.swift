@@ -51,6 +51,7 @@ enum QueryClassifier {
         let trimmed = StatementBlank.trimming(strippingLeadingComments(sql))
         guard !trimmed.isEmpty else { return .safe }
         if let redis = redisClassification(trimmed, databaseType: databaseType) { return redis }
+        if let ledger = beancountClassification(trimmed, databaseType: databaseType) { return ledger }
         if let document = documentStoreClassification(trimmed, databaseType: databaseType) { return document }
         return sqlClassification(trimmed)
     }
@@ -552,6 +553,20 @@ private extension QueryClassifier {
     static let mongoCodeExecutionMarkers: [String] = [
         "$where", "$function", "$accumulator", "mapreduce", ".eval(", "$out", "$merge"
     ]
+
+    /// Beancount answers BQL, whose statements (`SELECT`, `BALANCES`, `JOURNAL`, `PRINT`) only
+    /// read, and the two `PRAGMA` forms its driver accepts. Anything else falls through to SQL.
+    static func beancountClassification(
+        _ trimmed: String,
+        databaseType: DatabaseType
+    ) -> QueryClassification? {
+        guard databaseType == .beancount else { return nil }
+        let lowered = trimmed.lowercased()
+        guard beancountReadPrefixes.contains(where: lowered.hasPrefix) else { return nil }
+        return .safe
+    }
+
+    private static let beancountReadPrefixes = ["bql:", "bql ", "pragma table_info", "pragma database_list"]
 
     static func documentStoreClassification(
         _ trimmed: String,
