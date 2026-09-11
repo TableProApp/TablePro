@@ -116,10 +116,11 @@ internal struct WelcomeConnectionList: View {
     }
 
     func connectionRow(for connection: DatabaseConnection) -> some View {
-        let sshProfile = connection.sshProfileId.flatMap { SSHProfileStorage.shared.profile(for: $0) }
+        let metadata = vm.rowMetadata(for: connection)
         return WelcomeConnectionRow(
             connection: connection,
-            sshProfile: sshProfile,
+            tags: metadata.tags,
+            group: metadata.group,
             isSelected: vm.selectedConnectionIds.contains(connection.id),
             onToggleFavorite: { vm.toggleFavorite([connection]) }
         )

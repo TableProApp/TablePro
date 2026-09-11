@@ -42,6 +42,32 @@ extension WelcomeConnectionList {
                 multiSelectionContextMenu(for: connections)
             } else if let single = connections.first {
                 singleConnectionContextMenu(for: single)
+            } else {
+                externalConnectionContextMenu(for: vm.externalConnections(for: ids))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func externalConnectionContextMenu(for external: [LinkedConnection]) -> some View {
+        if !external.isEmpty {
+            Button { primaryAction(for: Set(external.map(\.id))) } label: {
+                Label(
+                    external.count == 1
+                        ? String(localized: "Connect")
+                        : String(format: String(localized: "Connect %d Connections"), external.count),
+                    systemImage: "play.fill"
+                )
+            }
+
+            if external.count == 1, let linked = external.first, vm.isLinkedFolderConnection(linked.id) {
+                Divider()
+
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([linked.sourceFileURL])
+                } label: {
+                    Label(String(localized: "Show in Finder"), systemImage: "folder")
+                }
             }
         }
     }
@@ -79,7 +105,7 @@ extension WelcomeConnectionList {
                 )
             }
 
-            if LicenseManager.shared.isFeatureAvailable(.teamCatalog) {
+            if vm.services.licenseManager.isFeatureAvailable(.teamCatalog) {
                 Button {
                     vm.publishToTeamCatalog(connections)
                 } label: {
@@ -90,7 +116,7 @@ extension WelcomeConnectionList {
                 }
             }
 
-            if LicenseManager.shared.isFeatureAvailable(.teamLibrary) {
+            if vm.services.licenseManager.isFeatureAvailable(.teamLibrary) {
                 Button {
                     vm.publishConnectionsToTeamLibrary(connections)
                 } label: {
@@ -113,17 +139,12 @@ extension WelcomeConnectionList {
             }
         }
 
-        if AppSettingsManager.shared.sync.enabled {
+        if vm.services.appSettings.sync.enabled {
             Divider()
 
             let allLocalOnly = connections.allSatisfy(\.localOnly)
             Button {
-                for conn in connections {
-                    var updated = conn
-                    updated.localOnly = !allLocalOnly
-                    ConnectionStorage.shared.updateConnection(updated)
-                }
-                AppEvents.shared.connectionUpdated.send(nil)
+                vm.setIncludedInSync(connections, included: allLocalOnly)
             } label: {
                 Label(
                     allLocalOnly
@@ -153,7 +174,7 @@ extension WelcomeConnectionList {
         }
 
         if ConnectionMenuPolicy.showsDisconnect(
-            status: DatabaseManager.shared.session(for: connection.id)?.status ?? .disconnected
+            status: vm.services.databaseManager.session(for: connection.id)?.status ?? .disconnected
         ) {
             Button(role: .destructive) {
                 Task {
@@ -197,23 +218,7 @@ extension WelcomeConnectionList {
 
         Menu(String(localized: "Share")) {
             Button {
-                let pw = ConnectionStorage.shared.loadPassword(for: connection.id)
-                let sshPw: String?
-                let sshProfile: SSHProfile?
-                if let profileId = connection.sshProfileId {
-                    sshPw = SSHProfileStorage.shared.loadSSHPassword(for: profileId)
-                    sshProfile = SSHProfileStorage.shared.profile(for: profileId)
-                } else {
-                    sshPw = ConnectionStorage.shared.loadSSHPassword(for: connection.id)
-                    sshProfile = nil
-                }
-                let url = ConnectionURLFormatter.format(
-                    connection,
-                    password: pw,
-                    sshPassword: sshPw,
-                    sshProfile: sshProfile
-                )
-                ClipboardService.shared.writeSecretText(url)
+                ClipboardService.shared.writeSecretText(vm.connectionString(for: connection))
             } label: {
                 Label(String(localized: "Copy Connection String"), systemImage: "link")
             }
@@ -241,7 +246,7 @@ extension WelcomeConnectionList {
                 Label(String(localized: "Export to File…"), systemImage: "square.and.arrow.up")
             }
 
-            if LicenseManager.shared.isFeatureAvailable(.teamCatalog) {
+            if vm.services.licenseManager.isFeatureAvailable(.teamCatalog) {
                 Button {
                     vm.publishToTeamCatalog([connection])
                 } label: {
@@ -249,7 +254,7 @@ extension WelcomeConnectionList {
                 }
             }
 
-            if LicenseManager.shared.isFeatureAvailable(.teamLibrary) {
+            if vm.services.licenseManager.isFeatureAvailable(.teamLibrary) {
                 Button {
                     vm.publishConnectionsToTeamLibrary([connection])
                 } label: {
@@ -268,14 +273,11 @@ extension WelcomeConnectionList {
             }
         }
 
-        if AppSettingsManager.shared.sync.enabled {
+        if vm.services.appSettings.sync.enabled {
             Divider()
 
             Button {
-                var updated = connection
-                updated.localOnly.toggle()
-                ConnectionStorage.shared.updateConnection(updated)
-                AppEvents.shared.connectionUpdated.send(connection.id)
+                vm.setIncludedInSync([connection], included: connection.localOnly)
             } label: {
                 Label(
                     connection.localOnly

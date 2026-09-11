@@ -85,19 +85,8 @@ final class WelcomeViewModel {
     /// alert appears after the sheet animation completes, no sleep needed.
     var pendingImportResultCount: Int?
 
-    var expandedGroupIds: Set<UUID> = {
-        let strings = AppStorageEnvironment.shared.defaults.stringArray(forKey: "com.TablePro.expandedGroupIds") ?? []
-        if strings.isEmpty {
-            AppStorageEnvironment.shared.defaults.removeObject(forKey: "com.TablePro.collapsedGroupIds")
-        }
-        return Set(strings.compactMap { UUID(uuidString: $0) })
-    }() {
-        didSet {
-            AppStorageEnvironment.shared.defaults.set(
-                Array(expandedGroupIds.map(\.uuidString)),
-                forKey: "com.TablePro.expandedGroupIds"
-            )
-        }
+    var expandedGroupIds: Set<UUID> = [] {
+        didSet { groupExpansionStore.save(expandedGroupIds) }
     }
 
     // MARK: - Notification Observers
@@ -108,6 +97,8 @@ final class WelcomeViewModel {
     @ObservationIgnored private var welcomeRouterTask: Task<Void, Never>?
     @ObservationIgnored private var searchDebounceTask: Task<Void, Never>?
     @ObservationIgnored private let importableAppDetector: @MainActor () -> Bool
+    @ObservationIgnored private let groupExpansionStore: WelcomeGroupExpansionStore
+    @ObservationIgnored private let hasStoredGroupExpansion: Bool
     private static let searchDebounceNanoseconds: UInt64 = 150_000_000
 
     // MARK: - Computed Properties
@@ -118,19 +109,43 @@ final class WelcomeViewModel {
     private(set) var depthByGroup: [UUID: Int] = [:]
     private(set) var maxDescendantDepthByGroup: [UUID: Int] = [:]
 
+    private(set) var tags: [ConnectionTag] = []
+
     var availableTags: [ConnectionTag] {
-        let usedIds = Set(connections.flatMap { $0.tagIds })
-        return TagStorage.shared.loadTags().filter { usedIds.contains($0.id) }
+        let usedIds = Set(connections.flatMap(\.tagIds))
+        return tags.filter { usedIds.contains($0.id) }
     }
 
-    var visibleLinkedConnections: [LinkedConnection] {
+    private var presentableLinkedConnections: [LinkedConnection] {
         guard services.licenseManager.isFeatureAvailable(.linkedFolders) else { return [] }
         return linkedConnections
     }
 
-    var visibleTeamLibraryConnections: [LinkedConnection] {
+    private var presentableTeamLibraryConnections: [LinkedConnection] {
         guard services.licenseManager.isFeatureAvailable(.teamLibrary) else { return [] }
         return teamLibraryConnections
+    }
+
+    var visibleLinkedConnections: [LinkedConnection] {
+        Self.visibleExternalConnections(presentableLinkedConnections, searchText: searchText, tagFilter: tagFilter)
+    }
+
+    var visibleTeamLibraryConnections: [LinkedConnection] {
+        Self.visibleExternalConnections(presentableTeamLibraryConnections, searchText: searchText, tagFilter: tagFilter)
+    }
+
+    static func visibleExternalConnections(
+        _ external: [LinkedConnection],
+        searchText: String,
+        tagFilter: TagFilter
+    ) -> [LinkedConnection] {
+        guard !tagFilter.isActive else { return [] }
+        guard !searchText.isEmpty else { return external }
+        return external.filter { linked in
+            linked.connection.name.localizedCaseInsensitiveContains(searchText)
+                || linked.connection.host.localizedCaseInsensitiveContains(searchText)
+                || linked.connection.database.localizedCaseInsensitiveContains(searchText)
+        }
     }
 
     var showsFavoritesSection: Bool {
@@ -138,7 +153,7 @@ final class WelcomeViewModel {
     }
 
     var hasAnyConnection: Bool {
-        !connections.isEmpty || !visibleLinkedConnections.isEmpty || !visibleTeamLibraryConnections.isEmpty
+        !connections.isEmpty || !presentableLinkedConnections.isEmpty || !presentableTeamLibraryConnections.isEmpty
     }
 
     var isSearchAvailable: Bool {
@@ -156,10 +171,7 @@ final class WelcomeViewModel {
     }
 
     func rebuildTree() {
-        guard hasAnyConnection || searchText.isEmpty else {
-            searchText = ""
-            return
-        }
+        guard filtersStillApply() else { return }
 
         favoriteConnections = connections
             .filter(\.isFavorite)
@@ -171,18 +183,26 @@ final class WelcomeViewModel {
         if tagFilter.isActive {
             baseItems = filterGroupTreeByTags(baseItems, filter: tagFilter)
         }
-        if searchText.isEmpty, !favoriteConnections.isEmpty {
-            treeItems = baseItems.filter { node in
-                if case .connection(let conn) = node, conn.isFavorite { return false }
-                return true
-            }
-        } else {
-            treeItems = baseItems
-        }
+        treeItems = showsFavoritesSection
+            ? removingConnections(from: baseItems, where: \.isFavorite)
+            : baseItems
 
         connectionCountByGroup = indices.connectionCountByGroup
         depthByGroup = indices.depthByGroup
         maxDescendantDepthByGroup = indices.maxDescendantDepthByGroup
+    }
+
+    private func filtersStillApply() -> Bool {
+        if !hasAnyConnection, !searchText.isEmpty {
+            searchText = ""
+            return false
+        }
+        let usedTagIds = Set(connections.flatMap(\.tagIds))
+        guard tagFilter.selectedIds.isSubset(of: usedTagIds) else {
+            tagFilter.selectedIds.formIntersection(usedTagIds)
+            return false
+        }
+        return true
     }
 
     private func scheduleRebuildTree(oldValue: String) {
@@ -222,10 +242,15 @@ final class WelcomeViewModel {
 
     init(
         services: AppServices,
-        importableAppDetector: @escaping @MainActor () -> Bool = WelcomeViewModel.detectImportableApp
+        importableAppDetector: @escaping @MainActor () -> Bool = WelcomeViewModel.detectImportableApp,
+        groupExpansionStore: WelcomeGroupExpansionStore = WelcomeGroupExpansionStore()
     ) {
         self.services = services
         self.importableAppDetector = importableAppDetector
+        self.groupExpansionStore = groupExpansionStore
+        let storedExpansion = groupExpansionStore.load()
+        self.hasStoredGroupExpansion = storedExpansion != nil
+        self.expandedGroupIds = storedExpansion ?? []
     }
 
     static func detectImportableApp() -> Bool {
@@ -240,7 +265,7 @@ final class WelcomeViewModel {
         hasImportableApp = importableAppDetector()
         guard connectionUpdatedCancellable == nil else { return }
 
-        if expandedGroupIds.isEmpty {
+        if !hasStoredGroupExpansion {
             let allGroupIds = Set(groupStorage.loadGroups().map(\.id))
             if !allGroupIds.isEmpty {
                 expandedGroupIds = allGroupIds
@@ -356,6 +381,7 @@ final class WelcomeViewModel {
 
     func loadConnections() {
         connections = storage.loadConnections()
+        tags = services.tagStorage.loadTags()
         loadGroups()
     }
 
@@ -479,8 +505,9 @@ final class WelcomeViewModel {
 
     func deleteTag(_ tag: ConnectionTag) {
         guard !tag.isPreset else { return }
-        TagStorage.shared.deleteTag(tag, clearingFrom: storage)
+        services.tagStorage.deleteTag(tag, clearingFrom: storage)
         connections = storage.loadConnections()
+        tags = services.tagStorage.loadTags()
         tagFilter.selectedIds.remove(tag.id)
         rebuildTree()
     }

@@ -39,7 +39,6 @@ internal struct WelcomeTreeRows<ConnectionContent: View>: View {
             }
         }
         .onMove(perform: allConnections ? { from, to in
-            guard vm.searchText.isEmpty else { return }
             vm.moveConnections(
                 renderedIds: items.compactMap { item in
                     guard case .connection(let conn) = item else { return nil }

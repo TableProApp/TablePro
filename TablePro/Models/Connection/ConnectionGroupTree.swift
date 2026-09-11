@@ -175,6 +175,20 @@ func filterGroupTreeByTags(_ items: [ConnectionGroupTreeNode], filter: TagFilter
     }
 }
 
+func removingConnections(
+    from items: [ConnectionGroupTreeNode],
+    where shouldRemove: (DatabaseConnection) -> Bool
+) -> [ConnectionGroupTreeNode] {
+    items.compactMap { item in
+        switch item {
+        case .connection(let conn):
+            return shouldRemove(conn) ? nil : item
+        case .group(let group, let children):
+            return .group(group, children: removingConnections(from: children, where: shouldRemove))
+        }
+    }
+}
+
 // MARK: - Tree Traversal
 
 func flattenVisibleConnections(
