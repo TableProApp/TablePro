@@ -128,6 +128,10 @@ enum D1Value: Decodable {
 
 // MARK: - HTTP Client
 
+/// Sends with `URLSession.data(for:delegate:)`, so cancelling the Swift task that awaits a request
+/// cancels its URL task, and keeps every request in flight so `cancelAll` stops each one. The app
+/// runs sidebar and autocomplete reads on this client while a query runs, so a single stored task
+/// handle cancelled whichever request started last instead of the query the user stopped.
 final class D1HttpClient: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "D1HttpClient")
 
@@ -136,7 +140,7 @@ final class D1HttpClient: @unchecked Sendable {
     private let lock = NSLock()
     private var _databaseId: String
     private var session: URLSession?
-    private var currentTask: URLSessionDataTask?
+    private var inFlight: [ObjectIdentifier: URLSessionTask] = [:]
     private let queryTimeout = HttpQueryTimeoutBox()
 
     var databaseId: String {
@@ -162,30 +166,37 @@ final class D1HttpClient: @unchecked Sendable {
         queryTimeout.set(serverTimeoutSeconds: seconds)
     }
 
-    func createSession() {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
-        config.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
+    func createSession(configuration: URLSessionConfiguration = .default) {
+        configuration.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
+        configuration.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
 
         lock.lock()
-        session = URLSession(configuration: config)
+        session = URLSession(configuration: configuration)
         lock.unlock()
     }
 
     func invalidateSession() {
         lock.lock()
-        currentTask?.cancel()
-        currentTask = nil
         session?.invalidateAndCancel()
         session = nil
         lock.unlock()
     }
 
-    func cancelCurrentTask() {
-        lock.lock()
-        currentTask?.cancel()
-        currentTask = nil
-        lock.unlock()
+    func cancelAll() {
+        let tasks = lock.withLock { Array(inFlight.values) }
+        tasks.forEach { $0.cancel() }
+    }
+
+    var inFlightCount: Int {
+        lock.withLock { inFlight.count }
+    }
+
+    fileprivate func register(_ task: URLSessionTask) {
+        lock.withLock { inFlight[ObjectIdentifier(task)] = task }
+    }
+
+    fileprivate func unregister(_ task: URLSessionTask) {
+        lock.withLock { inFlight[ObjectIdentifier(task)] = nil }
     }
 
     // MARK: - API Methods
@@ -315,37 +326,15 @@ final class D1HttpClient: @unchecked Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = body
 
-        let (data, response) = try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation {
-                (continuation: CheckedContinuation<(Data, URLResponse), Error>) in
-                let task = session.dataTask(with: request) { data, response, error in
-                    if let error {
-                        continuation.resume(throwing: error)
-                        return
-                    }
-                    guard let data, let response else {
-                        continuation.resume(
-                            throwing: D1HttpError(message: "Empty response from server")
-                        )
-                        return
-                    }
-                    continuation.resume(returning: (data, response))
-                }
-
-                self.lock.lock()
-                self.currentTask = task
-                self.lock.unlock()
-
-                task.resume()
-            }
-        } onCancel: {
-            self.lock.lock()
-            self.currentTask?.cancel()
-            self.currentTask = nil
-            self.lock.unlock()
+        let tracker = D1TaskTracker(client: self)
+        defer { tracker.finish() }
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request, delegate: tracker)
+        } catch let error as URLError where error.code == .cancelled {
+            throw CancellationError()
         }
-
-        lock.withLock { currentTask = nil }
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw D1HttpError(message: "Invalid response from server")
@@ -398,6 +387,26 @@ final class D1HttpClient: @unchecked Sendable {
             }
             throw D1HttpError(message: String(localized: "API request failed"))
         }
+    }
+}
+
+private final class D1TaskTracker: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    private weak var client: D1HttpClient?
+    private let lock = NSLock()
+    private var task: URLSessionTask?
+
+    init(client: D1HttpClient) {
+        self.client = client
+    }
+
+    func urlSession(_ session: URLSession, didCreateTask task: URLSessionTask) {
+        lock.withLock { self.task = task }
+        client?.register(task)
+    }
+
+    func finish() {
+        guard let task = lock.withLock({ task }) else { return }
+        client?.unregister(task)
     }
 }
 

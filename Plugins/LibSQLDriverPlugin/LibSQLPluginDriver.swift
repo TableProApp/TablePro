@@ -240,7 +240,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         lock.unlock()
 
         if case .remote(let client) = current {
-            client.cancelCurrentTask()
+            client.cancelAll()
         }
     }
 
@@ -259,7 +259,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let streamTask = Task {
                 do {
                     try await self.performStreamRows(query: query, continuation: continuation)

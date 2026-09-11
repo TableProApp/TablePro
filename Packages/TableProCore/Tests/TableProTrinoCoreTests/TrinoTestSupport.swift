@@ -11,6 +11,7 @@ final class StubTransport: TrinoTransport, @unchecked Sendable {
     private let lock = NSLock()
     private var queue: [Canned]
     private var recorded: [TrinoHTTPRequest] = []
+    private var cancelAllCalls = 0
     var onSend: ((TrinoHTTPRequest, Int) -> Void)?
 
     init(_ responses: [Canned]) {
@@ -19,6 +20,14 @@ final class StubTransport: TrinoTransport, @unchecked Sendable {
 
     var requests: [TrinoHTTPRequest] {
         lock.withLock { recorded }
+    }
+
+    var cancelAllCount: Int {
+        lock.withLock { cancelAllCalls }
+    }
+
+    func cancelAll() {
+        lock.withLock { cancelAllCalls += 1 }
     }
 
     func send(_ request: TrinoHTTPRequest) async throws -> TrinoHTTPResponse {

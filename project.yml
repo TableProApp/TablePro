@@ -490,7 +490,9 @@ targets:
       - Plugins/SQLiteDriverPlugin/SQLiteCreateTableDDL.swift
       - Plugins/SQLiteDriverPlugin/SQLiteDefaultValue.swift
       - Plugins/LibSQLDriverPlugin/LibSQLDefaultValue.swift
+      - Plugins/LibSQLDriverPlugin/HranaHttpClient.swift
       - Plugins/CloudflareD1DriverPlugin/CloudflareD1DefaultValue.swift
+      - Plugins/CloudflareD1DriverPlugin/D1HttpClient.swift
       - Plugins/MSSQLDriverPlugin/MSSQLCheckConstraintDefinition.swift
       - Plugins/PostgreSQLDriverPlugin/ColumnQueryShape.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQByteaDecoder.swift

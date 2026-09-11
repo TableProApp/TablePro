@@ -169,14 +169,14 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         let payloads = try await client.executeBatchRaw(statements: statements)
         let elapsed = Date().timeIntervalSince(startTime)
 
-        return payloads.enumerated().map { _, payload in
+        return payloads.map { payload in
             mapRawResult(payload, executionTime: payload.meta?.duration ?? (elapsed / Double(payloads.count)))
         }
     }
 
     func cancelQuery() throws {
         lock.lock()
-        httpClient?.cancelCurrentTask()
+        httpClient?.cancelAll()
         lock.unlock()
     }
 
@@ -188,7 +188,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let streamTask = Task {
                 do {
                     try await self.performStreamRows(query: query, continuation: continuation)

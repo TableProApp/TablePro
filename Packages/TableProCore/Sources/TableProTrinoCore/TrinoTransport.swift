@@ -75,17 +75,35 @@ public struct TrinoHTTPResponse: Sendable {
 
 public protocol TrinoTransport: Sendable {
     func send(_ request: TrinoHTTPRequest) async throws -> TrinoHTTPResponse
+    func cancelAll()
 }
 
+/// Sends with `URLSession.data(for:delegate:)`, so cancelling the Swift task that awaits a request
+/// cancels its URL task, and keeps every request in flight so `cancelAll` stops each one. A DELETE
+/// is never tracked: it is how a statement tells Trino to stop, and a cancel must not cancel it.
 public final class URLSessionTrinoTransport: NSObject, TrinoTransport, @unchecked Sendable {
     private let session: URLSession
+    private let lock = NSLock()
+    private var inFlight: [ObjectIdentifier: URLSessionTask] = [:]
 
-    public init(tls: TrinoTLSOptions) {
-        let configuration = URLSessionConfiguration.ephemeral
+    public convenience init(tls: TrinoTLSOptions) {
+        self.init(tls: tls, configuration: .ephemeral)
+    }
+
+    init(tls: TrinoTLSOptions, configuration: URLSessionConfiguration) {
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         let delegateProxy = TrinoTLSDelegate(tls: tls)
         self.session = URLSession(configuration: configuration, delegate: delegateProxy, delegateQueue: nil)
         super.init()
+    }
+
+    deinit {
+        session.invalidateAndCancel()
+    }
+
+    public func cancelAll() {
+        let tasks = lock.withLock { Array(inFlight.values) }
+        tasks.forEach { $0.cancel() }
     }
 
     public func send(_ request: TrinoHTTPRequest) async throws -> TrinoHTTPResponse {
@@ -97,24 +115,18 @@ public final class URLSessionTrinoTransport: NSObject, TrinoTransport, @unchecke
             urlRequest.setValue(value, forHTTPHeaderField: name)
         }
 
-        let (data, response) = try await withCheckedThrowingContinuation {
-            (continuation: CheckedContinuation<(Data, URLResponse), Error>) in
-            let task = session.dataTask(with: urlRequest) { data, response, error in
-                if let error {
-                    if (error as? URLError)?.code == .cancelled {
-                        continuation.resume(throwing: TrinoError.cancelled)
-                    } else {
-                        continuation.resume(throwing: TrinoError.transport(error.localizedDescription))
-                    }
-                    return
-                }
-                guard let data, let response else {
-                    continuation.resume(throwing: TrinoError.invalidResponse("Empty response from Trino"))
-                    return
-                }
-                continuation.resume(returning: (data, response))
-            }
-            task.resume()
+        let tracker = request.method == .delete ? nil : TrinoTaskTracker(transport: self)
+        defer { tracker?.finish() }
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: urlRequest, delegate: tracker)
+        } catch let error as URLError where error.code == .cancelled {
+            throw TrinoError.cancelled
+        } catch is CancellationError {
+            throw TrinoError.cancelled
+        } catch {
+            throw TrinoError.transport(error.localizedDescription)
         }
 
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -125,6 +137,38 @@ public final class URLSessionTrinoTransport: NSObject, TrinoTransport, @unchecke
             headers: TrinoHeaderFields(httpResponse: httpResponse),
             body: data
         )
+    }
+
+    var inFlightCount: Int {
+        lock.withLock { inFlight.count }
+    }
+
+    fileprivate func register(_ task: URLSessionTask) {
+        lock.withLock { inFlight[ObjectIdentifier(task)] = task }
+    }
+
+    fileprivate func unregister(_ task: URLSessionTask) {
+        lock.withLock { inFlight[ObjectIdentifier(task)] = nil }
+    }
+}
+
+private final class TrinoTaskTracker: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    private weak var transport: URLSessionTrinoTransport?
+    private let lock = NSLock()
+    private var task: URLSessionTask?
+
+    init(transport: URLSessionTrinoTransport) {
+        self.transport = transport
+    }
+
+    func urlSession(_ session: URLSession, didCreateTask task: URLSessionTask) {
+        lock.withLock { self.task = task }
+        transport?.register(task)
+    }
+
+    func finish() {
+        guard let task = lock.withLock({ task }) else { return }
+        transport?.unregister(task)
     }
 }
 

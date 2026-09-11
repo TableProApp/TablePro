@@ -107,6 +107,10 @@ struct HranaErrorDetail: Decodable {
 
 // MARK: - HTTP Client
 
+/// Sends with `URLSession.data(for:delegate:)`, so cancelling the Swift task that awaits a request
+/// cancels its URL task, and keeps every request in flight so `cancelAll` stops each one. The app
+/// runs sidebar and autocomplete reads on this client while a query runs, so a single stored task
+/// handle cancelled whichever request started last instead of the query the user stopped.
 final class HranaHttpClient: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "HranaHttpClient")
 
@@ -114,7 +118,7 @@ final class HranaHttpClient: @unchecked Sendable {
     private let authToken: String?
     private let lock = NSLock()
     private var session: URLSession?
-    private var currentTask: URLSessionDataTask?
+    private var inFlight: [ObjectIdentifier: URLSessionTask] = [:]
     private let queryTimeout = HttpQueryTimeoutBox()
 
     init(baseUrl: URL, authToken: String?) {
@@ -126,30 +130,37 @@ final class HranaHttpClient: @unchecked Sendable {
         queryTimeout.set(serverTimeoutSeconds: seconds)
     }
 
-    func createSession() {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
-        config.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
+    func createSession(configuration: URLSessionConfiguration = .default) {
+        configuration.timeoutIntervalForRequest = HttpQueryTimeout.sessionBootstrapRequestTimeout
+        configuration.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
 
         lock.lock()
-        session = URLSession(configuration: config)
+        session = URLSession(configuration: configuration)
         lock.unlock()
     }
 
     func invalidateSession() {
         lock.lock()
-        currentTask?.cancel()
-        currentTask = nil
         session?.invalidateAndCancel()
         session = nil
         lock.unlock()
     }
 
-    func cancelCurrentTask() {
-        lock.lock()
-        currentTask?.cancel()
-        currentTask = nil
-        lock.unlock()
+    func cancelAll() {
+        let tasks = lock.withLock { Array(inFlight.values) }
+        tasks.forEach { $0.cancel() }
+    }
+
+    var inFlightCount: Int {
+        lock.withLock { inFlight.count }
+    }
+
+    fileprivate func register(_ task: URLSessionTask) {
+        lock.withLock { inFlight[ObjectIdentifier(task)] = task }
+    }
+
+    fileprivate func unregister(_ task: URLSessionTask) {
+        lock.withLock { inFlight[ObjectIdentifier(task)] = nil }
     }
 
     // MARK: - API Methods
@@ -222,37 +233,15 @@ final class HranaHttpClient: @unchecked Sendable {
         }
         request.httpBody = body
 
-        let (data, response) = try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation {
-                (continuation: CheckedContinuation<(Data, URLResponse), Error>) in
-                let task = session.dataTask(with: request) { data, response, error in
-                    if let error {
-                        continuation.resume(throwing: error)
-                        return
-                    }
-                    guard let data, let response else {
-                        continuation.resume(
-                            throwing: HranaHttpError(message: "Empty response from server")
-                        )
-                        return
-                    }
-                    continuation.resume(returning: (data, response))
-                }
-
-                self.lock.lock()
-                self.currentTask = task
-                self.lock.unlock()
-
-                task.resume()
-            }
-        } onCancel: {
-            self.lock.lock()
-            self.currentTask?.cancel()
-            self.currentTask = nil
-            self.lock.unlock()
+        let tracker = HranaTaskTracker(client: self)
+        defer { tracker.finish() }
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request, delegate: tracker)
+        } catch let error as URLError where error.code == .cancelled {
+            throw CancellationError()
         }
-
-        lock.withLock { currentTask = nil }
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw HranaHttpError(message: "Invalid response from server")
@@ -314,6 +303,26 @@ final class HranaHttpClient: @unchecked Sendable {
             normalized = String(normalized.dropLast())
         }
         return normalized
+    }
+}
+
+private final class HranaTaskTracker: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    private weak var client: HranaHttpClient?
+    private let lock = NSLock()
+    private var task: URLSessionTask?
+
+    init(client: HranaHttpClient) {
+        self.client = client
+    }
+
+    func urlSession(_ session: URLSession, didCreateTask task: URLSessionTask) {
+        lock.withLock { self.task = task }
+        client?.register(task)
+    }
+
+    func finish() {
+        guard let task = lock.withLock({ task }) else { return }
+        client?.unregister(task)
     }
 }
 

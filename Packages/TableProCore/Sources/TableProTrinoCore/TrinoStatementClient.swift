@@ -11,8 +11,7 @@ public final class TrinoStatementClient: @unchecked Sendable {
     private let config: TrinoClientConfig
     private let session: TrinoSessionState
     private let lock = NSLock()
-    private var _cancelled = false
-    private var _currentNextUri: String?
+    private var running: [ObjectIdentifier: TrinoRunningStatement] = [:]
 
     private static let maxTransientRetries = 5
     private static let logger = Logger(subsystem: "com.TablePro", category: "TrinoStatementClient")
@@ -62,14 +61,14 @@ public final class TrinoStatementClient: @unchecked Sendable {
         }
     }
 
+    /// Stops every statement running on this client, not only the one that started last: the app
+    /// runs sidebar and autocomplete reads on the same client while a query runs. Each statement
+    /// is told to stop, its request in flight is cancelled, and Trino gets one DELETE for it.
     public func cancel() {
-        let uri = lock.withLock { () -> String? in
-            _cancelled = true
-            return _currentNextUri
-        }
-        if let uri {
-            fireDelete(uri)
-        }
+        let statements = lock.withLock { Array(running.values) }
+        statements.forEach { $0.markCancelled() }
+        transport.cancelAll()
+        statements.compactMap { $0.claimRelease() }.forEach(fireDelete)
     }
 
     private struct StatementOutcome {
@@ -83,16 +82,31 @@ public final class TrinoStatementClient: @unchecked Sendable {
         onColumns: ([TrinoColumn]) -> Void,
         onPage: ([[TrinoValue]]) -> Void
     ) async throws -> StatementOutcome {
-        lock.withLock {
-            _cancelled = false
-            _currentNextUri = nil
-        }
         guard let statementURL = config.statementURL else {
             throw TrinoError.invalidConfiguration("Invalid Trino server URL")
         }
+        let statement = TrinoRunningStatement()
+        lock.withLock { running[ObjectIdentifier(statement)] = statement }
+        defer { lock.withLock { running[ObjectIdentifier(statement)] = nil } }
 
+        do {
+            return try await drive(statement, url: statementURL, sql: sql, onColumns: onColumns, onPage: onPage)
+        } catch {
+            releaseIfCancelled(statement)
+            throw error
+        }
+    }
+
+    private func drive(
+        _ statement: TrinoRunningStatement,
+        url statementURL: URL,
+        sql: String,
+        onColumns: ([TrinoColumn]) -> Void,
+        onPage: ([[TrinoValue]]) -> Void
+    ) async throws -> StatementOutcome {
         var httpResponse = try await sendWithRetry(
-            makeRequest(method: .post, url: statementURL, headers: initialHeaders(), body: Data(sql.utf8))
+            makeRequest(method: .post, url: statementURL, headers: initialHeaders(), body: Data(sql.utf8)),
+            for: statement
         )
         var results = try decode(httpResponse)
         session.apply(responseHeaders: httpResponse.headers, protocolHeaders: config.protocolHeaders)
@@ -113,12 +127,14 @@ public final class TrinoStatementClient: @unchecked Sendable {
         var nextUri = results.nextUri
 
         while let uri = nextUri {
-            try abortIfCancelled(currentUri: uri)
-            lock.withLock { _currentNextUri = uri }
+            statement.advance(to: uri)
             guard let nextURL = URL(string: uri) else {
                 throw TrinoError.invalidResponse("Trino returned an invalid nextUri")
             }
-            httpResponse = try await sendWithRetry(makeRequest(method: .get, url: nextURL, headers: followHeaders()))
+            httpResponse = try await sendWithRetry(
+                makeRequest(method: .get, url: nextURL, headers: followHeaders()),
+                for: statement
+            )
             results = try decode(httpResponse)
             session.apply(responseHeaders: httpResponse.headers, protocolHeaders: config.protocolHeaders)
             if let error = results.error {
@@ -141,7 +157,6 @@ public final class TrinoStatementClient: @unchecked Sendable {
             nextUri = results.nextUri
         }
 
-        lock.withLock { _currentNextUri = nil }
         return StatementOutcome(updateType: updateType, updateCount: updateCount, queryId: queryId)
     }
 
@@ -167,16 +182,23 @@ public final class TrinoStatementClient: @unchecked Sendable {
         }
     }
 
-    private func abortIfCancelled(currentUri: String) throws {
-        let cancelled = lock.withLock { _cancelled } || Task.isCancelled
-        guard cancelled else { return }
-        fireDelete(currentUri)
+    private func abortIfCancelled(_ statement: TrinoRunningStatement) throws {
+        guard statement.isCancelled || Task.isCancelled else { return }
         throw TrinoError.cancelled
     }
 
-    private func sendWithRetry(_ request: TrinoHTTPRequest) async throws -> TrinoHTTPResponse {
+    private func releaseIfCancelled(_ statement: TrinoRunningStatement) {
+        guard statement.isCancelled || Task.isCancelled, let uri = statement.claimRelease() else { return }
+        fireDelete(uri)
+    }
+
+    private func sendWithRetry(
+        _ request: TrinoHTTPRequest,
+        for statement: TrinoRunningStatement
+    ) async throws -> TrinoHTTPResponse {
         var attempt = 0
         while true {
+            try abortIfCancelled(statement)
             let response = try await transport.send(request)
             switch response.statusCode {
             case 200...299:
@@ -297,5 +319,32 @@ public final class TrinoStatementClient: @unchecked Sendable {
 
     private func bodyText(_ response: TrinoHTTPResponse) -> String {
         String(data: response.body, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+}
+
+private final class TrinoRunningStatement: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+    private var released = false
+    private var nextUri: String?
+
+    var isCancelled: Bool {
+        lock.withLock { cancelled }
+    }
+
+    func markCancelled() {
+        lock.withLock { cancelled = true }
+    }
+
+    func advance(to uri: String) {
+        lock.withLock { nextUri = uri }
+    }
+
+    func claimRelease() -> String? {
+        lock.withLock {
+            guard !released, let nextUri else { return nil }
+            released = true
+            return nextUri
+        }
     }
 }

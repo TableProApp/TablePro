@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProTrinoCore
+import XCTest
 
 final class TrinoStatementClientTests: XCTestCase {
     private func makeClient(_ transport: StubTransport, session: TrinoSessionState = TrinoSessionState(catalog: "c", schema: "s")) -> TrinoStatementClient {
@@ -136,5 +136,6 @@ final class TrinoStatementClientTests: XCTestCase {
         } catch let error as TrinoError {
             XCTAssertEqual(error, .cancelled)
         }
+        XCTAssertEqual(transport.cancelAllCount, 1)
     }
 }
