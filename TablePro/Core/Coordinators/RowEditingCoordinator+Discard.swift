@@ -75,15 +75,16 @@ extension RowEditingCoordinator {
     /// them, and the next edit captures an unsaved value as its baseline. A discard that re-queries
     /// replaces the buffer wholesale and needs none of this; one that does not has to undo it here.
     func restoreRowBufferToOriginals() {
-        let originalValues = parent.changeManager.getOriginalValues()
         var deltas: [Delta] = []
-        if let (tab, _) = parent.tabManager.selectedTabAndIndex {
+        if let (tab, _) = parent.tabManager.selectedTabAndIndex,
+           let tableRows = parent.tabSessionRegistry.existingTableRows(for: tab.id) {
             let tabId = tab.id
-            let insertedIDs = collectInsertedRowIDs(
-                tabId: tabId,
-                indices: parent.changeManager.insertedRowIndices
-            )
-            let edits = originalValues.map { (row: $0.0, column: $0.1, value: $0.2) }
+            let insertedIDs = parent.changeManager.insertedRowIDs
+            let edits = parent.changeManager.getOriginalValues().compactMap { original in
+                tableRows.index(of: original.rowID).map {
+                    (row: $0, column: original.columnIndex, value: original.value)
+                }
+            }
             if !edits.isEmpty {
                 let editDelta = parent.mutateActiveTableRows(for: tabId) { rows in
                     rows.editMany(edits)
@@ -105,18 +106,5 @@ extension RowEditingCoordinator {
         for delta in deltas {
             parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(delta)
         }
-    }
-
-    private func collectInsertedRowIDs(tabId: UUID, indices: Set<Int>) -> Set<RowID> {
-        guard !indices.isEmpty else { return [] }
-        guard let tableRows = parent.tabSessionRegistry.existingTableRows(for: tabId) else { return [] }
-        var ids = Set<RowID>()
-        for index in indices where index >= 0 && index < tableRows.rows.count {
-            let id = tableRows.rows[index].id
-            if id.isInserted {
-                ids.insert(id)
-            }
-        }
-        return ids
     }
 }

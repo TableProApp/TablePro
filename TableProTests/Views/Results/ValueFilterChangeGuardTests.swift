@@ -2,9 +2,8 @@
 //  ValueFilterChangeGuardTests.swift
 //  TableProTests
 //
-//  A pending cell edit is recorded against a display row, so anything that changes which row a
-//  position names re-points it. Sort, pagination and the WHERE filter already confirm before doing
-//  that; the per-column value filter did not. (#2667)
+//  Sort, pagination and the WHERE filter confirm before changing the display order while edits
+//  are pending, and the per-column value filter does the same. (#2667)
 //
 
 import AppKit

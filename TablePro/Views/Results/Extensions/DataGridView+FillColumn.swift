@@ -18,11 +18,7 @@ extension TableViewCoordinator {
         let tableRows = tableRowsProvider()
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
 
-        let rowCount = Self.fillTargetRows(
-            rowCount: cachedRowCount,
-            isEditable: isEditable,
-            isRowDeleted: changeManager.isRowDeleted
-        ).count
+        let rowCount = fillTargetRows().count
         guard rowCount > 0 else { return }
 
         let columnName = tableRows.columns[columnIndex]
@@ -45,11 +41,7 @@ extension TableViewCoordinator {
     }
 
     func applyFillColumn(columnIndex: Int, value: PluginCellValue) {
-        let targetRows = Self.fillTargetRows(
-            rowCount: cachedRowCount,
-            isEditable: isEditable,
-            isRowDeleted: changeManager.isRowDeleted
-        )
+        let targetRows = fillTargetRows()
         guard !targetRows.isEmpty else { return }
 
         let undoManager = tableView?.window?.undoManager
@@ -66,6 +58,16 @@ extension TableViewCoordinator {
         guard didEdit else { return }
         invalidateAllDisplayCaches()
         tableView?.reloadData()
+    }
+
+    private func fillTargetRows() -> [Int] {
+        let tableRows = tableRowsProvider()
+        return Self.fillTargetRows(rowCount: cachedRowCount, isEditable: isEditable) { displayIndex in
+            guard let storageIndex = DisplayRowMapping.rowIndex(
+                forDisplay: displayIndex, displayIDs: displayIDs, in: tableRows
+            ) else { return false }
+            return changeManager.isRowDeleted(tableRows.rows[storageIndex].id)
+        }
     }
 
     static func fillTargetRows(rowCount: Int, isEditable: Bool, isRowDeleted: (Int) -> Bool) -> [Int] {

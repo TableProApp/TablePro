@@ -75,7 +75,7 @@ extension TableViewCoordinator {
             columnType: columnType,
             value: cellValue(at: row, column: columnIndex),
             isTableEditable: isEditable,
-            isRowDeleted: changeManager.isRowDeleted(row),
+            isRowDeleted: isRowDeleted(displayRow: row),
             isImmutableColumn: immutable.contains(columnName),
             isBinaryValue: typedValue.asBytes != nil,
             isForeignKey: tableRows.columnForeignKeys[columnName] != nil,
@@ -89,7 +89,7 @@ extension TableViewCoordinator {
     func handleChevronAction(row: Int, columnIndex: Int) {
         guard isEditable else { return }
         guard row >= 0, columnIndex >= 0 else { return }
-        guard !changeManager.isRowDeleted(row) else { return }
+        guard !isRowDeleted(displayRow: row) else { return }
         guard let tableView else { return }
         guard let column = tableColumnIndex(for: columnIndex) else { return }
 

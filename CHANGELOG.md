@@ -46,6 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Discard restoring a different row than the one edited under a column value filter.
+- Add Row under a column value filter selecting and opening the wrong row for editing.
 - Data grid ignoring the theme's background, text, alternate row, NULL, boolean and row number colors.
 - Text past the first 64 KB of a UTF-16 SQL import arriving byte-swapped.
 - SQL import failing on a file whose encoding is not UTF-8 when a character lands on a 64 KB boundary.

@@ -169,12 +169,10 @@ extension MainContentView {
         let tableRows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
 
         let displayIDs = coordinator.activeGridDisplayIDs
-        var allRows: [[PluginCellValue]] = []
-        for displayIndex in selectedIndices.sorted() {
-            if let row = DisplayRowMapping.row(forDisplay: displayIndex, displayIDs: displayIDs, in: tableRows) {
-                allRows.append(Array(row.values))
-            }
+        let selectedRows = selectedIndices.sorted().compactMap {
+            DisplayRowMapping.row(forDisplay: $0, displayIDs: displayIDs, in: tableRows)
         }
+        let allRows = selectedRows.map { Array($0.values) }
 
         var columnTypes = tableRows.columnTypes
         for (i, col) in tableRows.columns.enumerated() where i < columnTypes.count {
@@ -193,8 +191,8 @@ extension MainContentView {
         }
 
         var modifiedColumns = Set<Int>()
-        for rowIndex in selectedIndices {
-            modifiedColumns.formUnion(changeManager.getModifiedColumnsForRow(rowIndex))
+        for row in selectedRows {
+            modifiedColumns.formUnion(changeManager.getModifiedColumnsForRow(row.id))
         }
 
         let pkColumns = Set(tab.tableContext.primaryKeyColumns)
@@ -253,7 +251,7 @@ extension MainContentView {
                 }
 
                 capturedCoordinator.changeManager.recordCellChange(
-                    rowIndex: rowIndex,
+                    rowID: resolvedRow.id,
                     columnIndex: columnIndex,
                     columnName: columnName,
                     oldValue: oldValue,

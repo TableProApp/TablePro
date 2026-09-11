@@ -15,9 +15,9 @@ struct RowWriteOperationBuilderTests {
 
     private func operations(
         changes: [RowChange],
-        insertedRowData: [Int: [PluginCellValue]] = [:],
-        deletedRowIndices: Set<Int> = [],
-        insertedRowIndices: Set<Int> = [],
+        insertedRowData: [RowID: [PluginCellValue]] = [:],
+        deletedRowIDs: Set<RowID> = [],
+        insertedRowIDs: Set<RowID> = [],
         primaryKeyColumns: [String] = ["id"],
         generatedColumns: Set<String> = [],
         containsTableOperation: Bool = false
@@ -25,8 +25,8 @@ struct RowWriteOperationBuilderTests {
         RowWriteOperationBuilder.operations(
             from: changes,
             insertedRowData: insertedRowData,
-            deletedRowIndices: deletedRowIndices,
-            insertedRowIndices: insertedRowIndices,
+            deletedRowIDs: deletedRowIDs,
+            insertedRowIDs: insertedRowIDs,
             target: target,
             columns: columns,
             primaryKeyColumns: primaryKeyColumns,
@@ -37,7 +37,7 @@ struct RowWriteOperationBuilderTests {
 
     private func cellEdit(column: String, index: Int, from old: PluginCellValue, to new: PluginCellValue) -> RowChange {
         RowChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             type: .update,
             cellChanges: [
                 CellChange(columnIndex: index, columnName: column, oldValue: old, newValue: new),
@@ -110,8 +110,8 @@ struct RowWriteOperationBuilderTests {
 
     @Test("A delete keeps the whole row")
     func deleteCapturesTheRow() {
-        let change = RowChange(rowIndex: 0, type: .delete, originalRow: ["7", "Ada", "2026-01-01"])
-        let result = operations(changes: [change], deletedRowIndices: [0])
+        let change = RowChange(rowID: .existing(0), type: .delete, originalRow: ["7", "Ada", "2026-01-01"])
+        let result = operations(changes: [change], deletedRowIDs: [.existing(0)])
 
         #expect(result.first?.kind == .delete)
         #expect(result.first?.preImage == ["7", "Ada", "2026-01-01"])
@@ -121,18 +121,18 @@ struct RowWriteOperationBuilderTests {
 
     @Test("An insert whose key the server chooses cannot be taken back")
     func serverAssignedKeyIsRefused() {
-        let change = RowChange(rowIndex: 0, type: .insert)
+        let change = RowChange(rowID: .existing(0), type: .insert)
         let withMarker = operations(
             changes: [change],
-            insertedRowData: [0: [.text(PluginCellValue.defaultMarkerText), "Ada", "2026-01-01"]],
-            insertedRowIndices: [0]
+            insertedRowData: [.existing(0): [.text(PluginCellValue.defaultMarkerText), "Ada", "2026-01-01"]],
+            insertedRowIDs: [.existing(0)]
         )
         #expect(withMarker.first?.refusal == .serverAssignedKey)
 
         let withNull = operations(
             changes: [change],
-            insertedRowData: [0: [.null, "Ada", "2026-01-01"]],
-            insertedRowIndices: [0]
+            insertedRowData: [.existing(0): [.null, "Ada", "2026-01-01"]],
+            insertedRowIDs: [.existing(0)]
         )
         #expect(withNull.first?.refusal == .serverAssignedKey)
     }
@@ -140,9 +140,9 @@ struct RowWriteOperationBuilderTests {
     @Test("An insert carrying its own key is reversible")
     func userSuppliedKeyIsReversible() {
         let result = operations(
-            changes: [RowChange(rowIndex: 0, type: .insert)],
-            insertedRowData: [0: ["7", "Ada", "2026-01-01"]],
-            insertedRowIndices: [0]
+            changes: [RowChange(rowID: .existing(0), type: .insert)],
+            insertedRowData: [.existing(0): ["7", "Ada", "2026-01-01"]],
+            insertedRowIDs: [.existing(0)]
         )
         #expect(result.first?.refusal == nil)
         #expect(result.first?.postImage == ["7", "Ada", "2026-01-01"])

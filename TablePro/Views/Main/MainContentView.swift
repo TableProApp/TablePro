@@ -407,9 +407,6 @@ struct MainContentView: View {
             onAddRow: {
                 coordinator.addNewRow()
             },
-            onUndoInsert: { rowIndex in
-                coordinator.undoInsertRow(at: rowIndex)
-            },
             onSelectionChange: { newIndices in
                 /// Any grid selection counts, not just a table tab's. The setting is called
                 /// "Auto-show inspector on row select" and both docs pages describe it that way,

@@ -379,7 +379,7 @@ struct DataGridView: NSViewRepresentable {
         delegate?.dataGridAttach(tableViewCoordinator: coordinator)
         coordinator.recomputeValueFilteredIDs()
         coordinator.updateCache()
-        coordinator.visualIndex.rebuild(from: coordinator.changeManager, displayIDs: coordinator.displayIDs)
+        coordinator.visualIndex.rebuild(from: coordinator.changeManager)
 
         if !latestRows.columns.isEmpty {
             coordinator.isRebuildingColumns = true

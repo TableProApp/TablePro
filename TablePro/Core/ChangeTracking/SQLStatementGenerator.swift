@@ -88,20 +88,20 @@ struct SQLStatementGenerator {
     /// - Parameters:
     ///   - changes: Array of row changes to process
     ///   - insertedRowData: Lazy storage for inserted row values
-    ///   - deletedRowIndices: Set of deleted row indices for validation
-    ///   - insertedRowIndices: Set of inserted row indices for validation
+    ///   - deletedRowIDs: Rows still marked as deleted
+    ///   - insertedRowIDs: Rows still marked as inserted
     /// - Returns: Array of parameterized SQL statements
     func generateStatements(
         from changes: [RowChange],
-        insertedRowData: [Int: [PluginCellValue]],
-        deletedRowIndices: Set<Int>,
-        insertedRowIndices: Set<Int>
+        insertedRowData: [RowID: [PluginCellValue]],
+        deletedRowIDs: Set<RowID>,
+        insertedRowIDs: Set<RowID>
     ) -> [ParameterizedStatement] {
         generateAttributedStatements(
             from: changes,
             insertedRowData: insertedRowData,
-            deletedRowIndices: deletedRowIndices,
-            insertedRowIndices: insertedRowIndices
+            deletedRowIDs: deletedRowIDs,
+            insertedRowIDs: insertedRowIDs
         ).map(\.statement)
     }
 
@@ -117,9 +117,9 @@ struct SQLStatementGenerator {
     /// separated from another delete by an insert stays on its own side of it.
     func generateAttributedStatements(
         from changes: [RowChange],
-        insertedRowData: [Int: [PluginCellValue]],
-        deletedRowIndices: Set<Int>,
-        insertedRowIndices: Set<Int>
+        insertedRowData: [RowID: [PluginCellValue]],
+        deletedRowIDs: Set<RowID>,
+        insertedRowIDs: Set<RowID>
     ) -> [AttributedStatement] {
         var statements: [AttributedStatement] = []
         var deleteRun: [RowChange] = []
@@ -139,14 +139,14 @@ struct SQLStatementGenerator {
                 }
             case .insert:
                 // SAFETY: Verify the row is still marked as inserted
-                guard insertedRowIndices.contains(change.rowIndex) else { continue }
+                guard insertedRowIDs.contains(change.rowID) else { continue }
                 flushDeleteRun()
                 if let stmt = generateInsertSQL(for: change, insertedRowData: insertedRowData) {
                     statements.append(AttributedStatement(statement: stmt, kind: .insert, rowCount: 1))
                 }
             case .delete:
                 // SAFETY: Verify the row is still marked as deleted
-                guard deletedRowIndices.contains(change.rowIndex) else { continue }
+                guard deletedRowIDs.contains(change.rowID) else { continue }
                 deleteRun.append(change)
             }
         }
@@ -166,16 +166,16 @@ struct SQLStatementGenerator {
 
     // MARK: - INSERT Generation
 
-    private func generateInsertSQL(for change: RowChange, insertedRowData: [Int: [PluginCellValue]])
+    private func generateInsertSQL(for change: RowChange, insertedRowData: [RowID: [PluginCellValue]])
         -> ParameterizedStatement?
     {
-        if let values = insertedRowData[change.rowIndex] {
-            return generateInsertSQLFromStoredData(rowIndex: change.rowIndex, values: values)
+        if let values = insertedRowData[change.rowID] {
+            return generateInsertSQLFromStoredData(values: values)
         }
         return generateInsertSQLFromCellChanges(for: change)
     }
 
-    private func generateInsertSQLFromStoredData(rowIndex: Int, values: [PluginCellValue])
+    private func generateInsertSQLFromStoredData(values: [PluginCellValue])
         -> ParameterizedStatement?
     {
         var nonDefaultColumns: [String] = []

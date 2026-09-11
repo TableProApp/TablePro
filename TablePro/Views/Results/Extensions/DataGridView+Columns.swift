@@ -92,7 +92,7 @@ extension TableViewCoordinator {
                 placeholder: DataGridCellContent.placeholder(for: rawValue)
             ),
             state: DataGridCellState(
-                visualState: visualState(for: row),
+                visualState: visualState(of: displayRow, atDisplayRow: row),
                 isFocused: isFocused,
                 isEditable: isEditable,
                 isLargeDataset: isLargeDataset,
